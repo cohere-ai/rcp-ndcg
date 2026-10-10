@@ -82,13 +82,12 @@ those now (the run `partial`, exit 0), and a later `run resume --run <dir>` runs
 
 ## Invariants
 
-- **Estimate before judging.** Run `--estimate` first, show the user `calls`, the tokens and `wall_s`, and get
-  agreement; then run. Input token counts
-  are exact when the judge names a tokenizer and approximate otherwise (2 characters per token);
-  `data.estimate.input_token_count` says which.
-- **Never pool judgements across families.** A family is the judge model, revision and tokenizer, the prompt, the
-  criteria, the parse version and the preprocessing. `rcp-ndcg calibration show --calibration DIR --json` lists them in
-  `data.families`. Exit code 11 is a refusal to mix, not an error to retry.
+- **Estimate before judging.** Run `--estimate` first, show the user `calls`, the request range
+  (`requests_min`..`requests_max`, retries included), the tokens and `wall_s`, then run; input counts are
+  exact with a tokenizer, approximate otherwise (2 characters per token), and `input_token_count` says which.
+- **Never pool judgements across families.** A family is the judge model, revision and tokenizer, the prompt,
+  criteria, parse version, preprocessing and document-reading rule (title join, text-formatting version);
+  `rcp-ndcg calibration show --calibration DIR --json` lists them in `data.families` (exit code 11 refuses a mix).
 - **Never compare numbers from different protocols, cutoffs or tie rules.** `data.protocol` of an eval report names
   the protocol. State the suite, protocol, `k` and judge next to every number you report.
 - **Do not edit the prompts.** The rubric has exactly five criteria, C1 to C5; a changed prompt is a new family.

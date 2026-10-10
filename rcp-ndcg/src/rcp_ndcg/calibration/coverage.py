@@ -153,11 +153,19 @@ def window_coverage(judgements: Iterable[Judgement], stages: Iterable[Stage]) ->
 
     Returns:
         ``{"<dataset>||<query_id>": {stage: StageWindows}}``, for every query with a window of those stages.
+        A ``superseded`` tombstone is not a window: it is skipped, so the counts describe the generation the
+        fit reads (a resumed refusal's retired windows are not counted against the query).
     """
     wanted = set(stages)
     counts: dict[str, dict[str, dict]] = {}
     for judgement in judgements:
         if judgement.stage not in wanted:
+            continue
+        if judgement.invalid_category == "superseded":
+            # A retired window of a superseded generation, not a window the fit reads: a resumed pass that
+            # re-asked a refused window leaves its first fit's later-phase windows tombstoned, and counting
+            # them as invalid would flag (and, under --strict, refuse) a store that is as complete as a clean
+            # pass's. The line is skipped entirely: it is not a window of the generation being fitted.
             continue
         entry = counts.setdefault(_query(judgement), {}).setdefault(
             judgement.stage, {"windows": 0, "invalid": 0, "invalid_by_phase": {}, "invalid_by_category": {}}

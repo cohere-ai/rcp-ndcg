@@ -106,12 +106,17 @@ def _check_coverage(what: str, positions: list[int], window_size: int) -> None:
 
 
 def _score(key: str, value: object) -> float:
-    """A finite score: a JSON number, or a string holding one (``"2.5"``)."""
+    """A finite score: a JSON number, or a string holding one (``"2.5"``).
+
+    An integer literal of any length decodes to a Python ``int``; ``float()`` raises ``OverflowError`` on one
+    beyond the double range, which the judging loop does not catch -- the conversion is guarded here so the
+    answer is refused with its category instead of killing the pass.
+    """
     if isinstance(value, bool) or not isinstance(value, int | float | str):
         raise UnparseableAnswer(f"the score of {key!r} must be a number, got {value!r}", "schema")
     try:
         score = float(value)
-    except ValueError:
+    except (ValueError, OverflowError):
         raise UnparseableAnswer(f"the score of {key!r} must be a number, got {value!r}", "schema") from None
     if not math.isfinite(score):
         raise UnparseableAnswer(f"the score of {key!r} must be finite, got {value!r}", "schema")

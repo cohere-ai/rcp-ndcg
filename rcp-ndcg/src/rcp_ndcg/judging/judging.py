@@ -18,6 +18,7 @@ arrive in.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -45,7 +46,7 @@ from rcp_ndcg.data.postprocess import (
     document_ids_from_chunks,
     max_pool_rubric_window_by_document,
 )
-from rcp_ndcg.data.prepare import MediaCensus
+from rcp_ndcg.data.prepare import MediaCensus, PreparedContent
 from rcp_ndcg.data.text_policy import (
     Preprocessing,
     chunk_ranking_example,
@@ -66,6 +67,7 @@ from rcp_ndcg.judging.schedule import (
     _canonical_pair,
     _compute_boundary_values,
     _greedy_select_windows,
+    _resolve_modality_windows,
     _stratified_groups,
     query_rng,
     schedule_for,
@@ -413,6 +415,14 @@ def _queries(
         )
         require_tokenizer(tokenizer, what)
     name, rows, source = _rows(dataset, candidates, title=title)
+    seen: set[str] = set()
+    for row in rows:
+        if row.id in seen:
+            raise DataError(
+                f"duplicate query id {row.id!r} in the rows to judge: each query is judged once",
+                hint="merge the rows, or give the second query its own id",
+            )
+        seen.add(row.id)
     queries: list[_Query] = []
     for row in rows:
         if candidates is not None and row.id not in candidates:
@@ -503,6 +513,101 @@ def _modality(queries: Sequence[_Query]) -> Modality:
     return "text"
 
 
+#: The schedule's phase order: each phase's windows are selected from the fit the phases before it left.
+_PHASE_ORDER: dict[str, int] = {"random": 0, "stratified": 1, "adaptive": 2}
+
+
+def _phase_ranges(
+    stage: Stage, schedule: TournamentSchedule | RubricSchedule, query: _Query
+) -> dict[str, tuple[int, int]]:
+    """The window-sequence ranges this pass's own schedule computes for one query: phase -> ``[start, end)``.
+
+    A scheduled window's sequence number is its position in the query's schedule, so the ranges identify the
+    slots a pass over this query's units will ask -- and therefore the records of the pass's own generation (a
+    subset or a different pool draws its own ranges, even where the numbers overlap).
+    """
+    n_units = len(query.units)
+    n_docs = len(document_ids_from_chunks(query.units, query.chunk_mapping))
+    if isinstance(schedule, RubricSchedule):
+        n_random, n_stratified = schedule.windows_for(n_docs, n_units=n_units)
+        return {"random": (0, n_random), "stratified": (n_random, n_random + n_stratified)}
+    n_random, n_stratified, per_batch = schedule.windows_for(n_docs)
+    start = n_random + n_stratified
+    return {
+        "random": (0, n_random),
+        "stratified": (n_random, start),
+        "adaptive": (start, start + schedule.adaptive_batches_for(n_docs) * per_batch),
+    }
+
+
+def _stale_generation(
+    existing: Mapping[str, Judgement],
+    queries: Sequence[_Query],
+    stage: Stage,
+    schedule: TournamentSchedule | RubricSchedule,
+) -> set[str]:
+    """The records a resumed pass retires: the later-phase windows of its own generation whose selection
+    depended on the fit a re-asked refused answer left incomplete.
+
+    A refused window (invalid, with no answer) is asked again on a resume. Its answer changes the live fit, so
+    the query's later-phase windows can be selected differently; keeping the first fit's records beside the new
+    ones would leave two generations in the store, and the refit reads every valid record. Only the pass's own
+    generation is touched: a record counts only when its phase and sequence fall in this pass's schedule ranges
+    for the query and every unit it showed is one of this pass's units, so a full pass never retires a subset
+    pass's windows (and a subset pass never retires the full pass's). A ``superseded`` tombstone is a retired
+    record, not a refusal: it is never re-asked or retired again.
+    """
+    in_scope = {(query.dataset, query.query_id): query for query in queries}
+    ranges: dict[tuple[str, str], dict[str, tuple[int, int]]] = {
+        key: _phase_ranges(stage, schedule, query) for key, query in in_scope.items()
+    }
+    refused: dict[tuple[str, str], list[Judgement]] = {}
+    for record in existing.values():
+        if (
+            record.window_seq is None
+            or record.valid
+            or record.response is not None
+            or record.phase is None
+            or record.invalid_category == "superseded"
+        ):
+            continue
+        query = in_scope.get((record.dataset, record.query_id))
+        if query is None:
+            continue
+        start, end = ranges[(record.dataset, record.query_id)].get(record.phase, (0, 0))
+        if not start <= record.window_seq < end:
+            continue  # not a slot this pass asks: another pool's or another generation's window
+        if not {placement.unit_id for placement in record.placements} <= set(query.units):
+            continue
+        refused.setdefault((record.dataset, record.query_id), []).append(record)
+    if not refused:
+        return set()
+    stale: set[str] = set()
+    for key, records in refused.items():
+        query = in_scope[key]
+        query_ranges = ranges[key]
+        units = set(query.units)
+        earliest = min(_PHASE_ORDER[record.phase] for record in records if record.phase is not None)
+        adaptive = [
+            record.window_seq for record in records if record.phase == "adaptive" and record.window_seq is not None
+        ]
+        for record in existing.values():
+            if (record.dataset, record.query_id) != key or record.phase is None or record.window_seq is None:
+                continue
+            if record.invalid_category == "superseded":
+                continue  # already retired; a later resume must not append a second tombstone for it
+            start, end = query_ranges.get(record.phase, (0, 0))
+            if not start <= record.window_seq < end:
+                continue  # another pool's or another generation's slot: this pass never replaces it
+            if not {placement.unit_id for placement in record.placements} <= units:
+                continue
+            if _PHASE_ORDER[record.phase] > earliest or (
+                record.phase == "adaptive" and adaptive and record.window_seq > min(adaptive)
+            ):
+                stale.add(record.record_id)
+    return stale
+
+
 # ---------------------------------------------------------------------------
 # One window's answer and record
 # ---------------------------------------------------------------------------
@@ -517,14 +622,10 @@ class WindowAnswer:
     criteria: dict[str, dict[str, int]] | None = None
 
 
-def parse_window(
+def _stage_answer(
     stage: Stage, query_id: str, completion: Completion, units: Sequence[str], num_criteria: int
 ) -> WindowAnswer:
-    """Parse one answer of ``stage`` for a window showing ``units`` (in prompt order).
-
-    Raises:
-        UnparseableAnswer: the answer is not a complete observation of the window (with its category).
-    """
+    """The stage's own parse of one answer: the body of :func:`parse_window` without the example check."""
     if stage == "tournament":
         from rcp_ndcg.judging._parsing.listwise import parse_calibrated_listwise
 
@@ -534,6 +635,39 @@ def parse_window(
     from rcp_ndcg.judging._parsing.rubric import parse_rubric_criteria
 
     return WindowAnswer(criteria=parse_rubric_criteria(query_id, completion, list(units), num_criteria))
+
+
+def parse_window(
+    stage: Stage,
+    query_id: str,
+    completion: Completion,
+    units: Sequence[str],
+    num_criteria: int,
+    *,
+    example: Mapping[str, Any] | None = None,
+) -> WindowAnswer:
+    """Parse one answer of ``stage`` for a window showing ``units`` (in prompt order).
+
+    ``example`` is the prompt's own worked example (:attr:`~rcp_ndcg.judging.prompts.Prompt.worked_example`),
+    when it has one: an answer equal to it is refused -- the example is a template constant that happens to fit
+    a window of its size, and a model echoing it (or an injected document block that supplies it) must never be
+    recorded as an observation. A window the example does not fit is unaffected.
+
+    Raises:
+        UnparseableAnswer: the answer is not a complete observation of the window (with its category), or it is
+            the prompt's worked example.
+    """
+    answer = _stage_answer(stage, query_id, completion, units, num_criteria)
+    if example is not None:
+        try:
+            worked = _stage_answer(stage, query_id, Completion(response=json.dumps(example)), units, num_criteria)
+        except UnparseableAnswer:
+            worked = None
+        if worked is not None and answer == worked:
+            raise UnparseableAnswer(
+                "the answer is the prompt's worked example, not an observation of this window", "schema"
+            )
+    return answer
 
 
 #: The pass's diagnostic cap for ``invalid_reason``: a longer diagnostic is cut with a marker, never silently.
@@ -623,12 +757,30 @@ class _Pass:
     reused: int = 0
     #: ``(query, unit, budget) -> (kept text, original tokens, kept tokens)``: a document's cut, computed once.
     cuts: dict[tuple[str, str, int], tuple[str, int, int]] = field(default_factory=dict)
+    #: ``(query, unit) -> PreparedContent``: a document as the wire sends it, prepared once per pass.
+    prepared: dict[tuple[str, str], PreparedContent] = field(default_factory=dict)
 
     @property
     def criteria(self) -> tuple[str, ...]:
         return self.family.criteria
 
     # -- one window ----------------------------------------------------------
+
+    def prepared_content(self, query: _Query, unit: str) -> PreparedContent:
+        """``query.contents[unit]`` as the wire sends it: prepared once per pass and cached.
+
+        The one preparation path: :meth:`window_tokens` counts its refs and :meth:`render` sends them, so the
+        budget and the prompt describe the same bytes (a recorded size that disagrees with the file is
+        corrected by :func:`~rcp_ndcg.data.prepare.prepare_content`).
+        """
+        from rcp_ndcg.data.prepare import prepare_content
+
+        key = (query.query_id, unit)
+        cached = self.prepared.get(key)
+        if cached is None:
+            cached = prepare_content(query.contents[unit], self.preprocessing.image, self.preprocessing.video)
+            self.prepared[key] = cached
+        return cached
 
     def window_tokens(self, query: _Query, window: int) -> int | None:
         """The per-document text budget of a window of ``window`` documents of this query, in tokens.
@@ -645,16 +797,16 @@ class _Pass:
         config = self.client.config
         if config.context_tokens is None:
             return None
+        # The media charge counts the prepared refs the wire carries (the same objects render() sends), not the
+        # stored metadata: a recorded size that disagrees with the file cannot under-count the prompt.
+        prepared = [self.prepared_content(query, unit).content for unit in query.units]
         marker = media_marker_tokens(self.tokenizer) if self.tokenizer is not None else 0
         if self.tokenizer is None:
-            media = _media_tokens(query.contents.values(), self.preprocessing, strict=False)
+            media = _media_tokens(prepared, self.preprocessing, strict=False)
             if media is not None:
                 window_tokens(config, window, overhead_tokens=0, media_tokens_per_doc=media)
             return None
-        media = (
-            _media_tokens(query.contents.values(), self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer)
-            or 0
-        )
+        media = _media_tokens(prepared, self.preprocessing, marker_tokens=marker, tokenizer=self.tokenizer) or 0
         overhead = prompt_overhead_tokens(self.prompt, self.stage, query.text, window, self.tokenizer)
         return window_tokens(config, window, overhead_tokens=overhead, media_tokens_per_doc=media)
 
@@ -673,11 +825,9 @@ class _Pass:
     def render(self, query: _Query, units: Sequence[str], max_tokens: int | None) -> CompletionInput:
         """The prompt of one window, with its media prepared, each document's text cut to ``max_tokens`` (as the
         prompt carries it) at a token boundary, and the stage's answer schema when the family decodes to it."""
-        from rcp_ndcg.data.prepare import prepare_content
-
         contents = []
         for unit in units:
-            prepared = prepare_content(query.contents[unit], self.preprocessing.image, self.preprocessing.video)
+            prepared = self.prepared_content(query, unit)
             self.media_census.record(corpus=query.dataset, doc_id=unit, media=prepared.media)
             content = prepared.content
             if max_tokens is not None and content.has_text:
@@ -741,9 +891,11 @@ class _Pass:
         again up to :data:`MAX_ATTEMPTS` times and then stored as an invalid
         judgement. A stored invalid judgement without an answer (the endpoint
         refused every attempt) is asked again when the pass is resumed; an
-        unparseable answer is the judge's answer and is kept. Any other exception
-        propagates. ``seq`` is the window's place in the query's schedule, or ``None`` for a planned window, which
-        is keyed by its documents alone.
+        unparseable answer is the judge's answer and is kept. The record keeps the
+        last attempt that carried an answer, with its parse failure: a refusal
+        after an answer must not discard what the judge said. Any other exception
+        propagates. ``seq`` is the window's place in the query's schedule, or
+        ``None`` for a planned window, which is keyed by its documents alone.
         """
         record_id = judgement_record_id(
             self.family.key,
@@ -762,11 +914,20 @@ class _Pass:
         completion: Completion | None = None
         failure: tuple[str, InvalidCategory] | None = None
         answer: WindowAnswer | None = None
+        last_answer: Completion | None = None
+        last_failure: tuple[str, InvalidCategory] | None = None
         for _attempt in range(MAX_ATTEMPTS):
             completion = None
             try:
                 completion = await self.client.complete(request)
-                answer = parse_window(self.stage, query.query_id, completion, units, len(self.criteria))
+                answer = parse_window(
+                    self.stage,
+                    query.query_id,
+                    completion,
+                    units,
+                    len(self.criteria),
+                    example=self.prompt.worked_example,
+                )
                 failure = None
                 break
             except UnparseableAnswer as exc:
@@ -774,6 +935,12 @@ class _Pass:
             except RequestRejectedError as exc:
                 text = str(exc).strip()
                 failure = (f"{type(exc).__name__}: {text.splitlines()[-1] if text else repr(exc)}", "refused")
+            if completion is not None and completion.response is not None:
+                # Keep the last attempt that carried an answer: a later refusal must not discard what the judge
+                # said (``reparse`` can read the text again), and its parse failure is the record's category.
+                last_answer, last_failure = completion, failure
+        if (completion is None or completion.response is None) and last_answer is not None:
+            completion, failure = last_answer, last_failure
         self.asked += 1
         judgement = self._record(
             query, seq, phase, units, record_id, answer=answer, completion=completion, failure=failure
@@ -912,11 +1079,49 @@ async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> Non
         ingest(judgement)
     rasch.fit_lbfgs()
     theta_prelim = rasch.get_scores() or {}
-    if n_stratified > 0 and theta_prelim:
+    if n_stratified > 0 and not theta_prelim:
+        _record_dropped_stratified(query, n_stratified, run)
+    elif n_stratified > 0:
         unit_theta = {unit: theta_prelim.get(query.doc_of(unit), 0.0) for unit in units}
         stratified = _stratified_groups(units, unit_theta, w, n_stratified, rng)
         for judgement in await run.ask_all(query, len(random_windows), stratified, max_tokens, "stratified"):
             ingest(judgement)
+
+
+def _record_dropped_stratified(query: _Query, windows: int, run: _Pass) -> None:
+    """Warn and record a stratified phase the random phase left nothing to stratify: the preliminary ability
+    is empty, so the tier windows cannot be selected and the schedule's calls are not asked.
+
+    The drop is a pass event, not a text cut or a media item: it is recorded as a census row of the store's
+    ``preprocessing.jsonl`` (``mechanism: phase_dropped``), beside the engine media check's ``not_checked``
+    rows, and warned. Silently asking half the schedule would leave the shortfall to a coverage report that
+    counts only windows that were asked.
+    """
+    from rcp_ndcg.storage.census import append_census_rows
+
+    reason = "the random phase produced no valid answer"
+    logger.warning(
+        "query %s of %s: the rubric's stratified phase (%d window(s)) was dropped: %s; the schedule's calls "
+        "are not asked",
+        query.query_id,
+        query.dataset,
+        windows,
+        reason,
+    )
+    append_census_rows(
+        run.store.root / PREPROCESSING_RECORD,
+        [
+            {
+                "mechanism": "phase_dropped",
+                "corpus": query.dataset,
+                "query_id": query.query_id,
+                "stage": "rubric",
+                "phase": "stratified",
+                "windows": windows,
+                "reason": reason,
+            }
+        ],
+    )
 
 
 async def run_planned(query: _Query, windows: Sequence[Sequence[str]], run: _Pass, *, mirror: bool) -> None:
@@ -924,12 +1129,14 @@ async def run_planned(query: _Query, windows: Sequence[Sequence[str]], run: _Pas
 
     The windows are recorded with ``phase`` and ``window_seq`` ``None`` and keyed by their documents in order (and
     the schedule), not by their place in the command: asking the same window again, in any plan or grouping,
-    reuses it.
+    reuses it. Each window is rendered at its own size's text budget (the budget is a function of the window, so
+    a plan's longest window no longer decides what a short one shows).
     """
     asked = [list(order) for window in windows for order in ((window, window[::-1]) if mirror else (window,))]
     asked = list({tuple(window): window for window in asked}.values())  # a window listed twice is asked once
-    max_tokens = run.window_tokens(query, max(len(window) for window in asked))
-    await run.ask_all(query, None, asked, max_tokens, None)
+    for size in sorted({len(window) for window in asked}):
+        of_size = [window for window in asked if len(window) == size]
+        await run.ask_all(query, None, of_size, run.window_tokens(query, size), None)
 
 
 # ---------------------------------------------------------------------------
@@ -1019,6 +1226,33 @@ class _Plan:
     dataset_key: str
 
 
+def _check_rubric_coverage(schedule: RubricSchedule, queries: Sequence[_Query]) -> None:
+    """Refuse a rubric pass whose settings cannot show every document (or chunk) of a query.
+
+    The balanced random phase is the only phase that guarantees coverage, so ``n_random * w >= n_units`` is
+    the precondition; below it the tier windows may repeat a document's chunks and leave units unseen, and
+    the pass would silently judge fewer documents than the schedule promises.
+
+    Raises:
+        ConfigError: some query's units exceed ``n_random * w``.
+    """
+    for query in queries:
+        n_units = len(query.units)
+        n_docs = len(document_ids_from_chunks(query.units, query.chunk_mapping))
+        uncovered = schedule.uncovered_units(n_docs, n_units=n_units)
+        if not uncovered:
+            continue
+        n_random, _ = schedule.windows_for(n_docs, n_units=n_units)
+        window = min(schedule.window, n_units)
+        raise ConfigError(
+            f"query {query.query_id!r}: the rubric's coverage precondition n_random * w >= n_units does not "
+            f"hold: {n_random} random windows of {window} units cover {n_random * window} of {n_units} units, "
+            f"so {uncovered} would be shown in no window (the tier windows do not guarantee coverage)",
+            hint="raise placements_per_doc or random_share, or lower window, so that n_random * w >= n_units",
+            details={"query_id": query.query_id, "n_units": n_units, "n_random": n_random, "window": window},
+        )
+
+
 def _plan(
     dataset: Any,
     candidates: Mapping[str, Sequence[str]] | None,
@@ -1052,6 +1286,13 @@ def _plan(
                 cli_hint="plan the windows with `rcp-ndcg calibration insert --dry-run`",
             )
         docs = {query: list(dict.fromkeys(doc for window in rows for doc in window)) for query, rows in windows.items()}
+    if docs is not None:
+        empty = sorted(query for query, ids in docs.items() if not ids)
+        if empty:
+            raise ConfigError(
+                f"docs names no documents for {', '.join(map(repr, empty[:3]))}: an empty subset has nothing to judge",
+                hint="pass at least one document per query, or drop the entry",
+            )
     client = judge_cfg if isinstance(judge_cfg, JudgeClient) else JudgeClient.from_config(judge_cfg)
     effective = _effective_preprocessing(preprocessing, client.config)
     # The pass's effective pixel policy, for the client's engine media check: the probe runs when the pass
@@ -1078,6 +1319,19 @@ def _plan(
         title=client.config.title or "join",
         task_instruction=instruction_for("query") if instruction_for is not None else None,
     )
+    empty = [query.query_id for query in queries if not query.units]
+    if empty:
+        raise DataError(
+            f"query {empty[0]!r} has no candidates to judge",
+            hint="drop the query, or give its pool at least one candidate",
+        )
+    if stage == "tournament":
+        thin = [query.query_id for query in queries if len(query.units) < 2]
+        if thin:
+            raise DataError(
+                f"the tournament needs at least two candidates per query; {', '.join(map(repr, thin[:3]))} has fewer",
+                hint="judge those queries with the rubric, or drop them",
+            )
     if windows is not None and any(query.chunk_mapping for query in queries):
         raise ConfigError("planned windows show whole documents; these documents are judged in chunks")
     modality = _modality(queries)
@@ -1086,6 +1340,11 @@ def _plan(
     expected = TournamentSchedule if stage == "tournament" else RubricSchedule
     if not isinstance(schedule, expected):
         raise ConfigError(f"stage {stage!r} takes a {expected.__name__}, got {type(schedule).__name__}")
+    # Naming one field of a partial schedule must not discard the per-modality window: the fields the caller
+    # left unset take the shipped schedule's value for this corpus's modality.
+    schedule = _resolve_modality_windows(schedule, stage, modality)
+    if isinstance(schedule, RubricSchedule) and windows is None:
+        _check_rubric_coverage(schedule, queries)
     shipped = shipped_prompt_name(stage, modality)
     if schedule.prompt in PROMPT_FILES and schedule.prompt != shipped:
         raise ConfigError(
@@ -1116,6 +1375,12 @@ def _plan(
         context_tokens=client.config.context_tokens,
         extra_body=client.config.extra_body or None,
         api=client.config.api_key_for_identity(),
+        # The document-reading rule and the text-formatting version shape the strings the judge reads, and the
+        # fake judge's seed decides its answers: each is CONTENT, so a pass that reads other strings or runs
+        # another fake seed never pools with this one (the family is the only cross-store gate).
+        title=client.config.title if client.config.title != "join" else None,
+        text_formatting=TEXT_FORMATTING_VERSION,
+        fake_seed=client.config.fake_seed,
     )
     dataset_identity = _dataset_identity(name, source, rows=dataset if source is None else None)
     # The dataset's identity key: what a record id names the corpus by, so two corpora that share query and
@@ -1201,6 +1466,10 @@ async def ajudge(
     client, queries, prompt = plan.client, plan.queries, plan.prompt
     store = JudgementStore(out)
     store.claim(stage, plan.identity, plan.family, force=force, sources=plan.sources)
+    # The store's media census exists before the probe, and the client records into it: the engine media
+    # check's rows (ok or not_checked) are part of what the judge saw, not a sink-less log.
+    media_census = MediaCensus(sink=store.root / PREPROCESSING_RECORD)
+    client.media_census = media_census
     # What the endpoint says it serves: runtime information beside the identity, never part of it.
     store.note_engines(stage, await client.probe())
     store.keep_prompt(prompt.text)
@@ -1214,11 +1483,25 @@ async def ajudge(
         existing=store.records(stage),
         preprocessing=plan.preprocessing,
         census=census,
-        media_census=MediaCensus(sink=store.root / PREPROCESSING_RECORD),
+        media_census=media_census,
         tokenizer=plan.tokenizer,
         schedule_key=schedule_key(plan.schedule),
         dataset_key=plan.dataset_key,
     )
+    # A resumed pass that re-asks a refused window refits under the new answer: the windows its first fit
+    # selected for the later phases are retired with appended tombstones (and dropped from this pass's reuse
+    # map), so the fit never reads two generations of one query's schedule and the stage file stays append-only.
+    # The retirement is scoped to this pass's own generation (its schedule's ranges and its units); a planned
+    # pass runs no schedule, so it retires nothing.
+    stale = set() if windows is not None else _stale_generation(run.existing, queries, stage, plan.schedule)
+    if stale:
+        store.supersede_records(
+            stage,
+            {record_id: run.existing[record_id] for record_id in stale},
+            reason="a resumed pass re-asks a refused window and refits",
+        )
+        for record_id in stale:
+            run.existing.pop(record_id, None)
     logger.info(
         "judging %d queries of %s: %s with %s (%s), store %s",
         len(queries),

@@ -133,6 +133,33 @@ def test_placements_are_positive_and_the_random_share_a_share() -> None:
         TournamentSchedule(random_placements=-1)
 
 
+def test_the_rubric_coverage_precondition_is_named() -> None:
+    """The random phase is the only phase that guarantees coverage: ``n_random * w >= n_units`` is the
+    precondition, and :meth:`RubricSchedule.uncovered_units` reports the shortfall the pass refuses on."""
+    rubric = RubricSchedule()
+    assert rubric.uncovered_units(150) == 0
+    assert rubric.uncovered_units(150, n_units=450) == 0  # 50 random windows of 10 cover 500 units
+    assert rubric.uncovered_units(150, n_units=600) == 100  # 4 chunks per document: 500 of 600 covered
+    assert RubricSchedule(placements_per_doc=0.5).uncovered_units(100) == 50
+    assert RubricSchedule(placements_per_doc=2.0).uncovered_units(100) == 0
+    assert RubricSchedule(random_share=1.0).uncovered_units(100, n_units=1000) == 0
+
+
+def test_naming_one_schedule_field_keeps_the_modality_windows() -> None:
+    """``_resolve_modality_windows`` fills only the window fields the caller did not name: a partial
+    schedule keeps the shipped per-modality window instead of the text model default."""
+    partial = RubricSchedule(seed=7)
+    assert sched._resolve_modality_windows(partial, "rubric", "image").window == 8
+    assert sched._resolve_modality_windows(partial, "rubric", "video").window == 5
+    named = RubricSchedule(window=3, seed=7)
+    assert sched._resolve_modality_windows(named, "rubric", "image").window == 3
+    tournament = TournamentSchedule(seed=7)
+    resolved = sched._resolve_modality_windows(tournament, "tournament", "video")
+    assert (resolved.window, resolved.adaptive_window) == (5, 5)
+    named_window = TournamentSchedule(window=4, seed=7)
+    assert sched._resolve_modality_windows(named_window, "tournament", "video").adaptive_window == 5
+
+
 def test_each_query_draws_from_its_own_stream() -> None:
     first = [sched.query_rng(42, "ds", "q1").random() for _ in range(2)]
     assert first == [sched.query_rng(42, "ds", "q1").random() for _ in range(2)]

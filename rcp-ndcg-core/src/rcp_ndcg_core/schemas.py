@@ -27,6 +27,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rcp_ndcg_core._hashing import hash_payload, short
+from rcp_ndcg_core.records import DocumentTitle
 
 #: Schema id carried by every judgement record (``"schema"`` in JSON).
 JUDGEMENT_SCHEMA = "rcp-ndcg.judgement.v1"
@@ -46,8 +47,11 @@ Phase = Literal["random", "stratified", "adaptive"]
 #: * ``schema`` -- the object lacks a required key, has a value of the wrong type, names an unknown or duplicate
 #:   document, or repeats a key;
 #: * ``incomplete`` -- the object is well formed but leaves documents of the window out;
-#: * ``refused`` -- the endpoint rejected the request, so there is no answer.
-InvalidCategory = Literal["truncated", "no_json", "invalid_json", "schema", "incomplete", "refused"]
+#: * ``refused`` -- the endpoint rejected the request, so there is no answer;
+#: * ``superseded`` -- a resumed pass refitted under an answer the window's first fit was missing, and this
+#:   record's window (a later-phase window of the first fit) is no longer part of the query's generation. A
+#:   tombstone: it is appended, never replaces a record in place, and it wins over the older record it names.
+InvalidCategory = Literal["truncated", "no_json", "invalid_json", "schema", "incomplete", "refused", "superseded"]
 
 #: How the judge was asked to answer: constrained to the stage's JSON schema (``response_format`` ``json_schema``),
 #: or free text that the parser reads.
@@ -241,6 +245,16 @@ class Family(BaseModel):
         api: The judge's wire adapter name, when the pass was given one other than its default wire (the
             judging pass normalizes the default wire's own name away, so families judged on the default keep
             their key whatever its spelling).
+        title: How the documents' titles reached the judge (``separate``: the title as its own leading text
+            part); ``None`` is the default join rule (``(title + " " + body).strip()``), so a config that
+            declares nothing keeps the key it had. The rule decides the strings the judge reads, so a pass
+            that reads title-joined documents never pools with one that reads body-only.
+        text_formatting: The text-formatting rule's version
+            (:data:`~rcp_ndcg_core.records.TEXT_FORMATTING_VERSION`), when the pass declared it: a changed
+            rule shapes the strings the judge reads, so a resume across the version re-asks instead of
+            reusing judgements built from the old strings.
+        fake_seed: The offline fake judge's draw seed, when the pass ran one: two seeds answer differently,
+            so they are different instruments.
     """
 
     model_config = _FROZEN
@@ -259,6 +273,9 @@ class Family(BaseModel):
     context_tokens: int | None = None
     extra_body: dict[str, Any] | None = None
     api: str | None = None
+    title: DocumentTitle | None = None
+    text_formatting: str | None = None
+    fake_seed: int | None = None
 
     @property
     def num_criteria(self) -> int:
@@ -272,7 +289,8 @@ class Family(BaseModel):
         ``tokenizer`` and the judge's optional settings (``temperature``, ``max_output_tokens``,
         ``context_tokens``, ``extra_body``, ``api``) enter the digest only when they are set: a family judged
         under the defaults digests exactly as one that predates the fields, and a family judged under a declared
-        value never pools with it.
+        value never pools with it. The document-reading fields (``title``, ``text_formatting``) and the fake
+        judge's ``fake_seed`` follow the same rule.
         """
         unset = {
             name
@@ -283,6 +301,9 @@ class Family(BaseModel):
                 ("context_tokens", self.context_tokens),
                 ("extra_body", self.extra_body),
                 ("api", self.api),
+                ("title", self.title),
+                ("text_formatting", self.text_formatting),
+                ("fake_seed", self.fake_seed),
             )
             if value is None or (name == "extra_body" and not value)
         }
@@ -290,7 +311,12 @@ class Family(BaseModel):
 
     @property
     def rubric_key(self) -> str:
-        """16-hex digest of the family without the judge: the instrument several judges can share."""
+        """16-hex digest of the family without the judge: the instrument several judges can share.
+
+        The document-reading fields (``title``, ``text_formatting``) stay in: they shape the strings the judge
+        reads, so two rubrics built from different strings are not one instrument. The fake judge's seed leaves
+        with the judge, and an unset optional field stays out of the digest exactly as :attr:`key` leaves it.
+        """
         judge = {
             "judge_model",
             "judge_revision",
@@ -300,8 +326,12 @@ class Family(BaseModel):
             "context_tokens",
             "extra_body",
             "api",
+            "fake_seed",
         }
-        return short(hash_payload(self.model_dump(mode="json", exclude=judge)), 16)
+        unset = {
+            name for name, value in (("title", self.title), ("text_formatting", self.text_formatting)) if value is None
+        }
+        return short(hash_payload(self.model_dump(mode="json", exclude=judge | unset)), 16)
 
 
 def judgement_record_id(
@@ -502,7 +532,9 @@ class JudgementSet(BaseModel):
 
         A window judged again (the same ``record_id``: the same family, query, position and documents) is one
         observation, not two. Its latest valid judgement wins (by ``recorded_at``; a later set wins a tie); an
-        invalid judgement wins only when the window has no valid one. Windows keep the order they first appear in.
+        invalid judgement wins only when the window has no valid one -- except a ``superseded`` tombstone, which
+        retires the record it names whatever that record's validity (:func:`supersedes`). Windows keep the order
+        they first appear in.
         """
         chosen: dict[str, Judgement] = {}
         families: dict[str, Family] = {}
@@ -519,8 +551,13 @@ def supersedes(new: Judgement, old: Judgement) -> bool:
     """Whether ``new`` replaces ``old`` as the judgement of their window (the same ``record_id``).
 
     The one rule for a window judged more than once, which :meth:`JudgementSet.merge` and the judgement store
-    apply: a valid judgement beats an invalid one, then the later ``recorded_at`` wins (``new`` on a tie).
+    apply: a valid judgement beats an invalid one, then the later ``recorded_at`` wins (``new`` on a tie). A
+    ``superseded`` tombstone is the exception: it is an appended marker whose whole purpose is to retire an
+    older record, so time decides against any record one side of which is a tombstone (a tombstone beats an
+    older valid record, and a later valid record beats an older tombstone).
     """
+    if new.invalid_category == "superseded" or old.invalid_category == "superseded":
+        return new.recorded_at >= old.recorded_at
     if new.valid != old.valid:
         return new.valid
     return new.recorded_at >= old.recorded_at

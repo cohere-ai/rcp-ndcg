@@ -17,6 +17,7 @@ verbatim.
 | `base_url`, `model` | the OpenAI-compatible endpoint (`.../v1`), or a list of replica URLs of the same model, and the served model name |
 | `api` | the wire adapter that speaks the endpoint's protocol, resolved within the judge role's registry; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp_ndcg.adapters` entry-point group (entries named `judge.<name>`) enters the identity: it decides what is computed |
 | `revision` | the checkpoint commit; recorded in every judgement |
+| `title` | how a document's title reaches the model: `join` (the default, MTEB's `(title + " " + body).strip()`) or `separate` (the title as its own leading text part). Content: the judge reads a different string, so it enters the judgement family and the record ids |
 | `temperature` | the sampling temperature; `None` (the default) sends none, so the server's default applies |
 | `max_output_tokens`, `extra_body` | the completion cap (reasoning included) and further request fields, e.g. `reasoning_effort` |
 | `context_tokens` | the model's context window; sets the per-window text budget, counted with the judge's `tokenizer` ([preprocessing](preprocessing.md)) |
@@ -30,8 +31,8 @@ verbatim.
 | `allow_floating_model` | accept an undated model alias on the OpenAI API (`gpt-5`); by default only a dated snapshot (`gpt-5-2025-08-07`) is accepted, since an alias moves between snapshots and its judgements are not reproducible |
 | `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); the default is 1800 s (an engine restart plus a large model's load), and `None` waits indefinitely, except in a job that starts the judge's engine, where the wait is that engine's `outage_timeout_s` |
 
-Only the content fields (model, revision, sampling settings, context, tokenizer, image processor) enter the judgement
-identity. The transport, the URLs included, can be retuned between runs, and a store still resumes.
+Only the content fields (model, revision, the title rule, the sampling settings, context, tokenizer, image processor, and the offline judge's seed) enter the judgement
+identity. The text-formatting rule (`TEXT_FORMATTING_VERSION`) enters too: it is code, and a changed join or instruction frame is a new instrument. The transport, the URLs included, can be retuned between runs, and a store still resumes.
 
 ### Three ways to name a judge
 
@@ -94,8 +95,9 @@ assert recipe_cfg.recipe == "gpt-oss-120b"
 
 `JudgeConfig.load(name_or_path)` reads a recipe (`<id>` or `recipe:<id-or-path>`), a shipped profile by name,
 or a YAML config by path, and `JudgeConfig.fake(seed=0)` gives the offline fake judge (`fake://`, model `fake`,
-answered by the fake chat route below the transport, [the inference layer](inference.md)), recorded as model
-`fake` so that its judgements never pool with a real judge's.
+answered by the fake chat route below the transport, [the inference layer](inference.md)). The seed decides every
+draw of the fake route, so it is content: it enters the judgement family and the identity, and two seeds never
+share a store (a real judge's model name keeps its judgements from pooling with the fake's).
 
 ## Serving a judge
 
@@ -197,7 +199,9 @@ the judge is one of its roles.
 - **Refusals.** HTTP 401 or 403 stops the pass with `CredentialsError` (exit code 5), and HTTP 404 (no such route or
   model) with `ProviderError`: both concern every request, not one window. Any other refusal of one request, such
   as HTTP 400 for an over-long prompt, is that window's: it is asked again up to three attempts, then recorded as
-  an invalid judgement, and a resumed pass asks it again. Every request goes over `httpx` through the shared
+  an invalid judgement, and a resumed pass asks it again. When an earlier attempt carried an answer and a later one
+  was refused, the record keeps the answer's text (and its parse failure, so the store never loses what the judge
+  said and `reparse` can read it again). Every request goes over `httpx` through the shared
   transport (the package ships no second HTTP stack), so the refusals, the retries and their delays are the
   transport's, described in [the inference layer](inference.md).
 - **Answers.** The client records the endpoint's `finish_reason` as it comes, any string or none; only the answer's
@@ -222,9 +226,13 @@ reproducible from the store after its file moves or changes.
   and document ids never share a record id), the window's sequence number and its placements (a planned window of
   an insertion plan carries no sequence number: it is keyed by its placements and the digest of the schedule it was
   asked under). Calling `judge` again over the same store asks only for the missing windows. Resuming and
-  re-judging a subset of documents (`docs=`) are therefore the same call.
+  re-judging a subset of documents (`docs=`) are therefore the same call. A planned window is rendered at its own
+  size's text budget, so the same window in any plan shows the same text and reuses its record. A pass with no
+  candidates for a query is refused: `docs` naming no documents, a Stage A pool of fewer than two documents, and a
+  duplicated query id are all errors, never a silently unjudged query.
 - **Identity.** `identity.json` records what produced the store: the judgement family (judge model and revision,
-  prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash, and the judge's declared
+  prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash, the title rule and the
+  text-formatting version, the offline judge's seed, and the judge's declared
   temperature, output and context budgets, extra body and wire adapter when it declared any), the judge's content
   fields, the schedule and the dataset. A row-sequence input (no dataset object) names its rows by their digest. It holds content only: the prompt and the tokenizer enter by their SHA-256, and a local
   dataset by its path absolute and normalised, so the same file named from another directory (`./rows.jsonl`) is
@@ -243,20 +251,34 @@ reproducible from the store after its file moves or changes.
   stages, or appending records of the same stage, serialize on an advisory lock on the store directory, and the
   identity file and each prompt's text are published through the one atomic temp-file-and-rename helper
   (`rcp_ndcg.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
-  or census row is skipped with a warning and asked or recorded again).
+  or census row is skipped with a warning and asked or recorded again). A resumed pass that re-asks a refused
+  window refits under the new answer: the later-phase windows its first fit selected are retired with an
+  appended ``superseded`` tombstone and asked again, so the fit never reads two generations of one query's
+  schedule (and the stage file stays append-only, as the mirror's immutable parts require). The retirement is
+  scoped to the pass's own generation -- its schedule's window sequences and its units -- so a full pass never
+  retires a subset pass's windows and a subset pass never retires the full pass's; a planned pass with
+  `windows=` runs no schedule and retires nothing. The calibration's coverage does not count a tombstone as an
+  invalid window, and `run status` counts the live records.
 - **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.judging.reparse(store, out)`, or
   `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the
-  judge and never writes into the source store. The command reports per stage how many windows were recovered, stayed
+  judge and never writes into the source store. A source already at the current parse version has nothing to
+  re-parse, and a source written by a newer checkout cannot be downgraded: both are refused before anything is
+  written. The command reports per stage how many windows were recovered, stayed
   invalid (by category), were unchanged or changed (`rcp_ndcg.judging.reparse` itself returns the new store's
   :class:`~rcp_ndcg_core.schemas.JudgementSet`).
 
 ## Estimating a pass
 
 `rcp_ndcg.judging.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
-calls, input and output tokens and wall time of a judging pass before the judge is called. Input tokens are
+calls, input and output tokens and wall time of a judging pass before the judge is called. The estimate counts the
+same query text the pass sends: the judge's `title` rule and the dataset's query-side task instruction included.
+Input tokens are
 counted exactly with the judge's tokenizer, or approximated at 2.0 characters per token without one;
-`input_token_count` says which. For a judge without an `image_processor`, images are approximated at 1,000 tokens
+`input_token_count` says which. `requests_min`..`requests_max` is the request range: every window asks once, and an
+unparseable answer or a refused request is retried up to three attempts, each re-sending the prompt, so requests
+(and tokens) can reach three times the one-attempt count. For a judge without an `image_processor`, images are
+approximated at 1,000 tokens
 each, stated in the assumptions and warned about (`APPROXIMATE_IMAGE_TOKENS`). The assumptions name only the stages
 estimated. A run whose candidates come from retrieval can be estimated before it retrieves: each query's pool is then
 assumed to hold `candidates.depth` documents, and the assumptions say so.

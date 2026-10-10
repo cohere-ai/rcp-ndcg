@@ -135,3 +135,23 @@ def test_a_remote_store_is_refused_as_the_target(
     with pytest.raises(ConfigError, match="local") as refused:
         reparse(old_store, "s3://bucket/reparsed")
     assert "--mirror" in (refused.value.hint or "")
+
+
+def test_reparse_refuses_a_store_already_at_the_current_parser(tmp_path: Path) -> None:
+    """Re-parsing an already-current store would produce the same family key and the same record ids: a copy
+    indistinguishable from its source, which the docstring promises never happens."""
+    store = tmp_path / "store"
+    judge(ROWS, None, FakeJudge(lambda text: 0.0), stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+    with pytest.raises(IdentityError, match="current parser"):
+        reparse(store, tmp_path / "out")
+
+
+def test_reparse_never_downgrades_a_newer_parser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A store written by a newer checkout carries answers produced under a newer schema; relabelling them
+    with the current parser's version would pool two decoding regimes under one family key."""
+    store = tmp_path / "newer"
+    with monkeypatch.context() as patch:
+        patch.setattr("rcp_ndcg.judging.judging.PARSE_VERSION", PARSE_VERSION + 1)
+        judge(ROWS, None, FakeJudge(lambda text: 0.0), stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+    with pytest.raises(IdentityError, match="newer"):
+        reparse(store, tmp_path / "out")

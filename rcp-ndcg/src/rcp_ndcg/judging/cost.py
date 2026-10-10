@@ -3,18 +3,25 @@
 :func:`estimate` walks the same queries, schedules and window budgets the
 judging pass uses (:mod:`rcp_ndcg.judging.judging`), so the call count is the
 schedule's own (216 calls per query of 150 candidates for the paper's
-tournament, 100 for its rubric). Text tokens are counted exactly with the judge's
+tournament, 100 for its rubric), and the query text it counts is the one the
+pass sends (the task instruction's generic prefix and the judge's title rule
+included). Text tokens are counted exactly with the judge's
 tokenizer (``JudgeConfig.tokenizer``) when it names one, and otherwise approximated
 from characters (:mod:`rcp_ndcg.judging.tokens`, labelled as such); image tokens come from the
 pass's ``preprocessing.image`` pixel budget under the judge's ``image_processor``, and
 are approximated (labelled, :data:`~rcp_ndcg.judging.tokens.APPROX_TOKENS_PER_IMAGE` each) for a judge
 that declares none and whose pass sends documents whole.
+
+The request count is a range: every window asks once, and an unparseable answer or a
+refused request is retried up to :data:`~rcp_ndcg.judging.judging.MAX_ATTEMPTS`
+times, each attempt re-sending the prompt (``requests_min``..``requests_max``).
 """
 
 from __future__ import annotations
 
 import math
 import warnings
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -55,8 +62,13 @@ class CostEstimate(BaseModel):
 
     Attributes:
         calls: Judge calls (an upper bound: the adaptive phase can stop early).
-        input_tokens: Prompt tokens (exact or approximate: ``input_token_count``).
-        output_tokens: Completion tokens (approximate).
+        requests_min: Judge requests at one attempt per window (the same count as ``calls``).
+        requests_max: Judge requests when every window retries to :data:`~rcp_ndcg.judging.judging.MAX_ATTEMPTS`
+            attempts (an unparseable answer and a refused request are both retried, and each attempt re-sends the
+            prompt).
+        input_tokens: Prompt tokens (exact or approximate: ``input_token_count``) at one attempt per window;
+            retries can take it towards ``requests_max`` times this count.
+        output_tokens: Completion tokens (approximate), at one attempt per window.
         wall_s: Wall time in seconds at the judge's concurrency (approximate).
         stages: Per stage.
         input_token_count: ``"exact"`` when the text was counted with the judge's tokenizer, ``"approximate"``
@@ -68,6 +80,8 @@ class CostEstimate(BaseModel):
 
     schema_name: Literal["rcp-ndcg.cost-estimate.v1"] = Field(default="rcp-ndcg.cost-estimate.v1", alias="schema")
     calls: int
+    requests_min: int
+    requests_max: int
     input_tokens: int
     output_tokens: int
     wall_s: float
@@ -111,13 +125,16 @@ def estimate(
         ConfigError: the documents carry images whose token cost cannot be counted (no pixel budget, or a judge
             without an ``image_processor``) and the pass would budget text on it (the judge declares
             ``context_tokens`` and a ``tokenizer``); the pass refuses the same. Without a text budget their tokens
-            are approximated instead, and the assumptions say so.
+            are approximated instead, and the assumptions say so. A rubric schedule whose settings cannot show
+            every unit (``n_random * w < n_units``) is refused as the pass refuses it.
     """
     from rcp_ndcg.data.postprocess import document_ids_from_chunks
     from rcp_ndcg.judging._templates import rendered_text
     from rcp_ndcg.judging.client import JudgeClient
     from rcp_ndcg.judging.judging import (
         CHAT_TEMPLATE_TOKENS,
+        MAX_ATTEMPTS,
+        _check_rubric_coverage,
         _effective_preprocessing,
         _judge_tokenizer,
         _media_tokens,
@@ -128,13 +145,25 @@ def estimate(
         window_tokens,
     )
     from rcp_ndcg.judging.prompts import load_prompt, shipped_prompt_name
+    from rcp_ndcg.judging.schedule import _resolve_modality_windows
 
     config = judge.config if isinstance(judge, JudgeClient) else judge
     effective = _effective_preprocessing(preprocessing, config)
     tokenizer = _judge_tokenizer(config)
     if windows is not None:
         docs = {query: list(dict.fromkeys(doc for window in rows for doc in window)) for query, rows in windows.items()}
-    _name, queries, _source = _queries(dataset, candidates, docs, effective, tokenizer=tokenizer)
+    # The pass's own query text: the task instruction's generic prefix and the judge's title rule shape what the
+    # judge reads, so the estimate counts the same strings (a title-joined document is not a separate one).
+    instruction_for = getattr(dataset, "task_instruction_for", None)
+    _name, queries, _source = _queries(
+        dataset,
+        candidates,
+        docs,
+        effective,
+        tokenizer=tokenizer,
+        title=config.title or "join",
+        task_instruction=instruction_for("query") if instruction_for is not None else None,
+    )
     counted: dict[str, int] = {}
     # The template's per-part media marker, measured with the judge's tokenizer; 0 where no tokenizer is at
     # hand (no text budget is computed then, and the media are approximated instead).
@@ -152,6 +181,11 @@ def estimate(
     images_approximated = False
     for stage in stages:
         schedule = (schedules or {}).get(stage) or schedule_for(stage, modality)
+        # A partial schedule keeps the per-modality window fields it did not name (the pass does the same),
+        # and a rubric whose settings cannot show every unit is refused exactly as the pass refuses it.
+        schedule = _resolve_modality_windows(schedule, stage, modality)
+        if isinstance(schedule, RubricSchedule) and windows is None:
+            _check_rubric_coverage(schedule, queries)
         prompt = load_prompt(schedule.prompt or shipped_prompt_name(stage, modality))
         calls = input_tokens = output_tokens = 0
         per_doc_out = TOURNAMENT_OUTPUT_TOKENS_PER_DOC if stage == "tournament" else RUBRIC_OUTPUT_TOKENS_PER_DOC
@@ -160,10 +194,18 @@ def estimate(
             if n == 0:
                 continue
             # (calls, documents per window): each group of calls is counted at its own window's budget.
+            mirrored = False
+            unique_planned: list[Sequence[str]] | None = None
             if windows is not None:
                 planned = windows[query.query_id]
                 mirrored = isinstance(schedule, TournamentSchedule) and schedule.mirror
-                groups = [(len(planned) * (2 if mirrored else 1), max(len(rows) for rows in planned))]
+                # Each planned window is rendered at its own size's budget and its own documents (the pass
+                # does the same), so the plan's windows are deduped as the pass dedupes them, grouped by
+                # size, and each group counted over its own windows.
+                deduped = list({tuple(rows): rows for rows in planned}.values())
+                unique_planned = deduped
+                by_size = Counter(len(rows) for rows in deduped)
+                groups = [(count * (2 if mirrored else 1), size) for size, count in sorted(by_size.items())]
             elif isinstance(schedule, TournamentSchedule):
                 fixed, adaptive = schedule.phase_calls(n)
                 groups = [(fixed, min(schedule.window, n)), (adaptive, min(schedule.adaptive_window, n))]
@@ -187,22 +229,41 @@ def estimate(
                 if tokenizer is not None:
                     overhead = prompt_overhead_tokens(prompt, stage, query.text, w, tokenizer)
                     cap = window_tokens(config, w, overhead_tokens=overhead, media_tokens_per_doc=media)
-                    tokens = [text_tokens(c.text) for c in query.contents.values()]
-                    tokens = [min(t, cap) for t in tokens] if cap is not None else tokens
-                    per_call = overhead + math.ceil(w * sum(tokens) / max(len(tokens), 1)) + w * media
+                    if unique_planned is not None:
+                        of_size = [rows for rows in unique_planned if len(rows) == w]
+                        group_input = 0
+                        for rows in of_size:
+                            tokens = [text_tokens(query.contents[unit].text) for unit in rows]
+                            tokens = [min(token, cap) for token in tokens] if cap is not None else tokens
+                            group_input += overhead + sum(tokens) + len(rows) * media
+                        group_input *= 2 if mirrored else 1
+                    else:
+                        tokens = [text_tokens(c.text) for c in query.contents.values()]
+                        tokens = [min(token, cap) for token in tokens] if cap is not None else tokens
+                        per_call = overhead + math.ceil(w * sum(tokens) / max(len(tokens), 1)) + w * media
+                        group_input = n_calls * per_call
                 else:
                     # No tokenizer: documents are sent whole, and their tokens are approximated from characters.
                     # counted_media is already the strict=False, marker-free count (no tokenizer: marker 0).
                     if counted_media is not None:
                         window_tokens(config, w, overhead_tokens=0, media_tokens_per_doc=counted_media)
-                    chars = [len(c.text) for c in query.contents.values()]
-                    mean_chars = sum(chars) / len(chars) if chars else 0.0
-                    per_call = approx_tokens(len(prompt.text) + len(query.text) + w * mean_chars) + w * media
+                    if unique_planned is not None:
+                        of_size = [rows for rows in unique_planned if len(rows) == w]
+                        group_input = 0
+                        for rows in of_size:
+                            chars = sum(len(query.contents[unit].text) for unit in rows)
+                            group_input += approx_tokens(len(prompt.text) + len(query.text) + chars) + len(rows) * media
+                        group_input *= 2 if mirrored else 1
+                    else:
+                        chars = [len(c.text) for c in query.contents.values()]
+                        mean_chars = sum(chars) / len(chars) if chars else 0.0
+                        per_call = approx_tokens(len(prompt.text) + len(query.text) + w * mean_chars) + w * media
+                        group_input = n_calls * per_call
                 out = w * per_doc_out
                 if config.max_output_tokens is not None:
                     out = min(out, config.max_output_tokens)
                 calls += n_calls
-                input_tokens += n_calls * per_call
+                input_tokens += group_input
                 output_tokens += n_calls * out
         per_stage[stage] = StageEstimate(calls=calls, input_tokens=input_tokens, output_tokens=output_tokens)
     seconds_per_call = FAKE_SECONDS_PER_CALL if config.is_fake else SECONDS_PER_CALL
@@ -223,6 +284,8 @@ def estimate(
         + (f", capped at max_output_tokens={config.max_output_tokens}" if config.max_output_tokens else "")
         + "; a model that reasons before answering emits more",
         f"wall time assumes {seconds_per_call:g} s per call at concurrency {config.concurrency}",
+        f"an unparseable or refused answer is retried up to {MAX_ATTEMPTS} attempts, so requests and tokens "
+        f"can reach {MAX_ATTEMPTS}x the one-attempt count (requests_min..requests_max)",
     ]
     if "tournament" in per_stage and windows is None:
         assumptions.append(
@@ -242,6 +305,8 @@ def estimate(
         assumptions.append("the offline fake judge answers in-process")
     return CostEstimate(
         calls=calls,
+        requests_min=calls,
+        requests_max=calls * MAX_ATTEMPTS,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         wall_s=math.ceil(calls / config.concurrency) * seconds_per_call,
