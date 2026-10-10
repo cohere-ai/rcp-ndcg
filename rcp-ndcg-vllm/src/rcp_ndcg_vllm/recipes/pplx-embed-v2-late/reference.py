@@ -96,6 +96,23 @@ REVISION = "8fc2de24534aa3610d85fa59c463313a5f096455"
 OUTPUT_DIM = 128  # 1_Dense/config.json out_features at the pinned revision; asserted against the model
 
 
+def _refuse_old_media_columns(pairs: list[dict[str, Any]]) -> None:
+    """The retired per-column media fields are refused loudly: the harness's media rows carry ``media``.
+
+    The old columns (``query_image``/``documents_images`` and the video siblings) would otherwise be
+    silently ignored and the row encoded as text -- a different prompt, never compared.
+    """
+    for index, row in enumerate(pairs):
+        carried = sorted(
+            key for key in ("query_image", "query_video", "documents_images", "documents_videos") if row.get(key)
+        )
+        if carried:
+            raise SystemExit(
+                f"pairs row {index} carries the retired media columns {carried}: the harness's media rows "
+                "carry the `media` field; move the bytes there"
+            )
+
+
 def _checkpoint_file(tokenizer_spec: str, filename: str) -> Any:
     """One small JSON file of the pinned checkpoint (``config_sentence_transformers.json``, ...).
 
@@ -239,6 +256,7 @@ def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str) ->
     override, so the reference runs the checkpoint's own fp32 -- the served-vs-reference
     cast is the recipe's declared served-dtype deviation.
     """
+    _refuse_old_media_columns(rows)
     reference = _load_reference(model, revision, device)
     return embed_rows(reference, rows)
 
@@ -374,6 +392,7 @@ def media(rows: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
 
     from PIL import Image
 
+    _refuse_old_media_columns(rows)
     processor = _checkpoint_file(tokenizer_spec, "processor_config.json")["image_processor"]
     factor = int(processor["patch_size"]) * int(processor["merge_size"])
     min_pixels = int(processor["min_pixels"])

@@ -225,7 +225,12 @@ def _reference_module() -> Any:
     spec = importlib.util.spec_from_file_location("qwen3_vl_embedding_reference", RECIPE_DIR / "reference.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
     return module
 
 
@@ -721,3 +726,71 @@ def test_shipped_recipe_files_carry_no_internal_labels(recipe_id: str) -> None:
         if INTERNAL_LABELS.search(line)
     ]
     assert not hits, "\n".join(hits)
+
+
+def test_the_media_modes_refuse_the_retired_media_columns() -> None:
+    """A row carrying the retired per-column media fields is refused loudly by the embed and media modes:
+    the harness's media rows carry the ``media`` field, and a silently ignored column would compare a
+    different prompt."""
+    module = _reference_module()
+    row = {"query": "q", "documents": ["d"], "query_image": "data:image/png;base64,AA=="}
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.mode_media([row], {})
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.mode_embed({}, [row], "cpu")
+
+
+def test_the_reference_video_frames_keep_the_engines_whole_clip_geometry() -> None:
+    """The reference's container route resizes a clip's frames under the recipe's whole-clip pixel pin
+    (``serve.mm_processor_kwargs.videos_kwargs``), the same rule the engine's Qwen3-VL video processor
+    applies: the per-frame bounds the reference hands the card's loader must reproduce the engine's
+    per-frame size for the media set's shipped clips, and the conversation's video item must carry them
+    (qwen-vl-utils' resize keys)."""
+    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, video_entry
+
+    from rcp_ndcg.data.resolution import PROCESSORS, _clip_frame_size, smart_resize
+
+    module = _reference_module()
+    recipe = load_recipe("qwen3-vl-embedding-2b").model_dump(mode="json")
+    pin = module.video_pixel_pin(recipe)
+    assert pin == (4096, 7864320)
+    constants = module.card_media_constants()
+    for name, width, height in VIDEO_CLIPS:
+        entry = video_entry(name, width, height, 64, fps=VIDEO_FPS)
+        frames = module.realised_video_frames(entry, 2.0, constants)
+        assert frames == 16
+        engine = _clip_frame_size(PROCESSORS["qwen3_vl"], frames, height, width, min_pixels=pin[0], max_pixels=pin[1])
+        bounds = module.frame_bounds(frames, pin)
+        reference = smart_resize(
+            height, width, factor=constants["IMAGE_FACTOR"], min_pixels=bounds[0], max_pixels=bounds[1]
+        )
+        assert reference == engine, (name, reference, engine)
+        assert (height, width) == engine, "the shipped clips need no resize: both rules keep the frame"
+    conversation = [
+        {"role": "system", "content": [{"type": "text", "text": "instruction"}]},
+        {
+            "role": "user",
+            "content": [{"type": "video", "video": "file:///clip.avi", "fps": 2.0, "max_frames": 16}],
+        },
+    ]
+    module.pin_video_item(conversation, pin)
+    item = conversation[-1]["content"][0]
+    assert item["min_pixels"] == 256 and item["max_pixels"] == 491520
+
+
+def test_the_reference_refuses_a_video_without_a_declared_rate_or_with_an_odd_realised_count(
+    tmp_path: Path,
+) -> None:
+    """A video entry needs the recipe's declared engine rate (the card's fallback would sample at its own
+    FPS) and an even realised count (the card's loader floors to an even count, so an odd one cannot be
+    the engine's): both are refused loudly, never silently sampled differently."""
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    module = _reference_module()
+    constants = module.card_media_constants()
+    clip = video_entry("icon", 64, 64, 64)
+    with pytest.raises(SystemExit, match="no video rate"):
+        module.card_inputs("", [clip], work=tmp_path, clip_name="query-0", declared_fps=None, constants=constants)
+    odd = video_entry("icon", 64, 64, 30)  # 30 frames at 8 fps: int(30 / 8 * 2) = 7 frames, an odd count
+    with pytest.raises(SystemExit, match="even"):
+        module.card_inputs("", [odd], work=tmp_path, clip_name="query-1", declared_fps=2.0, constants=constants)

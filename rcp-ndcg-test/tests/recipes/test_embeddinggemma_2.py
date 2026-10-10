@@ -129,7 +129,12 @@ def _reference_module() -> Any:
     spec = importlib.util.spec_from_file_location("embeddinggemma2_reference", RECIPE_DIR / "reference.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
     return module
 
 
@@ -400,7 +405,9 @@ def test_the_family_yaml_is_the_only_recipe_file() -> None:
     assert names == ["family.yaml", "reference.in", "reference.lock", "reference.py"]
 
 
-def test_the_reference_reads_media_rows_into_the_cards_own_inputs(tmp_path: Path) -> None:
+def test_the_reference_reads_media_rows_into_the_cards_own_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The reference's media path reads the harness's ``media`` entries into the card's own ST inputs: a
     text-only side is its text (the card prepends the declared prompt), a media side is a one-user-turn
     conversation with the parts in order (the prompt rides the card's own system message), an inline image
@@ -409,29 +416,93 @@ def test_the_reference_reads_media_rows_into_the_cards_own_inputs(tmp_path: Path
     import base64
     import io
 
+    import numpy as np
     from PIL import Image
     from rcp_ndcg_test.observe.media_set import video_entry
+
+    from rcp_ndcg.data.resolution import uniform_frame_indices
 
     module = _reference_module()
     buffer = io.BytesIO()
     Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
     image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
     clip = video_entry("icon", 64, 64, 64)
-    assert module.side_input("the body", [], work=tmp_path, clip_name="query-0") == "the body"
-    conversation = module.side_input("the body", [image], work=tmp_path, clip_name="query-1")
+    video_fps, video_max_frames = module._video_pin(load_recipe(RECIPE_DIR).model_dump(mode="json"))
+    assert (
+        module.side_input(
+            "the body", [], work=tmp_path, clip_name="query-0", video_fps=video_fps, video_max_frames=video_max_frames
+        )
+        == "the body"
+    )
+    conversation = module.side_input(
+        "the body", [image], work=tmp_path, clip_name="query-1", video_fps=video_fps, video_max_frames=video_max_frames
+    )
     assert conversation[0]["role"] == "user"
     assert conversation[0]["content"][0]["type"] == "image"
     assert conversation[0]["content"][0]["image"].size == (16, 16)
     assert conversation[0]["content"][1] == {"type": "text", "text": "the body"}
     interleaved = module.side_input(
-        "", [{"kind": "text", "text": "lead "}, image], work=tmp_path, clip_name="document-0-0"
+        "",
+        [{"kind": "text", "text": "lead "}, image],
+        work=tmp_path,
+        clip_name="document-0-0",
+        video_fps=video_fps,
+        video_max_frames=video_max_frames,
     )
     assert [part["type"] for part in interleaved[0]["content"]] == ["text", "image"]
-    video = module.side_input("", [clip], work=tmp_path, clip_name="document-0-1")
-    video_path = Path(video[0]["content"][0]["video"])
-    assert video_path.is_file()
-    assert video_path.read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
-    # The declared video pin is the one the recipe serves the engine (fps 60, max_frames 32): the card's
-    # processor samples the container with it, so the reference's frames follow the engine's.
+    seen: dict[str, Any] = {}
+
+    def fake_decode(video_path: str, indices: list[int]) -> Any:
+        seen["path"] = Path(video_path)
+        seen["indices"] = list(indices)
+        return np.zeros((len(indices), 4, 4, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(module, "_decode_video", fake_decode)
+    video = module.side_input(
+        "", [clip], work=tmp_path, clip_name="document-0-1", video_fps=video_fps, video_max_frames=video_max_frames
+    )
+    part = video[0]["content"][0]
+    assert part["type"] == "video"
+    assert seen["path"].is_file()
+    assert seen["path"].read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
+    metadata = part["video"]["video_metadata"]
+    assert metadata["total_num_frames"] == 64
+    assert metadata["frames_indices"] == seen["indices"] == uniform_frame_indices(64, 32)
+    assert part["video"]["array"].shape[0] == 32
+    # The declared video pin is the one the recipe serves the engine (fps 60, max_frames 32): the
+    # reference decodes exactly the frames that pin realises, so its frames follow the engine's.
+    assert (video_fps, video_max_frames) == (60.0, 32)
+
+
+def test_the_media_modes_refuse_the_retired_media_columns() -> None:
+    """A row carrying the retired per-column media fields is refused loudly by the embed and media modes
+    (the module docstring promises the refusal): the harness's media rows carry the ``media`` field."""
+    module = _reference_module()
+    row = {"query": "q", "documents": ["d"], "documents_images": ["data:image/png;base64,AA=="]}
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.mode_media({}, [row])
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.mode_embed({}, [row], "cpu")
+
+
+def test_the_embed_video_frames_are_the_engines_own() -> None:
+    """The engine samples a clip by its declared fps, capped at ``max_frames`` (60/32 here); the card's
+    ``processing_kwargs`` cannot express that rule (``fps`` and ``num_frames`` are mutually exclusive and
+    ``fps`` alone raises on a capped clip), so the reference decodes exactly the engine's frames and hands
+    them to ST with ``do_sample_frames`` off. The shipped rows (the recipe's 32 frames at 8 fps) and a
+    longer clip are pinned against the engine's own index rule."""
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    from rcp_ndcg.data.resolution import uniform_frame_indices
+
+    module = _reference_module()
     recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
-    assert module._video_pin(recipe) == (60.0, 32)
+    fps, max_frames = module._video_pin(recipe)
+    assert (fps, max_frames) == (60.0, 32)
+    shipped = video_entry("icon", 64, 64, 32)  # the recipe's declared num_frames
+    assert module._sampled_frames(shipped, fps, max_frames) == 32
+    assert module._uniform_indices(32, 32) == list(range(32)) == uniform_frame_indices(32, 32)
+    longer = video_entry("icon", 64, 64, 64)
+    count = module._sampled_frames(longer, fps, max_frames)
+    assert count == 32
+    assert module._uniform_indices(64, count) == uniform_frame_indices(64, count)

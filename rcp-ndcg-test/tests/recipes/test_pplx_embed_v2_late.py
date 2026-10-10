@@ -1124,7 +1124,12 @@ def _reference_module() -> Any:
     spec = importlib.util.spec_from_file_location("pplx_embed_v2_late_reference", RECIPES / "reference.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
     return module
 
 
@@ -1183,3 +1188,15 @@ def test_the_reference_media_embed_reads_documents_and_keeps_their_positions() -
     ):
         with pytest.raises(SystemExit):
             module.embed_rows(model, [bad])
+
+
+def test_the_media_modes_refuse_the_retired_media_columns() -> None:
+    """A row carrying the retired per-column media fields is refused loudly by the embed and media modes:
+    the harness's media rows carry the ``media`` field, and a silently ignored column would encode a
+    different prompt."""
+    module = _reference_module()
+    row = {"query": "q", "documents": ["d"], "query_video": "data:video/x-msvideo;base64,AA=="}
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.media([row], "model@revision")
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.embed([row], "cpu", "model", "revision")

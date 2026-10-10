@@ -158,11 +158,18 @@ notes: >-
   count against the engine (the engine's prompt-token difference to the same request without its media), and
   the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text
   (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.
+  The reference's embed mode reproduces that geometry: the container goes through the card's own loader at
+  the declared fps and realised frame count, and the reference adds the pin's per-frame shares as the
+  loader's own min_pixels/max_pixels (the card's image route uses the same keys), whose smart_resize is
+  the rule the engine's processor applies to the whole clip -- so a frame is resized to the engine's
+  size, not the loader's defaults (W2 B1: 384x384 = 144 patches vs the engine's 4/49). An odd realised
+  count (the loader floors to even) and a per-frame share above the loader's frame ceiling are refused
+  loudly, never silently sampled differently.
   Media outputs (stage 2 compares them): the reference's embed mode reads the harness's `media` field --
   an image entry is decoded to a PIL image, a container is handed to the card's own loader at the
-  recipe's declared fps (2) capped at the engine's realised frame count -- and computes the card's
-  vectors for media rows exactly as for text rows, so stage 2 gates them by the same cosine rule; the
-  media stage still gates placement, geometry and tokens. A part sequence the card's own order (video,
+  recipe's declared fps (2) capped at the engine's realised frame count and resized under the pin --
+  and computes the card's vectors for media rows exactly as for text rows, so stage 2 gates them by the
+  same cosine rule; the media stage still gates placement, geometry and tokens. A part sequence the card's own order (video,
   image, text) cannot express (an interleaved text part, several images/videos, an image before its
   video) is refused loudly by the reference, never silently reordered.
 

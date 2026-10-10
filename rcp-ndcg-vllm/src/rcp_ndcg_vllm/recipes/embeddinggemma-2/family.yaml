@@ -133,10 +133,13 @@ notes: >-
   Media outputs (stage 2 compares them): the reference's embed mode reads the harness's `media` field --
   a media side becomes a one-user-turn conversation with the parts in order (the card injects the
   declared prompt as its system message, which the checkpoint's template renders first), an image a
-  loaded PIL image, a container a scratch file the checkpoint's processor samples at the declared video
-  pin (fps 60, max_frames 32) -- and computes the card's vectors for media rows exactly as for text
-  rows, so stage 2 gates them by the same cosine rule; the media stage still gates placement, geometry
-  and tokens.
+  loaded PIL image, and a container the reference decodes itself at exactly the frames the declared video
+  pin realises (fps 60 capped at 32: the engine's own count, uniformly sampled), handing them to the
+  checkpoint's processor as an array with do_sample_frames off -- the processor's fps/num_frames kwargs
+  cannot express the fps-plus-cap rule (fps alone asks for 240 frames of the shipped 32 and raises, W2
+  V1), so the reference passes the engine's frames rather than the processor's sample -- and computes the
+  card's vectors for media rows exactly as for text rows, so stage 2 gates them by the same cosine rule;
+  the media stage still gates placement, geometry and tokens.
 
   MRL. The card's Matryoshka set {128, 256, 512, 768} is declared once, in the client's mrl_kind/mrl_dims
   and in serve.hf_overrides (the engine refuses a per-request dimensions without is_matryoshka, and the

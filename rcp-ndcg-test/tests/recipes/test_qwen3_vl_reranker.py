@@ -642,7 +642,12 @@ def _reference_module() -> Any:
     spec = importlib.util.spec_from_file_location("qwen3_vl_reranker_reference", RECIPE_DIR / "reference.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
     return module
 
 

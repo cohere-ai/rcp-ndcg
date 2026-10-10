@@ -231,6 +231,23 @@ def mode_render(pairs: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, A
     return {"rows": rows}
 
 
+def _refuse_old_media_columns(pairs: list[dict[str, Any]]) -> None:
+    """The retired per-column media fields are refused loudly: the harness's media rows carry ``media``.
+
+    The old columns (``query_image``/``documents_images`` and the video siblings) would otherwise be
+    silently ignored and the row encoded as text -- a different prompt, never compared.
+    """
+    for index, row in enumerate(pairs):
+        carried = sorted(
+            key for key in ("query_image", "query_video", "documents_images", "documents_videos") if row.get(key)
+        )
+        if carried:
+            raise SystemExit(
+                f"pairs row {index} carries the retired media columns {carried}: the harness's media rows "
+                "carry the `media` field; move the bytes there"
+            )
+
+
 def card_media_constants() -> dict[str, int]:
     """The card script's image constants, evaluated from the vendored file's module-level assignments (never
     restated): ``IMAGE_FACTOR`` (16 x 2: the patch the card hands ``process_vision_info`` as
@@ -299,16 +316,82 @@ def realised_video_frames(entry: dict[str, Any], declared_fps: float | None, con
     samples ``int(total_frames / original_fps * fps)`` frames, clamped to ``[min_frames=4, max_frames=768,
     total_frames]``; the Qwen3-VL backend IGNORES ``num_frames``. The recipe declares the engine's rate
     (``client.video_policy.fps``), and the pairs entry records the clip's own frame count and rate, so the
-    realised count is computable here. Without a declared rate the card's frame-list route applies
-    (``MAX_FRAMES`` segments).
+    realised count is computable here. A missing declared rate or missing clip facts is refused loudly:
+    the card's own fallback would sample at its own rate, a different instrument.
     """
+    if declared_fps is None:
+        raise SystemExit(
+            "the recipe declares no video rate (client.video_policy.fps): the reference cannot know the "
+            "frames the engine shows, and the card's own fallback would sample at its own rate"
+        )
     total = entry.get("num_frames")
     original = entry.get("fps")
-    if declared_fps is None or not total or not original:
-        return constants["MAX_FRAMES"]
+    if not total or not original:
+        raise SystemExit(f"the video {entry.get('uri')!r} records no frame count or rate; cannot sample")
     target = min(float(declared_fps), 30.0)
     frames = int(int(total) / float(original) * target)
     return min(max(frames, 4), 768, int(total))
+
+
+#: qwen-vl-utils 0.0.14's per-frame video ceiling (``VIDEO_MAX_TOKEN_NUM`` 768 x the 32-px patch
+#: square): the card's loader cannot resize a frame above it, so a per-frame share above it cannot express
+#: the recipe's whole-clip pin.
+_CARD_FRAME_MAX_PIXELS = 768 * 32 * 32
+
+
+def video_pixel_pin(recipe: dict[str, Any]) -> tuple[int, int]:
+    """The recipe's whole-clip video pixel pin, ``serve.mm_processor_kwargs.videos_kwargs``.
+
+    The engine's HF Qwen3-VL video processor resizes a container's frames under these numbers, with the
+    ceiling constraining the whole clip together; the reference's card route must reproduce them, so a
+    recipe that declares no pin is refused loudly (never silently resized by the loader's own defaults).
+    """
+    mm_processor_kwargs = (recipe.get("serve") or {}).get("mm_processor_kwargs") or {}
+    videos = mm_processor_kwargs.get("videos_kwargs") or {}
+    if "min_pixels" not in videos or "max_pixels" not in videos:
+        raise SystemExit(
+            f"the recipe declares no serve.mm_processor_kwargs.videos_kwargs pixel pin: {videos}; the "
+            "reference's container route cannot reproduce the engine's video geometry"
+        )
+    return int(videos["min_pixels"]), int(videos["max_pixels"])
+
+
+def frame_bounds(frames: int, pin: tuple[int, int]) -> tuple[int, int]:
+    """The per-frame pixel bounds that make the card's loader apply the recipe's whole-clip video pin.
+
+    The engine constrains the whole clip together (``t_bar x h_bar x w_bar`` against the pin), the card's
+    loader constrains each frame; a clip's per-frame share of the whole-clip budget is the same rule for
+    an even frame count (the loader floors a container's frames to an even count) and a share within the
+    loader's per-frame ceiling. The media set's shipped clips (64 frames at 8 fps, 16 at the declared 2)
+    are both.
+    """
+    if frames < 2 or frames % 2:
+        raise SystemExit(f"a video's realised frame count must be an even number, got {frames}")
+    min_pixels, max_pixels = pin[0] // frames, pin[1] // frames
+    if max_pixels > _CARD_FRAME_MAX_PIXELS:
+        raise SystemExit(
+            f"the pin's per-frame share {max_pixels} exceeds the card loader's per-frame ceiling "
+            f"{_CARD_FRAME_MAX_PIXELS}: the reference cannot reproduce the engine's geometry for "
+            f"{frames} frames"
+        )
+    return min_pixels, max_pixels
+
+
+def pin_video_item(conversation: list[dict[str, Any]], pin: tuple[int, int]) -> None:
+    """Add the recipe's whole-clip video pin to a conversation's video item, as the card's loader reads it.
+
+    qwen-vl-utils resizes a container's frames under the item's own ``min_pixels``/``max_pixels`` (the
+    same keys the card passes for an image); the per-frame shares of the pin (:func:`frame_bounds`) are
+    what reproduce the engine's geometry. A video item without its realised ``max_frames`` is refused.
+    """
+    for message in conversation:
+        for item in message.get("content") or []:
+            if item.get("type") != "video":
+                continue
+            frames = int(item.get("max_frames") or 0)
+            if not frames:
+                raise SystemExit("the video item carries no max_frames: the reference's frames are undeclared")
+            item["min_pixels"], item["max_pixels"] = frame_bounds(frames, pin)
 
 
 def side_parts(text: str, entries: list[dict[str, Any]]) -> tuple[list[str], str]:
@@ -391,8 +474,15 @@ def card_inputs(
         if kind == "video":
             path = work / f"{clip_name}.avi"
             path.write_bytes(_entry_bytes(entry))
+            frames = realised_video_frames(entry, declared_fps, constants)
+            if frames % 2:
+                raise SystemExit(
+                    f"the engine's realised frame count for {clip_name} is {frames}, an odd number: the "
+                    "card's loader floors a container's frames to an even count, so the reference cannot "
+                    "show the engine's frames"
+                )
             payload["video"] = str(path)
-            payload["max_frames"] = realised_video_frames(entry, declared_fps, constants)
+            payload["max_frames"] = frames
             if declared_fps is not None:
                 payload["fps"] = float(declared_fps)
         elif kind == "image":
@@ -441,6 +531,7 @@ def mode_media(pairs: list[dict[str, Any]], recipe: dict[str, Any] | None = None
     """The media stage's reference side: per row and side that carries media, what the card's model consumes
     (:func:`media_side`), with a video's realised frame count following the engine's declared fps rule
     (:func:`realised_video_frames`)."""
+    _refuse_old_media_columns(pairs)
     constants = card_media_constants()
     policy = (recipe or {}).get("client", {}).get("video_policy") or {}
     declared_fps = policy.get("fps")
@@ -477,15 +568,31 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
     pooling, L2 — one vector per side, queries and documents alike (the card encodes both sides alike).
 
     A media row's ``media`` field rides the card's own input keys (:func:`card_inputs`): the inline image
-    bytes as a PIL image, a container through the card's loader at the recipe's declared fps. The card
+    bytes as a PIL image, a container through the card's loader at the recipe's declared fps, resized
+    under the recipe's whole-clip pixel pin (:func:`video_pixel_pin`/ :func:`frame_bounds`). The card
     renders video, image, text; a side it cannot express is refused loudly.
     """
+    _refuse_old_media_columns(pairs)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from huggingface_hub import snapshot_download
     from qwen3_vl_embedding import Qwen3VLEmbedder
 
+    pin = video_pixel_pin(recipe)
+
+    class _PinnedVideoEmbedder(Qwen3VLEmbedder):
+        """The card's embedder with the recipe's whole-clip video pin expressed to the card's loader.
+
+        The card's ``process`` calls ``format_model_input`` per input; the override adds the pin's
+        per-frame shares to the video item (:func:`pin_video_item`), so the loader resizes the
+        container's frames exactly as the engine's processor does."""
+
+        def format_model_input(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            conversation = super().format_model_input(*args, **kwargs)
+            pin_video_item(conversation, pin)
+            return conversation
+
     path = snapshot_download(str(recipe.get("model")), revision=str(recipe.get("revision")) or None)
-    model = Qwen3VLEmbedder(model_name_or_path=str(path))
+    model = _PinnedVideoEmbedder(model_name_or_path=str(path))
     if device and device != "auto":
         model.model = model.model.to(device)
 

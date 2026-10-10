@@ -1135,6 +1135,17 @@ owner pushes, with the move to a Hugging Face organisation).
   skips when the role tracks no sent ids (the query side, whose positions the allowlist never touches),
   instead of zipping the items against an empty id tuple and raising `ValueError` before anything was sent.
 
+- **The media families' video rows keep the engine's geometry and frames** (W2 review B1/V1): the
+  qwen3-vl-embedding reference's container route now resizes a clip's frames under the recipe's
+  whole-clip video pixel pin -- the pin's per-frame shares ride the card's own loader keys, whose
+  ``smart_resize`` is the rule the engine's processor applies -- instead of the loader's defaults (which
+  gave 384x384 = 144 patches where the engine shows 4 and 49), and an odd realised frame count or a
+  per-frame share above the loader's frame ceiling is refused loudly; the embeddinggemma-2 reference
+  decodes a container itself at exactly the frames the declared fps-plus-cap pin realises (the engine's
+  count, uniformly sampled) and hands them to the checkpoint's processor as an array with
+  ``do_sample_frames`` off, because the processor's ``fps``/``num_frames`` kwargs cannot express that rule
+  (``fps`` alone asked for 240 frames of the shipped 32 and raised).
+
 - **Stage 2 compares the media rows** (owner decision 35): stages 1 and 2 used to drop every image/video row,
   so no reranker score or embedding vector of a media input was gated for any media recipe.  Stage 2 now runs
   over the media rows too: the reference receives their `media` field, the client sends the product's Content

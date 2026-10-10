@@ -76,6 +76,23 @@ OUTPUT_DIM = 2048  # the -small checkpoint's config.json dim / output_dim; the v
 #: served variant is loaded through the resolved recipe's own pair.
 
 
+def _refuse_old_media_columns(pairs: list[dict[str, Any]]) -> None:
+    """The retired per-column media fields are refused loudly: the harness's media rows carry ``media``.
+
+    The old columns (``query_image``/``documents_images`` and the video siblings) would otherwise be
+    silently ignored and the row encoded as text -- a different prompt, never compared.
+    """
+    for index, row in enumerate(pairs):
+        carried = sorted(
+            key for key in ("query_image", "query_video", "documents_images", "documents_videos") if row.get(key)
+        )
+        if carried:
+            raise SystemExit(
+                f"pairs row {index} carries the retired media columns {carried}: the harness's media rows "
+                "carry the `media` field; move the bytes there"
+            )
+
+
 def _checkpoint_file(tokenizer_spec: str, filename: str) -> Any:
     """One small JSON file of the pinned checkpoint (``config.json``, ``tokenizer_config.json``).
 
@@ -241,6 +258,7 @@ def _load_reference(device: str, model: str, revision: str, expected_dim: int) -
 def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str, expected_dim: int) -> dict[str, Any]:
     """Per-token fp16 matrices through the card's own ``encode_query``/``encode_document`` (media rows
     included: :func:`embed_rows`)."""
+    _refuse_old_media_columns(rows)
     model_obj = _load_reference(device, model, revision, expected_dim)
     return embed_rows(model_obj, rows)
 
@@ -366,6 +384,7 @@ def media(rows: list[dict[str, Any]], tokenizer_spec: str) -> dict[str, Any]:
 
     from PIL import Image
 
+    _refuse_old_media_columns(rows)
     config = _checkpoint_file(tokenizer_spec, "config.json")
     processor = _checkpoint_file(tokenizer_spec, "processor_config.json")["image_processor"]
     factor = int(processor["patch_size"]) * int(processor["merge_size"])
