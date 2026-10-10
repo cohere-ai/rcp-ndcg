@@ -58,7 +58,8 @@ that needs its model plugin is refused with the exact install line: the `topk-em
 pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (the pplx
 plugin registers the pplx-embed-v1 family's local config class and serves the v2 contextual and both
 late-interaction sizes; importing `rcp_ndcg_vllm` never imports torch or vLLM). A recipe that names a plugin
-also declares `plugin_architectures` -- the architectures its engine registers -- because the behaviour
+also declares `plugin_architectures` -- the architectures its engine registers (empty for a patch-only
+carrier) -- because the behaviour
 fingerprint keys the plugin's code by hashing exactly those modules (`plugin_sha256.<module>`: the shared
 entry modules, the architecture's modules and every opted-in patch's module); a foreign plugin whose modules
 the harness cannot resolve is refused at fingerprint time, by name.

@@ -361,7 +361,12 @@ class Qwen3VLRerankerReference:
         for doc in docs:
             messages = format_mm_instruction(query, doc, instruction)
             inputs = self.tokenize([messages])
-            inputs = {key: value.to(self.model.device) for key, value in inputs.items()}
+            # Move the tensors only: transformers' processors also return list-valued keys (the
+            # processor's own metadata), and `.to()` on those crashes (GPU-E1).
+            inputs = {
+                key: (value.to(self.model.device) if isinstance(value, torch.Tensor) else value)
+                for key, value in inputs.items()
+            }
             batch_scores = self.model(**inputs).last_hidden_state[:, -1]
             sigmoid_input = self.score_linear(batch_scores)
             scores.append(float(torch.sigmoid(sigmoid_input).squeeze(-1).item()))
@@ -598,10 +603,10 @@ def _repo_and_revision(spec: str) -> tuple[str, str | None]:
 def _check_recipe_variant(recipe_path: str, tokenizer_spec: str) -> None:
     """The resolved recipe names the same checkpoint the tokenizer spec pins.
 
-    The checkpoint loads from the tokenizer spec's repository (the variant's ``client.tokenizer``);
-    the resolved recipe is the variant's identity, so a mismatch means the harness resolved a
-    different variant than this reference would serve.  A local tokenizer path (stage 1) carries no
-    repository identity: nothing to compare.
+    The checkpoint loads from the resolved recipe's ``model``/``revision`` (the harness's one variant
+    contract); the tokenizer spec is the variant's ``client.tokenizer``, so a mismatch means the harness
+    resolved a different variant than this reference would serve.  A local tokenizer path (stage 1)
+    carries no repository identity: nothing to compare.
     """
     candidate = Path(tokenizer_spec).expanduser()
     if candidate.exists() or tokenizer_spec.startswith(("/", "./", "../", "~")) or tokenizer_spec.endswith(".json"):
@@ -630,6 +635,11 @@ def main() -> int:
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     _check_recipe_variant(args.recipe, args.tokenizer)
+    # The checkpoint comes from the resolved recipe (the harness's one variant contract), never from
+    # the tokenizer spec: the spec may be a local render-only path, and the recipe is the variant's
+    # identity (model + revision).
+    recipe = json.loads(Path(args.recipe).read_text(encoding="utf-8"))
+    model_spec = f"{recipe['model']}@{recipe['revision']}"
 
     rows_raw = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
     rows: list[dict[str, Any]] = []
@@ -641,7 +651,7 @@ def main() -> int:
     elif args.mode == "media":
         document = {"rows": media_rows(rows_raw)}
     else:
-        reference = Qwen3VLRerankerReference(args.tokenizer).load(args.device)
+        reference = Qwen3VLRerankerReference(model_spec).load(args.device)
         for index, row in enumerate(rows_raw):
             _refuse_old_media_columns(index, row)
             media = row.get("media") or {}

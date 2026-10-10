@@ -25,21 +25,6 @@
       "manifest_sha256": "9f6cdfca1778422904663eee5b51acbc50dc8f87dd7b93e12e9daf7df01db1cd",
       "recipe_revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda"
     },
-    "zerank-1-small-reranker/35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0": {
-      "behaviour_fingerprint": "35077466c09f27cfadffcd0228587dc509892d22635ba5b0d51722f19eff87f0",
-      "manifest_sha256": "01f0219c9540cf0299dba78a3f1cefea79b64b546f5e469235760d6f43946306",
-      "recipe_revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d"
-    },
-    "zerank-2-reranker/c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd": {
-      "behaviour_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
-      "manifest_sha256": "889026310e2eab6dabca71290ce762c1ef1d3dfb8be95df287195c576d8e6380",
-      "recipe_revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
-    },
-    "octen-embedding-8b/41a2afed3860b53a545baf316927777bfa5d0c52e27dce6da462176581980022": {
-      "behaviour_fingerprint": "41a2afed3860b53a545baf316927777bfa5d0c52e27dce6da462176581980022",
-      "manifest_sha256": "d39b679a79ff02059bb0478655f721334216a5ebf6c2645accecea66190e707c",
-      "recipe_revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
-    },
     "qwen3-reranker-8b/ece867dcf5cda84704f7686e8a010729fdfbf5c12cf1d519eefbf9b2eefdfd36": {
       "behaviour_fingerprint": "ece867dcf5cda84704f7686e8a010729fdfbf5c12cf1d519eefbf9b2eefdfd36",
       "manifest_sha256": "38f0dddce933525bf6772cf7518156e8f3a27946f9d89532ee495c80d9cf6e54",
@@ -55,10 +40,25 @@
       "manifest_sha256": "41ebd1e69866e09a455f3ea17143171ec917b3e2b2016a52f2bde2edcc65f577",
       "recipe_revision": "cf13c81f3274394053d166740294f7eea4586f7a"
     },
-    "qwen3-embedding-0.6b/7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4": {
-      "behaviour_fingerprint": "7e14af043c07c13c388b225ac99b39f6e46a367c9b8f4b9bc46c5de99df823c4",
-      "manifest_sha256": "aae0ed528f35910cd300ed10f3263c20e15ecb14642db3d5a3dc956e6e6c40ec",
+    "octen-embedding-8b/0e1397bf030fb890579ede2838deaaaca40a6d72366ab6158367602efd9d7e44": {
+      "behaviour_fingerprint": "0e1397bf030fb890579ede2838deaaaca40a6d72366ab6158367602efd9d7e44",
+      "manifest_sha256": "12e83035ccd9126630e24ddb41e7cc9c7cc639a97de12f4109a35fe37a94f490",
+      "recipe_revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
+    },
+    "qwen3-embedding-0.6b/3d0c1f1f3c0f7e33d0d4122c1ab007794d5a632a2804d4f7c95c170b0c793800": {
+      "behaviour_fingerprint": "3d0c1f1f3c0f7e33d0d4122c1ab007794d5a632a2804d4f7c95c170b0c793800",
+      "manifest_sha256": "e35336e9dea6d2781759c4d197a7e231c57e9ee776e9060393096b4922ce7105",
       "recipe_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+    },
+    "zerank-1-small-reranker/6c3fce2480aa687b2a572246f1b07cc1ff3290e502d369dc4c309932fd962a62": {
+      "behaviour_fingerprint": "6c3fce2480aa687b2a572246f1b07cc1ff3290e502d369dc4c309932fd962a62",
+      "manifest_sha256": "c9e4f4ad812d0209a17206aed16f1811bb9ac09de58afaf87b657de50c4342fa",
+      "recipe_revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d"
+    },
+    "zerank-2-reranker/b3a914de4c88b5afde101936cc6682e1c9a1b6a3c06b02f930e3cba5268321e6": {
+      "behaviour_fingerprint": "b3a914de4c88b5afde101936cc6682e1c9a1b6a3c06b02f930e3cba5268321e6",
+      "manifest_sha256": "01d1163464b7a6c20d50099a32b1d71ac243d4137421bdd6d8a6086dd287995e",
+      "recipe_revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
     }
   },
   "engine": {

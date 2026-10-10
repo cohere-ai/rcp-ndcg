@@ -294,7 +294,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert serve.trust_remote_code is False
     assert serve.max_model_len == MAX_TOKENS
     assert serve.dtype == "bfloat16"
-    assert serve.plugin is None
+    assert serve.plugin == "rcp-ndcg-vllm"  # the patch carrier for the pooling-full-context opt-in
     client = recipe.client
     assert client.get("api") == "openai_embeddings"
     assert client.get("tokenizer") == f"{REPO}@{REVISION}"
@@ -530,6 +530,7 @@ EXPECTED_TOP = {
     "role": "embed",
 }
 EXPECTED_SERVE = {
+    "patches": ["pooling-full-context"],
     "chat_template": None,
     "convert": "embed",
     "dtype": "bfloat16",
@@ -539,8 +540,7 @@ EXPECTED_SERVE = {
     "limit_mm_per_prompt": None,
     "max_model_len": 32768,
     "mm_processor_kwargs": {},
-    "plugin": None,
-    "patches": [],
+    "plugin": "rcp-ndcg-vllm",
     "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",
@@ -548,6 +548,7 @@ EXPECTED_SERVE = {
 }
 EXPECTED_CLIENT = {
     "api": "openai_embeddings",
+    "instruction": "none",
     "request_shape": "text",
     "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a",
     "max_tokens": 32768,
@@ -577,6 +578,7 @@ EXPECTED_CLIENT = {
     "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
 }
 EXPECTED_REFERENCE = {
+    "attn_implementation": None,
     "entry": "reference.py",
     "kind": "sentence_transformers",
     "known_deviations": ["anchor_drop_over_cap"],
@@ -671,7 +673,7 @@ def test_the_declared_projection_chain_is_the_checkpoints_own_file(monkeypatch: 
 
 
 def test_requirements_reference_ships_the_documented_environment() -> None:
-    """Finding #10: the note-7 referent exists -- reference.in beside reference.py with the documented
+    """The note-7 referent exists -- reference.in beside reference.py with the documented
     pins, resolved to reference.lock (decision 35) -- and no startup default is restated in the YAML."""
     path = RECIPE_DIR / "reference.in"
     assert path.is_file() and (RECIPE_DIR / "reference.lock").is_file(), (

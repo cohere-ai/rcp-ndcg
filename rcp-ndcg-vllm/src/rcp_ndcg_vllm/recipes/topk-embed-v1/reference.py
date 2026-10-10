@@ -182,6 +182,30 @@ def render(
     return {"rows": out_rows}
 
 
+def _alias_qwen3_5_layer_type(layer_cls: Any = None) -> None:
+    """Alias transformers' renamed ``layer_type`` attribute for the checkpoint's remote code.
+
+    The checkpoint's ``hf_backbone.patch_packing`` reads ``layer.layer_type`` (the transformers 5.9
+    attribute its own ``requirements.txt`` pins); transformers 5.17's ``Qwen3_5DecoderLayer`` renamed it
+    to ``block_type``. When only the new name exists, the old one is aliased to it -- a declared shim, so
+    the reference runs on the image's transformers stack (GPU-E1: the unshimmed load crashed at
+    ``hf_backbone.py:178`` with ``AttributeError: 'Qwen3_5DecoderLayer' object has no attribute
+    'layer_type'``). Nothing else is patched: a checkpoint whose remote code needs more of 5.9 fails
+    loudly at its own call.
+
+    Args:
+        layer_cls: The decoder-layer class to shim; ``None`` imports transformers' own. A seam for the
+            CPU test, which runs without transformers.
+    """
+    if layer_cls is None:
+        try:
+            from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5DecoderLayer as layer_cls
+        except ImportError:  # a transformers without the class: the remote code will say so itself
+            return
+    if not hasattr(layer_cls, "layer_type"):
+        layer_cls.layer_type = property(lambda self: self.block_type)  # type: ignore[attr-defined]
+
+
 def _load_reference(device: str, model: str, revision: str, expected_dim: int) -> Any:
     """Load the model card's MultiVectorEncoder and assert the surface this file relies on.
 
@@ -192,6 +216,7 @@ def _load_reference(device: str, model: str, revision: str, expected_dim: int) -
     """
     from sentence_transformers import MultiVectorEncoder
 
+    _alias_qwen3_5_layer_type()
     model_obj = MultiVectorEncoder(
         model,
         revision=revision,

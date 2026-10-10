@@ -23,7 +23,13 @@ serve:
                             # transformers' AutoConfig (hf_config.PplxContextualConfig, a line-for-line
                             # restatement of the remote configuration_pplx_contextual.py:6-27 class),
                             # so config.json parses locally and the remote module never executes
-  max_model_len: 262144  # the model's own limit (query_length/document_length); the model raises beyond it
+  max_model_len: 131072  # the declared serving bound (owner decision 2026-10-09): the model's own
+                   # limit is 262144, but at 262144 one bidirectional forward overflows 32-bit element
+                   # and byte offsets in kernels we do not own (q = 262144 x 16 x 256 x 2 B = 2^31 bytes;
+                   # the merged gate_up output is 24576 wide). The post-activation bound is 174762
+                   # elements; 131072 sits below it, and E2's real-request run decides whether the
+                   # merged gate_up tensor (87381 elements / 43690 bytes under the strict reading)
+                   # forces a further step down. The over-cap deviation is declared below.
   dtype: bfloat16  # the served dtype: vLLM v0.31.0's GDN prefill kernels refuse float32 on every
                    # backend (see notes, "dtype"), so the reference's fp32 run (the card loads the
                    # checkpoint at its config dtype, float32) cannot be matched exactly on this
@@ -32,19 +38,23 @@ serve:
                    # tolerance gate and the wave's retrieval numbers
   plugin: rcp-ndcg-vllm  # the models fold into this wheel (layout-move item 3); --no-deps install
   plugin_architectures: [PplxContextualModel]  # the architecture this recipe's engine registers; the behaviour fingerprint keys its modules
-  patches: []  # no engine patch this recipe opts into
   extra_args: []
+  # The pooling hang at exactly max_model_len: a full-budget request is exactly the prompt the
+  # v0.31.0 scheduler never finishes (the upstream bug); the pooling-full-context patch is the
+  # upstream fix (vllm-project/vllm#48039, commit e6fc81bc78). Delete it when engine.image moves
+  # to the first release that carries the commit.
+  patches: [pooling-full-context]
 client:
 #   recipe: "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based contextual chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); the role-prefix frame (by name in the template); token-id wire; 262142-token right cuts client-side"
   api: vllm_pooling
   request_shape: token_ids  # the plugin's contract: the model reads the reference's id-level render
-  # The model's own limit is 262144 model-side ids; the model-side count of a render
-  # is the engine-side count plus a content-dependent prefix delta (the [D] prefix
-  # crosses as two literal ids where the engine-side count keeps one special id, and
-  # the first content pretoken re-tokenizes with the prefix's trailing space: measured
-  # deltas 0..+2, worst 2), so 262142 reserves two tokens and no measured render hits
-  # the model's own over-limit raise. See the notes.
-  max_tokens: 262142
+  # The model's own limit is 262144 model-side ids, but the recipe serves at max_model_len
+  # 131072 (the 2^31 arithmetic above); the model-side count of a render is the engine-side count
+  # plus a content-dependent prefix delta (the [D] prefix crosses as two literal ids where the
+  # engine-side count keeps one special id, and the first content pretoken re-tokenizes with the
+  # prefix's trailing space: measured deltas 0..+2, worst 2), so 131070 reserves two tokens and no
+  # measured render hits the declared engine bound. See the notes.
+  max_tokens: 131070
   outputs: per_chunk  # the contextual chunk model answers one slice of chunk vectors per
                       # input (the remote code pools one span mean per chunk), so the
                       # pooling adapter's one-vector-per-prompt-token cross-check does
@@ -64,6 +74,8 @@ client:
     add_special_tokens: true  # the pooling route's engine default; this tokenizer's post-processor appends nothing (measured)
   on_overflow: cut
   empty_doc: send  # the model's own empty-chunk branch pools to the zero vector
+  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
+                     # instruction is refused, never silently folded
   normalize: true
   embed_dtype: float16  # the owner's Q11 decision; int8-valued vectors survive the cast exactly
   dim: 2048
@@ -79,7 +91,13 @@ reference:
   kind: remote_code  # the checkpoint's trusted code (custom_code tag), transformers AutoModel with trust_remote_code=True
   score_scale: cosine
   entry: reference.py
-  known_deviations: []
+  # The Qwen3.5/GDN reference cannot run on CPU (flash-linear-attention's Triton kernel): the wave
+  # must give it a GPU of its own (GPU-E1; the reference also refuses a CPU run before any download).
+  device: cuda
+  # The card's own limit (262144) is not the served one: the recipe declares a lower max_model_len
+  # for the 2^31 bound, so every input the client changed over that cap is reported, not gated
+  # (the client cuts content-only and the anchor is first, so the deviation is the cap-only kind).
+  known_deviations: [over_cap_cut_differs]
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources:
@@ -108,7 +126,7 @@ sources:
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
 notes: |-
   Serving: rcp-ndcg-vllm's folded model plugin (the one vllm.general_plugins entry point)
-  (rcp-ndcg-vllm/plugins/pplx/, pure Python, installed with pip install
+  (rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/, pure Python, installed with pip install
   --no-deps into the unmodified image) registers the checkpoint's
   PplxContextualModel as a pooling model: the language_model.* weight mapper,
   the contextual_projection head, and a chunk pooler that segments on the
@@ -191,26 +209,26 @@ notes: |-
 
   Budget: the model's own limit is 262144 tokens model-side (config
   query_length and document_length; the model raises beyond it and truncates
-  nothing). The model-side count of a render is the engine-side count plus a
-  content-dependent prefix delta: the [D] prefix contributes +1 (two literal
-  ids where the engine-side count keeps one special id) minus whatever the
-  first content pretoken saves by re-tokenizing with the prefix's trailing
-  space - measured total deltas 0..+2 over letter, digit, whitespace, CJK and
-  emoji-initial content, worst 2. The client budget is therefore
-  262142: the measured worst case reserved, so no measured render hits the
-  model's own raise, and a content class outside the measured ones fails
-  loudly at the engine's own max_model_len, never silently. The pooling role
-  client fits every request to the declared tokenizer and budget before it
-  derives the token ids (rcp-ndcg/src/rcp_ndcg/inference/clients/pool.py: content-only
-  cuts, every cut census-recorded): the cut is the declared policy. The model card
-  has no over-limit output to compare with (it raises), so the pairs files keep
-  every text under the limit; reference.py's render of such a row is the uncut
-  prompt, which stage 1 reports as a mismatch. max_model_len
-  262144 reserves whole-sequence prefill (bidirectional pooling disables
-  chunked prefill at the pinned engine): roughly 8.5 GB of bf16 KV per 262k
-  sequence (the GDN state cache stays fp32 via mamba_ssm_dtype, small beside
-  it). The wave confirms the VRAM plan and lowers BOTH numbers deliberately,
-  never one, if the slot cannot afford the worst case.
+  nothing), but the recipe serves at max_model_len 131072. The first GPU wave
+  found the engine dying at startup at the declared 262144: pooling warm-up is
+  one sequence of max_model_len tokens, q is 262144 x 16 x 256 x 2 B = 2^31
+  bytes, and the FlashAttention encoder path faults on the 32-bit byte offset
+  (the Triton path surfaces later, in inductor). The arithmetic: the
+  post-activation MLP tensor (12288 wide) bounds a forward at 2^31/12288 =
+  174762 tokens, and the merged gate_up output (24576 wide) at 87381 elements
+  / 43690 bytes if its GEMM is int32-indexed; the declared 131072 sits below
+  the post-activation bound, and E2's real-request run decides whether the
+  merged tensor forces a further step down. The client budget is 131070: the
+  measured worst-case prefix delta (2, above) reserved, so no measured render
+  hits the engine's declared max_model_len, and the difference from the card's
+  own 262144 limit is the declared over_cap_cut_differs deviation (the client
+  cuts content-only and the anchor is first, so only the cap differs). The
+  pooling role client fits every request to the declared tokenizer and budget
+  before it derives the token ids (rcp-ndcg/src/rcp_ndcg/inference/clients/pool.py:
+  content-only cuts, every cut census-recorded): the cut is the declared
+  policy. The model card has no over-limit output to compare with (it raises),
+  so the pairs files keep every text under the limit; reference.py's render of
+  such a row is the uncut prompt, which stage 1 reports as a mismatch.
 
   Template file: no serve.chat_template. The /pooling completion route applies
   no chat template at the pinned engine (pooling/protocol.py, io_processor.py),

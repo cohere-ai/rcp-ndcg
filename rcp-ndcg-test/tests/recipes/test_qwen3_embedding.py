@@ -407,6 +407,7 @@ EXPECTED_TOP = {
     "role": "embed",
 }
 EXPECTED_SERVE = {
+    "patches": [],
     "chat_template": None,
     "convert": None,
     "dtype": "bfloat16",
@@ -416,7 +417,6 @@ EXPECTED_SERVE = {
     "limit_mm_per_prompt": None,
     "mm_processor_kwargs": {},
     "plugin": None,
-    "patches": [],
     "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",
@@ -424,6 +424,7 @@ EXPECTED_SERVE = {
 }
 EXPECTED_CLIENT = {
     "api": "openai_embeddings",
+    "instruction": "none",
     "request_shape": "text",
     "max_tokens": 8192,
     "template": {
@@ -442,10 +443,11 @@ EXPECTED_CLIENT = {
     "dimensions": None,
 }
 EXPECTED_REFERENCE = {
+    "attn_implementation": None,
     "entry": "reference.py",
     "kind": "transformers",
     "known_deviations": ["over_cap_cut_differs"],
-    "device": None,
+    "device": "cuda",
     "score_scale": "cosine",
 }
 

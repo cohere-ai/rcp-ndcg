@@ -609,7 +609,10 @@ def run(
 
     Args:
         config: A :class:`RunConfig`, the path of a run config YAML, or an existing run directory (resumed).
-        runner: ``"local"`` runs in this process; another name hands the run to that job runner. ``None`` takes
+        runner: ``"local"`` runs in this process, unless a new config sets the local runner's own options
+            (``log_dir``, ``detach``, ``cwd``, ``env`` or ``resources``), which submit it to the LocalRunner; a
+            resumed run directory always continues in this process. Another name hands the run to that job
+            runner. ``None`` takes
             the config's ``runner.name`` for a new run, and resumes an existing run directory in this process
             (that is what a submitted job does). An existing run directory with a runner is submitted again, with
             the options its job record holds (after a restore from its mirror, when it has one).

@@ -31,7 +31,7 @@ cuda). ``--mode render`` needs only ``huggingface_hub`` and ``tokenizers``: it r
 pinned ``config_sentence_transformers.json``, ``sentence_bert_config.json`` and
 ``tokenizer.json`` and never imports torch.
 
-Subprocess contract (``rcp_ndcg_vllm.equivalence.reference.run_reference``):
+Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
 
     reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> \
                  --recipe <resolved-recipe.json> [--device <d>]
@@ -325,6 +325,8 @@ def _fp16_lists(matrix: Any) -> list[list[float]]:
     """One fp16 token-vector matrix as nested floats."""
     import numpy as np
 
+    if hasattr(matrix, "detach"):  # a torch tensor, possibly on CUDA: numpy cannot read it directly
+        matrix = matrix.detach().cpu()
     return [[float(value) for value in vector] for vector in np.asarray(matrix, dtype=np.float16)]
 
 

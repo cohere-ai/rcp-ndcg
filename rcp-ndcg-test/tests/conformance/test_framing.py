@@ -44,7 +44,7 @@ def test_a_wrong_content_type_fails_the_conformance_suite(monkeypatch: pytest.Mo
     from rcp_ndcg_test import engines
     from tests.conformance.test_conformance import corpus_dirs, replay_problems
 
-    directory = next(path for path in corpus_dirs() if "qwen3-reranker-8b" in str(path))
+    directory = next(path for path in corpus_dirs() if "zerank-2-reranker" in str(path))
     assert replay_problems(directory)[1] == []
     original = engines._json
 
@@ -112,7 +112,7 @@ def test_an_undecodable_recorded_body_is_refused_loudly(tmp_path: Path) -> None:
 
 
 def test_every_unobserved_route_is_declared_in_the_reply_and_the_record() -> None:
-    emulator = emulator_for("qwen3-reranker-8b")
+    emulator = emulator_for("zerank-2-reranker")
     assert "POST /rerank" in emulator.observed_routes
     assert {"POST /pooling", "POST /v1/embeddings", "POST /tokenize"} <= set(emulator.unobserved_routes)
     rerank = emulator.answer("/rerank", "POST", {"query": "q", "documents": ["d"]})

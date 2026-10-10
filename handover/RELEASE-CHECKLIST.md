@@ -37,6 +37,9 @@ the `/tokenize` check and the media gate for media recipes, T3 quality, and the 
       7,864,320 px); record a page-image observation so the ViDoRe golden's retrieval view needs no waiver.
 - [ ] Real infrastructure: one SLURM and one Kubernetes run of the one-container and StatefulSet job shapes.
 - [ ] Flip each recipe's `status` to `verified` from its wave evidence only.
+- [ ] Clean the judge families' `handover/specs/judge-catalog.md` / lane-report citations from their shipped
+      notes and sources before `handover/` is deleted; the repo-wide recipe hygiene guard scopes itself to the
+      non-judge families until then (the judge lane / docs-final own the cleanup).
 
 ## 3. Release (owner)
 - [ ] Dependabot PRs #1-#3 closed or superseded with a reason; `pip-audit` alerts reviewed

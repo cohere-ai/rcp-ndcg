@@ -73,6 +73,7 @@ _TAIL = "{special:im_end}\n{special:im_start}assistant\n"
 #: field of ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults
 #: included, so a schema default that moves reds here and is re-pinned deliberately.
 SERVE = {
+    "patches": [],
     "runner": "pooling",
     "convert": "embed",
     "hf_overrides": {"is_matryoshka": True},
@@ -82,15 +83,18 @@ SERVE = {
     "max_model_len": 8192,
     "dtype": "bfloat16",
     "plugin": None,
-    "patches": [],
     "plugin_architectures": [],
     "io_processor_plugin": None,
-    "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}},
+    "mm_processor_kwargs": {
+        "images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200},
+        "videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320},
+    },
     "limit_mm_per_prompt": {"image": 1, "video": 1},
     "extra_args": ["--media-io-kwargs", '{"video": {"fps": 2}}'],
 }
 CLIENT = {
     "api": "openai_embeddings",
+    "instruction": "none",
     "request_shape": "messages",
     "add_generation_prompt": True,
     "max_tokens": 8192,
@@ -98,7 +102,13 @@ CLIENT = {
     "image_policy": {"min_px": 4096, "max_px": 1843200, "engine_pixel_pinning": True},
     "max_images": 1,
     "max_videos": 1,
-    "video_policy": {"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+    "video_policy": {
+        "fps": 2,
+        "wire": "video_url",
+        "engine_video_pinning": True,
+        "engine_video_min_pixels": 4096,
+        "engine_video_max_pixels": 7864320,
+    },
     "template": {
         "query": [
             {"fixed": "{special:im_start}system\nRepresent the user's input."},
@@ -122,11 +132,12 @@ CLIENT = {
     "mrl_kind": "truncation",
 }
 REFERENCE = {
+    "attn_implementation": None,
     "kind": "transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["anchor_drop_over_cap"],
-    "device": None,
+    "device": "cuda",
 }
 TOP = {
     "role": "embed",
@@ -311,7 +322,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_two_contract_mutants_are_red(variant_id: str) -> None:
     """A drifted serve field and a drifted reference field each red the contract pin, naming the field
-    (the sweep's finding-9 mutants: serve.max_model_len and reference.kind), per variant."""
+    (the contract mutants: serve.max_model_len and reference.kind), per variant."""
     recipe = load_recipe(variant_id)
     serve_mutant = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"max_model_len": 16384})})
     with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
@@ -336,7 +347,8 @@ def test_serve_argv_carries_the_pinned_flags(variant_id: str) -> None:
     assert "--trust-remote-code" not in argv
     assert json.loads(argv[argv.index("--pooler-config") + 1]) == {"seq_pooling_type": "LAST"}
     assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
-        "images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}
+        "images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200},
+        "videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320},
     }
     assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 2}}'

@@ -84,7 +84,7 @@ SHARED_MEMORY="${RCP_SHARED_MEMORY:-128Gi}"
 OUT_DIR="${RCP_SUBMIT_DIR:-}"
 SCRATCH_OUT_DIR=false
 if [[ -z "$OUT_DIR" ]]; then
-  OUT_DIR="$(mktemp -d /tmp/rcp-submit.XXXXXX)"
+  OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rcp-submit.XXXXXX")"
   SCRATCH_OUT_DIR=true
 else
   # The operator's directory: created when it does not exist, so the job CLI's log always lands.

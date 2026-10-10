@@ -200,6 +200,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "role": "embed",
         },
         "serve": {
+            "patches": [],
             "chat_template": None,
             "convert": None,
             "dtype": "bfloat16",
@@ -210,7 +211,6 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "max_model_len": 8192,
             "mm_processor_kwargs": {},
             "plugin": None,
-            "patches": [],
             "plugin_architectures": [],
             "pooler_config": {},
             "runner": "pooling",
@@ -218,6 +218,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
         },
         "client": {
             "api": "openai_embeddings",
+            "instruction": "none",
             "tokenizer": f"{variant['repo']}@{variant['revision']}",
             "max_tokens": 8192,
             "template": {
@@ -234,6 +235,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "revision": variant["revision"],
         },
         "reference": {
+            "attn_implementation": None,
             "entry": "reference.py",
             "kind": "transformers",
             "known_deviations": ["over_cap_cut_differs"],

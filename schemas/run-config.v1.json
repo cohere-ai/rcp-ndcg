@@ -321,9 +321,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -796,9 +797,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``), ``omit_zero_blank`` (whitespace-only text is empty too: the paper's ``text.strip()`` rule, jina-reranker-v3) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -1326,9 +1328,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -2562,9 +2565,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -3088,9 +3092,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -3587,9 +3592,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``), ``omit_zero_blank`` (whitespace-only text is empty too: the paper's ``text.strip()`` rule, jina-reranker-v3) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -4415,9 +4421,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -4942,9 +4949,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -5442,9 +5450,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``), ``omit_zero_blank`` (whitespace-only text is empty too: the paper's ``text.strip()`` rule, jina-reranker-v3) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -6200,6 +6209,32 @@
       "additionalProperties": false,
       "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nTwo declared sampling rules, one per wire. ``wire: frames`` shows ``num_frames``\nuniformly spaced frames of the clip's pre-extracted frames\n(uniform_frame_indices). ``wire: video_url`` sends the container and the\nengine samples it: a pinned uniform ``num_frames``, or the engine's own fps rule\n(fps) -- a rate shows a 10-second clip 20 frames and a 10-minute clip\n1200, so two runs \"at 2 fps\" share a judgement family only while every clip's\nrealised count is the engine's own (qwen3_vl_video_frame_indices). Exactly\none of the two is declared; a policy that declares neither, or both, is refused.\n\nA clip that cannot supply a declared ``num_frames`` is refused, not shown whole:\nvLLM would resample it at its processor's own rate, so no single number of frames\ncould be recorded for it. A container's frame count must therefore be recorded at\ningest (``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default -- the checkpoint's processor fps on the Qwen3-VL backend, whose\nloader is fps-driven and ignores ``num_frames``; the default loader's 32 frames\nelsewhere -- so ``video_url`` is refused unless\nengine_video_pinning declares the engine pinned -- to a uniform\nnum_frames, or to the engine's own fps rule (fps, the vLLM v0.31.0\n``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped\nto its bounds, qwen3_vl_video_frame_indices). The two are different\nmeasurements, so exactly one is declared: a policy that declares neither, or both,\nis refused rather than silently picking one. The same clips judged both ways are\ndifferent measurements, so the wire is part of the policy and a corpus whose videos\ndo not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany container whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose. It is a container\nlimit: a frame set carries no duration to check.",
       "properties": {
+        "engine_video_max_pixels": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Max Pixels"
+        },
+        "engine_video_min_pixels": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Min Pixels"
+        },
         "engine_video_pinning": {
           "default": false,
           "title": "Engine Video Pinning",
@@ -6409,9 +6444,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],
@@ -6884,9 +6920,10 @@
         },
         "empty_doc": {
           "default": "send",
-          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out), ``omit_zero`` (never sent, scored ``0.0``), ``omit_zero_blank`` (whitespace-only text is empty too: the paper's ``text.strip()`` rule, jina-reranker-v3) or ``send_text`` (a literal placeholder, empty_doc_text). Content.",
           "enum": [
             "omit_zero",
+            "omit_zero_blank",
             "send",
             "send_text"
           ],

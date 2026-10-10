@@ -518,14 +518,16 @@ def test_a_shipped_id_is_not_shadowed_by_a_directory_of_the_same_name(
 
 
 def test_the_plugin_declaration_is_mandatory_and_checked() -> None:
-    """A plugin recipe names the architectures its engine registers; a patch names a shipped patch; both
-    without the plugin that runs them are refused, so no declaration is silently inert."""
+    """A plugin recipe names the architectures its engine registers (empty for a patch-only use); a patch
+    names a shipped patch and needs the plugin that applies it; an architecture list without a plugin is
+    refused, so no declaration is silently inert."""
     from pydantic import ValidationError
     from rcp_ndcg_vllm.recipe import ServeConfig
 
     base = {"runner": "pooling", "dtype": "bfloat16", "max_model_len": 1024}
-    with pytest.raises(ValidationError, match="plugin_architectures"):
-        ServeConfig(**base, plugin="rcp-ndcg-vllm")
+    # A plugin with no architectures is the patch carrier (its entry point applies the patches).
+    carrier = ServeConfig(**base, plugin="rcp-ndcg-vllm")
+    assert carrier.plugin_architectures == () and carrier.patches == ()
     with pytest.raises(ValidationError, match="plugin_architectures"):
         ServeConfig(**base, plugin_architectures=("PplxContextualModel",))
     with pytest.raises(ValidationError, match="PplxTypo"):

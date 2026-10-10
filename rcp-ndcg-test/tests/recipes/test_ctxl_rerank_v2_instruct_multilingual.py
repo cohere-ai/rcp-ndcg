@@ -90,6 +90,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
     variant = VARIANTS[variant_id]
     return {
         "serve": {
+            "patches": [],
             "chat_template": "template.jinja",
             "convert": None,
             "dtype": "bfloat16",
@@ -98,13 +99,13 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
                 "architectures": [variant["architecture"]],
                 "classifier_from_token": [variant["classifier_token"]],
                 "method": "no_post_processing",
+                "head_dtype": "model",
             },
             "io_processor_plugin": None,
             "limit_mm_per_prompt": None,
             "max_model_len": variant["max_model_len"],
             "mm_processor_kwargs": {},
             "plugin": None,
-            "patches": [],
             "plugin_architectures": [],
             "pooler_config": {"use_activation": False},
             "runner": "pooling",
@@ -130,16 +131,12 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "use_activation": False,
             "on_overflow": "cut",
             "empty_doc": "send",
+            "empty_query": "send",
             "model": variant_id,
             "revision": variant["revision"],
-            **(
-                {"batch_size": 32}
-                if variant_id == "ctxl-rerank-v2-instruct-multilingual-1b"
-                else {}  # the 2b/6b endpoints run the schema default; the paper's batch sizes are
-                # the reference's own batching, a throughput fact the resolved client does not carry
-            ),
         },
         "reference": {
+            "attn_implementation": "sdpa",
             "entry": "reference.py",
             "kind": "transformers",
             "known_deviations": ["anchor_drop_over_cap"],
@@ -325,10 +322,14 @@ def test_serve_argv_renders_the_golden_engine_command(variant_id: str) -> None:
 
 
 def test_the_reference_environment_is_documented() -> None:
-    """The reference declares the environment it needs, beside itself (the reference rule)."""
+    """The reference declares the environment it needs, beside itself (the reference rule): the family's
+    ``reference.in`` (the image's torch with the paper's transformers pin; flash-attn is dropped -- the
+    reference declares sdpa) resolved to its ``reference.lock``."""
     text = (FAMILY_DIR / "reference.in").read_text(encoding="utf-8")
-    assert "torch==2.9.1" in text
+    assert "torch>=2.0" in text and "torch==2.9.1" not in text
     assert "transformers==4.57.6" in text
+    assert not any(line.strip().startswith("flash-attn") for line in text.splitlines())
+    assert (FAMILY_DIR / "reference.lock").is_file()
 
 
 def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suffix() -> None:
@@ -350,6 +351,52 @@ def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suff
     assert module._tokenizer_dir(f"{repo}@rev") == repo
     assert module._tokenizer_dir(repo) == repo
     assert "@" not in module._tokenizer_dir(f"{repo}@rev")
+
+
+def test_the_reference_loads_with_the_declared_attention_implementation() -> None:
+    """The declared ``reference.attn_implementation`` reaches ``from_pretrained`` (sdpa here), never a
+    silent ``torch.cuda.is_available()`` choice: the stock reference environment carries no flash-attn."""
+    import importlib.util
+    import types
+
+    class _StubModel:
+        def eval(self) -> object:
+            return self
+
+        def to(self, device: str) -> object:
+            return self
+
+    loads: list[dict] = []
+
+    class _StubAutoModel:
+        @staticmethod
+        def from_pretrained(*args: object, **kwargs: object) -> object:
+            loads.append(kwargs)
+            return _StubModel()
+
+    torch_stub = types.ModuleType("torch")
+    torch_stub.bfloat16 = "bfloat16"
+    transformers_stub = types.ModuleType("transformers")
+    transformers_stub.AutoModelForCausalLM = _StubAutoModel
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setattr(sys, "dont_write_bytecode", True)
+        monkey.setitem(sys.modules, "torch", torch_stub)
+        monkey.setitem(sys.modules, "transformers", transformers_stub)
+        spec = importlib.util.spec_from_file_location("ctxl_reference_load", RECIPE_DIR / "reference.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        reference = object.__new__(module.CtxlRerankReference)
+        reference.model = None
+        reference.model_name = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b"
+        reference.revision = "0" * 40
+        reference.dtype = "bfloat16"
+        reference.attn_implementation = "sdpa"
+        reference.load("cpu")
+        assert loads and loads[-1]["attn_implementation"] == "sdpa"
+        assert loads[-1]["revision"] == "0" * 40
+    finally:
+        monkey.undo()
 
 
 @pytest.mark.network

@@ -161,6 +161,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "api": "openai_embeddings",
+        "instruction": "none",
         "request_shape": "text",
         "recipe": (
             "vLLM v0.31.0 pooling runner; the stock Qwen3ForCausalLM converted to embed with "
@@ -187,6 +188,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
 
 
 EXPECTED_SERVE = {
+    "patches": ["pooling-full-context"],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {"architectures": ["Qwen3ForCausalLM"], "is_causal": False},
@@ -196,7 +198,6 @@ EXPECTED_SERVE = {
     "max_model_len": CONTEXT_LIMIT,
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm",
-    "patches": [],
     "plugin_architectures": ["PplxV1Config"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
@@ -205,6 +206,7 @@ EXPECTED_SERVE = {
 }
 
 EXPECTED_REFERENCE = {
+    "attn_implementation": None,
     "kind": "sentence_transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
