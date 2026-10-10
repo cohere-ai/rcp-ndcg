@@ -1390,6 +1390,17 @@ def test_rc_build_without_wave_lists_stages_none(tmp_path: Path) -> None:
     assert "staging no wave lists" in completed.stderr
 
 
+def test_rc_build_stages_the_recipe_tree_before_it_reads_the_family_locks() -> None:
+    """The wheelhouse's reference wheels come from the families' ``reference.lock`` files under the staged
+    recipes, so the recipe tree must be staged before the lock glob runs: with the old order the glob saw an
+    empty stage, downloaded no reference wheels, and the node's reference install failed on the first lock
+    pin (the rc0 wave0 bootstrap failure: transformers==4.57.6 was not in the staged wheelhouse)."""
+    script = RC_BUILD.read_text(encoding="utf-8")
+    stage_tree_at = script.index('stage_tree "$SRC" "stage/$RC_NAME"')
+    lock_glob_at = script.index('for lock in stage/"$RC_NAME"/recipes/*/reference.lock')
+    assert stage_tree_at < lock_glob_at
+
+
 def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
     """The guard that cannot rot: ``stage_tree`` on the ACTUAL checkout stages the recipes (from the built
     wheel's package data), every pairs file and the committed wave lists -- a moved path fails here first.

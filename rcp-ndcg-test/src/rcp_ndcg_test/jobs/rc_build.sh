@@ -248,6 +248,13 @@ diff <(grep -v '^#' requirements-constraints.txt) <(grep -v '^#' "$WORK/exported
 echo "rc_build: twine check"
 uvx twine check dist/*
 
+# The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
+# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the
+# EXTRA_DIRS entries (layout-move item 3: no separate plugin wheels -- the folded models ship inside
+# rcp-ndcg-vllm).  Staged BEFORE the wheelhouse: the family locks are read from the staged recipes, so
+# an empty stage would silently download no reference wheels (the rc0 wave0 bootstrap failure).
+stage_tree "$SRC" "stage/$RC_NAME" || exit 1
+
 # The wheelhouse: the release wheels plus every locked dependency for the node's platform (the CPU
 # torch build included), so a node install never asks an index (node-runtime item 3).  The reference
 # environments' wheels come from the families' reference.lock files (owner decision 35): each lock is
@@ -322,12 +329,6 @@ uv pip install --python "$WORK/smoke/bin/python" --no-index \
   "rcp-ndcg==${VERSION}"
 "$WORK/smoke/bin/rcp-ndcg" --version
 "$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
-
-# The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
-# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the
-# EXTRA_DIRS entries (layout-move item 3: no separate plugin wheels -- the folded models ship inside
-# rcp-ndcg-vllm).
-stage_tree "$SRC" "stage/$RC_NAME" || exit 1
 
 python3 - "$SRC" "$RC_NAME" "$VERSION" "$WORK/dl/bin/python" <<'PYEOF'
 """Write manifest.json: the commit, the version and the SHA-256 of every staged file."""
