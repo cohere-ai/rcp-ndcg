@@ -12,6 +12,7 @@ import json
 import pytest
 
 from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.support.resources import Resources
 from rcp_ndcg.support.serve import (
     ENGINES_ENV,
     EngineConfig,
@@ -19,6 +20,7 @@ from rcp_ndcg.support.serve import (
     EngineURLs,
     Phase,
     ServeByRole,
+    ServeConfig,
     parse_engines_env,
     plan_phases,
 )
@@ -118,6 +120,41 @@ class TestThePhasePlan:
         assert plan_phases(["calibrate"], ServeByRole(judge=ENGINE), {}) == [
             Phase(engines=frozenset(), steps=("calibrate",))
         ]
+
+    def test_a_step_that_uses_two_roles_co_locates_their_engines(self) -> None:
+        """A caller whose ``uses`` names two roles gets one phase with both; a run's own ``serve:`` names one
+        role per step, so its phases hold at most one engine."""
+        serve = ServeByRole(encoder=ENGINE, reranker=ENGINE)
+        assert plan_phases(["retrieve"], serve, {"retrieve": frozenset({"encoder", "reranker"})}) == [
+            Phase(engines=frozenset({"encoder", "reranker"}), steps=("retrieve",))
+        ]
+
+
+class TestTheEngineCommand:
+    """The command's own device flags and port must agree with the fields the runner renders."""
+
+    def test_a_tensor_parallel_size_must_match_the_declared_gpus(self) -> None:
+        with pytest.raises(ValueError, match="resources.gpus"):
+            ServeConfig(command=("vllm", "serve", "m", "--tensor-parallel-size", "4"), resources=Resources(gpus=1))
+        # The world size is TP x DP, and the equals form is the same flag.
+        assert (
+            ServeConfig(
+                command=("vllm", "serve", "m", "--tensor-parallel-size=4", "--data-parallel-size", "2"),
+                resources=Resources(gpus=8),
+            ).resources.gpus
+            == 8
+        )
+        with pytest.raises(ValueError, match="8"):
+            ServeConfig(command=("vllm", "serve", "m", "--data-parallel-size", "3"), resources=Resources(gpus=8))
+
+    def test_a_port_must_match_the_declared_port(self) -> None:
+        with pytest.raises(ValueError, match="--port"):
+            ServeConfig(command=("vllm", "serve", "m", "--port", "9999"), port=8000)
+        assert ServeConfig(command=("vllm", "serve", "m", "--port=8001"), port=8001).port == 8001
+
+    def test_a_command_without_the_flags_is_left_verbatim(self) -> None:
+        engine = ServeConfig(command=("python3", "-m", "encoder", "--host", "0.0.0.0"))
+        assert engine.resources.gpus == 0 and engine.port == 8000
 
 
 class TestParseEnginesEnv:

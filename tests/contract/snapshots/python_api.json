@@ -20457,6 +20457,13 @@
         "defined_in": "rcp_ndcg.runners.kubernetes",
         "extra": "forbid",
         "fields": {
+          "affinity": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any]"
+          },
           "automount_service_account_token": {
             "alias": null,
             "default": false,
@@ -20470,6 +20477,13 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "cache_volume": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "constraints": {
             "alias": null,
@@ -20520,6 +20534,13 @@
             "required": false,
             "type": "dict[str, str]"
           },
+          "priority_class": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "resources": {
             "alias": null,
             "default": "Resources(gpus=0, cpus=None, memory_gb=None, time_limit_s=None)",
@@ -20547,6 +20568,13 @@
             "frozen": false,
             "required": false,
             "type": "str | None"
+          },
+          "tolerations": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[dict[str, Any]]"
           },
           "ttl_seconds_after_finished": {
             "alias": null,
@@ -20671,6 +20699,26 @@
               },
               {
                 "returns": "dict[str, Any]"
+              }
+            ]
+          },
+          "note": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "JobHandle",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "handle"
+              },
+              {
+                "returns": "str | None"
               }
             ]
           },

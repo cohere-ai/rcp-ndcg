@@ -53,6 +53,23 @@ def test_estimate_plan_run_and_resume(data: Path, tmp_path: Path) -> None:
     ]
 
 
+def test_a_local_configs_own_options_are_honoured(data: Path, tmp_path: Path) -> None:
+    """`runner: {name: local, options: {log_dir: ...}}` ran in-process, dropping the log directory."""
+    logs = tmp_path / "local-logs"
+    config = tmp_path / "run.yaml"
+    config.write_text(
+        yaml.safe_dump(tiny_config(data, runner={"name": "local", "options": {"log_dir": str(logs)}}).resolved()),
+        encoding="utf-8",
+    )
+    started = _start(str(config), "--runs-dir", str(tmp_path / "runs"))
+    assert started["mode"] == "submitted"  # handed to the LocalRunner, not run in this process
+    record = json.loads(Path(started["run_dir"], "logs", "jobs.json").read_text())
+    assert record["runner"] == "local" and record["options"]["log_dir"] == str(logs)
+    name = record["jobs"][0]["name"]
+    assert (logs / f"{name}.log").exists() and (logs / f"{name}.exit").read_text().strip() == "0"
+    assert started["state"]["status"] == "completed"
+
+
 class _FakeRunner:
     """A job runner that records what it was handed and runs nothing."""
 
@@ -358,6 +375,7 @@ class TestRunnersAndServe:
                 "encoder": {
                     "image": "org/encoder:v2",
                     "command": ["python3", "-m", "enc", "--host", "0.0.0.0", "--port", "8001"],
+                    "port": 8001,
                     "resources": {"gpus": 1},
                 },
                 "judge": {

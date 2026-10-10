@@ -27,9 +27,9 @@ import json
 import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.resources import Environment, Resources, no_control_characters, no_nul_byte, refuse_secret_value
@@ -41,6 +41,27 @@ from rcp_ndcg.support.urls import safe_url
 #: ``base_url`` and ``wait_on_outage_s`` are runtime fields. Its command-line spelling is
 #: ``rcp-ndcg run resume --engine role=url[,url]``.
 ENGINES_ENV = "RCP_NDCG_ENGINES"
+
+
+def _command_flag(command: Sequence[str], name: str) -> int | None:
+    """The integer value of ``--<name>`` in an engine command (``--name value`` or ``--name=value``).
+
+    ``None`` when the flag is absent or its value is not an integer (a non-integer is the engine's own argparse
+    error, not this check's to report).
+    """
+    for index, word in enumerate(command):
+        if word == f"--{name}" and index + 1 < len(command):
+            value = command[index + 1]
+            break
+        if word.startswith(f"--{name}="):
+            value = word.split("=", 1)[1]
+            break
+    else:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 class ServeConfig(BaseModel):
@@ -131,6 +152,36 @@ class ServeConfig(BaseModel):
     @classmethod
     def _a_string_is_split(cls, value: Any) -> Any:
         return tuple(shlex.split(value)) if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _command_matches_the_declared_engine(self) -> Self:
+        """The command's own device flags and port must agree with the fields the runner renders.
+
+        ``resources.gpus`` is what the runner reserves (``--gres``/``nvidia.com/gpu``) and the slice the engine
+        gets, while ``port`` is what the readiness probe, the URLs and the Kubernetes container port use. A
+        command that names ``--tensor-parallel-size``/``--data-parallel-size`` (world size ``TP x DP``) or
+        ``--port`` must agree with them: two numbers here is one incoherent engine -- an under-request hands the
+        engine fewer devices than it loads, and a port mismatch costs ``startup_timeout_s`` of probes.
+        """
+        tp = _command_flag(self.command, "tensor-parallel-size")
+        dp = _command_flag(self.command, "data-parallel-size")
+        if tp is not None or dp is not None:
+            world = (tp if tp is not None else 1) * (dp if dp is not None else 1)
+            if world != self.resources.gpus:
+                tp_text = tp if tp is not None else 1
+                dp_text = dp if dp is not None else 1
+                raise ValueError(
+                    f"the command names tensor/data parallelism {world} (--tensor-parallel-size {tp_text} x "
+                    f"--data-parallel-size {dp_text}), and resources.gpus is {self.resources.gpus}: the runner "
+                    "reserves the devices the engine uses"
+                )
+        port = _command_flag(self.command, "port")
+        if port is not None and port != self.port:
+            raise ValueError(
+                f"the command names --port {port}, and port is {self.port}: the readiness probe, the engine URLs "
+                "and the container port all use the declared port"
+            )
+        return self
 
     def url(self, host: str) -> str:
         """The OpenAI-compatible base URL of the replica on ``host``."""

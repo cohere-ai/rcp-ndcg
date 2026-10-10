@@ -28,6 +28,7 @@ from rcp_ndcg.runners import KubernetesRunner, SlurmRunner
 from rcp_ndcg.runners.base import JobPhase, JobSpec
 from rcp_ndcg.runners.script import device_slices
 from rcp_ndcg.support.serve import ServeConfig
+from tests.runners.shell import heredoc_body
 
 
 def _resources(gpus: int):
@@ -70,8 +71,14 @@ def test_kubernetes_partitions_its_container_among_co_located_engines() -> None:
     (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([_phased_job(*phases)])["j"]))
     (container,) = job_obj["spec"]["template"]["spec"]["containers"]
     assert container["resources"]["limits"]["nvidia.com/gpu"] == 5
-    cuda = [line for line in container["command"][2].splitlines() if "CUDA_VISIBLE_DEVICES" in line]
-    assert cuda == ["export CUDA_VISIBLE_DEVICES=0,1,2,3", "export CUDA_VISIBLE_DEVICES=4"]
+    worker = heredoc_body(container["command"][2], "WORKER_1")
+    assert "export CUDA_VISIBLE_DEVICES=''" in worker  # the coordinator asked for none
+    cuda = [line for line in container["command"][2].splitlines() if line.startswith("export CUDA_VISIBLE_DEVICES=")]
+    assert cuda == [
+        "export CUDA_VISIBLE_DEVICES=''",
+        "export CUDA_VISIBLE_DEVICES=0,1,2,3",
+        "export CUDA_VISIBLE_DEVICES=4",
+    ]
 
 
 def test_the_coordinators_gpus_are_reserved_ahead_of_the_engines() -> None:
@@ -81,7 +88,29 @@ def test_the_coordinators_gpus_are_reserved_ahead_of_the_engines() -> None:
     (container,) = job_obj["spec"]["template"]["spec"]["containers"]
     assert container["resources"]["limits"]["nvidia.com/gpu"] == 7  # the coordinator's 2 + 4 + 1
     cuda = [line.split("=", 1)[1] for line in container["command"][2].splitlines() if "CUDA_VISIBLE_DEVICES" in line]
-    assert cuda == ["2,3,4,5", "6"]
+    assert cuda == ["0,1", "2,3,4,5", "6"]  # the coordinator's reservation first, then the engines'
+    # The coordinator's own devices are the reserved prefix, and its worker exports them: without it the
+    # process sees every device in the container, the engines' slices included.
+    worker = heredoc_body(container["command"][2], "WORKER_1")
+    assert "export CUDA_VISIBLE_DEVICES=0,1\n" in worker
+
+
+def test_a_gpu_less_coordinator_sees_no_device_on_kubernetes() -> None:
+    """A container without a GPU limit has no device; the export keeps an image from finding one anyway."""
+    phases = (JobPhase(engines={"judge": JUDGE_4}, argv=("a",)),)
+    (job_obj,) = list(yaml.safe_load_all(KubernetesRunner().render([_phased_job(*phases)])["j"]))
+    (container,) = job_obj["spec"]["template"]["spec"]["containers"]
+    assert "export CUDA_VISIBLE_DEVICES=''" in heredoc_body(container["command"][2], "WORKER_1")
+
+
+def test_slurm_asks_the_per_node_sum_not_the_node_count_times_it() -> None:
+    """SLURM's `--gres` is per node: a two-node job asks the per-node maximum, never `nodes x max`."""
+    phases = (JobPhase(engines={"judge": JUDGE_4, "encoder": ENCODER_1}, argv=("a",)),)
+    job = JobSpec(name="j", resources=_resources(2), phases=phases)
+    script = SlurmRunner(container_runtime="pyxis").render([job])["j"]
+    assert "#SBATCH --nodes=2\n" in script  # the judge and the encoder, one replica per node
+    assert "#SBATCH --gres=gpu:6\n" in script  # 2 + max(4, 1), the first node's sum
+    assert "--gres=gpu:12" not in script  # never nodes x max
 
 
 def test_two_engines_of_two_gpus_each_slice_one_container() -> None:
@@ -92,7 +121,7 @@ def test_two_engines_of_two_gpus_each_slice_one_container() -> None:
     (container,) = job_obj["spec"]["template"]["spec"]["containers"]
     assert container["resources"]["limits"]["nvidia.com/gpu"] == 4
     cuda = [line.split("=", 1)[1] for line in container["command"][2].splitlines() if "CUDA_VISIBLE_DEVICES" in line]
-    assert cuda == ["0,1", "2,3"]
+    assert cuda == ["''", "0,1", "2,3"]  # the coordinator's empty slice, then one per engine
 
 
 def test_kubernetes_partitions_among_replicas_of_one_engine() -> None:
@@ -110,7 +139,10 @@ def test_kubernetes_partitions_among_replicas_of_one_engine() -> None:
     (engine,) = stateful_set["spec"]["template"]["spec"]["containers"]
     assert engine["resources"]["limits"] == {"nvidia.com/gpu": 2}  # each pod: its own two devices
     (container,) = job_obj["spec"]["template"]["spec"]["containers"]
-    assert "CUDA_VISIBLE_DEVICES" not in container["command"][2]  # the phase waits for the pods; it runs none
+    # The phase waits for the pods; its own process asks for no GPU and must not see one.
+    script = container["command"][2]
+    assert script.count("export CUDA_VISIBLE_DEVICES=") == 1
+    assert "export CUDA_VISIBLE_DEVICES=''" in script
 
 
 def test_a_gpu_less_engine_sees_no_device() -> None:
@@ -126,7 +158,7 @@ def test_a_gpu_less_engine_sees_no_device() -> None:
         for line in container["command"][2].splitlines()
         if "CUDA_VISIBLE_DEVICES" in line
     ]
-    assert cuda == ["0,1,2,3", ""]  # the empty slice, never all of them
+    assert cuda == ["", "0,1,2,3", ""]  # the coordinator's and the GPU-less engine's empty slice
 
 
 def test_the_coordinators_gpus_are_reserved_on_slurm_too() -> None:
@@ -152,10 +184,10 @@ def test_a_gpu_less_slurm_engine_sees_no_device() -> None:
     phases = (JobPhase(engines={"judge": judge, "encoder": none}, argv=("a",)),)
     script = SlurmRunner().render([_phased_job(*phases)])["j"]
     cuda = [line.split("=", 1)[1] for line in script.splitlines() if line.startswith("export CUDA_VISIBLE_DEVICES=")]
-    assert cuda == ["''"]  # the empty slice for the GPU-less engine; the judge keeps SLURM's per-step grant
-    assert (
-        "--gres=gpu:4 " in script and "CUDA_VISIBLE_DEVICES" not in script.split("ENGINE_JUDGE")[0].split("ENGINE_")[-1]
-    )
+    assert cuda == ["''", "''"]  # the GPU-less coordinator and engine; the judge keeps SLURM's per-step grant
+    assert "CUDA_VISIBLE_DEVICES" not in heredoc_body(script, "ENGINE_JUDGE")
+    assert "export CUDA_VISIBLE_DEVICES=''" in heredoc_body(script, "ENGINE_ENCODER")
+    assert "--gres=gpu:4 " in script
 
 
 def test_an_engine_free_phase_still_carries_the_coordinators_gpus() -> None:
@@ -184,7 +216,8 @@ def test_slurm_asks_for_the_sum_of_what_a_node_hosts_and_the_maximum_over_phases
     assert "#SBATCH --nodes=2\n" in script  # the largest phase's replica total
     assert "#SBATCH --gres=gpu:6\n" in script  # the maximum over the phases' per-node sums (4, then 6)
     assert "--gres=gpu:4 " in script and "--gres=gpu:1 " in script and "--gres=gpu:6 " in script
-    assert "CUDA_VISIBLE_DEVICES" not in script  # SLURM's per-step value stands: no two engines share a node
+    assert "CUDA_VISIBLE_DEVICES" not in heredoc_body(script, "ENGINE_JUDGE")  # SLURM's per-step value stands
+    assert "export CUDA_VISIBLE_DEVICES=''" in heredoc_body(script, "WORKER_1")  # the coordinator asked for none
     # The largest engine shares the coordinator's node; the coordinator pins itself to it.
     assert 'HOSTS_JUDGE=("${RCP_NDCG_HOSTS[@]:0:1}")\n' in script
     assert 'HOSTS_ENCODER=("${RCP_NDCG_HOSTS[@]:1:1}")\n' in script

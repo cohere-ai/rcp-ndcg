@@ -727,10 +727,6 @@ class PoolingEndpoint(EmbeddingEndpoint):
             (never silent); no ``skip_unapplied`` record is written for a media item. Empty (the default):
             no allowlist, and a media render follows :attr:`document_skip_token_ids` (kept whole, on
             record, when that rule is the client's). Content: it changes the engine's output.
-        mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
-            CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
-            L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the
-            default) serves the checkpoint's own :attr:`dim`. Content.
         mrl_dim: The Matryoshka output size served (2g, plug-pplx), at or below :attr:`dim` when set:
             applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to
             it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A

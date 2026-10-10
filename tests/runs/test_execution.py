@@ -35,6 +35,8 @@ class _Scheduler:
     submitted: list[tuple[str, ...]] = []
     cancelled: list[str] = []
     state = "pending"
+    reason: str | None = None
+    note_error: Exception | None = None
     run_root: str | None = None
 
     def __init__(self, **options) -> None:
@@ -54,6 +56,11 @@ class _Scheduler:
         _Scheduler.cancelled.append(handle)
         _Scheduler.state = "cancelled"
 
+    def note(self, handle: str) -> str | None:
+        if _Scheduler.note_error is not None:
+            raise _Scheduler.note_error
+        return _Scheduler.reason
+
 
 class _PodScheduler(_Scheduler):
     """A runner whose jobs do not see this host's files (as Kubernetes): the run reaches them through its mirror."""
@@ -64,6 +71,8 @@ class _PodScheduler(_Scheduler):
 @pytest.fixture
 def scheduler(monkeypatch: pytest.MonkeyPatch) -> type[_Scheduler]:
     _Scheduler.submitted, _Scheduler.cancelled, _Scheduler.state = [], [], "pending"
+    _Scheduler.reason = None
+    _Scheduler.note_error = None
     runners = {"sched": _Scheduler, "pod": _PodScheduler}
 
     def get_runner(name, **options):
@@ -170,6 +179,35 @@ class TestStatus:
         assert (state["status"], state["done"]) == (derived, True)
         assert "every job of the run has ended" in state["note"]
         assert Run(started["run_dir"]).manifest.status.value == "submitted", "run status writes nothing"
+
+    def test_a_stuck_job_note_reaches_run_status(self, data: Path, tmp_path: Path, scheduler) -> None:
+        """An unschedulable pod is reported pending; the scheduler's own reason is the run's note."""
+        started = _submit(_config(data, tmp_path), tmp_path)
+        scheduler.reason = "0/8 nodes are available: 8 Insufficient nvidia.com/gpu."
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert state["jobs"][0]["status"] == "pending"
+        assert "Insufficient nvidia.com/gpu" in (state["note"] or "")
+
+    def test_a_runner_whose_note_raises_does_not_abort_run_status(self, data: Path, tmp_path: Path, scheduler) -> None:
+        """A plugin runner raises what it raises; `run status` reports what this host holds and says so."""
+        started = _submit(_config(data, tmp_path), tmp_path)
+        scheduler.note_error = RuntimeError("boom")
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert "could not explain" in (state["note"] or "")
+
+    def test_the_library_hands_a_local_config_with_options_to_the_local_runner(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        """`rcp_ndcg.run` dropped a configured local runner's options like the CLI did; it now hands them over."""
+        import rcp_ndcg
+
+        logs = tmp_path / "api-logs"
+        config = tiny_config(data, runner={"name": "local", "options": {"log_dir": str(logs)}})
+        run = rcp_ndcg.run(config, runs_dir=str(tmp_path / "runs"))
+        record = Run(run.dir).jobs()
+        assert record is not None and record["runner"] == "local"
+        name = record["jobs"][0]["name"]
+        assert (logs / f"{name}.log").exists() and (logs / f"{name}.exit").read_text().strip() == "0"
 
     def test_a_pod_run_is_read_from_its_mirror_and_restored_from_it(
         self, data: Path, tmp_path: Path, scheduler
@@ -449,6 +487,19 @@ class TestCancel:
         code, error = _invoke("run", "cancel", "--run", started["run_dir"])
         assert code == 4 and "may be live" in error["message"]
 
+    def test_cancel_of_a_failed_submission_names_the_recorded_error(
+        self, data: Path, tmp_path: Path, scheduler
+    ) -> None:
+        """A failed submission may have left a Job its cleanup could not delete: `run cancel` must repeat it."""
+        started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
+        run = Run(started["run_dir"])
+        record = run.jobs()
+        record["jobs"][0]["handle"] = None
+        record["error"] = "RunnerError: the Job run could not be deleted and may still run"
+        Path(run.layout.jobs).write_text(json.dumps(record), encoding="utf-8")
+        code, error = _invoke("run", "cancel", "--run", started["run_dir"])
+        assert code == 4 and "could not be deleted" in error["message"]
+
     def test_cancel_closes_the_steps_that_were_running(self, data: Path, tmp_path: Path, scheduler) -> None:
         started = _submit(_config(data, tmp_path), tmp_path)
         run = Run(started["run_dir"])
@@ -526,7 +577,12 @@ def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tm
         data,
         runner={
             "name": "slurm",
-            "options": {"env": {"HF_HOME": "/hf"}, "image": "registry.example.com/rcp:v1", "resources": {"gpus": 2}},
+            "options": {
+                "container_runtime": "pyxis",
+                "env": {"HF_HOME": "/hf"},
+                "image": "registry.example.com/rcp:v1",
+                "resources": {"gpus": 2},
+            },
         },
     )
     with pytest.raises(ConfigError, match="env, image, resources"):

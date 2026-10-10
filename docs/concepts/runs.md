@@ -78,7 +78,10 @@ variable (a job's own value would be silently overridden), and a run without `se
   unstated gets the node's whole memory (`--mem=0`), whatever the coordinator asks ([partitioning](#gpus-are-partitioned-per-node-not-shared)). The job runs in the node's
   environment (`setup`) or in a container
   (`container_runtime: apptainer` or `pyxis`, with `container_mounts`); a container runs the stock coordinator image
-  below unless `image` names another. Runs, stores and caches live on the cluster's shared filesystem. A node without
+  below unless `image` names another. With `container_runtime: none` an `image` or `container_mounts` is refused
+  (the node's environment and filesystem are already there), and the coordinator runs as a step of its own
+  (`srun --overlap`), so its own `--gres` reservation and node pin hold there too; a coordinator that asks for no
+  GPU sees no device. Runs, stores and caches live on the cluster's shared filesystem. A node without
   internet access needs the weights and data staged beforehand: set `HF_HOME` to a shared cache and
   `HF_HUB_OFFLINE=1`. The shared cache is filled by the online runs themselves: a dataset run resolves its
   revision online once and records the commit behind the branch (`refs/<ref>` in the cache), so an offline run
@@ -95,13 +98,22 @@ variable (a job's own value would be silently overridden), and a run without `se
   service-account token unless `automount_service_account_token: true` (a job that reaches the cluster API, or a
   store through the cluster's workload identity, sets it); an image with a non-root `USER` declares
   `run_as_non_root: true`, which the kubelet enforces (the stock coordinator and `vllm/vllm-openai` images run as
-  root, so it is off by default). A credential
+  root, so it is off by default). `tolerations`, `affinity` and `priority_class` are rendered on the Job's pod and
+  every engine pod, and `engine_node_selector` places the engine pods (a single-replica engine runs in the Job's pod,
+  so its selector is merged into that pod's `nodeSelector`; a key the two disagree on is refused). A credential
   never goes in `env`: a name that looks like one (`*_TOKEN`, `*_KEY`, `*SECRET*`, `*PASSWORD*`) is refused when the
   config is read -- export it in the submitting environment (local, SLURM) or name a `secrets` entry (Kubernetes) --
   and an environment value is never recorded in clear in `run.yaml`, the manifest or a mirror copy. The pod's disk
-  is scratch, an `emptyDir` at `/scratch`, so a Kubernetes run needs a `mirror:`
-  ([durability](#durability-local-runs-and-a-mirror)). The pod does not see the submitting host's files either,
-  so every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
+  is scratch, an `emptyDir` at `/scratch`, and the model weights and the Hugging Face cache live on a declared
+  `cache_volume` (a `PersistentVolumeClaim` mounted at `/cache`, shared by every replica and kept across restarts)
+  or else on that scratch volume, never the container's writable layer; every engine process gets its own
+  `TMPDIR` under `/scratch/tmp`. A run-scoped engine (several replicas) lives in its own StatefulSet for the whole
+  run; a finished Job that owns one is deleted, with its engines, an hour after it finishes unless
+  `ttl_seconds_after_finished` says otherwise, and `run status` reports a pod the scheduler cannot place as
+  `pending` with the scheduler's own reason in the note (the Job's pods and the engine pods alike; a pod list that
+  cannot be read reports `unknown` with a note, never `running`). The pod needs a `mirror:`
+  ([durability](#durability-local-runs-and-a-mirror)), since it does not see the submitting host's files either.
+  Every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
   rankings file, evaluation system, judge config file or prompt file is refused before anything is written, naming
   them. A judge or prompt goes by its shipped name, or inline in the run config. The packaged `tiny` example reads
   local files, so it is not submittable to Kubernetes as it is.
@@ -250,6 +262,10 @@ exact tag or a digest: `:latest` and an untagged reference are refused, because 
 was validated against. With
 `container_runtime: none` (the SLURM default) the command runs on the node itself, so the role's `image` is refused
 there: set a container runtime to run the engine in its image, or drop `image` to run the command on the node. The
+same refusal covers the coordinator's own `image` and `container_mounts` with `container_runtime: none`: the node
+provides both. A command that names `--tensor-parallel-size`/`--data-parallel-size` (their product is the engine's
+world size) or `--port` must agree with `resources.gpus` and `port`; a disagreement is refused when the config is
+read, because the runner reserves the devices and probes the port the config declares. The
 local runner, and a run in this process, start no engine and refuse phases that would start one: start the
 engines yourself and pass their URLs with `run resume --engine <role>=<url>[,<url>]`.
 
@@ -288,21 +304,29 @@ that both see every GPU fail with out-of-memory. The runner therefore treats a p
 the engines **partition**, per node:
 
 - **The request.** A node's GPU request is the **sum** of what runs on it: the coordinator's own `resources.gpus`
-  (the coordinator runs on the phase's first node, or in the phase's container) plus each engine's `resources.gpus`
-  times its replicas there. The job asks for the maximum of that over the phases (SLURM's `--gres` is per node;
-  Kubernetes' limit is the container's).
+  (the coordinator runs on the phase's first node, or in the phase's container) plus the engine placed there — one
+  replica per node on SLURM, each of the container's engines on Kubernetes. The job asks for the maximum of that
+  over the phases (SLURM's `--gres` is per node, so one value is asked on every node; Kubernetes' limit is the
+  container's).
 - **The devices.** Every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES` slice: with a 4-GPU
-  judge and a 1-GPU encoder in one phase container, the container asks for 5 and the judge runs with
-  `0,1,2,3`, the encoder with `4`. The slices continue across a role's replicas when they share a GPU set
-  (two replicas of a 2-GPU engine: `0,1` and `2,3`, with distinct ports). An engine that declares no GPUs gets
-  the empty slice — it sees no device, never all of it.
+  judge and a 1-GPU encoder in one phase container (a hand-built `JobPhase`; the `serve:` planner names one engine
+  per phase), the container asks for 5 and the judge runs with `0,1,2,3`, the encoder with `4`. The slices
+  continue across a role's replicas when they share a GPU set (two replicas of a 2-GPU engine: `0,1` and `2,3`,
+  with distinct ports). An engine that declares no GPUs gets the empty slice — it sees no device, never all of it.
+  The coordinator is confined the same way: on Kubernetes it exports its own reserved slice (`0..resources.gpus-1`,
+  empty for none), and on SLURM its step carries the empty `CUDA_VISIBLE_DEVICES` when it asks for no GPU. A job
+  env entry named `CUDA_VISIBLE_DEVICES` is refused: the runners that partition GPUs assign it from
+  `resources.gpus`, and an operator's value would widen the coordinator's view past the devices it reserved. An
+  engine's own `serve.env` may still declare a slice (the e2e driver's node-runtime slots do): the runner's slice
+  wins where it assigns one (co-located engines, a GPU-less engine), while a GPU engine's `serve.env` value
+  stands over SLURM's per-step grant and over a several-replica Kubernetes engine pod's allocation.
 - **SLURM.** Each role's replicas are pinned to a disjoint slice of the allocation's nodes (one replica per node),
   so no two engine processes share a node; a step's `--gres` is its own engine's count, and SLURM's per-step
   `CUDA_VISIBLE_DEVICES` — set per step with unique devices (gres.html, "GPU Management") — could still overlap
   across steps, because the engine steps run under `srun --overlap`, which srun(1) documents as allowing
   steps to "share all resources (CPUs, memory, and GRES) with all other steps" (SLURM 26.05). The
-  coordinator's task therefore claims its own `--gres` (its reservation, with its `CUDA_VISIBLE_DEVICES`
-  prefix on the phase's first node), the node pinning keeps the engine steps apart, and a node's `--gres`
+  coordinator's task therefore claims its own `--gres` (its reservation, on the phase's first node) under every
+  container runtime, the default included; the node pinning keeps the engine steps apart, and a node's `--gres`
   carries the sum of what runs on it; a cluster that constrains devices per step (`ConstrainDevices=yes`)
   should be checked against these slices.
 
@@ -310,7 +334,7 @@ What the runners submit:
 
 | | One replica per engine | Several replicas of an engine |
 |---|---|---|
-| **Kubernetes** | each engine phase is an init container whose engines run in one container of the (single) engine's `image` (a phase's engines share one image and, if several, need distinct ports), the last phase the main container; the container's command is the supervision script below, which starts the phase's engines and its coordinator side by side and talks to them on `localhost`; `restartPolicy: Never` fails the pod on the first phase that exits non-zero, and the run directory on the pod's `emptyDir` is mounted by every container | as before, plus one StatefulSet of engine pods (`podManagementPolicy: Parallel`) behind a headless Service per role with several replicas, both owned by the Job, so `run cancel` or the Job's TTL deletes them; such engines are **run-scoped** — they live for the whole run, not one phase — and the phases that use them wait for the pods' stable names, at most `startup_timeout_s` until one replica answers; a phase whose engines are all StatefulSet replicas waits in the coordinator's image |
+| **Kubernetes** | each engine phase is an init container whose engines run in one container of the (single) engine's `image` (a phase's engines share one image and, if several, need distinct ports), the last phase the main container; the container's command is the supervision script below, which starts the phase's engines and its coordinator side by side and talks to them on `localhost`; `restartPolicy: Never` fails the pod on the first phase that exits non-zero, and the run directory on the pod's `emptyDir` is mounted by every container | as before, plus one StatefulSet of engine pods (`podManagementPolicy: Parallel`) behind a headless Service per role with several replicas, both owned by the Job, so `run cancel` or the Job's TTL (one hour by default for a Job that owns engines, or `ttl_seconds_after_finished`) deletes them; such engines are **run-scoped** — they live for the whole run, not one phase — and the phases that use them wait for the pods' stable names, at most `startup_timeout_s` until one replica answers; a phase whose engines are all StatefulSet replicas waits in the coordinator's image |
 | **SLURM** | one sbatch asking for the maximum nodes and GPUs over the phases, one supervision block per engine phase: each role's engines are one background step (`srun --overlap`, one replica per node, pinned to their slice of the allocation's nodes), the URLs built from the node list, the coordinator on the first node | the same, with the several-replica roles' steps on their slices; the whole allocation holds the largest phase |
 
 ### When the engine fails, the job fails
@@ -339,13 +363,14 @@ exit. The same bound applies to every job with `serve:`, so an engine that hangs
 A judge whose engine the job does not start keeps its own `wait_on_outage_s`.
 
 A failed job is not retried by default. To run it again, engine included, submit the run again with
-`rcp-ndcg run resume --run <dir> --runner slurm` (or `kubernetes`): it takes the runner options of the run's last
+`rcp-ndcg run resume --run <dir> --runner slurm`: it takes the runner options of the run's last
 job and its `serve:` section, restores the directory from the mirror first when the run has one, and the new job
 resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
-resumes in this process, which starts no engine. On Kubernetes a finished Job object stays in the namespace unless
-`ttl_seconds_after_finished` is set, and Kubernetes never restarts an existing Job: `run resume --runner
-kubernetes` refuses while that Job exists, naming it, so delete it first (`kubectl delete job <name> -n
-<namespace>`, which also removes the engines it owns) or set the TTL. On SLURM `sbatch` always creates a new job.
+resumes in this process, which starts no engine. On Kubernetes, a resubmission of the same run id is not
+available: the runner refuses to apply over an existing Job (Kubernetes never restarts one), and once the Job is
+gone its handle cannot be resolved (a finished Job is deleted with its engines by `ttl_seconds_after_finished`,
+an hour by default for a Job that owns engines), so `run resume --runner kubernetes` refuses both ways. Start a
+new run with its own run id and mirror prefix instead. On SLURM `sbatch` always creates a new job.
 `backoff_limit` (0 by default) lets the Job retry a failed pod by itself, and a retried pod resumes the run from
 its mirror.
 

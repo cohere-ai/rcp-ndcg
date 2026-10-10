@@ -17,6 +17,7 @@ read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true
 #!/usr/bin/env bash
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only retrieve
@@ -26,6 +27,7 @@ export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9100
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8100
 export RCP_NDCG_VLLM_PATCHES=''
+mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8100
 exec vllm serve Qwen/Qwen3-Embedding-0.6B --revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 --served-model-name qwen3-embedding-0.6b --host 0.0.0.0 --port 8100 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 32768 --hf-overrides '{"is_matryoshka": true}' --pooler-config '{}'
 RCP_NDCG_ENGINE_ENCODER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
@@ -110,7 +112,7 @@ srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gr
 RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 1800 8100 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"encoder": {"urls": ["http://127.0.0.1:8100/v1"], "wait_on_outage_s": 300}}'
-bash -c "$WORKER_1" &
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_1" &
 RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
@@ -141,6 +143,7 @@ read -r -d '' WORKER_2 <<'RCP_NDCG_WORKER_2' || true
 #!/usr/bin/env bash
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only rerank
@@ -150,6 +153,7 @@ export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9110
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8110
 export RCP_NDCG_VLLM_PATCHES=''
+mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8110
 exec vllm serve Qwen/Qwen3-Reranker-0.6B --revision e61197ed45024b0ed8a2d74b80b4d909f1255473 --served-model-name qwen3-reranker-0.6b --host 0.0.0.0 --port 8110 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 10000 --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token": ["no", "yes"], "is_original_qwen3_reranker": true}' --chat-template /e2e/recipes/qwen3-reranker/template.jinja --pooler-config '{"use_activation": true}'
 RCP_NDCG_ENGINE_RERANKER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
@@ -234,7 +238,7 @@ srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gr
 RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 1800 8110 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"reranker": {"urls": ["http://127.0.0.1:8110/v1"], "wait_on_outage_s": 300}}'
-bash -c "$WORKER_2" &
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_2" &
 RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
@@ -265,6 +269,7 @@ read -r -d '' WORKER_3 <<'RCP_NDCG_WORKER_3' || true
 #!/usr/bin/env bash
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only tournament --only rubric
@@ -274,6 +279,7 @@ export CUDA_VISIBLE_DEVICES=0
 export VLLM_PORT=9120
 export TMPDIR=/tmp/rcp-e2e-text-four-phases/tmp-8120
 export RCP_NDCG_VLLM_PATCHES=''
+mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8120
 exec vllm serve nvidia/Qwen3.8-Flash-Next-NVFP4 --revision fc694b54fb0174e0913e6adf86691ef85a4ead47 --served-model-name judge --host 0.0.0.0 --port 8120 --tensor-parallel-size 1 --runner generate --dtype auto --max-model-len 131072 --hf-overrides '{}' --pooler-config '{}' --limit-mm-per-prompt '{"image": 10}' --quantization modelopt_fp4 --reasoning-parser qwen3
 RCP_NDCG_ENGINE_JUDGE
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
@@ -358,7 +364,7 @@ srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gr
 RCP_NDCG_ENGINE_PID=$!
 rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 3600 8120 /v1/models 127.0.0.1
 export RCP_NDCG_ENGINES='{"judge": {"urls": ["http://127.0.0.1:8120/v1"], "wait_on_outage_s": 300}}'
-bash -c "$WORKER_3" &
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_3" &
 RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
@@ -390,8 +396,9 @@ read -r -d '' WORKER_4 <<'RCP_NDCG_WORKER_4' || true
 set -euo pipefail
 cd /e2e/runs/rcp-text-four-phases
 export RCP_NDCG_ENGINES='{}'
+export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
 exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only calibrate --only evaluate
 RCP_NDCG_WORKER_4
-bash -c "$WORKER_4"
+srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_4"

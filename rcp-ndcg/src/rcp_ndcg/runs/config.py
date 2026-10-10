@@ -29,7 +29,7 @@ rubric prompt's, never a config field.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal, Self
 
@@ -146,7 +146,10 @@ class DatasetSource(BaseModel):
         """
         from rcp_ndcg.data.revisions import dataset_uri_revision
 
-        payload = self.model_dump(mode="json", exclude_defaults=True)
+        # The identity is content-only: a credential in the URI or a reader option names no content, so it is
+        # stripped before the payload is hashed or recorded (a resume with the credentials in the environment
+        # hashes the same).
+        payload = redact_dataset_payload(self.model_dump(mode="json", exclude_defaults=True))
         commit = dataset_uri_revision(self.uri, self.revision)
         if commit is not None:
             return {**payload, "resolved": commit}
@@ -633,14 +636,16 @@ class RunConfig(BaseModel):
 
         A secret-looking ``env`` name's value is replaced by
         :data:`~rcp_ndcg.support.resources.REDACTED` (the config boundary refuses one when it is read; this is
-        the recording path's backstop for a plugin runner's free-form options), and the mirror URI is passed
-        through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo, query and fragment never reach ``run.yaml``,
-        the manifest or a mirror copy. The live config keeps the full URI, and the job receives it on its
-        command line; a resume that reads the redacted ``run.yaml`` takes the credentials from the environment
-        (or a ``--mirror`` override).
+        the recording path's backstop for a plugin runner's free-form options), and every URI -- the mirror, the
+        dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems, and the runner's
+        ``wheelhouse``/``constraints`` -- is passed through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo,
+        query and fragment never reach ``run.yaml``, the manifest or a mirror copy. The live config keeps the
+        full URI, and the job receives it on its command line; a resume that reads the redacted ``run.yaml``
+        takes the credentials from the environment (or a ``--mirror`` override).
         """
         data = self.resolved()
         _redact_env(data)
+        _redact_uris(data)
         if self.mirror is not None:
             data["mirror"] = safe_url(self.mirror)
         return data
@@ -698,6 +703,82 @@ class RunConfig(BaseModel):
         if self.judge == "fake":
             return JudgeConfig.fake(self.seed)
         return JudgeConfig.load(self.judge)
+
+
+def redact_dataset_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a dataset identity payload with its URI and reader ``*_uri`` options redacted.
+
+    The identity is content-only: a credential in a URI names no content, so it is stripped before the payload
+    is hashed or recorded, and a resume whose credentials come from the environment hashes the same.
+    """
+    data = dict(payload)
+    if isinstance(data.get("uri"), str):
+        data["uri"] = safe_url(data["uri"])
+    options = data.get("options")
+    if isinstance(options, dict):
+        data["options"] = {
+            key: safe_url(value) if key.endswith("_uri") and isinstance(value, str) else value
+            for key, value in options.items()
+        }
+    return data
+
+
+def safe_systems_location(location: str) -> str:
+    """safe_url for an evaluation system's location: its ``#<system>`` selector is semantic, not a credential."""
+    path, separator, system = location.partition("#")
+    return safe_url(path) + (separator + system if separator else "")
+
+
+def redact_candidates_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a candidates identity payload with the rankings file's URI redacted."""
+    data = dict(payload)
+    if isinstance(data.get("rankings"), str):
+        data["rankings"] = safe_url(data["rankings"])
+    return data
+
+
+def redact_evaluation_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of an evaluation identity payload with every system's URI redacted (the selector kept)."""
+    data = dict(payload)
+    systems = data.get("systems")
+    if isinstance(systems, dict):
+        data["systems"] = {
+            name: safe_systems_location(location) if isinstance(location, str) else location
+            for name, location in systems.items()
+        }
+    return data
+
+
+def redact_runner_options(options: Mapping[str, Any]) -> dict[str, Any]:
+    """A copy of a runner-options mapping with the install-source URIs redacted (a wheelhouse, constraints)."""
+    data = dict(options)
+    for key in ("wheelhouse", "constraints"):
+        if isinstance(data.get(key), str):
+            data[key] = safe_url(data[key])
+    return data
+
+
+def _redact_uris(data: dict[str, Any]) -> None:
+    """Route every URI a config records through :func:`~rcp_ndcg.support.urls.safe_url`, in place.
+
+    The dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems and the runner's
+    ``wheelhouse``/``constraints`` can all carry userinfo, a query or a fragment (a pre-signed URL). The live
+    config keeps them (:meth:`resolved`) so the job and the submitting host's store reach what they need; a
+    resume that reads the recorded ``run.yaml`` takes the credentials from the environment. The evaluation's
+    ``#<system>`` selector is kept: it names what is scored, not a credential.
+    """
+    dataset = data.get("dataset")
+    if isinstance(dataset, dict):
+        data["dataset"] = redact_dataset_payload(dataset)
+    candidates = data.get("candidates")
+    if isinstance(candidates, dict):
+        data["candidates"] = redact_candidates_payload(candidates)
+    evaluation = data.get("evaluation")
+    if isinstance(evaluation, dict):
+        data["evaluation"] = redact_evaluation_payload(evaluation)
+    runner = data.get("runner")
+    if isinstance(runner, dict) and isinstance(runner.get("options"), dict):
+        runner["options"] = redact_runner_options(runner["options"])
 
 
 def _redact_env(data: dict[str, Any]) -> None:
