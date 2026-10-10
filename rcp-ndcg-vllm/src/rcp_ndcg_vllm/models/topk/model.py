@@ -48,9 +48,12 @@ Serving contract (why each inherited piece is the right one):
   the engine (``serve.hf_overrides.document_keep_token_ids`` /
   ``document_skip_token_ids``), ``__init__`` replaces the pooler with the
   plugin's keep pool: the checkpoint's own mask keeps only the image-patch
-  positions for an image document (``topk_embed_st.py:_image_row``) and drops
-  its 41 document-side skip ids for a text one, and the engine applies them so
-  the wire carries only kept vectors.
+  positions for an image document (``topk_embed_st.py:_image_row``) and, when
+  the recipe also declares the text rule for the engine, drops its 41
+  document-side skip ids for a text one -- the engine then applies the
+  declared rule(s) so the wire carries only kept vectors (the shipped topk
+  recipe declares the image allowlist only; its 41-id text rule stays the
+  client's, unchanged).
 - Multimodal: inherited registration.  The ``@MULTIMODAL_REGISTRY`` decorator
   stores its factories as a class attribute on ``ColQwen3_5Model``, which this
   subclass inherits, so the checkpoint's own ``Qwen3VLProcessor``

@@ -176,7 +176,10 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   the vision wrapper) and refuses a reply whose per-item count disagrees; no
   `skip_unapplied` record is written for a media item, because the engine
   applied the allowlist. A recipe without it keeps the media-render rule
-  above: a media document's vectors are kept whole, on record.
+  above: a media document's vectors are kept whole, on record. A TEXT render
+  whose own ids carry an allowlist id would be misread as a media document
+  (the allowlist is its own gate), so the client refuses that collision by
+  name before sending.
 * `media_head_as_system` (a pooling config with a template and media) sends the
   side's leading fixed template segments -- the trained role prefix, e.g.
   `[D] ` -- as a leading `system` message for a media item, instead of inside

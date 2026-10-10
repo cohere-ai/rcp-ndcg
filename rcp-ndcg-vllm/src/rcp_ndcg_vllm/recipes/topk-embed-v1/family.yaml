@@ -26,9 +26,10 @@ serve:
                                  # (config.json image_token_id 248056), the only positions this
                                  # checkpoint's reference keeps for an image document
                                  # (topk_embed_st.py:124: `keep = ids == image_token_id`). The
-                                 # pplx-late plugin's pooler applies it engine-side (a row carrying
-                                 # the id keeps only its positions), so the wire carries the
-                                 # reference's kept vectors; the client declares the same allowlist
+                                 # plugin's keep pooler (models/keep_pooler.py, shared with the
+                                 # pplx-late family) applies it engine-side (a row carrying the id
+                                 # keeps only its positions), so the wire carries the reference's
+                                 # kept vectors; the client declares the same allowlist
                                  # (client.media_keep_token_ids, which the loader cross-checks) and
                                  # counts the media block's patch run. head_dtype defaults to fp32 for
                                  # pooling models (config/model.py:2447-2468, pooling branch
@@ -224,12 +225,15 @@ notes: |
   - The IMAGE keep-mask -> client.media_keep_token_ids [248056] beside the engine half
     (serve.hf_overrides.document_keep_token_ids, which the loader cross-checks): the reference's image
     documents keep only the image-patch positions (topk_embed_st.py:124: `keep = ids == image_token_id`),
-    and the plugin's pooler applies the allowlist engine-side -- a media render keeps only its
-    image-patch positions (the chat template's wrapper and a caption drop) -- so the wire carries exactly
-    the reference's kept vectors. The client counts the media block's patch run (the block's counted
-    tokens minus the vision wrapper) and refuses a reply that disagrees (a typed ProviderError); no
-    skip_unapplied record is written for a media item, because the engine applied the rule. Image
-    documents are therefore like-for-like with the reference, not a declared approximation.
+    and the plugin's keep pooler (models/keep_pooler.py) applies the allowlist engine-side -- a media
+    render keeps only its image-patch positions (the chat template's wrapper and a caption drop) -- so the
+    wire carries exactly the reference's kept vectors. The client counts the media block's patch run (each
+    image's counted tokens minus its vision wrapper; a video container under the allowlist is refused,
+    because its kept positions are not derivable) and refuses a reply that disagrees (a typed
+    ProviderError); no skip_unapplied record is written for a media item, because the engine applied the
+    rule. A TEXT render whose own ids carry an allowlist id would be misread as a media document, so the
+    client refuses that collision by name before sending. Image documents are therefore like-for-like
+    with the reference, not a declared approximation.
   - Per-role caps -> client.query_max_tokens 1024 beside client.max_tokens 8192: queries are cut at
     the model's own query_length on every path, documents at document_length; both cuts are the
     product's fit (content span only, the fixed head reserved, census-recorded).
