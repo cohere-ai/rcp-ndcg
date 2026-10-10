@@ -8,6 +8,9 @@ the ragged vectors that come back, in the transfer dtype end to end.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -15,12 +18,12 @@ import numpy as np
 import pytest
 from rcp_ndcg_core.content import Content
 
-from rcp_ndcg.errors import ConfigError, RequestRejectedError
+from rcp_ndcg.errors import ConfigError, ProviderError, RequestRejectedError
 from rcp_ndcg.inference.clients.pool import PoolingClient
 from rcp_ndcg.inference.config import PoolingEndpoint
 from rcp_ndcg.inference.types import EncodeRole
 from tests.inference import _budget
-from tests.inference._pooling import PoolingServer, server_sender
+from tests.inference._pooling import PoolingServer, RecordingSender, server_sender
 
 
 class _GatedSender:
@@ -470,6 +473,277 @@ class TestDocumentSkipIds:
         assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]
 
 
+class TestEngineSideSkip:
+    """``document_skip_engine_side``: the served plugin drops the rule's positions before the reply, so the
+    wire carries only the kept vectors and the client checks the declared count instead of slicing. A reply
+    whose count disagrees is a typed error -- the engine's ``usage.prompt_tokens`` counts the *prompt*, so a
+    reply that ignored the rule cannot hide behind it."""
+
+    @staticmethod
+    def _client(sender: Any, **config: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://engine:8000/v1",
+            "model": "pplx-late",
+            "dim": 2,
+            "normalize": False,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+            "document_skip_token_ids": (2,),  # the word-level fixture's id of 'a'
+            "document_skip_engine_side": True,
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 4,
+        }
+        settings.update(config)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_a_text_reply_of_the_kept_count_is_accepted(self) -> None:
+        from tests._tokenizers import word_tokenizer
+
+        text = "the a of to"  # four word tokens; the rule drops 'a' (id 2)
+        assert word_tokenizer().ids(text) == [1, 2, 3, 4]
+        # The engine applied the rule: three vectors, while its usage reports the prompt's four tokens.
+        sender = RecordingSender(_pooling_reply(rows=3, usage=4))
+        client = self._client(sender)
+        embeddings = asyncio.run(client.aencode([Content.from_text(text)], EncodeRole.DOCUMENT))
+        assert embeddings.num_items == 1
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 3]
+
+    def test_a_text_reply_that_ignored_the_rule_is_refused(self) -> None:
+        """Four vectors with usage four: the engine returned every prompt token, so the declared kept count
+        (three) was not applied -- refused, never silently sliced (the rule's declared home is the plugin)."""
+        sender = RecordingSender(_pooling_reply(rows=4, usage=4))
+        client = self._client(sender)
+        with pytest.raises(ProviderError, match=r"4 token vector\(s\).*declared keep-rule leaves 3 kept"):
+            asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
+
+    def test_the_query_side_keeps_every_vector(self) -> None:
+        """The rule is document-side (the checkpoint's ``skiplist_tasks``), so the engine spares a query
+        prompt: a query reply of its full count is the answer, not a violation."""
+        sender = RecordingSender(_pooling_reply(rows=4, usage=4))
+        client = self._client(sender)
+        embeddings = asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.QUERY))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 4]
+
+    def test_a_query_reply_with_dropped_positions_is_refused(self) -> None:
+        """The engine-side rule must spare queries (the plugin's document role gate): a short query reply is
+        not the checkpoint's own query output, and the usage check refuses it -- never silently accepted."""
+        sender = RecordingSender(_pooling_reply(rows=3, usage=4))
+        client = self._client(sender)
+        with pytest.raises(ProviderError, match=r"reports 4 prompt token\(s\).*decode to 3"):
+            asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.QUERY))
+
+    def test_a_media_document_counts_the_head_and_the_media_block(self, tmp_path: Any) -> None:
+        """A media document's declared count is the head's kept ids plus the prepared media block (the
+        vision wrapper and the patch run); the reply is checked against it and no ``skip_unapplied`` record
+        is written -- the engine applied the rule to the render."""
+        from tests._tokenizers import save, spaced_special_tokenizer
+
+        (tmp_path / "t").mkdir()
+        tokenizer_file = save(spaced_special_tokenizer(), tmp_path / "t")
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        expected = _media_kept_count(image)
+        sender = RecordingSender(_pooling_reply(rows=expected, usage=expected))
+        client = self._client(sender, tokenizer=str(tokenizer_file), media_head_as_system=True, template=_DOC_TEMPLATE)
+        embeddings = asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, expected]
+        assert [record.mechanisms for record in client.processing if record.changed] == [], (
+            "the engine applied the rule to the media render: no skip_unapplied"
+        )
+
+    def test_a_media_reply_off_the_declared_count_is_refused(self, tmp_path: Any) -> None:
+        from tests._tokenizers import save, spaced_special_tokenizer
+
+        (tmp_path / "t").mkdir()
+        tokenizer_file = save(spaced_special_tokenizer(), tmp_path / "t")
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        expected = _media_kept_count(image)
+        sender = RecordingSender(_pooling_reply(rows=expected + 1, usage=expected + 1))
+        client = self._client(sender, tokenizer=str(tokenizer_file), media_head_as_system=True, template=_DOC_TEMPLATE)
+        with pytest.raises(ProviderError, match=rf"declared keep-rule leaves {expected} kept"):
+            asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+
+    def test_the_flag_needs_the_declared_rule(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="document_skip_engine_side"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                document_skip_engine_side=True,
+            )
+
+    def test_the_flag_is_refused_beside_a_per_chunk_model(self, tokenizer_json: str) -> None:
+        """A per-chunk reply has several outputs per input: there is no per-token kept count to check the
+        declared rule against, so the combination is refused rather than silently unverified."""
+        with pytest.raises(ConfigError, match="per_chunk"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                document_skip_token_ids=(2,),
+                document_skip_engine_side=True,
+                outputs="per_chunk",
+            )
+
+
+def _pooling_reply(rows: int, *, usage: int) -> Callable[[httpx.Request], httpx.Response]:
+    """A canned ``/pooling`` reply: one base64 item of ``rows`` token vectors and a ``usage`` report of
+    ``usage`` prompt tokens (the engine's prompt count, which the engine-side rule no longer matches)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = base64.b64encode(np.ones((rows, 2), dtype=np.float16).tobytes()).decode("ascii")
+        return httpx.Response(
+            200,
+            json={
+                "object": "list",
+                "model": json.loads(request.content).get("model"),
+                "data": [{"index": 0, "object": "pooling", "data": payload}],
+                "usage": {"prompt_tokens": usage, "total_tokens": usage},
+            },
+        )
+
+    return handler
+
+
+#: The document template the engine-side media tests declare: the trained head as its leading fixed segment.
+_DOC_TEMPLATE: dict[str, Any] = {"document": [{"fixed": "{special:[D] }"}, {"content": "document"}], "anchor": "mean"}
+
+
+def _media_kept_count(image: Any) -> int:
+    """The declared count the client checks a media reply against: the head's ids plus the prepared media
+    block, built here from the product's own preparation, media count and tokenizer (the same inputs the
+    client passes) rather than from the client's private helper."""
+    from rcp_ndcg.data.prepare import prepare_request
+    from rcp_ndcg.data.resolution import ImagePolicy
+    from tests._tokenizers import spaced_special_tokenizer
+
+    policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+    tokenizer = spaced_special_tokenizer()
+    prepared = prepare_request([Content.from_image(image.as_uri())], policy, None, tokenizer=tokenizer)
+    head = tokenizer.ids("[D] ", add_special_tokens=True)
+    return len(head) + prepared.tokens.tokens
+
+
+def _media_patch_count(image: Any) -> int:
+    """The declared kept count of a media document under the allowlist: the media block's patch run (the
+    block's counted tokens minus the vision wrapper), from the product's own preparation and media count."""
+    from rcp_ndcg.data.prepare import prepare_request
+    from rcp_ndcg.data.resolution import VISION_WRAPPER_TOKENS, ImagePolicy
+
+    policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+    prepared = prepare_request([Content.from_image(image.as_uri())], policy, None)
+    return prepared.tokens.tokens - VISION_WRAPPER_TOKENS
+
+
+class TestMediaKeepIds:
+    """``media_keep_token_ids``: the media allowlist the served plugin applies engine-side (topk-embed-v1's
+    image-patch token, the only positions its reference keeps for an image document). The wire carries only
+    the allowlist's positions, the client checks the reply's declared kept count (the media block's patch
+    run) and no ``skip_unapplied`` record is written -- the engine applied the allowlist."""
+
+    @staticmethod
+    def _client(sender: Any, **config: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://engine:8000/v1",
+            "model": "topk-embed",
+            "dim": 2,
+            "normalize": False,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+            "document_skip_token_ids": (2,),  # the text rule stays the client's own
+            "media_keep_token_ids": (248056,),  # the image-patch token
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 4,
+        }
+        settings.update(config)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_a_media_reply_of_the_patch_run_is_accepted(self, tmp_path: Any) -> None:
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        expected = _media_patch_count(image)
+        sender = RecordingSender(_pooling_reply(rows=expected, usage=expected))
+        client = self._client(sender)
+        embeddings = asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, expected]
+        assert [record.mechanisms for record in client.processing if record.changed] == [], (
+            "the engine applied the allowlist: no skip_unapplied"
+        )
+
+    def test_a_media_reply_off_the_allowlist_count_is_refused(self, tmp_path: Any) -> None:
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        expected = _media_patch_count(image)
+        sender = RecordingSender(_pooling_reply(rows=expected + 1, usage=expected + 1))
+        client = self._client(sender)
+        with pytest.raises(ProviderError, match=rf"declared keep-rule leaves {expected} kept"):
+            asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+
+    def test_two_images_count_one_patch_run_each(self, tmp_path: Any) -> None:
+        """The allowlist keeps each image's patches: with several media items in one content the declared
+        count is their sum (each wrapper is subtracted once per item), never the whole block minus one."""
+        from rcp_ndcg_core.content import ImagePart, MediaRef
+
+        first = tmp_path / "one.png"
+        first.write_bytes(_png_bytes())
+        second = tmp_path / "two.png"
+        second.write_bytes(_png_bytes())
+        one = _media_patch_count(first)
+        two = _media_patch_count(second)
+        expected = one + two
+        content = Content.from_parts(
+            [ImagePart(ref=MediaRef(uri=first.as_uri())), ImagePart(ref=MediaRef(uri=second.as_uri()))]
+        )
+        sender = RecordingSender(_pooling_reply(rows=expected, usage=expected))
+        client = self._client(sender, max_images=2)
+        embeddings = asyncio.run(client.aencode([content], EncodeRole.DOCUMENT))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, expected]
+
+    def test_a_text_item_carrying_an_allowlist_id_is_refused_before_sending(self) -> None:
+        """The allowlist is its own gate engine-side: a text render carrying one of its ids would be treated
+        as a media document and lose every other vector, so the client refuses the collision by name -- the
+        word-level fixture's id 2 ('a') stands in for the image-patch token."""
+        from rcp_ndcg.errors import CapabilityError
+
+        sender = RecordingSender(_pooling_reply(rows=1, usage=1))
+        client = self._client(sender, media_keep_token_ids=(2,))
+        with pytest.raises(CapabilityError, match="media allowlist"):
+            asyncio.run(client.aencode([Content.from_text("the a of to")], EncodeRole.DOCUMENT))
+        assert sender.requests == [], "refused before anything is sent"
+
+    def test_a_mixed_batch_under_the_allowlist_alone_is_refused(self, tmp_path: Any) -> None:
+        """With the allowlist alone (no text skip rule), a batch mixing a text and a media document is still
+        refused: one media item routes the whole batch through the messages wire, where the text item's
+        declared count cannot be aligned."""
+        from rcp_ndcg.errors import CapabilityError
+
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        sender = RecordingSender(_pooling_reply(rows=1, usage=1))
+        client = self._client(sender, document_skip_token_ids=())
+        with pytest.raises(CapabilityError, match="mixes text-only"):
+            asyncio.run(
+                client.aencode([Content.from_text("plain"), Content.from_image(image.as_uri())], EncodeRole.DOCUMENT)
+            )
+
+    def test_the_allowlist_is_refused_beside_a_per_chunk_model(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="per_chunk"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                media_keep_token_ids=(248056,),
+                outputs="per_chunk",
+            )
+
+
 class TestMediaHeadAsSystem:
     """``media_head_as_system``: a media document sends the shape's leading fixed template head as a
     leading ``system`` message -- the card's sentence-transformers render for a pass-through engine chat
@@ -512,7 +786,9 @@ class TestMediaHeadAsSystem:
 
         messages = sender.sent[0][0]["messages"]
         assert [message["role"] for message in messages] == ["system", "user"]
-        assert messages[0]["content"] == "[D] ", "the trained head arrives as a system message"
+        assert messages[0]["content"] == [{"type": "text", "text": "[D] "}], (
+            "the trained head arrives as a system message in the structured form every chat template reads"
+        )
         assert all(part["type"] != "text" for part in messages[1]["content"]), "the user turn keeps only the media"
 
     def test_the_head_is_not_sent_without_the_declaration(self, tmp_path: Any) -> None:
@@ -555,7 +831,7 @@ class TestMediaHeadAsSystem:
         assert [message["role"] for message in text_call["messages"]] == ["user"]
         assert text_call["messages"][0]["content"] == [{"type": "text", "text": "[D] plain"}]
         assert [message["role"] for message in media_call["messages"]] == ["system", "user"]
-        assert media_call["messages"][0]["content"] == "[D] "
+        assert media_call["messages"][0]["content"] == [{"type": "text", "text": "[D] "}]
 
     def test_a_config_without_a_template_is_refused(self, tokenizer_json: str) -> None:
         with pytest.raises(ConfigError, match="no template"):
