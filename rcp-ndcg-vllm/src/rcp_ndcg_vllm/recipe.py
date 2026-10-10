@@ -83,6 +83,8 @@ import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from .errors import RecipeError
+from .models import ARCHITECTURE_MODULES
+from .patches import PATCH_NAMES
 
 __all__ = [
     "FIELD_ROLES",
@@ -97,6 +99,7 @@ __all__ = [
     "load_family",
     "load_recipe",
     "parse_deployment_overrides",
+    "plugin_distribution_name",
     "recipe_digest",
     "resolve_recipe",
     "serve_argv",
@@ -128,12 +131,14 @@ against this tuple, because the engine rejects unknown keys (r-vllm-drift risk 2
 _ID_PATTERN = r"^[a-z0-9][a-z0-9.-]*$"
 _REVISION_PATTERN = r"^[0-9a-f]{40}$"
 
-Role = Literal["embed", "multi_vector", "rerank"]
+Role = Literal["embed", "multi_vector", "rerank", "judge"]
 ScoreScale = Literal["probability", "logit", "cosine"]
 
 #: The per-variant ``serve`` fields a family may override (decision 34: only per-size facts): the engine's
 #: context limit, the score-head construction (a family whose sizes build their head from different base
-#: architectures — ctxl's mistral-based 6b beside its qwen3-based 1b/2b), and the per-size media pins and caps.
+#: architectures — ctxl's mistral-based 6b beside its qwen3-based 1b/2b), the per-size media pins and caps,
+#: and ``extra_args`` (one checkpoint in bf16 beside its NVFP4 release: the quantisation and KV-cache flags
+#: are per-size facts, carried as verbatim engine flags).
 #: Anything else that a size would need differently is a modelling error the loader refuses: the family shares
 #: the block, and a size that genuinely behaves differently is its own family.
 PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
@@ -141,10 +146,12 @@ PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
     "hf_overrides",
     "mm_processor_kwargs",
     "limit_mm_per_prompt",
+    "extra_args",
 )
 
 #: The per-variant ``client`` fields a family may override: the max token lengths, the dimension knobs, the
-#: paper's per-model batch (a runtime field), and the per-size media caps. Content shapes (template,
+#: paper's per-model batch (a content field: request packing can move a bf16 batch's numbers), and the
+#: per-size media caps. Content shapes (template,
 #: instruction mode, overflow rule, normalisation, media policies) are shared: a size that cuts differently
 #: is not the same model family.
 PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
@@ -162,8 +169,11 @@ PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
     "max_videos",
 )
 
-_ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rerank": "rerank"}
-"""The wire each role speaks (the product refuses a config whose role and wire disagree)."""
+_ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rerank": "rerank", "judge": "chat"}
+"""The wire each role speaks (the product refuses a config whose role and wire disagree).
+
+A judge recipe declares ``client.api: chat`` (decision 15), the recipe-facing name of the judge role's
+``openai_chat`` wire (:data:`rcp_ndcg.inference.adapters.base._ALIASES`)."""
 
 _ENGINE_SPECIFIC_CLIENT_KEYS = frozenset(
     {
@@ -194,6 +204,17 @@ The product's endpoint config has no field of any of these names (its media ``ma
 and its ``image_policy`` are the client's own gate and budget), so a key from this set in a client block is
 always a misplaced engine setting -- silently ignored by the product's endpoint model, worse mis-read by
 an engine of another family."""
+
+
+def plugin_distribution_name(spec: str) -> str:
+    """The distribution name a pip spec installs (``rcp-ndcg-vllm==0.0.1`` -> ``rcp-ndcg-vllm``).
+
+    One home for the rule the recipe loader, the ``rcp-ndcg-vllm serve`` console and the harness's
+    behaviour fingerprint all need: the plugin spec's extras and exact-version pins are not part of the
+    distribution name.  ``spec`` is the ``serve.plugin`` value; the returned name is what
+    :func:`importlib.metadata.distribution` takes and what a recipe compares against the shipped wheel.
+    """
+    return spec.split("==", 1)[0].split("[", 1)[0].strip()
 
 
 def _no_extra() -> dict[str, Any]:
@@ -251,11 +272,15 @@ class Resources(BaseModel):
 class ServeConfig(BaseModel):
     """Everything rendered into the ``vllm serve`` argv — nothing implicit.
 
-    See :func:`serve_argv` for the exact argv.  ``plugin`` and ``io_processor_plugin`` never reach the argv: they
-    name packages that must be installed into the image before the engine starts (a ``vllm.general_plugins``
-    package and the checkpoint's IO-processor plugin, respectively; the node's bootstrap collects a wave's
-    ``serve.plugin`` wheels with ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``,
-    under the freeze-diff guard).
+    See :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``
+    and ``patches`` never reach the argv: the first two name packages that must be installed into the image
+    before the engine starts (a ``vllm.general_plugins`` package and the checkpoint's IO-processor plugin,
+    respectively; the node's bootstrap collects a wave's ``serve.plugin`` wheels with
+    ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff
+    guard); ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's
+    engine runs (the behaviour fingerprint hashes exactly those modules), and ``patches`` names the engine
+    patches this recipe opts into (``serve`` renders them into the engine's environment, and the fingerprint
+    hashes every named module).
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -279,6 +304,17 @@ class ServeConfig(BaseModel):
     dtype: Literal["auto", "float16", "bfloat16", "float32", "float8", "half"] = Field(description="vLLM --dtype")
     plugin: str | None = Field(
         default=None, description="pip spec of a vllm.general_plugins package, installed before the engine starts"
+    )
+    plugin_architectures: tuple[str, ...] = Field(
+        default=(),
+        description="the plugin's architectures this recipe's engine registers (rcp_ndcg_vllm.models"
+        ".ARCHITECTURE_MODULES); required exactly when serve.plugin is set, and keyed by the behaviour "
+        "fingerprint",
+    )
+    patches: tuple[str, ...] = Field(
+        default=(),
+        description="engine-side patch names this recipe opts into (rcp_ndcg_vllm.patches.PATCH_NAMES); serve "
+        "renders them into RCP_NDCG_VLLM_PATCHES and the fingerprint hashes every named module",
     )
     io_processor_plugin: str | None = Field(
         default=None,
@@ -313,6 +349,45 @@ class ServeConfig(BaseModel):
                 f"(known: {', '.join(PINNED_POOLER_CONFIG_FIELDS)}); the engine rejects unknown keys"
             )
         return value
+
+    @model_validator(mode="after")
+    def _plugin_code_declaration(self) -> ServeConfig:
+        """A plugin recipe names the architectures its engine runs; patches need the plugin that applies them.
+
+        The behaviour fingerprint (``rcp-fp/4``) keys the plugin's code: a ``serve.plugin`` without its
+        architectures would key the wheel by name only -- the hole R1 closes -- and a patch name the shipped
+        package does not carry would be inert. Both are refused by name, never silently dropped.
+        """
+        if self.plugin is None and self.plugin_architectures:
+            raise ValueError(
+                f"plugin_architectures {list(self.plugin_architectures)} is declared, but serve.plugin is null: "
+                "there is no plugin whose architecture they name"
+            )
+        if self.plugin is not None and not self.plugin_architectures:
+            raise ValueError(
+                f"serve.plugin {self.plugin!r} declares a plugin, but plugin_architectures is empty: name the "
+                "architectures the plugin registers for this recipe, so the behaviour fingerprint can key "
+                "their modules"
+            )
+        unknown_architectures = sorted(set(self.plugin_architectures) - set(ARCHITECTURE_MODULES))
+        shipped_plugin = self.plugin is not None and plugin_distribution_name(self.plugin) == "rcp-ndcg-vllm"
+        if shipped_plugin and unknown_architectures:
+            raise ValueError(
+                f"plugin_architectures names {unknown_architectures}, which rcp_ndcg_vllm.models."
+                f"ARCHITECTURE_MODULES does not register (known: {', '.join(sorted(ARCHITECTURE_MODULES))})"
+            )
+        if self.patches and self.plugin is None:
+            raise ValueError(
+                f"patches {list(self.patches)} is declared, but serve.plugin is null: the patches are applied "
+                "by the plugin's entry point, so without it they would be inert"
+            )
+        unknown_patches = sorted(set(self.patches) - set(PATCH_NAMES))
+        if unknown_patches:
+            raise ValueError(
+                f"patches names {unknown_patches}, which rcp_ndcg_vllm.patches.PATCH_NAMES does not ship "
+                f"(known: {', '.join(PATCH_NAMES)})"
+            )
+        return self
 
 
 class ReferenceSpec(BaseModel):
@@ -492,8 +567,10 @@ class Recipe(BaseModel):
             package and rcp-ndcg (decision 18).
         model: The Hugging Face repo id to serve.
         revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.
-        role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token) or
-            ``rerank`` (query-document scores).
+        role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token),
+            ``rerank`` (query-document scores) or ``judge`` (the chat-completions judging stages; its client
+            block is rcp-ndcg's judge config, its ``serve`` block carries the reasoning parser, and it has no
+            ``reference`` -- decision 15).
         input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.
         scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole
             candidate set in one prompt; the product endpoint's ``listwise`` flag).
@@ -504,7 +581,9 @@ class Recipe(BaseModel):
         client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys
             are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the
             product's endpoint class when it resolves the recipe.
-        reference: The subprocess reference the harness compares against.
+        reference: The subprocess reference the harness compares against; **``None`` for ``role: judge``**
+            (decision 15: a judge recipe has no reference -- its conformance is the judge probe and the T4
+            scenarios), and required for every other role.
         gates: Overrides of the stage-2 gate defaults.
         status: Where the recipe stands in the verification workflow.
         sources: URLs and ``path:line`` references the recipe rests on.
@@ -533,7 +612,7 @@ class Recipe(BaseModel):
     resources: Resources
     serve: ServeConfig
     client: dict[str, Any]
-    reference: ReferenceSpec
+    reference: ReferenceSpec | None = None
     gates: Gates = Field(default_factory=Gates)
     status: StatusSpec = Field(default_factory=StatusSpec)
     sources: list[str] = Field(default_factory=list)
@@ -585,13 +664,25 @@ class Recipe(BaseModel):
 
     @model_validator(mode="after")
     def _recipe_rules(self) -> Recipe:
-        """The rules readable without the product: the role/wire matrix and the budget arithmetic. The product's
-        own endpoint validations run when ``rcp-ndcg`` reads the client block."""
+        """The rules readable without the product: the role/wire matrix, the reference rule and the budget
+        arithmetic. The product's own endpoint validations run when ``rcp-ndcg`` reads the client block."""
         rerank = self.role == "rerank"
+        judge = self.role == "judge"
         if rerank and self.scoring is None:
             raise ValueError("a rerank recipe must set scoring: pointwise or listwise")
         if not rerank and self.scoring is not None:
             raise ValueError(f"scoring is only valid for role=rerank, not role={self.role}")
+        if judge and self.reference is not None:
+            raise ValueError(
+                "a judge recipe has no reference (decision 15): the equivalence harness compares a served "
+                "model against a reference implementation, and a judge has none -- its conformance is the judge "
+                "probe (`rcp-ndcg judge check`) and the T4 scenarios. Drop the reference block"
+            )
+        if not judge and self.reference is None:
+            raise ValueError(
+                f"a role={self.role} recipe needs a reference: the equivalence harness compares the served "
+                "model against it (only role=judge has none, decision 15)"
+            )
         client = self.client
         misplaced = sorted(set(client) & _ENGINE_SPECIFIC_CLIENT_KEYS)
         if misplaced:
@@ -611,6 +702,16 @@ class Recipe(BaseModel):
                 f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint, not a reranker; "
                 "a rerank recipe declares the checkpoint's scorer through engine.hf_overrides instead"
             )
+        if judge and self.serve.convert is not None:
+            raise ValueError(
+                f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint; a judge speaks "
+                "the chat completions API through the generate runner"
+            )
+        if judge and self.serve.runner != "generate":
+            raise ValueError(
+                f"a judge recipe serves the chat completions API, which needs runner: generate, got "
+                f"runner: {self.serve.runner}"
+            )
         if rerank and self.scoring == "listwise" and not client.get("listwise"):
             raise ValueError("scoring: listwise must set the endpoint's listwise flag")
         if rerank and self.scoring == "pointwise" and client.get("listwise"):
@@ -622,6 +723,12 @@ class Recipe(BaseModel):
             raise ValueError(
                 f"client.max_tokens ({max_tokens}) must not exceed engine.max_model_len "
                 f"({self.serve.max_model_len}): the engine would 400 the rendered prompt"
+            )
+        context_tokens = client.get("context_tokens")
+        if isinstance(context_tokens, int) and context_tokens > self.serve.max_model_len:
+            raise ValueError(
+                f"client.context_tokens ({context_tokens}) must not exceed engine.max_model_len "
+                f"({self.serve.max_model_len}): the engine would 400 a window the client sized as admissible"
             )
         if self.role in ("embed", "multi_vector") and client.get("template") is not None:
             # An embed or multi-vector recipe's client CAN fill an instruction span (its encode takes the task
@@ -1017,9 +1124,13 @@ def _recipe_field(recipe: Recipe, path: str) -> Any:
 
 
 def _client_budgets(recipe: Recipe) -> dict[str, int]:
-    """The token budgets the recipe's client block declares, by field name (the largest is the engine's floor)."""
+    """The token budgets the recipe's client block declares, by field name (the largest is the engine's floor).
+
+    The embed/rerank roles declare per-request token caps; the judge declares ``context_tokens`` (the prompt
+    and completion tokens one request may hold), which the engine's ``--max-model-len`` must admit whole.
+    """
     budgets: dict[str, int] = {}
-    for name in ("max_tokens", "query_max_tokens", "document_max_tokens"):
+    for name in ("max_tokens", "query_max_tokens", "document_max_tokens", "context_tokens"):
         value = recipe.client.get(name)
         if isinstance(value, int) and not isinstance(value, bool):
             budgets[name] = value
@@ -1097,6 +1208,8 @@ class Variant(BaseModel):
         notes: The variant's own notes, appended to the family's.
         sources: The variant's own citations (its model card at ``revision``), appended to the family's.
         status: The variant's verification status; the family's until a variant declares its own.
+        licence: The variant's own SPDX licence, when the checkpoints of one family are licensed differently
+            (the NVFP4 and FP8 releases of one model); the family's until a variant declares its own.
         overrides: The whitelisted per-size overrides (see :class:`VariantOverrides`).
     """
 
@@ -1108,6 +1221,7 @@ class Variant(BaseModel):
     notes: str = ""
     sources: list[str] = Field(default_factory=list)
     status: StatusSpec | None = None
+    licence: str | None = Field(default=None, min_length=1, description="the variant's own SPDX licence")
     overrides: VariantOverrides = Field(default_factory=VariantOverrides)
 
     @field_validator("sources")
@@ -1132,14 +1246,16 @@ class Family(BaseModel):
         id: The family's identifier, equal to the directory name; never a served id.
         schema_version: The family file format's version (the recipe contract's version, decision 18:
             every resolved recipe carries the family's value).
-        role, input, scoring, licence: Shared across the family (the ``Recipe`` schema's meaning).
+        licence: Shared across the family (the ``Recipe`` schema's meaning); a variant's ``licence``
+            replaces it when the family's checkpoints are licensed differently.
         engine: The engine image and the startup timeout.
         resources: The default GPUs the engine occupies; a variant's ``overrides.resources`` replaces it.
         serve: The shared ``vllm serve`` block; a variant's ``overrides.serve`` replaces whitelisted keys.
         client: The shared product endpoint config, plain data; ``model``/``revision``/``tokenizer`` are
             injected per variant and refused here. A variant's ``overrides.client`` replaces whitelisted keys.
         reference: The ONE subprocess reference the family's variants share (the harness passes the
-            resolved recipe to it through ``--recipe``).
+            resolved recipe to it through ``--recipe``); ``None`` for a judge family (a judge recipe has
+            no reference, decision 15).
         gates: Shared stage-2 gate overrides.
         status: The default status; a variant's ``status`` replaces it.
         sources: The shared citations (engine behaviour, the paper), prepended to each variant's.
@@ -1162,7 +1278,7 @@ class Family(BaseModel):
     resources: Resources
     serve: ServeConfig
     client: dict[str, Any]
-    reference: ReferenceSpec
+    reference: ReferenceSpec | None = None
     gates: Gates = Field(default_factory=Gates)
     status: StatusSpec = Field(default_factory=StatusSpec)
     sources: list[str] = Field(default_factory=list)
@@ -1343,12 +1459,12 @@ def _expand_variant(family: Family, variant: Variant, directory: Path, yaml_path
         "role": family.role,
         "input": family.input,
         "scoring": family.scoring,
-        "licence": family.licence,
+        "licence": variant.licence or family.licence,
         "engine": family.engine.model_dump(mode="json"),
         "resources": (variant.overrides.resources or family.resources).model_dump(mode="json"),
         "serve": serve,
         "client": client,
-        "reference": family.reference.model_dump(mode="json"),
+        "reference": family.reference.model_dump(mode="json") if family.reference is not None else None,
         "gates": family.gates.model_dump(mode="json"),
         "status": status,
         "sources": [*family.sources, *variant.sources],
@@ -1515,6 +1631,8 @@ def _check_referenced_files(recipe: Recipe, directory: Path) -> None:
             f"{directory / 'family.yaml'}: serve.chat_template {recipe.serve.chat_template!r} does not exist in "
             f"{directory}"
         )
+    if recipe.reference is None:  # a judge recipe: no reference, nothing to check (decision 15)
+        return
     needs_reference = recipe.reference.kind != "stored_scores"
     if needs_reference and not (directory / recipe.reference.entry).is_file():
         raise RecipeError(
@@ -1538,11 +1656,13 @@ def serve_argv(
     returns them (an override wins over the recipe's declared value and over ``port``).  Output:
     ``["vllm", "serve", <model>, "--revision", ..., ...]`` -- the fixed head, then one flag per ``serve`` field
     in a deterministic order (JSON objects with ``json.dumps(sort_keys=True)``), then ``extra_args`` verbatim.
-    ``serve.plugin`` and ``serve.io_processor_plugin`` render nothing: they name pip packages installed before
-    the engine starts.  Raises :class:`RecipeError` when the recipe sets ``serve.chat_template`` but was not
-    loaded from a directory (the template's absolute path is needed), when a deployment value is not a
-    DEPLOYMENT field or does not fit it, when no port is resolvable, or when ``serve.max_model_len`` falls below
-    the client's largest token budget.
+    ``serve.plugin``, ``serve.io_processor_plugin``, ``serve.plugin_architectures`` and ``serve.patches`` render
+    nothing: the first two name pip packages installed before the engine starts, the third declares which
+    plugin architectures the fingerprint keys, and the last is rendered into the engine's environment by the
+    ``rcp-ndcg-vllm serve`` console.  Raises :class:`RecipeError` when the recipe sets
+    ``serve.chat_template`` but was not loaded from a directory (the template's absolute path is needed), when
+    a deployment value is not a DEPLOYMENT field or does not fit it, when no port is resolvable, or when
+    ``serve.max_model_len`` falls below the client's largest token budget.
     """
     values = _deployment_values(recipe, port=port, deployment=deployment)
     argv = [

@@ -28,26 +28,29 @@ def assert_recipe_contract(
     *,
     serve: Mapping[str, Any],
     client: Mapping[str, Any],
-    reference: Mapping[str, Any],
+    reference: Mapping[str, Any] | None,
     top: Mapping[str, Any] | None = None,
 ) -> None:
     """Pin every field of the recipe's resolved ``serve``, ``client`` and ``reference`` blocks.
 
     Inputs: the loaded recipe and, per block, its full expected mapping (plus optional top-level
-    recipe fields). Outputs: none. Raises ``AssertionError`` naming the exact field path of the
-    first difference -- a value drift, a field the mapping never pinned, or a key the block does
-    not carry.
+    recipe fields). A judge recipe (decision 15) passes ``reference=None``: the block must be absent.
+    Outputs: none. Raises ``AssertionError`` naming the exact field path of the first difference -- a
+    value drift, a field the mapping never pinned, or a key the block does not carry.
 
     Args:
         recipe: the loaded ``Recipe`` (``load_recipe``).
         serve: the full expected ``serve`` block.
         client: the full expected ``client`` block (minus the runtime ``base_url``).
-        reference: the full expected ``reference`` block.
+        reference: the full expected ``reference`` block, or ``None`` for a judge recipe.
         top: optional top-level recipe fields to pin (``licence``, ``id``, ``role``, ...).
     """
     _assert_block("serve", recipe.serve, serve, skips=frozenset())
     _assert_block("client", recipe.client, client, skips=_CLIENT_RUNTIME_FIELDS)
-    _assert_block("reference", recipe.reference, reference, skips=frozenset())
+    if reference is None:
+        assert recipe.reference is None, "this recipe carries a reference block the test expects none of"
+    else:
+        _assert_block("reference", recipe.reference, reference, skips=frozenset())
     for key, value in (top or {}).items():
         actual = getattr(recipe, key, _MISSING)
         if actual is _MISSING:

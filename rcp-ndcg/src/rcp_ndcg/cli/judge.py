@@ -26,12 +26,16 @@ from pydantic import BaseModel, Field
 from rcp_ndcg.cli._args import DatasetInput
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import MissingInputError, UsageError
+from rcp_ndcg.judging.check import JudgeCheckReport
 from rcp_ndcg.judging.client import JudgeConfig, Usage
 from rcp_ndcg.judging.cost import CostEstimate
 from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S, mirrored, restore
 from rcp_ndcg.storage import local_dir
 
-_JUDGE_HELP = "fake | a judge config YAML | a shipped judge config's name (e.g. gpt_oss_120b)."
+_JUDGE_HELP = (
+    "fake | a judge recipe id (gpt-oss-120b) or recipe:<id-or-path> | a judge config YAML | "
+    "a shipped vendor profile (gpt5_hosted)."
+)
 _SET_HELP = "Override judge.<field>, schedule.<field> or preprocessing.<field>: KEY=VALUE, repeatable."
 
 
@@ -60,8 +64,8 @@ class JudgeSource(BaseModel):
 
     def sections(self) -> dict[str, Any]:
         """One mapping per section of :attr:`SECTIONS`, with ``--set`` applied."""
-        from rcp_ndcg.judging.judges import judge_config_path
-        from rcp_ndcg.support.config import apply_overrides, load_config
+        from rcp_ndcg.judging.judges import judge_config_data
+        from rcp_ndcg.support.config import apply_overrides
 
         if self.judge_url is not None:
             if self.judge is not None:
@@ -85,7 +89,7 @@ class JudgeSource(BaseModel):
             if self.judge_model is not None:  # two offline judges pool only under two names
                 judge["model"] = self.judge_model
         else:
-            judge = load_config(judge_config_path(self.judge))
+            judge = judge_config_data(self.judge)
             if self.judge_model is not None:
                 judge["model"] = self.judge_model
         unknown = [o for o in self.set if o.split("=", 1)[0].split(".", 1)[0] not in self.SECTIONS]
@@ -451,16 +455,77 @@ def judge_reparse(request: JudgeReparseRequest) -> ReparseReport:
     )
 
 
-@click.group(name="judge", help="Judge candidate pools with an LLM: the tournament and the rubric; re-parse a store.")
+# ----------------------------------------------------------------------------------------------------------------
+# check
+# ----------------------------------------------------------------------------------------------------------------
+
+
+class JudgeCheckRequest(BaseModel):
+    """Which judge to probe: the same source flags the judging commands take, and nothing else."""
+
+    judge: str | None = Field(default=None, description=_JUDGE_HELP)
+    judge_url: str | None = Field(default=None, description="An OpenAI-compatible base URL (.../v1), ad hoc.")
+    judge_model: str | None = Field(
+        default=None, description="The served model name (with --judge-url, or to override)."
+    )
+    set: list[str] = Field(
+        default_factory=list,
+        description="Override judge.<field>: KEY=VALUE, repeatable (e.g. judge.base_url=http://.../v1).",
+    )
+
+    def config(self) -> JudgeConfig:
+        """The :class:`~rcp_ndcg.judging.JudgeConfig` to probe (``--set judge.*`` applied)."""
+        sections = [override.split("=", 1)[0].split(".", 1)[0] for override in self.set]
+        other = sorted({section for section in sections if section != "judge"})
+        if other:
+            raise UsageError(
+                f"--set {other[0]}.\u2026: judge check probes an endpoint; only judge.<field> overrides apply",
+                hint="override a field of the judge config: --set judge.base_url=http://127.0.0.1:8000/v1",
+            )
+        source = JudgeSource(judge=self.judge, judge_url=self.judge_url, judge_model=self.judge_model, set=self.set)
+        return source.judge_config(source.sections())
+
+
+def _check_text(report: JudgeCheckReport) -> str:
+    lines = [f"judge check: {report.model}" + (f" ({report.recipe})" if report.recipe else "")]
+    for check in report.checks:
+        verdict = "ok" if check.ok else "FAILED"
+        lines.append(
+            f"  {verdict:<6} {check.stage:<10} schema={'sent' if check.schema_sent else 'not sent'}, "
+            f"parsed={'yes' if check.parsed else 'no'}, reasoning={check.reasoning_channel}"
+        )
+        if check.detail:
+            lines.append(f"         {check.detail}")
+    lines.append(
+        f"  {report.usage.requests} requests, {report.usage.input_tokens:,} input + "
+        f"{report.usage.output_tokens:,} output tokens"
+    )
+    lines.append("  ok" if report.ok else "  NOT ok: fix the endpoint before a long run")
+    return "\n".join(lines)
+
+
+@command("judge check", request=JudgeCheckRequest, result=JudgeCheckReport, text=_check_text)
+def judge_check(request: JudgeCheckRequest) -> JudgeCheckReport:
+    """Probe a judge endpoint with the shipped prompts: schema accepted, answer parses, reasoning separated."""
+    from rcp_ndcg.judging.check import check_judge
+
+    return check_judge(request.config())
+
+
+@click.group(
+    name="judge",
+    help="Judge candidate pools with an LLM: the tournament and the rubric; check an endpoint; re-parse a store.",
+)
 def judge_group() -> None:
     """``rcp-ndcg judge``."""
 
 
-for _command in (judge_tournament, judge_rubric, judge_reparse):
+for _command in (judge_tournament, judge_rubric, judge_check, judge_reparse):
     judge_group.add_command(_command)
 
 
 __all__ = [
+    "JudgeCheckRequest",
     "JudgeReparseRequest",
     "JudgeReport",
     "JudgeRequest",

@@ -49,6 +49,8 @@ serve:
                                  # custom_text_proj. and marking the bias-less head's zero bias loaded;
                                  # the 6 full-attention layers run non-causal because vLLM reads the
                                  # checkpoint's text_config is_causal: false itself, qwen3_next.py:335-343)
+  plugin_architectures: [TopkEmbedModel]  # this recipe's architecture; the behaviour fingerprint keys its modules
+  patches: []  # no engine patch this recipe opts into
   io_processor_plugin: null      # the stock token_embed IO processor suffices; the model class is the
                                  # plugin seam here
   mm_processor_kwargs: {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}}

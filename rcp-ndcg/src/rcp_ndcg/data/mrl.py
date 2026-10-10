@@ -322,10 +322,9 @@ class MrlHead:
         """Apply the selected dimension ``k`` to full-width ``vectors`` (one row per vector).
 
         Truncation cuts and renormalises (:func:`mrl_cut`); projection applies the learned chain in
-        float32 and renormalises. A ``k`` equal to the observed width is the **identity selection**
-        (owner decision, 2026-10-09): the vectors are returned unchanged, no head applied and no
-        renormalisation, so the card's full-width member stays selectable. The declared ``k`` is checked
-        against the set and the observed width.
+        float32 and renormalises. A ``k`` equal to the observed width is the **identity selection**: the
+        vectors are returned unchanged, no head applied and no renormalisation, so the card's full-width
+        member stays selectable. The declared ``k`` is checked against the set and the observed width.
 
         Args:
             vectors: The full-width vectors, ``(rows, full_width)``, any float dtype.

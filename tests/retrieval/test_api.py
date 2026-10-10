@@ -237,14 +237,42 @@ def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
 
 
 def test_where_an_encoder_runs_is_not_part_of_what_an_index_is() -> None:
-    """The endpoint's timeouts, retries and batch size are runtime; the model, revision and prompts are content."""
+    """The endpoint's timeouts and retries are runtime; the model, revision, prompts and request packing
+    are content (a bf16 batch's numbers can depend on its composition)."""
     first = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "batch_size": 8})
-    second = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "timeout_s": 5, "max_retries": 0})
-    other_model = _ENCODER.validate_python({"api": "cohere", "model": "embed-v3.0"})
+    second = _ENCODER.validate_python(
+        {"api": "cohere", "model": "embed-v4.0", "batch_size": 8, "timeout_s": 5, "max_retries": 0}
+    )
+    other_model = _ENCODER.validate_python({"api": "cohere", "model": "embed-v3.0", "batch_size": 8})
+    packed = _ENCODER.validate_python({"api": "cohere", "model": "embed-v4.0", "batch_size": 16})
 
     identity = retrieval_api._identity
     assert identity(DenseConfig(encoder=first), ["d"], []) == identity(DenseConfig(encoder=second), ["d"], [])
     assert identity(DenseConfig(encoder=first), ["d"], []) != identity(DenseConfig(encoder=other_model), ["d"], [])
+    assert identity(DenseConfig(encoder=first), ["d"], []) != identity(DenseConfig(encoder=packed), ["d"], []), (
+        "request packing is content: two batch sizes never share an index"
+    )
+
+
+def test_a_cached_index_is_not_reused_across_media_caps(dataset, tmp_path: Path) -> None:
+    """A media cap decides how much one request carries: an index built with one ``max_images`` is rebuilt
+    when the next run declares another (the identity carries it, so the cache check refuses to reuse it)."""
+    one = DenseConfig(
+        encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", max_images=1, **_SERVED_BUDGET)
+    )
+    two = DenseConfig(
+        encoder=ServedEmbedding(base_url="fake://seed/7?dim=8", model="stub", max_images=2, **_SERVED_BUDGET)
+    )
+    assert retrieval_api._identity(one, ["d"], []) != retrieval_api._identity(two, ["d"], [])
+
+    out = tmp_path / "idx"
+    first = index(dataset, one, out=out)
+    first_rankings = search(first, dataset, depth=3)
+    stamp = (out / "index.json").stat().st_mtime_ns
+    second = retrieve(dataset, two, depth=3, out=out)
+    assert (out / "index.json").stat().st_mtime_ns != stamp, "the other media cap must rebuild the index"
+    assert first_rankings.for_query("q1") == second.for_query("q1")  # same fake engine, same corpus
+    assert load_index(out).identity != first.identity
 
 
 def test_a_listwise_reranker_takes_no_batch_size_and_a_hosted_one_no_engine_fields() -> None:

@@ -48,6 +48,7 @@ __all__ = [
     "expand_role_recipe",
     "recipe_client_data",
     "recipe_role",
+    "recipe_source",
     "shorthand_config",
 ]
 
@@ -157,6 +158,23 @@ def _load(recipe_id: str):
             "(decision 18): upgrade rcp-ndcg, or ship recipes of a schema version it reads",
         )
     return loaded
+
+
+def recipe_source(value: str) -> str | None:
+    """The recipe ``value`` names, or ``None`` when it names no recipe.
+
+    Inputs: a string a role config or CLI option was given.  Outputs: ``value`` itself when it is a shipped
+    recipe variant id, ``recipe:<id-or-path>``'s payload (stripped) when it carries the ``recipe:`` form, and
+    ``None`` when it names no recipe -- a shipped config's name, a file path, ``fake``, or an empty
+    ``recipe:``.  With rcp-ndcg-vllm absent, no id can name a recipe, so the answer is ``None`` (the
+    resolver's own install-line refusal stays where a recipe is actually read).
+    """
+    if value.startswith("recipe:"):
+        return value.split(":", 1)[1].strip() or None
+    try:
+        return value if value in available_recipe_ids() else None
+    except ConfigError:
+        return None
 
 
 def recipe_role(recipe_id: str) -> str:

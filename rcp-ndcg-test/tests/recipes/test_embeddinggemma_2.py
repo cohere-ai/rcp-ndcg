@@ -53,6 +53,8 @@ SERVE = {
     "max_model_len": 8192,
     "dtype": "bfloat16",
     "plugin": None,
+    "patches": [],
+    "plugin_architectures": [],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
     "limit_mm_per_prompt": {"image": 1, "video": 1},

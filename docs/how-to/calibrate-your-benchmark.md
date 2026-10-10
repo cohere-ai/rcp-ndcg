@@ -7,8 +7,8 @@ the pools. Judging takes many calls. Every step that calls the judge is therefor
 ## 1. Describe the judge
 
 A judge config names an OpenAI-compatible endpoint and the model; everything else has a default
-([serving](../concepts/judges.md)). The shipped ones load by name (`--judge gpt_oss_120b`); your own is a YAML
-file:
+([serving](../concepts/judges.md)). The shipped judges are recipes (`--judge recipe:gpt-oss-120b`, or the bare
+recipe id); your own is a YAML file:
 
 ```yaml
 # my_judge.yaml

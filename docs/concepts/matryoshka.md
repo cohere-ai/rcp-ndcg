@@ -87,7 +87,7 @@ vector bit-identical to a direct run at the same `k`. Every row the head changed
 `ProcessingRecord` with the mechanism `mrl_cut` and the kind, the selected `k` and the full width -- a run
 with `mrl_dim` is recorded, never silently cut.
 
-A `k` equal to the checkpoint's own width is the **identity selection** (owner decision, 2026-10-09): no
+A `k` equal to the checkpoint's own width is the **identity selection**: no
 head is applied and no `mrl_cut` record is written, so a card's full-width member stays selectable (a
 truncation table whose last member is the width, e.g. topk's 2048, or a range whose ceiling is the
 width). The selection still enters the config's identity -- it is a declared CONTENT field -- and the

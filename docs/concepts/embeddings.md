@@ -129,16 +129,16 @@ an `Embeddings` with one vector per content, in the input's order. The client:
 
 The vectors are raw float32 from the adapter -- the normalisation is the client's content decision, not the
 wire's. Each adapter's `usage()` reports the input tokens its API names (OpenAI's `usage.prompt_tokens`,
-Cohere's billed units; Gemini reports none), for the transport's accounting. `dimensions` changes what the
-server computes and is content; `base_url`, `batch_size`, `concurrency`
-and the credentials change where and how fast, and are runtime.
+Cohere's billed units; Gemini reports none), for the transport's accounting. `dimensions` and `batch_size`
+change what is computed (request packing can move a bf16 batch's numbers) and are content; `base_url`,
+`concurrency` and the credentials change where and how fast, and are runtime.
 
 ## Identity
 
 Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
 computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`, `mrl_kind`,
-`mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`) is content and
-enters the identity; where and how fast (`base_url`, `batch_size`, `concurrency`, the timeouts) is runtime and
+`mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`, `batch_size`, `max_images`, `max_videos`) is content
+and enters the identity; where and how fast (`base_url`, `concurrency`, the timeouts) is runtime and
 never does. The tokenizer's name is runtime and its digest is content
 ([the tokenizer's digest](text-budgets.md#the-tokenizers-digest)): the `retrieve`/`rerank` step identities and the
 index identity key on it.
