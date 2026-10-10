@@ -121,6 +121,14 @@ class TestThePhasePlan:
             Phase(engines=frozenset(), steps=("calibrate",))
         ]
 
+    def test_a_step_that_uses_two_roles_co_locates_their_engines(self) -> None:
+        """A caller whose ``uses`` names two roles gets one phase with both; a run's own ``serve:`` names one
+        role per step, so its phases hold at most one engine."""
+        serve = ServeByRole(encoder=ENGINE, reranker=ENGINE)
+        assert plan_phases(["retrieve"], serve, {"retrieve": frozenset({"encoder", "reranker"})}) == [
+            Phase(engines=frozenset({"encoder", "reranker"}), steps=("retrieve",))
+        ]
+
 
 class TestTheEngineCommand:
     """The command's own device flags and port must agree with the fields the runner renders."""
