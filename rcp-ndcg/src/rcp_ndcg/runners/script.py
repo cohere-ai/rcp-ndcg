@@ -105,12 +105,16 @@ def export_lines(env: Mapping[str, str]) -> list[str]:
 
 #: The environment names the phase overlay owns: the runner's own value wins over the job's (a job's env entry
 #: of one of these names is refused at config time; :func:`merge_phase_env` is the rendering-side guarantee).
-PHASE_ENV = (ENGINES_ENV,)
+#: ``CUDA_VISIBLE_DEVICES`` is the runner's reservation: a job env entry must not widen the coordinator's view
+#: past the slice it was granted.
+PHASE_ENV = (ENGINES_ENV, "CUDA_VISIBLE_DEVICES")
 
 
 def merge_phase_env(spec_env: Mapping[str, str], runner_env: Mapping[str, str] | None) -> dict[str, str]:
     """The environment a worker script exports: the runner's additions under the job's own, except for the
-    names the phase overlay owns (:data:`PHASE_ENV`), where the runner's value always wins.
+    names the phase overlay owns (:data:`PHASE_ENV`), which never come from the job's env: the runner's value
+    wins where it has one, and the name is dropped where it does not (the runner assigns it elsewhere -- the
+    phase's engines, or the scheduler's per-step devices).
 
     Args:
         spec_env: The job's own environment (``JobSpec.env``, the runner's defaults under it).
@@ -119,6 +123,7 @@ def merge_phase_env(spec_env: Mapping[str, str], runner_env: Mapping[str, str] |
     """
     merged = {**(runner_env or {}), **spec_env}
     for name in PHASE_ENV:
+        merged.pop(name, None)
         if runner_env and name in runner_env:
             merged[name] = runner_env[name]
     return merged
@@ -250,13 +255,15 @@ def engine_script(serve: ServeConfig, cuda: str | None = None, env: Mapping[str,
         env: The runner's environment for the replica (its HF cache and per-engine ``TMPDIR``, on Kubernetes);
             ``serve.env`` is applied over it, so the engine's own declaration wins.
     """
-    exports = [*export_lines({**(env or {}), **serve.env})]
+    merged = {**(env or {}), **serve.env}
+    exports = [*export_lines(merged)]
     if cuda is not None:
         exports.append(f"export CUDA_VISIBLE_DEVICES={shlex.quote(cuda)}")
-    if env and env.get("TMPDIR"):
+    if merged.get("TMPDIR"):
         # The runner's per-engine temp dir lives on the pod's scratch volume; tempfile falls back to /tmp (the
-        # container's writable layer, shared with the co-located engines) unless the directory exists.
-        exports.append(f"mkdir -p {shlex.quote(env['TMPDIR'])}")
+        # container's writable layer, shared with the co-located engines) unless the directory exists. The
+        # directory created is the effective one, after the engine's own ``serve.env`` (which may override it).
+        exports.append(f"mkdir -p {shlex.quote(merged['TMPDIR'])}")
     return "\n".join([*exports, f"exec {quote_argv(serve.command)}"]) + "\n"
 
 

@@ -231,18 +231,26 @@ class SlurmOptions(JobOptions):
 
     @model_validator(mode="after")
     def _nothing_is_dropped_on_the_node(self) -> Self:
-        """An image or a mount that the node runtime cannot honour is refused, never silently ignored."""
+        """An image or a mount that the node runtime cannot honour is refused, never silently ignored.
+
+        A typed :class:`ConfigError` (not a ``ValueError``): pydantic propagates it with its hint, where a
+        ``ValidationError``'s message would lose it.
+        """
         if self.container_runtime != "none":
             return self
         if self.image is not None:
-            raise ValueError(
+            raise ConfigError(
                 f"container_runtime is {self.container_runtime!r}, and image {self.image!r} would be ignored: the "
-                "coordinator runs on the node, which provides its own environment"
+                "coordinator runs on the node, which provides its own environment",
+                hint="set runner.options.container_runtime: apptainer | pyxis to run the coordinator in its image, "
+                "or drop image",
             )
         if self.container_mounts:
-            raise ValueError(
+            raise ConfigError(
                 f"container_runtime is {self.container_runtime!r}, and container_mounts {self.container_mounts!r} "
-                "would be ignored: the job runs on the node, which already sees the filesystem"
+                "would be ignored: the job runs on the node, which already sees the filesystem",
+                hint="set runner.options.container_runtime: apptainer | pyxis to mount them into the container, "
+                "or drop container_mounts",
             )
         return self
 
@@ -504,7 +512,7 @@ class SlurmRunner:
             lines.append('mapfile -t RCP_NDCG_HOSTS < <(scontrol show hostnames "$SLURM_JOB_NODELIST")')
             lines += engines_env_spec()
         for index, phase in enumerate(phases, 1):
-            lines += self._phase_lines(job, index, phase, image=image, container=container, one_node=nodes == 1)
+            lines += self._phase_lines(job, index, phase, image=image, container=container, one_node=nodes <= 1)
         return "\n".join(lines) + "\n"
 
     def render(self, jobs: Sequence[JobSpec]) -> dict[str, str]:

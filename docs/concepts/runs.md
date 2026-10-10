@@ -110,7 +110,8 @@ variable (a job's own value would be silently overridden), and a run without `se
   `TMPDIR` under `/scratch/tmp`. A run-scoped engine (several replicas) lives in its own StatefulSet for the whole
   run; a finished Job that owns one is deleted, with its engines, an hour after it finishes unless
   `ttl_seconds_after_finished` says otherwise, and `run status` reports a pod the scheduler cannot place as
-  `pending` with the scheduler's own reason in the note, and the pod needs a `mirror:`
+  `pending` with the scheduler's own reason in the note (the Job's pods and the engine pods alike; a pod list that
+  cannot be read reports `unknown` with a note, never `running`). The pod needs a `mirror:`
   ([durability](#durability-local-runs-and-a-mirror)), since it does not see the submitting host's files either.
   Every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
   rankings file, evaluation system, judge config file or prompt file is refused before anything is written, naming
@@ -301,7 +302,9 @@ the engines **partition**, per node:
   continue across a role's replicas when they share a GPU set (two replicas of a 2-GPU engine: `0,1` and `2,3`,
   with distinct ports). An engine that declares no GPUs gets the empty slice — it sees no device, never all of it.
   The coordinator is confined the same way: on Kubernetes it exports its own reserved slice (`0..resources.gpus-1`,
-  empty for none), and on SLURM its step carries the empty `CUDA_VISIBLE_DEVICES` when it asks for no GPU.
+  empty for none), and on SLURM its step carries the empty `CUDA_VISIBLE_DEVICES` when it asks for no GPU. A job
+  env entry named `CUDA_VISIBLE_DEVICES` is refused: the runner assigns it from `resources.gpus`, and an operator's
+  value would widen the coordinator's view past the devices it reserved.
 - **SLURM.** Each role's replicas are pinned to a disjoint slice of the allocation's nodes (one replica per node),
   so no two engine processes share a node; a step's `--gres` is its own engine's count, and SLURM's per-step
   `CUDA_VISIBLE_DEVICES` — set per step with unique devices (gres.html, "GPU Management") — could still overlap
@@ -348,10 +351,13 @@ A failed job is not retried by default. To run it again, engine included, submit
 `rcp-ndcg run resume --run <dir> --runner slurm` (or `kubernetes`): it takes the runner options of the run's last
 job and its `serve:` section, restores the directory from the mirror first when the run has one, and the new job
 resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
-resumes in this process, which starts no engine. On Kubernetes a finished Job object stays in the namespace unless
-`ttl_seconds_after_finished` is set, and Kubernetes never restarts an existing Job: `run resume --runner
+resumes in this process, which starts no engine. On Kubernetes a finished Job object stays in the namespace
+unless `ttl_seconds_after_finished` is set (a Job that owns run-scoped engines gets an hour by default), and
+Kubernetes never restarts an existing Job: `run resume --runner
 kubernetes` refuses while that Job exists, naming it, so delete it first (`kubectl delete job <name> -n
-<namespace>`, which also removes the engines it owns) or set the TTL. On SLURM `sbatch` always creates a new job.
+<namespace>`, which also removes the engines it owns) or let the TTL free its GPUs; once the Job is gone the
+runner cannot resolve the record's handle either, so resubmit the run from its mirror (or with a fresh run). On
+SLURM `sbatch` always creates a new job.
 `backoff_limit` (0 by default) lets the Job retry a failed pod by itself, and a retried pod resumes the run from
 its mirror.
 

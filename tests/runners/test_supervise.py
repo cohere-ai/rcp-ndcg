@@ -364,6 +364,18 @@ def test_a_rendered_sbatch_runs_as_a_file_two_phases_in_order(stubs: Path) -> No
     ]
 
 
+def test_an_engine_free_phase_never_references_an_undefined_host_list(stubs: Path) -> None:
+    """Every phase of a run without ``serve:`` is engine-free, so ``nodes`` is 0: the coordinator must not pin
+    itself to ``${RCP_NDCG_HOSTS[0]}`` (the list is only read when nodes > 1), which aborted the job under
+    ``set -u`` before it ran anything."""
+    job = JobSpec(name="run", phases=(JobPhase(argv=("rcp-ndcg", "run", "resume")),))
+    script = SlurmRunner().render([job])["run"]
+    assert "--nodelist" not in script
+    done = _run_file(script, stubs, engine="ready", coordinator="done")
+    assert done.returncode == 0, done.stderr
+    assert (stubs / "order").read_text().splitlines() == ["coord {}"]
+
+
 def test_an_engine_that_dies_between_readiness_and_the_wait_fails_the_job(stubs: Path) -> None:
     """An engine that exits after answering but before the phase's wait must not be swallowed.
 

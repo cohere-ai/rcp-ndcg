@@ -125,10 +125,16 @@ class _FakeKubectl:
             name = argv[argv.index("job") + 1]
             if name not in self.jobs:
                 raise RunnerError(f'Error from server (NotFound): jobs.batch "{name}" not found')
-            return json.dumps({"status": self.jobs[name]})
+            entry = self.jobs[name]
+            return json.dumps(
+                {
+                    "metadata": entry.get("metadata", {}),
+                    "status": {key: value for key, value in entry.items() if key != "metadata"},
+                }
+            )
         if "pods" in argv and "get" in argv:
             selector = argv[argv.index("-l") + 1]
-            return json.dumps({"items": self.pods.get(selector.removeprefix("job-name="), [])})
+            return json.dumps({"items": self.pods.get(selector.split("=", 1)[1], [])})
         if "logs" in argv:
             return "pod-0 a\npod-1 b\n"
         if "apply" in argv and "json" in argv:
@@ -187,10 +193,56 @@ def test_a_running_pod_keeps_the_job_running(monkeypatch) -> None:
     assert runner.note("ns/j") is None
 
 
+def test_a_job_whose_pods_cannot_be_listed_is_unknown_not_running(monkeypatch) -> None:
+    """An RBAC or transport failure must not read as `running` forever: the pods are the only evidence."""
+
+    class _NoPods(_FakeKubectl):
+        def __call__(self, argv, *, input_text=None):
+            if "pods" in argv:
+                raise RunnerError("Error from server (Forbidden): pods is forbidden")
+            return super().__call__(argv, input_text=input_text)
+
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _NoPods({"j": {"active": 1}}))
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/j") is JobStatus.UNKNOWN
+    assert "could not be listed" in (runner.note("ns/j") or "")
+
+
+def test_an_unschedulable_engine_pod_is_pending_and_named(monkeypatch) -> None:
+    """The run-scoped engine pods carry the Job's label, not job-name: they must be in the same view."""
+    engine = _pending_pod(message="0/8 nodes are available: 8 Insufficient nvidia.com/gpu.")
+    labels = {"rcp-ndcg/job": "run"}
+    fake = _FakeKubectl({"run": {"active": 2, "metadata": {"labels": labels}}}, pods={"run": [engine]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/run") is JobStatus.PENDING
+    assert "Insufficient nvidia.com/gpu" in (runner.note("ns/run") or "")
+    assert "rcp-ndcg/job=run" in [argv[argv.index("-l") + 1] for argv, _ in fake.calls if "pods" in argv]
+
+
 def test_an_image_pull_failure_is_the_note(monkeypatch) -> None:
     fake = _FakeKubectl({"j": {"active": 1}}, pods={"j": [_pending_pod(container="ImagePullBackOff")]})
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
     assert "ImagePullBackOff" in (KubernetesRunner(image="i").note("ns/j") or "")
+
+
+def test_a_failed_compensating_delete_names_the_orphan(monkeypatch) -> None:
+    """A cleanup that fails leaves a live GPU Job: the error must say so, not hide it."""
+
+    class _NoDelete(_FailingEngines):
+        def __call__(self, argv, *, input_text=None):
+            if "delete" in argv:
+                self.calls.append((list(argv), input_text))
+                raise RunnerError("Error from server (Forbidden): jobs.batch is forbidden")
+            return super().__call__(argv, input_text=input_text)
+
+    fake = _NoDelete()
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
+    with pytest.raises(RunnerError, match="could not be deleted") as refused:
+        KubernetesRunner(namespace="eval").submit([JobSpec(name="run", phases=phases)])
+    assert "run" in refused.value.message and "kubectl delete job" in (refused.value.hint or "")
+    assert refused.value.retryable is False
 
 
 def test_submit_applies_in_order(monkeypatch) -> None:
@@ -319,6 +371,10 @@ def test_the_engines_cache_and_tmpdir_never_use_the_writable_layer_or_share_a_tm
     (engine,) = stateful_set["spec"]["template"]["spec"]["containers"]
     assert {"name": "scratch", "mountPath": "/scratch"} in engine["volumeMounts"]
     assert {"name": "TMPDIR", "value": "/scratch/tmp/engine"} in engine["env"]
+    # The declared TMPDIR exists by construction: an emptyDir is mounted exactly there, so tempfile uses it
+    # instead of falling back to /tmp (the container's writable layer).
+    assert {"name": "engine-tmp", "mountPath": "/scratch/tmp/engine"} in engine["volumeMounts"]
+    assert {"name": "engine-tmp", "emptyDir": {}} in stateful_set["spec"]["template"]["spec"]["volumes"]
     check_objects([job_obj, stateful_set])
 
 

@@ -105,7 +105,8 @@ def test_a_credentialed_input_uri_is_recorded_redacted() -> None:
     recorded = config.recorded()
     assert recorded["dataset"]["uri"] == "https://host/data.jsonl"
     assert recorded["candidates"]["rankings"] == "s3://bucket/rank.jsonl"
-    assert recorded["evaluation"]["systems"] == {"sys": "gs://bucket/sys.jsonl"}
+    # The ``#<system>`` selector names what is scored, not a credential: redaction keeps it.
+    assert recorded["evaluation"]["systems"] == {"sys": "gs://bucket/sys.jsonl#system"}
     assert recorded["runner"]["options"]["wheelhouse"] == "https://host/wheels/"
     assert recorded["runner"]["options"]["constraints"] == "https://host/c.txt"
     assert "key:secret" not in json.dumps(recorded) and "user:pw" not in json.dumps(recorded)
@@ -123,7 +124,8 @@ def test_a_credentialed_dataset_reader_option_is_recorded_redacted() -> None:
 
 def test_the_job_record_redacts_a_credentialed_install_source(data: Path, tmp_path: Path) -> None:
     """``logs/jobs.json`` is mirrored: the runner options it records must not publish the wheelhouse URL."""
-    from rcp_ndcg.runs.execution import _recorded_options, job_for
+    from rcp_ndcg.runs.config import redact_runner_options
+    from rcp_ndcg.runs.execution import job_for
     from rcp_ndcg.runs.run import prepare
 
     config = tiny_config(
@@ -136,7 +138,7 @@ def test_the_job_record_redacts_a_credentialed_install_source(data: Path, tmp_pa
     pipeline = prepare(config, runs_dir=str(tmp_path / "runs"))
     _, _, options = job_for(pipeline, "slurm")
     assert options["wheelhouse"] == "https://user:pw@host/wheels/"  # the job renders the live URL
-    assert _recorded_options(options)["wheelhouse"] == "https://host/wheels/"
+    assert redact_runner_options(options)["wheelhouse"] == "https://host/wheels/"
 
 
 def test_the_manifest_revision_key_is_recorded_redacted(
@@ -161,6 +163,47 @@ def test_the_manifest_revision_key_is_recorded_redacted(
     manifest = json.loads(Path(pipeline.layout.manifest).read_text(encoding="utf-8"))
     assert manifest["dataset"]["revisions"] == {"hf://org/name": {"repo": "org/name", "commit": "abc"}}
     assert "user:pw" not in Path(pipeline.layout.manifest).read_text(encoding="utf-8")
+
+
+def test_a_step_identity_is_credential_free_and_stable(tmp_path: Path) -> None:
+    """The step identities (hashed and recorded in the manifest, and the judging store's own) used to keep the
+    live URIs: the manifest and ``judgements/identity.json`` are mirrored, and a resume must hash the same."""
+    from rcp_ndcg.runs.pipeline import Pipeline
+
+    live = RunConfig.model_validate(
+        {
+            "dataset": "https://user:pw@host/data.jsonl",
+            "judge": "fake",
+            "steps": ["retrieve", "evaluate"],
+            "candidates": {"from": "rankings", "rankings": "s3://key:secret@bucket/rank.jsonl"},
+            "evaluation": {"systems": {"sys": "gs://key:secret@bucket/sys.jsonl#sys2"}},
+        }
+    )
+    recorded = RunConfig.from_data(live.recorded())
+    p_live = Pipeline(live, runs_dir=str(tmp_path / "runs"))
+    p_recorded = Pipeline(recorded, runs_dir=str(tmp_path / "runs"))
+    for step in ("retrieve", "evaluate"):
+        identity = p_live._identity(step)
+        assert identity == p_recorded._identity(step), "the live and recorded identities must hash the same"
+        assert "key:secret" not in json.dumps(identity) and "user:pw" not in json.dumps(identity)
+    # The systems' ``#<system>`` selector is semantic: redaction keeps it while stripping the credentials.
+    assert p_live._identity("evaluate")["evaluation"]["systems"] == {"sys": "gs://bucket/sys.jsonl#sys2"}
+    # What a job's manifest records carries no credential either.
+    p_live.layout.ensure()
+    p_live.manifest.start_step("retrieve", identity=p_live._identity("retrieve"))
+    p_live.manifest.save(p_live.layout)
+    manifest = Path(p_live.layout.manifest).read_text(encoding="utf-8")
+    assert "key:secret" not in manifest and "user:pw" not in manifest
+
+
+def test_the_judging_store_identity_is_credential_free() -> None:
+    """``judgements/identity.json`` is mirrored too: the store's dataset key must not publish the URI's userinfo."""
+    from types import SimpleNamespace
+
+    from rcp_ndcg.judging.judging import _dataset_identity
+
+    source = SimpleNamespace(uri="s3://key:secret@bucket/data", revision=None, task_instruction=None)
+    assert _dataset_identity("ds", source)["uri"] == "s3://bucket/data"
 
 
 def test_the_job_argv_keeps_the_full_mirror_uri(data: Path, tmp_path: Path) -> None:

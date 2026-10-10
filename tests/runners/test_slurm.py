@@ -368,10 +368,12 @@ class TestPhases:
 
     def test_a_coordinator_image_or_mount_that_cannot_be_honoured_is_refused(self) -> None:
         """The engine's image is refused on the node; the coordinator's image and the mounts were dropped."""
-        with pytest.raises(ConfigError, match="image.*would be ignored"):
+        with pytest.raises(ConfigError, match="image.*would be ignored") as refused:
             SlurmRunner(container_runtime="none", image="my/coordinator:1")
-        with pytest.raises(ConfigError, match="container_mounts.*would be ignored"):
+        assert "apptainer | pyxis" in (refused.value.hint or "")
+        with pytest.raises(ConfigError, match="container_mounts.*would be ignored") as refused:
             SlurmRunner(container_runtime="none", container_mounts=["/data:/data"])
+        assert "apptainer | pyxis" in (refused.value.hint or "")
         with pytest.raises(ConfigError, match="job's image.*would be ignored") as refused:
             SlurmRunner().render([JobSpec(name="j", argv=("true",), image="job/own:2")])
         assert "container_runtime: apptainer | pyxis" in (refused.value.hint or "")
@@ -380,6 +382,24 @@ class TestPhases:
         script = runner.render([JobSpec(name="j", argv=("true",), image="job/own:2")])["j"]
         assert "my/coordinator:1" not in script and "docker://job/own:2" in script
         assert "--bind /data:/data" in script
+
+    def test_a_job_env_entry_for_the_runners_devices_is_refused(self) -> None:
+        """CUDA_VISIBLE_DEVICES is the runner's reservation; a job env entry would widen the coordinator's view."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="CUDA_VISIBLE_DEVICES"):
+            JobSpec(name="j", argv=("true",), env={"CUDA_VISIBLE_DEVICES": "0"})
+        with pytest.raises(ConfigError, match="CUDA_VISIBLE_DEVICES"):
+            get_runner("slurm", env={"CUDA_VISIBLE_DEVICES": "0"})
+
+    def test_the_renderer_never_exports_a_job_env_cuda_entry(self) -> None:
+        """The refusal is the boundary; the renderer's own guarantee covers a direct JobSpec too."""
+        phase = JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("a",))
+        job = JobSpec(name="j", resources=Resources(gpus=2), phases=(phase,)).model_copy(
+            update={"env": {"CUDA_VISIBLE_DEVICES": "0,1,2,3"}}
+        )
+        script = SlurmRunner().render([job])["j"]
+        assert "CUDA_VISIBLE_DEVICES" not in heredoc_body(script, "WORKER_1")
 
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:

@@ -349,13 +349,9 @@ def run_start(request: RunStartRequest) -> RunStartResult:
     configured = pipeline.config.runner.name
     # A config that names the local runner but sets its options is handed to the LocalRunner: the in-process
     # path ignores log_dir, detach, cwd and the job's env/resources, and an accepted option is never ignored.
-    configured_local = False
-    if configured == "local":
-        from rcp_ndcg.runners.local import LocalOptions
+    from rcp_ndcg.runs.execution import local_options_set
 
-        values = pipeline.config.runner.option_values()
-        configured_local = bool(LocalOptions(**values).model_dump(exclude_defaults=True))
-    runner = request.runner or (configured if configured != "local" or configured_local else None)
+    runner = request.runner or (configured if configured != "local" or local_options_set(pipeline.config) else None)
     if runner is None and not request.detach and not request.estimate:
         from rcp_ndcg.runs.execution import refuse_serving_here
 

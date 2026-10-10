@@ -45,7 +45,6 @@ configured) context; nothing here needs cluster credentials of its own.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import re
@@ -80,6 +79,9 @@ _LABEL_VALUE = re.compile(r"[^A-Za-z0-9_.-]+")
 SCRATCH = "/scratch"
 #: Where a declared ``cache_volume`` is mounted in every container: the weights and the Hugging Face cache.
 CACHE = "/cache"
+#: The run-scoped engine pod's ``TMPDIR``: an ``emptyDir`` mounted exactly there, so the directory exists and
+#: ``tempfile`` uses the volume instead of falling back to the container's writable layer.
+ENGINE_TMPDIR = f"{SCRATCH}/tmp/engine"
 #: Seconds between two startup probes of a StatefulSet's engine pod.
 PROBE_PERIOD_S = 10
 #: Seconds a finished Job that owns run-scoped engine StatefulSets is kept before deletion, with them, unless
@@ -284,13 +286,14 @@ class KubernetesRunner:
             "volumeMounts": [
                 {"name": "dshm", "mountPath": "/dev/shm"},
                 {"name": "scratch", "mountPath": SCRATCH},
+                {"name": "engine-tmp", "mountPath": ENGINE_TMPDIR},
                 *self._cache_mounts(),
             ],
             "securityContext": dict(CONTAINER_SECURITY_CONTEXT),
         }
         engine_env = {
             "HF_HOME": self._cache_home(),
-            "TMPDIR": f"{SCRATCH}/tmp/engine",
+            "TMPDIR": ENGINE_TMPDIR,
             **serve.env,
         }
         container["env"] = [{"name": key, "value": value} for key, value in engine_env.items()]
@@ -651,6 +654,7 @@ class KubernetesRunner:
                 "volumes": [
                     {"name": "dshm", "emptyDir": {"medium": "Memory"}},
                     {"name": "scratch", "emptyDir": {}},
+                    {"name": "engine-tmp", "emptyDir": {}},
                     *self._cache_volumes(),
                 ],
                 "securityContext": self._pod_security_context(),
@@ -755,12 +759,22 @@ class KubernetesRunner:
                 if engines:
                     self._kubectl("apply", "-f", "-", input_text=yaml.safe_dump_all(engines, sort_keys=False))
                 handles.append(f"{self.options.namespace}/{name}")
-        except BaseException:
+        except BaseException as exc:
+            orphaned: list[str] = []
             for name in applied:
-                with contextlib.suppress(RunnerError):
+                try:
                     self._kubectl(
                         "delete", "job", name, "-n", self.options.namespace, "--ignore-not-found", "--wait=false"
                     )
+                except RunnerError as cleanup:
+                    orphaned.append(f"{name} ({cleanup})")
+            if orphaned:
+                raise RunnerError(
+                    f"the submission failed ({type(exc).__name__}: {exc}), and the Job(s) {', '.join(orphaned)} "
+                    "could not be deleted: they may still run and the run's record names no handle for them",
+                    hint=f"delete them by hand: kubectl delete job <name> -n {self.options.namespace}",
+                    retryable=False,
+                ) from exc
             raise
         return handles
 
@@ -791,16 +805,14 @@ class KubernetesRunner:
         """From the Job's ``status``: a ``Complete``/``Failed`` condition, else its pods' phases.
 
         ``batch/v1``'s ``active`` counts a Pending pod (one the scheduler cannot place, or whose image is not
-        pulled) as active, so an unsatisfiable request would read ``running`` forever; the pods say whether one
-        is actually Running. When ``kubectl`` cannot list them the Job's own answer stands.
+        pulled) as active, so an unsatisfiable request would read ``running`` forever; the pods (the
+        coordinator's and every engine pod the Job owns) say whether one is actually Running. When ``kubectl``
+        cannot list them the answer is ``unknown``, never a ``running`` that may never resolve.
         """
         namespace, name = self._split(handle)
-        try:
-            job = json.loads(self._kubectl("get", "job", name, "-n", namespace, "-o", "json"))
-        except RunnerError as exc:
-            if "NotFound" in str(exc) or "not found" in str(exc):
-                return JobStatus.UNKNOWN
-            raise
+        job = self._job(namespace, name)
+        if job is None:
+            return JobStatus.UNKNOWN
         status = job.get("status") or {}
         conditions = {c.get("type"): c.get("status") for c in status.get("conditions") or []}
         if conditions.get("Failed") == "True":
@@ -808,20 +820,43 @@ class KubernetesRunner:
         if conditions.get("Complete") == "True":
             return JobStatus.COMPLETED
         if status.get("active"):
-            pods = self._pods(namespace, name)
+            pods = self._pods(namespace, name, job=job)
+            if pods is None:
+                return JobStatus.UNKNOWN
             if pods and not any((pod.get("status") or {}).get("phase") == "Running" for pod in pods):
                 return JobStatus.PENDING
             return JobStatus.RUNNING
         return JobStatus.PENDING
 
-    def _pods(self, namespace: str, name: str) -> list[dict[str, Any]]:
-        """The Job's pods; empty when ``kubectl`` cannot list them (the Job's own status stands)."""
+    def _job(self, namespace: str, name: str) -> dict[str, Any] | None:
+        """The Job object, or ``None`` when it is gone.
+
+        Raises:
+            RunnerError: ``kubectl`` fails for a reason other than the Job's absence.
+        """
         try:
-            listing = json.loads(self._kubectl("get", "pods", "-n", namespace, "-l", f"job-name={name}", "-o", "json"))
+            return json.loads(self._kubectl("get", "job", name, "-n", namespace, "-o", "json"))
+        except RunnerError as exc:
+            if "NotFound" in str(exc) or "not found" in str(exc):
+                return None
+            raise
+
+    def _pods(self, namespace: str, name: str, *, job: dict[str, Any] | None = None) -> list[dict[str, Any]] | None:
+        """Every pod the Job owns (the coordinator's and each engine pod's), or ``None`` when they cannot be read.
+
+        The Job's own pods carry ``job-name``; the run-scoped engine pods carry the Job's ``rcp-ndcg/job``
+        label, read from the Job object, so a StatefulSet replica the scheduler cannot place is visible too.
+        """
+        if job is None:
+            job = self._job(namespace, name)
+        label = ((job or {}).get("metadata") or {}).get("labels", {}).get("rcp-ndcg/job")
+        selector = f"rcp-ndcg/job={label}" if label else f"job-name={name}"
+        try:
+            listing = json.loads(self._kubectl("get", "pods", "-n", namespace, "-l", selector, "-o", "json"))
         except (RunnerError, ValueError):
-            return []
+            return None
         items = listing.get("items") if isinstance(listing, dict) else None
-        return [pod for pod in items if isinstance(pod, dict)] if isinstance(items, list) else []
+        return [pod for pod in items if isinstance(pod, dict)] if isinstance(items, list) else None
 
     def note(self, handle: JobHandle) -> str | None:
         """Why the Job's pods are not running: the scheduler's message or a container's waiting reason.
@@ -830,7 +865,10 @@ class KubernetesRunner:
         shortfall (``0/8 nodes are available: Insufficient nvidia.com/gpu``) instead of hanging silently.
         """
         namespace, name = self._split(handle)
-        for pod in self._pods(namespace, name):
+        pods = self._pods(namespace, name)
+        if pods is None:
+            return "the Job's pods could not be listed (kubectl failed); the scheduler's reason is unknown"
+        for pod in pods:
             reason = _pod_reason(pod)
             if reason:
                 return reason

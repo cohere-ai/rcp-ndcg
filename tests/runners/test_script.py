@@ -63,7 +63,10 @@ def test_the_phase_overlay_owns_the_engines_variable() -> None:
         "HF_HOME": "/job",
         "UV_CACHE_DIR": "/scratch",
     }
-    assert merge_phase_env({ENGINES_ENV: job}, None) == {ENGINES_ENV: job}
+    # The overlay's names never come from the job's env: with no runner value the entry is dropped, so a
+    # direct JobSpec (the config boundary refuses the name) cannot defeat the phase's own export either.
+    assert merge_phase_env({ENGINES_ENV: job}, None) == {}
+    assert merge_phase_env({"CUDA_VISIBLE_DEVICES": "0,1"}, None) == {}
 
 
 def test_a_job_needs_a_command() -> None:

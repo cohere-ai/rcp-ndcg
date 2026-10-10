@@ -36,6 +36,7 @@ class _Scheduler:
     cancelled: list[str] = []
     state = "pending"
     reason: str | None = None
+    note_error: Exception | None = None
     run_root: str | None = None
 
     def __init__(self, **options) -> None:
@@ -56,6 +57,8 @@ class _Scheduler:
         _Scheduler.state = "cancelled"
 
     def note(self, handle: str) -> str | None:
+        if _Scheduler.note_error is not None:
+            raise _Scheduler.note_error
         return _Scheduler.reason
 
 
@@ -69,6 +72,7 @@ class _PodScheduler(_Scheduler):
 def scheduler(monkeypatch: pytest.MonkeyPatch) -> type[_Scheduler]:
     _Scheduler.submitted, _Scheduler.cancelled, _Scheduler.state = [], [], "pending"
     _Scheduler.reason = None
+    _Scheduler.note_error = None
     runners = {"sched": _Scheduler, "pod": _PodScheduler}
 
     def get_runner(name, **options):
@@ -183,6 +187,27 @@ class TestStatus:
         state = _ok("run", "status", "--run", started["run_dir"])
         assert state["jobs"][0]["status"] == "pending"
         assert "Insufficient nvidia.com/gpu" in (state["note"] or "")
+
+    def test_a_runner_whose_note_raises_does_not_abort_run_status(self, data: Path, tmp_path: Path, scheduler) -> None:
+        """A plugin runner raises what it raises; `run status` reports what this host holds and says so."""
+        started = _submit(_config(data, tmp_path), tmp_path)
+        scheduler.note_error = RuntimeError("boom")
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert "could not explain" in (state["note"] or "")
+
+    def test_the_library_hands_a_local_config_with_options_to_the_local_runner(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        """`rcp_ndcg.run` dropped a configured local runner's options like the CLI did; it now hands them over."""
+        import rcp_ndcg
+
+        logs = tmp_path / "api-logs"
+        config = tiny_config(data, runner={"name": "local", "options": {"log_dir": str(logs)}})
+        run = rcp_ndcg.run(config, runs_dir=str(tmp_path / "runs"))
+        record = Run(run.dir).jobs()
+        assert record is not None and record["runner"] == "local"
+        name = record["jobs"][0]["name"]
+        assert (logs / f"{name}.log").exists() and (logs / f"{name}.exit").read_text().strip() == "0"
 
     def test_a_pod_run_is_read_from_its_mirror_and_restored_from_it(
         self, data: Path, tmp_path: Path, scheduler
