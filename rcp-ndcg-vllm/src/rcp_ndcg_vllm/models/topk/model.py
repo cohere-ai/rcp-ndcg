@@ -34,7 +34,8 @@ Serving contract (why each inherited piece is the right one):
   the matmul, so the served projection is score-equivalent to the reference's
   ``bias=False`` head, and a future checkpoint revision that ships
   ``head.bias`` is loaded over it instead of silently dropped.
-- Pooling: inherited wiring.  ``embed_dim`` resolves from the config's ``dim``
+- Pooling: inherited wiring, replaced when a keep-rule is declared.  ``embed_dim``
+  resolves from the config's ``dim``
   (the checkpoint's own value: 2048 for -small, 1024 for -xsmall;
   colqwen3_5.py:162-169) and the module is handed to
   ``pooler_for_token_embed`` as the projector (colqwen3_5.py:187), giving
@@ -43,7 +44,16 @@ Serving contract (why each inherited piece is the right one):
   casts the result to fp32, so per-token vectors agree up to bf16 rounding of
   the head operands; the served-vs-reference equivalence on the GPU wave
   measures that delta, and rcp-ndcg transfers float16 on
-  the client, which dominates it.
+  the client, which dominates it.  When the recipe declares a keep-rule for
+  the engine (``serve.hf_overrides.document_keep_token_ids`` /
+  ``document_skip_token_ids``), ``__init__`` replaces the pooler with the
+  plugin's keep pool: the checkpoint's own mask keeps only the image-patch
+  positions for an image document (``topk_embed_st.py:_image_row``) and, when
+  the recipe also declares the text rule for the engine, drops its 41
+  document-side skip ids for a text one -- the engine then applies the
+  declared rule(s) so the wire carries only kept vectors (the shipped topk
+  recipe declares the image allowlist only; its 41-id text rule stays the
+  client's, unchanged).
 - Multimodal: inherited registration.  The ``@MULTIMODAL_REGISTRY`` decorator
   stores its factories as a class attribute on ``ColQwen3_5Model``, which this
   subclass inherits, so the checkpoint's own ``Qwen3VLProcessor``
@@ -64,6 +74,7 @@ ensure_vllm_version()
 from collections.abc import Iterable  # noqa: E402
 
 import torch  # noqa: E402
+from vllm.config import VllmConfig  # noqa: E402
 from vllm.model_executor.models.colqwen3_5 import (  # noqa: E402
     ColQwen3_5Model,
 )
@@ -71,6 +82,9 @@ from vllm.model_executor.models.qwen3_5 import (  # noqa: E402
     Qwen3_5ForConditionalGeneration,
 )
 from vllm.model_executor.models.utils import WeightsMapper  # noqa: E402
+
+from rcp_ndcg_vllm.models.keep_pooler import build_keep_pooler  # noqa: E402
+from rcp_ndcg_vllm.models.keep_rule import declared_keep_ids, declared_skip_ids  # noqa: E402
 
 from .weights import (  # noqa: E402
     PROJECTION_SOURCE_PREFIX,
@@ -89,9 +103,10 @@ class TopkEmbedModel(ColQwen3_5Model):
     1024 for -xsmall; ``dim`` resolves from the checkpoint's config), float32
     head arithmetic (``head_dtype`` defaults to float32 for pooling runners),
     scored client-side by fp32 MaxSim.  The differences from
-    ``ColQwen3_5Model`` are the checkpoint-name mapping below and the
-    zero-bias marking in ``load_weights``; every forward-affecting behaviour
-    is inherited (module docstring).
+    ``ColQwen3_5Model`` are the checkpoint-name mapping below, the
+    zero-bias marking in ``load_weights`` and the pooler ``__init__``
+    installs when the recipe declares a keep-rule; every other
+    forward-affecting behaviour is inherited (module docstring).
     """
 
     # This checkpoint follows the Qwen3-VL naming convention
@@ -109,6 +124,22 @@ class TopkEmbedModel(ColQwen3_5Model):
             PROJECTION_SOURCE_PREFIX: PROJECTION_TARGET_PREFIX,
         }
     )
+
+    def __init__(self, *, vllm_config: VllmConfig, prefix: str = "") -> None:
+        """Build the stock ColQwen3.5 stack, then replace its pooler when the recipe declares a keep-rule.
+
+        The checkpoint's own mask keeps only the image-patch positions for an image document
+        (``topk_embed_st.py:_image_row``: ``keep = ids == image_token_id``) and drops its 41 document-side
+        skip ids for a text one. vLLM v0.31.0's pooling route cannot return the engine's per-position token
+        ids, so the recipe declares the media allowlist (and, where a recipe declares it, the text skip
+        rule) for the engine in ``serve.hf_overrides`` and the plugin's own pooler applies them -- the wire
+        carries only kept vectors, and the client checks the reply's declared kept count (see
+        :mod:`rcp_ndcg_vllm.models.keep_rule`). With no rule declared the inherited stock pooler stands
+        unchanged.
+        """
+        super().__init__(vllm_config=vllm_config, prefix=prefix)
+        if declared_skip_ids(vllm_config.model_config) or declared_keep_ids(vllm_config.model_config):
+            self.pooler = build_keep_pooler(vllm_config.model_config, projector=self.custom_text_proj)
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load the checkpoint, then claim the projection's zero bias as initialized.

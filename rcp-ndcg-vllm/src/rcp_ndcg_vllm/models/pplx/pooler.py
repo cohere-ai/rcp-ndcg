@@ -3,10 +3,11 @@
 vLLM's own ``TokenPooler`` runs two stages: a *pooling method* over the batch's hidden
 states (``TokenPoolingFn``), then a *head* (projector, Matryoshka cut, optional
 activation). The plugin replaces the first stage with ``PplxChunkPool`` — the per-chunk
-segmentation of :mod:`rcp_ndcg_vllm.models.pplx.pooling_core` — and builds the second from vLLM's own
-``TokenEmbeddingPoolerHead`` so the request-level knobs (``dimensions``, the L2
-normalisation behind ``use_activation``) behave exactly as they do for the in-tree token
-poolers, with the plugin's int8 projection as the head's projector.
+segmentation of :mod:`rcp_ndcg_vllm.models.pplx.pooling_core` — and builds the second through the plugin's
+one head construction (:func:`~rcp_ndcg_vllm.models.token_pooler.token_embed_pooler`, shared with the
+keep pooler), so the request-level knobs (``dimensions``, the L2 normalisation behind ``use_activation``)
+behave exactly as they do for the in-tree token poolers, with the plugin's int8 projection as the head's
+projector.
 
 Modeled on vLLM's ``StepPool`` (vLLM ``tokwise/methods.py``, consumed by
 ``models/jina.py``): a ``TokenPoolingMethod`` that subclasses ``AllPool`` — inheriting the
@@ -24,8 +25,6 @@ from collections.abc import Set
 import torch
 from vllm.config import ModelConfig
 from vllm.model_executor.layers.pooler import PoolingParamsUpdate
-from vllm.model_executor.layers.pooler.activations import PoolerNormalize
-from vllm.model_executor.layers.pooler.tokwise.heads import TokenEmbeddingPoolerHead
 from vllm.model_executor.layers.pooler.tokwise.methods import (
     AllPool,
     TokenPoolingMethodOutputItem,
@@ -35,6 +34,7 @@ from vllm.tasks import PoolingTask
 from vllm.v1.pool.metadata import PoolingMetadata
 
 from rcp_ndcg_vllm.models.pplx.pooling_core import pool_sequence
+from rcp_ndcg_vllm.models.token_pooler import token_embed_pooler
 
 
 class PplxChunkPool(AllPool):
@@ -69,15 +69,7 @@ class PplxChunkPool(AllPool):
 
 
 def build_pooler(model_config: ModelConfig, *, projector: torch.nn.Module) -> TokenPooler:
-    """The plugin's ``TokenPooler``: chunk pool + int8 head + the request's activation.
-
-    Mirrors vLLM's ``pooler_for_token_embed`` (``tokwise/poolers.py``) with the plugin's
-    pooling method and the checkpoint's own projection in place of the
-    sentence-transformers projector fallback: ``head_dtype`` (fp32 for pooling models)
-    casts the span means, the projector applies the int8 tanh head, and
-    ``activation=PoolerNormalize()`` L2-normalises unless the request sends
-    ``use_activation: false`` — the reference's ``normalize_embeddings`` flag, on by
-    default as the card's examples use it.
+    """The plugin's ``TokenPooler`` for the contextual model: chunk pool + int8 head + the request's activation.
 
     Args:
         model_config: vLLM's ``ModelConfig``; only ``head_dtype`` and ``pooler_config``
@@ -86,9 +78,4 @@ def build_pooler(model_config: ModelConfig, *, projector: torch.nn.Module) -> To
         projector: The model's ``PplxInt8Projection``, registered on the model so the
             checkpoint's ``contextual_projection.weight`` loads into it.
     """
-    head = TokenEmbeddingPoolerHead(
-        head_dtype=model_config.head_dtype,
-        projector=projector,
-        activation=PoolerNormalize(),
-    )
-    return TokenPooler(pooling=PplxChunkPool(), head=head)
+    return token_embed_pooler(model_config, projector=projector, pooling=PplxChunkPool())

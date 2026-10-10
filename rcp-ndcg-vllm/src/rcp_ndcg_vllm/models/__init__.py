@@ -15,6 +15,7 @@ The topk and pplx distributions folded into this one wheel (layout-move item 3):
 from __future__ import annotations
 
 LAZY_MODEL_MODULES: tuple[str, ...] = (
+    "rcp_ndcg_vllm.models.keep_pooler",
     "rcp_ndcg_vllm.models.pplx.config",
     "rcp_ndcg_vllm.models.pplx.hf_config",
     "rcp_ndcg_vllm.models.pplx.late",
@@ -22,6 +23,7 @@ LAZY_MODEL_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models.pplx.model",
     "rcp_ndcg_vllm.models.pplx.pooler",
     "rcp_ndcg_vllm.models.pplx.pooling_core",
+    "rcp_ndcg_vllm.models.token_pooler",
     "rcp_ndcg_vllm.models.topk.config",
     "rcp_ndcg_vllm.models.topk.model",
     "rcp_ndcg_vllm.models.topk.pooling",
@@ -31,7 +33,9 @@ LAZY_MODEL_MODULES: tuple[str, ...] = (
 """The registry-lazy model modules: they import vLLM/torch by design, and only vLLM imports them (as the
 ``module:Class`` strings the entry point registers). Everything else -- including this entry-point callable
 and the one version guard -- must import clean (``tests/test_no_torch.py`` pins it; the surface walk skips
-these)."""
+these). :mod:`rcp_ndcg_vllm.models.keep_rule` is the one keyed module that is NOT lazy: it imports neither
+vLLM nor torch (the declared rules and the positions they keep are pure data and pure Python), so the
+harness scan may import it, and it is keyed by the fingerprint all the same."""
 
 PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models",
@@ -53,22 +57,31 @@ plugin engine imports it.  The patch modules themselves are keyed per recipe, by
 
 ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     # The contextual chunk model (pplx-embed-v2-context-9b-preview): the model class imports its pooler
-    # and the pooling core (the config registration is shared, in PLUGIN_ENGINE_MODULES).
+    # and the pooling core (the config registration is shared, in PLUGIN_ENGINE_MODULES), and the pooler
+    # uses the plugin's one token-embed head construction.
     "PplxContextualModel": (
         "rcp_ndcg_vllm.models.pplx.model",
         "rcp_ndcg_vllm.models.pplx.pooler",
         "rcp_ndcg_vllm.models.pplx.pooling_core",
+        "rcp_ndcg_vllm.models.token_pooler",
     ),
-    # The late-interaction sibling (pplx-embed-v2-late-0.6b): its model class and the Dense-head mapping.
+    # The late-interaction sibling (pplx-embed-v2-late-0.6b/-9b): its model class, the Dense-head mapping,
+    # and the keep-rule machinery its pooler applies (the declared rules and the pool that drops them).
     "Qwen3_5Model": (
         "rcp_ndcg_vllm.models.pplx.late",
         "rcp_ndcg_vllm.models.pplx.late_data",
+        "rcp_ndcg_vllm.models.keep_rule",
+        "rcp_ndcg_vllm.models.keep_pooler",
+        "rcp_ndcg_vllm.models.token_pooler",
     ),
     # The topk multimodal late-interaction model: its model and weight mapping (its config registration is
-    # shared, in PLUGIN_ENGINE_MODULES).
+    # shared, in PLUGIN_ENGINE_MODULES) and the same keep-rule machinery (its image allowlist).
     "TopkEmbedModel": (
         "rcp_ndcg_vllm.models.topk.model",
         "rcp_ndcg_vllm.models.topk.weights",
+        "rcp_ndcg_vllm.models.keep_rule",
+        "rcp_ndcg_vllm.models.keep_pooler",
+        "rcp_ndcg_vllm.models.token_pooler",
     ),
     # A config-only registration (the pplx-embed-v1 family): the plugin registers the transformers config
     # class so config.json parses locally, while the stock Qwen3ForCausalLM converted to pooling serves the
@@ -81,7 +94,7 @@ modules that implement it.
 One home: the registration constants (``PLUGIN_ARCHITECTURE``, ``LATE_ARCHITECTURE``,
 ``topk.plugin.MODEL_ARCHITECTURE``; ``PplxV1Config`` is the config-only class ``register_pplx`` registers
 for the pplx-embed-v1 family) are the truth, and ``tests/test_plugin_modules.py`` pins the keys against
-them and the values against :data:`LAZY_MODEL_MODULES`.  The behaviour fingerprint hashes these modules for
+them and the values against the lazy-import contract.  The behaviour fingerprint hashes these modules for
 a recipe that declares the registration (``plugin_sha256.<module>``), so a change that can move that
 architecture's output moves the recipes that declare it -- and no other recipe's key."""
 

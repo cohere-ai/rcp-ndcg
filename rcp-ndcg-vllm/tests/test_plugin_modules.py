@@ -8,6 +8,7 @@ this suite pins it against those registrations and against the lazy-import contr
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 
 from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES, PLUGIN_ENGINE_MODULES
@@ -36,13 +37,19 @@ def test_every_architecture_module_is_a_real_source_file() -> None:
             assert _module_file(module).is_file(), f"{architecture}: {module}"
 
 
-def test_every_architecture_module_is_a_registry_lazy_module() -> None:
-    """The architecture modules import vLLM/torch by design: they must be in the lazy list, or the
-    no-torch harness scan would import them."""
+def test_a_keyed_module_that_imports_vllm_or_torch_is_registry_lazy() -> None:
+    """A keyed module that imports vLLM/torch must be in the lazy list, or the no-torch harness scan would
+    import it. A keyed module that imports neither -- the pure keep rule (``keep_rule``: the declared ids and
+    the positions they keep) -- is importable by the scan and needs no lazy entry; it is still keyed, so a
+    change to it moves the fingerprint."""
     lazy = set(LAZY_MODEL_MODULES)
     for architecture, modules in ARCHITECTURE_MODULES.items():
-        missing = sorted(set(modules) - lazy)
-        assert not missing, f"{architecture}: not in LAZY_MODEL_MODULES: {missing}"
+        for module in modules:
+            source = _module_file(module).read_text(encoding="utf-8")
+            if re.search(r"^\s*(?:import|from)\s+(?:vllm|torch)\b", source, re.MULTILINE):
+                assert module in lazy, f"{architecture}: {module} imports vLLM/torch but is not lazy"
+    assert "rcp_ndcg_vllm.models.keep_rule" not in lazy, "the pure keep rule imports no vLLM/torch"
+    assert "rcp_ndcg_vllm.models.keep_rule" in ARCHITECTURE_MODULES["Qwen3_5Model"]
 
 
 def test_the_shared_engine_modules_resolve_and_are_not_lazy() -> None:

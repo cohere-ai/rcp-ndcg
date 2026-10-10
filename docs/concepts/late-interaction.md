@@ -58,6 +58,11 @@ silent function change — with one exception, a config that declares
 `outputs: per_chunk` for a per-chunk multi-output model. A reply whose `usage`
 token counts contradict one vector per prompt token is refused too, and so is a
 frame holding a non-finite value, as the `/embeddings` wire refuses one.
+When the config declares `document_skip_engine_side` (or a media
+`media_keep_token_ids`), the engine's reply carries only the kept vectors, so the check is the declared
+kept count instead (`kept_vector_count` per item, carried on the request as `PoolRequest.kept_counts`):
+the reply's decoded count must equal it, and a reply that ignored the rule (the full prompt count) is a
+typed `ProviderError`.
 
 ```python
 import numpy as np
@@ -139,6 +144,45 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   copy, while the response carries vectors only -- so the client cannot compute
   a checkpoint's own image-position mask from the reply and keeps the media
   document whole, on record.)
+* `document_skip_engine_side` moves the rule above into the served plugin
+  instead: the recipe declares the same ids for the engine
+  (`serve.hf_overrides.document_skip_token_ids`, which the recipe loader
+  cross-checks against the client's list) together with the document ROLE GATE
+  (`serve.hf_overrides.document_skip_prefix_token_id`, the leading token id a
+  document prompt opens with -- the checkpoint's mask is document-side, so a
+  query prompt keeps every position), and the plugin's pooler drops the rule's
+  positions from the token ids it sees -- the render's own ids, a media
+  document's head and vision markers included (the head is in the render when
+  the recipe sends it, `media_head_as_system`; the shipped pplx-late family
+  does) -- so the wire carries only kept vectors. The client cannot recompute
+  the kept set from the reply:
+  it counts the declared kept vectors instead (`kept_vector_count`: the sent
+  render's ids outside the rule, or a media document's sent head plus its
+  prepared media block) and refuses a reply whose per-item count disagrees (a
+  typed `ProviderError`, never a silent misalignment). No `skip_unapplied`
+  record is written then -- the engine applied the rule. The engine's
+  `usage.prompt_tokens` counts the *prompt*, so under this rule it no longer
+  describes the vectors: the declared counts are what the reply is checked
+  against. vLLM v0.31.0's pooling route still returns no per-position token ids,
+  which is why the rule's home is the engine-side plugin; a recipe without
+  this flag keeps the client-side rule above.
+* `media_keep_token_ids` is the MEDIA allowlist, for a checkpoint whose image
+  documents keep only a subset of the render's positions (topk-embed-v1's
+  image-patch token: its reference keeps `ids == image_token_id` for an image
+  document). The served plugin applies it engine-side through the same path
+  (the recipe declares the same ids for the engine in
+  `serve.hf_overrides.document_keep_token_ids`, which the loader cross-checks),
+  and the allowlist is its own gate: a row carrying one of its ids is a media
+  document and keeps only those positions -- the chat template's wrapper, the
+  trained head and a caption drop, exactly what the reference keeps. The
+  client counts the media block's patch run (the block's counted tokens minus
+  the vision wrapper) and refuses a reply whose per-item count disagrees; no
+  `skip_unapplied` record is written for a media item, because the engine
+  applied the allowlist. A recipe without it keeps the media-render rule
+  above: a media document's vectors are kept whole, on record. A TEXT render
+  whose own ids carry an allowlist id would be misread as a media document
+  (the allowlist is its own gate), so the client refuses that collision by
+  name before sending.
 * `media_head_as_system` (a pooling config with a template and media) sends the
   side's leading fixed template segments -- the trained role prefix, e.g.
   `[D] ` -- as a leading `system` message for a media item, instead of inside

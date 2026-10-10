@@ -414,6 +414,12 @@ class PoolRequest:
             segments, sent as a leading ``system`` message before the user turn (the card's own
             sentence-transformers render for a checkpoint whose engine chat template injects no frame).
             ``None`` (the default): no system message.
+        kept_counts: Per item, the count of vectors the declared keep-rule leaves when the served plugin
+            applies it engine-side (``document_skip_engine_side``), in item order. Non-empty: the reply
+            carries only the kept vectors, so the adapter checks the decoded count against the sum instead
+            of the engine's ``usage.prompt_tokens`` (which counts the *prompt*, and the rule drops positions
+            from it) -- a mismatch is a typed :class:`~rcp_ndcg.errors.ProviderError`, never silent. Empty
+            (the default): the rule is the client's own, and the reply's counts are the prompt's.
     """
 
     contents: tuple[Content, ...]
@@ -423,6 +429,7 @@ class PoolRequest:
     outputs: Literal["per_token", "per_chunk"] = "per_token"
     request_shape: Literal["text", "messages", "token_ids"] = "text"
     token_ids: tuple[tuple[int, ...], ...] = ()
+    kept_counts: tuple[int, ...] = ()
     system_head: str | None = None
 
 
