@@ -302,7 +302,22 @@ done
 if ((${#plain_locks[@]})); then
   echo "rc_build: downloading the reference locks' wheels (${#plain_locks[@]} families, CPU torch index, one resolution per family)"
   for lock in "${plain_locks[@]}"; do
-    "$WORK/dl/bin/python" -m pip download --quiet -r "$lock" \
+    "$WORK/dl/bin/python" - "$lock" "$WORK/direct.txt" <<'PYEOF'
+import re
+import sys
+
+pins = re.findall(r"^([A-Za-z0-9_.\-\[\]]+==[^ \t\\]+)", open(sys.argv[1], encoding="utf-8").read(), re.M)
+open(sys.argv[2], "w", encoding="utf-8").write("\n".join(pins) + "\n")
+PYEOF
+    # The direct pins, hash-verified: pip's hash mode refuses the lock's unpinned transitive deps, so
+    # --no-deps downloads exactly the pinned set.
+    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$lock" \
+      --dest stage/"$RC_NAME"/wheelhouse \
+      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+      --only-binary :all: \
+      --index-url "$CPU_INDEX" --extra-index-url "$PYPI_INDEX"
+    # Their closure, unhashed: reference_deps.py completes the family's venv from these on the node.
+    "$WORK/dl/bin/python" -m pip download --quiet -r "$WORK/direct.txt" \
       --dest stage/"$RC_NAME"/wheelhouse \
       --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
       --only-binary :all: \
@@ -312,7 +327,19 @@ fi
 if ((${#own_locks[@]})); then
   echo "rc_build: downloading the own-torch reference locks' wheels (${#own_locks[@]} families, PyPI CUDA torch, one resolution per family)"
   for lock in "${own_locks[@]}"; do
-    "$WORK/dl/bin/python" -m pip download --quiet -r "$lock" \
+    "$WORK/dl/bin/python" - "$lock" "$WORK/direct.txt" <<'PYEOF'
+import re
+import sys
+
+pins = re.findall(r"^([A-Za-z0-9_.\-\[\]]+==[^ \t\\]+)", open(sys.argv[1], encoding="utf-8").read(), re.M)
+open(sys.argv[2], "w", encoding="utf-8").write("\n".join(pins) + "\n")
+PYEOF
+    "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$lock" \
+      --dest stage/"$RC_NAME"/wheelhouse \
+      --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
+      --only-binary :all: \
+      --index-url "$PYPI_INDEX"
+    "$WORK/dl/bin/python" -m pip download --quiet -r "$WORK/direct.txt" \
       --dest stage/"$RC_NAME"/wheelhouse \
       --find-links stage/"$RC_NAME"/wheelhouse "${extra_links[@]+${extra_links[@]}}" \
       --only-binary :all: \

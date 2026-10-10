@@ -1404,9 +1404,11 @@ def test_rc_build_stages_the_recipe_tree_before_it_reads_the_family_locks() -> N
 def test_rc_build_downloads_each_family_lock_separately() -> None:
     """The families pin different transformers versions (4.57.6 and 5.19.0), so one pip resolution over
     all locks is unsatisfiable: each lock is downloaded in its own resolution into the shared wheelhouse
-    (the rc0 rebuild failed with ResolutionImpossible over the batch)."""
+    (the rc0 rebuild failed with ResolutionImpossible over the batch), the direct pins hash-verified and
+    their closure unhashed (what reference_deps.py completes the family's venv from on the node)."""
     script = RC_BUILD.read_text(encoding="utf-8")
-    assert script.count('-r "$lock"') == 2  # the plain and the own-torch loops, one resolution per family
+    assert script.count('pip download --quiet --no-deps -r "$lock"') == 2  # hashed direct pins, per family
+    assert script.count('pip download --quiet -r "$WORK/direct.txt"') == 2  # their closure, per family
     assert 'lock_args+=(-r "$lock")' not in script  # the batch resolution that failed
 
 
