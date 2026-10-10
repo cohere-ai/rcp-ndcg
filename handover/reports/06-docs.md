@@ -1,10 +1,11 @@
 # Lane docs06 — the final documentation (workstream 06)
 
 **Status: DONE.** Branch `lane/docs06`, code HEAD `72b104f2` (this report is the commit after it), base
-`rfc-0001` = `9cd88f0c` (the tip did not advance during the lane; nothing was merged). The tree is clean
+`rfc-0001` merged at `a45d4f7b` (the judge equivalence skip; the merge commit is `18f6b914`, clean). The tree
+is clean
 (`git status --porcelain --untracked-files=all` prints nothing) and `bin/gate lane/docs06` passes on the final
-HEAD — the report commit; only CHANGELOG prose and this report changed after the gate run on `6f3d6dc3`, whose
-step list the Checks section quotes.
+merged HEAD — the report commit; only CHANGELOG prose, this report and the merge's two test-package files
+differ from the gate run on `6f3d6dc3`, whose step list the Checks section quotes.
 
 ## Commits (lane stack, in order)
 
@@ -120,8 +121,9 @@ clean exit=0
 GATE: PASS
 ```
 
-The gate above ran on `6f3d6dc3`; the two commits after it are CHANGELOG prose and this report, and
-`bin/gate lane/docs06` is re-run on the final HEAD (the report commit) as the acceptance gate: every step
+The gate above ran on `6f3d6dc3`; the commits after it are CHANGELOG prose, this report and the merge of
+`rfc-0001` (`a45d4f7b`, the judge equivalence skip), and
+`bin/gate lane/docs06` is re-run on the final merged HEAD as the acceptance gate: every step
 exits 0 and the SUMMARY reads `GATE: PASS` (the run's log is in `gates/<sha>/`).
 
 ## Docs updated
