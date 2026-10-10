@@ -37,6 +37,7 @@ import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners.base import JobSpec
 from rcp_ndcg.support.serve import ENGINES_ENV, ServeConfig
 
@@ -193,8 +194,22 @@ def bootstrap_uv(wheelhouse: str | None = None) -> list[str]:
 
 
 def heredoc(var: str, script: str) -> list[str]:
-    """Bash lines that read ``script`` into the variable ``var``, verbatim (a quoted heredoc expands nothing)."""
+    """Bash lines that read ``script`` into the variable ``var``, verbatim (a quoted heredoc expands nothing).
+
+    The body is refused when one of its lines is the terminator itself: the model boundary refuses the newline
+    that could produce one, and this is the render site's own backstop (a body is line-based, and the rest of
+    such a line would be parsed as top-level script).
+
+    Raises:
+        ConfigError: a line of ``script`` is exactly the heredoc terminator ``RCP_NDCG_<var>``.
+    """
     tag = f"RCP_NDCG_{var}"
+    if any(line == tag for line in script.splitlines()):
+        raise ConfigError(
+            f"the script for {var} contains the heredoc terminator {tag!r} on a line of its own: the rest of "
+            "the script would run outside the heredoc",
+            hint="a rendered value holds a control character; keep newlines out of job, engine and recipe strings",
+        )
     # `read -d ''` returns 1 at the end of its input.
     return [f"read -r -d '' {var} <<'{tag}' || true", script.rstrip("\n"), tag]
 

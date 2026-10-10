@@ -49,7 +49,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import yaml
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners._cli import run_cli
@@ -66,7 +66,7 @@ from rcp_ndcg.runners.script import (
     wait_for_replicas,
     worker_script,
 )
-from rcp_ndcg.support.resources import Resources
+from rcp_ndcg.support.resources import Resources, no_control_characters
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, ServeConfig
 
 _LABEL_VALUE = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -75,8 +75,10 @@ _LABEL_VALUE = re.compile(r"[^A-Za-z0-9_.-]+")
 SCRATCH = "/scratch"
 #: Seconds between two startup probes of a StatefulSet's engine pod.
 PROBE_PERIOD_S = 10
-#: Stands for the Job's uid in a rendered engine StatefulSet or Service; :meth:`KubernetesRunner.submit` fills it in.
-JOB_UID = "<the Job's uid, set at submit>"
+
+#: The container security context: a process may not gain more privileges than its parent had (no setuid, no
+#: file capabilities); combined with the pod's non-root user and RuntimeDefault seccomp profile.
+CONTAINER_SECURITY_CONTEXT: dict[str, Any] = {"allowPrivilegeEscalation": False}
 
 
 def _label_value(value: str) -> str:
@@ -112,19 +114,39 @@ class KubernetesOptions(JobOptions):
             mirror's credentials.
         node_selector: The coordinator pod's node selector.
         engine_node_selector: The engine pods' node selector (a StatefulSet of several replicas).
+        run_as_non_root: Run the pods as a non-root user (``runAsNonRoot: true``). Off by default: the stock
+            coordinator image and the stock ``vllm/vllm-openai`` image both run as root, and the kubelet refuses
+            a container whose image runs as root when this is on. Set it true for an image with a non-root
+            ``USER`` (e.g. the ``vllm-openai-nonroot`` variant, or a derived image).
+        automount_service_account_token: Mount the pod's service-account token. Default false: a job that talks
+            to the API server sets it true.
         backoff_limit: Pod retries before the Job fails; a retried pod resumes the run from its mirror.
         ttl_seconds_after_finished: When a finished Job (and the engines it owns) is deleted.
     """
 
     image: str | None = None
-    namespace: str = "default"
+    namespace: str = Field(default="default", pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", max_length=63)
     context: str | None = None
     service_account: str | None = None
     secrets: list[str] = Field(default_factory=list)
     node_selector: dict[str, str] = Field(default_factory=dict)
     engine_node_selector: dict[str, str] = Field(default_factory=dict)
+    run_as_non_root: bool = False
+    automount_service_account_token: bool = False
     backoff_limit: int = Field(default=0, ge=0)
     ttl_seconds_after_finished: int | None = Field(default=None, ge=0)
+
+    @field_validator("image", "context", "service_account")
+    @classmethod
+    def _no_control_characters(cls, value: str | None) -> str | None:
+        return None if value is None else no_control_characters(value)
+
+    @field_validator("secrets")
+    @classmethod
+    def _safe_secret_names(cls, value: list[str]) -> list[str]:
+        for secret in value:
+            no_control_characters(secret)
+        return value
 
 
 def _resources(res: Resources) -> dict[str, Any]:
@@ -211,6 +233,7 @@ class KubernetesRunner:
             "startupProbe": {**probe, "failureThreshold": startup},
             "readinessProbe": probe,
             "volumeMounts": [{"name": "dshm", "mountPath": "/dev/shm"}],
+            "securityContext": dict(CONTAINER_SECURITY_CONTEXT),
         }
         if serve.env:
             container["env"] = [{"name": key, "value": value} for key, value in serve.env.items()]
@@ -231,6 +254,11 @@ class KubernetesRunner:
             return ["127.0.0.1"]
         engines = self._engines_name(job, role)
         return [f"{engines}-{i}.{engines}.{self.options.namespace}.svc" for i in range(serve.replicas)]
+
+    def _pod_security_context(self) -> dict[str, Any]:
+        """The pod's security context: a RuntimeDefault seccomp profile and, when the image allows a non-root
+        user (``run_as_non_root``), ``runAsNonRoot``; the token is mounted only when declared."""
+        return {"runAsNonRoot": self.options.run_as_non_root, "seccompProfile": {"type": "RuntimeDefault"}}
 
     def _stateful_engines(self, job: JobSpec) -> dict[EngineRole, ServeConfig]:
         """The engines a job runs as StatefulSets: every role with several replicas, once, by role.
@@ -277,6 +305,8 @@ class KubernetesRunner:
         else:
             pod = {"restartPolicy": "Never", "containers": [self._coordinator(job, env, mounts)]}
         pod["volumes"] = volumes
+        pod["securityContext"] = self._pod_security_context()
+        pod["automountServiceAccountToken"] = self.options.automount_service_account_token
         if self.options.service_account:
             pod["serviceAccountName"] = self.options.service_account
         if self.options.node_selector:
@@ -403,7 +433,9 @@ class KubernetesRunner:
                     line
                     for role, serve in remote.items()
                     for line in wait_for_replicas(
-                        serve, " ".join(self._engine_hosts(serve, role, job)), REMOTE_ENGINE_PID
+                        serve,
+                        " ".join(shlex.quote(host) for host in self._engine_hosts(serve, role, job)),
+                        REMOTE_ENGINE_PID,
                     )
                 ],
             )
@@ -438,11 +470,13 @@ class KubernetesRunner:
             "coordinator", job.image or self.options.image or COORDINATOR_IMAGE, script, mounts, job.resources
         )
 
-    def engine_objects(self, job: JobSpec, job_uid: str = JOB_UID) -> list[dict[str, Any]]:
+    def engine_objects(self, job: JobSpec, job_uid: str | None = None) -> list[dict[str, Any]]:
         """The StatefulSet and headless Service of each of a job's several-replica engines, owned by its Job.
 
         They are created at submit and **run-scoped** (owned by the Job): such engines live for the whole run,
-        not one phase.
+        not one phase. ``job_uid`` is the Job's uid, known only after the Job is applied; without it (a render,
+        before anything exists) the objects carry no ``ownerReferences`` -- an owner reference with an unknown uid
+        is an object ``kubectl apply`` refuses -- and :meth:`submit` adds it with the applied Job's uid.
 
         Returns:
             One StatefulSet and Service per role with several replicas (none for 0 of them).
@@ -458,22 +492,26 @@ class KubernetesRunner:
                 "app.kubernetes.io/name": f"rcp-ndcg-engine-{role}",
                 "rcp-ndcg/job": _label_value(job.name),
             }
-            owner = {
-                "apiVersion": "batch/v1",
-                "kind": "Job",
-                "name": k8s_name(job.name),
-                "uid": job_uid,
-                "blockOwnerDeletion": True,
-            }
-            metadata = {
+            metadata: dict[str, Any] = {
                 "name": engines_name,
                 "namespace": self.options.namespace,
                 "labels": labels,
-                "ownerReferences": [owner],
             }
+            if job_uid is not None:
+                metadata["ownerReferences"] = [
+                    {
+                        "apiVersion": "batch/v1",
+                        "kind": "Job",
+                        "name": k8s_name(job.name),
+                        "uid": job_uid,
+                        "blockOwnerDeletion": True,
+                    }
+                ]
             pod: dict[str, Any] = {
                 "containers": [self._engine(serve)],
                 "volumes": [{"name": "dshm", "emptyDir": {"medium": "Memory"}}],
+                "securityContext": self._pod_security_context(),
+                "automountServiceAccountToken": self.options.automount_service_account_token,
             }
             if self.options.service_account:
                 pod["serviceAccountName"] = self.options.service_account
@@ -513,6 +551,7 @@ class KubernetesRunner:
             "image": image,
             "command": ["bash", "-c", script],
             "volumeMounts": mounts,
+            "securityContext": dict(CONTAINER_SECURITY_CONTEXT),
         }
         if self.options.secrets:
             container["envFrom"] = self._env_from()
@@ -619,7 +658,7 @@ class KubernetesRunner:
 
 
 __all__ = [
-    "JOB_UID",
+    "CONTAINER_SECURITY_CONTEXT",
     "PROBE_PERIOD_S",
     "SCRATCH",
     "STATEFUL_SET_NAME_MAX",

@@ -17,7 +17,18 @@ model code in the package.
 """
 
 from rcp_ndcg.inference.types import Embeddings, EncodeRole, l2_normalize  # noqa: F401  # re-exported
-from rcp_ndcg.retrieval._api import Index, fuse, index, load_index, rerank, retrieve, search
+from rcp_ndcg.retrieval._api import (
+    INDEX_BEHAVIOUR_VERSION,
+    RERANK_BEHAVIOUR_VERSION,
+    RETRIEVE_BEHAVIOUR_VERSION,
+    Index,
+    fuse,
+    index,
+    load_index,
+    rerank,
+    retrieve,
+    search,
+)
 from rcp_ndcg.retrieval.config import (
     BM25Config,
     CohereEmbedding,
@@ -50,11 +61,14 @@ __all__ = [
     "EncodeRole",
     "EncoderConfig",
     "GeminiEmbedding",
+    "INDEX_BEHAVIOUR_VERSION",
     "Index",
     "LateInteractionConfig",
     "PluginEmbedding",
     "PluginPooling",
     "PluginReranker",
+    "RERANK_BEHAVIOUR_VERSION",
+    "RETRIEVE_BEHAVIOUR_VERSION",
     "RerankerConfig",
     "RetrieverConfig",
     "ServedEmbedding",

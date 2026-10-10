@@ -21,7 +21,14 @@ resources: {gpus: 1}
 serve:
   runner: pooling
   convert: null # auto-resolves to embed for a pooling runner on a ForCausalLM arch (model.py:1311 tag)
-  hf_overrides: {} # the checkpoint already declares the architecture vLLM converts
+  hf_overrides:
+    # The card's Matryoshka range 32..1024 is a per-request capability of the engine (the dense
+    # /v1/embeddings `dimensions` field cuts before the pooler's L2, seqwise/heads.py:85-105), but the
+    # checkpoint declares neither is_matryoshka nor matryoshka_dimensions, so the engine's gate
+    # (pooling_params.py:175) would refuse the field. The gate is declared here with no set: the card's
+    # prose gives a continuous range, and the client's mrl_range carries the floor the engine does not
+    # check (1..width); the client-side mrl_dim head is the pooling-compatible twin.
+    is_matryoshka: true
   chat_template: null # no template file ships: the served route renders no template over string
     # inputs (vllm/renderers/inputs/preprocess.py:129-132; io_processor.py:126-160), and the
     # checkpoint's own chat template is the Qwen3 *instruct* template -- for the card's example
@@ -69,9 +76,14 @@ client:
     # embeds the lone endoftext token
   normalize: true # the server pooler already L2-normalises (ST Normalize module); the client's is
     # idempotent
-  dimensions: null # full 1024-d vectors. MRL 32..1024 is available per request via the OpenAI
-    # dimensions field (cut BEFORE L2, vllm seqwise/heads.py:85-105); a sub-dimension serving is its
-    # own recipe with its own gates
+  # The card's MRL declaration (owner decision 39): "supports user-defined output dimensions ranging
+  # from 32 to 1024" (README.md:36). Truncation kind, a prose range -- the card gives no discrete
+  # table -- so the run selects any k in [32, 1024] and the client enforces the floor the engine does
+  # not (the engine's gate accepts 1..width). The recipe ships the full width: dimensions stays null
+  # (the engine-side selection is the run's) and mrl_dim is unset.
+  mrl_kind: truncation
+  dimensions: null # full 1024-d vectors; a run selects k from mrl_range (engine-side `dimensions` or
+    # the client-side mrl_dim), and anything outside the declared range is refused at load
 reference:
   kind: transformers
   score_scale: cosine
@@ -137,11 +149,16 @@ variants:
   - id: qwen3-embedding-0.6b
     model: Qwen/Qwen3-Embedding-0.6B
     revision: "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+    overrides:
+      client:
+        mrl_range: [32, 1024] # the card's prose range for this size (README.md:36)
   - id: qwen3-embedding-4b
     model: Qwen/Qwen3-Embedding-4B
     revision: "5cf2132abc99cad020ac570b19d031efec650f2b"
     overrides:
       serve: {max_model_len: 40960}   # config.json max_position_embeddings at this size (the 0.6b's is 32768)
+      client:
+        mrl_range: [32, 2560] # the card's prose range for this size (README.md)
     notes: >-
       Per-size facts, read at the pinned revision. Architecture: Qwen3ForCausalLM
       (config.json:architectures), model_type qwen3. Width: hidden_size 2560 (config.json:hidden_size),
@@ -171,8 +188,10 @@ variants:
       config_sentence_transformers.json:prompts.query and :prompts.document are byte-identical to the
       0.6b row's (similarity_fn_name cosine), so the family's fixed query frame is this checkpoint's
       own prompt; the card's get_detailed_instruct snippet and its 8192-token example budget are the
-      same. MRL: the card offers 32..2560 output dimensions (README.md); client.dimensions stays null
-      (the full 2560-wide vector is served). Pooling and normalisation: 1_Pooling/config.json:
+      same. MRL: the card offers 32..2560 output dimensions (README.md); the recipe declares
+      mrl_kind: truncation (the family's shared kind) with this size's mrl_range [32, 2560], mirrored
+      in serve.hf_overrides.is_matryoshka, and client.dimensions stays null (the full 2560-wide vector
+      is served; a run selects k from the declared range). Pooling and normalisation: 1_Pooling/config.json:
       pooling_mode_lasttoken true with every other mode false, and modules.json ending in the
       Normalize module -- LAST + L2, the family's served path. The family's ONE reference loads this
       row's model and revision from --recipe.
@@ -188,6 +207,8 @@ variants:
     revision: "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af"
     overrides:
       serve: {max_model_len: 40960}   # config.json max_position_embeddings at this size (the 0.6b's is 32768)
+      client:
+        mrl_range: [32, 4096] # the card's prose range for this size (README.md)
     notes: >-
       Per-size facts, read at the pinned revision. Architecture: Qwen3ForCausalLM
       (config.json:architectures), model_type qwen3. Width: hidden_size 4096 (config.json:hidden_size),
@@ -220,8 +241,10 @@ variants:
       prompts.query and :prompts.document are byte-identical to the 0.6b row's (similarity_fn_name
       cosine), so the family's fixed query frame is this checkpoint's own prompt; the card's
       get_detailed_instruct snippet and its 8192-token example budget are the same. MRL: the card
-      offers 32..4096 output dimensions (README.md); client.dimensions stays null (the full 4096-wide
-      vector is served). Pooling and normalisation: 1_Pooling/config.json:pooling_mode_lasttoken true
+      offers 32..4096 output dimensions (README.md); the recipe declares mrl_kind: truncation (the
+      family's shared kind) with this size's mrl_range [32, 4096], mirrored in
+      serve.hf_overrides.is_matryoshka, and client.dimensions stays null (the full 4096-wide vector is
+      served; a run selects k from the declared range). Pooling and normalisation: 1_Pooling/config.json:pooling_mode_lasttoken true
       with every other mode false, and modules.json ending in the Normalize module -- LAST + L2, the
       family's served path. The family's ONE reference loads this row's model and revision from
       --recipe.

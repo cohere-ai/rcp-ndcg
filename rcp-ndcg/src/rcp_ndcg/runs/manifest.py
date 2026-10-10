@@ -192,11 +192,12 @@ class RunManifest(BaseModel):
     def save(self, layout: RunLayout) -> str:
         """Write the manifest atomically (the one storage helper: a per-process, per-call temp file and a
         rename, so a concurrent reader of a running job's manifest never sees a truncated moment, and two
-        writers never share a temp file)."""
+        writers never share a temp file). Owner-only: the manifest carries the resolved config and the run's
+        records, and a cluster filesystem is shared."""
         self.updated_at = _now()
         payload = self.model_dump_json(indent=2)
         target = layout.manifest
-        publish(Path(target), lambda tmp: tmp.write_text(payload, encoding="utf-8"))
+        publish(Path(target), lambda tmp: tmp.write_text(payload, encoding="utf-8"), mode=0o600)
         return target
 
     @classmethod

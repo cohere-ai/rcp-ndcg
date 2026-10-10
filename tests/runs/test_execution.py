@@ -349,11 +349,11 @@ class TestJobRecord:
         published: list[str] = []
         real = storage.publish_bytes
 
-        def record(target, payload: bytes) -> None:
+        def record(target, payload: bytes, *, mode: int | None = None) -> None:
             published.append(str(target))
-            real(target, payload)
+            real(target, payload, mode=mode)
 
-        monkeypatch.setattr(storage, "publish_bytes", record)
+        monkeypatch.setattr("rcp_ndcg.runs.execution.publish_bytes", record)
         started = _submit(_config(data, tmp_path), tmp_path)
         assert str(Run(started["run_dir"]).layout.jobs) in published
 
@@ -541,3 +541,43 @@ def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tm
     default_instance = tiny_config(data, runner={"name": "mine", "options": {"resources": Resources()}})
     _, default_job, _ = job_for(prepare(default_instance, runs_dir=str(tmp_path / "runs")), "sched")
     assert default_job.resources == Resources()
+
+
+def test_a_submission_error_is_recorded_with_url_credentials_redacted(
+    data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scheduler error names the request's URL; a credential in it must not reach ``logs/jobs.json`` (host-local,
+    never mirrored) or ``run status``'s note."""
+    from rcp_ndcg.runners.base import RunnerError
+
+    class _Refusing:
+        def __init__(self, **options) -> None:
+            self.options = options
+
+        def submit(self, jobs):
+            raise RunnerError("the store refused s3://key:secret@bucket/runs/x")
+
+    monkeypatch.setattr("rcp_ndcg.runs.execution.get_runner", lambda name, **options: _Refusing(**options))
+    code, error = _invoke(
+        "run", "start", str(_config(data, tmp_path)), "--runs-dir", str(tmp_path / "runs"), "--runner", "sched"
+    )
+    assert code == 6, error
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    record = json.loads((run_dir / "logs" / "jobs.json").read_text(encoding="utf-8"))
+    assert "key:secret" not in json.dumps(record) and "bucket/runs/x" in record["error"]
+    state = _ok("run", "status", "--run", str(run_dir))
+    assert "key:secret" not in (state["note"] or "")
+
+
+def test_the_run_directory_and_the_records_the_mirror_uploads_are_owner_only(
+    data: Path, tmp_path: Path, scheduler
+) -> None:
+    """On a shared cluster filesystem every user could read the config, the job record and the mirror state."""
+    import stat as stat_module
+
+    started = _submit(_config(data, tmp_path), tmp_path)
+    run_dir = Path(started["run_dir"])
+    assert stat_module.S_IMODE(run_dir.stat().st_mode) == 0o700
+    assert stat_module.S_IMODE((run_dir / "logs").stat().st_mode) == 0o700
+    for name in ("run.yaml", "manifest.json", "logs/jobs.json"):
+        assert stat_module.S_IMODE((run_dir / name).stat().st_mode) == 0o600, name

@@ -587,9 +587,10 @@ def test_rerank_refuses_a_depth_like_search_does(dataset) -> None:
 
 
 def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The candidates go over the wire in the first-stage ranking's order (``top()``'s: score descending,
-    then document id descending): a listwise model's scores depend on the batch composition, so it is pinned.
-    The sweep's M14 mutation reversed the order and nothing failed."""
+    """The candidates go over the wire in the first stage's order (score descending, then the *lower*
+    document id -- the one tie rule the top-k, the BM25 cut and ``Rankings.top`` share): a listwise model's
+    scores depend on the batch composition, so it is pinned. The sweep's M14 mutation reversed the order and
+    nothing failed."""
     sent: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -617,7 +618,15 @@ def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monke
         depth=3,
     )
 
-    assert sent[0]["documents"] == [DOCS["d3"], DOCS["d2"], DOCS["d1"]], "ties: document id descending"
+    assert sent[0]["documents"] == [DOCS["d1"], DOCS["d2"], DOCS["d3"]], "ties: the lower document id"
+
+
+def test_the_candidate_cut_keeps_the_lowest_ids_of_a_tie() -> None:
+    """A9: the rerank depth cut applies the same tie rule as the first stage (score descending, then the
+    lower document id), so a tie class straddling the cut keeps the documents ``search`` would return."""
+    tied = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 1.0, "d4": 1.0}}, system="bm25")
+
+    assert sorted(tied.top(2).for_query("q1")) == ["d1", "d2"]
 
 
 def test_fuse_sums_reciprocal_ranks() -> None:
@@ -664,3 +673,58 @@ def test_fuse_fuses_per_subset_files_and_refuses_nothing_at_all_first() -> None:
     assert fused.for_query("q1", system="rrf", dataset="two")["d2"] == pytest.approx(1 / 61)
     with pytest.raises(DataError, match="needs rankings"):
         fuse([])
+
+
+def test_fuse_fuses_every_system_of_a_concatenated_file() -> None:
+    """V5: a file whose systems cover different subsets must fuse (the docstrings promise "every system of
+    each file"); the per-file filter appended an empty run for the system that does not cover the subset,
+    and the core's coverage guard then refused the whole fusion."""
+    a_x = Rankings.from_scores({"q1": {"d1": 2.0, "d2": 1.0}}, system="A", dataset="x")
+    b_y = Rankings.from_scores({"q1": {"d3": 1.0}}, system="B", dataset="y")
+    c_x = Rankings.from_scores({"q1": {"d2": 2.0, "d1": 1.0}}, system="C", dataset="x")
+
+    fused = fuse([Rankings.concat([a_x, b_y]), c_x], depth=2)
+
+    assert sorted(fused.datasets) == ["x", "y"]
+    assert fused.for_query("q1", dataset="x") == {
+        "d1": pytest.approx(1 / 61 + 1 / 62),
+        "d2": pytest.approx(1 / 62 + 1 / 61),
+    }
+    assert fused.for_query("q1", dataset="y") == {"d3": pytest.approx(1 / 61)}
+
+
+def test_fuse_refuses_a_rankings_file_with_no_rows() -> None:
+    """An empty file silently contributed nothing, and the result looked like a real fusion of the systems
+    that did load (every overlapping score halved)."""
+    nonempty = Rankings.from_scores({"q1": {"d1": 1.0}}, system="a")
+
+    with pytest.raises(DataError, match="holds no rows"):
+        fuse([Rankings.from_records([]), nonempty])
+
+
+def test_fuse_validates_depth_and_rrf_k_by_their_public_names() -> None:
+    """``fuse(depth=0)`` said "top_k" (the core's own argument) and ``fuse(rrf_k=0)`` passed the CLI schema
+    before failing at runtime."""
+    a = Rankings.from_scores({"q1": {"d1": 1.0}}, system="a")
+    b = Rankings.from_scores({"q1": {"d1": 1.0}}, system="b")
+
+    with pytest.raises(ConfigError, match="depth must be positive") as caught:
+        fuse([a, b], depth=0)
+    assert "rrf_k" not in str(caught.value)
+    with pytest.raises(ConfigError, match="rrf_k must be positive"):
+        fuse([a, b], rrf_k=0)
+
+
+def test_fuse_ranks_a_tied_pair_by_the_lower_id() -> None:
+    """A9/V5: within one system's rows a tie breaks by the lower document id (the retrieval stack's one
+    rule), so a tied pair contributes the same ranks here as the first stage gave it."""
+    # d2 first in the mapping's order: the old path kept that order at a tie (higher id first).
+    a = Rankings.from_scores({"q1": {"d2": 1.0, "d1": 1.0}}, system="a")
+    b = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0}}, system="b")
+
+    fused = fuse([a, b], depth=2)
+
+    assert fused.for_query("q1") == {
+        "d1": pytest.approx(1 / 61 + 1 / 61),
+        "d2": pytest.approx(1 / 62 + 1 / 62),
+    }

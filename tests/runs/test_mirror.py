@@ -322,9 +322,9 @@ def test_the_state_file_is_published_atomically(tmp_path: Path, monkeypatch: pyt
     published: list[str] = []
     real = storage.publish_bytes
 
-    def record(target, payload):
+    def record(target, payload, **kwargs):
         published.append(str(target))
-        real(target, payload)
+        real(target, payload, **kwargs)
 
     monkeypatch.setattr(storage, "publish_bytes", record)
     Mirror(tmp_path, REMOTE).flush()
@@ -346,9 +346,9 @@ def test_a_local_mirror_publishes_whole_files_through_the_storage_helper(
     published: list[str] = []
     real = storage.publish_bytes
 
-    def record(target, payload):
+    def record(target, payload, **kwargs):
         published.append(str(target))
-        real(target, payload)
+        real(target, payload, **kwargs)
 
     monkeypatch.setattr(storage, "publish_bytes", record)
     Mirror(local, str(remote)).flush()

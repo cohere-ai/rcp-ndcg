@@ -140,7 +140,7 @@ class TestDecoding:
         np.testing.assert_array_equal(embeddings.vectors, vectors["a"])
 
     def test_float_lists_are_accepted_with_the_shape_as_sent(self) -> None:
-        """The layout of the answer decides: 2-D lists are ragged, 1-D lists are one vector per item."""
+        """2-D lists are the token_embed answer: one slice per item, in the transfer dtype."""
         adapter = VllmPooling()
 
         ragged_reply = Reply(
@@ -153,10 +153,45 @@ class TestDecoding:
         assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, 2, 3]
         assert embeddings.vectors.dtype == np.float16  # stored in the transfer dtype
 
+    def test_a_pooled_answer_is_refused_for_the_token_embed_task(self) -> None:
+        """A7: one vector per item is a *pooled* task, and a pooled answer must not become a
+        late-interaction index (it scored as a dense inner product, silently, before)."""
+        adapter = VllmPooling()
         pooled_reply = Reply(status=200, body={"data": [{"index": 0, "data": [1.0, 0.0]}]}, headers={})
-        single = adapter.interpret(request([Content.from_text("a")], dim=2), [pooled_reply])
+
+        with pytest.raises(ProviderError, match="answered a pooled task") as caught:
+            adapter.interpret(request([Content.from_text("a")], dim=2), [pooled_reply])
+
+        assert "per_chunk" in (caught.value.hint or "")
+
+    def test_a_per_chunk_model_may_answer_one_vector_per_item(self) -> None:
+        """The declared opt-out (``outputs: per_chunk``) keeps the old layout rule."""
+        adapter = VllmPooling()
+        pooled_reply = Reply(status=200, body={"data": [{"index": 0, "data": [1.0, 0.0]}]}, headers={})
+
+        single = adapter.interpret(request([Content.from_text("a")], dim=2, outputs="per_chunk"), [pooled_reply])
+
         assert not single.is_multi_vector
         np.testing.assert_allclose(single.vectors, [[1.0, 0.0]])
+
+    def test_a_non_finite_float_frame_is_refused(self) -> None:
+        """A7: the /embeddings wire refuses a non-finite vector; the /pooling wire must too -- a NaN document
+        otherwise vanishes from every top-k with no error."""
+        adapter = VllmPooling()
+        reply = Reply(status=200, body={"data": [{"index": 0, "data": [[1.0, 0.0], [float("nan"), 1.0]]}]}, headers={})
+
+        with pytest.raises(ProviderError, match="non-finite") as caught:
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
+
+        assert "embeddings" in (caught.value.hint or "")
+
+    def test_a_non_finite_base64_frame_is_refused(self) -> None:
+        adapter = VllmPooling()
+        frame = b64(np.array([[1.0, 0.0], [np.inf, 1.0]], dtype=np.float16))
+        reply = Reply(status=200, body={"data": [{"index": 0, "data": frame}]}, headers={})
+
+        with pytest.raises(ProviderError, match="non-finite"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
 
     def test_float_frame_width_must_match_the_declared_dim(self) -> None:
         adapter = VllmPooling()
@@ -219,11 +254,14 @@ class TestDecoding:
             adapter.interpret(request([Content.from_text("a")]), [reply])
 
     def test_one_vector_items_of_unequal_width_are_a_typed_error(self) -> None:
-        """A pooled reply whose vectors disagree in width is a refusal, not an np.stack ValueError."""
+        """A pooled reply whose vectors disagree in width is a refusal, not an np.stack ValueError (the
+        per-chunk opt-out is the one request that may answer one vector per item)."""
         adapter = VllmPooling()
         reply = Reply(200, {"data": [{"index": 0, "data": [1.0, 0.0]}, {"index": 1, "data": [1.0]}]}, {})
         with pytest.raises(ProviderError, match="mixes one-vector and per-token items|different widths"):
-            adapter.interpret(request([Content.from_text("a"), Content.from_text("b")], dim=2), [reply])
+            adapter.interpret(
+                request([Content.from_text("a"), Content.from_text("b")], dim=2, outputs="per_chunk"), [reply]
+            )
 
     def test_an_inhomogeneous_float_list_is_a_typed_error(self) -> None:
         """A jagged float list cannot be an array: a typed refusal, never a raw ValueError."""
@@ -411,7 +449,9 @@ class TestDecodedTokenCounting:
         adapter = VllmPooling()
         items = [{"index": index, "data": item} for index, item in enumerate(data)]
         reply = Reply(200, {"data": items, "usage": {"prompt_tokens": prompt_tokens}}, {})
-        embeddings = adapter.interpret(request([Content.from_text("a"), Content.from_text("b")], dim=2), [reply])
+        embeddings = adapter.interpret(
+            request([Content.from_text("a"), Content.from_text("b")], dim=2, outputs="per_chunk"), [reply]
+        )
         assert embeddings.num_items == 2 and embeddings.is_multi_vector is multi
         if offsets is None:
             np.testing.assert_array_equal(embeddings.vectors, data)
@@ -456,6 +496,24 @@ class TestBytesFraming:
         reply = Reply(200, np.ones((2, 2), dtype="<f2").tobytes(), {})
         with pytest.raises(NotImplementedError, match="lane L7"):
             adapter.interpret(request([Content.from_text("a")]), [reply])
+
+    def test_a_bytes_frame_s_width_must_match_the_declared_dim(self) -> None:
+        """A7 (the verifier's repro): the bytes path checked the framing but not the width, so a 3-wide
+        frame decoded against a declared dim of 2 became token vectors."""
+        adapter = VllmPooling()
+        reply = self._bytes_reply(np.ones((2, 3), dtype=np.float16))
+
+        with pytest.raises(ProviderError, match="does not match the declared dim 2"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
+
+    def test_a_non_finite_bytes_frame_is_refused(self) -> None:
+        """A7: the JSON path refused a non-finite frame; the bytes path accepted it (a NaN document then
+        vanishes from every top-k)."""
+        adapter = VllmPooling()
+        reply = self._bytes_reply(np.array([[1.0, np.nan], [0.0, 1.0]], dtype=np.float16))
+
+        with pytest.raises(ProviderError, match="non-finite"):
+            adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
 
 
 def _png_bytes() -> bytes:
