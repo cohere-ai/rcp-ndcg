@@ -35,6 +35,7 @@ class _Scheduler:
     submitted: list[tuple[str, ...]] = []
     cancelled: list[str] = []
     state = "pending"
+    reason: str | None = None
     run_root: str | None = None
 
     def __init__(self, **options) -> None:
@@ -54,6 +55,9 @@ class _Scheduler:
         _Scheduler.cancelled.append(handle)
         _Scheduler.state = "cancelled"
 
+    def note(self, handle: str) -> str | None:
+        return _Scheduler.reason
+
 
 class _PodScheduler(_Scheduler):
     """A runner whose jobs do not see this host's files (as Kubernetes): the run reaches them through its mirror."""
@@ -64,6 +68,7 @@ class _PodScheduler(_Scheduler):
 @pytest.fixture
 def scheduler(monkeypatch: pytest.MonkeyPatch) -> type[_Scheduler]:
     _Scheduler.submitted, _Scheduler.cancelled, _Scheduler.state = [], [], "pending"
+    _Scheduler.reason = None
     runners = {"sched": _Scheduler, "pod": _PodScheduler}
 
     def get_runner(name, **options):
@@ -170,6 +175,14 @@ class TestStatus:
         assert (state["status"], state["done"]) == (derived, True)
         assert "every job of the run has ended" in state["note"]
         assert Run(started["run_dir"]).manifest.status.value == "submitted", "run status writes nothing"
+
+    def test_a_stuck_job_note_reaches_run_status(self, data: Path, tmp_path: Path, scheduler) -> None:
+        """An unschedulable pod is reported pending; the scheduler's own reason is the run's note."""
+        started = _submit(_config(data, tmp_path), tmp_path)
+        scheduler.reason = "0/8 nodes are available: 8 Insufficient nvidia.com/gpu."
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert state["jobs"][0]["status"] == "pending"
+        assert "Insufficient nvidia.com/gpu" in (state["note"] or "")
 
     def test_a_pod_run_is_read_from_its_mirror_and_restored_from_it(
         self, data: Path, tmp_path: Path, scheduler

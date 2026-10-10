@@ -149,6 +149,29 @@ class KubernetesOptions(JobOptions):
         return value
 
 
+def _pod_reason(pod: dict[str, Any]) -> str | None:
+    """Why a pod is not running: its ``PodScheduled=False`` condition, or a container's waiting reason.
+
+    The scheduler's message (``0/8 nodes are available: 8 Insufficient nvidia.com/gpu``) and an image or config
+    failure (``ImagePullBackOff``) both live here, and neither reaches the Job's own status.
+    """
+    status = pod.get("status") or {}
+    name = (pod.get("metadata") or {}).get("name", "?")
+    for condition in status.get("conditions") or []:
+        if condition.get("type") == "PodScheduled" and condition.get("status") == "False":
+            message = condition.get("message")
+            reason = condition.get("reason") or "not scheduled"
+            return f"pod {name}: {reason}" + (f" ({message})" if message else "")
+    for container in status.get("containerStatuses") or []:
+        waiting = (container.get("state") or {}).get("waiting") or {}
+        if waiting.get("reason"):
+            message = waiting.get("message")
+            return f"pod {name} container {container.get('name', '?')}: {waiting['reason']}" + (
+                f" ({message})" if message else ""
+            )
+    return None
+
+
 def _resources(res: Resources) -> dict[str, Any]:
     limits: dict[str, Any] = {}
     requests: dict[str, Any] = {}
@@ -609,7 +632,12 @@ class KubernetesRunner:
         return handles
 
     def status(self, handle: JobHandle) -> JobStatus:
-        """From the Job's ``status``: a ``Complete``/``Failed`` condition, else active pods."""
+        """From the Job's ``status``: a ``Complete``/``Failed`` condition, else its pods' phases.
+
+        ``batch/v1``'s ``active`` counts a Pending pod (one the scheduler cannot place, or whose image is not
+        pulled) as active, so an unsatisfiable request would read ``running`` forever; the pods say whether one
+        is actually Running. When ``kubectl`` cannot list them the Job's own answer stands.
+        """
         namespace, name = self._split(handle)
         try:
             job = json.loads(self._kubectl("get", "job", name, "-n", namespace, "-o", "json"))
@@ -624,8 +652,33 @@ class KubernetesRunner:
         if conditions.get("Complete") == "True":
             return JobStatus.COMPLETED
         if status.get("active"):
+            pods = self._pods(namespace, name)
+            if pods and not any((pod.get("status") or {}).get("phase") == "Running" for pod in pods):
+                return JobStatus.PENDING
             return JobStatus.RUNNING
         return JobStatus.PENDING
+
+    def _pods(self, namespace: str, name: str) -> list[dict[str, Any]]:
+        """The Job's pods; empty when ``kubectl`` cannot list them (the Job's own status stands)."""
+        try:
+            listing = json.loads(self._kubectl("get", "pods", "-n", namespace, "-l", f"job-name={name}", "-o", "json"))
+        except (RunnerError, ValueError):
+            return []
+        items = listing.get("items") if isinstance(listing, dict) else None
+        return [pod for pod in items if isinstance(pod, dict)] if isinstance(items, list) else []
+
+    def note(self, handle: JobHandle) -> str | None:
+        """Why the Job's pods are not running: the scheduler's message or a container's waiting reason.
+
+        Read by :func:`~rcp_ndcg.runs.execution.status` for the run's note, so a job stuck Pending names the
+        shortfall (``0/8 nodes are available: Insufficient nvidia.com/gpu``) instead of hanging silently.
+        """
+        namespace, name = self._split(handle)
+        for pod in self._pods(namespace, name):
+            reason = _pod_reason(pod)
+            if reason:
+                return reason
+        return None
 
     def logs(self, handle: JobHandle, *, tail: int | None = None) -> str:
         """Logs of every container of the Job's pods, each line prefixed with its pod and container."""

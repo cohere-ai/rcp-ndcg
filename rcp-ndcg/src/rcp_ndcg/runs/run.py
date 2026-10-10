@@ -81,8 +81,9 @@ class RunState(BaseModel):
     mirror: MirrorState | None = Field(default=None, description="The mirror's last upload and lag, if mirrored.")
     note: str | None = Field(
         default=None,
-        description="Why the state is not the local manifest's own: read from a newer mirror, or derived from jobs "
-        "that ended without recording it; and a submission that failed.",
+        description="Why the state is not the local manifest's own: read from a newer mirror, derived from jobs "
+        "that ended without recording it, a submission that failed, or a live job the scheduler cannot place "
+        "(its own reason).",
     )
 
 

@@ -112,8 +112,9 @@ def test_long_names_are_shortened_deterministically() -> None:
 
 
 class _FakeKubectl:
-    def __init__(self, jobs: dict[str, dict] | None = None) -> None:
+    def __init__(self, jobs: dict[str, dict] | None = None, pods: dict[str, list[dict]] | None = None) -> None:
         self.jobs = jobs or {}
+        self.pods = pods or {}
         self.calls: list[tuple[list[str], str | None]] = []
 
     def __call__(self, argv, *, input_text=None):
@@ -123,6 +124,9 @@ class _FakeKubectl:
             if name not in self.jobs:
                 raise RunnerError(f'Error from server (NotFound): jobs.batch "{name}" not found')
             return json.dumps({"status": self.jobs[name]})
+        if "pods" in argv and "get" in argv:
+            selector = argv[argv.index("-l") + 1]
+            return json.dumps({"items": self.pods.get(selector.removeprefix("job-name="), [])})
         if "logs" in argv:
             return "pod-0 a\npod-1 b\n"
         if "apply" in argv and "json" in argv:
@@ -150,6 +154,41 @@ def test_status_from_job_conditions(monkeypatch, status: dict, expected: JobStat
 def test_status_of_a_deleted_job_is_unknown(monkeypatch) -> None:
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _FakeKubectl())
     assert KubernetesRunner(image="i").status("ns/gone") is JobStatus.UNKNOWN
+
+
+def _pending_pod(message: str | None = None, container: str | None = None, phase: str = "Pending") -> dict:
+    status: dict = {"phase": phase}
+    if message:
+        status["conditions"] = [
+            {"type": "PodScheduled", "status": "False", "reason": "Unschedulable", "message": message}
+        ]
+    if container:
+        status["containerStatuses"] = [{"name": "phase-1", "state": {"waiting": {"reason": container}}}]
+    return {"metadata": {"name": "j-pod-0"}, "status": status}
+
+
+def test_a_pod_that_cannot_be_scheduled_is_pending_and_says_why(monkeypatch) -> None:
+    """`active` counts a Pending pod; an unsatisfiable GPU request must not read as RUNNING forever."""
+    shortfall = "0/8 nodes are available: 8 Insufficient nvidia.com/gpu."
+    fake = _FakeKubectl({"j": {"active": 1}}, pods={"j": [_pending_pod(message=shortfall)]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/j") is JobStatus.PENDING
+    assert shortfall in (runner.note("ns/j") or "")
+
+
+def test_a_running_pod_keeps_the_job_running(monkeypatch) -> None:
+    fake = _FakeKubectl({"j": {"active": 2}}, pods={"j": [_pending_pod(phase="Running"), _pending_pod()]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    runner = KubernetesRunner(image="i")
+    assert runner.status("ns/j") is JobStatus.RUNNING
+    assert runner.note("ns/j") is None
+
+
+def test_an_image_pull_failure_is_the_note(monkeypatch) -> None:
+    fake = _FakeKubectl({"j": {"active": 1}}, pods={"j": [_pending_pod(container="ImagePullBackOff")]})
+    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    assert "ImagePullBackOff" in (KubernetesRunner(image="i").note("ns/j") or "")
 
 
 def test_submit_applies_in_order(monkeypatch) -> None:

@@ -339,6 +339,16 @@ def status(run_dir: str | Path) -> RunState:
     for job in record["jobs"]:
         live = JobStatus(backend.status(job["handle"])) if job["handle"] else JobStatus.UNKNOWN
         jobs.append(JobState(name=job["name"], handle=job["handle"] or "", status=live))
+    reason_of = getattr(backend, "note", None)
+    if callable(reason_of):
+        # A live job the scheduler cannot place names its own reason (an unsatisfiable GPU request, an image
+        # pull failure); the status alone would say `pending` with no explanation.
+        for job in jobs:
+            if job.handle and job.status in (JobStatus.PENDING, JobStatus.RUNNING):
+                reason = reason_of(job.handle)
+                if reason:
+                    notes.append(redact_urls(reason))
+                    break
     update: dict[str, Any] = {"jobs": jobs}
     ended = [JobStatus(job.status) for job in jobs]
     if (
