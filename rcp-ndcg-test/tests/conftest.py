@@ -5,11 +5,13 @@ from __future__ import annotations
 import ipaddress
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -38,6 +40,10 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     """Take the checkout guard's baseline before collection, so an import-time leak is caught too."""
     config = session.config
     config.stash[_CHECKOUT_BASELINE] = None if _snapshot_exempt(config) else _checkout_entries(ROOT)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "no_timeout: opt this test out of the per-test timeout")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -95,6 +101,87 @@ def _hub_is_offline(monkeypatch: pytest.MonkeyPatch) -> None:
         import huggingface_hub.constants as constants
 
         monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
+
+
+# ---------------------------------------------------------------------------
+# Per-test timeout: a hang fails its test instead of hanging the suite
+# ---------------------------------------------------------------------------
+
+#: The default per-test bound, in seconds (see :data:`TEST_TIMEOUT_S`).
+_DEFAULT_TIMEOUT_S = 300.0
+
+#: Seconds one test may run before its SIGALRM raises. A wedged subprocess wait or a live-lock fails its own
+#: test within this budget instead of stalling the whole run to the gate caller's outer timeout; a test that
+#: needs longer opts out with the ``no_timeout`` marker. Second copy by intent: this suite and the root suite
+#: are separate pytest trees (one checkout, two ``tests`` packages) and cannot import each other's conftest;
+#: the root tree's copy is ``tests/conftest.py``. The default is larger than the root tree's 60s because this
+#: tree's slow tests are subprocess and node-script runs (the whole suite is ~10 minutes).
+TEST_TIMEOUT_S = float(os.environ.get("RCP_NDCG_TEST_TIMEOUT", str(_DEFAULT_TIMEOUT_S)))
+
+
+def _timeboxed(item: pytest.Item) -> Callable[[], None] | None:
+    """Arm one real-time timer for a phase of ``item`` (its setup, call or teardown); the timer's SIGALRM
+    fails the test when it fires. Returns the disarm callable, or ``None`` when the test is exempt.
+
+    The timer runs on the main thread (pytest's, and each xdist worker's), so a pure-Python hang -- the case
+    that actually happens -- is caught; a test that manages its own alarm opts out with ``no_timeout``.
+    """
+    if TEST_TIMEOUT_S <= 0 or item.get_closest_marker("no_timeout") is not None or not hasattr(signal, "setitimer"):
+        return None
+
+    def _on_timeout(signum: int, frame: Any) -> None:
+        raise TimeoutError(f"the test exceeded its {TEST_TIMEOUT_S:g}s per-test timeout (a hang fails fast)")
+
+    previous_handler = signal.signal(signal.SIGALRM, _on_timeout)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, TEST_TIMEOUT_S)
+
+    def disarm() -> None:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer != (0.0, 0.0):
+            # A session-scoped alarm the suite itself armed (none today) survives the test untouched.
+            signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
+
+    return disarm
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_setup(item: pytest.Item) -> Any:
+    """The per-test timer arms around the fixture set-up too: a hang there is a hang."""
+    disarm = _timeboxed(item)
+    if disarm is None:
+        yield
+        return
+    try:
+        yield
+    finally:
+        disarm()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> Any:
+    """The per-test timer over the test body (see :func:`_timeboxed`)."""
+    disarm = _timeboxed(item)
+    if disarm is None:
+        yield
+        return
+    try:
+        yield
+    finally:
+        disarm()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_teardown(item: pytest.Item) -> Any:
+    """...and over the fixture teardown."""
+    disarm = _timeboxed(item)
+    if disarm is None:
+        yield
+        return
+    try:
+        yield
+    finally:
+        disarm()
 
 
 class StubEngine:
