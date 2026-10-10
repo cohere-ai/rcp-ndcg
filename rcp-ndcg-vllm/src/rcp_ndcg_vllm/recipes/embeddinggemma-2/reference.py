@@ -19,9 +19,13 @@ prompt strings changed is a loud error, never a silent drift.
   ``max_seq_length``; the recipe declares ``over_cap_cut_differs`` so over-cap rows are reported, not gated,
   and this mode never ports the client's content-boundary cut.
 - ``--mode embed`` (stage 2's reference side): ``{"rows": [{"index", "query_vectors", "document_vectors"}]}``
-  -- one 768-d L2-normalised vector per text through the card's ``encode`` (one query per row, one vector per
-  document). A media-bearing row is refused loudly (:func:`_refuse_media_rows`): the media stage is its own
-  mode and the embed mode compares text rows.
+  -- one 768-d L2-normalised vector per side through the card's ``encode`` (one query per row, one vector per
+  document). A media row's ``media`` field is read (:func:`side_input`): a text-only side is its text (the
+  card prepends the declared prompt to it), a media side is a one-user-turn conversation with the parts in
+  order (the prompt rides the card's own system message, which the checkpoint's template renders first); an
+  image entry is a loaded PIL image and a video entry is written to a scratch file and handed to the
+  checkpoint's own processor at the recipe's declared video pin (:func:`_video_pin`), so the reference's
+  frames follow the engine's. The retired per-column media fields are refused loudly.
 - ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
   the card's model consumes: the client's parts in order (the task prompt text, the media, the body text),
   each image's size after the checkpoint's
@@ -272,10 +276,64 @@ def mode_render(recipe: dict[str, Any], pairs: list[dict[str, Any]]) -> dict[str
     return {"rows": rows}
 
 
+def _entry_bytes(entry: dict[str, Any]) -> bytes:
+    """An entry's inline bytes (the harness's ``data:`` URI), decoded."""
+    import base64
+
+    uri = str(entry.get("uri", ""))
+    if not uri.startswith("data:"):
+        raise SystemExit(f"the media stage sends inline media; got {uri[:48]!r}")
+    return base64.b64decode(uri.split(",", 1)[1])
+
+
+def _decode_image(entry: dict[str, Any]) -> Any:
+    """An entry's inline image as a loaded PIL image (the checkpoint's processor input)."""
+    import io
+
+    from PIL import Image
+
+    with Image.open(io.BytesIO(_entry_bytes(entry))) as handle:
+        return handle.convert("RGB")
+
+
+def side_input(text: str, entries: list[dict[str, Any]], *, work: Path, clip_name: str) -> Any:
+    """One side as the card's own ST input: its text, or a one-user-turn conversation with the parts in order.
+
+    A side without media is its text (the card's ``prompt_name`` prepends the declared task prompt to it);
+    a media side is a conversation (the card's ``prompt_name`` rides as a system message, which the
+    checkpoint's template renders before the user turn -- the same render the client sends). An image entry
+    becomes a loaded PIL image, a video entry is written to ``work/<clip_name>.avi`` (the card's video
+    processor reads it at the recipe's declared pin), a text entry stands where it stands, and a side with
+    no part at all is the empty string (the card's bare prompt).
+    """
+    media = [entry for entry in entries if str(entry.get("kind", "image")) != "text"]
+    if not media:
+        return "".join(str(entry.get("text", "")) for entry in entries) + (text or "")
+    parts: list[dict[str, Any]] = []
+    for entry in entries:
+        kind = str(entry.get("kind", "image"))
+        if kind == "text":
+            if str(entry.get("text", "")):
+                parts.append({"type": "text", "text": str(entry["text"])})
+        elif kind == "image":
+            parts.append({"type": "image", "image": _decode_image(entry)})
+        elif kind == "video":
+            path = work / f"{clip_name}.avi"
+            path.write_bytes(_entry_bytes(entry))
+            parts.append({"type": "video", "video": str(path)})
+        else:
+            raise SystemExit(f"a media entry's kind must be image, video or text; got {kind!r}")
+    if text:
+        parts.append({"type": "text", "text": text})
+    return [{"role": "user", "content": parts}]
+
+
 def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str) -> dict[str, Any]:
     """Stage 2's reference side: the card's own sentence-transformers path -- ``encode`` with
-    ``prompt_name="SearchQuery"`` / ``"Document"``, one L2-normalised 768-d vector per text."""
-    _refuse_media_rows(pairs)
+    ``prompt_name="SearchQuery"`` / ``"Document"``, one L2-normalised 768-d vector per side (media rows
+    included: :func:`side_input`)."""
+    import tempfile
+
     from sentence_transformers import SentenceTransformer
 
     query_prompt, doc_prompt = _prompts(recipe)
@@ -291,18 +349,65 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                 f"the checkpoint's {name!r} prompt {prompts[name]!r} differs from the recipe's {declared!r}: "
                 "a checkpoint whose prompt table changed is a new instrument"
             )
+    video_fps, video_max_frames = _video_pin(recipe)
 
-    def vectors(texts: list[str], prompt_name: str) -> list[list[float]]:
-        if not texts:
-            return []
-        matrix = model.encode(texts, prompt_name=prompt_name, normalize_embeddings=True)
-        return [[float(value) for value in vector] for vector in matrix]
+    def vectors(sides: list[Any], prompt_name: str) -> list[list[float]]:
+        """One vector per side: the card's own encode, text sides and media conversations in their own
+        batches (a mixed batch is not a form the card's input formatter defines)."""
+        out: list[list[float] | None] = [None] * len(sides)
+        text_positions = [position for position, side in enumerate(sides) if isinstance(side, str)]
+        media_positions = [position for position, side in enumerate(sides) if not isinstance(side, str)]
+        for positions, processing in (
+            (text_positions, None),
+            (media_positions, {"video": {"fps": video_fps, "max_frames": video_max_frames}}),
+        ):
+            if not positions:
+                continue
+            matrix = model.encode(
+                [sides[position] for position in positions],
+                prompt_name=prompt_name,
+                normalize_embeddings=True,
+                **({"processing_kwargs": processing} if processing is not None else {}),
+            )
+            for position, vector in zip(positions, matrix, strict=True):
+                out[position] = [float(value) for value in vector]
+        if any(vector is None for vector in out):  # pragma: no cover - every side is text or a conversation
+            raise SystemExit("a side was not encoded")
+        return [vector for vector in out if vector is not None]
+
+    # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's scan;
+    # a scratch cleanup race must never fail a reference run (the harness's own tempdirs say the same).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        root = Path(work)
+        query_sides = [
+            side_input(
+                str(row["query"]),
+                list((row.get("media") or {}).get("query") or []),
+                work=root,
+                clip_name=f"query-{index}",
+            )
+            for index, row in enumerate(pairs)
+        ]
+        document_sides: list[list[Any]] = []
+        for index, row in enumerate(pairs):
+            documents_media = list((row.get("media") or {}).get("documents") or [])
+            document_sides.append(
+                [
+                    side_input(
+                        str(document),
+                        list(documents_media[position] or []) if position < len(documents_media) else [],
+                        work=root,
+                        clip_name=f"document-{index}-{position}",
+                    )
+                    for position, document in enumerate(row["documents"])
+                ]
+            )
+        query_vectors = vectors(query_sides, "SearchQuery")
+        document_vectors = [vectors(sides, "Document") for sides in document_sides]
 
     rows: list[dict[str, Any]] = []
-    for index, row in enumerate(pairs):
-        query_vectors = vectors([str(row["query"])], "SearchQuery")
-        document_vectors = vectors([str(document) for document in row["documents"]], "Document")
-        rows.append({"index": index, "query_vectors": query_vectors, "document_vectors": document_vectors})
+    for index, (query_vector, documents) in enumerate(zip(query_vectors, document_vectors, strict=True)):
+        rows.append({"index": index, "query_vectors": [query_vector], "document_vectors": documents})
     return {"rows": rows}
 
 

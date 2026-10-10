@@ -90,7 +90,7 @@ REFERENCE = {
     "kind": "sentence_transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
-    "known_deviations": ["over_cap_cut_differs", "media_approximation"],
+    "known_deviations": ["over_cap_cut_differs"],
     "device": None,  # the schema default
 }
 TOP = {
@@ -396,3 +396,40 @@ def test_the_family_yaml_is_the_only_recipe_file() -> None:
     reference.lock, no standalone recipe.yaml and no template file."""
     names = sorted(path.name for path in RECIPE_DIR.iterdir() if path.is_file())
     assert names == ["family.yaml", "reference.in", "reference.lock", "reference.py"]
+
+
+def test_the_reference_reads_media_rows_into_the_cards_own_inputs(tmp_path: Path) -> None:
+    """The reference's media path reads the harness's ``media`` entries into the card's own ST inputs: a
+    text-only side is its text (the card prepends the declared prompt), a media side is a one-user-turn
+    conversation with the parts in order (the prompt rides the card's own system message), an inline image
+    is a loaded PIL image, and a container is written to a scratch file the checkpoint's processor reads at
+    the recipe's declared video pin. No model weights: the row reading and the pin are the plumbing."""
+    import base64
+    import io
+
+    from PIL import Image
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
+    image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    clip = video_entry("icon", 64, 64, 64)
+    assert module.side_input("the body", [], work=tmp_path, clip_name="query-0") == "the body"
+    conversation = module.side_input("the body", [image], work=tmp_path, clip_name="query-1")
+    assert conversation[0]["role"] == "user"
+    assert conversation[0]["content"][0]["type"] == "image"
+    assert conversation[0]["content"][0]["image"].size == (16, 16)
+    assert conversation[0]["content"][1] == {"type": "text", "text": "the body"}
+    interleaved = module.side_input(
+        "", [{"kind": "text", "text": "lead "}, image], work=tmp_path, clip_name="document-0-0"
+    )
+    assert [part["type"] for part in interleaved[0]["content"]] == ["text", "image"]
+    video = module.side_input("", [clip], work=tmp_path, clip_name="document-0-1")
+    video_path = Path(video[0]["content"][0]["video"])
+    assert video_path.is_file()
+    assert video_path.read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
+    # The declared video pin is the one the recipe serves the engine (fps 60, max_frames 32): the card's
+    # processor samples the container with it, so the reference's frames follow the engine's.
+    recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
+    assert module._video_pin(recipe) == (60.0, 32)
