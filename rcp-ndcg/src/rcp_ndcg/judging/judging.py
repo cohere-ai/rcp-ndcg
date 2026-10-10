@@ -414,6 +414,14 @@ def _queries(
         )
         require_tokenizer(tokenizer, what)
     name, rows, source = _rows(dataset, candidates, title=title)
+    seen: set[str] = set()
+    for row in rows:
+        if row.id in seen:
+            raise DataError(
+                f"duplicate query id {row.id!r} in the rows to judge: each query is judged once",
+                hint="merge the rows, or give the second query its own id",
+            )
+        seen.add(row.id)
     queries: list[_Query] = []
     for row in rows:
         if candidates is not None and row.id not in candidates:
@@ -1161,6 +1169,14 @@ def _plan(
                 cli_hint="plan the windows with `rcp-ndcg calibration insert --dry-run`",
             )
         docs = {query: list(dict.fromkeys(doc for window in rows for doc in window)) for query, rows in windows.items()}
+    if docs is not None:
+        empty = sorted(query for query, ids in docs.items() if not ids)
+        if empty:
+            raise ConfigError(
+                f"docs names no documents for {', '.join(map(repr, empty[:3]))}: an empty subset has nothing "
+                "to judge",
+                hint="pass at least one document per query, or drop the entry",
+            )
     client = judge_cfg if isinstance(judge_cfg, JudgeClient) else JudgeClient.from_config(judge_cfg)
     effective = _effective_preprocessing(preprocessing, client.config)
     # The pass's effective pixel policy, for the client's engine media check: the probe runs when the pass
@@ -1187,6 +1203,20 @@ def _plan(
         title=client.config.title or "join",
         task_instruction=instruction_for("query") if instruction_for is not None else None,
     )
+    empty = [query.query_id for query in queries if not query.units]
+    if empty:
+        raise DataError(
+            f"query {empty[0]!r} has no candidates to judge",
+            hint="drop the query, or give its pool at least one candidate",
+        )
+    if stage == "tournament":
+        thin = [query.query_id for query in queries if len(query.units) < 2]
+        if thin:
+            raise DataError(
+                f"the tournament needs at least two candidates per query; {', '.join(map(repr, thin[:3]))} "
+                "has fewer",
+                hint="judge those queries with the rubric, or drop them",
+            )
     if windows is not None and any(query.chunk_mapping for query in queries):
         raise ConfigError("planned windows show whole documents; these documents are judged in chunks")
     modality = _modality(queries)

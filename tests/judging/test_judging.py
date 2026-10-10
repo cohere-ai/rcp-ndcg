@@ -805,6 +805,30 @@ class TestPlannedWindows:
         with pytest.raises(DataError, match="nope"):
             _tournament(tmp_path, windows={ROWS[0].id: [[q1[0], "nope"]]})
 
+    def test_an_empty_docs_entry_is_refused_before_anything_is_asked(self, tmp_path: Path) -> None:
+        """A subset map that names no document has nothing to judge; the pass used to claim a store and
+        report success over zero windows."""
+        client = _fake()
+        with pytest.raises(ConfigError, match="no documents"):
+            _rubric(tmp_path, client, docs={ROWS[0].id: []})
+        assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
+
+    def test_a_tournament_query_with_fewer_than_two_candidates_is_refused(self, tmp_path: Path) -> None:
+        """A pool of one has no pair to compare; the pass was silent (no record, no warning)."""
+        client = _fake()
+        with pytest.raises(DataError, match="at least two"):
+            judge(ROWS, {"q1": [ROWS[0].doc_ids[0]]}, client, stage="tournament", out=tmp_path)
+        assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
+
+    def test_duplicate_query_ids_are_refused(self, tmp_path: Path) -> None:
+        """Two rows with one query id fuse: the second row's documents are never judged (or the first's
+        answers are served for both)."""
+        client = _fake()
+        with pytest.raises(DataError, match="duplicate query id"):
+            judge((ROWS[0], ROWS[0].model_copy(update={"docs": ["other " + d for d in ROWS[0].docs]})), None, client,
+                  stage="rubric", out=tmp_path, schedule=TINY_RUBRIC)  # fmt: skip
+        assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
+
 
 class TestIdentities:
     """What names a corpus and an instrument: the store identity, the family key and the record ids."""
