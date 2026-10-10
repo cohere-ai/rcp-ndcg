@@ -39,6 +39,7 @@ from rcp_ndcg_core.content import Content
 from rcp_ndcg.data.mrl import MrlHead
 from rcp_ndcg.data.postprocess import kept_vector_count, skip_keep_mask
 from rcp_ndcg.data.prepare import MediaCensus
+from rcp_ndcg.data.resolution import VISION_WRAPPER_TOKENS
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.data.text_budget import FitResult, ProcessingRecord, TextTruncationCensus
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
@@ -276,9 +277,11 @@ class PoolingClient(RoleClient):
         disagrees is a typed error. A MEDIA item's ids are its sent text's (a caption): the messages route's
         render is the engine's chat-template render, which the client cannot tokenise, so those ids feed the
         declared kept count under ``document_skip_engine_side`` (the caption's positions) and are otherwise
-        unused -- the skip rule at image positions keeps every vector of one, on record."""
+        unused -- the skip rule at image positions keeps every vector of one, on record, unless a media
+        allowlist is declared (then the engine keeps only its positions)."""
         wants_ids = (
-            role is EncodeRole.DOCUMENT and bool(self.config.document_skip_token_ids)
+            role is EncodeRole.DOCUMENT
+            and (bool(self.config.document_skip_token_ids) or bool(self.config.media_keep_token_ids))
         ) or self.config.request_shape == "token_ids"
         if not wants_ids:
             return ()
@@ -390,9 +393,7 @@ class PoolingClient(RoleClient):
             outputs=self.config.outputs,
             request_shape=self.config.request_shape,
             token_ids=batch_ids,
-            kept_counts=self._declared_kept_counts(contents, batch_ids)
-            if self.config.document_skip_engine_side and role is EncodeRole.DOCUMENT
-            else (),
+            kept_counts=self._declared_kept_counts(contents, batch_ids) if role is EncodeRole.DOCUMENT else (),
             system_head=self._media_system_head("query" if role is EncodeRole.QUERY else "document")
             if any(content.has_media for content in contents)
             else None,
@@ -407,7 +408,7 @@ class PoolingClient(RoleClient):
                 f"the pooling endpoint returned {embeddings.num_items} item(s) for {len(contents)} input(s); "
                 "refusing to return misaligned vectors"
             )
-        if self.config.document_skip_token_ids and role is EncodeRole.DOCUMENT:
+        if (self.config.document_skip_token_ids or self.config.media_keep_token_ids) and role is EncodeRole.DOCUMENT:
             embeddings = self._apply_document_skips(contents, embeddings, batch_ids, batch_positions)
         if self.config.mrl_dim is not None:
             # The declared normalisation of the FULL-WIDTH reply runs first, then the head: the head
@@ -460,33 +461,64 @@ class PoolingClient(RoleClient):
     def _declared_kept_counts(
         self, contents: Sequence[Content], batch_ids: tuple[tuple[int, ...], ...]
     ) -> tuple[int, ...]:
-        """The declared count of kept vectors per item, for a batch the served plugin applies the rule to.
+        """The declared count of kept vectors per item, for a batch the served plugin applies a rule to.
 
-        The rule's declared home is the plugin (``document_skip_engine_side``), so the wire carries only the
-        kept vectors and the client cannot count the reply by the positions it sent -- it declares the kept
-        count per item instead, and the adapter refuses a reply that disagrees. One count per item:
+        Each rule's declared home is the plugin (``document_skip_engine_side`` for the text skip rule,
+        ``media_keep_token_ids`` for the media allowlist), so the wire carries only the kept vectors and the
+        client cannot count the reply by the positions it sent -- it declares the kept count per item
+        instead, and the adapter refuses a reply that disagrees. The counts are per BATCH TYPE (a batch
+        mixing text and media documents is refused earlier):
 
-        * a TEXT item: the sent render's ids outside the rule (:func:`kept_vector_count`);
-        * a MEDIA item: the render the engine reads -- the leading fixed head the client sends as a system
-          message (``media_head_as_system``), the item's sent text (a caption), and the prepared media
-          block's counted tokens (the vision wrapper plus the patch run). The block's own positions are the
-          processor's structural tokens, which the declared rule never names, so they are kept whole; a
-          render the engine frames further is caught by the count check, never absorbed.
+        * a TEXT batch (the engine-side skip rule): each item's sent render's ids outside the rule
+          (:func:`kept_vector_count`);
+        * a MEDIA batch under the allowlist: the media block's patch run -- the allowlist keeps the render's
+          media positions only, so the vision wrapper (and the head and a caption, which the block's count
+          never included) is not kept;
+        * a MEDIA batch under the engine-side skip rule (no allowlist): the render the engine reads -- the
+          leading fixed head the client sends as a system message (``media_head_as_system``), the item's
+          sent text (a caption), and the prepared media block's counted tokens. The block's own positions
+          are the processor's structural tokens, which the declared rule never names, so they are kept
+          whole.
+
+        A batch whose rule the engine does not apply returns no counts: the usage cross-check stands.
         """
+        if any(content.has_media for content in contents):
+            if self.config.media_keep_token_ids:
+                return tuple(self._media_allowlist_kept_count(content) for content in contents)
+            if not self.config.document_skip_engine_side:
+                return ()
+            return tuple(
+                self._media_skip_kept_count(content, ids) for content, ids in zip(contents, batch_ids, strict=True)
+            )
+        if not self.config.document_skip_engine_side:
+            return ()
         skip = self.config.document_skip_token_ids
+        return tuple(kept_vector_count(ids, skip) for ids in batch_ids)
+
+    def _media_skip_kept_count(self, content: Content, ids: tuple[int, ...]) -> int:
+        """The declared kept count of one media document under the engine-side TEXT skip rule: the render the
+        engine reads -- the sent head's kept ids, the item's sent text (a caption) and the prepared media
+        block's counted tokens (the vision wrapper plus the patch run)."""
         assert self._tokenizer is not None, "the config refuses the rule without a tokenizer"
         head = self._media_system_head("document")
         flag = self.config.template.adds_special_tokens("document") if self.config.template is not None else True
         head_ids = tuple(self._tokenizer.ids(head, add_special_tokens=flag)) if head else ()
-        counts: list[int] = []
-        for content, ids in zip(contents, batch_ids, strict=True):
-            if content.has_media:
-                caption = tuple(ids) if content.text else ()
-                media_tokens = self._media_counts_of([content])[0].tokens
-                counts.append(kept_vector_count((*head_ids, *caption), skip, media_tokens=media_tokens))
-            else:
-                counts.append(kept_vector_count(ids, skip))
-        return tuple(counts)
+        caption = tuple(ids) if content.text else ()
+        media_tokens = self._media_counts_of([content])[0].tokens
+        return kept_vector_count((*head_ids, *caption), self.config.document_skip_token_ids, media_tokens=media_tokens)
+
+    def _media_allowlist_kept_count(self, content: Content) -> int:
+        """The declared kept count of one media document under the allowlist: the media block's patch run.
+
+        The allowlist is the checkpoint's own ``keep_only_token_ids`` (topk-embed-v1's image-patch token),
+        and the media block's counted tokens are the vision wrapper plus the patch run
+        (:func:`~rcp_ndcg.data.resolution.content_media_tokens`), so the kept count is the block's count
+        minus the wrapper. The head and a caption are outside the allowlist and are not kept; a recipe whose
+        allowlist named another position would make this count disagree with the reply, and the mismatch is
+        refused, never absorbed.
+        """
+        media_tokens = self._media_counts_of([content])[0].tokens
+        return max(media_tokens - VISION_WRAPPER_TOKENS, 0)
 
     def _apply_document_skips(
         self,
@@ -495,7 +527,7 @@ class PoolingClient(RoleClient):
         batch_ids: tuple[tuple[int, ...], ...],
         batch_positions: tuple[int, ...] = (),
     ) -> Embeddings:
-        """The document vectors without the ``document_skip_token_ids`` positions (2, the topk hand-off).
+        """The document vectors without the rules' excluded positions (2, the topk hand-off).
 
         The skip rule at image positions: a TEXT document's positions are the ids the client sent (the
         engine's tokenisation of the fitted render), and the vectors at the skip ids are dropped -- a reply
@@ -506,11 +538,11 @@ class PoolingClient(RoleClient):
         client keeps every returned vector for a media item and records the deviation on the row's
         :class:`~rcp_ndcg.data.text_budget.ProcessingRecord` (``skip_unapplied``): never silently unskipped.
 
-        When the served plugin applies the rule engine-side (``document_skip_engine_side``) the reply IS the
-        kept set -- for a text document and for a media render alike -- so the client slices nothing and
-        records no deviation; the declared kept counts (:meth:`_declared_kept_counts`) travelled on the
-        request, and the adapter refused a reply that disagrees with them (a mismatch is typed, never
-        silent).
+        When the served plugin applies a rule engine-side -- the text rule (``document_skip_engine_side``)
+        or the media allowlist (``media_keep_token_ids``) -- the reply IS the kept set for that batch's
+        items, so the client slices nothing and records no deviation; the declared kept counts
+        (:meth:`_declared_kept_counts`) travelled on the request, and the adapter refused a reply that
+        disagrees with them (a mismatch is typed, never silent).
 
         Args:
             contents: The batch's documents as sent.
@@ -520,8 +552,8 @@ class PoolingClient(RoleClient):
             batch_positions: Each document's ORIGINAL input index, for the record's ``input_id``.
 
         Returns:
-            The ragged embeddings with the skip positions' vectors dropped (media items whole, or the
-            engine's already-kept vectors when the plugin applies the rule).
+            The ragged embeddings with the excluded positions' vectors dropped (media items whole, or the
+            engine's already-kept vectors when the plugin applies a rule).
 
         Raises:
             CapabilityError: ids were not tracked for a text item under the skip list.
@@ -537,16 +569,18 @@ class PoolingClient(RoleClient):
             )
         skip = self.config.document_skip_token_ids
         engine_side = self.config.document_skip_engine_side
+        media_engine_side = bool(self.config.media_keep_token_ids)
         offsets = embeddings.offsets
         slices: list[np.ndarray] = []
         for index, ids in enumerate(batch_ids):
             vectors = np.asarray(embeddings.vectors[offsets[index] : offsets[index + 1]])
             if contents[index].has_media:
-                # The image positions are exempt (never skipped) and the render's text positions cannot be
-                # located client-side: keep the item whole, on record -- unless the plugin applied the rule
-                # engine-side, when the reply already carries exactly the kept set (its count was checked).
+                # The image positions are exempt from the TEXT skip (never skipped) and the render's text
+                # positions cannot be located client-side: keep the item whole, on record -- unless the
+                # plugin applied a rule engine-side (the media allowlist, or the text rule on the render),
+                # when the reply already carries exactly the kept set (its count was checked).
                 slices.append(vectors)
-                if not engine_side:
+                if not (media_engine_side or engine_side):
                     self._record_skip_unapplied(contents[index], batch_positions, index)
                 continue
             if engine_side:

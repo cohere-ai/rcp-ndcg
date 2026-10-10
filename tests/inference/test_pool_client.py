@@ -608,6 +608,74 @@ def _media_kept_count(image: Any) -> int:
     return len(head) + prepared.tokens.tokens
 
 
+def _media_patch_count(image: Any) -> int:
+    """The declared kept count of a media document under the allowlist: the media block's patch run (the
+    block's counted tokens minus the vision wrapper), from the product's own preparation and media count."""
+    from rcp_ndcg.data.prepare import prepare_request
+    from rcp_ndcg.data.resolution import VISION_WRAPPER_TOKENS, ImagePolicy
+
+    policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+    prepared = prepare_request([Content.from_image(image.as_uri())], policy, None)
+    return prepared.tokens.tokens - VISION_WRAPPER_TOKENS
+
+
+class TestMediaKeepIds:
+    """``media_keep_token_ids``: the media allowlist the served plugin applies engine-side (topk-embed-v1's
+    image-patch token, the only positions its reference keeps for an image document). The wire carries only
+    the allowlist's positions, the client checks the reply's declared kept count (the media block's patch
+    run) and no ``skip_unapplied`` record is written -- the engine applied the allowlist."""
+
+    @staticmethod
+    def _client(sender: Any, **config: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://engine:8000/v1",
+            "model": "topk-embed",
+            "dim": 2,
+            "normalize": False,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+            "document_skip_token_ids": (2,),  # the text rule stays the client's own
+            "media_keep_token_ids": (248056,),  # the image-patch token
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 4,
+        }
+        settings.update(config)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_a_media_reply_of_the_patch_run_is_accepted(self, tmp_path: Any) -> None:
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        expected = _media_patch_count(image)
+        sender = RecordingSender(_pooling_reply(rows=expected, usage=expected))
+        client = self._client(sender)
+        embeddings = asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+        assert embeddings.offsets is not None and embeddings.offsets.tolist() == [0, expected]
+        assert [record.mechanisms for record in client.processing if record.changed] == [], (
+            "the engine applied the allowlist: no skip_unapplied"
+        )
+
+    def test_a_media_reply_off_the_allowlist_count_is_refused(self, tmp_path: Any) -> None:
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        expected = _media_patch_count(image)
+        sender = RecordingSender(_pooling_reply(rows=expected + 1, usage=expected + 1))
+        client = self._client(sender)
+        with pytest.raises(ProviderError, match=rf"declared keep-rule leaves {expected} kept"):
+            asyncio.run(client.aencode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT))
+
+    def test_the_allowlist_is_refused_beside_a_per_chunk_model(self, tokenizer_json: str) -> None:
+        with pytest.raises(ConfigError, match="per_chunk"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                media_keep_token_ids=(248056,),
+                outputs="per_chunk",
+            )
+
+
 class TestMediaHeadAsSystem:
     """``media_head_as_system``: a media document sends the shape's leading fixed template head as a
     leading ``system`` message -- the card's sentence-transformers render for a pass-through engine chat
