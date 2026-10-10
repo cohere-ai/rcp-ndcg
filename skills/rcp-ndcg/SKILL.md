@@ -144,8 +144,7 @@ in `data.judge_severity`).
 
 Make a long judge pass survive preemption: mirror it to any fsspec URI (S3 and Azure via the `s3`/`azure`
 extras, GCS as installed -- `gcsfs` comes with `rcp-ndcg` -- or any fsspec filesystem you register), follow
-`data.mirror.lag_s` in
-`run status`, and resume on any node from the mirror:
+`data.mirror.lag_s` in `run status`, and resume on any node from the mirror:
 
 ```bash
 rcp-ndcg run start <config> --mirror s3://bucket/runs/nano --detach --json
@@ -156,12 +155,13 @@ Serve the models on the cluster with the run (the user's image and command, verb
 local runner). Add a `serve:` section to the run config, one engine per role:
 `serve: {judge: {image, command, resources, replicas}}`, `encoder` for the retrieval encoder, `reranker` for its
 reranker. A served `api: rerank` or `api: openai_embeddings` model without `base_url`, or a `recipe:<id>` value,
-needs no URL in the config: the job's URLs for it reach the step at runtime. With the recipes, the engine command
-is `rcp-ndcg-vllm serve <id>` (the engine image prepares `python3 -m pip install --no-deps rcp-ndcg-vllm`).
-On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default `none` the command runs on the
-node and `image` is refused. The job runs the steps in job phases, each starting only the engines its steps use and
-handing their URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. A failed job is submitted
-again, engines included, with `run resume --runner`; it asks only for the windows its stores lack.
+needs no URL in the config: the job's URLs for it reach the step at runtime (a served judge names the engine's
+own loopback URL; another `base_url` is refused). With the recipes, the engine command is
+`rcp-ndcg-vllm serve <id>` (the engine image prepares `python3 -m pip install --no-deps rcp-ndcg-vllm`).
+On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default `none` the command runs on
+the node and `image` is refused. The job runs the steps in job phases, each starting only the engines its steps
+use and handing their URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. A failed job is
+submitted again, engines included, with `run resume --runner`; it asks only for the windows its stores lack.
 
 ```bash
 rcp-ndcg run start <config> --runner slurm --dry-run --json

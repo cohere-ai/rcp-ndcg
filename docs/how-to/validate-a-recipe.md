@@ -30,10 +30,17 @@ digest-pinned nightly when the release image lacks its architecture), untouched 
 - **T2 -- equivalence.** Served outputs against the reference implementation -- token-id equality and the
   insertion checks on the CPU side first, then the scored pairs on GPU, with the engine's token counts checked
   against the client's. A recipe whose reference deliberately drops anchors declares the deviation and is
-  compared under the cap only ([the equivalence policy](../reference/recipes.md#equivalence-policy)).
+  compared under the cap only ([the equivalence policy](../reference/recipes.md#equivalence-policy)); a recipe
+  that declares Matryoshka dimensions is gated per declared `k` ex-post from one full-width served pass
+  ([gating every declared k](../concepts/matryoshka.md#gating-every-declared-k)).
 - **T3 -- quality.** The MTEB suites: the served model's rankings scored with the released gains, against the
   thresholds the model card claims.
 - **T4 -- end to end.** The served model as a run's step, with a served judge, through the product's clients.
+
+The submitted wave ([release candidates and the GPU waves](release-candidates.md#which-gates-a-submitted-wave-runs))
+runs T0, T2 and the recorder; T1's observation corpus, T3 and the negative controls are operator-run against
+the same RC with the flags named on that page, and T4 is its own `--script e2e` job. A recipe's `status`
+flips to `verified` only from a wave whose document records the gates it needs.
 
 ## The wave runner: step budgets, the pod log and partial results
 
@@ -67,8 +74,10 @@ run_wave: jina-reranker-v3 equivalence passed 812.1s
 
 Results do not wait for the pod to end: `<out>/<recipe>/status.json` is rewritten atomically after every
 step, and with `--upload` each finished recipe's directory is copied to the output URI the moment the
-recipe ends, so a cancelled or killed pod still leaves the evidence of everything that finished (the wave
-summary `wave.json`/`WAVE.md` lands at the end).
+recipe ends, so a cancelled or killed pod still leaves the evidence of everything that finished. Every
+upload is verified against the destination and retried with backoff, and its outcome is recorded in the
+recipe's status row; the wave summary (`wave.json`/`WAVE.md`) is written before the last upload, so it
+reaches the URI too, and a wave with a failed upload does not report PASS.
 
 The reference subprocess gets **a GPU of its own** beside the engine's (never the engine's GPU, which
 holds most of its memory); the runner reserves it when packing, so a node packs fewer engines per wave

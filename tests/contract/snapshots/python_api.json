@@ -12252,6 +12252,12 @@
             "name": "token_ids"
           },
           {
+            "annotation": "tuple[int, ...]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "kept_counts"
+          },
+          {
             "annotation": "str | None",
             "default": null,
             "kind": "positional_or_keyword",
@@ -12482,6 +12488,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_engine_side": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "document_skip_token_ids": {
             "alias": null,
             "default": [],
@@ -12572,6 +12585,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "media_keep_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
           },
           "media_sides": {
             "alias": null,
@@ -17665,6 +17685,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_engine_side": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "document_skip_token_ids": {
             "alias": null,
             "default": [],
@@ -17755,6 +17782,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "media_keep_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
           },
           "media_sides": {
             "alias": null,
@@ -18582,6 +18616,13 @@
             "required": false,
             "type": "str"
           },
+          "document_skip_engine_side": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "document_skip_token_ids": {
             "alias": null,
             "default": [],
@@ -18672,6 +18713,13 @@
             "frozen": false,
             "required": false,
             "type": "bool"
+          },
+          "media_keep_token_ids": {
+            "alias": null,
+            "default": [],
+            "frozen": false,
+            "required": false,
+            "type": "tuple[int, Ellipsis]"
           },
           "media_sides": {
             "alias": null,
@@ -22847,6 +22895,27 @@
             "default": true,
             "kind": "keyword_only",
             "name": "registered"
+          },
+          {
+            "returns": "None"
+          }
+        ]
+      },
+      "runner_conformance": {
+        "defined_in": "rcp_ndcg.testing._runner_contract",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Any",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "runner"
+          },
+          {
+            "annotation": "JobSpec | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "job"
           },
           {
             "returns": "None"

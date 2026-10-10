@@ -3,7 +3,8 @@
   "schema_version": 1,
   "generator": {
     "module": "rcp_ndcg_test.observe.requests",
-    "GENERATOR_VERSION": 1,
+    "GENERATOR_VERSION": 2,
+    "GENERATOR_SEED": "1/rcp-observe-v1",
     "SEED": "rcp-observe-v1"
   },
   "dataset_commits": {
@@ -16,8 +17,8 @@
     {
       "recipe": "ctxl-rerank-v2-instruct-multilingual-1b",
       "path": "ctxl-rerank-v2-instruct-multilingual-1b.jsonl",
-      "sha256": "0336086f41dade9e9cf0e68dcc8774af644711d9c383bae337825fa09db64475",
-      "bytes": 111456,
+      "sha256": "e80ed71c04af9677cde45c9d13ca10da9812b776ab93d47502b9d8302e6b6541",
+      "bytes": 111476,
       "rows": 25,
       "strata": {
         "media:image:tiny": {
@@ -406,7 +407,6 @@
           "strata": [
             "content:empty",
             "content:empty@document",
-            "content:empty@query",
             "shapes:pair"
           ]
         },
@@ -518,8 +518,8 @@
     {
       "recipe": "ctxl-rerank-v2-instruct-multilingual-2b",
       "path": "ctxl-rerank-v2-instruct-multilingual-2b.jsonl",
-      "sha256": "b24da998b8d6f8ccdb34416ba4dc2f7090f6e1fb503998e76b186bed8540ec62",
-      "bytes": 95584,
+      "sha256": "392f8623fcdae6a5347642c85b45e6adc225fb04f046d7d84063c91b94443b9b",
+      "bytes": 95604,
       "rows": 25,
       "strata": {
         "media:image:tiny": {
@@ -908,7 +908,6 @@
           "strata": [
             "content:empty",
             "content:empty@document",
-            "content:empty@query",
             "shapes:pair"
           ]
         },
@@ -1020,8 +1019,8 @@
     {
       "recipe": "ctxl-rerank-v2-instruct-multilingual-6b",
       "path": "ctxl-rerank-v2-instruct-multilingual-6b.jsonl",
-      "sha256": "605ca1b2bc7e9e2e56543f8474be2b9af8a7452e7a277d76ac2d4bdc92361e62",
-      "bytes": 112892,
+      "sha256": "61f0fdebd6644bbe3af3341a372987808770728bbdb2a764e3c0cec80a4aa046",
+      "bytes": 112918,
       "rows": 25,
       "strata": {
         "media:image:tiny": {
@@ -1410,7 +1409,6 @@
           "strata": [
             "content:empty",
             "content:empty@document",
-            "content:empty@query",
             "shapes:pair"
           ]
         },
@@ -4705,8 +4703,8 @@
     {
       "recipe": "jina-reranker-v3",
       "path": "jina-reranker-v3.jsonl",
-      "sha256": "c19fd6d89dabd17d1a47c66f3501dfdb672d9cf183867e5daeaf72ba52427242",
-      "bytes": 59493,
+      "sha256": "8788cbb5c9072639bee002bb7256e5f3ed1e714ea11e76875915ec2726c0de0c",
+      "bytes": 59540,
       "rows": 24,
       "strata": {
         "media:image:tiny": {
@@ -4801,7 +4799,8 @@
           "present": true
         },
         "content:empty": {
-          "present": true
+          "present": false,
+          "reason": "the client's empty policy does not send the empty string on every side (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -5078,11 +5077,12 @@
         {
           "source": {
             "suite": "synthetic",
-            "content_kind": "empty"
+            "content_kind": "whitespace_only"
           },
           "strata": [
-            "content:empty",
-            "content:empty@query",
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
             "shapes:pair"
           ]
         },
@@ -5184,7 +5184,7 @@
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "pruned_rows": 1,
+        "pruned_rows": 0,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
       }
@@ -7710,9 +7710,9 @@
     {
       "recipe": "pplx-embed-v2-context-9b-preview",
       "path": "pplx-embed-v2-context-9b-preview.jsonl",
-      "sha256": "a610a89ad293f3cf8c668a694b92c1b43e96d25d543b50d4c1a7f122d6c78777",
-      "bytes": 423544,
-      "rows": 23,
+      "sha256": "9846f89982da6d3d3d61f3faec01e9bf7bf16187af736d01d3187b71cc05c165",
+      "bytes": 30119,
+      "rows": 22,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -7852,15 +7852,15 @@
         },
         "length:at_90": {
           "present": false,
-          "reason": "the padded row (~1179580 characters) would exceed the 500000-character file-size cap (GPU-VALIDATION.md item 7); the corpus request set carries the full ladder"
+          "reason": "the padded row (~2359230 characters) would exceed the 500000-character file-size cap (GPU-VALIDATION.md item 7); the corpus request set carries the full ladder"
         },
         "length:at_budget": {
           "present": false,
-          "reason": "the padded row (~1310650 characters) would exceed the 500000-character file-size cap (GPU-VALIDATION.md item 7); the corpus request set carries the full ladder"
+          "reason": "the padded row (~2621370 characters) would exceed the 500000-character file-size cap (GPU-VALIDATION.md item 7); the corpus request set carries the full ladder"
         },
         "length:over_cap": {
-          "present": true,
-          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
+          "present": false,
+          "reason": "the recipe declares no over-cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
         }
       },
       "provenance": [
@@ -8173,21 +8173,11 @@
             "length:median",
             "shapes:document+query"
           ]
-        },
-        {
-          "source": {
-            "suite": "synthetic",
-            "content_kind": "length:over_cap"
-          },
-          "strata": [
-            "length:over_cap",
-            "shapes:document+query"
-          ]
         }
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "blocked: stage 1's over-length samples (262140 tokens, twice the 131070-token budget) are infeasible on the offline fake's per-token /pooling replies (one draw per token, seeded by the whole body; the CPU bound is 32768 tokens); the rows are unpruned and the full-budget stage 1 runs against the engine on the GPU wave",
+        "render_check": "blocked: stage 1's over-length samples (524284 tokens, twice the 262142-token budget) are infeasible on the offline fake's per-token /pooling replies (one draw per token, seeded by the whole body; the CPU bound is 32768 tokens); the rows are unpruned and the full-budget stage 1 runs against the engine on the GPU wave",
         "pruned_rows": 0
       }
     },
@@ -18244,20 +18234,6 @@
         "shapes:document+query"
       ],
       "reason": "{\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
-    },
-    {
-      "recipe": "jina-reranker-v3",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "whitespace_only"
-      },
-      "strata": [
-        "content:whitespace_only",
-        "content:whitespace_only@document",
-        "content:whitespace_only@query",
-        "shapes:pair"
-      ],
-      "reason": "{\"index\": 14, \"reference_text_head\": \"   \\t\\t\\n     \", \"served_text_head\": \"\", \"shape\": \"pair\", \"span\": \"query\"}"
     },
     {
       "recipe": "pplx-embed-v2-late-0.6b",

@@ -199,6 +199,38 @@ def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monk
     assert not model_dir.exists()
 
 
+def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """C4/scale F2: a ready recipe's steps run in a worker of their own, so one recipe's slow post-serve
+    step never serializes the other recipes through the scheduler loop (the pre-harness-fix runner called
+    ``_finalise`` inline and every other ready engine idled while it ran)."""
+    real_smoke = run_wave_module._smoke
+    lock = threading.Lock()
+    gate = threading.Event()
+    started: list[str] = []
+
+    def slow_smoke(recipe, base_url):
+        with lock:
+            started.append(recipe.id)
+            if len(started) == 2:
+                gate.set()
+        assert gate.wait(30), f"the other recipe's smoke never started (the steps serialized): {started}"
+        return real_smoke(recipe, base_url)
+
+    monkeypatch.setattr(run_wave_module, "_smoke", slow_smoke)
+    document = run_wave(
+        ["fixture-embed", "fixture-embed-cls"],
+        RECIPES,
+        gpus=4,  # each recipe holds its engine's GPU plus the reference's
+        out_dir=tmp_path / "wave",
+        pairs_dir=_pairs_dir(tmp_path, {"fixture-embed", "fixture-embed-cls"}),
+        reference_python=REFERENCE_PYTHON,
+        vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
+        port_base=0,
+    )
+    assert sorted(started) == ["fixture-embed", "fixture-embed-cls"]
+    assert all(row["state"] == "verified" for row in document["recipes"])
+
+
 def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A model whose size cannot fit the free disk fails before its engine started (one line)."""
     monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: 1 << 40)  # 1 TiB of weights
@@ -669,20 +701,80 @@ def test_the_controls_run_the_reference_on_the_recipe_s_device(tmp_path: Path) -
         assert report.get("reference_gpu") == 1, report_path
 
 
-def test_no_engine_starts_once_the_wave_closes(tmp_path: Path) -> None:
-    """The wave's end sets the closing flag and sweeps the live-engine registry: an abandoned corpus
-    body that calls ``_start`` after its worker's snapshot fails loudly instead of leaking a
-    GPU-holding engine past the wave."""
+def test_no_engine_starts_once_the_wave_closes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The wave's end closes ITS wave and sweeps the live-engine registry: an abandoned corpus body that
+    calls ``_start`` after its worker's snapshot fails loudly instead of leaking a GPU-holding engine past
+    the wave -- and a *later* wave opening never reopens an earlier wave's flag (the shared-Event bug: a
+    stale body's late start was admitted into whichever wave happened to be open, on a TMPDIR its own
+    wave's cleanup removes)."""
     from rcp_ndcg_test.errors import HarnessError
 
     recipe = load_recipe(RECIPES / "fixture-embed")
-    run_wave_module._CLOSING.set()
-    try:
-        with pytest.raises(HarnessError, match="closing"):
-            run_wave_module._start(recipe, [0], 0, tmp_path, VLLM_CMD, 0)
-    finally:
-        run_wave_module._CLOSING.clear()
-    assert run_wave_module._LIVE_ENGINES == set()  # nothing registered by the refused start
+    monkeypatch.setattr(run_wave_module, "_CURRENT_WAVE", [run_wave_module._Wave(token="live")])
+    closed = run_wave_module._Wave(token="dead", closed=True)
+    with pytest.raises(HarnessError, match="closed"):
+        run_wave_module._start(recipe, [0], 0, tmp_path, VLLM_CMD, 0, wave=closed)
+    stale = run_wave_module._Wave(token="stale")  # open, but not the wave that is current
+    with pytest.raises(HarnessError, match="closed"):
+        run_wave_module._start(recipe, [0], 0, tmp_path, VLLM_CMD, 0, wave=stale)
+    assert run_wave_module._LIVE_ENGINES == set()  # nothing registered by the refused starts
+
+
+def test_every_wave_gets_its_own_slot_tmpdirs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two waves in one process (a test session runs many) never share a slot TMPDIR: the path carries the
+    wave's own token, so a previous wave's leftover engine or abandoned thread can neither remove nor
+    reuse the TMPDIR the next wave's engine runs with (the shared ``rcp-s<pid>-<slot>`` path was exactly
+    that hazard)."""
+    monkeypatch.setattr(run_wave_module.tempfile, "tempdir", "/tmp/rcp-slot-test")
+    first = run_wave_module._slot_tmp_dir(0, wave="aaaaaa")
+    second = run_wave_module._slot_tmp_dir(0, wave="bbbbbb")
+    assert first != second and first.name != second.name
+    assert "aaaaaa" in first.name and "bbbbbb" in second.name
+    assert first.parent == second.parent  # both under the system temp dir, short and outside the output
+    assert run_wave_module._slot_tmp_dir(0) != run_wave_module._slot_tmp_dir(1)  # per slot within a wave
+
+
+def test_stopping_an_engine_signals_its_own_session_by_pid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The engine runs in its own session (``start_new_session``), so its process group IS its pid: the
+    stop signals ``popen.pid`` directly -- never ``os.getpgid``, whose lookup is a second syscall that can
+    name another process group if the child's number was reused between the two calls."""
+    import signal as signal_module
+
+    calls: list[tuple[int, int]] = []
+
+    class _FakePopen:
+        pid = 4242
+
+        def __init__(self) -> None:
+            self.stdout = __import__("io").BytesIO(b"")
+            self.gone = False
+
+        def poll(self) -> int | None:
+            return 0 if self.gone else None
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.gone = True
+            return 0
+
+    monkeypatch.setattr(run_wave_module.os, "killpg", lambda pgid, sig: calls.append((pgid, sig)))
+    monkeypatch.setattr(
+        run_wave_module.os, "getpgid", lambda pid: pytest.fail("the stop must not look the group up again")
+    )
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    run = run_wave_module._EngineRun(
+        recipe,
+        [0],
+        1234,
+        _FakePopen(),
+        tmp_path / "serve.log",
+        tmp_path,
+        wave=run_wave_module._Wave(token="t"),
+    )
+    run.stop()
+    assert calls == [(4242, signal_module.SIGTERM)]
+    assert run.stopped_by_runner is True
+    run.stop()  # idempotent: the engine is gone, nothing more is signalled
+    assert calls == [(4242, signal_module.SIGTERM)]
 
 
 def test_wave_logs_the_serve_boundaries_and_writes_its_running_status(
@@ -941,11 +1033,12 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     behaviour fingerprint keys the patch module, so the process that records must run it."""
     import io
 
-    # the engine start is called directly here, not through run_wave: give it a fresh wave state (the closing
-    # flag a wave clears, and the live-engine registry its sweep walks) so its fake engine never leaks
-    monkeypatch.setattr(run_wave_module, "_CLOSING", run_wave_module.threading.Event())
+    # the engine start is called directly here, not through run_wave: give it an open wave of its own (the
+    # per-wave state a start joins, and the live-engine registry its sweep walks) so its fake engine never
+    # leaks -- a start from any wave that is not the current one is refused (the cross-wave guard)
+    wave = run_wave_module._Wave(token="patches-test")
+    monkeypatch.setattr(run_wave_module, "_CURRENT_WAVE", [wave])
     monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())  # its fake engine never reaches a later sweep
-    monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())
 
     from rcp_ndcg_vllm.patches import PATCHES_ENV
 
@@ -979,9 +1072,12 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
 
     monkeypatch.setattr(run_wave_module.subprocess, "Popen", _Popen)
     monkeypatch.setenv(PATCHES_ENV, "some-other-patch")
-    run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0)
+    run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0, wave=wave)
     assert run.env[PATCHES_ENV] == "pooling-full-context"
     assert started and started[0]["env"][PATCHES_ENV] == "pooling-full-context"  # type: ignore[index]
+    # The fake engine went into the wave's live-engine registry; leave the process-global registry as
+    # this test found it, or a later wave's final sweep stops the fake (whose Popen has no pid).
+    run_wave_module._LIVE_ENGINES.discard(run)
 
 
 def test_wave_recipe_cannot_start_fails_only_itself(tmp_path: Path) -> None:

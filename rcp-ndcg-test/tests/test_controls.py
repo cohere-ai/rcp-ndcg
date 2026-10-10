@@ -1,4 +1,4 @@
-"""The negative controls (a)-(f): each provably fails the gates, through the wave, on the stub engine.
+"""The negative controls (a)-(g): each provably fails the gates, through the wave, on the stub engine.
 
 GPU-VALIDATION.md item 5: every GPU check must prove it can fail -- each wave serves deliberately broken variants
 and requires the gates to fail them; a control that passes is a blocker.  Here every control runs through
@@ -7,7 +7,8 @@ and requires the gates to fail them; a control that passes is a blocker.  Here e
 properties of the emulated checkpoint, ``--model-pooling`` and ``--model-needs-template``).  One test per
 control asserts its row was CAUGHT (the gates failed it) while the recipe's own gates passed; the mutation test
 makes a gate a no-op and shows the wave flag the control as a blocker; (f) is caught by the media stage's engine
-count on a vision embedder whose pixel pin lies below the family's stock floor.
+count on a vision embedder whose pixel pin lies below the family's stock floor; (g) sends an undeclared
+Matryoshka cut, which the engine's declared set (or ``/pooling``'s own refusal) must reject.
 """
 
 from __future__ import annotations
@@ -246,3 +247,48 @@ def test_a_no_op_gate_is_flagged_as_a_control_blocker(tmp_path: Path, monkeypatc
     assert document["recipes"][0]["state"] == "failed" and document["passed"] is False
     assert "(c)" in {blocker["control"] for blocker in document["control_blockers"]["fixture-rerank-pointwise"]}
     assert "BLOCKER fixture-rerank-pointwise control (c)" in (tmp_path / "wave" / "WAVE.md").read_text(encoding="utf-8")
+
+
+def test_control_g_an_undeclared_matryoshka_cut_is_refused(tmp_path: Path) -> None:
+    """(g) patches ``dimensions`` with a ``k`` outside the engine's declared set: the engine's own gate
+    refuses it, the served run cannot pass, and the control is caught -- while the recipe's own gates pass."""
+    document = _wave(tmp_path, "fixture-embed-mrl", model="--model-pooling LAST")
+    step = _controls(document)
+    row = _caught(step, "(g)")
+    assert row["caught"] is True and row["gates_passed"] is False
+    assert step["passed"] is True and step["blockers"] == [], step["blockers"]
+
+
+def test_control_g_applies_only_where_the_engine_can_refuse(tmp_path: Path) -> None:
+    """The engine refuses an undeclared ``k`` through its declared set (embed), through ``/pooling``'s own
+    refusal (multi-vector) or through the missing Matryoshka gate (projection); a range card whose engine
+    declares ``is_matryoshka`` without a set admits every integer in 1..width, so there is no engine-refused
+    ``k`` to send and the control says so.  A recipe with no MRL head is inapplicable."""
+    import shutil
+
+    embed = next(v for v in control_variants(load_recipe(RECIPES / "fixture-embed-mrl")) if v["control"] == "(g)")
+    assert embed["kind"] == "wire" and embed["wire_patch"] == {"/embeddings": {"dimensions": 1}}
+    pooling = next(
+        v for v in control_variants(load_recipe(RECIPES / "fixture-multi-vector-mrl")) if v["control"] == "(g)"
+    )
+    assert pooling["kind"] == "wire" and pooling["wire_patch"] == {"/pooling": {"dimensions": 4}}
+    none = next(v for v in control_variants(load_recipe(RECIPES / "fixture-embed")) if v["control"] == "(g)")
+    assert none["kind"] is None and "no Matryoshka head" in none["reason"]
+    source = RECIPES / "fixture-embed-mrl"
+    directory = tmp_path / "recipes" / "fixture-embed-mrl-range"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    (directory / "reference.py").write_text((source / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = (
+        manifest.replace("id: fixture-embed-mrl", "id: fixture-embed-mrl-range")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}")
+        .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
+        .replace(
+            "hf_overrides: {is_matryoshka: true, matryoshka_dimensions: [2, 4, 8]}",
+            "hf_overrides: {is_matryoshka: true}",
+        )
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    row = next(v for v in control_variants(load_recipe(directory)) if v["control"] == "(g)")
+    assert row["kind"] is None and "without matryoshka_dimensions" in row["reason"]

@@ -37,7 +37,6 @@ def test_an_observed_request_replays() -> None:
 @pytest.mark.parametrize(
     ("recipe_id", "sequence", "field", "value"),
     [
-        ("qwen3-embedding-0.6b", 1, "dimensions", 64),  # a Matryoshka cut never observed
         ("qwen3-embedding-0.6b", 1, "add_special_tokens", False),  # another tokenization of the prompt
         ("qwen3-embedding-0.6b", 1, "use_activation", False),
         ("zerank-2-reranker", 1, "use_activation", False),  # raw logit instead of the probability
@@ -54,6 +53,18 @@ def test_an_unobserved_context_answers_the_marked_surrogate(
     answer = emulator_for(recipe_id).answer(path, "POST", body)
     assert answer.status_code == 200
     assert answer.headers[SOURCE] == "surrogate", f"{field}={value!r} was answered from another context"
+
+
+def test_an_unobserved_matryoshka_cut_is_refused_without_the_engine_gate() -> None:
+    """A ``dimensions`` the engine's config cannot serve is the engine's 400, not a surrogate: this recipe
+    declares no ``is_matryoshka``/``matryoshka_dimensions`` in ``serve.hf_overrides`` (no MRL head at all),
+    so vLLM refuses any cut (``pooling_params.py`` gate 1) -- the emulator mirrors the refusal (the
+    declared-set cases live in ``tests/conformance/test_mrl.py``)."""
+    body = _recorded("octen-embedding-8b", 1)
+    body["dimensions"] = 64
+    answer = emulator_for("octen-embedding-8b").answer("/v1/embeddings", "POST", body)
+    assert answer.status_code == 400
+    assert "does not support Matryoshka embeddings" in answer.json()["error"]["message"]
 
 
 def test_the_add_special_tokens_field_changes_the_counted_prompt() -> None:

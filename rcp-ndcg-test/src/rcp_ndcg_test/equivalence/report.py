@@ -52,12 +52,15 @@ def _markdown(document: dict[str, Any]) -> str:
             for row in body.get("gates", []):
                 value = row.get("value")
                 bound = row.get("bound")
-                lines.append(f"- `{row['gate']}`: {value} vs bound {bound} -> **{row['passed']}**")
+                k = row.get("mrl_dim")
+                label = f"`{row['gate']}`" if k is None else f"`{row['gate']}` (k={k})"
+                lines.append(f"- {label}: {value} vs bound {bound} -> **{row['passed']}**")
                 lines.append(f"  - referent: {row.get('referent', '')}")
         lines.append("")
     media = document.get("media")
     if isinstance(media, dict):
         lines += ["## Media", "", f"- status: {media.get('status')}; passed: **{media.get('passed')}**"]
+        lines.append(f"- scope: **{media.get('scope', 'input')}** — {media.get('scope_note', '')}")
         if media.get("status") == "run":
             engine = media.get("engine_check") or {}
             lines.append(f"- media rows {media.get('rows')}, sides {media.get('sides')}, items {media.get('items')}")

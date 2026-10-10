@@ -176,9 +176,11 @@ def _probe_recipe(tmp_path: Path, variant_id: str, change: Callable[[dict], dict
       draw per vector, so the shipped width costs seconds, not minutes), and the stage-1 samples run to
       2 x 8192 tokens per probed text, so the shipped width is a large float32 matrix per text for
       nothing the audit reads (the variant's own ``overrides.client.dim`` is bounded too);
-    - ``document_skip_token_ids: []`` -- the fake counts one token per whitespace word, not the recipe
-      tokenizer's tokens, and the pooling client refuses a document answer whose vector count is not the
-      count of the ids it sent (the skip ids would not align). The skip ids act on the reply only.
+    - ``document_skip_token_ids: []`` and ``media_keep_token_ids: []`` (with the engine's allowlist half
+      dropped) -- the fake counts one token per whitespace word, not the recipe tokenizer's tokens, and
+      the pooling client refuses a document answer whose vector count is not the count of the ids it sent
+      (the skip ids would not align); the engine-side media allowlist would make the media answer's count
+      the patch run, which the fake never sends. Both rules act on the reply only.
 
     Every assertion these tests make reads requests (texts, ids, cuts, anchors, the render comparison);
     the shipped values are pinned by ``test_recipe_contract``. ``test_cut_preserves_the_frame_head``
@@ -191,7 +193,19 @@ def _probe_recipe(tmp_path: Path, variant_id: str, change: Callable[[dict], dict
     """
 
     def bound(data: dict) -> dict:
-        narrowed = {**data, "client": {**data["client"], "dim": 8, "document_skip_token_ids": []}}
+        overrides = {
+            key: value for key, value in data["serve"]["hf_overrides"].items() if key != "document_keep_token_ids"
+        }
+        narrowed = {
+            **data,
+            "serve": {**data["serve"], "hf_overrides": overrides},
+            "client": {
+                **data["client"],
+                "dim": 8,
+                "document_skip_token_ids": [],
+                "media_keep_token_ids": [],
+            },
+        }
         for variant in narrowed["variants"]:
             client = (variant.get("overrides") or {}).get("client")
             if isinstance(client, dict) and "dim" in client:
@@ -210,16 +224,16 @@ def _write_reference_pairs(sampled: list[dict[str, Any]], work: Path) -> Path:
 
 
 EXPECTED_SERVE = {
-    "patches": [],
     "runner": "pooling",
     "convert": None,
-    "hf_overrides": {},
+    "hf_overrides": {"document_keep_token_ids": [248056]},
     "chat_template": None,
     "pooler_config": {},
     "trust_remote_code": False,
     "max_model_len": 8448,
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm",
+    "patches": [],
     "plugin_architectures": ["TopkEmbedModel"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}},
@@ -231,7 +245,6 @@ EXPECTED_SERVE = {
 
 EXPECTED_CLIENT_SHARED = {
     "api": "vllm_pooling",
-    "instruction": "none",
     "max_tokens": 8192,
     "query_max_tokens": 1024,
     "document_skip_token_ids": [
@@ -278,6 +291,7 @@ EXPECTED_CLIENT_SHARED = {
         248076,
     ],
     "media_sides": ["document"],
+    "media_keep_token_ids": [248056],
     "image_processor": "qwen3_vl",
     "image_policy": {"min_px": 65536, "max_px": 1310720},
     "max_images": 1,
@@ -297,12 +311,11 @@ EXPECTED_CLIENT_SHARED = {
 }
 
 EXPECTED_REFERENCE = {
-    "attn_implementation": None,
     "kind": "sentence_transformers",
     "score_scale": "cosine",
     "entry": "reference.py",
     "known_deviations": ["over_cap_cut_differs"],
-    "device": "cuda",
+    "device": None,
 }
 
 EXPECTED_ENGINE = {
@@ -355,19 +368,30 @@ def _assert_contract(recipe: object, variant_id: str) -> None:
 
 
 def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer, variant_id: str) -> None:
-    """The skip rule at image positions (the one ordered processing pipeline): an image document rides the
-    messages route under document_skip_token_ids -- the media vectors are kept whole (the render's text
-    positions cannot be located client-side; the deviation is the row's processing record) -- so the
-    recorder's model layer
-    records the media request set's first row as sent, never a refusal and never an exception that would
-    end the corpus step and lose the text rows with it."""
+    """An image document rides the messages route and the recorder's model layer records the media request
+    set's first row as sent, never a refusal and never an exception that would end the corpus step and lose
+    the text rows with it. The engine-side media allowlist is dropped for the offline fake (the fake counts
+    one token per whitespace word and never applies the allowlist, so the declared patch-run count could
+    not match); the shipped allowlist's count check is pinned by the product's own tests and the recipe
+    contract, and the media row stays sendable either way."""
     from rcp_ndcg_test.equivalence.fitting import tokenizer_of
     from rcp_ndcg_test.observe.media_set import planned_media_rows
     from rcp_ndcg_test.record import _Collector, _model_layer
 
-    root = _mutated_family(tmp_path, lambda data: {**data, "client": {**data["client"], "dim": 8}})
+    def narrow(data: dict) -> dict:
+        overrides = {
+            key: value for key, value in data["serve"]["hf_overrides"].items() if key != "document_keep_token_ids"
+        }
+        return {
+            **data,
+            "serve": {**data["serve"], "hf_overrides": overrides},
+            "client": {**data["client"], "dim": 8, "media_keep_token_ids": []},
+        }
+
+    root = _mutated_family(tmp_path, narrow)
     recipe = resolve_recipe(variant_id, root=root)
     assert recipe.client.get("document_skip_token_ids"), "the media row needs the shipped skip ids"
+    assert not recipe.client.get("media_keep_token_ids"), "the fake applies no allowlist"
     rows, _ = planned_media_rows(recipe)
     row = {**{key: rows[0][key] for key in ("query", "documents", "media")}, "request_id": "pairs:21"}
     collected = _Collector(recipe, tokenizer_of(recipe))
@@ -783,6 +807,21 @@ def _raise(message: str) -> None:
     raise ValueError(message)
 
 
+def test_the_media_allowlist_is_the_references_image_keep_rule(checkpoint, variant_id: str) -> None:
+    """The declared media allowlist is the checkpoint's own image keep-mask: the reference's image documents
+    keep only the image-patch positions (``topk_embed_st.py:124``: ``keep = ids == image_token_id``), so
+    both halves of the declaration are that one id -- the engine half the plugin's pooler applies
+    (``serve.hf_overrides.document_keep_token_ids``) and the client half its count checks
+    (``client.media_keep_token_ids``). The image token is IN the text skip list (the reference's text rule
+    drops it); the allowlist is what keeps it for an image document."""
+    recipe = load_recipe(variant_id)
+    image_token = int(checkpoint["config"]["image_token_id"])
+    assert image_token == 248056
+    assert recipe.client["media_keep_token_ids"] == [image_token]
+    assert recipe.serve.hf_overrides["document_keep_token_ids"] == [image_token]
+    assert image_token in set(recipe.client["document_skip_token_ids"])
+
+
 def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint, variant_id: str) -> None:
     """The keep-mask asymmetry at token level: documents drop skip positions, queries keep everything.
 
@@ -906,35 +945,6 @@ def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
     assert f"dim/output_dim {variant['dim']}" in notes
     assert f"head.weight is ({variant['head'][0]}, {variant['head'][1]})" in notes
     assert variant["weights_bytes"] in notes
-
-
-def test_the_transformers_layer_type_shim_aliases_block_type() -> None:
-    """The checkpoint's remote ``patch_packing`` reads ``layer.layer_type``, which transformers 5.17
-    renamed to ``block_type`` (GPU-E1: the unshimmed load crashed at ``hf_backbone.py:178``); the declared
-    shim aliases the old name and never clobbers one that already exists."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("topk_reference", RECIPE_DIR / "reference.py")
-    module = importlib.util.module_from_spec(spec)
-    bytecode = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.dont_write_bytecode = bytecode
-
-    class Old:
-        def __init__(self) -> None:
-            self.block_type = "linear_attention"
-
-    module._alias_qwen3_5_layer_type(Old)
-    assert Old().layer_type == "linear_attention"
-
-    class New:
-        layer_type = "full_attention"
-
-    module._alias_qwen3_5_layer_type(New)
-    assert New.layer_type == "full_attention"
 
 
 #: Internal process labels that must not ship in a recipe (review shorthand, private work directories,

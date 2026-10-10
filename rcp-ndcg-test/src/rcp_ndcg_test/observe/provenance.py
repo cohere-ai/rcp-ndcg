@@ -69,6 +69,7 @@ def engine_facts(
     environ: Mapping[str, str] | None = None,
     started: str | None,
     ready_wait_s: float | None,
+    version: str | None = None,
     runner: Runner = subprocess.run,
     timeout_s: float = 60.0,
 ) -> dict[str, Any]:
@@ -76,15 +77,16 @@ def engine_facts(
 
     Inputs: the image reference the wave serves, the exact ``vllm serve`` argv executed, the engine
     environment's Python (``None``: not probed, said so), the environment the engine ran with, its start time
-    and readiness wait (seconds), and the subprocess runner (tests inject one).  The image digest comes from
-    ``RCP_IMAGE_DIGEST`` (the pod cannot read its own digest; the submit step exports it).  Output: the block,
-    every key a value or an :func:`unavailable` reason.
+    and readiness wait (seconds), the version the RUNNING engine reported (``None``: the declared image's tag
+    is the stand-in for a caller that did not probe; the wave always probes), and the subprocess runner
+    (tests inject one).  The image digest comes from ``RCP_IMAGE_DIGEST`` (the pod cannot read its own digest;
+    the submit step exports it).  Output: the block, every key a value or an :func:`unavailable` reason.
     """
     env = dict(os.environ if environ is None else environ)
     facts: dict[str, Any] = {
         "name": "vllm",
         "image": image,
-        "version": image.rpartition(":")[2].removeprefix("v"),
+        "version": version if version is not None else image.rpartition(":")[2].removeprefix("v"),
         "image_digest": env.get("RCP_IMAGE_DIGEST")
         or unavailable("RCP_IMAGE_DIGEST is not set (the pod cannot read its own image digest)"),
         "serve_argv": list(serve_argv),
@@ -257,7 +259,7 @@ def collector_facts(
 
     from rcp_ndcg_test.corpus import RECORD_SCHEMA
 
-    from .requests import CORPUS_PLAN_VERSION, GENERATOR_VERSION, PINNED_DATASET_COMMITS, SEED
+    from .requests import CORPUS_PLAN_VERSION, GENERATOR_SEED, GENERATOR_VERSION, PINNED_DATASET_COMMITS, SEED
 
     env = dict(os.environ if environ is None else environ)
     try:
@@ -270,6 +272,7 @@ def collector_facts(
         "commit": env.get("RCP_SOURCE_COMMIT")
         or unavailable("RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"),
         "generator_version": GENERATOR_VERSION,
+        "generator_seed": GENERATOR_SEED,
         "corpus_plan_version": CORPUS_PLAN_VERSION,
         "record_schema": RECORD_SCHEMA,
         "seed": SEED,

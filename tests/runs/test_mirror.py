@@ -386,3 +386,78 @@ def test_a_dry_run_refuses_a_mirror_the_real_run_would_refuse_and_the_run_leaves
         assert result.exit_code == 10, (extra, result.output)
         assert "nosuchstore" in json.loads(result.stdout)["error"]["message"]
     assert not runs.exists()
+
+
+def test_a_restore_never_touches_the_hosts_job_record(tmp_path: Path) -> None:
+    """A pod's handle-less ``logs/jobs.json`` once replaced the submitting host's record on restore: after it,
+    ``run status`` could not ask the scheduler anything and ``run cancel`` refused the live job."""
+    import json
+
+    local = tmp_path / "run"
+    (local / "logs").mkdir(parents=True)
+    (local / "manifest.json").write_text('{"run_id": "run", "updated_at": "2026-09-30T11:00:00Z"}')
+    record = {"runner": "sched", "options": {}, "jobs": [{"name": "j", "handle": "h1"}]}
+    (local / "logs" / "jobs.json").write_text(json.dumps(record), encoding="utf-8")
+    Mirror(local, REMOTE).flush()
+    assert not storage.exists(f"{REMOTE}/logs/jobs.json"), "the host-local record was uploaded"
+    # What a pod's own directory would hold for the same run: no scheduler handle (it is not this host's job).
+    storage.write_bytes(
+        f"{REMOTE}/logs/jobs.json", json.dumps({**record, "jobs": [{"name": "j", "handle": None}]}).encode()
+    )
+    storage.write_bytes(f"{REMOTE}/manifest.json", b'{"run_id": "run", "updated_at": "2026-09-30T12:00:00Z"}')
+    restored = restore(local, REMOTE)
+    assert "logs/jobs.json" not in restored
+    assert json.loads((local / "logs" / "jobs.json").read_text())["jobs"][0]["handle"] == "h1"
+
+
+def test_a_damaged_local_manifest_is_replaced_from_the_mirror(tmp_path: Path) -> None:
+    """``RunManifest.load``'s own hint names ``run resume --mirror``; the restore crashed on the damaged local
+    manifest (a bare ``json.loads`` in ``_behind``), so the one recovery it names did not work."""
+    import json
+
+    remote = "memory://mirror/recover"
+    storage.write_bytes(f"{remote}/manifest.json", b'{"run_id": "run", "updated_at": "2026-09-30T12:00:00Z"}')
+    here = tmp_path / "run"
+    here.mkdir()
+    (here / "manifest.json").write_text('{"run_id": "run", "updated_at": "2026-09-30T11:00:0')
+    assert restore(here, remote) == ["manifest.json"]
+    assert json.loads((here / "manifest.json").read_text())["updated_at"] == "2026-09-30T12:00:00Z"
+
+
+def test_a_damaged_local_manifest_with_its_run_id_still_restores(tmp_path: Path) -> None:
+    """A copy of a run directory (its name differs) whose manifest is damaged must still recover from the
+    mirror: the damaged bytes still name the run id, so the run-scope check reads it out rather than falling
+    back to the directory name and refusing its own mirror."""
+    import json
+
+    remote = "memory://mirror/recover-copy"
+    storage.write_bytes(f"{remote}/manifest.json", b'{"run_id": "run-a", "updated_at": "2026-09-30T12:00:00Z"}')
+    here = tmp_path / "recovered-copy"
+    here.mkdir()
+    (here / "manifest.json").write_text('{"run_id": "run-a", "updated_at": "2026-09-30T11:00:0')
+    assert restore(here, remote) == ["manifest.json"]
+    assert json.loads((here / "manifest.json").read_text())["run_id"] == "run-a"
+
+
+def test_a_mirror_of_another_run_is_refused(tmp_path: Path) -> None:
+    """A shared mirror prefix once let a restore adopt another run's manifest, config and evidence: nothing tied
+    the mirror to the run id."""
+    import json
+
+    other = tmp_path / "run-a"
+    other.mkdir()
+    (other / "manifest.json").write_text('{"run_id": "run-a", "updated_at": "2026-09-30T12:00:00Z"}')
+    Mirror(other, REMOTE).flush()
+    here = tmp_path / "run-b"
+    here.mkdir()
+    (here / "manifest.json").write_text('{"run_id": "run-b", "updated_at": "2026-09-30T11:00:00Z"}')
+    with pytest.raises(DataError, match="run-a") as refused:
+        restore(here, REMOTE)
+    assert "run-b" in refused.value.message
+    assert json.loads((here / "manifest.json").read_text())["run_id"] == "run-b", "the local run was replaced"
+    # A judgement store (no manifest) keeps working: only a mirror that names a run is checked.
+    store = tmp_path / "store"
+    store.mkdir()
+    (store / "rubric.jsonl").write_bytes(b'{"a": 1}\n')
+    Mirror(store, "memory://mirror/store").flush()
+    assert restore(tmp_path / "copy", "memory://mirror/store") == ["rubric.jsonl"]

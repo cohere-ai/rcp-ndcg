@@ -14,8 +14,10 @@ import pytest
 from rcp_ndcg_test.equivalence.fitting import load_pairs, tokenizer_of
 from rcp_ndcg_test.observe.adversarial import CONTENT_KINDS
 from rcp_ndcg_test.observe.requests import (
+    GENERATOR_SEED,
     GENERATOR_VERSION,
     PINNED_DATASET_COMMITS,
+    SEED,
     PlannedRow,
     RecipePlan,
     pairs_jsonl,
@@ -362,11 +364,48 @@ def test_manifest_records_hashes_provenance_and_pruned_rows(tmp_path: Path) -> N
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["schema_version"] == 1
     assert document["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
+    assert document["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
     entry = document["files"][0]
     assert entry["recipe"] == plan.recipe_id and entry["rows"] == len(plan.rows)
     assert entry["sha256"] and len(entry["sha256"]) == 64
     assert entry["provenance"], "every row's source identity must be recorded (the selection manifest)"
     assert document["pruned"][0]["reason"] == "stage 1 red"
+
+
+def test_a_version_bump_does_not_redraw_a_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The semantic version and the sampling seed are separate: bumping ``GENERATOR_VERSION`` (what every
+    change to the generator's output does) plans the identical rows, because the sampling stream is
+    ``GENERATOR_SEED`` alone.  With the version in the stream, this test redraws every row."""
+    import rcp_ndcg_test.observe.requests as requests_module
+
+    _, before = _plan()
+    monkeypatch.setattr(requests_module, "GENERATOR_VERSION", GENERATOR_VERSION + 1)
+    _, after = _plan()
+    assert pairs_jsonl(before) == pairs_jsonl(after)
+    assert GENERATOR_SEED == f"1/{SEED}", "the sampling stream must keep the value version 1 used"
+
+
+def test_the_committed_pairs_files_match_the_recorded_generator_identity() -> None:
+    """Every committed pairs file is the artifact of ONE recorded generator identity: the manifest names
+    the generator's semantic version and its frozen sampling seed, and each file hashes, sizes and counts
+    to its entry (a file generated under another version fails here -- the integration note after
+    harness-fix).  Regenerate with ``python -m rcp_ndcg_test.observe.requests --out rcp-ndcg-test/pairs
+    --reference-python <python>``."""
+    import hashlib
+
+    pairs = Path(__file__).resolve().parents[1] / "pairs"
+    manifest = json.loads((pairs / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
+    assert manifest["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
+    entries = {entry["path"]: entry for entry in manifest["files"]}
+    committed = {path.name for path in pairs.glob("*.jsonl")}
+    assert set(entries) == committed, "the manifest and the committed pairs files disagree about the set"
+    assert entries, "the manifest lists no pairs file"
+    for name, entry in sorted(entries.items()):
+        data = (pairs / name).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == entry["sha256"], name
+        assert len(data) == entry["bytes"], name
+        assert len(data.decode("utf-8").splitlines()) == entry["rows"], name
 
 
 def test_rows_carry_only_documented_keys() -> None:
@@ -440,6 +479,76 @@ def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:
     for plan in (embed, pooling, rerank):
         for name, record in plan.strata.items():
             assert record["present"] or record.get("reason"), name
+
+
+def test_the_mrl_stratum_probes_every_declared_dimension() -> None:
+    """A declared MRL set records one bare ``dimensions=k`` probe per member (the engine's own cut),
+    read from the declaration -- never a hard-coded 32 -- and the old wire probe is replaced by it."""
+    from rcp_ndcg_test.observe.requests import CORPUS_PLAN_VERSION
+
+    assert CORPUS_PLAN_VERSION == 3, (
+        "the MRL stratum is the corpus request plan's version-2 addition and the media set's video edges are "
+        "version 3's; the merged plan is 3 (two lanes bumped 2 for different plans)"
+    )
+    _, _, plan = _corpus_plan("fixture-embed-mrl")
+    assert plan.strata["mrl"]["present"] is True
+    assert plan.strata["mrl"]["kind"] == "truncation"
+    assert plan.strata["mrl"]["dims"] == [2, 4, 8]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    for k in (2, 4, 8):
+        assert f"mrl:dimensions={k}" in plan.strata
+        assert bodies[f"mrl:dimensions={k}"]["dimensions"] == k
+    assert "wire:dimensions=32" not in plan.strata
+    assert "wire:dimensions=4" not in plan.strata
+
+
+def test_the_mrl_stratum_is_absent_with_the_reason_without_a_declaration() -> None:
+    """A recipe with no MRL head records the stratum absent (said why) and keeps the bare undeclared-cut
+    probe, which records the engine's refusal."""
+    _, _, plan = _corpus_plan("fixture-embed")
+    assert plan.strata["mrl"]["present"] is False and plan.strata["mrl"]["reason"]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    assert bodies["wire:dimensions=32"]["dimensions"] == 32
+
+
+@pytest.mark.parametrize(
+    ("source_id", "selection_key"),
+    [("fixture-embed-mrl", "dimensions"), ("fixture-multi-vector-mrl", "mrl_dim")],
+)
+def test_the_mrl_stratum_probes_a_ranges_endpoints(tmp_path: Path, source_id: str, selection_key: str) -> None:
+    """A prose range cannot be enumerated: the stratum records its two endpoints and the run's selection
+    (engine-side ``dimensions`` or client-side ``mrl_dim``) when it is not an endpoint (the interior is not
+    silently claimed to be probed)."""
+    import shutil
+
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    source = RECIPES / source_id
+    directory = tmp_path / "recipes" / f"{source_id}-range"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    (directory / "reference.py").write_text((source / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = (
+        manifest.replace(f"id: {source_id}", f"id: {source_id}-range")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+        .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
+        # A range card's engine gate is open (no set): the loader refuses an engine set beside a range.
+        .replace(
+            "hf_overrides: {is_matryoshka: true, matryoshka_dimensions: [2, 4, 8]}",
+            "hf_overrides: {is_matryoshka: true}",
+        )
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(directory)
+    assert recipe.client.get(selection_key) == 4
+    _, fixture_plan = _plan()
+    plan = corpus_plan(recipe, tokenizer_of(recipe), [row.to_pairs_row() for row in fixture_plan.rows])
+    assert plan.strata["mrl"]["dims"] == [2, 8, 4]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    assert bodies["mrl:dimensions=2"]["dimensions"] == 2
+    assert bodies["mrl:dimensions=8"]["dimensions"] == 8
+    assert bodies["mrl:dimensions=4"]["dimensions"] == 4
 
 
 def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path: Path) -> None:
@@ -846,9 +955,27 @@ def test_the_corpus_plan_carries_the_media_edges() -> None:
     assert corpus.strata["media:request_set"]["present"] is True
     assert corpus.strata["edge:too_many_images"]["present"] is True
     assert corpus.strata["media:video"]["present"] is False and corpus.strata["media:video"]["reason"]
+    assert corpus.strata["edge:too_many_videos"]["present"] is False
+    assert corpus.strata["edge:too_many_videos"]["reason"]
+    assert corpus.strata["edge:corrupt_video"]["present"] is False
     for name, record in corpus.strata.items():
         assert record["present"] or record.get("reason"), name
     assert "BLOCKED" not in json.dumps(corpus.strata)
+
+    # A recipe that takes video gets the container edges too: more clips than max_videos and an undecodable
+    # container, each sent bare -- the video half of the image edges.
+    video = load_recipe(RECIPES / "fixture-vl-video")
+    video_plan = plan_recipe(video, tokenizer_of(video), {})
+    video_corpus = corpus_plan(video, tokenizer_of(video), [row.to_pairs_row() for row in video_plan.rows])
+    video_bare = {row["request_id"]: row["body"] for row in video_corpus.bare}
+    parts = video_bare["edge:too_many_videos"]["messages"][0]["content"]
+    assert sum(part["type"] == "video_url" for part in parts) == video.client.get("max_videos") + 1
+    corrupt_video = video_bare["edge:corrupt_video"]["messages"][0]["content"][0]["video_url"]["url"]
+    assert corrupt_video.startswith("data:video/mp4;base64,")
+    assert video_corpus.strata["edge:too_many_videos"]["present"] is True
+    assert video_corpus.strata["edge:corrupt_video"]["present"] is True
+    for name, record in video_corpus.strata.items():
+        assert record["present"] or record.get("reason"), name
 
 
 def test_the_validation_runs_the_media_stage_on_the_media_rows(tmp_path: Path) -> None:

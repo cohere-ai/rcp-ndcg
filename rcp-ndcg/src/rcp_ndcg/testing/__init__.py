@@ -1,5 +1,5 @@
 """Offline helpers for examples and tests: a deterministic judge, a tiny judged world, the adapter
-contract kit.
+contract kit and the runner contract kit.
 
 :class:`FakeJudge` stands in for an LLM endpoint (``JudgeConfig.fake(seed)`` builds
 one): it reads the documents out of the real rendered prompt and answers in the
@@ -7,8 +7,9 @@ JSON the real parsers read, so judging, calibration and evaluation run offline
 exactly as they do with a model. :func:`build_tiny_world` uses it to produce a
 complete small example on disk: a calibrated fit, a re-judged subset, the
 windows of an inserted document and a second, more lenient judge.
-:func:`adapter_contract` is the adapter seam's contract (RFC-0001 §4.4) as one
-check a wire adapter's own tests call.
+:func:`adapter_contract` is the adapter seam's contract (RFC-0001 section 4.4) as one
+check a wire adapter's own tests call, and :func:`runner_conformance` is the
+``rcp_ndcg.runners`` seam's, for a plugin runner's tests.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from rcp_ndcg.judging._fake import DEFAULT_DIFFICULTIES, FakeJudge
 from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
 from rcp_ndcg.testing._io_contract import io_conformance
 from rcp_ndcg.testing._results_contract import results_conformance
+from rcp_ndcg.testing._runner_contract import runner_conformance
 
 if TYPE_CHECKING:
     from rcp_ndcg.data import Dataset, Rankings
@@ -174,6 +176,7 @@ __all__ = [
     "build_tiny_world",
     "io_conformance",
     "results_conformance",
+    "runner_conformance",
     "tiny_rows",
 ]
 

@@ -1,6 +1,7 @@
 """The request generator: the deterministic request set every recording asks (OBSERVATIONS-SPEC section 1).
 
-One versioned generator -- :data:`GENERATOR_VERSION`, seeded (:data:`SEED`), over the suites at their
+One versioned generator -- :data:`GENERATOR_VERSION` (semantic), seeded (:data:`GENERATOR_SEED`), over
+the suites at their
 :data:`PINNED_DATASET_COMMITS` and the synthetic adversarial set stored as text
 (:mod:`rcp_ndcg_test.observe.adversarial`) -- plans one request set per recipe and writes it in the
 harness's pairs format (:func:`write_pairs_file`): one JSONL row per planned request
@@ -28,7 +29,8 @@ are the artifact every later step reads offline.
 
 Public surface:
 
-- :data:`GENERATOR_VERSION`, :data:`SEED`, :data:`PINNED_DATASET_COMMITS` — the generator's identity.
+- :data:`GENERATOR_VERSION`, :data:`GENERATOR_SEED`, :data:`SEED`, :data:`PINNED_DATASET_COMMITS` — the
+  generator's identity: the semantic version, the frozen sampling seed and the pinned source commits.
 - :class:`PlannedRow`, :class:`RecipePlan` — the plan records.
 - :func:`plan_recipe` — one recipe's deterministic request plan.
 - :func:`pairs_jsonl`, :func:`write_pairs_file` — the harness pairs format.
@@ -57,6 +59,7 @@ from .sources import SUITE_SUBSETS, SourceCorpus, SourceDoc, SourceQuery
 
 __all__ = [
     "CORPUS_PLAN_VERSION",
+    "GENERATOR_SEED",
     "GENERATOR_VERSION",
     "PINNED_DATASET_COMMITS",
     "SEED",
@@ -70,22 +73,31 @@ __all__ = [
     "write_pairs_file",
 ]
 
-GENERATOR_VERSION = 1
-"""The generator's version: what the generator INTENDS to select and record (strata, selection, pads).
-The version also seeds the sampling (:func:`_rng`), so a bump re-draws every recipe's source rows; a fix
-that makes the implementation match the intent the version already declared -- a client field mis-read, a
-wrong gate -- does not bump it, because that would re-sample every recipe for no gain.  The manifest's
-per-file SHA-256 pins the artifact either way; a change to what the generator intends to select or record
-bumps it and re-samples, deliberately."""
+GENERATOR_VERSION = 2
+"""The generator's semantic version: what the generator INTENDS to select and record (strata, selection,
+pads).  Bump it for every change to the generator's OUTPUT -- the fix that makes the implementation match
+the intent the version already declared, and every later change alike -- so a committed pairs file always
+names the generator that produced it.  The version is NOT part of the sampling stream
+(:data:`GENERATOR_SEED` is), so a bump never re-draws a row; the manifest records both, and the per-file
+SHA-256 pins the artifact."""
 
-CORPUS_PLAN_VERSION = 1
+CORPUS_PLAN_VERSION = 3
 """The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
-the uncut content kinds, the wire variants and the protocol edges).  Versioned apart from
-:data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated."""
+the uncut content kinds, the wire variants, the MRL stratum and the protocol edges).  Versioned apart from
+:data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated.  Version 2 adds
+the MRL stratum: a declared head records one bare ``dimensions=k`` probe per declared ``k`` (the declared
+set, or a range's endpoints and the run's selection) instead of the hard-coded ``dimensions=32`` probe;
+version 3 adds the media set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``).  Two
+lanes bumped 2 for different plans; the merged plan is 3, so no two different plans share a version."""
 
 SEED = "rcp-observe-v1"
-"""The generator's seed: the deterministic stream every sampling draws from.  Change only with
-:data:`GENERATOR_VERSION`."""
+"""The generator's human-facing seed string, part of :data:`GENERATOR_SEED`."""
+
+GENERATOR_SEED = "1/rcp-observe-v1"
+"""The sampling stream's identity, frozen at the value version 1 used (``f"{1}/{SEED}"``): every sampling
+step draws from it (:func:`_rng`) and it never moves with :data:`GENERATOR_VERSION`, so a semantic version
+bump records the artifact without re-drawing a single row.  Change it only to re-sample every recipe
+deliberately, together with a :data:`GENERATOR_VERSION` bump."""
 
 PINNED_DATASET_COMMITS: dict[str, str] = {
     "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
@@ -198,8 +210,8 @@ class RecipePlan:
 
 def _rng(recipe_id: str, stream: str) -> random.Random:
     """The deterministic stream one sampling step draws from (stable across Python versions: the
-    string seeding is SHA-512 based)."""
-    return random.Random(f"{GENERATOR_VERSION}/{SEED}/{recipe_id}/{stream}")
+    string seeding is SHA-512 based).  Keyed by :data:`GENERATOR_SEED`, never the semantic version."""
+    return random.Random(f"{GENERATOR_SEED}/{recipe_id}/{stream}")
 
 
 def _media_json(doc: SourceDoc, documents_open: list[list[dict[str, Any]]]) -> None:
@@ -579,7 +591,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     :data:`PINNED_DATASET_COMMITS`).  Output: the :class:`RecipePlan` -- real-item rows (NanoBEIR,
     BRIGHT, TREC DL, ViDoRe pages for the media recipes), one row per content kind and the length
     ladder -- with every stratum recorded present or absent.  Deterministic in
-    (:data:`GENERATOR_VERSION`, :data:`SEED`, the pinned commits, the recipe's role and shapes): the
+    (:data:`GENERATOR_SEED`, :data:`SEED`, the pinned commits, the recipe's role and shapes): the
     same inputs plan the same rows.
     """
     from ..equivalence import fitting
@@ -689,6 +701,10 @@ def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -
       ``/v1/embeddings``; ``float``/``base64``/``bytes`` x ``embed_dtype`` ``float16``/``float32`` for
       ``/pooling``), ``dimensions`` on, and ``top_n``, ``use_activation`` and ``instruction`` on and off for
       ``/rerank``;
+    - the **MRL stratum**: one bare ``dimensions=k`` probe per declared ``k`` when the recipe declares a
+      Matryoshka head (every ``mrl_dims`` member, or a ``mrl_range``'s endpoints and the run's selection),
+      read from the declaration; a recipe with no head records the stratum absent and keeps the bare
+      undeclared-cut probe;
     - the **protocol edges** the request set can send alone: an invalid ``embed_dtype``, ``top_n`` larger
       than the documents (the unknown field, malformed JSON, wrong model, empty input, over-length,
       ``/v1/models`` and health probes are the collector's standing set; a request while the engine loads is
@@ -775,12 +791,46 @@ def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -
     return plan
 
 
+def _mrl_probe_dims(recipe: Any) -> tuple[int, ...]:
+    """The declared Matryoshka ``k`` values the corpus records on the engine's ``dimensions`` field.
+
+    A recipe whose client declares an MRL kind and a set records every ``mrl_dims`` member; a ``mrl_range``
+    records its two endpoints plus the run's selection when it is not an endpoint (a range cannot be
+    enumerated, and the interior is not silently claimed).  A recipe with no declaration records nothing
+    here: the bare ``wire:dimensions`` probe still records the engine's refusal of an undeclared cut.
+    """
+    client = recipe.client
+    if client.get("mrl_kind") not in ("truncation", "projection"):
+        return ()
+    dims = client.get("mrl_dims")
+    if dims:
+        return tuple(int(dimension) for dimension in dims)
+    mrl_range = client.get("mrl_range")
+    if mrl_range is None:
+        return ()
+    low, high = (int(bound) for bound in mrl_range)
+    selected = client.get("dimensions") or client.get("mrl_dim")
+    out = [low, high]
+    if selected is not None and int(selected) not in out:
+        out.append(int(selected))
+    return tuple(out)
+
+
+def _mrl_absent_reason(recipe: Any) -> str:
+    """Why the MRL stratum is absent (absent only when the recipe declares no head, said why)."""
+    if recipe.client.get("mrl_kind") == "none":
+        return "the recipe declares mrl_kind: none (the card has no Matryoshka head): there is no declared k"
+    if recipe.role == "rerank":
+        return "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+    return "the recipe declares no MRL head (mrl_kind is unset): there is no declared k to probe"
+
+
 def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[str]) -> None:
     """The role route's wire variants and the protocol edges the request set sends bare."""
     route = _ROLE_ROUTES[recipe.role]
 
-    def add(name: str, body: dict[str, Any], *, edge: bool = False) -> None:
-        stratum = f"{'edge' if edge else 'wire'}:{name}"
+    def add(name: str, body: dict[str, Any], *, edge: bool = False, prefix: str | None = None) -> None:
+        stratum = f"{prefix or ('edge' if edge else 'wire')}:{name}"
         plan.bare.append(
             {
                 "request_id": stratum,
@@ -794,6 +844,19 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         )
         plan.strata[stratum] = {"present": True}
 
+    mrl_dims = _mrl_probe_dims(recipe)
+    if mrl_dims:
+        for k in mrl_dims:
+            add(f"dimensions={k}", _bare_body(recipe, query, documents[:1], dimensions=k), prefix="mrl")
+        plan.strata["mrl"] = {
+            "present": True,
+            "kind": recipe.client.get("mrl_kind"),
+            "dims": list(mrl_dims),
+            "referent": "the recipe's declared Matryoshka output dimensions, one bare engine request each",
+        }
+    else:
+        plan.strata["mrl"] = {"present": False, "reason": _mrl_absent_reason(recipe)}
+
     if recipe.role == "rerank":
         add("top_n=1", _bare_body(recipe, query, documents, top_n=1))
         add("top_n=all", _bare_body(recipe, query, documents, top_n=len(documents)))
@@ -804,8 +867,11 @@ def _wire_variants(recipe: Any, plan: CorpusPlan, query: str, documents: list[st
         plan.strata["wire:encoding_format"] = {"present": False, "reason": "the /rerank route has no encodings"}
     elif recipe.role == "embed":
         add("encoding_format=base64", _bare_body(recipe, query, documents[:1], encoding_format="base64"))
-        dim = recipe.client.get("dimensions") or 32
-        add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
+        if not mrl_dims:
+            # The undeclared-cut probe: an MRL recipe's declared k's are recorded above, from the
+            # declaration; this one records the engine's own refusal of a cut it never declared.
+            dim = recipe.client.get("dimensions") or 32
+            add(f"dimensions={dim}", _bare_body(recipe, query, documents[:1], dimensions=dim))
         plan.strata["edge:invalid_embed_dtype"] = {
             "present": False,
             "reason": "/v1/embeddings takes no embed_dtype (the /pooling route's field)",
@@ -944,6 +1010,7 @@ def write_manifest(
         "generator": {
             "module": "rcp_ndcg_test.observe.requests",
             "GENERATOR_VERSION": GENERATOR_VERSION,
+            "GENERATOR_SEED": GENERATOR_SEED,
             "SEED": SEED,
         },
         "dataset_commits": dict(PINNED_DATASET_COMMITS),

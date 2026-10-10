@@ -307,6 +307,17 @@ def _start_text(result: RunStartResult) -> str:
         )
     for job in state.jobs:
         lines.append(f"  job {job.name} ({state.runner}): {job.handle} {job.status}")
+    if state.mirror is not None:
+        from rcp_ndcg.support.urls import safe_url
+
+        mirror = state.mirror
+        last = mirror.last_upload_at.isoformat() if mirror.last_upload_at else "never"
+        lag = f", {mirror.lag_s:,.0f}s ago" if mirror.lag_s is not None else ""
+        lines.append(f"  mirror     {safe_url(mirror.remote)} (last upload {last}{lag})")
+        if mirror.last_error:
+            lines.append(f"    mirror error: {mirror.last_error}")
+    if state.note:
+        lines.append(f"  note       {state.note}")
     for key, value in state.metrics.items():
         lines.append(f"    {key:<24} {value:.4f}")
     return "\n".join(lines)

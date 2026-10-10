@@ -163,10 +163,11 @@ def test_an_edited_recipe_fails_the_gate_naming_the_changed_input(tmp_path: Path
 
 
 def test_the_surrogate_is_one_draw_per_vector_and_pins_no_values(monkeypatch) -> None:
-    """The declared surrogate is deterministic, unit-norm and keyed by the replay key; it draws once per
-    vector (the offline fake's own per-vector draw), so a long surrogate matrix stays fast. No test pins
-    its values: they follow the offline fake's draw, which may change (it changed from one hash per
-    component to one stream per vector)."""
+    """The declared surrogate is deterministic, unit-norm and keyed by its parts (the emulator seeds the
+    embedding draw with the model input, so a requested cut is a slice of the same full-width vector); it
+    draws once per vector (the offline fake's own per-vector draw), so a long surrogate matrix stays fast.
+    No test pins its values: they follow the offline fake's draw, which may change (it changed from one hash
+    per component to one stream per vector)."""
     import math
     import time
 

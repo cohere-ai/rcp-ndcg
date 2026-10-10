@@ -63,7 +63,9 @@ def main(recipe_id: str) -> None:
             return
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    (stubs / f"ready-{port}").touch()  # listening: the supervision's readiness probe may pass
+    # The marker holds the pid: the supervision probe checks the engine is still alive, and the phase boundary
+    # waits until the port stops answering after the engine is stopped.
+    (stubs / f"ready-{port}").write_text(f"{os.getpid()}\n", encoding="utf-8")
     server.serve_forever()
 
 

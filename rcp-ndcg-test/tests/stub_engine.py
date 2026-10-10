@@ -7,9 +7,12 @@ It serves ``/v1/models``, ``/v1/embeddings`` (float and base64), ``/pooling`` (f
 ``rcp_ndcg_test.jobs.run_wave --vllm-cmd`` can drive it with a recipe's real ``serve_argv``.
 
 Like vLLM v0.31.0 it honours ``truncate_prompt_tokens`` with ``truncation_side`` (an engine-side cut of the prompt,
-counted in the stub's whitespace tokens) on every role route and ``use_activation`` on ``/rerank`` (``false``: the
-raw logit of the probability; the default comes from ``--pooler-config``'s ``use_activation``, else true).  Two
-flags describe the emulated MODEL, so the negative controls can break it the way a real checkpoint breaks:
+counted in the stub's whitespace tokens) on every role route, ``use_activation`` on ``/rerank`` (``false``: the
+raw logit of the probability; the default comes from ``--pooler-config``'s ``use_activation``, else true) and the
+Matryoshka ``dimensions`` field on ``/v1/embeddings`` (the three ``pooling_params.py`` gates against
+``--hf-overrides``'s ``is_matryoshka``/``matryoshka_dimensions``, then slice-before-L2), while ``/pooling``
+refuses the per-request field outright.  Two flags describe the emulated MODEL, so the negative controls can
+break it the way a real checkpoint breaks:
 ``--model-pooling NAME`` (the pooling the checkpoint was trained with -- serving another ``seq_pooling_type`` or
 ``pooling_type`` yields other numbers) and ``--model-needs-template`` (a reranker scored without its served
 ``--chat-template`` sees the unframed spans and scores differently).
@@ -55,13 +58,16 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "fixtures"))
 
-from deterministic import score, token_vectors, tokens, vector  # noqa: E402
+from deterministic import DIM, score, token_vectors, tokens, vector  # noqa: E402
 
 _CUT = {"truncate_prompt_tokens", "truncation_side"}
 _CHAT = {"messages", "add_special_tokens", "add_generation_prompt"}
 _ALLOWED: dict[str, set[str]] = {
     "/embeddings": {"input", "encoding_format", "dimensions", *_CHAT, *_CUT},
-    "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness", *_CHAT, *_CUT},
+    # ``dimensions`` is declared on the pooling request model but refused by the route's serving layer
+    # (vLLM's "dimensions is currently not supported"); it is allowed here so that refusal is the one the
+    # stub gives, not the unknown-field one.
+    "/pooling": {"input", "task", "encoding_format", "embed_dtype", "endianness", "dimensions", *_CHAT, *_CUT},
     "/rerank": {"query", "documents", "top_n", "instruction", "use_activation", *_CUT},
     "/score": {"queries", "documents", "query", "text_1", "text_2"},
 }
@@ -83,6 +89,9 @@ _ARGS = argparse.Namespace(
     model_processor="qwen2_vl",
     model_image_factor=28,
     model_image_pixels="3136,12845056",
+    hf_overrides="{}",
+    is_matryoshka=False,
+    matryoshka_dimensions=(),
     fault=None,
     fault_only=None,
 )
@@ -130,6 +139,38 @@ def _wrong_pooling() -> bool:
     pooler = _pooler()
     served = pooler.get("seq_pooling_type") or pooler.get("pooling_type")
     return served is not None and str(served).upper() != str(_ARGS.model_pooling).upper()
+
+
+def _check_matryoshka(dimensions: int) -> None:
+    """vLLM's three ``dimensions`` gates, in the engine's order (``pooling_params.py``).
+
+    ``is_matryoshka`` first, then ``1 <= k <= embedding_size``, then membership in the declared
+    ``matryoshka_dimensions``; the facts come from ``--hf-overrides`` (the recipe's serve block), so a
+    checkpoint without the gate refuses any cut.  The emulated checkpoint's output width IS ``DIM`` (the
+    stub's vectors are ``DIM``-wide), so gate 2's ``embedding_size`` is ``DIM``: a declared set above it is
+    refused exactly as vLLM refuses a cut wider than the checkpoint's own output.
+    """
+    if not getattr(_ARGS, "is_matryoshka", False):
+        raise _BadRequest(
+            f"Model {_ARGS.served_model_name!r} does not support Matryoshka embeddings; dimensions must be "
+            f"unset (received dimensions={dimensions})."
+        )
+    if not 1 <= dimensions <= DIM:
+        raise _BadRequest(
+            f"Model {_ARGS.served_model_name!r} only supports dimensions in range [1, {DIM}], got {dimensions}."
+        )
+    declared = getattr(_ARGS, "matryoshka_dimensions", ())
+    if declared and dimensions not in declared:
+        raise _BadRequest(
+            f"Model {_ARGS.served_model_name!r} only supports Matryoshka dimensions {list(declared)}, got {dimensions}."
+        )
+
+
+def _slice_normalised(vector_value: np.ndarray, dimensions: int) -> np.ndarray:
+    """One vector's Matryoshka cut: the first ``dimensions`` values, L2-normalised (the engine's order)."""
+    cut = vector_value[:dimensions].astype(np.float64)
+    norm = float(np.linalg.norm(cut))
+    return (cut / norm if norm else cut).astype(np.float32)
 
 
 def _cut(text: str, body: dict[str, Any]) -> str:
@@ -407,7 +448,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict[str, Any]:
         length = int(self.headers.get("content-length", "0"))
-        payload: Any = json.loads(self.rfile.read(length) or b"{}")
+        raw = self.rfile.read(length) or b"{}"
+        try:
+            payload: Any = json.loads(raw)
+        except json.JSONDecodeError as error:
+            # vLLM answers a malformed body with 400 (the measured status table), not a 500.
+            raise _BadRequest(f"the request body is not valid JSON: {error}") from error
         if not isinstance(payload, dict):
             raise _BadRequest("the request body must be a JSON object")
         return payload
@@ -464,7 +510,12 @@ class _Handler(BaseHTTPRequestHandler):
     # -- routes --------------------------------------------------------------------------------------------------
     def _embeddings(self, body: dict[str, Any]) -> None:
         """One dense float32 vector per input text (or per conversation, framed by the chat path), float or
-        base64; a chat-shaped request's reply carries its prompt tokens."""
+        base64; a chat-shaped request's reply carries its prompt tokens.  A declared ``dimensions`` is
+        validated against the emulated checkpoint's Matryoshka facts and the reply is the full-width vector
+        sliced to ``k`` and L2-normalised (vLLM's head order: projector -> slice -> activation)."""
+        dimensions = body.get("dimensions")
+        if isinstance(dimensions, int):
+            _check_matryoshka(dimensions)
         usage = None
         if "messages" in body:
             chat = _chat_prompts(body)
@@ -479,6 +530,8 @@ class _Handler(BaseHTTPRequestHandler):
         tag = "embed-wrong-pooling" if _wrong_pooling() else "embed"
         for index, text in enumerate(inputs):
             value = vector(_cut(text, body), tag, noise=_ARGS.noise).astype(np.float32)
+            if isinstance(dimensions, int):
+                value = _slice_normalised(value, dimensions)
             if fmt == "base64":
                 data.append({"index": index, "embedding": base64.b64encode(value.tobytes()).decode("ascii")})
             elif fmt == "float":
@@ -492,7 +545,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _pooling(self, body: dict[str, Any]) -> None:
         """One vector per whitespace token per input text, in float, base64 (with shape) or raw bytes; a
-        chat-shaped request yields one vector per prompt token (its media tokens included) and its usage."""
+        chat-shaped request yields one vector per prompt token (its media tokens included) and its usage.
+
+        The route refuses a per-request ``dimensions`` outright (vLLM v0.31.0), whatever the checkpoint
+        declares: a client must cut client-side."""
+        if body.get("dimensions") is not None:
+            raise _BadRequest("dimensions is currently not supported")
         if "messages" in body:
             self._pooling_chat(body)
             return
@@ -568,7 +626,8 @@ class _Handler(BaseHTTPRequestHandler):
             {"index": index, "document": {"text": sides[index][0]}, "relevance_score": scores[index]} for index in order
         ]
         prompt_tokens = sum(
-            _count(query_text) + query_tokens + _count(text) + media_tokens for text, media_tokens, _ in sides
+            _count(self._pair_prompt(query_text, text), add_special_tokens=True) + query_tokens + media_tokens
+            for text, media_tokens, _ in sides
         )
         self._send_json(
             {
@@ -588,6 +647,21 @@ class _Handler(BaseHTTPRequestHandler):
         text = "\n".join(str(part.get("text", "")) for part in parts if part.get("type") == "text")
         media_tokens, shapes = _media(parts)
         return text, media_tokens, text + "".join(f"\x00{shape}" for shape in shapes)
+
+    def _pair_prompt(self, query: str, document: str) -> str:
+        """The prompt one pair is tokenized as, as the engine builds it: the served chat template's render of
+        the pair (vLLM's ``/rerank`` renders every pair through ``--chat-template`` when one is served),
+        else the two spans joined with one space (the engine's own join without a template).  The scoring key
+        stays the spans (the emulated checkpoint's own model), only the reported prompt tokens are the frame's."""
+        path = _ARGS.chat_template or _ARGS.model_chat_template
+        if not path:
+            return f"{query} {document}"
+        from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+        template = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True).from_string(
+            Path(path).read_text(encoding="utf-8")
+        )
+        return template.render(query=query, document=document)
 
     def _pair_score(self, query: str, document: str, body: dict[str, Any]) -> float:
         """One pair's score as vLLM serves it: the engine-side cut, the template, the pooling, the activation."""
@@ -659,6 +733,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model-image-factor", type=int, default=28)
     parser.add_argument("--model-image-pixels", default="3136,12845056")
     parser.add_argument(
+        "--hf-overrides",
+        default="{}",
+        help="the recipe's serve.hf_overrides: the emulated checkpoint's is_matryoshka/matryoshka_dimensions "
+        "gate the /v1/embeddings dimensions field is validated against",
+    )
+    parser.add_argument(
         "--fault",
         default=None,
         choices=["abort", "hang"],
@@ -668,6 +748,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fault-only", default=None, help="fault only the engine serving this model name")
     args, _unknown = parser.parse_known_args(argv)
     _ARGS = args
+    # A deliberate SIGABRT (--fault abort) must not write a core: the runner-survival test runs in every
+    # suite, and a core dump per run is hundreds of MB of disk the node does not have (the machine's
+    # core_pattern writes them; the stub's own faults are the test's point, not a bug to preserve).
+    try:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    except (ImportError, ValueError, OSError):  # pragma: no cover - a platform without the limit
+        pass
+    overrides = json.loads(args.hf_overrides) if args.hf_overrides else {}
+    declared = tuple(int(dimension) for dimension in (overrides.get("matryoshka_dimensions") or ()))
+    _ARGS.is_matryoshka = bool(declared or overrides.get("is_matryoshka"))
+    _ARGS.matryoshka_dimensions = declared
     server = ThreadingHTTPServer((args.host, args.port), _Handler)
     port = server.server_address[1]
     print(f"RCPS_STUB_PORT={port}", flush=True)

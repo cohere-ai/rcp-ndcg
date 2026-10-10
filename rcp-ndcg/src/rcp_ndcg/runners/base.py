@@ -36,11 +36,25 @@ from rcp_ndcg.support.resources import (
     no_nul_byte,
     refuse_secret_value,
 )
-from rcp_ndcg.support.serve import EngineConfig, EngineRole
+from rcp_ndcg.support.serve import ENGINES_ENV, EngineConfig, EngineRole
 
 #: An opaque job reference returned by :meth:`JobRunner.submit` (a SLURM job id,
 #: ``<namespace>/<job>`` on Kubernetes, the job name locally).
 JobHandle = str
+
+
+def _leaves_the_phase_overlay_alone(value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+    """Refuse a job env entry named :data:`~rcp_ndcg.support.serve.ENGINES_ENV`.
+
+    The phase overlay owns the variable: the runner exports the current phase's engines under it, so a job's
+    own value would be silently overridden (or, before this check, silently defeat the phase's).
+    """
+    if ENGINES_ENV in value:
+        raise ValueError(
+            f"env names {ENGINES_ENV}, which the phase overlay owns: the runner exports the current phase's "
+            "engines under it, so a job's own value would be silently overridden"
+        )
+    return value
 
 
 class JobStatus(StrEnum):
@@ -100,7 +114,8 @@ class JobSpec(BaseModel):
     """Container image; ``None`` uses the runner's configured image (or none, for host execution)."""
     resources: Resources = Resources()
     env: Mapping[EnvName, str] = Field(default_factory=dict)
-    """Environment for the command; each name a shell identifier."""
+    """Environment for the command; each name a shell identifier. ``RCP_NDCG_ENGINES`` is refused: the phase
+    overlay owns that variable (the runner exports the current phase's engines under it)."""
     phases: tuple[JobPhase, ...] = ()
     """The job's phases, run in order in one allocation; when set, ``argv`` must be left unset (a phased
     job's commands are its phases' ``argv``).
@@ -133,6 +148,11 @@ class JobSpec(BaseModel):
             no_nul_byte(item)
             refuse_secret_value(name, item)
         return value
+
+    @field_validator("env")
+    @classmethod
+    def _env_leaves_the_phase_overlay_alone(cls, value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+        return _leaves_the_phase_overlay_alone(value)
 
     @model_validator(mode="after")
     def _argv_xor_phases(self) -> Self:
@@ -186,6 +206,11 @@ class JobOptions(BaseModel):
     constraints: str | None = Field(default=None, min_length=1)
     """A constraints file (path or URL) replacing the release's, which pins every dependency to the version
     the release was tested with; default the release's own, attached to its GitHub release."""
+
+    @field_validator("env")
+    @classmethod
+    def _env_leaves_the_phase_overlay_alone(cls, value: Mapping[EnvName, str]) -> Mapping[EnvName, str]:
+        return _leaves_the_phase_overlay_alone(value)
 
     @field_validator("wheelhouse", "constraints")
     @classmethod

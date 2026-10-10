@@ -304,10 +304,13 @@ GPU (owner, before the tag; `RELEASE-CHECKLIST.md` lists them per recipe):
   image.
 - Media gate (M-media): video is not gated (the generator cannot write a video container; a clip's token count is
   reported only); the media stage needs a GPU run per media recipe to compare the engine's media token count.
-- **topk-embed-v1-small cannot send images**: its client refuses media whenever `document_skip_token_ids` is declared
-  (the recipe's named gap), so its pairs manifest records the media check as failed and its media stage will fail on
-  the node. Fixing it is a product change (the skip rule at image positions); do it in 09 or declare the recipe
-  text-only for 0.0.1.
+- **topk-embed-v1-small's image documents** (resolved by lane `late-keep`, 2026-10-09): the client's keep-whole media
+  path and its `skip_unapplied` record are gone for the two topk variants. The recipe declares the reference's image
+  keep-mask (`topk_embed_st.py:124`) as a media allowlist (`client.media_keep_token_ids` and the engine half
+  `serve.hf_overrides.document_keep_token_ids`, both `[248056]`), the plugin's pooler applies it engine-side, and the
+  client counts the media block's patch run and checks the reply against it (a mismatch is typed). Image documents
+  are like-for-like with the reference; the media stage still gates geometry and tokens only (see the media gate
+  item above).
 - Control (f) is not applicable to qwen3-vl-reranker-2b and topk-embed-v1-small (their pins lie inside the
   checkpoint's own pixel budget, read at the pinned revision); it is served and caught for qwen3-vl-embedding-2b.
   Resolved at M3; on the node, an unreadable checkpoint budget makes (f) a blocker, never a skip.

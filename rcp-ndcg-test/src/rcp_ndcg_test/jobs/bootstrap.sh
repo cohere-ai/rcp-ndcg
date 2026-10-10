@@ -19,7 +19,8 @@
 #             (in wave 0: by nothing at all), or this script fails before any engine starts.
 #   client    NO separate venv: every client command runs through the product's own install mechanism
 #             (rcp_ndcg.runners.script.install_argv: uvx --find-links <wheelhouse> --no-index, held to the
-#             staged constraints file) - the code users run, exercised by the waves.
+#             staged constraints file) plus the staged harness wheel (<stage>/harness/rcp_ndcg_test-*.whl,
+#             the unpublished rcp-ndcg-test) - the code users run, exercised by the waves.
 #   reference a venv with --system-site-packages over the image's torch and CUDA, installing only what
 #             requirements-reference.txt names from the wheelhouse (--no-deps under the image's full
 #             freeze as constraints, then jobs/reference_deps.py completes the venv's own missing deps
@@ -62,6 +63,51 @@ auth() {
 
 now_s() { date +%s; }
 
+# validate_version VERSION: the downloaded manifest's version field must be a plain PEP 440-shaped string.
+# The manifest is not itself hashed (only the files it lists are), so this field is attacker-controlled
+# for anyone who can write the stage: it may never reach a shell word or an install spec as syntax.
+validate_version() {
+  if [[ ! "$1" =~ ^[0-9][A-Za-z0-9.!+_-]*$ ]]; then
+    echo "bootstrap: the manifest's version '$1' is not a plain version string; refusing it" >&2
+    return 1
+  fi
+}
+
+# write_client_wrapper STATE UV_DIR: write the node's client wrapper (every later client command runs
+# through it) with every argv word shell-quoted into the file, so a manifest field can never become
+# shell syntax when the wrapper runs.  One home for the mechanism and the quoting.
+write_client_wrapper() {
+  local state="$1" uv_dir="$2" arg quoted=""
+  for arg in "${CLIENT_ARGS[@]}"; do
+    quoted+="$(printf ' %q' "$arg")"
+  done
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf '# The client environment of this node (built by bootstrap.sh): the product install mechanism\n'
+    printf '# (uvx --find-links wheelhouse --no-index, held to the staged constraints) plus the staged\n'
+    printf '# harness wheel.  Every word is quoted: nothing here is re-parsed as shell syntax.\n'
+    printf 'set -euo pipefail\n'
+    printf 'export UV_CACHE_DIR=%q\n' "$UV_CACHE_DIR"
+    printf 'export PATH=%q\n' "$uv_dir/bin:$PATH"
+    printf 'exec%s "$@"\n' "$quoted"
+  } >"$state/client"
+  chmod +x "$state/client"
+}
+
+# staged_plugin_wheel NAME: the staged wheel of a plugin distribution (its own wheelhouse, then every
+# extra wheelhouse), or empty.  The wave runner cross-checks the modules inside it against the behaviour
+# fingerprint's plugin inputs (item 9), so the engine's plugin build and the recorded key agree.
+staged_plugin_wheel() {
+  local name="${1//-/_}" candidate
+  for candidate in "$STAGE_DIR/wheelhouse/${name}-"*.whl "$STAGE_DIR"/extra/*/wheelhouse/"${name}-"*.whl; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # --- the freeze-diff guard: the engine environment may gain exactly the declared plugins -------------
 
 # freeze_of PYTHON: the engine environment's pip freeze, one package per line.
@@ -80,6 +126,13 @@ freeze_name_of() {
     stem="${stem%%[<>=!~; \[ ]*}"  # a version specifier or extras bracket keeps only the name
   fi
   printf '%s\n' "$(printf '%s' "$stem" | sed -E 's/[-_.]+/-/g' | tr '[:upper:]' '[:lower:]')"
+}
+
+# wheel_version_of WHEEL: the version field of a wheel filename (``name-version-...whl``).
+wheel_version_of() {
+  local stem="${1##*/}"
+  stem="${stem%.whl}"
+  printf '%s\n' "${stem#*-}" | cut -d- -f1
 }
 
 # freeze_diff_guard BEFORE AFTER ALLOWED: fails when the freeze changed beyond the allowed names
@@ -108,6 +161,7 @@ freeze_diff_guard() {
 # name it - and this returns 0 even when every plugin failed: one failing recipe never stops the job.
 install_plugin_wheels() {
   local specs_file="$1" allowed_file="$2" failed_file="$3" plugin plugin_path extra_wheelhouse
+  local staged_plugin installed_version expected_version
   local -a links=(--find-links "$STAGE_DIR/wheelhouse")
   for extra_wheelhouse in "$STAGE_DIR"/extra/*/wheelhouse; do
     if [[ -d "$extra_wheelhouse" ]]; then
@@ -117,7 +171,11 @@ install_plugin_wheels() {
   while IFS= read -r plugin; do
     [[ -z "$plugin" ]] && continue
     plugin_path=""
-    for candidate in "$STAGE_DIR/recipes/$plugin" "$STAGE_DIR/$plugin" "$RECIPES_ROOT/$plugin" "$plugin"; do
+    # A staged file: the recipe-relative form (<recipe-directory>/<file>) under the staged recipes, then
+    # the stage root and the recipes root.  A BARE name is never a path: it used to be tried as a literal
+    # candidate, so a directory named like the plugin in the job's cwd was installed instead of the
+    # staged wheel (and item 9's wheel cross-check would then hash a wheel the engine did not run).
+    for candidate in "$STAGE_DIR/recipes/$plugin" "$STAGE_DIR/$plugin" "$RECIPES_ROOT/$plugin"; do
       if [[ -n "$candidate" && -e "$candidate" ]]; then
         plugin_path="$candidate"
         break
@@ -131,14 +189,44 @@ install_plugin_wheels() {
         continue
       fi
     else
+      # The shipped plugin installs from the EXACT staged wheel the wave cross-checks against the
+      # behaviour fingerprint (item 9): pinning the file keeps pip from picking a different version out
+      # of an extra wheelhouse, so the engine runs what the recording claims.  Only the BARE name is
+      # pinned: a spec that carries a version (or extras) is installed as named, as its author asked.
+      if [[ "$plugin" == "rcp-ndcg-vllm" ]] && plugin_path="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+        echo "bootstrap: the recipe's plugin $plugin installs from the staged wheel $plugin_path" >&2
+      else
+        plugin_path=""
+      fi
       # Not a staged file: installed as named from the staged wheelhouse only.
       echo "bootstrap: the recipe's plugin $plugin is not staged; installing it from the staged wheelhouses" \
         "(${links[*]})" >&2
-      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps --no-index "${links[@]}" "$plugin"; then
+      if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps --no-index "${links[@]}" "${plugin_path:-$plugin}"; then
         echo "bootstrap: the plugin $plugin is neither staged nor in a staged wheelhouse;" \
           "the recipes that name it will fail (with the exact name)" >&2
         printf '%s\n' "$plugin" >>"$failed_file"
         continue
+      fi
+    fi
+    # item 9: the engine must run the staged wheel the wave cross-checks against the behaviour
+    # fingerprint.  Whatever pip resolved (a versioned spec, an extra wheelhouse with a higher version),
+    # the installed version must equal the staged wheel's; a mismatch refuses the plugin with its exact
+    # name instead of recording a corpus that claims code the engine did not run.
+    if [[ "$(freeze_name_of "$plugin")" == "rcp-ndcg-vllm" ]]; then
+      staged_plugin="$(staged_plugin_wheel rcp-ndcg-vllm || true)"
+      if [[ -n "$staged_plugin" ]]; then
+        installed_version="$(
+          "$ENGINE_PYTHON" -c "import importlib.metadata as metadata; print(metadata.version('rcp-ndcg-vllm'))" \
+            2>/dev/null || true
+        )"
+        expected_version="$(wheel_version_of "$staged_plugin")"
+        if [[ "$installed_version" != "$expected_version" ]]; then
+          echo "bootstrap: the engine installed rcp-ndcg-vllm==${installed_version:-unknown}, but the staged" \
+            "wheel is ${expected_version}; the recording's plugin key would not cover it. The recipes that" \
+            "name $plugin will fail (with the exact name)." >&2
+          printf '%s\n' "$plugin" >>"$failed_file"
+          continue
+        fi
       fi
     fi
     freeze_name_of "${plugin_path:-$plugin}" >>"$allowed_file"
@@ -355,6 +443,7 @@ manifest_field() { # manifest_field NAME: the manifest's top-level field
 ENVS_START="$(now_s)"
 VERSION="$(manifest_field version)"
 [[ -n "$VERSION" ]] || { echo "bootstrap: the manifest carries no version" >&2; exit 1; }
+validate_version "$VERSION" || exit 1
 echo "bootstrap: staged RC version $VERSION (commit $(manifest_field commit))" >&2
 
 # The staged files must hash to the manifest (a tampered or partial stage never installs).
@@ -397,6 +486,9 @@ ENGINE_PYTHON="$(command -v python3)"
   echo "bootstrap: the image's $ENGINE_PYTHON cannot import vllm; this is not the engine image" >&2
   exit 1
 }
+# The wave's provenance probe and the pre-serve --changed-since selection read the engine environment's
+# own vllm through this: the engine version is the pod's, never the recipe's declared image (B5).
+export RCP_ENGINE_PYTHON="$ENGINE_PYTHON"
 ENGINE_PYTHON_VERSION="$("$ENGINE_PYTHON" -c 'import platform; print(platform.python_version())')"
 ENGINE_VLLM_VERSION="$("$ENGINE_PYTHON" -c 'import vllm; print(vllm.__version__)')"
 freeze_of "$ENGINE_PYTHON" >"$STATE/engine-freeze-before.txt"
@@ -406,9 +498,10 @@ echo "bootstrap: engine environment: python $ENGINE_PYTHON_VERSION, vllm $ENGINE
 
 CLIENT_SPEC="rcp-ndcg-vllm[test]==${VERSION}"
 CLIENT_WITH="rcp-ndcg[hf]==${VERSION}"
-CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH"
+CLIENT_HARNESS="rcp-ndcg-test==${VERSION}"
+CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH" --with "$CLIENT_HARNESS"
   --constraints "$STAGE_DIR/requirements-constraints.txt"
-  --find-links "$STAGE_DIR/wheelhouse" --no-index)
+  --find-links "$STAGE_DIR/wheelhouse" --find-links "$STAGE_DIR/harness" --no-index)
 install_start="$(now_s)"
 # The CUDA-lock wheels (nvidia-*, triton) ride in the wheelhouse for the engine; the CLIENT environment
 # must never install them (its specs pull no torch, and the manifest marks them inert). The probe runs
@@ -435,6 +528,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 import rcp_ndcg
 import rcp_ndcg_core
+import rcp_ndcg_test
 import rcp_ndcg_vllm
 
 
@@ -449,6 +543,7 @@ print(json.dumps({
     "rcp-ndcg": rcp_ndcg.__version__,
     "rcp-ndcg-core": version("rcp-ndcg-core"),
     "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
+    "rcp-ndcg-test": version("rcp-ndcg-test"),
     "inert_present": {dist: installed(dist) for dist in sys.argv[2:]},
 }))
 PYEOF
@@ -473,17 +568,8 @@ VCHK
 
 
 # The state's client wrapper: every later client command runs the same mechanism (one home per concept).
-cat >"$STATE/client" <<WRAPPER
-#!/usr/bin/env bash
-# The client environment of this node (built by bootstrap.sh): the product's install mechanism
-# (uvx --find-links wheelhouse --no-index, held to the staged constraints), from the staged wheelhouse.
-set -euo pipefail
-export UV_CACHE_DIR="${UV_CACHE_DIR}"
-export PATH="${UV_DIR}/bin:\$PATH"
-exec ${CLIENT_ARGS[*]} "\$@"
-WRAPPER
-chmod +x "$STATE/client"
-echo "bootstrap: client environment ready in ${client_install_s}s ($CLIENT_SPEC)" >&2
+write_client_wrapper "$STATE" "$UV_DIR"
+echo "bootstrap: client environment ready in ${client_install_s}s ($CLIENT_SPEC + $CLIENT_HARNESS)" >&2
 python3 - "$STATE/client-versions.json" "$client_install_s" <<'PYEOF' >"$STATE/client.json"
 import json
 import sys
@@ -644,13 +730,18 @@ if [[ "$MODE" == "wave" ]]; then
       break
     fi
   done
+  plugin_wheel_args=()
+  if plugin_wheel="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+    plugin_wheel_args+=(--plugin-wheel "$plugin_wheel")
+  fi
   gpus="$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 0)"
   echo "bootstrap: running the wave '$WAVE_NAME' on $gpus GPUs (list: $WAVE_LIST_FILE)" >&2
   exec "$STATE/client" python -m rcp_ndcg_test.jobs.run_wave \
     --recipes "@$WAVE_LIST_FILE" --recipes-root "$RECIPES_ROOT" --gpus "$gpus" \
     --out "$STATE/wave" --upload "$OUT_URI" --record \
     --failed-plugins "$STATE/plugin-failures.txt" \
-    --reference-python "$STATE/reference/bin/python" "${pairs_args[@]+${pairs_args[@]}}"
+    --reference-python "$STATE/reference/bin/python" \
+    "${plugin_wheel_args[@]+${plugin_wheel_args[@]}}" "${pairs_args[@]+${pairs_args[@]}}"
 fi
 }
 
