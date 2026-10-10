@@ -259,11 +259,36 @@ On the merged tree (see the merge note below), all run from the lane worktree:
   outside the baseline, 0 baseline failures remain); `vllm-pkg` 49 passed; `vllm-models` 72 passed, 7
   skipped; `run_all` 1022 checks/987 match/35 known deviations/0 failed, human study 67/67, external LLM
   judges 82/82; `public-names` clean; `clean`.
+- **`bin/gate lane/harness-media` on `0cb88687` (the third merged tree: run-integrity, mrl-harness) -- GATE:
+  PASS**, every step green: ruff-check / ruff-format (598 files) / basedpyright (0 errors); `pytest` 3869
+  passed, 102 skipped; `contract-docs` 301 passed, 55 skipped; `mkdocs` built; `test-pkg` 1024 passed, 223
+  skipped; `recipes` exit 0 (no failure outside the baseline, 0 baseline failures remain); `vllm-pkg` 49
+  passed; `vllm-models` 72 passed, 7 skipped; `run_all` 1022 checks/987 match/35 known deviations/0 failed,
+  human study 67/67, external LLM judges 82/82; `public-names` clean; `clean`.
 - The stress loop (`scratch/stress-fixed.sh`, six parallel instances of `test_record_and_wave.py` × 4,
   `-X faulthandler`): **all 24 runs × 36 test bodies green** (six runs ended with the checkout-guard
   teardown error naming this report file, which was created while they ran; the guard is the suite's own
   invariant, not a test failure).  A second loop on the pre-merge tree repeated it; the runs that caught the
   tree mid-merge (the fp-v4 patches test's `_CLOSING` use, fixed in the merge) are excluded from the claim.
+
+### The third merge with `rfc-0001`
+
+`git merge rfc-0001` (29 further commits: run-integrity, mrl-harness) at `67e6ef25`; merged as `0cb88687`.
+Conflicts and drift resolved keeping **both** lanes' behaviour:
+
+- `equivalence/wire.py`: the MRL lane added a `full_width` strip of the Matryoshka selection for stage 2's
+  ex-post gate and built the endpoint config inline; this lane's `recipe_config` is the one-home
+  construction, so it gains `full_width` (popping `dimensions`/`mrl_dim`) and `role_client` passes it
+  through -- one construction, both behaviours.
+- `equivalence/stages.py`: the MRL lane's per-`k` comparison loop and this lane's width-mismatch gate are
+  merged (the width check runs on the cut vectors inside the loop, each row carrying its `mrl_dim`).
+- `observe/requests.py`: two lanes bumped `CORPUS_PLAN_VERSION` to 2 for **different** plans (the MRL
+  stratum; this lane's media video edges).  The merged plan is **3**, with both additions named in the
+  docstring -- two different plans must not share a version -- and the MRL lane's test pins 3.
+- `tests/stub_engine.py`: this lane's `RLIMIT_CORE` guard and the MRL lane's `--hf-overrides` matryoshka
+  parsing both kept.
+- The CHANGELOG auto-merged; the version entry now says 3.  Every lane's report matches `rfc-0001`'s
+  version except this lane's own; no generated file was hand-merged.
 
 ### The second merge with `rfc-0001`
 
