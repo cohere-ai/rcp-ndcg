@@ -3,10 +3,13 @@
 ## 1. Status
 
 **DONE.** Every brief item (1-28 and the independent review's additions) is fixed, declared or explicitly
-open with evidence; two adversarial verifier rounds plus a final confirmation round ran; the lane merged the
-current `rfc-0001` (tip `6c388950`, the late-keep lane) and `bin/gate lane/recipe-fix` is **GATE: PASS** on
-the final tree `9c2a4d73`. GPU confirmation (E2) is the operator's; every GPU-dependent number below is
-declared as E2's to measure.
+open with evidence; two adversarial verifier rounds plus a final confirmation round ran. The lane then
+merged the current `rfc-0001` twice more (tip `f0108f59`: ref-envs, harness-media, judge-fixes, run-integrity,
+mrl-harness and runner-backends; then tip `7f3b94c1`: round 16 plus a report scrub and two CI-only test
+fixes) and ported its declarations onto the merged tree; the port's own drift (topk's reference lock, the
+qwen3-reranker reference-env test expectation) is fixed in `9f9dc962`. `bin/gate lane/recipe-fix` is
+**GATE: PASS** on the final tree `9f9dc962`. GPU confirmation (E2) is the operator's; every GPU-dependent
+number below is declared as E2's to measure.
 
 ## 2. Commits
 
@@ -20,6 +23,9 @@ declared as E2's to measure.
 | `bc7e0e73` | Verifier round 2 minors: the format fix, the pplx mutant docstring, the qwen3-vl-reranker recipe-based load pinned |
 | `9e28c64c`, `93b2c58c`, `34d3be30` | Merge `rfc-0001` (`b18d34c4`: fp-v4, MRL recipes, judges, records, retrieval-fixes, runner-security) and the lane's port |
 | `3e7a12be`, `9c2a4d73` | Merge `rfc-0001` (`6c388950`: the late-interaction keep-rules) and the lane's port |
+| `0de5408b` | Merge `rfc-0001` (`f0108f59`: ref-envs, harness-media, judge-fixes, run-integrity, mrl-harness, runner-backends) + the lane's port |
+| `0498055a` | Merge `rfc-0001` (`7f3b94c1`: round 16, the report scrub, the two CI-only test fixes) |
+| `9f9dc962` | The topk reference lock follows its merged `reference.in`; the qwen3-reranker reference-env test expects the image's torch |
 | (this report) | The lane report |
 
 ## 3. What changed (per brief item)
@@ -54,6 +60,20 @@ declared as E2's to measure.
 | 26 | Pairs manifest | **fixed** | The pairs and manifest are regenerated the generator's own way; the late-keep merge's affected rows (ctxl x3, jina-reranker-v3, pplx-context) regenerated and merged; the stale refusals are gone. |
 | 27 | pplx-late `[D]` prefix | **fixed** | The client sends the media side's head as a system message; the reference counts `patches + 2`. |
 | 28 | MRL | **open (undefined)** | The brief's "MRL" item says "see the operator's MRL section when it is added"; no section was added. The merged `rfc-0001` (mrl-recipes) declares every variant's MRL kind/set; this lane changed none of those declarations. |
+
+**The catch-up merges and their port.** `f0108f59` brought ref-envs' per-family `reference.in`/`reference.lock`
+and the reference store, harness-media, judge-fixes, run-integrity, mrl-harness and runner-backends; `7f3b94c1`
+brought round 16 and the two CI-only test fixes. The port kept every lane's declarations in each family file
+(this lane's attention, head-dtype, patch and video fields beside late-keep's keep-rules, ref-envs'
+environments and mrl-recipes' MRL fields), moved the lane's changes into rfam's family test modules (the
+per-recipe modules rfam deleted stay deleted), regenerated the generated files the documented way (the
+recipe/family schemas, the contract snapshots, the goldens, the pairs manifest) and regenerated the family
+locks whose merged `reference.in` this lane changed (`ctxl-rerank-v2-instruct-multilingual`, `qwen3-reranker`).
+The merged tree's tests then surfaced two port drift items, fixed in `9f9dc962`: topk-embed-v1's lock still
+pinned the checkpoint's `transformers==5.9.0` against the merged `reference.in`'s `>=5.10.4,<5.18.0`
+(regenerated: `transformers==5.17.0`, the image's stack version, with the header hash following the merged
+file), and `test_reference_env.py` still expected qwen3-reranker to declare its own torch (the sdpa reference
+runs on the image's torch, so `own_torch` is false; the expectation now says so).
 
 The root-cause spec's items are covered above or by the merged lanes: the zembed reference guard (existing
 suffix check + pin), the ctxl sidecar product fix (item 7), jina's blank policy (item 6), the head dtype
@@ -106,7 +126,26 @@ regressions/hygiene), on `83e7f3b7`.
 
 ## 5. Checks
 
-Final gate on the merged tree `9c2a4d73` (`bin/gate lane/recipe-fix`):
+Final gate on the merged tree `9f9dc962` (`bin/gate lane/recipe-fix`, slot 2):
+
+```
+ruff-check exit=0 / ruff-format exit=0 (612 files) / basedpyright exit=0
+pytest exit=0 -> 3985 passed, 103 skipped
+contract-docs exit=0 -> 302 passed, 55 skipped
+mkdocs exit=0
+test-pkg exit=0 -> 1086 passed, 227 skipped
+recipes exit=0 (network) -> no failure outside the baseline
+vllm-pkg exit=0 -> 50 passed / vllm-models exit=0 -> 92 passed, 7 skipped
+run_all exit=0 -> 1022 checks, 987 match, 35 known deviations, 0 failed; 67/67; 82/82
+public-names exit=0 (clean) / clean exit=0
+GATE: PASS
+```
+
+The lane's own runs on the same tree: `pytest tests -n 8` 3985 passed/103 skipped; `pytest
+rcp-ndcg-test/tests -n 4` 1086 passed/227 skipped; `pytest rcp-ndcg-vllm/tests` 133 passed/11 skipped; ruff
+and basedpyright clean.
+
+Earlier gate on the late-keep-merged tree `9c2a4d73` (`bin/gate lane/recipe-fix`):
 
 ```
 ruff-check exit=0 / ruff-format exit=0 (604 files) / basedpyright exit=0
