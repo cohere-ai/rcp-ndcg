@@ -11,6 +11,7 @@ import base64
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 from rcp_ndcg_core.records import RankingExample
@@ -21,7 +22,7 @@ from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters.chat import build_messages, media_counts
-from rcp_ndcg.judging import RubricSchedule, judge, load_prompt
+from rcp_ndcg.judging import RubricSchedule, TournamentSchedule, judge, load_prompt
 from rcp_ndcg.judging._templates import MEDIA_MARKER, collect_media, split_media, wrap_xml
 from rcp_ndcg.judging.client import Completion, CompletionInput
 from rcp_ndcg.judging.judging import media_marker_tokens, prompt_overhead_tokens, window_tokens
@@ -166,6 +167,54 @@ SMALL = RubricSchedule(window=2, placements_per_doc=2.0)
 
 
 class TestJudgingPages:
+    def test_a_window_charges_the_prepared_refs_the_wire_sends(self, tmp_path: Path, word_tokenizer_file: Path) -> None:
+        """A stored ref whose recorded size disagrees with the file: the budget counts the decoded, resized
+        bytes the wire carries, so a context the stale metadata would have called a fit is refused."""
+        page = _sized_png(tmp_path / "big.png", (1700, 2200), 0).model_copy(update={"width": 16, "height": 16})
+        content = Content.from_parts([ImagePart(ref=page)])
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["p0"], contents=[content])]
+        words = load_tokenizer(str(word_tokenizer_file))
+        declared = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32)
+        effective = declared.for_processor("qwen3_vl")
+        prepared = prepare_content(content, effective, None)
+        media = content_media_tokens(prepared.content, effective, None, tokenizer=words).tokens
+        media += media_marker_tokens(words)
+        overhead = prompt_overhead_tokens(load_prompt("rubric_vision"), "rubric", "q", 1, words)
+        fake = _Recording()
+        fake.config = fake.config.model_copy(
+            update={
+                "max_images": 1,
+                "context_tokens": overhead + media - 1,
+                "image_processor": "qwen3_vl",
+                "tokenizer": str(word_tokenizer_file),
+            }
+        )
+        with pytest.raises(CapabilityError, match="does not fit"):
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path, schedule=SMALL,
+                preprocessing=Preprocessing(image=declared),
+            )  # fmt: skip
+        assert fake.usage.requests == 0
+
+    def test_a_partial_schedule_keeps_the_page_window(self, tmp_path: Path, pages) -> None:
+        """Naming one schedule field (the seed) keeps the shipped per-modality window: the page rubric runs
+        windows of 8, not the text model default of 10, and the page tournament 5/5."""
+        fake = _Recording()
+        fake.config = fake.config.model_copy(update={"max_images": 8})
+        judge(_page_rows(pages), None, fake, stage="rubric", out=tmp_path / "rubric", schedule=RubricSchedule(seed=7))
+        identity = json.loads((tmp_path / "rubric" / "identity.json").read_text())
+        assert identity["stages"]["rubric"]["identity"]["schedule"]["window"] == 8
+
+        other = _Recording()
+        other.config = other.config.model_copy(update={"max_images": 5})
+        judge(
+            _page_rows(pages), None, other, stage="tournament", out=tmp_path / "tournament",
+            schedule=TournamentSchedule(seed=7),
+        )  # fmt: skip
+        identity = json.loads((tmp_path / "tournament" / "identity.json").read_text())
+        schedule = identity["stages"]["tournament"]["identity"]["schedule"]
+        assert (schedule["window"], schedule["adaptive_window"]) == (5, 5)
+
     def test_pages_are_judged_with_the_page_rubric_and_sent_as_images(self, tmp_path: Path, pages) -> None:
         fake = _Recording()
         fake.config = fake.config.model_copy(update={"max_images": 2})
@@ -332,6 +381,49 @@ class TestJudgingPages:
                 out=tmp_path,
                 schedule=SMALL.model_copy(update={"prompt": prompt}),
             )
+
+    def test_the_store_records_the_engine_media_check_outcome(self, tmp_path: Path, pages) -> None:
+        """The check's outcome is store provenance: the client's census writes into the pass's
+        ``preprocessing.jsonl``, so a ``not_checked`` (or ``ok``) row survives beside the media rows."""
+        from rcp_ndcg.judging._fake import _answer_text, _prompt_text
+        from rcp_ndcg.judging.client import JudgeClient, JudgeConfig
+
+        class _NoUsageEngine:
+            """A served engine whose replies carry no usage: the media delta cannot be taken."""
+
+            def __init__(self) -> None:
+                self.fake = FakeJudge()
+
+            async def __call__(self, request: httpx.Request) -> httpx.Response:
+                if request.method == "GET" and request.url.path == "/v1/models":
+                    return httpx.Response(200, json={"object": "list", "data": [{"id": "m"}]})
+                body = json.loads(request.content)
+                try:
+                    answer = _answer_text(
+                        self.fake.seed, self.fake.ability, self.fake.severity, _prompt_text(body.get("messages"))
+                    )
+                except ValueError:  # the probe carries no document window
+                    answer = "{}"
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "x",
+                        "object": "chat.completion",
+                        "created": 0,
+                        "model": body["model"],
+                        "choices": [
+                            {"index": 0, "message": {"role": "assistant", "content": answer}, "finish_reason": "stop"}
+                        ],
+                    },
+                )
+
+        config = JudgeConfig(base_url="http://judge.test/v1", model="m", image_processor="qwen3_vl", max_images=2)
+        client = JudgeClient(config, httpx_transport=httpx.MockTransport(_NoUsageEngine()))
+        declared = Preprocessing(image=ImagePolicy(min_px=65536, max_px=1310720))
+        judge(_page_rows(pages), None, client, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=declared)
+
+        rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+        assert any(row["doc_id"] == "engine_media_check:not_checked" for row in rows)
 
 
 class TestTheFpsFamilyOnPreprocessing:

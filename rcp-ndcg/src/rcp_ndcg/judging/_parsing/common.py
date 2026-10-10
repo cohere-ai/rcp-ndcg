@@ -6,7 +6,10 @@ and 5):
 
 1. it strips ``<think>...</think>`` blocks, and an orphaned ``</think>`` that sits
    before the object (an engine may drop the opening tag and keep the closing one); one that trails the
-   object is what surrounds it, and never erases the object;
+   object is what surrounds it, and never erases the object. Stripping happens **outside** the object
+   only: a tag inside the object's own text must not rewrite it, and an **unclosed** opener before the
+   object makes everything from it to the end of the answer reasoning (a truncated answer's reasoning is
+   never the judgement);
 2. it strips one code fence around the whole answer;
 3. it decodes the first complete JSON object that starts at the first ``{`` and
    ignores whatever follows it (prose, a stray ``}``, a second object);
@@ -43,6 +46,7 @@ PARSE_VERSION = 3
 
 _THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>")
 _ORPHANED_THINK_END = re.compile(r"^[\s\S]*?</think>")
+_THINK_OPEN = re.compile(r"<think\b")
 _CODE_FENCE = re.compile(r"^```(?:\w+)?\s*(.*?)\s*```$", flags=re.DOTALL)
 _STRAY_QUOTE = re.compile(r'(-?\d+\.?\d*)"(\s*\n?\s*})')
 
@@ -102,16 +106,31 @@ def strip_reasoning(text: str) -> str:
     """``text`` without ``<think>...</think>`` blocks, and without an orphaned
     ``</think>`` that sits before the object.
 
-    An orphaned think-end is reasoning that lost its opening tag, so what leads up to it is stripped --
-    but only up to the first ``{``: a think-end that follows the object is what surrounds it, and the
-    object must survive (the decoder ignores whatever follows the object, so a complete answer plus a
-    stray think-end is parsed, never erased).
+    Closed think blocks are removed, and an orphaned end tag strips what leads up to it -- but only
+    **outside** the object. A block that contains the object is reasoning (it is removed and the next
+    object is the answer), while a tag inside the object's own text is left where it is: a block between
+    two duplicate keys must not delete one (the duplicate-key guard refuses the answer) and a tag inside a
+    string must not truncate it. An **unclosed** opener before the object is reasoning to the end of the
+    answer, so a truncated answer's drafted example is never read as the judgement.
     """
-    text = _THINK_BLOCK.sub("", text)
+    while True:
+        start = text.find("{")
+        if start < 0:
+            break
+        covering = next((match for match in _THINK_BLOCK.finditer(text) if match.start() < start < match.end()), None)
+        if covering is None:
+            break
+        text = text[: covering.start()] + text[covering.end() :]
     start = text.find("{")
-    if start >= 0:
-        return (_ORPHANED_THINK_END.sub("", text[:start]) + text[start:]).strip()
-    return _ORPHANED_THINK_END.sub("", text).strip()
+    if start < 0:
+        stripped = _THINK_BLOCK.sub("", text)
+        stripped = _ORPHANED_THINK_END.sub("", stripped).strip()
+        return "" if _THINK_OPEN.search(stripped) else stripped
+    head, tail = text[:start], text[start:]
+    head = _THINK_BLOCK.sub("", head)
+    if _THINK_OPEN.search(head):
+        return ""
+    return (_ORPHANED_THINK_END.sub("", head) + tail).strip()
 
 
 def strip_code_fence(text: str) -> str:

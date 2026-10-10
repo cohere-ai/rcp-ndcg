@@ -112,8 +112,10 @@ the row's id in its call (its position, or `<query>` for a reranker's shared que
 under its input through the fit's own `chunk_mapping`, so an input id that itself contains `#` is never
 mis-split), each change by its mechanism
 (`empty_doc`, `media_resize`, `media_drop`, `document_share`, `query_share`, `budget_cut`, and the postprocess
-`skip_unapplied` when a pooled document's declared skip list could not be applied to a media item), and the uncut
-and kept request totals. A row without a record was sent as given -- the equivalence harness gates exactly those.
+`skip_unapplied` when a pooled document's declared skip list could not be applied to a media item -- no such row
+is written when the served plugin applies a rule engine-side (`document_skip_engine_side`) or when a media
+allowlist (`media_keep_token_ids`) makes the engine keep only its positions, because the engine did apply the
+rule), and the uncut and kept request totals. A row without a record was sent as given -- the equivalence harness gates exactly those.
 
 An input under budget comes back byte-identical to the uncut render -- within `fit`, which settles a pair's
 query span per pair. The rerank wire carries one query per request, so the rerank client settles the shared
@@ -222,7 +224,8 @@ is an empty document, and follows `empty_doc`. A role with an `image_processor` 
 `max_images`/`max_videos` (the per-request gates, refused before sending), and the pool and rerank roles'
 startup probe runs the engine media check: one prepared probe image beside its no-media baseline, the DELTA
 of the engine's two prompt-token reports (the template and the text cancel) compared with the counted media
-tokens -- a mismatch is refused, a reply without usage is recorded `not_checked`, never silent.
+tokens -- a mismatch is refused, a passing check is recorded `engine_media_check:ok`, a reply without usage is
+recorded `not_checked`, never silent.
 
 ## Retrieval roles: one preparation path, and what to send when media do not fit
 
@@ -263,8 +266,8 @@ send one prepared image and the same request without its media, count the media 
 reconfigured engine or a mis-declared `image_processor` -- and every later count is suspect: record or raise
 it instead of judging around it. The runtime call site is wired: a pool or rerank client with an
 `image_processor` runs `check_engine_media()` from its `probe()` -- the startup probe sends the prepared image
-and its baseline and refuses on a delta mismatch; a reply without usage is recorded `not_checked` (never
-silent).
+and its baseline and refuses on a delta mismatch; a passing check is recorded `engine_media_check:ok` and a reply
+without usage is recorded `not_checked` (never silent).
 
 ## The tokenizer's digest
 

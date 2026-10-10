@@ -8,6 +8,7 @@ corpus schema.
 Public surface:
 
 - :data:`~rcp_ndcg_test.observe.requests.GENERATOR_VERSION`,
+  :data:`~rcp_ndcg_test.observe.requests.GENERATOR_SEED`,
   :data:`~rcp_ndcg_test.observe.requests.SEED`,
   :data:`~rcp_ndcg_test.observe.requests.PINNED_DATASET_COMMITS`.
 - :func:`~rcp_ndcg_test.observe.requests.plan_recipe`,
@@ -29,6 +30,7 @@ from .adversarial import CONTENT_KINDS, SYNTHETIC_TEXTS, special_token_spellings
 
 if TYPE_CHECKING:  # the type checker sees the lazy re-exports; runtime resolves them in __getattr__
     from .requests import (
+        GENERATOR_SEED,
         GENERATOR_VERSION,
         PINNED_DATASET_COMMITS,
         SEED,
@@ -42,6 +44,7 @@ if TYPE_CHECKING:  # the type checker sees the lazy re-exports; runtime resolves
 
 _REQUESTS_EXPORTS = frozenset(
     {
+        "GENERATOR_SEED",
         "GENERATOR_VERSION",
         "PINNED_DATASET_COMMITS",
         "SEED",
@@ -75,6 +78,7 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "CONTENT_KINDS",
+    "GENERATOR_SEED",
     "GENERATOR_VERSION",
     "PINNED_DATASET_COMMITS",
     "SEED",

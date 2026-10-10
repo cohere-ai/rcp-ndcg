@@ -52,13 +52,23 @@
       "type": "string"
     },
     "input_tokens": {
-      "description": "Prompt tokens (exact or approximate: ``input_token_count``).",
+      "description": "Prompt tokens (exact or approximate: ``input_token_count``) at one attempt per window; retries can take it towards ``requests_max`` times this count.",
       "title": "Input Tokens",
       "type": "integer"
     },
     "output_tokens": {
-      "description": "Completion tokens (approximate).",
+      "description": "Completion tokens (approximate), at one attempt per window.",
       "title": "Output Tokens",
+      "type": "integer"
+    },
+    "requests_max": {
+      "description": "Judge requests when every window retries to MAX_ATTEMPTS attempts (an unparseable answer and a refused request are both retried, and each attempt re-sends the prompt).",
+      "title": "Requests Max",
+      "type": "integer"
+    },
+    "requests_min": {
+      "description": "Judge requests at one attempt per window (the same count as ``calls``).",
+      "title": "Requests Min",
       "type": "integer"
     },
     "schema": {
@@ -83,6 +93,8 @@
   },
   "required": [
     "calls",
+    "requests_min",
+    "requests_max",
     "input_tokens",
     "output_tokens",
     "wall_s",

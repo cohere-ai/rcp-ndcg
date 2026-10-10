@@ -92,6 +92,9 @@ def test_the_media_stage_compares_what_the_client_sends_with_what_the_reference_
     assert document["passed"] is True, document["failures"][:3]
     assert document["items"] == 6 and document["rows"] == 1 + len(SIZES)
     assert document["engine_check"]["status"] == "not_run" and document["engine_check"]["passed"] is None
+    # The gate declares its scope: it is an INPUT gate (no media vector or score is compared here).
+    assert document["scope"] == "input"
+    assert "no media vector or score is compared" in document["scope_note"]
 
 
 def test_a_text_first_placement_fails_the_stage(recipe: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -166,7 +169,9 @@ def test_the_harness_runs_the_media_stage_beside_stages_1_and_2(recipe: Any, tmp
     assert document["stage1"]["media_rows"] == 1 + len(SIZES) and document["stage1"]["passed"] is True
     assert document["stage2"]["passed"] is True and document["media"]["passed"] is True
     assert document["passed"] is True
-    assert "## Media" in (tmp_path / "out" / "EQUIVALENCE.md").read_text(encoding="utf-8")
+    report = (tmp_path / "out" / "EQUIVALENCE.md").read_text(encoding="utf-8")
+    assert "## Media" in report
+    assert "scope: **input**" in report, "the report must label the media gate's input-only scope"
 
 
 def test_a_media_recipe_without_media_rows_fails_and_a_text_recipe_has_no_media_stage(
@@ -462,3 +467,218 @@ def test_stage2_reports_a_declared_media_approximation_non_gating(
     assert summary["media_rows"]["n_rows"] == 1
     assert "media_approximation" in summary["media_rows"]["reason"]
     assert len(rows_seen[0]) == 1  # only the text row reached the reference
+
+
+# ---------------------------------------------------------------------------
+# A3: the frame probes -- the media row reaches the template check, and the engine's
+# own prompt-token report is compared with the render the client budgeted against.
+# ---------------------------------------------------------------------------
+
+
+MEDIA_HEAD_TEMPLATE = (
+    "{%- for message in messages -%}{% for part in message.content %}"
+    "{% if part.type == 'image' %}XX{% endif %}{% endfor %}"
+    "doc: {% for part in message.content -%}"
+    "{%- if part.type == 'text' %}{{ part.text }}{% endif -%}"
+    "{%- endfor %}{%- endfor -%}{% if add_generation_prompt %} [END]{% endif %}"
+)
+"""The fixture's served template, with a marker the engine emits only when a conversation carries media."""
+
+
+def stage1_media_pairs(path: Path) -> Path:
+    """One text row and one media row (an image-only document): the text row's conversation and the media
+    row's, for the messages template check."""
+    rows: list[dict[str, Any]] = [dict(sample_pairs()[0])]
+    rows[0].pop("instruction", None)
+    rows.append(
+        {"query": "the red page", "documents": [""], "media": {"query": [], "documents": [[png_entry(300, 200)]]}}
+    )
+    return write_pairs(path, rows)
+
+
+def test_stage1_renders_one_media_row_per_shape_in_the_template_check(recipe: Any, tmp_path: Path) -> None:
+    """A3(b): the messages template check renders a media row's conversation, not only the text rows -- the
+    served frame around the media item's content must equal the declared frame, and the render WITH the
+    media must still open and close with the declared frame's fixed edges."""
+    from rcp_ndcg_test.equivalence.stages import stage1_prompts
+
+    document = stage1_prompts(recipe, stage1_media_pairs(tmp_path / "pairs.jsonl"), None, over_length_per_shape=1)
+    check = document["template_render_check"]
+    assert check["status"] == "run" and check["passed"] is True, check["failures"][:2]
+    # every conversation the client sent is rendered: the text row's documents, the over-length sample's and
+    # the media row's (which the text-only check never saw)
+    assert check["checked"] == len(sample_pairs()[0]["documents"]) + 2
+
+
+def test_the_media_template_probe_picks_the_row_that_carries_that_shapes_media(vl_recipe: Any, tmp_path: Path) -> None:
+    """A3(b): the probe picks, per shape, a media row that carries media ON THAT SHAPE'S SIDE.  The pairs
+    file's first media row is document-only; rendering it for the query shape would skip the query side's
+    media, so the query frame would never be checked (the shipped qwen3-vl/embeddinggemma/pplx pairs files
+    carry their query-media row after document-only rows)."""
+    from rcp_ndcg_test.equivalence.fitting import load_pairs
+    from rcp_ndcg_test.equivalence.media import media_rows
+    from rcp_ndcg_test.equivalence.stages import _media_template_rows, stage1_prompts
+
+    rows = [
+        {"query": "a document page", "documents": [""], "media": {"documents": [[png_entry(64, 64)]]}},
+        {
+            "query": "a query page",
+            "documents": ["a caption"],
+            "media": {"query": [png_entry(64, 64)], "documents": [[]]},
+        },
+    ]
+    pairs = write_pairs(tmp_path / "pairs.jsonl", rows)
+    chosen = {row["shape"]: row for row in _media_template_rows(vl_recipe, media_rows(load_pairs(pairs)))}
+    assert chosen["query"]["media"]["query"], "the query shape must get the row that carries query media"
+    assert chosen["document"]["media"]["documents"][0], "the document shape must get a document-media row"
+    document = stage1_prompts(vl_recipe, pairs, REFERENCE_PYTHON, over_length_per_shape=1)
+    check = document["template_render_check"]
+    assert check["passed"] is True, check["failures"][:2]
+    # With a reference: the fixture's render mode emits BOTH declared shapes, so the every-text render
+    # comparison holds the query and the document side to it (it emitted only the document shape before).
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:2]
+    # every captured conversation is rendered: the text row under both declared shapes, plus one media row
+    # per shape (the query's and the document's)
+    assert check["checked"] == 4, check
+
+
+def test_a_media_frame_that_moves_the_declared_head_fails_the_template_check(recipe: Any, tmp_path: Path) -> None:
+    """The mutation: a served template whose media render emits a marker before the declared head is caught
+    by the media frame check (the text-only rows never exercise that branch)."""
+    import shutil
+
+    from rcp_ndcg_test.equivalence.stages import stage1_prompts
+
+    directory = tmp_path / "recipes" / "fixture-vl-embed"
+    shutil.copytree(RECIPES / "fixture-vl-embed", directory)
+    shutil.copy(RECIPES.parent / "tokenizer.json", tmp_path / "tokenizer.json")  # ../../tokenizer.json
+    (directory / "chat.jinja").write_text(MEDIA_HEAD_TEMPLATE, encoding="utf-8")
+    mutated = load_recipe(directory)
+    document = stage1_prompts(mutated, stage1_media_pairs(tmp_path / "pairs.jsonl"), None, over_length_per_shape=1)
+    check = document["template_render_check"]
+    assert check["passed"] is False
+    assert {failure["check"] for failure in check["failures"]} == {"media_head"}, check["failures"][:2]
+
+
+def test_the_engine_prompt_tokens_probe_compares_the_engine_report_with_the_declared_render(
+    recipe: Any, tmp_path: Path
+) -> None:
+    """A3(a): the engine's own ``usage.prompt_tokens`` of one captured request per shape must equal the count
+    of the render the client budgeted against -- the probe that the declared frame (the ``messages`` budget's
+    premise) is the engine's frame.  Run and passed against the stub; ``not_run`` without an engine."""
+    from rcp_ndcg_test.equivalence.stages import stage1_prompts
+
+    pairs = stage1_media_pairs(tmp_path / "pairs.jsonl")
+    engine = stub_for(recipe)
+    try:
+        document = stage1_prompts(recipe, pairs, None, base_url=engine.base_url, over_length_per_shape=1)
+    finally:
+        engine.stop()
+    check = document["engine_prompt_tokens_check"]
+    assert check["status"] == "run" and check["passed"] is True, check["failures"][:2]
+    assert check["checked"] > 0
+    offline = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)
+    assert offline["engine_prompt_tokens_check"]["status"] == "not_run"
+    assert offline["engine_prompt_tokens_check"]["passed"] is None  # not_run is neutral, never passed
+
+
+def test_the_engine_prompt_tokens_probe_fails_on_a_drifted_report(recipe: Any) -> None:
+    """A mutant engine whose report is one token off fails the probe with both numbers named (the driver is
+    the check itself, so no live engine is needed)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+
+    tokenizer = tokenizer_of(recipe)
+    text = "doc: the page [END]"
+    count = tokenizer.count(text, add_special_tokens=True)
+    probe = {"rows": [{"shapes": {"document": {"texts": [text], "usages": [count]}}}]}
+    check = stages_module._engine_prompt_tokens_check(recipe, probe, tokenizer, "http://engine")
+    assert check["status"] == "run" and check["passed"] is True and check["checked"] == 1
+    drifted = {"rows": [{"shapes": {"document": {"texts": [text], "usages": [count + 1]}}}]}
+    check = stages_module._engine_prompt_tokens_check(recipe, drifted, tokenizer, "http://engine")
+    assert check["passed"] is False
+    assert check["failures"][0]["engine_prompt_tokens"] == count + 1
+    assert check["failures"][0]["declared_render_tokens"] == count
+
+
+# ---------------------------------------------------------------------------
+# The fps arm: a clip's realised frame count follows the engine's fps rule, on every side.
+# ---------------------------------------------------------------------------
+
+
+def fps_recipe(tmp_path: Path) -> Any:
+    """A copy of the video fixture that declares the engine's fps rule instead of a pinned frame count: the
+    Qwen3-VL backend samples by fps and ignores ``num_frames``, so the declared policy is the rate and the
+    engine's argv pins it.  The reference computes the realised count from the clip's own facts."""
+    import shutil
+
+    directory = tmp_path / "recipes" / "fixture-vl-video-fps"
+    shutil.copytree(RECIPES / "fixture-vl-video", directory)
+    shutil.copy(RECIPES.parent / "tokenizer.json", tmp_path / "tokenizer.json")  # ../../tokenizer.json
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")  # the reference's import
+    manifest = (directory / "family.yaml").read_text(encoding="utf-8")
+    manifest = manifest.replace("id: fixture-vl-video", "id: fixture-vl-video-fps")
+    manifest = manifest.replace("image_processor: qwen2_vl", "image_processor: qwen3_vl")
+    manifest = manifest.replace(
+        """extra_args: ["--media-io-kwargs", '{"video": {"num_frames": 4}}']""",
+        """extra_args: ["--media-io-kwargs", '{"video": {"fps": 2}}']""",
+    )
+    manifest = manifest.replace(
+        "video_policy: {num_frames: 4, wire: video_url, engine_video_pinning: true}",
+        "video_policy: {fps: 2, wire: video_url, engine_video_pinning: true}",
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    return load_recipe(directory)
+
+
+def fps_pairs(path: Path) -> Path:
+    """Two clip rows (64 frames at 8 fps): the fps rule realises 16 frames -- neither the clip's 64 nor the
+    loader's default 32."""
+    rows = [
+        {"query": "the clip", "documents": [""], "media": {"documents": [[video_entry(64, 64, 64)]]}},
+        {
+            "query": "the moving clip",
+            "documents": ["a caption under the clip"],
+            "media": {"query": [], "documents": [[video_entry(64, 64, 64)]]},
+        },
+    ]
+    return write_pairs(path, rows)
+
+
+def test_an_fps_clip_gates_on_the_rules_realised_frame_count(tmp_path: Path) -> None:
+    """The client counts the fps rule's realised frames (16, not the clip's 64 or the loader's 32), the
+    reference computes the same count from the clip's facts, and the engine -- served with the declared pin
+    -- counts exactly the client's tokens; served without the pin it samples its own default and the media
+    gate's engine check fails."""
+    from rcp_ndcg_test.equivalence import media as media_module
+    from rcp_ndcg_test.equivalence.fitting import load_pairs
+    from rcp_ndcg_test.equivalence.media import media_rows
+
+    recipe = fps_recipe(tmp_path)
+    pairs = fps_pairs(tmp_path / "pairs.jsonl")
+    facts, _, _ = media_module._client_facts(recipe, media_rows(load_pairs(pairs)), None)
+    frames = [item["frames"] for side in facts.values() for item in side["media"]]
+    assert frames == [16, 16], f"the fps rule realises 16 of the clip's 64 frames at 8 fps, got {frames}"
+    document = stage_media(recipe, pairs, REFERENCE_PYTHON)
+    assert document is not None and document["passed"] is True, document["failures"][:3]
+    engine = stub_for(recipe, "--model-processor", "qwen3_vl")
+    try:
+        pinned = stage_media(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert pinned is not None and pinned["passed"] is True, (pinned["failures"], pinned["engine_check"])
+    assert pinned["engine_check"]["checked"] == 2
+    # An engine pinned to the WRONG rate (4 fps: 32 frames, not the declared 2 fps / 16): a pinned
+    # num_frames cannot express the drift -- the product refuses that policy on this backend at count time.
+    engine = stub_for(recipe, "--model-processor", "qwen3_vl", "--media-io-kwargs", '{"video": {"fps": 4}}')
+    try:
+        drifted = stage_media(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert drifted is not None and drifted["passed"] is False
+    assert drifted["failures"] == [] and drifted["engine_check"]["passed"] is False
+    assert len(drifted["engine_check"]["failures"]) == 2
+    assert all(
+        failure["engine_media_tokens"] > failure["client_media_tokens"]
+        for failure in drifted["engine_check"]["failures"]
+    )

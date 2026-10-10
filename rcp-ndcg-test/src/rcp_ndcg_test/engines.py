@@ -61,6 +61,7 @@ from rcp_ndcg_test.corpus import (
     normalise_body,
     normalise_raw,
 )
+from rcp_ndcg_test.errors import EmulatorUnmodelledError
 
 __all__ = [
     "CORPUS_INDEX_SCHEMA",
@@ -68,13 +69,17 @@ __all__ = [
     "FIELD_CLASSES",
     "ROUTE_FIELDS",
     "BehaviourDiff",
+    "ChatPrompts",
     "EmulatorRegistry",
     "EngineFacts",
     "EnginePrompts",
     "Exchange",
+    "MediaIdentity",
+    "MediaPrompt",
     "PairPrompts",
     "PromptSet",
     "PromptStrategy",
+    "RequestPrompts",
     "StringsPrompts",
     "Verified",
     "VllmEmulator",
@@ -411,8 +416,8 @@ FIELD_CLASSES: Mapping[str, str] = {
     "use_activation": "output",  # raw logit or activation
     "dimensions": "output",  # the engine's Matryoshka cut
     "task": "output",  # which pooling task runs
+    "messages": "prompt",  # the chat-style request: its conversations carry the engine prompt(s)
     # unmodelled: changes the prompt or its cut in ways the emulator does not render -> a marked 400
-    "messages": "unmodelled",  # the chat-style request: rendered by the engine's chat template
     "instruction": "unmodelled",  # folded into chat_template_kwargs and rendered by the template
     "chat_template_kwargs": "unmodelled",
     "truncate_prompt_tokens": "unmodelled",  # the engine cuts instead of refusing
@@ -426,7 +431,9 @@ FIELD_CLASSES: Mapping[str, str] = {
 ``output`` fields enter the replay key beside the prompts: an output is replayed only for the exact
 context it was observed under, an unobserved context answers the declared surrogate, and an
 ``unmodelled`` field is refused with a 400 marked ``refused-unmodelled`` -- never answered from
-another request's observation."""
+another request's observation. ``messages`` is a prompt carrier: a strategy that models chat-shaped
+requests (a :class:`ChatPrompts`) derives their prompts from it, and one that does not refuses with a
+marked 400 (:class:`~rcp_ndcg_test.errors.EmulatorUnmodelledError`)."""
 
 _ROUTE_DEFAULTS: Mapping[str, Mapping[str, Any]] = {
     "embeddings": {"add_special_tokens": True},
@@ -435,6 +442,12 @@ _ROUTE_DEFAULTS: Mapping[str, Mapping[str, Any]] = {
 """The declared defaults of ``output`` fields (``CompletionRequestMixin.add_special_tokens = True``): an
 absent field and its default ask the same question. Every other absent field stays distinct from any
 value (``use_activation`` absent leaves the model's own default, which no record pins)."""
+
+_CHAT_ROUTE_DEFAULT = {"add_special_tokens": False}
+"""The chat-shaped (``messages``) routes' default of ``add_special_tokens``: vLLM v0.31.0's
+``ChatRequestOptionsMixin`` declares it ``False`` (``pooling/base/protocol.py:230-237``), unlike the
+completion-shaped routes' ``True``. A recorded chat request that omits the field and one that sends
+``false`` ask the engine the same question, so they key the same replay entry."""
 
 
 EMULATED_ROUTES: tuple[str, ...] = (
@@ -483,7 +496,10 @@ def request_context(route: str, body: Mapping[str, Any]) -> tuple[dict[str, Any]
         and the sorted names of the declared fields the emulator refuses.
     """
     declared = ROUTE_FIELDS[route]
-    context = dict(_ROUTE_DEFAULTS.get(route, {}))
+    defaults = dict(_ROUTE_DEFAULTS.get(route, {}))
+    if "messages" in body:
+        defaults.update(_CHAT_ROUTE_DEFAULT)
+    context = defaults
     unmodelled = []
     for name, value in body.items():
         if name not in declared:
@@ -496,8 +512,54 @@ def request_context(route: str, body: Mapping[str, Any]) -> tuple[dict[str, Any]
     return context, sorted(unmodelled)
 
 
-#: One engine prompt: the text the engine tokenizes, or the token ids a request sent as is.
-Prompt = str | tuple[int, ...]
+@dataclass(frozen=True)
+class MediaIdentity:
+    """One media part as the replay key reads it: its content identity and the processing declared for it.
+
+    The bytes the request carried are hashed (``sha256``) and the kind and the recipe's declared media
+    processing (the image/video policy and the processor family, as the strategy's ``processing`` string)
+    are recorded beside them: two requests showing the same bytes under the same declared processing ask
+    the model the same question, whatever their URI says, and a different image, clip or policy is a
+    different key.  The URI itself is never part of the key: it is a location, not content.
+    """
+
+    kind: str
+    sha256: str
+    processing: str = ""
+
+    def key(self) -> dict[str, Any]:
+        """The identity as the canonical key fragment (JSON-ready)."""
+        return {"kind": self.kind, "sha256": self.sha256, "processing": self.processing}
+
+
+@dataclass(frozen=True)
+class MediaPrompt:
+    """One engine prompt whose request also carries media: the engine's render of the text parts, the media
+    parts keyed by content identity, and the tokens the engine adds for them.
+
+    The engine renders the conversation or pair from its text parts and expands every media part into its
+    vision block, so what the model reads is the render plus the media; :attr:`media_tokens` is the media
+    half exactly as the engine counts it (the product's ``content_media_tokens`` under the declared
+    policies, the tokenizer passed), which is what ``usage.prompt_tokens`` adds over the text render.
+    """
+
+    text: str
+    media: tuple[MediaIdentity, ...] = ()
+    media_tokens: int = 0
+    placement: tuple[str, ...] = ()
+    """The parts' kinds in the conversation's or pair's own order (``text``/``image``/``video``): the engine
+    places each vision block where its part stands, so ``[text, image]`` and ``[image, text]`` render
+    differently and must not share a replay key.  Empty when the strategy did not record one."""
+
+    def key(self) -> dict[str, Any]:
+        """The prompt as the canonical key fragment: the render, every media identity in part order, and the
+        placement (which part stands where)."""
+        return {"text": self.text, "media": [part.key() for part in self.media], "placement": list(self.placement)}
+
+
+#: One engine prompt: the text the engine tokenizes, the token ids a request sent as is, or a chat/media
+#: prompt (its render plus the media parts the engine expands).
+Prompt = str | tuple[int, ...] | MediaPrompt
 
 
 @dataclass(frozen=True)
@@ -547,17 +609,20 @@ class PromptSet:
         return json.dumps([[_prompt_key(prompt) for prompt in self.prompts], self.context], ensure_ascii=False)
 
     def ids(self, index: int, tokenizer: Any) -> list[int]:
-        """The token ids the engine sees for one prompt (token-id prompts as sent)."""
+        """The token ids the engine sees for one prompt (token-id prompts as sent; a media prompt's render)."""
         prompt = self.prompts[index]
         if isinstance(prompt, tuple):
             return list(prompt)
-        return list(tokenizer.ids(prompt, add_special_tokens=self.add_special[index]))
+        text = prompt.text if isinstance(prompt, MediaPrompt) else prompt
+        return list(tokenizer.ids(text, add_special_tokens=self.add_special[index]))
 
     def count(self, index: int, tokenizer: Any) -> int:
-        """The prompt tokens the engine counts for one prompt."""
+        """The prompt tokens the engine counts for one prompt (a media prompt's vision blocks included)."""
         prompt = self.prompts[index]
         if isinstance(prompt, tuple):
             return len(prompt)
+        if isinstance(prompt, MediaPrompt):
+            return tokenizer.count(prompt.text, add_special_tokens=self.add_special[index]) + prompt.media_tokens
         return tokenizer.count(prompt, add_special_tokens=self.add_special[index])
 
     def counted(self, tokenizer: Any) -> int:
@@ -567,7 +632,11 @@ class PromptSet:
 
 
 def _prompt_key(prompt: Prompt) -> Any:
-    return {"token_ids": list(prompt)} if isinstance(prompt, tuple) else prompt
+    if isinstance(prompt, tuple):
+        return {"token_ids": list(prompt)}
+    if isinstance(prompt, MediaPrompt):
+        return {"media_prompt": prompt.key()}
+    return prompt
 
 
 class PromptStrategy:
@@ -581,12 +650,23 @@ class PromptStrategy:
 class StringsPrompts(PromptStrategy):
     """The pooling/embeddings routes: each request input is an engine prompt (a string, or a token-id
     list sent as is); the route adds the tokenizer's post-processor tokens unless the request's
-    ``add_special_tokens`` says otherwise (vLLM's default: true)."""
+    ``add_special_tokens`` says otherwise (vLLM's default: true).
+
+    A chat-shaped body (``messages``) is refused with :class:`~rcp_ndcg_test.errors.EmulatorUnmodelledError`:
+    this strategy has no chat render, and answering the request from a text prompt's observation would be a
+    different question.  Wrap it in a :class:`RequestPrompts` with a :class:`ChatPrompts` for the routes
+    whose media items ride ``messages``.
+    """
 
     slot: Literal["vector", "token_vector"] = "vector"
     add_special: bool = True
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
+        if "messages" in body:
+            raise EmulatorUnmodelledError(
+                "this prompt strategy models the completion-shaped (input) routes only; a messages request "
+                "needs a chat strategy (ChatPrompts) that renders the engine's chat template"
+            )
         items = body.get("input")
         if isinstance(items, str) or _is_token_ids(items):
             items = [items]
@@ -597,22 +677,103 @@ class StringsPrompts(PromptStrategy):
 
 
 @dataclass(frozen=True)
+class ChatPrompts(PromptStrategy):
+    """The chat-shaped (``messages``) requests: one engine prompt per conversation.
+
+    The engine frames each conversation with its chat template and expands every media part; ``render`` is
+    that frame (the wiring's, over the conversation's text parts: the served template's own render, the
+    media parts dropped, so the count is the engine's text half), and ``media`` turns one media part as
+    sent into its :class:`MediaIdentity` and the tokens the engine adds for it (the product's own media
+    count under the recipe's declared policies).  ``media`` is ``None`` for a text-only chat strategy: a
+    media part is then refused, never keyed by its URI.
+
+    A batch (a list of conversations) yields one prompt per conversation, in order, exactly as vLLM's chat
+    path frames a list of conversations.
+    """
+
+    render: Callable[[Sequence[Any], bool], str]
+    slot: Literal["vector", "token_vector"] = "vector"
+    media: Callable[[Any], tuple[MediaIdentity, int]] | None = None
+    add_special: bool = False
+
+    def prompts(self, body: Mapping[str, Any]) -> PromptSet:
+        conversations = _conversations(body)
+        generation = bool(body.get("add_generation_prompt", False))
+        prompts: list[Prompt] = []
+        for conversation in conversations:
+            identities: list[MediaIdentity] = []
+            tokens = 0
+            for part in _media_parts(conversation):
+                if self.media is None:
+                    raise EmulatorUnmodelledError(
+                        f"the request carries a media part ({part.get('type')!r}) and this chat strategy "
+                        "declares no media model: build it with the recipe's declared processing"
+                    )
+                identity, cost = self.media(part)
+                identities.append(identity)
+                tokens += int(cost)
+            prompts.append(
+                MediaPrompt(
+                    self.render(conversation, generation),
+                    tuple(identities),
+                    tokens,
+                    _conversation_placement(conversation),
+                )
+            )
+        flag = body.get("add_special_tokens", self.add_special)
+        flag = flag if isinstance(flag, bool) else self.add_special
+        return PromptSet(tuple(prompts), (flag,) * len(prompts), self.slot, tuple(range(len(prompts))))
+
+
+@dataclass(frozen=True)
+class RequestPrompts(PromptStrategy):
+    """The role route's per-body dispatch: the completion-shaped strategy for an ``input`` body, the chat
+    strategy for a ``messages`` body.
+
+    A recipe that declares ``request_shape: text`` still sends every media item as its own ``messages``
+    request (the chat route is the only shape in which the server applies its chat template), so the two
+    derivations live side by side and the body's own shape selects one.  Without ``chat``, a ``messages``
+    body is refused by the text strategy, which says so.
+    """
+
+    text: PromptStrategy
+    chat: PromptStrategy | None = None
+
+    def prompts(self, body: Mapping[str, Any]) -> PromptSet:
+        if "messages" in body and self.chat is not None:
+            return self.chat.prompts(body)
+        return self.text.prompts(body)
+
+
+@dataclass(frozen=True)
 class PairPrompts(PromptStrategy):
     """A pointwise ``/rerank``: the engine renders **one pair prompt per document** with the recipe's
     template (the same render the client budgets against -- byte-identical to the engine's pair builder
-    per the recipes' declarations), and scores each pair independently."""
+    per the recipes' declarations), and scores each pair independently.
+
+    A side carrying media is the wire's ``{"content": [parts]}``: its text parts are the pair template's
+    span and its media parts are keyed by content identity beside it (``media``), with the engine's tokens
+    for them added to the pair's count.  The query's media ride every pair prompt of the request.
+    """
 
     template: Any
     tokenizer: Any
+    media: Callable[[Any], tuple[MediaIdentity, int]] | None = None
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
-        query = _text(body.get("query"))
-        documents = [_text(document) for document in body.get("documents") or []]
-        prompts = tuple(
-            self.template.render("pair", self.tokenizer, query=query, document=document) for document in documents
-        )
+        query, query_media, query_tokens, query_placement = _side(body.get("query"), self.media)
+        documents = [_side(document, self.media) for document in body.get("documents") or []]
+        prompts: list[Prompt] = []
+        for document, media, tokens, placement in documents:
+            rendered = self.template.render("pair", self.tokenizer, query=query, document=document)
+            identities = (*query_media, *media)
+            prompts.append(
+                MediaPrompt(rendered, identities, query_tokens + tokens, (*query_placement, *placement))
+                if identities
+                else rendered
+            )
         flag = self.template.adds_special_tokens("pair")
-        return PromptSet(prompts, (flag,) * len(prompts), "score", tuple(range(len(documents))))
+        return PromptSet(tuple(prompts), (flag,) * len(prompts), "score", tuple(range(len(documents))))
 
 
 @dataclass(frozen=True)
@@ -620,7 +781,7 @@ class EnginePrompts(PromptStrategy):
     """A listwise ``/rerank``: the engine renders **one N-passage prompt per request** (the checkpoint's
     own builder -- a recipe reference's verbatim port -- given here as ``builder(query, documents)``)
     and scores the set in one call, so results depend on the set and its order (observed inputs cover
-    whole prompts, exactly)."""
+    whole prompts, exactly).  A media side is refused: the builder takes text passages."""
 
     builder: Callable[[str, Sequence[str]], str]
     add_special: bool = True
@@ -629,6 +790,100 @@ class EnginePrompts(PromptStrategy):
         query = _text(body.get("query"))
         documents = [_text(document) for document in body.get("documents") or []]
         return PromptSet((self.builder(query, documents),), (self.add_special,), "score_list", (0,))
+
+
+def _conversations(body: Mapping[str, Any]) -> list[list[Any]]:
+    """A ``messages`` body as its conversations: a single conversation (a list of message objects) or a
+    batch (a list of conversations)."""
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        raise EmulatorUnmodelledError("a messages request needs a non-empty list of conversations")
+    if all(isinstance(entry, list) for entry in messages):
+        return [list(conversation) for conversation in messages]
+    return [list(messages)]
+
+
+def _media_parts(conversation: Sequence[Any]) -> list[dict[str, Any]]:
+    """Every media part of one conversation, in message and part order (an ``image_url`` or ``video_url``
+    part; a message whose content is a plain string carries none)."""
+    parts: list[dict[str, Any]] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
+                parts.append(part)
+    return parts
+
+
+def _side(
+    value: Any, media: Callable[[Any], tuple[MediaIdentity, int]] | None
+) -> tuple[str, tuple[MediaIdentity, ...], int, tuple[str, ...]]:
+    """One rerank side as ``(text, media identities, media tokens, placement)``: a string is its own text
+    (placement ``("text",)``); a ``{"content": [parts]}`` object splits into its text parts (joined as the
+    product's :attr:`~rcp_ndcg_core.content.Content.text` joins them) and its media parts (each keyed by
+    ``media``), with the part kinds in their given order as the placement."""
+    if isinstance(value, str):
+        return value, (), 0, ("text",)
+    if not isinstance(value, dict) or not isinstance(value.get("content"), list):
+        raise EmulatorUnmodelledError(
+            f"a rerank side of type {type(value).__name__} is neither a string nor a content-parts object; "
+            "the emulator models those two shapes"
+        )
+    from rcp_ndcg_core.content import TEXT_JOIN
+
+    parts = value["content"]
+    texts = [
+        _text(part) for part in parts if not (isinstance(part, dict) and part.get("type") in ("image_url", "video_url"))
+    ]
+    identities: list[MediaIdentity] = []
+    tokens = 0
+    placement: list[str] = []
+    for part in parts:
+        if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
+            if media is None:
+                raise EmulatorUnmodelledError(
+                    f"the request carries a media part ({part.get('type')!r}) and this pair strategy "
+                    "declares no media model: build it with the recipe's declared processing"
+                )
+            identity, cost = media(part)
+            identities.append(identity)
+            tokens += int(cost)
+            placement.append("image" if part.get("type") == "image_url" else "video")
+        else:
+            placement.append("text")
+    return TEXT_JOIN.join(texts), tuple(identities), tokens, tuple(placement)
+
+
+def _conversation_placement(conversation: Sequence[Any]) -> tuple[str, ...]:
+    """The kinds of one conversation's content parts, in order: ``text``, ``image`` or ``video`` per part,
+    across every message (the engine places each vision block where its part stands, so the order is part of
+    what the model reads)."""
+    kinds: list[str] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            kind = part.get("type") if isinstance(part, dict) else "text"
+            kinds.append("image" if kind == "image_url" else "video" if kind == "video_url" else "text")
+    return tuple(kinds)
+
+
+def _document_text(value: Any) -> str:
+    """One rerank document as the engine echoes it in its reply: a string as given, a content-parts object
+    as its text parts joined (the media contributes nothing here, as the product's ``Content.text`` reads
+    it) -- the reply's ``document.text`` field, never a media part stringified."""
+    if isinstance(value, dict) and isinstance(value.get("content"), list):
+        from rcp_ndcg_core.content import TEXT_JOIN
+
+        return TEXT_JOIN.join(
+            _text(part)
+            for part in value["content"]
+            if not (isinstance(part, dict) and part.get("type") in ("image_url", "video_url"))
+        )
+    return _text(value)
 
 
 def _is_token_ids(item: Any) -> bool:
@@ -642,7 +897,9 @@ def _prompt(item: Any) -> Prompt:
 
 def _text(item: Any) -> str:
     """One wire text: a string itself, or a ``{"text": ...}`` / content-parts object by its text; any
-    other shape is refused (a stringified object is never a prompt)."""
+    other shape -- a media part above all -- is refused with
+    :class:`~rcp_ndcg_test.errors.EmulatorUnmodelledError` (a stringified object is never a prompt, and
+    a bare ``ValueError`` would end a whole corpus build)."""
     if isinstance(item, str):
         return item
     if isinstance(item, dict):
@@ -651,7 +908,12 @@ def _text(item: Any) -> str:
         parts = item.get("content")
         if isinstance(parts, list):
             return " ".join(_text(part) for part in parts)
-    raise ValueError(f"an input item of type {type(item).__name__} is not a text the emulator models")
+        if item.get("type") in ("image_url", "video_url"):
+            raise EmulatorUnmodelledError(
+                f"the item is a media part ({item['type']!r}), not a text; a strategy that models media "
+                "keys it by content identity (a ChatPrompts or a PairPrompts with its media callable)"
+            )
+    raise EmulatorUnmodelledError(f"an input item of type {type(item).__name__} is not a text the emulator models")
 
 
 # ---------------------------------------------------------------------------
@@ -779,6 +1041,11 @@ class VllmEmulator:
         strategy: The request -> engine prompts derivation (the model layer's key).
         tokenizer: The recipe's real tokenizer (usage, over-length and ``/tokenize`` count with it).
         observations: Per prompt key, the replayed outputs (first observation = the replay).
+        unmodelled_records: One entry per recorded 2xx exchange the model layer could not model (the
+            request's unmodelled fields, or a prompt derivation the strategy refused), each naming the
+            record and the reason.  The corpus still builds: an unmodelled record is skipped and named
+            here, never a silent drop and never a whole-corpus failure (a request for it later answers the
+            declared surrogate, marked ``surrogate``).
         verified: What it was verified against; a different engine version or recipe revision is
             refused.
     """
@@ -788,6 +1055,7 @@ class VllmEmulator:
     tokenizer: Any
     observations: dict[str, tuple[ModelObservation, ...]] = field(default_factory=dict)
     verified: Verified | None = None
+    unmodelled_records: tuple[str, ...] = ()
     dim: int = 64
     unverified_rules: tuple[str, ...] = (
         "malformed JSON -> 400",
@@ -820,6 +1088,13 @@ class VllmEmulator:
     ) -> VllmEmulator:
         """Build the emulator of ``corpus``: replay table from the recorded 2xx bodies, facts given.
 
+        A recorded request the model layer cannot model (an unmodelled field, a chat body without a chat
+        strategy, a media part without a media model) is **skipped and named** in
+        :attr:`unmodelled_records` -- one such record never fails the whole corpus, and a request for it
+        later answers the declared surrogate.  A corpus that is internally inconsistent (two records
+        answering one replay key with different outputs) still raises: that is a wrong key, not an
+        unmodelled request.
+
         Args:
             corpus: The loaded observation corpus.
             strategy: The prompts derivation matching the recipe's role and scoring.
@@ -833,19 +1108,26 @@ class VllmEmulator:
             version (protocol layer).
         """
         observed: dict[str, list[tuple[int, ModelObservation]]] = {}
+        unmodelled_records: list[str] = []
         exchanges = exchanges_of(corpus)
         for exchange in exchanges:
             route = route_of(exchange.path)
             if exchange.status != 200 or route is None:
                 continue
             body = exchange.request_body if isinstance(exchange.request_body, dict) else {}
+            where = f"{exchange.source or exchange.path} #{exchange.sequence}"
             context, unmodelled = request_context(route, body)
             if unmodelled:
-                raise DataError(
-                    f"{exchange.source or exchange.path} #{exchange.sequence}: the recorded request carries "
-                    f"{unmodelled}, which the emulator does not model; model them before replaying this corpus"
-                )
-            set_ = replace(strategy.prompts(body), context=_canonical_context(context))
+                unmodelled_records.append(f"{where}: the recorded request carries {unmodelled}, unmodelled")
+                continue
+            try:
+                set_ = replace(strategy.prompts(body), context=_canonical_context(context))
+            except EmulatorUnmodelledError as error:
+                # A request the model layer has no derivation for (a chat body without a chat strategy, a
+                # media part without a media model) is skipped and NAMED: one unmodelled record never fails
+                # the whole corpus, and a replayed request for it answers the declared surrogate, marked.
+                unmodelled_records.append(f"{where}: {error}")
+                continue
             for key, observation in _outputs_from_response(set_, exchange):
                 observed.setdefault(key, []).append((exchange.sequence, observation))
         tolerance = corpus_tolerance(corpus)
@@ -878,6 +1160,7 @@ class VllmEmulator:
             observations=merged,
             observed_routes=frozenset(route for route in routes if route is not None),
             dim=dim,
+            unmodelled_records=tuple(unmodelled_records),
             verified=Verified(
                 engine_name=str(corpus.manifest["engine"]["name"]),
                 engine_version=str(corpus.manifest["engine"]["version"]),
@@ -1018,20 +1301,16 @@ class VllmEmulator:
             )
         context, unmodelled = request_context(route, body)
         if unmodelled:
-            refusal = _error(
-                400,
+            return None, self._unmodelled_refusal(
                 f"the verified fake engine does not model the request field(s) {unmodelled} (no recording "
                 "shows the engine's behaviour for them); it refuses instead of answering from another "
                 "request's observation",
                 param=unmodelled[0],
-                kind="EmulatorUnmodelledError",
             )
-            refusal.headers["x-rcp-ndcg-emulator"] = "rcp-ndcg.testing.engines"
-            refusal.headers["x-rcp-ndcg-emulator-source"] = "refused-unmodelled"
-            self.answer_log.append("refused-unmodelled")
-            return None, refusal
         try:
             set_ = replace(self.strategy.prompts(body), context=_canonical_context(context))
+        except EmulatorUnmodelledError as error:
+            return None, self._unmodelled_refusal(str(error), param="input")
         except Exception as error:  # noqa: BLE001 - malformed requests are wire refusals
             return None, _error(400, f"invalid request: {error}", kind="BadRequestError")
         if not set_.prompts:
@@ -1051,6 +1330,16 @@ class VllmEmulator:
                 kind="BadRequestError",
             )
         return set_, None
+
+    def _unmodelled_refusal(self, message: str, *, param: str) -> httpx.Response:
+        """The marked 400 for a request the emulator does not model: an unmodelled field, or a prompt
+        derivation the strategy refused (:class:`~rcp_ndcg_test.errors.EmulatorUnmodelledError`).  The
+        same shape on both paths, so a caller can tell "not modelled" from "the engine would refuse"."""
+        refusal = _error(400, message, param=param, kind="EmulatorUnmodelledError")
+        refusal.headers["x-rcp-ndcg-emulator"] = "rcp-ndcg.testing.engines"
+        refusal.headers["x-rcp-ndcg-emulator-source"] = "refused-unmodelled"
+        self.answer_log.append("refused-unmodelled")
+        return refusal
 
     def _observation(self, key: str) -> tuple[ModelObservation, str]:
         history = self.observations.get(key)
@@ -1279,7 +1568,7 @@ class VllmEmulator:
         results = [
             {
                 "index": entry["index"],
-                "document": {"text": _text(documents[entry["index"]]), "multi_modal": None},
+                "document": {"text": _document_text(documents[entry["index"]]), "multi_modal": None},
                 "relevance_score": entry["relevance_score"],
             }
             for entry in scored
@@ -1547,7 +1836,8 @@ def verification_record(
 ) -> dict[str, Any]:
     """The verification record of one conformance run over ``corpus`` (OBSERVATIONS-SPEC section 4):
     which emulator verified it, against which engine version and recipe revision, with which tolerances,
-    and the result.
+    the result, and every recorded exchange the emulator could not model (its
+    :attr:`~VllmEmulator.unmodelled_records`; ``[]`` is a corpus the model layer covers completely).
 
     Args:
         corpus: The verified corpus.
@@ -1576,6 +1866,7 @@ def verification_record(
         "exchanges": len(corpus.records),
         "unobserved_routes": list(emulator.unobserved_routes) if emulator else [],
         "unverified_rules": list(emulator.unverified_rules) if emulator else [],
+        "unmodelled_records": list(emulator.unmodelled_records) if emulator else [],
         "problems": list(problems),
         "result": "pass" if not problems else "fail",
         "verified_at": verified_at,

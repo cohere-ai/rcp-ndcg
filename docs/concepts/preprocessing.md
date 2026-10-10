@@ -299,7 +299,9 @@ the family's own video budget (`PROCESSORS`):
 - The Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock vLLM's
   accounting, which passes the checkpoint's image-processor size for videos -- under one vision block for the
   whole clip: 8 frames of 720x1280 cost 4,786 tokens. `engine_media_check` compares the engine's actual count
-  at run time.
+  at run time, and the pass records the outcome in the store's `preprocessing.jsonl`: `engine_media_check:ok`
+  when the delta matched the counted tokens, `engine_media_check:not_checked` when the reply reported no usage
+  (or the wire offers no no-media baseline).
 - `qwen3_vl` budgets the whole clip together (4,096 to 25,165,824 px), which shrinks the per-frame resolution
   as the frame count grows -- 8 frames of 720x1280 cost 3,520 patch tokens, 128 frames 11,520 -- and renders
   one timestamp line (`<0.0 seconds>`) and one vision block per temporal group inside the chat template's own
@@ -320,9 +322,12 @@ The effective image policy, the declared budget plus the judge's processor famil
 record and of the judgement family key, and so is the video policy. Two passes with different budgets or different
 processors therefore never pool. Every prepared image, frame and container is also written once per judgement
 store to `preprocessing.jsonl`, beside the text cuts, as a `media` row. The row holds the stored size and hash, the
-sent size, hash and MIME type, the processor, whether the image was resized, and who sampled the frames.
+sent size, hash and MIME type, the processor, whether the image was resized, and who sampled the frames. The
+stored size is the decoded one: a recorded size that disagrees with the file is warned about and replaced, so the
+row and the window's media charge describe the bytes the wire carries.
 
-The judge's window text budget subtracts the documents' media charge: each image and each sampled video frame
+The judge's window text budget subtracts the documents' media charge, counted on the **prepared** refs the wire
+sends (the decoded and resized ones), never on the stored metadata: each image and each sampled video frame
 its vision block, `(height / factor) x (width / factor)` patch tokens plus the processor's vision start and end
 markers, a video container its temporal grid, and -- a declared reserve, not an engine count -- the template's
 media marker per media part, counted with the judge's tokenizer. The payload builder replaces each marker with

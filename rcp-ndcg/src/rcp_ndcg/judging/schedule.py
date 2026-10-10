@@ -209,6 +209,20 @@ class RubricSchedule(BaseModel):
         """Judge calls one query takes: the windows of :meth:`windows_for`."""
         return sum(self.windows_for(n_docs, n_units=n_units))
 
+    def uncovered_units(self, n_docs: int, *, n_units: int | None = None) -> int:
+        """Units the random phase cannot show: ``max(0, n_units - n_random * w)``, the coverage shortfall.
+
+        The balanced random phase is the only phase that guarantees a window for every unit: the tier windows
+        minimise coverage but may repeat a document's chunks, so the schedule's promise (every document, or
+        every chunk of a chunked document, is seen) holds when ``n_random * w >= n_units``. A schedule below
+        that precondition leaves the shortfall to chance and a pass refuses it.
+        """
+        units = n_docs if n_units is None else n_units
+        if units < 1:
+            return 0
+        n_random, _ = self.windows_for(n_docs, n_units=units)
+        return max(0, units - n_random * min(self.window, units))
+
     @classmethod
     def for_modality(cls, modality: Modality) -> RubricSchedule:
         """The shipped schedule for text, page images or videos: windows of 10, 8 and 5, the same placements."""
@@ -228,6 +242,25 @@ def schedule_key(schedule: TournamentSchedule | RubricSchedule) -> str:
 def schedule_for(stage: Literal["tournament", "rubric"], modality: Modality) -> TournamentSchedule | RubricSchedule:
     """The shipped schedule of ``stage`` for a corpus of ``modality``: what a pass without a schedule runs."""
     return TournamentSchedule.for_modality(modality) if stage == "tournament" else RubricSchedule.for_modality(modality)
+
+
+def _resolve_modality_windows(
+    schedule: TournamentSchedule | RubricSchedule, stage: Literal["tournament", "rubric"], modality: Modality
+) -> TournamentSchedule | RubricSchedule:
+    """``schedule`` with the per-modality window fields it did not name filled from the corpus's modality.
+
+    Naming one schedule field (a seed, a placement) must not discard the per-modality window the shipped
+    schedule chose for page images and videos: a field the caller left unset takes ``for_modality``'s value
+    for the corpus's modality, while a field the caller named is kept as it is (pydantic's
+    ``model_fields_set`` says which those are).
+    """
+    default = schedule_for(stage, modality)
+    updates = {
+        name: getattr(default, name)
+        for name in ("window", "adaptive_window")
+        if name in type(schedule).model_fields and name not in schedule.model_fields_set
+    }
+    return schedule.model_copy(update=updates) if updates else schedule
 
 
 # ---------------------------------------------------------------------------

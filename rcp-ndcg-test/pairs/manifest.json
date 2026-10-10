@@ -3,7 +3,8 @@
   "schema_version": 1,
   "generator": {
     "module": "rcp_ndcg_test.observe.requests",
-    "GENERATOR_VERSION": 1,
+    "GENERATOR_VERSION": 2,
+    "GENERATOR_SEED": "1/rcp-observe-v1",
     "SEED": "rcp-observe-v1"
   },
   "dataset_commits": {
@@ -6715,9 +6716,9 @@
     {
       "recipe": "pplx-embed-v1-0.6b",
       "path": "pplx-embed-v1-0.6b.jsonl",
-      "sha256": "a6487b7167e118d28761ad14463db8e4dd16b1a5db29220a830c1edb53569040",
-      "bytes": 125160,
-      "rows": 23,
+      "sha256": "2dd1c85a0907dbd1b0c6c1bccf3c92d7f3a2fbaa290eb34906dfc5c56f568344",
+      "bytes": 223682,
+      "rows": 24,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -6818,7 +6819,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy does not send the empty string (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the policy itself"
+          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the embed role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -6867,8 +6868,8 @@
           "overhead_tokens": 0
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -7189,6 +7190,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -7202,9 +7213,9 @@
     {
       "recipe": "pplx-embed-v1-4b",
       "path": "pplx-embed-v1-4b.jsonl",
-      "sha256": "5a84fbd3990d23b2053a0e3b6681b29e1be7260b383651085d8dfe810e962414",
-      "bytes": 151230,
-      "rows": 23,
+      "sha256": "3ac998bc12136d367fbe829f1eb7cf9598c1d2a927e9d0ede970d1c5b2487c5b",
+      "bytes": 249752,
+      "rows": 24,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -7305,7 +7316,7 @@
         },
         "content:empty": {
           "present": false,
-          "reason": "the client's empty policy does not send the empty string (empty_query: refuse, empty_doc: omit_zero); the corpus request set probes the policy itself"
+          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the embed role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
         },
         "content:long_token_url": {
           "present": true
@@ -7354,8 +7365,8 @@
           "overhead_tokens": 0
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -7674,6 +7685,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:document+query"
           ]
         }
@@ -8767,77 +8788,7 @@
       "skipped_sources": [],
       "validation": {
         "render_check": "passed",
-        "media_check": {
-          "status": "run",
-          "failures": [
-            {
-              "row": 25,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 6,
-              "reference": 7
-            },
-            {
-              "row": 26,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 6,
-              "reference": 7
-            },
-            {
-              "row": 27,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 496,
-              "reference": 497
-            },
-            {
-              "row": 28,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 1717,
-              "reference": 1718
-            },
-            {
-              "row": 29,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 1717,
-              "reference": 1718
-            },
-            {
-              "row": 30,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 1707,
-              "reference": 1708
-            },
-            {
-              "row": 31,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 1667,
-              "reference": 1668
-            },
-            {
-              "row": 32,
-              "side": "document 0",
-              "item": 0,
-              "check": "tokens",
-              "client": 96,
-              "reference": 97
-            }
-          ],
-          "refusals": [],
-          "reason": null
-        },
+        "media_check": "passed",
         "pruned_rows": 1,
         "over_length_per_shape": 2,
         "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
@@ -8846,9 +8797,9 @@
     {
       "recipe": "pplx-embed-v2-late-9b",
       "path": "pplx-embed-v2-late-9b.jsonl",
-      "sha256": "433912c83ca51a960129629deb9f50cd1fd3c05ffc6e3396810466f089545a3c",
-      "bytes": 156063,
-      "rows": 33,
+      "sha256": "bbb4ee05823cda6cf0be91dfa519f6535395b49d6fc1192c32206dc9083b3351",
+      "bytes": 168542,
+      "rows": 34,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -9002,8 +8953,8 @@
           "overhead_tokens": 1
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -9247,6 +9198,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -9333,6 +9285,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:document+query"
           ]
         },
@@ -9956,9 +9918,9 @@
     {
       "recipe": "qwen3-embedding-4b",
       "path": "qwen3-embedding-4b.jsonl",
-      "sha256": "3fa24aaf8a3b4d3d2b2ec023f4bb498ed1ac80125b7e68f73e66675ced5e599b",
-      "bytes": 75149,
-      "rows": 24,
+      "sha256": "f278db76197c59f71eeedbdcca2d0e7337f6297478d118213618b36a72b696f3",
+      "bytes": 99915,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -10107,8 +10069,8 @@
           "overhead_tokens": 1
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -10352,6 +10314,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -10440,6 +10403,16 @@
             "length:at_budget",
             "shapes:document+query"
           ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
+            "shapes:document+query"
+          ]
         }
       ],
       "skipped_sources": [],
@@ -10453,9 +10426,9 @@
     {
       "recipe": "qwen3-embedding-8b",
       "path": "qwen3-embedding-8b.jsonl",
-      "sha256": "50c4d612093971800d58d047c2cb4442fd2243da591e1de8259f39200ee9440b",
-      "bytes": 59113,
-      "rows": 24,
+      "sha256": "7aac7e7d2e48822e0143b4e22df6b993221fc1ef2944a17f931abf131a7c01a0",
+      "bytes": 83879,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -10604,8 +10577,8 @@
           "overhead_tokens": 1
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares over_cap_cut_differs: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -10849,6 +10822,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -10935,6 +10909,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:document+query"
           ]
         }
@@ -13123,9 +13107,9 @@
     {
       "recipe": "qwen3-vl-embedding-8b",
       "path": "qwen3-vl-embedding-8b.jsonl",
-      "sha256": "f7ff6ac67b961045b8f81c0520eb4312078f74bc5cde41cc8fb7c09e7dc3ece1",
-      "bytes": 527473,
-      "rows": 37,
+      "sha256": "72bdbb9286de5a3bacabf94b6cab3e99359dd776f94004d1ace0b60fa70a0815",
+      "bytes": 552183,
+      "rows": 38,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -13288,8 +13272,8 @@
           "overhead_tokens": 20
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares anchor_drop_over_cap: the vector stage reports the client-changed texts non-gating, and the pairs file keeps its rows under the budget by design; the corpus request set carries the over-cap ladder instead"
+          "present": true,
+          "reason": "the recipe declares anchor_drop_over_cap: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -13533,6 +13517,7 @@
           "strata": [
             "content:empty",
             "content:empty@document",
+            "content:empty@query",
             "shapes:document+query"
           ]
         },
@@ -13619,6 +13604,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:document+query"
           ]
         },
@@ -14407,9 +14402,9 @@
     {
       "recipe": "qwen3-vl-reranker-8b",
       "path": "qwen3-vl-reranker-8b.jsonl",
-      "sha256": "c93bbcd3181fcc61323a79419cb45478b7a1dfcb62eb9b2045af3fa4b41de0bb",
-      "bytes": 167659,
-      "rows": 35,
+      "sha256": "9bc38e48eec13cf13c50b827f55fc3b0e86d91901ebced3b4e20389c7e23d67b",
+      "bytes": 192104,
+      "rows": 36,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -14557,8 +14552,8 @@
           "overhead_tokens": 66
         },
         "length:over_cap": {
-          "present": false,
-          "reason": "the recipe declares no anchor_drop_over_cap deviation: an over-cap row would gate on two different cuts; the corpus request set sends over-cap requests uncut on purpose instead"
+          "present": true,
+          "reason": "the recipe declares over_cap_cut_differs: stage 2 reports this row in its non-gating table"
         }
       },
       "provenance": [
@@ -14888,6 +14883,16 @@
           },
           "strata": [
             "length:at_budget",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "length:over_cap"
+          },
+          "strata": [
+            "length:over_cap",
             "shapes:pair"
           ]
         },
@@ -18203,6 +18208,20 @@
   "skipped_recipes": [],
   "pruned": [
     {
+      "recipe": "jina-embeddings-v5-text-nano",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "empty"
+      },
+      "strata": [
+        "content:empty",
+        "content:empty@document",
+        "content:empty@query",
+        "shapes:document+query"
+      ],
+      "reason": "{\"actual_ids_head\": [2929, 25, 220, 128001], \"actual_ids_tail\": [2929, 25, 220, 128001], \"check\": \"no_content_token\", \"expected_head_ids\": [2929, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [128001], \"row\": 15, \"shape\": \"query\"}"
+    },
+    {
       "recipe": "jina-embeddings-v5-text-small",
       "source": {
         "suite": "synthetic",
@@ -18215,6 +18234,59 @@
         "shapes:document+query"
       ],
       "reason": "{\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+    },
+    {
+      "recipe": "pplx-embed-v2-late-0.6b",
+      "source": {
+        "suite": "synthetic",
+        "media_set": 3,
+        "bucket": "a4_72dpi+caption"
+      },
+      "strata": [
+        "media:image",
+        "media:image+text"
+      ],
+      "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
+    },
+    {
+      "recipe": "pplx-embed-v2-late-9b",
+      "source": {
+        "suite": "synthetic",
+        "media_set": 3,
+        "bucket": "a4_72dpi+caption"
+      },
+      "strata": [
+        "media:image",
+        "media:image+text"
+      ],
+      "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
+    },
+    {
+      "recipe": "topk-embed-v1-xsmall",
+      "source": {
+        "suite": "synthetic",
+        "content_kind": "whitespace_only"
+      },
+      "strata": [
+        "content:whitespace_only",
+        "content:whitespace_only@document",
+        "content:whitespace_only@query",
+        "shapes:document+query"
+      ],
+      "reason": "{\"index\": 14, \"reference_text_head\": \"Document:\", \"served_text_head\": \"Document: \", \"shape\": \"document\"}"
+    },
+    {
+      "recipe": "topk-embed-v1-xsmall",
+      "source": {
+        "suite": "synthetic",
+        "media_set": 3,
+        "bucket": "a4_72dpi+caption"
+      },
+      "strata": [
+        "media:image",
+        "media:image+text"
+      ],
+      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
     },
     {
       "recipe": "topk-embed-v1-small",
@@ -18261,73 +18333,6 @@
         "media:image+text"
       ],
       "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
-    },
-    {
-      "recipe": "pplx-embed-v2-late-0.6b",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
-    },
-    {
-      "recipe": "topk-embed-v1-xsmall",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "whitespace_only"
-      },
-      "strata": [
-        "content:whitespace_only",
-        "content:whitespace_only@document",
-        "content:whitespace_only@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"index\": 14, \"reference_text_head\": \"Document:\", \"served_text_head\": \"Document: \", \"shape\": \"document\"}"
-    },
-    {
-      "recipe": "topk-embed-v1-xsmall",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
-    },
-    {
-      "recipe": "pplx-embed-v2-late-9b",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
-    },
-    {
-      "recipe": "jina-embeddings-v5-text-nano",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "empty"
-      },
-      "strata": [
-        "content:empty",
-        "content:empty@document",
-        "content:empty@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"actual_ids_head\": [2929, 25, 220, 128001], \"actual_ids_tail\": [2929, 25, 220, 128001], \"check\": \"no_content_token\", \"expected_head_ids\": [2929, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [128001], \"row\": 15, \"shape\": \"query\"}"
     }
   ]
 }

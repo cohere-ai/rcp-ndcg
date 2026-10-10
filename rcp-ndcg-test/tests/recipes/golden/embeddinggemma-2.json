@@ -12,6 +12,13 @@
   "max_tokens": 8192,
   "max_videos": 1,
   "model": "embeddinggemma-2",
+  "mrl_dims": [
+   128,
+   256,
+   512,
+   768
+  ],
+  "mrl_kind": "truncation",
   "normalize": true,
   "on_overflow": "cut",
   "query_prompt": "task: search result | query: ",
@@ -40,7 +47,7 @@
   }
  },
  "fingerprint": {
-  "fingerprint": "27104a06309c79af899a6a90f046fc1e64982eedc8657c96fb42c4c498504853",
+  "fingerprint": "1b192ab91113062431af72d25d0277a1e2d8d7b0e7950cca148b9bde91ca7ad9",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -66,7 +73,7 @@
    "serve.convert": "null",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[\"--media-io-kwargs\",\"{\\\"video\\\": {\\\"fps\\\": 60, \\\"max_frames\\\": 32}}\"]",
-   "serve.hf_overrides": "{}",
+   "serve.hf_overrides": "{\"is_matryoshka\":true,\"matryoshka_dimensions\":[128,256,512,768]}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "{\"image\":1,\"video\":1}",
    "serve.max_model_len": "8192",
@@ -96,6 +103,13 @@
    "max_tokens": 8192,
    "max_videos": 1,
    "model": "embeddinggemma-2",
+   "mrl_dims": [
+    128,
+    256,
+    512,
+    768
+   ],
+   "mrl_kind": "truncation",
    "normalize": true,
    "on_overflow": "cut",
    "query_prompt": "task: search result | query: ",
@@ -146,7 +160,7 @@
   ],
   "licence": "apache-2.0",
   "model": "google/embeddinggemma-2",
-  "notes": "Engine. The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint: vLLM v0.31.0 has no EmbeddingGemma2Model in its registry, its requirements pin transformers <5.18.0 and the image carries 5.17.0, which has no embedding_gemma2 config or processor; and vLLM v0.31.0 has no Gemma video backend. The architecture landed in vLLM commit 02b83919aa2e (PR #60254, 2026-10-06) and the checkpoint's classes in transformers 5.19.0 (released 2026-10-06). Decision 38: this recipe pins the nightly by digest. SWITCH TO RELEASE: needs vLLM commit 02b83919aa2e (PR #60254) and transformers >= 5.19.0; switch engine.image to the first vLLM release that carries both and re-validate. The wave must verify the image's actual transformers version is 5.19.x before serving.\nFrame. The model reads its input through no frame at all: the checkpoint's chat_template.jinja renders a message's text and media placeholders in order and adds nothing (no role markers, no default system turn). The card's task prompt is a per-encode prefix (prompt_name=\"SearchQuery\"/\"Document\"), so the client applies it through query_prompt/doc_prompt and the declared template is content-only (its fixed segments are none, and the messages route sends the content alone). The tokenizer's post-processor adds BOS and EOS around every render (declared with add_special_tokens: true), and mean pooling over every token (the checkpoint's Pooling module: mean, include_prompt true) is the embedding: no anchor token exists, so a cut only has to keep the content it cuts, and the prompt prefix is reserved because it sits at the head of the content.\nMedia. Images: the checkpoint's Gemma4ImageProcessor resizes every image to at most 280 soft tokens (max_patches = 280 x 3^2 = 2,520 patches, both edges a multiple of patch x pooling = 48) -- the resize scales a 16x16 icon up to 768x768 and a 2480x3508 page down to 672x912 -- and the prompt gets boi + 280-or-fewer soft tokens + eoi. The client reproduces the resize (the gemma4 processor geometry in rcp_ndcg.data.resolution) and counts the pooled patches plus the two markers. No engine pin is needed: the checkpoint's processor_config.json carries the 280 budget, which is what a stock nightly engine loads; the client declares the same number. Videos: the engine samples by fps, capped at max_frames (it ignores num_frames: video.py:422-523), so the recipe pins 60 fps and 32 frames with --media-io-kwargs '{\"video\": {\"fps\": 60, \"max_frames\": 32}}', which realizes the declared 32 uniformly spaced frames for any clip of at least 32/60 s (the client's own frame-count check admits a container only with at least 32 frames, so a normal clip passes above that). The card's default is 1 fps and declares the rate configurable; this recipe's declared instrument is the 32-frame cap. The prompt renders one boi + 140-or-fewer soft tokens + eoi block PER FRAME (no temporal patch), so the client counts frames x (per-frame patches + 2). The media wave must confirm the engine's sampled count and token count on a real clip; a clip whose frame rate exceeds 60 fps and whose duration is under 0.53 s can make the engine sample fewer than 32 (the one declared open corner).\nBudgets. client.max_tokens 8192 is the card's 8K context, counted as the engine sees the whole prompt (BOS + prefix + content + EOS, plus any media tokens reserved whole); the content span is cut (on_overflow: cut) and the frame re-attached, so the prefix survives. The card's own ST path truncates the assembled prompt right at max_seq_length inside encode; the reference renders the full prompt and declares over_cap_cut_differs, so over-cap rows ride the non-gating table and under-cap rows gate exactly. dtype bfloat16 (the card's rule; never float16). empty_doc: send -- the card embeds an empty document as its bare document prompt, which is the empty string under the prefix. The 32-bit offset fault (a 262144-token warmup) and the exactly-max_model_len pooling hang (observed at 32768) do not arise at this recipe's 8192 cap: the engine's warmup is one 8192-token sequence -- the pairs' length:at_budget row (8188 tokens) and the wave's smoke exercise the boundary. Media outputs (declared approximation, decision 35): the reference's embed mode computes text vectors only (its media facts ride --mode media), so reference.known_deviations declares media_approximation and stage 2 reports image/video rows non-gating; the media stage still gates placement, geometry and tokens. The reference's media embed path lands with the E2 wave, after which the declaration is removed.",
+  "notes": "Engine. The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint: vLLM v0.31.0 has no EmbeddingGemma2Model in its registry, its requirements pin transformers <5.18.0 and the image carries 5.17.0, which has no embedding_gemma2 config or processor; and vLLM v0.31.0 has no Gemma video backend. The architecture landed in vLLM commit 02b83919aa2e (PR #60254, 2026-10-06) and the checkpoint's classes in transformers 5.19.0 (released 2026-10-06). Decision 38: this recipe pins the nightly by digest. SWITCH TO RELEASE: needs vLLM commit 02b83919aa2e (PR #60254) and transformers >= 5.19.0; switch engine.image to the first vLLM release that carries both and re-validate. The wave must verify the image's actual transformers version is 5.19.x before serving.\nFrame. The model reads its input through no frame at all: the checkpoint's chat_template.jinja renders a message's text and media placeholders in order and adds nothing (no role markers, no default system turn). The card's task prompt is a per-encode prefix (prompt_name=\"SearchQuery\"/\"Document\"), so the client applies it through query_prompt/doc_prompt and the declared template is content-only (its fixed segments are none, and the messages route sends the content alone). The tokenizer's post-processor adds BOS and EOS around every render (declared with add_special_tokens: true), and mean pooling over every token (the checkpoint's Pooling module: mean, include_prompt true) is the embedding: no anchor token exists, so a cut only has to keep the content it cuts, and the prompt prefix is reserved because it sits at the head of the content.\nMedia. Images: the checkpoint's Gemma4ImageProcessor resizes every image to at most 280 soft tokens (max_patches = 280 x 3^2 = 2,520 patches, both edges a multiple of patch x pooling = 48) -- the resize scales a 16x16 icon up to 768x768 and a 2480x3508 page down to 672x912 -- and the prompt gets boi + 280-or-fewer soft tokens + eoi. The client reproduces the resize (the gemma4 processor geometry in rcp_ndcg.data.resolution) and counts the pooled patches plus the two markers. No engine pin is needed: the checkpoint's processor_config.json carries the 280 budget, which is what a stock nightly engine loads; the client declares the same number. Videos: the engine samples by fps, capped at max_frames (it ignores num_frames: video.py:422-523), so the recipe pins 60 fps and 32 frames with --media-io-kwargs '{\"video\": {\"fps\": 60, \"max_frames\": 32}}', which realizes the declared 32 uniformly spaced frames for any clip of at least 32/60 s (the client's own frame-count check admits a container only with at least 32 frames, so a normal clip passes above that). The card's default is 1 fps and declares the rate configurable; this recipe's declared instrument is the 32-frame cap. The prompt renders one boi + 140-or-fewer soft tokens + eoi block PER FRAME (no temporal patch), so the client counts frames x (per-frame patches + 2). The media wave must confirm the engine's sampled count and token count on a real clip; a clip whose frame rate exceeds 60 fps and whose duration is under 0.53 s can make the engine sample fewer than 32 (the one declared open corner).\nBudgets. client.max_tokens 8192 is the card's 8K context, counted as the engine sees the whole prompt (BOS + prefix + content + EOS, plus any media tokens reserved whole); the content span is cut (on_overflow: cut) and the frame re-attached, so the prefix survives. The card's own ST path truncates the assembled prompt right at max_seq_length inside encode; the reference renders the full prompt and declares over_cap_cut_differs, so over-cap rows ride the non-gating table and under-cap rows gate exactly. dtype bfloat16 (the card's rule; never float16). empty_doc: send -- the card embeds an empty document as its bare document prompt, which is the empty string under the prefix. The 32-bit offset fault (a 262144-token warmup) and the exactly-max_model_len pooling hang (observed at 32768) do not arise at this recipe's 8192 cap: the engine's warmup is one 8192-token sequence -- the pairs' length:at_budget row (8188 tokens) and the wave's smoke exercise the boundary. Media outputs (declared approximation, decision 35): the reference's embed mode computes text vectors only (its media facts ride --mode media), so reference.known_deviations declares media_approximation and stage 2 reports image/video rows non-gating; the media stage still gates placement, geometry and tokens. The reference's media embed path lands with the E2 wave, after which the declaration is removed.\nMRL. The card's Matryoshka set {128, 256, 512, 768} is declared once, in the client's mrl_kind/mrl_dims and in serve.hf_overrides (the engine refuses a per-request dimensions without is_matryoshka, and the checkpoint declares neither key). The recipe ships the full 768-wide vector; a run selects k from the declared set (engine-side `dimensions` or the client-side mrl_dim), and the GPU wave gates each declared k (the stage-2 ex-post cut) -- the 768 is the model's own projected output, so both paths are the card's truncation order.",
   "reference": {
    "device": null,
    "entry": "reference.py",
@@ -172,7 +186,15 @@
     "--media-io-kwargs",
     "{\"video\": {\"fps\": 60, \"max_frames\": 32}}"
    ],
-   "hf_overrides": {},
+   "hf_overrides": {
+    "is_matryoshka": true,
+    "matryoshka_dimensions": [
+     128,
+     256,
+     512,
+     768
+    ]
+   },
    "io_processor_plugin": null,
    "limit_mm_per_prompt": {
     "image": 1,
@@ -196,9 +218,10 @@
    "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/processor_config.json (processor_class EmbeddingGemma2Processor; image_processor Gemma4ImageProcessor, image_seq_length 280, max_soft_tokens 280, patch_size 16, pooling_kernel_size 3; video_processor EmbeddingGemma2VideoProcessor, fps 1, max_frames 32, max_soft_tokens 140, overflow_strategy uniform, add_timestamps false)",
    "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/chat_template.jinja (content and media placeholders only: no role markers, no default system turn)",
    "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/tokenizer.json (post_processor TemplateProcessing: <bos> id 2 and <eos> id 1 around every single sequence; added tokens image/audio/video placeholders 258880-258884)",
-   "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/README.md (the Quick Start: encode with prompt_name SearchQuery/Document, lines 101-119; the context window 8,192 tokens, lines 68 and 229-235; 280 tokens per image and 140 per video frame, lines 234-235; video at 1 frame per second by default, line 252; bfloat16 or float32, never float16, lines 189-193; the interleaving placeholder rule, lines 205-215)",
+   "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/README.md (the Quick Start: encode with prompt_name SearchQuery/Document, lines 101-119; the context window 8,192 tokens, lines 68 and 229-235; 280 tokens per image and 140 per video frame, lines 234-235; video at 1 frame per second by default, line 252; bfloat16 or float32, never float16, lines 189-193; the interleaving placeholder rule, lines 205-215; the MRL bullet line 44 and section 3 lines 168-180: truncated embeddings across 128d, 256d, 512d, 768d, re-normalised)",
    "vLLM nightly 8cbd5d03006c33185f402249ff2b448efd594986 (the digest-pinned image): vllm/model_executor/models/registry.py:249 (EmbeddingGemma2Model -> embedding_gemma2); vllm/model_executor/models/embedding_gemma2.py:982 (@default_pooling_type MEAN + ALL), :1103 (DispatchPooler.for_embedding), :160 (AttentionType.ENCODER_ONLY: bidirectional), :423-425 (add_special_tokens True), :488 (video tokens = max_frames x (soft + 2)), :491-521 (image repl boi + n soft + eoi), :541-577 (video repl one boi/eoi block per frame); vllm/model_executor/models/config.py:293 (EmbeddingGemma2ModelConfig; an unset max_model_len caps at 8192); vllm/multimodal/video.py:422-523 (EmbeddingGemma2VideoBackend: fps/max_frames kwargs, num_sampled = max(1, int(duration x fps)) then uniform to max_frames; num_frames ignored); vllm/model_executor/models/gemma4_mm.py:285-330 (_compute_num_soft_tokens: the aspect-ratio-preserving resize to max_soft_tokens pooled patches)",
    "transformers 5.19.0 (the first release with the checkpoint's classes; the image's 5.17.0 and 5.18.0 lack them): models/embedding_gemma2/{configuration,modeling,processing,video_processing}_embedding_gemma2.py; models/gemma4/image_processing_gemma4.py (get_aspect_ratio_preserving_size: sqrt(max_patches x patch^2 / area) then floor to patch x pooling = 48)",
+   "vllm v0.31.0 (the generic pooling head the nightly carries unchanged) vllm/pooling_params.py:175,188 (a per-request dimensions needs is_matryoshka + membership in matryoshka_dimensions) and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (the Matryoshka slice before the pooler's L2); serve.hf_overrides declares the card's set because the checkpoint's config.json declares neither key",
    "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy max_soft_tokens and the gemma4 processor geometry; VideoPolicy; content_media_tokens: one wrapper per frame for gemma4), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: query_prompt/doc_prompt beside a content-only template)"
   ],
   "status": {
@@ -229,7 +252,7 @@
   "--max-model-len",
   "8192",
   "--hf-overrides",
-  "{}",
+  "{\"is_matryoshka\": true, \"matryoshka_dimensions\": [128, 256, 512, 768]}",
   "--pooler-config",
   "{}",
   "--limit-mm-per-prompt",

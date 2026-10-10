@@ -6,7 +6,32 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rcp_ndcg.data.postprocess import l2_normalize, skip_keep_mask
+from rcp_ndcg.data.postprocess import kept_vector_count, l2_normalize, skip_keep_mask
+
+
+class TestKeptVectorCount:
+    """The declared count a reply is checked against when the served plugin applies the rule engine-side."""
+
+    def test_a_text_document_counts_the_ids_outside_the_skip_list(self) -> None:
+        ids = [10, 11, 12, 13, 11]
+        assert kept_vector_count(ids, [11, 13]) == 2
+        assert kept_vector_count(ids, []) == 5
+
+    def test_a_media_document_counts_the_kept_head_plus_the_media_block(self) -> None:
+        # The head (the [D] prompt) is tokenised and masked; the media block (wrapper + patches) is kept
+        # whole, so the count is the block's own tokens plus the head's kept ids.
+        assert kept_vector_count([248078], [11], media_tokens=42) == 43
+        assert kept_vector_count([11], [11], media_tokens=42) == 42
+        assert kept_vector_count([], [], media_tokens=42) == 42
+
+    def test_nothing_to_count_is_refused(self) -> None:
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="count") as caught:
+            kept_vector_count([], [])
+        assert caught.value.hint, "the typed refusal names the next step"
+        with pytest.raises(DataError, match="media_tokens"):
+            kept_vector_count([1], [], media_tokens=-1)
 
 
 class TestSkipKeepMask:

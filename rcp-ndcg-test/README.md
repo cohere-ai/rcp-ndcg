@@ -228,7 +228,12 @@ The equivalence harness, the engine recorder and the GPU wave jobs live under `r
 
 - `rcp_ndcg_test.equivalence` — stages 1-3, the reference subprocess, the gates and the report
   (`python -m rcp_ndcg_test.equivalence --recipe ... `); the harness drives the product's role clients (R30),
-  never a re-derived fit.
+  never a re-derived fit.  The **media stage** (`equivalence/media.py`) is an **input gate**: it compares what
+  the client sends (parts in order, prepared geometry, declared frame counts, tokens) and the engine's own
+  media count with what the reference consumes; it compares **no** media vector or score, so a passing media
+  stage proves the served path shows the model the same media, never that the model returns the same numbers
+  (the media output half is a separate stage, not in this release).  Its document and `EQUIVALENCE.md` carry
+  `scope: input` and the `scope_note` saying so.
 - `rcp_ndcg_test.record` — the engine recorder for the observation corpora; `rcp_ndcg_test.observe` — the
   request generator (`python -m rcp_ndcg_test.observe.requests`, pairs under `pairs/`), the media set, the
   provenance probe and the negative controls.

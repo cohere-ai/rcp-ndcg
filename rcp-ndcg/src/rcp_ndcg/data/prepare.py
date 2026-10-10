@@ -365,8 +365,21 @@ def _prepared(ref_json: str, policy: ImagePolicy | None) -> PreparedMedia:
         sent = _inline(payload, ref.mime or DEFAULT_IMAGE_MIME, width=ref.width, height=ref.height)
         return PreparedMedia(kind="image", source=ref, sent=sent, processor=None, resized=False)
     image = decode_rgb(ref, payload)
-    height, width = policy.target_size(image.height, image.width)
-    resized = (width, height) != image.size
+    decoded_width, decoded_height = image.width, image.height
+    if (ref.width is not None and ref.width != decoded_width) or (
+        ref.height is not None and ref.height != decoded_height
+    ):
+        logger.warning(
+            "the recorded size of %s (%sx%s) disagrees with the decoded image (%sx%s); the decoded size is "
+            "recorded and counted",
+            ref.uri,
+            ref.width,
+            ref.height,
+            decoded_width,
+            decoded_height,
+        )
+    height, width = policy.target_size(decoded_height, decoded_width)
+    resized = (width, height) != (decoded_width, decoded_height)
     if resized:
         from PIL import Image
 
@@ -374,7 +387,9 @@ def _prepared(ref_json: str, policy: ImagePolicy | None) -> PreparedMedia:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     sent = _inline(buffer.getvalue(), PREPARED_MIME, width=width, height=height)
-    source = ref.model_copy(update={"width": ref.width or image.width, "height": ref.height or image.height})
+    # The source keeps the decoded size, never a stale recorded one: the census row and the window's media
+    # charge then describe the bytes the wire carries.
+    source = ref.model_copy(update={"width": decoded_width, "height": decoded_height})
     return PreparedMedia(kind="image", source=source, sent=sent, processor=policy.processor, resized=resized)
 
 

@@ -25,9 +25,13 @@ client:
   tokenizer: ../../tokenizer.json
   max_tokens: 400
   template:
+    # The served chat template (chat.jinja) frames every conversation the same way (the fixture's card is
+    # document-shaped), so the declared query frame must be that frame: stage 1 renders the engine's
+    # conversation against the declared shape, and a different query frame would fail the template check.
     query:
-      - {fixed: "q: "}
+      - {fixed: "doc: "}
       - {content: query}
+      - {fixed: " [END]"}
     document:
       - {fixed: "doc: "}
       - {content: document}

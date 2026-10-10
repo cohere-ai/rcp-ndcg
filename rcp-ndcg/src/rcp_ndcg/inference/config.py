@@ -699,8 +699,38 @@ class PoolingEndpoint(EmbeddingEndpoint):
             document's positions are the server's chat-template render, which the client cannot tokenise --
             the image positions are exempt (the vision tokens are what the model reads for the media), the
             client keeps every returned vector of a media document, and the deviation is recorded on the
-            row's processing record (``skip_unapplied``) -- never silently unskipped. Needs the declared
+            row's processing record (``skip_unapplied``) -- never silently unskipped. A declared
+            :attr:`media_keep_token_ids` changes that: the engine then applies the media allowlist, the
+            client counts its positions and writes no deviation. Needs the declared
             tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.
+        document_skip_engine_side: Whether the SERVED PLUGIN applies :attr:`document_skip_token_ids`
+            engine-side (the pplx-late plugin's pooler; the recipe declares the same ids for the engine in
+            its ``serve.hf_overrides.document_skip_token_ids``, which the recipe loader cross-checks against
+            this rule): the engine drops the excluded positions from the token ids it sees before the reply,
+            so the wire carries only the kept vectors -- for a text document and for a media document's
+            chat-template render alike. The client then does not slice: it counts the declared kept vectors
+            (:func:`~rcp_ndcg.data.postprocess.kept_vector_count`) and refuses a reply whose count disagrees
+            (never silent). ``False`` (the default): the client applies the rule itself, as before.
+            Refused without :attr:`document_skip_token_ids` (there is no rule to apply) and beside
+            ``outputs: per_chunk`` (a per-chunk layout has no per-token count to check). Content: it
+            changes the engine's output.
+        media_keep_token_ids: The token ids a MEDIA document's kept vectors are restricted to (the
+            checkpoint's own ``keep_only_token_ids``: topk-embed-v1's image-patch token, the only positions
+            its reference keeps for an image document -- ``topk_embed_st.py:_image_row``'s
+            ``keep = ids == image_token_id``). The SERVED PLUGIN applies it engine-side (the recipe declares
+            the same ids for the engine in ``serve.hf_overrides.document_keep_token_ids``, which the recipe
+            loader cross-checks against this allowlist): a media render keeps only the allowlist's
+            positions, so the chat template's structural tokens, the trained head and a caption drop --
+            exactly what the reference keeps. The client then does not keep the media vectors whole: it
+            counts the declared kept vectors (the media block's patch run, the wrapper and the head/caption
+            positions being outside the allowlist) and refuses a reply whose per-item count disagrees
+            (never silent); no ``skip_unapplied`` record is written for a media item. Empty (the default):
+            no allowlist, and a media render follows :attr:`document_skip_token_ids` (kept whole, on
+            record, when that rule is the client's). Content: it changes the engine's output.
+        mrl_dim: The Matryoshka output size served (2g, plug-pplx), below :attr:`dim` when set: applied
+            CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then
+            L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. ``None`` (the
+            default) serves the checkpoint's own :attr:`dim`. Content.
         mrl_dim: The Matryoshka output size served (2g, plug-pplx), at or below :attr:`dim` when set:
             applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to
             it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A
@@ -726,6 +756,8 @@ class PoolingEndpoint(EmbeddingEndpoint):
         "embed_dtype": FieldRole.CONTENT,
         "dim": FieldRole.CONTENT,
         "document_skip_token_ids": FieldRole.CONTENT,
+        "document_skip_engine_side": FieldRole.CONTENT,
+        "media_keep_token_ids": FieldRole.CONTENT,
         "outputs": FieldRole.CONTENT,
         "media_head_as_system": FieldRole.CONTENT,
     }
@@ -738,8 +770,48 @@ class PoolingEndpoint(EmbeddingEndpoint):
     embed_dtype: Literal["float16", "float32"] = "float16"
     dim: int | None = Field(default=None, ge=1)
     document_skip_token_ids: tuple[int, ...] = ()
+    document_skip_engine_side: bool = False
+    media_keep_token_ids: tuple[int, ...] = ()
     outputs: Literal["per_token", "per_chunk"] = "per_token"
     media_head_as_system: bool = False
+
+    @model_validator(mode="after")
+    def _media_allowlist_needs_token_items(self) -> PoolingEndpoint:
+        """The media allowlist's check is per prompt token, so ``outputs: per_chunk`` (several outputs per
+        input) has no per-token count to check it against -- refused beside it rather than silently
+        skipped, exactly as the engine-side skip rule is."""
+        if self.media_keep_token_ids and self.outputs == "per_chunk":
+            raise ConfigError(
+                "media_keep_token_ids checks the reply's per-token kept count, but outputs: per_chunk "
+                "answers several outputs per input (one per chunk): there is no per-token count to check, so "
+                "the declared allowlist would be applied by the engine and never verified",
+                hint="drop media_keep_token_ids (the client then keeps a media document whole, on record), "
+                "or serve a per_token model",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _engine_side_skip_needs_the_rule(self) -> PoolingEndpoint:
+        """The engine-side flag declares who applies the rule, not a rule: without
+        :attr:`document_skip_token_ids` there is nothing for the plugin to drop and nothing for the client
+        to count -- refused, never ignored. And the rule's check is per prompt token, so ``outputs:
+        per_chunk`` (several outputs per input) has no per-token count to check it against -- refused beside
+        it rather than silently skipped."""
+        if self.document_skip_engine_side and not self.document_skip_token_ids:
+            raise ConfigError(
+                "document_skip_engine_side declares that the served plugin applies the document skip rule, "
+                "but document_skip_token_ids is empty: there is no rule to apply",
+                hint="declare document_skip_token_ids (the ids the plugin drops), or drop "
+                "document_skip_engine_side (the client then applies no rule)",
+            )
+        if self.document_skip_engine_side and self.outputs == "per_chunk":
+            raise ConfigError(
+                "document_skip_engine_side checks the reply's per-token kept count, but outputs: per_chunk "
+                "answers several outputs per input (one per chunk): there is no per-token count to check, so "
+                "the declared rule would be applied by the engine and never verified",
+                hint="drop document_skip_engine_side (the client slices the reply itself), or serve a per_token model",
+            )
+        return self
 
     @model_validator(mode="after")
     def _media_head_as_system_needs_a_template_and_media(self) -> PoolingEndpoint:

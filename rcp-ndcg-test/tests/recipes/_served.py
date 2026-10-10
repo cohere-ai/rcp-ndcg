@@ -63,12 +63,17 @@ def fetch_tokenizer(url: str, name: str, tmp_path: Path, *, sha256: str | None =
     Inputs: the file's URL, the file name to cache it under (``<name>``), the test's ``tmp_path`` as
     fallback root, and the pinned SHA-256 the download must match when given.  Output: the local path
     (a cached copy with the pinned hash is reused, offline runs included).  Skips with a clear reason
-    when the file is needed and neither cached nor downloadable.  The write is atomic (a unique temporary
-    file renamed into place), a download that fails the pin yields to a pinned file a concurrent worker
-    wrote (one retry first), and a failed write leaves no temporary behind: several workers share one
-    cache under ``-n 4``.
+    when the file is needed and neither cached nor downloadable.  A cached copy that does NOT match the
+    pin while the download fails is refused with :class:`~rcp_ndcg_test.errors.HarnessError` naming the
+    pin, the cached hash and the fix (clear the cache entry, or restore the network): a stale tokenizer
+    would silently move every token count, which the tests must never accept.  The write is atomic (a
+    unique temporary file renamed into place), a download that fails the pin yields to a pinned file a
+    concurrent worker wrote (one retry first), and a failed write leaves no temporary behind: several
+    workers share one cache under ``-n 4``.
     """
     import hashlib
+
+    from rcp_ndcg_test.errors import HarnessError
 
     root = tokenizer_cache(tmp_path / "tokenizer-cache")
     target = root / name
@@ -88,8 +93,16 @@ def fetch_tokenizer(url: str, name: str, tmp_path: Path, *, sha256: str | None =
             with urllib.request.urlopen(url, timeout=120) as response:
                 data = response.read()
         except OSError as error:
-            if target.is_file():  # a stale cached copy: better than an error when the caller only needs a tokenizer
-                return target
+            if target.is_file():
+                # The cached copy exists but its hash does not match the pin (a matching one returned above):
+                # it is stale or corrupt, and with the download failing there is no way to know what the
+                # caller would be counting with.  Refuse -- never a silent fallback (AGENTS.md).
+                cached = _sha256(target)
+                raise HarnessError(
+                    f"the cached {target} does not match the pinned sha256 and the download failed ({error}): "
+                    f"cached {cached}, pinned {sha256}; clear the cache entry (rm {target}) and retry, or "
+                    "restore the network"
+                ) from error
             import pytest
 
             pytest.skip(f"offline: cannot fetch {url} ({error}); the stage-1 checks need the real tokenizer")

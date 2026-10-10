@@ -5,6 +5,7 @@
   "empty_doc": "send",
   "max_tokens": 8192,
   "model": "octen-embedding-8b",
+  "mrl_kind": "none",
   "normalize": true,
   "on_overflow": "cut",
   "recipe": "octen-embedding-8b",
@@ -75,6 +76,7 @@
    "empty_doc": "send",
    "max_tokens": 8192,
    "model": "octen-embedding-8b",
+   "mrl_kind": "none",
    "normalize": true,
    "on_overflow": "cut",
    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
@@ -155,6 +157,7 @@
   },
   "sources": [
    "https://huggingface.co/Octen/Octen-Embedding-8B @ 5adcfa292e712091dfc30f0e97f0b2282e6cc66c (default-branch sha, re-checked 2026-10-06)",
+   "the three card READMEs at the pinned revisions (d715b32e.../fea468fa.../5adcfa29...) contain no Matryoshka/MRL/projection sentence, and each config.json declares neither is_matryoshka nor matryoshka_dimensions: mrl_kind: none is the declaration (the truncation mentions in the cards are the tokenizer example and the >40K-token context note)",
    "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/config.json (architectures [Qwen3Model], dtype bfloat16, max_position_embeddings 40960, tie_word_embeddings false)",
    "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/config_sentence_transformers.json (the ST prompts the /v2/embed route would auto-apply: query instruct prefix, document single space -- both differ from the paper)",
    "https://huggingface.co/Octen/Octen-Embedding-8B/blob/5adcfa292e712091dfc30f0e97f0b2282e6cc66c/modules.json and 1_Pooling/config.json (pooling_mode_lasttoken) and 2_Normalize/config.json (vLLM reads modules.json: seq_pooling_type LAST, use_activation from the Normalize entry)",

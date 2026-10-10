@@ -961,6 +961,40 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
   `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
   use.
+- **The request generator's identity separates its semantic version from its sampling seed**: the new
+  `rcp_ndcg_test.observe.requests.GENERATOR_SEED` (`"1/rcp-observe-v1"`, the exact sampling stream version 1
+  drew from) keys every sampling step, and `GENERATOR_VERSION` (now 2) is the semantic version bumped for every
+  change to the generator's output -- so a bump records the artifact without re-drawing a row.
+  `rcp_ndcg_test.observe` re-exports it, the pairs manifest records `GENERATOR_VERSION`, `GENERATOR_SEED` and
+  `SEED`, and the corpus collector block records `generator_seed` beside `generator_version`.
+- **The verified fake engines model media and chat-shaped records** (`rcp_ndcg_test.engines`): `messages` is a
+  prompt carrier (not an unmodelled field), the new `ChatPrompts` derives one engine prompt per conversation
+  from the strategy's render callable, `RequestPrompts` dispatches an `input` body to a text strategy and a
+  `messages` body to the chat one, and `PairPrompts` models a media side; a media part is keyed by the new
+  `MediaIdentity` (its bytes' SHA-256 plus the recipe's declared processing) and its engine tokens are counted
+  with the product's own `content_media_tokens`.  `VllmEmulator.unmodelled_records` names every recorded 2xx
+  exchange the model layer could not model (the verification record carries the list), and
+  `rcp_ndcg_test.errors.EmulatorUnmodelledError` is the typed refusal behind both the skipped record and the
+  marked 400 a request for it answers.
+- **`rcp_ndcg_test.equivalence.wire` exposes `recipe_config`** (the product's validated endpoint config a
+  recipe's `client` block implies, one home with `role_client`) and **`prompt_tokens`** (the engine's
+  `usage.prompt_tokens` of a captured exchange, one reader for the media stage's engine check and stage 1's new
+  prompt-token probe).
+- **Stage 1 gains the engine prompt-token probe** (`engine_prompt_tokens_check` in the stage-1 document): with
+  an engine URL, the engine's own `usage.prompt_tokens` of one captured request per shape must equal the token
+  count of the render the client budgeted against -- the check that the declared frame the `messages` budget
+  rests on is the frame the engine renders.  `not_run` without an engine, never passed.
+- **The media stage declares its scope** (`rcp_ndcg_test.equivalence.media.MEDIA_GATE_SCOPE`, `"input"`, and
+  `MEDIA_GATE_SCOPE_NOTE`): the stage document and `EQUIVALENCE.md` carry `scope` and `scope_note` saying that
+  it compares what the client sends and what the engine counts, never a media vector or score (that half is a
+  separate media output stage).
+- **The media request set gains the video protocol edges** (`rcp_ndcg_test.observe.media_set`):
+  `edge:too_many_videos` (`max_videos + 1` clips in one request) and `edge:corrupt_video` (a container whose
+  bytes do not decode), each sent bare and recorded present or absent with the reason in the corpus plan's
+  strata -- the video half of the image edges (a video-only recipe gets them too).  The corpus request plan
+  they belong to is versioned: the merged plan is `CORPUS_PLAN_VERSION` 3 (the MRL stratum landed as 2 in
+  another lane; two lanes must not label different plans the same), and the pairs files and their sampling
+  are untouched).
 - **The Kubernetes runner's pod hardening** is configurable: `runner.options.run_as_non_root` (default false:
   the stock coordinator and `vllm/vllm-openai` images run as root; set it true for an image with a non-root
   `USER`, e.g. the `vllm-openai-nonroot` variant) and `runner.options.automount_service_account_token` (default
@@ -990,6 +1024,64 @@ owner pushes, with the move to a Hugging Face organisation).
   and patches run (the shared entry modules, each architecture's modules, each opted-in patch's module), so a
   plugin fix moves the key instead of passing a stale corpus. Every other input is unchanged; old corpora
   never collide with the new rule.
+- **The late-interaction image keep-rule, applied engine-side** (operator decision):
+  `PoolingEndpoint.document_skip_engine_side` declares that the served plugin applies
+  `document_skip_token_ids` engine-side. vLLM v0.31.0's pooling route cannot return the engine's
+  per-position token ids, so the pplx-late plugin's pooler drops the rule's positions from the token ids it
+  sees -- a text document's punctuation positions and a media document's chat-template render alike (the
+  plugin sees the render's own ids; a rule that names a structural id drops exactly that position). The rule
+  is document-side (the checkpoint's mask declares `skiplist_tasks: ["document"]`), so the engine half also
+  declares the document role gate `serve.hf_overrides.document_skip_prefix_token_id` (the leading token id a
+  document prompt opens with): a row that does not open with it is a query prompt and keeps every position,
+  exactly as the reference's `encode_query` does. The recipe declares the rule once and renders it for the
+  engine in `serve.hf_overrides.document_skip_token_ids` (a CONTENT field: it changes the engine's output, so
+  it is a fingerprint input and a serve-time override of it is refused), and the recipe loader cross-checks
+  the two halves and refuses either declared alone or a rule without the gate. The client then does not
+  slice: it counts the declared kept vectors (`rcp_ndcg.data.postprocess.kept_vector_count`: the sent
+  render's ids outside the rule, or a media document's sent head plus its prepared media block) and refuses a
+  reply whose per-item count disagrees -- a reply that ignored the rule carries the prompt's count, which
+  `usage.prompt_tokens` cannot distinguish, so the check is the declared count (`PoolRequest.kept_counts` on
+  the request object) instead of the usage line. A media document under the rule writes no `skip_unapplied`
+  record (the engine applied it); a recipe without the flag keeps the client-side rule and its record
+  unchanged. The pplx-embed-v2-late family declares the rule (`document_skip_engine_side: true`; the 32
+  punctuation ids of the checkpoint's `MultiVectorMask`, which keeps a media render's head and vision markers
+  -- the rule names punctuation only) and sends the media render's trained `[D] ` head as a system message
+  (`media_head_as_system: true`, the card's own sentence-transformers prompt): the pass-through engine chat
+  template injects no frame of its own, so without it an image render would lose the trained prefix -- and
+  would not open with the document role prefix the engine-side rule gates on. `PoolingEndpoint` also gains
+  **`media_keep_token_ids`**, the media allowlist for a checkpoint whose image documents keep only a subset
+  of the render's positions: the plugin applies it engine-side through the same path (the recipe renders it
+  in `serve.hf_overrides.document_keep_token_ids`, which the loader cross-checks) and the allowlist is its
+  own gate (a row carrying one of its ids is a media document, and only those positions are kept); the
+  client counts the media block's patch run and refuses a reply that disagrees, so no `skip_unapplied`
+  record is written for a media item. The topk-embed-v1 family declares it (`media_keep_token_ids: [248056]`
+  beside the engine half): its reference keeps only the image-patch positions for an image document
+  (`topk_embed_st.py:_image_row`: `keep = ids == image_token_id`), so the served image documents are now
+  like-for-like with the reference instead of the client's kept-whole superset -- the family's named
+  no-verify gap for image documents is gone (MASTER section 9).
+
+- **The judgement family carries the document-reading rule and the offline judge's seed** (judge review
+  A1/A2): `rcp_ndcg_core.schemas.Family` gains `title` (how a document's title reaches the judge: the default
+  join, or `separate`), `text_formatting` (the `TEXT_FORMATTING_VERSION` the pass read the documents under)
+  and `fake_seed` (the offline judge's draw seed; a fake URL that names none is the route's default 0). Each
+  enters the family key and every record id when set, so
+  title-joined and body-only judgements never pool, a resume across a formatting version re-asks, and two fake
+  seeds never share a store; `JudgeConfig.identity()` carries the fake seed too, and naming the default
+  `title: join` is normalized out of it as the family normalizes it. The family, judgement-store,
+  calibration, judge-report and run schemas are regenerated.
+- **`rcp_ndcg.judging.CostEstimate` gains `requests_min`/`requests_max`** (judge review F1): the request range
+  at one attempt per window and when every window retries to `MAX_ATTEMPTS`. `estimate` counts the query text
+  the pass sends (the judge's title rule and the dataset's query-side task instruction included), counts each
+  planned window at its own size and its own documents (deduped as the pass dedupes them), and the CLI's
+  `--estimate` text prints the range.
+- **`rcp_ndcg.judging.RubricSchedule.uncovered_units`** (judge review B3): the units the balanced random phase
+  cannot show (`max(0, n_units - n_random * w)`); a rubric pass (and its estimate) whose settings leave units
+  unseen is refused with the precondition named.
+- **`Prompt.worked_example`** (judge review D1): the JSON object of a prompt's own fenced example, which the
+  parser refuses as an answer; `parse_window` gains the `example=` keyword, and
+  `rcp_ndcg.judging.JudgementStore` gains `supersede_records` (an appended `superseded` tombstone retires the
+  later-phase windows of a resumed pass, so the stage file stays append-only for the mirror). The
+  `superseded` invalid category joins the judgement schema.
 
 - **The recipe schema's `reference.known_deviations` gains `media_approximation`** (owner decision 35): a
   recipe declaring it reports stage 2's image/video rows non-gating with the reason (the family reference's
@@ -1040,6 +1132,32 @@ owner pushes, with the move to a Hugging Face organisation).
   after the grace period and checks the group is gone, instead of recording the run `cancelled` while a
   SIGTERM-ignoring coordinator kept running; a session file that is torn or names pid 0/1 is never signalled
   (the session file is published atomically too).
+- **Judging identity and resume** (judge review A1/A2/A3/A6, B1, F4): `title`, the text-formatting version and
+  the offline judge's seed enter the judgement family and the record ids; a planned window is rendered at its
+  own size's text budget; `reparse` refuses a source at the current parse version (a same-key copy) and a
+  newer one (a downgrade) before writing anything; a resumed pass that re-asks a refused window retires the
+  later-phase windows its first fit selected with an appended `superseded` tombstone, scoped to the pass's own
+  generation (its schedule's window sequences and its units, so a full pass and a `docs=` subset never retire
+  each other's windows; a `windows=` plan retires nothing), so the refit never reads two generations and the
+  stage file stays append-only for the mirror; the calibration's coverage skips tombstones and `records_stored`
+  counts live records (a torn last line included). `docs` naming no
+  documents, a Stage A pool of fewer than two documents and a duplicated query id are typed refusals instead
+  of a silently unjudged query.
+- **The rubric's coverage and per-modality windows** (judge review B3/B4/B5): a rubric pass whose
+  `n_random * w < n_units` is refused before a call; a stratified phase dropped for want of a valid random
+  answer is warned and recorded as a `phase_dropped` census row; a partial schedule keeps the shipped
+  per-modality window fields it did not name (for the pass and the estimate).
+- **The judge's media and parsing instruments** (judge review C1/C2, D1/D2/D3/D4/D5): the window's media charge
+  counts the prepared refs the wire sends, a recorded size that disagrees with the decoded image is warned
+  about and replaced, and a passing engine media check is recorded (`engine_media_check:ok`, with the client's
+  census writing into the store's `preprocessing.jsonl`); a score beyond the double range is an
+  `UnparseableAnswer`; the think-strip never rewrites the JSON object and an unclosed reasoning block is
+  stripped; an answer equal to the prompt's worked example is refused; a window answered once and refused
+  afterwards keeps the answer's text; the query slot is interpolated inert (one-pass substitution, framing
+  markup escaped, a marker with no media refused).
+- **Prompt pins** (judge review D7): every shipped prompt's SHA-256 is pinned in the suite, so a wording edit
+  fails CI and states that a changed prompt is a new judgement family.
+
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
   client's own typed refusal names the missing `base_url`.
@@ -2738,6 +2856,47 @@ owner pushes, with the move to a Hugging Face organisation).
 - **`RaschEstimator.add_criteria` refuses an unknown document** (review F11) as
   `BradleyTerryEstimator.add_comparison` does, instead of dropping the observation silently (the rubric
   schedule never relied on the drop).
+- **The whole corpus no longer fails on one unmodelled media or chat record** (pre/post-processing review A1,
+  the release blocker): `VllmEmulator.from_corpus` raised a `DataError` for the WHOLE corpus on one such record
+  (and `_text` raised a bare `ValueError` on a media part of a rerank body).  A record the model layer cannot
+  model is now **skipped and named** in the emulator's `unmodelled_records` (reported in the verification
+  record), the rest of the corpus builds, and a request for the skipped record answers the marked
+  `refused-unmodelled` 400 -- never a silent drop, never a whole-corpus failure, typed errors only.
+- **The anchor audit is no longer vacuous for `anchor: mean`** (review A4): the mean-anchor recipes (the two
+  shipped pplx families, embeddinggemma-2 and the topk/pplx-late multi-vector recipes) were counted as
+  `checked` and then skipped.  The audit now asserts what a mean-anchor cut must keep: the declared fixed
+  edges survive (measured in the assembled render, as the other anchors measure them) and at least one content
+  token sits between them and the post-processor's tokens.
+- **The render comparison covers every text of every row** (review A4): it compared only the first text per
+  (row, shape), so the client's second and later documents were never held to the reference.  The harness now
+  asks the reference to render each document (one written row per document, the query beside it) and compares
+  every text; a per-text mismatch names its document, and the over-cap carve-out attributes the change to the
+  document's own record.
+- **A width mismatch gates stage 2 with both widths instead of crashing it** (review A4, live with MRL): a
+  served vector whose width differs from the reference's raised a `ValueError` out of the cosine; it is now a
+  named gate failure carrying both widths.
+- **The media gate's fps arm is pinned end to end** (review A4, media-rules open question 4): the stage counts
+  a container under the declared fps rule with the client's loaded tokenizer and the clip's own facts (16
+  realised frames of a 64-frame/8 fps clip at fps 2, not the clip's 64 nor the loader's 32), the reference
+  computes the same realised count from the clip's facts, and the engine's own media count must equal the
+  client's -- served with the declared pin and served with the wrong rate are both covered.
+- **`fetch_tokenizer` refuses a stale warm cache** (ci-recipes report): with the download failing, a cached
+  file whose hash did not match its pin was returned as "better than an error", silently moving every token
+  count.  It now refuses with a typed `HarnessError` naming the pin, the cached hash, the cache entry and the
+  fix (clear the entry, or restore the network); a cold cache without network still skips with its reason.
+- **The CPU stub engine counts a pair's rendered prompt**: its `/rerank` `usage.prompt_tokens` counted the bare
+  spans, so a rerank recipe with a served chat template reported fewer tokens than the engine renders; it now
+  counts the served template's render of the pair, and stage 1's prompt-token probe passes against it (a
+  mutant that counts the spans fails the probe, so the count is pinned).
+- **The GPU wave runner's process and cross-wave state, hardened** (the test-package SIGSEGV the gate saw
+  under load at a wave test; the crash itself was not reproduced, ~50 wave runs and 3 suites clean): the
+  engine stop signals the engine's own session by `popen.pid` directly (its session's process group **is**
+  its pid) instead of looking the group up again, and the whole teardown is serialized per engine; every wave
+  carries its own token into its slots' `TMPDIR`s, so two waves in one process never share a path (a previous
+  wave's leftover engine or abandoned step body could remove the TMPDIR the next wave's engine was running
+  with); the closing state is per wave, so an abandoned step body from a closed wave can never start an
+  engine into a later wave (the module-wide Event was reopened by every wave); and the CPU stub sets
+  `RLIMIT_CORE` to 0, so its deliberate `SIGABRT` fault no longer writes a several-hundred-MB core per run.
 
 ### Changed
 
@@ -3038,6 +3197,22 @@ owner pushes, with the move to a Hugging Face organisation).
 - **The Bradley-Terry refit is documented as a cold refit** (review F10): it fits the live tournament's own
   observations from zero, so it agrees with the live fit to convergence tolerance, not bit for bit. The
   diagonal standard-error approximation is stated where `theta_se` is documented (review F8).
+- **Every pairs file was regenerated with the fixed generator under one recorded version** (the integration
+  note after harness-fix): the 27 files harness-fix regenerated are byte-identical, and the 7 added since
+  (pplx-embed-v1-0.6b/-4b, pplx-embed-v2-late-9b, qwen3-embedding-4b/-8b, qwen3-vl-embedding-8b,
+  qwen3-vl-reranker-8b) gain the fixed generator's over-cap row; the five whose role sends the empty string
+  also carry the corrected empty-content row (its query side is the empty string now, with
+  `content:empty@query`), while the two pplx-embed-v1 files keep that row absent by their declared
+  `empty_doc: omit_zero`.  Every committed pairs file now matches one recorded generator identity
+  (`GENERATOR_VERSION` 2).
+- **Stage 1's template check renders a media row per shape** (review A3): the probe ran on `text_rows` only,
+  so the frame the engine puts around a media conversation or pair was never checked.  One media row per
+  declared shape now goes through the client (marked, and kept out of the text checks), the served chat
+  template is rendered over its conversation -- and the render WITH the media must still open and close with
+  the declared frame's fixed edges -- and the template file check renders a media row's text where the pairs
+  file carries one.
+- **The verification records of the current corpora were re-appended** with the new `unmodelled_records` key
+  (append-only, one new line per corpus; the declared-stale corpora are re-recorded in the next wave).
 - **A plugin-code fix moves the behaviour fingerprint** (freeze-risk R1): the plugin was keyed by the bare
   spec `rcp-ndcg-vllm`, so editing a head, quantiser or weight mapping kept every recorded corpus "current".
   The fingerprint now hashes the source of exactly the modules a recipe's engine runs (its declared

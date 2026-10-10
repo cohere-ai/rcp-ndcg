@@ -6,6 +6,15 @@
   "empty_doc": "send",
   "max_tokens": 8192,
   "model": "jina-embeddings-v5-text-nano",
+  "mrl_dims": [
+   32,
+   64,
+   128,
+   256,
+   512,
+   768
+  ],
+  "mrl_kind": "truncation",
   "normalize": true,
   "on_overflow": "cut",
   "recipe": "jina-embeddings-v5-text-nano",
@@ -87,6 +96,15 @@
    "empty_doc": "send",
    "max_tokens": 8192,
    "model": "jina-embeddings-v5-text-nano",
+   "mrl_dims": [
+    32,
+    64,
+    128,
+    256,
+    512,
+    768
+   ],
+   "mrl_kind": "truncation",
    "normalize": true,
    "on_overflow": "cut",
    "request_shape": "text",

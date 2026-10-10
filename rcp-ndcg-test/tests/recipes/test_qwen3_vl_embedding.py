@@ -236,17 +236,21 @@ def _tokenizer_file(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -
     )
 
 
-def _chat_template_text(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> str:
+def _chat_template_path(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The checkpoint's own chat_template.jinja at the variant's pinned revision (hash-pinned)."""
     facts = VARIANTS[variant_id]
     url = f"https://huggingface.co/{facts['model']}/resolve/{facts['revision']}/chat_template.jinja"
-    path = fetch_tokenizer(
+    return fetch_tokenizer(
         url,
         f"{variant_id}/chat_template.jinja",
         tmp_path_factory.mktemp(f"{variant_id}-template"),
         sha256=CHAT_TEMPLATE_SHA256,
     )
-    return path.read_text(encoding="utf-8")
+
+
+def _chat_template_text(variant_id: str, tmp_path_factory: pytest.TempPathFactory) -> str:
+    """The checkpoint's template as text (the path is the one file, :func:`_chat_template_path`)."""
+    return _chat_template_path(variant_id, tmp_path_factory).read_text(encoding="utf-8")
 
 
 def _recipe_cpu(variant_id: str, tokenizer: Path, tmp_path: Path) -> Any:
@@ -384,10 +388,20 @@ def test_both_declared_shapes_render_the_checkpoint_chat_template(
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
 def test_stage1_on_cpu(variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> None:
     """Stage 1 with the real tokenizer, per variant: fit's renders for both shapes, the anchor audit (5
-    over-length samples per shape), the reference render and the stub engine's /tokenize all agree."""
+    over-length samples per shape), the reference render, the stub engine's /tokenize and the stub's own
+    ``usage.prompt_tokens`` of the declared render all agree.  The stub is served the checkpoint's chat
+    template (``--model-chat-template``): the messages route's budget rests on that frame, so stage 1's
+    prompt-token probe compares the engine's count of it with the client's declared render."""
     tokenizer = _tokenizer_file(variant_id, tmp_path_factory)
     recipe = _recipe_cpu(variant_id, tokenizer, tmp_path)
-    engine = start_stub("--tokenizer", str(tokenizer), "--max-model-len", "8192")
+    engine = start_stub(
+        "--tokenizer",
+        str(tokenizer),
+        "--max-model-len",
+        "8192",
+        "--model-chat-template",
+        str(_chat_template_path(variant_id, tmp_path_factory)),
+    )
     try:
         document = stage1_prompts(
             recipe,
@@ -416,6 +430,9 @@ def test_stage1_on_cpu(variant_id: str, tmp_path: Path, tmp_path_factory: pytest
     assert template["template"].endswith(":chat_template.jinja") and template["template_sha256"] == CHAT_TEMPLATE_SHA256
     engine_check = document["engine_tokenize_check"]
     assert engine_check["status"] == "run" and engine_check["passed"] is True, engine_check["failures"][:1]
+    prompt_tokens = document["engine_prompt_tokens_check"]
+    assert prompt_tokens["status"] == "run" and prompt_tokens["passed"] is True, prompt_tokens["failures"][:1]
+    assert prompt_tokens["checked"] > 0
     assert document["passed"] is True
 
 

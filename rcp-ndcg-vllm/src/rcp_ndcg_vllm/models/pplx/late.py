@@ -89,6 +89,8 @@ from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead  
 from vllm.model_executor.models.colqwen3_5 import ColQwen3_5Model  # noqa: E402
 from vllm.model_executor.models.utils import StageMissingLayer, no_init_weights  # noqa: E402
 
+from rcp_ndcg_vllm.models.keep_pooler import build_keep_pooler  # noqa: E402
+from rcp_ndcg_vllm.models.keep_rule import declared_keep_ids, declared_skip_ids  # noqa: E402
 from rcp_ndcg_vllm.models.pplx.late_data import (  # noqa: E402
     DENSE_HEAD_BIAS_TENSOR,
     DENSE_HEAD_FILE,
@@ -169,6 +171,16 @@ class PplxLateMultiVectorModel(ColQwen3_5Model):
             targets=(LogitsProcessor, ParallelLMHead),
         ):
             super().__init__(vllm_config=vllm_config, prefix=prefix)
+
+        # The engine-side keep-rules: the recipe declares them once and renders them for the engine in
+        # serve.hf_overrides (the loader cross-checks the halves). vLLM's pooling route cannot return the
+        # engine's per-position token ids, so the rules are applied here, in the plugin's own pooler: the
+        # vectors at the excluded positions are dropped before the head, and the wire carries only kept
+        # vectors (the client then checks the reply's declared kept count; see
+        # rcp_ndcg_vllm.models.keep_rule). With no rule declared the inherited stock pooler stands unchanged
+        # -- a checkpoint served without the plugin's rules behaves exactly as before.
+        if declared_skip_ids(vllm_config.model_config) or declared_keep_ids(vllm_config.model_config):
+            self.pooler = build_keep_pooler(vllm_config.model_config, projector=self.custom_text_proj)
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         """Load the checkpoint, routing the checkpoint's separate Dense-head file by hand.

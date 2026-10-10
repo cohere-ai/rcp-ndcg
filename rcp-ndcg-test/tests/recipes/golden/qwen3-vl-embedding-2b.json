@@ -15,6 +15,11 @@
   "max_tokens": 8192,
   "max_videos": 1,
   "model": "qwen3-vl-embedding-2b",
+  "mrl_kind": "truncation",
+  "mrl_range": [
+   64,
+   2048
+  ],
   "normalize": true,
   "on_overflow": "cut",
   "recipe": "qwen3-vl-embedding-2b",
@@ -60,7 +65,7 @@
   }
  },
  "fingerprint": {
-  "fingerprint": "6c58c2fe3d14a95760a7900d01880feb6aa95ffdeaae72eaf75d364f8353e7e0",
+  "fingerprint": "45c45f30710cd298c1526382900243a6e0899b4d7dfe0a49b56f335b2d9493f5",
   "inputs": {
    "client.add_generation_prompt": "true",
    "client.api": "openai_embeddings",
@@ -88,7 +93,7 @@
    "serve.convert": "embed",
    "serve.dtype": "bfloat16",
    "serve.extra_args": "[\"--media-io-kwargs\",\"{\\\"video\\\": {\\\"fps\\\": 2}}\"]",
-   "serve.hf_overrides": "{}",
+   "serve.hf_overrides": "{\"is_matryoshka\":true}",
    "serve.io_processor_plugin": "null",
    "serve.limit_mm_per_prompt": "{\"image\":1,\"video\":1}",
    "serve.max_model_len": "8192",
@@ -121,6 +126,11 @@
    "max_tokens": 8192,
    "max_videos": 1,
    "model": "qwen3-vl-embedding-2b",
+   "mrl_kind": "truncation",
+   "mrl_range": [
+    64,
+    2048
+   ],
    "normalize": true,
    "on_overflow": "cut",
    "request_shape": "messages",
@@ -214,7 +224,9 @@
     "--media-io-kwargs",
     "{\"video\": {\"fps\": 2}}"
    ],
-   "hf_overrides": {},
+   "hf_overrides": {
+    "is_matryoshka": true
+   },
    "io_processor_plugin": null,
    "limit_mm_per_prompt": {
     "image": 1,
@@ -238,6 +250,7 @@
   },
   "sources": [
    "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README, revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda: lines 105-151 the sentence-transformers usage -- queries and documents alike under the default 'Represent the user's input.' system prompt; lines 155-205 the transformers usage, queries without an instruction)",
+   "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README: the model table's 'MRL Support: Yes' and the details bullet 'Embedding Dimension: Up to 2048, supports user-defined output dimensions ranging from 64 to 2048', the range the client's mrl_range declares)",
    "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config.json (architectures, no auto_map)",
    "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/chat_template.jinja (SHA-256 a47e6afb389f86f45be7810f17d2686fd42b2bec7ba6e6958abf85845af258c5: the frame both declared shapes reproduce, pinned by the recipe's test)",
    "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/scripts/qwen3_vl_embedding.py (the reference path; MAX_LENGTH 8192, MIN/MAX_PIXELS 4096/1843200; FPS 1, MAX_FRAMES 64, total_pixels 7864320 -- the card's own video numbers; _preprocess_inputs calls the processor with truncation=True at max_length)",
@@ -288,7 +301,7 @@
   "--max-model-len",
   "8192",
   "--hf-overrides",
-  "{}",
+  "{\"is_matryoshka\": true}",
   "--pooler-config",
   "{\"seq_pooling_type\": \"LAST\"}",
   "--mm-processor-kwargs",
