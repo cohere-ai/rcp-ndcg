@@ -135,7 +135,9 @@ Role = Literal["embed", "multi_vector", "rerank", "judge"]
 ScoreScale = Literal["probability", "logit", "cosine"]
 
 #: The per-variant ``serve`` fields a family may override (decision 34: only per-size facts): the engine's
-#: context limit, the score-head construction (a family whose sizes build their head from different base
+#: context limit, the served dtype (the ctxl 1b/2b's float32 pair: the bf16 attention-kernel stacks exceed
+#: the logit gate on their small logits while the 6b passes at bfloat16, E2 round 4), the score-head
+#: construction (a family whose sizes build their head from different base
 #: architectures — ctxl's mistral-based 6b beside its qwen3-based 1b/2b), the per-size media pins and caps,
 #: and ``extra_args`` (one checkpoint in bf16 beside its NVFP4 release: the quantisation and KV-cache flags
 #: are per-size facts, carried as verbatim engine flags).
@@ -143,6 +145,7 @@ ScoreScale = Literal["probability", "logit", "cosine"]
 #: the block, and a size that genuinely behaves differently is its own family.
 PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
     "max_model_len",
+    "dtype",
     "hf_overrides",
     "mm_processor_kwargs",
     "limit_mm_per_prompt",
