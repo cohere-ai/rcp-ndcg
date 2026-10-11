@@ -80,7 +80,12 @@ mixed. `bootstrap.sh` builds them from a staged RC:
   names and the way out. Afterwards an import check runs in the client environment against the family's
   python: torch imports (the image's build for the default families, the lock's pin under own-torch) and
   every pinned distribution is installed at its pin and imports — a failure names the family and fails the
-  bootstrap. The report's `reference` block is a map of the built families (`lock_sha256`, `own_torch`,
+  bootstrap. The check also reports a lock pin another pinned distribution's requirement forbids (the r4
+  wave's `huggingface-hub==2.2.0` against the same lock's `transformers==5.17.0`, which declares
+  `huggingface-hub<2.0,>=1.5.0`): `uv pip compile --no-deps` never consults another pin's requirements, so
+  an unpinned name in `reference.in` can resolve outside a pinned distribution's range and the completion
+  step then moves the venv's copy; the check names both pins and the requirement. The report's `reference`
+  block is a map of the built families (`lock_sha256`, `own_torch`,
   `torch_is_image_build`, the import facts), and each family's venv is reused by every variant of that family
   (its `freeze.txt` beside the venv is what `equivalence.json` records).
   The recipes' references run as subprocesses of their family's python, never inside the client, and their

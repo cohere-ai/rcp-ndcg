@@ -51,5 +51,12 @@ flash-linear-attention==0.5.1
 kernels==0.14.1
 safetensors>=0.7.0
 Pillow>=12.0
-huggingface_hub  # the render mode's dependencies besides the stdlib: this and tokenizers
-tokenizers       # (a transformers dependency, listed for the render mode)
+# The render mode's dependencies besides the stdlib: this and tokenizers.  Both are pinned inside
+# the range the family's own transformers==5.17.0 declares (Requires-Dist: huggingface-hub<2.0,>=1.5.0;
+# tokenizers<0.24.0,>=0.23.1): with the name left unpinned, `uv pip compile --no-deps` resolves it to
+# the newest release (2.2.0), which transformers' own pin forbids -- the bootstrap's completion step
+# then downgrades the venv's copy to a wheelhouse version and the import check fails (the r4 wave:
+# `huggingface-hub is installed at 1.33.0, the lock pins 2.2.0`).  The pinned range resolves to the
+# image's 1.33.0, which every staged wheelhouse carries.
+huggingface-hub>=1.5,<2.0
+tokenizers>=0.23.1,<0.24.0
