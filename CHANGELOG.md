@@ -1350,6 +1350,16 @@ owner pushes, with the move to a Hugging Face organisation).
   public module (each name with its kind, signature and one-line role) from the pinned snapshot and the
   modules' docstrings; `docs/reference/api/` holds the 23 committed pages, and `tests/contract` fails when a
   pinned name is on no page, when a module has no page, or when the pages drift from the snapshot.
+- **A family's per-size `overrides.serve` may set `dtype`** (the E2 round-4 ctxl pair): the 1b and the 2b
+  serve `float32` while their 6b sibling keeps the family's `bfloat16`, because the bf16 attention-kernel
+  stacks diverge further than the logit gate on the two small sizes' logits and the reference loads
+  whatever the variant serves.  `rcp_ndcg_vllm.recipe.PER_VARIANT_SERVE_FIELDS` carries the field; a family
+  that needs another dtype on one size no longer has to split.
+- **The embeddinggemma-2 plugin registers a model architecture**: `rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`
+  gains `EmbeddingGemma2Model` (the folded vLLM model, upstream's config hook and the folded modules its
+  transformers imports resolve through), and `rcp_ndcg_vllm.models.embedding_gemma2` exports
+  `MODEL_ARCHITECTURE`, `MODEL_QUALNAME` and `register_embedding_gemma2`; the recipe declares
+  `plugin_architectures: [EmbeddingGemma2Config, EmbeddingGemma2Model]`.
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
@@ -1375,6 +1385,63 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
+
+- **The generator bounds the special-token-spelling set by the checkpoint's declared vocabulary** (the
+  E2 round-4 harrier-oss-v1-270m device assert): that checkpoint's tokenizer declares
+  `<image_soft_token>` at id 262144 while its `config.json` declares `vocab_size: 262144` (its embedding
+  is [262144, 640]), so the harness's `content:special_token_spellings` row -- built from the
+  tokenizer's added tokens -- reached the engine's embedding gather with an out-of-range index and the
+  CUDA device asserted (`vectorized_gather_kernel: index out of bounds`; the same bound as the r1
+  inductor signature).  `special_token_spellings`/`synthetic_text` take the checkpoint's declared
+  vocabulary size (resolved from `config.json` at the pinned revision at generation time, the same
+  pair the tokenizer spec comes from), leave out an added token whose id is not below it, and the
+  plan's `content:special_token_spellings` stratum records the omitted token and the reason in the
+  manifest; the 27b sibling declares 262208 for the same token and keeps it.  The 270m pairs file was
+  regenerated (one row changed, by that one line) with its stage-1 validation re-run.
+
+- **The topk-embed-v1 reference environment's `huggingface-hub` pin** (the E2 round-4 r4 bootstrap failure):
+  the lock pinned `huggingface-hub==2.2.0` while the same lock pins `transformers==5.17.0`, whose METADATA
+  declares `huggingface-hub<2.0,>=1.5.0` -- `uv pip compile --no-deps` resolves an unpinned name to the
+  newest release and never consults another pin's requirements, so the family's completion step moved the
+  venv's copy to a wheelhouse version (1.33.0) and the import check failed with only the version mismatch.
+  `reference.in` now pins `huggingface-hub>=1.5,<2.0` and `tokenizers>=0.23.1,<0.24.0` (both inside the
+  family's transformers range; the lock pins the image's 1.33.0, which every staged wheelhouse carries), and
+  the reference-environment check reports any lock pin another pinned distribution's requirement forbids,
+  naming both pins and the requirement.
+
+- **The ctxl-rerank-v2-instruct-multilingual 1b and 2b serve float32 and their reference computes at the
+  served dtype** (the E2 round-4 like-for-like pair): with bf16 on both sides the served-vs-reference
+  relative deltas were 0.2491/0.1347 (only 20.5%/31.8% of documents within 0.02, Kendall tau 1.0), and the
+  investigation reproduced the residual as the two bf16 attention-kernel stacks -- the reference's own
+  CPU-vs-GPU spread on the same rows is 0.21/0.62 max, and the 6b shows the same absolute spread (0.16) but
+  passes the relative gate because its logits are larger.  The 1b/2b now declare `serve.dtype: float32` (the
+  6b keeps `bfloat16`), and the reference loads `serve.dtype` from the resolved recipe (one rule, its fp32
+  score head unchanged).
+
+- **The pplx-embed-v2-context-9b-preview reference loads the engine's bfloat16** (the E2 round-4 stage-2
+  OOM): the reference loaded the checkpoint at its config dtype (float32, 33.6 GB) and the stage-2
+  subprocess died with 69.48 GiB allocated by PyTorch on a long row (one ~88 GiB allocation).  The engine
+  cannot serve float32 on this image (the GDN prefill kernels refuse it), so the reference loads bfloat16 --
+  the served dtype the owner's like-for-like rule asks for; the remote class's `_keep_in_fp32_modules`
+  (`contextual_projection`) stays fp32 and the pooling casts to fp32 before the int8 head, so the
+  int8-valued vectors are unaffected.
+
+- **The harrier-oss-v1-27b declares its measured bf16 cosine floor** (the E2 round-4 stage 2): the
+  served-vs-reference minimum cosine was 0.996906 over 69 vectors, with four below the published 0.999
+  (0.996906, 0.997561, 0.997741, 0.998371) and Kendall tau 1.0.  Both sides are bf16 (the engine serves the
+  family's bfloat16; the reference loads the checkpoint's own), so the residual is the two bf16 kernel
+  stacks; the variant declares `overrides.gates.vec_min_cosine: 0.9969` with the per-vector numbers in its
+  notes, and its 270m/0.6b siblings keep the published 0.999.
+
+- **The embeddinggemma-2 plugin registers the folded model the engine image lacks** (the E2 round-4 r1
+  serve): the wave's serve log reads `Model architectures ['EmbeddingGemma2Model'] are not supported for
+  now`, and its supported-architecture list is exactly the vLLM v0.31.0 tag's (plus the plugin's own
+  registrations) while the nightly commit the image tag names carries both the model module and the
+  registry entry -- the pinned image is a v0.31.0-based build, so the transformers-side fold alone could
+  not make it serve.  The plugin now ships vLLM's `embedding_gemma2.py` from that commit (byte-identical
+  plus a header) and transformers 5.19.0's modeling module, registers the architecture (and upstream's
+  config hook) when the running vLLM lacks them, and the recipe declares both registrations; the fold is
+  verified on CPU against transformers 5.17.0 with the real checkpoint files.
 
 - **The tokenizer's split parse and the pooling endpoint's `document_split_special_tokens`** (the E2 round-2
   wave's pplx-embed-v2-context gap): `TextTokenizer.ids`/`count`/`offsets` gain

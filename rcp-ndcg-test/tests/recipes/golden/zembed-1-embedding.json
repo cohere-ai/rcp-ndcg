@@ -52,7 +52,7 @@
   "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
  },
  "fingerprint": {
-  "fingerprint": "a8dc20ae8265f7bd8436d5beddfabf5d7bfe196cbee2344795895ee2c4fe4e36",
+  "fingerprint": "4cf5677a8341a2e44e3efaefe3f642792a79654293e1d0b4d57dd439386f80d6",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -71,7 +71,7 @@
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "zeroentropy/zembed-1-embedding",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:a16a4c305a235ce393a1770e21beb47fd25627961689b219f6057ff8478f8798",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:31d18404cb7c2cc8202b51bf911bd00a92ff3d2f4a0d6227f6dfe25ee27eccea",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",
