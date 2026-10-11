@@ -56,7 +56,9 @@ SERVE = {
     "max_model_len": 8192,
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm",
-    "plugin_architectures": ["EmbeddingGemma2Config"],
+    # E2 round 4: the image reports vLLM 0.31.0 and its registry carries no EmbeddingGemma2Model, so
+    # the plugin also registers the folded model (the transformers-side fold alone was not enough).
+    "plugin_architectures": ["EmbeddingGemma2Config", "EmbeddingGemma2Model"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
@@ -204,6 +206,20 @@ def test_recipe_contract_pins_every_field() -> None:
     assert "@sha256:" in recipe.engine.image, "a nightly image is pinned by digest (decision 38)"
     assert recipe.engine.min_version == "0.31.1.dev0"
     assert not (RECIPE_DIR / "template.jinja").exists(), "no template file ships (serve.chat_template null)"
+
+
+def test_the_recipe_declares_the_folded_model_the_image_registry_lacks() -> None:
+    """E2 round 4: the pinned image reports vLLM 0.31.0 and its supported-architecture list equals the
+    v0.31.0 tag's (no ``EmbeddingGemma2Model``), while the nightly commit the image tag names carries
+    both the model module and the registry entry -- so the plugin ships the model and the recipe
+    declares its registration beside the transformers fold, with the removal condition recorded."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.serve.plugin_architectures == ("EmbeddingGemma2Config", "EmbeddingGemma2Model")
+    notes = recipe.notes
+    assert "v0.31.0-based build" in notes
+    assert "not supported for now" in notes
+    assert "8cbd5d03006c33185f402249ff2b448efd594986" in notes
+    assert "SWITCH TO RELEASE / REMOVAL" in notes
 
 
 def test_two_contract_mutants_are_red() -> None:

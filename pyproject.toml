@@ -45,9 +45,10 @@ target-version = "py312"
 # would need its own entry), so nothing else can hide behind it; force-exclude keeps the exclusion
 # working when the file is named explicitly on the command line.
 # The embeddinggemma-2 fold (rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/) is the same
-# case: transformers 5.19.0's three embedding_gemma2 modules, kept byte-identical to the upstream files
-# (only a header is added) and loaded under their upstream names by the plugin; upstream's own layout is
-# never reformatted. Nothing else lives under that directory.
+# case: transformers 5.19.0's four embedding_gemma2 modules and vLLM nightly 8cbd5d03's
+# embedding_gemma2 model, kept byte-identical to the upstream files (only a header is added) and loaded
+# under their upstream names (the transformers modules) or by the registry's lazy string (the model) by
+# the plugin; upstream's own layout is never reformatted. Nothing else lives under that directory.
 force-exclude = true
 extend-exclude = [
   "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/qwen3_vl_embedding.py",
@@ -68,9 +69,10 @@ include = ["rcp-ndcg/src", "rcp-ndcg-core/src", "rcp-ndcg-vllm/src", "rcp-ndcg-t
 # The recipes' reference subprocesses were outside the type-checked sources before the layout move (they
 # ran as subprocesses in their own environment, never imported); the move parked them inside a src tree,
 # and the exclusions keep the checked scope what it was. Same for the two node scripts the move merged
-# into the test package from the old top-level jobs/ tree. The embeddinggemma-2 fold is transformers
-# 5.19.0's vendored upstream modules (kept byte-identical, loaded by the engine's plugin, never imported
-# by the harness): upstream's own optional-typing style is not this tree's to fix.
+# into the test package from the old top-level jobs/ tree. The embeddinggemma-2 fold is the vendored
+# upstream modules (transformers 5.19.0's and vLLM nightly 8cbd5d03's embedding_gemma2 files, kept
+# byte-identical, loaded by the engine's plugin, never imported by the harness): upstream's own
+# optional-typing style is not this tree's to fix.
 exclude = [
     "**/__pycache__",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/**",

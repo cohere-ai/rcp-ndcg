@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES, PLUGIN_ENGINE_MODULES
+from rcp_ndcg_vllm.models.embedding_gemma2 import MODEL_ARCHITECTURE as GEMMA_ARCHITECTURE
 from rcp_ndcg_vllm.models.pplx import LATE_ARCHITECTURE, PLUGIN_ARCHITECTURE
 from rcp_ndcg_vllm.models.topk.plugin import MODEL_ARCHITECTURE
 from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
@@ -31,6 +32,7 @@ def test_the_architecture_mapping_names_every_registered_architecture() -> None:
         PLUGIN_ARCHITECTURE,
         LATE_ARCHITECTURE,
         MODEL_ARCHITECTURE,
+        GEMMA_ARCHITECTURE,
         "PplxV1Config",
         "EmbeddingGemma2Config",
     }
@@ -44,15 +46,17 @@ def test_every_architecture_module_is_a_real_source_file() -> None:
 
 
 def test_a_keyed_module_that_imports_vllm_or_torch_is_registry_lazy() -> None:
-    """A keyed module that imports vLLM/torch must be in the lazy list, or the no-torch harness scan would
-    import it. A keyed module that imports neither -- the pure keep rule (``keep_rule``: the declared ids and
-    the positions they keep) -- is importable by the scan and needs no lazy entry; it is still keyed, so a
-    change to it moves the fingerprint."""
+    """A keyed module that imports vLLM/torch AT MODULE SCOPE must be in the lazy list, or the no-torch
+    harness scan would import it. A function-local import (the plugins' ``register_*`` style, e.g.
+    ``rcp_ndcg_vllm.models.embedding_gemma2``'s registration) does not trip the scan, so such a module stays
+    checked by it. A keyed module that imports neither -- the pure keep rule (``keep_rule``: the declared ids
+    and the positions they keep) -- is importable by the scan and needs no lazy entry; it is still keyed, so
+    a change to it moves the fingerprint."""
     lazy = set(LAZY_MODEL_MODULES)
     for architecture, modules in ARCHITECTURE_MODULES.items():
         for module in modules:
             source = _module_file(module).read_text(encoding="utf-8")
-            if re.search(r"^\s*(?:import|from)\s+(?:vllm|torch)\b", source, re.MULTILINE):
+            if re.search(r"^(?:import|from)\s+(?:vllm|torch)\b", source, re.MULTILINE):
                 assert module in lazy, f"{architecture}: {module} imports vLLM/torch but is not lazy"
     assert "rcp_ndcg_vllm.models.keep_rule" not in lazy, "the pure keep rule imports no vLLM/torch"
     assert "rcp_ndcg_vllm.models.keep_rule" in ARCHITECTURE_MODULES["Qwen3_5Model"]
