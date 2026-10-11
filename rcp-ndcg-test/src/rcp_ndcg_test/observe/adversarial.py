@@ -19,9 +19,17 @@ Public surface:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-__all__ = ["CONTENT_KINDS", "SYNTHETIC_TEXTS", "special_token_spellings", "synthetic_text"]
+__all__ = [
+    "CONTENT_KINDS",
+    "SYNTHETIC_TEXTS",
+    "checkpoint_vocab_size",
+    "omitted_spellings",
+    "special_token_spellings",
+    "synthetic_text",
+]
 
 ASCII_PROSE = (
     "A deterministic passage for the observation corpus. The engine reads requests, not intentions; "
@@ -72,27 +80,89 @@ CONTENT_KINDS: tuple[str, ...] = (*SYNTHETIC_TEXTS.keys(), "special_token_spelli
 """Every content kind of OBSERVATIONS-SPEC section 1, in the spec's order."""
 
 
-def special_token_spellings(tokenizer: Any) -> str:
+def special_token_spellings(tokenizer: Any, *, vocab_size: int | None = None) -> str:
     """The tokenizer's special tokens' literal spellings, joined as one adversarial text.
 
-    Inputs: the recipe's loaded :class:`~rcp_ndcg.data.tokenizer.TextTokenizer`.  Output: one string
-    holding the literal spelling of every added token the tokenizer declares (the spellings are read
-    from the tokenizer at generation time -- never typed into a file or a source).  An empty string when
-    the tokenizer exposes no added-token spellings (a plain BPE with a byte-level alphabet).
+    Inputs: the recipe's loaded :class:`~rcp_ndcg.data.tokenizer.TextTokenizer`, and the checkpoint's
+    declared vocabulary size when the caller resolved it (:func:`checkpoint_vocab_size`).  Output: one
+    string holding the literal spelling of every added token the tokenizer declares (the spellings are
+    read from the tokenizer at generation time -- never typed into a file or a source).  An empty string
+    when the tokenizer exposes no added-token spellings (a plain BPE with a byte-level alphabet).
+
+    ``vocab_size`` bounds the set: an added token whose id is not below the checkpoint's declared
+    vocabulary size is left out, because the checkpoint's embedding table has no such row and any text
+    carrying its spelling kills the engine (harrier-oss-v1-270m: the tokenizer declares
+    ``<image_soft_token>`` at id 262144 while its ``config.json`` declares ``vocab_size: 262144`` and its
+    embedding is [262144, 640]; the gather asserts device-side -- E2 round 4).  The 27b sibling declares
+    ``vocab_size: 262208`` for the same token, so its spelling stays.  The caller records what was left
+    out (:func:`omitted_spellings`), never silently.
     """
     decoder = getattr(getattr(tokenizer, "backend", None), "get_added_tokens_decoder", None)
     if decoder is None:
         return ""
-    spellings = sorted({token.content for token in decoder().values()})
+    tokens = decoder()
+    if vocab_size is not None:
+        tokens = {token_id: token for token_id, token in tokens.items() if 0 <= int(token_id) < vocab_size}
+    spellings = sorted({token.content for token in tokens.values()})
     return "\n".join(spellings)
 
 
-def synthetic_text(kind: str, tokenizer: Any) -> str:
+def omitted_spellings(tokenizer: Any, *, vocab_size: int | None) -> list[dict[str, Any]]:
+    """The added tokens :func:`special_token_spellings` leaves out, with their ids.
+
+    Inputs: the recipe's tokenizer and the resolved vocabulary size (``None``: nothing is bounded).
+    Output: ``[{"content", "id"}]``, sorted by id, for every added token whose id is not below the
+    bound -- what the plan records in the ``content:special_token_spellings`` stratum so a generation
+    run's manifest says which spelling was left out and why.  Units: none.
+    """
+    if vocab_size is None:
+        return []
+    decoder = getattr(getattr(tokenizer, "backend", None), "get_added_tokens_decoder", None)
+    if decoder is None:
+        return []
+    out_of_range = {
+        int(token_id): token for token_id, token in decoder().items() if not 0 <= int(token_id) < vocab_size
+    }
+    return sorted(
+        ({"content": token.content, "id": token_id} for token_id, token in out_of_range.items()),
+        key=lambda entry: entry["id"],
+    )
+
+
+def checkpoint_vocab_size(recipe: Any) -> int | None:
+    """The checkpoint's declared vocabulary size, read from its ``config.json`` at the pinned revision.
+
+    Inputs: the resolved recipe (its ``model``/``revision``, the same pair the tokenizer spec comes from).
+    Output: the top-level ``vocab_size``, else the text config's (a composite checkpoint declares its
+    vocabulary there), else ``None`` when the config cannot be read (offline, uncached or a fixture
+    recipe): the bound is a refinement of the spelling set, never a requirement, and a run without it
+    keeps every spelling.  Units: none.
+    """
+    model = str(getattr(recipe, "model", "") or "")
+    if not model or "/" not in model:
+        return None
+    import json
+
+    try:
+        from huggingface_hub import hf_hub_download
+
+        path = hf_hub_download(model, "config.json", revision=getattr(recipe, "revision", None) or None)
+        config = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - an unreadable config leaves the spelling set unbounded
+        return None
+    for candidate in (config.get("vocab_size"), (config.get("text_config") or {}).get("vocab_size")):
+        if isinstance(candidate, int) and candidate > 0:
+            return candidate
+    return None
+
+
+def synthetic_text(kind: str, tokenizer: Any, *, vocab_size: int | None = None) -> str:
     """One content kind's adversarial text.
 
-    Inputs: the kind name (:data:`CONTENT_KINDS`) and the recipe's tokenizer (only
-    ``special_token_spellings`` reads it).  Output: the text.  Raises ``KeyError`` on an unknown kind.
+    Inputs: the kind name (:data:`CONTENT_KINDS`), the recipe's tokenizer (only
+    ``special_token_spellings`` reads it) and the checkpoint's declared vocabulary size (only that kind
+    uses it).  Output: the text.  Raises ``KeyError`` on an unknown kind.
     """
     if kind == "special_token_spellings":
-        return special_token_spellings(tokenizer)
+        return special_token_spellings(tokenizer, vocab_size=vocab_size)
     return SYNTHETIC_TEXTS[kind]

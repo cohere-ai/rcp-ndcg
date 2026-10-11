@@ -434,6 +434,7 @@ def record_corpus(
     and :func:`~rcp_ndcg_test.observe.corpus.verify_corpus` has accepted or refused it before this returns.
     """
     from .equivalence.fitting import tokenizer_of
+    from .observe.adversarial import checkpoint_vocab_size
     from .observe.corpus import summarise_nondeterminism, verify_corpus, write_corpus
     from .observe.provenance import collector_facts, model_facts, recipe_facts, unavailable
     from .observe.requests import CORPUS_PLAN_VERSION, corpus_plan
@@ -442,7 +443,7 @@ def record_corpus(
     if not rows:
         raise HarnessError("record_corpus needs at least one request row")
     tokenizer = tokenizer_of(recipe)
-    plan = corpus_plan(recipe, tokenizer, rows)
+    plan = corpus_plan(recipe, tokenizer, rows, embeddable_vocab_size=checkpoint_vocab_size(recipe))
     collected = _Collector(recipe, tokenizer)
     passes: list[dict[str, Any]] = []
 

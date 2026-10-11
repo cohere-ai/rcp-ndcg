@@ -2698,8 +2698,8 @@
     {
       "recipe": "harrier-oss-v1-270m",
       "path": "harrier-oss-v1-270m.jsonl",
-      "sha256": "cb78b177e77e8f67b72ae551c96b0db6b47d5ad0da461d639100d130d8cf8661",
-      "bytes": 399839,
+      "sha256": "349fb44a191afb23db4fb0467d46b3c23e38d89d2165aff3ac7a97f72477bb9f",
+      "bytes": 399799,
       "rows": 25,
       "strata": {
         "media:image:tiny": {
@@ -2809,7 +2809,14 @@
           "present": true
         },
         "content:special_token_spellings": {
-          "present": true
+          "present": true,
+          "omitted_added_tokens": [
+            {
+              "content": "<image_soft_token>",
+              "id": 262144
+            }
+          ],
+          "omitted_reason": "the checkpoint's embedding has no row for it: the tokenizer declares an added token at id 262144 while config.json declares vocab_size 262144"
         },
         "source:nanobeir": {
           "present": true
