@@ -396,6 +396,21 @@ def test_the_27b_does_not_serve_its_full_context() -> None:
         assert resolve_recipe(variant).serve.max_model_len == 32768
 
 
+def test_the_27b_declares_the_measured_bf16_cosine_floor() -> None:
+    """E2 round 4: the 27b's stage 2 measured min cosine 0.996906 over 69 vectors, with four vectors
+    below the published 0.999 (0.996906, 0.997561, 0.997741, 0.998371) and Kendall tau 1.0. Both
+    sides are bf16 (the engine serves the family's bfloat16; the reference loads the checkpoint's own
+    bfloat16), so the residual is the two bf16 kernel stacks and the variant declares the tight bound
+    covering its measured floor, with the per-vector numbers in its notes. The 270m and the 0.6b keep
+    the published default (they verified)."""
+    variant = resolve_recipe("harrier-oss-v1-27b")
+    assert variant.gates.vec_min_cosine == 0.9969
+    for measured in ("0.996906", "0.997561", "0.997741", "0.998371"):
+        assert measured in variant.notes, measured
+    for other in ("harrier-oss-v1-270m", "harrier-oss-v1-0.6b"):
+        assert resolve_recipe(other).gates.vec_min_cosine is None
+
+
 def test_the_270m_runs_eager_first() -> None:
     """E2 r1: the 270m serve crashed with a CUDA device-side assert (CUBLAS); the owner's eager-first
     decision ships --enforce-eager on this variant only, and the two larger sizes keep the default."""

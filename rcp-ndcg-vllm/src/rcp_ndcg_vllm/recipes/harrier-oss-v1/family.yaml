@@ -231,6 +231,19 @@ variants:
       owner's eager-first decision the engine runs without CUDA graphs here, and a later wave may work
       up to the default capture/compile only after eager serves. The flag is a per-variant extra_args
       override (the whitelisted per-size field); the 0.6b and the 27b keep the engine default.
+      Checkpoint defect (E2 round 4, the recorded reproduction): this checkpoint's tokenizer.json
+      declares the added token `<image_soft_token>` at id 262144 while its config.json declares
+      vocab_size 262144 and its embedding is [262144, 640] -- there is no row for that id, so any text
+      carrying the spelling reaches the embedding gather with an out-of-range index and the CUDA device
+      asserts (`vectorized_gather_kernel: index out of bounds`; the r1 inductor signature had the same
+      `0 <= tmp1 < 262144` bound, so --enforce-eager was never going to fix it). The 27b sibling
+      declares vocab_size 262208 for the same token and serves it. The harness's
+      `content:special_token_spellings` row is built from the tokenizer's added tokens, so the
+      generator now bounds that set by the checkpoint's declared vocabulary size (read from
+      config.json at the pinned revision at generation time; `rcp_ndcg_test.observe.adversarial`),
+      and the manifest's `content:special_token_spellings` stratum records the omitted token with its
+      id and the reason. Any user text carrying the spelling still kills this engine: that is the
+      checkpoint's defect, declared here, never silently worked around.
     sources:
       - "https://huggingface.co/microsoft/harrier-oss-v1-270m/raw/31de22b673913c7d658c0f03f792d77c2dcf8ebd/config.json (architectures [Gemma3TextModel], dtype bfloat16, layer_types 18x full_attention, max_position_embeddings 32768, use_bidirectional_attention false: causal)"
       - "https://huggingface.co/microsoft/harrier-oss-v1-270m/raw/31de22b673913c7d658c0f03f792d77c2dcf8ebd/1_Pooling/config.json (lasttoken pooling, dim 640)"
@@ -250,6 +263,12 @@ variants:
   - id: harrier-oss-v1-27b
     model: microsoft/harrier-oss-v1-27b
     revision: "0c0fc62f6d8af9e8604cb818c412301b103a0093"
+    overrides:
+      gates:
+        vec_min_cosine: 0.9969 # the E2 round-4 wave's measured floor 0.996906 over 69 vectors (four
+                               # below the published 0.999: 0.996906, 0.997561, 0.997741, 0.998371;
+                               # Kendall tau 1.0); both sides bf16, so the residual is the two bf16
+                               # kernel stacks, not a cast to fix
     notes: >
       The 27b size: a Gemma3TextModel backbone (config.json model_type gemma3_text, 62 layers in the
       5:1 sliding_attention:full_attention pattern with sliding_window 1024, hidden 5376, intermediate
@@ -265,6 +284,14 @@ variants:
       matches what the reference does is over_cap_cut_differs (anchor_drop_over_cap would be false:
       no anchor is dropped on either side; the post-processor appends after truncation), and its
       effect -- the client-changed texts are reported non-gating -- is the right one.
+      Numerics (E2 round 4, stage 2): the served-vs-reference minimum cosine was 0.996906 over 69
+      vectors, with four vectors below the published 0.999 (0.996906, 0.997561, 0.997741, 0.998371)
+      and Kendall tau 1.0. Both sides are bf16 (the engine serves the family's bfloat16 and the
+      reference loads the checkpoint's own bfloat16, the family's one dtype rule), so the residual is
+      the two bf16 kernel stacks -- vLLM's gemma3 kernels against the reference's sdpa -- and not a
+      cast; this size therefore declares `overrides.gates.vec_min_cosine: 0.9969`, the tight bound
+      covering its measured floor, with the per-vector numbers above as the evidence. The 270m and the
+      0.6b keep the published 0.999 (both verified). E2 re-measures.
     sources:
       - "https://huggingface.co/microsoft/harrier-oss-v1-27b/raw/0c0fc62f6d8af9e8604cb818c412301b103a0093/config.json (architectures [Gemma3TextModel], dtype bfloat16, layer_types 52x sliding_attention + 10x full_attention, sliding_window 1024, rope_scaling linear factor 8, max_position_embeddings 131072)"
       - "https://huggingface.co/microsoft/harrier-oss-v1-27b/raw/0c0fc62f6d8af9e8604cb818c412301b103a0093/1_Pooling/config.json (lasttoken pooling, dim 5376)"
