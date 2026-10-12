@@ -29,8 +29,10 @@ the recipe's loss.
 |---|---|
 | `96046f4f` | `case_fill` reads a media case's `media/` files into the pairs row's `media` field (one encoder: `media_set.image_entry`/`video_entry` take a payload and a MIME type); the retirement vocabulary covers the shipped pending notes; a refused case is retried per case and recorded as an exception (report + note); the casefill job uploads exception YAMLs; tests, docs and CHANGELOG |
 
-Base: `00038a8b` (the current `rfc-0001` tip, an ancestor of the commit — no merge was needed at gate
-time; re-checked before gating).
+Base: `00038a8b`.  The current `rfc-0001` tip `4eb2d742` (lane r9: the eager backend, the topk reference
+pin and the corpus MRL width check) is merged at `fa97034c` before the final gate; the merge was clean
+(one auto-merged `CHANGELOG.md`, no semantic drift: r9 touched the recipes' pins and the corpus width
+check, this lane the case fill).
 
 ## 3. Red-first evidence (quoted)
 
