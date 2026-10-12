@@ -33,6 +33,7 @@ from rcp_ndcg_vllm.models.pplx import (
 from rcp_ndcg_vllm.models.pplx.pooling_core import (
     BOUNDARY_TOKEN_ID,
     DOCUMENT_PREFIX_TOKEN_IDS,
+    PREFIX_SPACE_TOKEN_ID,
     QUERY_PREFIX_TOKEN_ID,
     PplxInt8Projection,
     pool_sequence,
@@ -215,6 +216,34 @@ def test_empty_chunk_yields_the_reference_zero_vector() -> None:
     assert plugin_rows.shape == (3, HIDDEN)
     assert torch.all(plugin_rows[1] == 0), "an empty chunk must pool to the zero vector"
     assert torch.allclose(plugin_rows, reference_rows, atol=1e-6)
+
+
+def test_the_prefixes_standalone_space_token_is_not_a_chunk_token() -> None:
+    """E2 round 7: the real tokenizer renders the ``[D] `` prefix's trailing space as its OWN token
+    (id 220) exactly when the content's first token is an added token that cannot carry the space, or
+    when the content is empty (measured at the pinned tokenizer: a content-initial space merges into
+    the next token, so a leading 220 is always the prefix's). The reference's char spans start at char
+    4 and never pool it; the plugin stripped only the two literal prefix ids and pooled it. For the
+    empty document that made the whole vector (the wave's 0.0 cosine against the reference's zero
+    vector); for a document starting with a special-token spelling it added one token to the first
+    chunk's mean."""
+    tokenizer = TinyTokenizer()
+    backbone = TinyBackbone(tokenizer)
+
+    # The empty document's real wire: prefix, then the prefix's standalone space -- no chunk tokens.
+    ids = [*DOCUMENT_PREFIX_TOKEN_IDS, PREFIX_SPACE_TOKEN_ID]
+    rows = pool_sequence(backbone(ids), torch.tensor(ids, dtype=torch.int64))
+    assert rows.shape == (1, HIDDEN)
+    assert torch.all(rows[0] == 0), "an empty document pools to the reference's zero vector"
+
+    # A document whose content begins with an added token: the space is dropped, the content kept.
+    ids = [*DOCUMENT_PREFIX_TOKEN_IDS, PREFIX_SPACE_TOKEN_ID, tokenizer.char_id("a")]
+    hidden = backbone(ids)
+    rows = pool_sequence(hidden, torch.tensor(ids, dtype=torch.int64))
+    assert rows.shape == (1, HIDDEN)
+    assert torch.allclose(rows[0], hidden[3:4].to(torch.float32).mean(0), atol=1e-6), (
+        "the first chunk's span starts at the content, never at the prefix's space"
+    )
 
 
 def test_query_mean_includes_the_prefix_token() -> None:

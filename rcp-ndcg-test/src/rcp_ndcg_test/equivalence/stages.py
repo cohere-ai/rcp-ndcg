@@ -962,13 +962,30 @@ def _render_check(
             served = served_list[position]
             if isinstance(served, list):
                 reference_text = str(row.get("text", ""))
-                reference_ids = list(
-                    tokenizer.ids(
-                        reference_text,
-                        add_special_tokens=_add_specials_flag(recipe, shape),
-                        split_special_tokens=fitting.split_special_tokens(recipe, shape),
+                if shape == "query" and fitting.query_split_special_tokens(recipe):
+                    # The query's reference construction is not one parse of the whole render: the fixed
+                    # head keeps the file's own parse (its special crosses as the reference's prefix id)
+                    # and the body takes the split parse -- the product's one home of the rule
+                    # (TemplateSpec.split_ids), exactly what the client sends (R30).
+                    template = fitting.client_template(recipe)
+                    if template is None:  # pragma: no cover - the product config refuses the declaration
+                        raise HarnessError(
+                            f"recipe {recipe.id}: query_split_special_tokens without a template: the head's "
+                            "ids cannot be derived"
+                        )
+                    reference_ids = list(
+                        template.split_ids(
+                            "query", tokenizer, reference_text, add_special_tokens=_add_specials_flag(recipe, shape)
+                        )
                     )
-                )
+                else:
+                    reference_ids = list(
+                        tokenizer.ids(
+                            reference_text,
+                            add_special_tokens=_add_specials_flag(recipe, shape),
+                            split_special_tokens=fitting.split_special_tokens(recipe, shape),
+                        )
+                    )
                 mismatches = []
                 if reference_ids != list(served):
                     mismatches.append(
@@ -2539,6 +2556,16 @@ def _vector_summary(
 
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    """The cosine of two vectors, in float64; 0.0 when either is zero."""
-    norm = float(np.linalg.norm(a) * np.linalg.norm(b))
-    return float(np.dot(a, b) / norm) if norm else 0.0
+    """The cosine of two vectors, in float64.
+
+    Two zero vectors are the same degenerate output and score 1.0: a contextual model's empty-chunk
+    branch pools the zero vector on both sides (the pplx-embed-v2-context empty document), and a
+    cosine has no direction there, so 0.0 would fail a perfect agreement. A zero against a non-zero
+    vector has no direction either and scores 0.0, so a one-sided degenerate output still fails the
+    vector floor.
+    """
+    norm_a = float(np.linalg.norm(a))
+    norm_b = float(np.linalg.norm(b))
+    if norm_a == 0.0 and norm_b == 0.0:
+        return 1.0
+    return float(np.dot(a, b) / (norm_a * norm_b)) if norm_a and norm_b else 0.0

@@ -720,12 +720,25 @@ class PoolingEndpoint(EmbeddingEndpoint):
             with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers
             ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one
             id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the
-            pplx-embed-v2-context plugin's document contract; the query side keeps the added-token parse,
-            whose ``[Q] `` is the reference's prefix id). ``None`` (the default) leaves the file's own
+            pplx-embed-v2-context plugin's document contract). ``None`` (the default) leaves the file's own
             parse -- an unset optional field is the absence of a declaration, so it never re-keys a run
             that does not set it; ``False`` declares the same parse explicitly. Refused unless
             ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be
             inert). Content: it changes the ids the model reads.
+        query_split_special_tokens: Tokenize the QUERY side's content span of a ``request_shape: token_ids``
+            wire with the reference's split parse, keeping the fixed head under the file's own parse: the
+            sent ids are then the head's added ids (the reference's own prefix id, e.g. ``[Q] ``) followed
+            by the split-parsed body -- exactly the checkpoint's own construction
+            (``prefix_id + tokenizer(body, split_special_tokens=True)``; pplx-embed-v2-context's remote
+            ``prepare_inputs`` splits the query body too, so a query carrying a literal added-token
+            spelling would otherwise read a different id sequence on the engine and in the reference).
+            The whole-render added-token parse is what this replaces: the prefix must still cross as its
+            added id, which is why the head is tokenized separately (``TemplateSpec.split_ids``, the one
+            home of the rule the client and the harness share). ``None`` (the default) leaves the file's
+            own parse -- unset, so no other run is re-keyed; ``False`` declares the same parse explicitly.
+            Refused unless ``request_shape: token_ids`` and the template's query shape is a fixed head
+            followed by one content span (the construction has no fixed tail). Content: it changes the ids
+            the model reads.
         media_keep_token_ids: The token ids a MEDIA document's kept vectors are restricted to (the
             checkpoint's own ``keep_only_token_ids``: topk-embed-v1's image-patch token, the only positions
             its reference keeps for an image document -- ``topk_embed_st.py:_image_row``'s
@@ -766,6 +779,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
         "document_skip_token_ids": FieldRole.CONTENT,
         "document_skip_engine_side": FieldRole.CONTENT,
         "document_split_special_tokens": FieldRole.CONTENT,
+        "query_split_special_tokens": FieldRole.CONTENT,
         "media_keep_token_ids": FieldRole.CONTENT,
         "outputs": FieldRole.CONTENT,
         "media_head_as_system": FieldRole.CONTENT,
@@ -781,6 +795,7 @@ class PoolingEndpoint(EmbeddingEndpoint):
     document_skip_token_ids: tuple[int, ...] = ()
     document_skip_engine_side: bool = False
     document_split_special_tokens: bool | None = None
+    query_split_special_tokens: bool | None = None
     media_keep_token_ids: tuple[int, ...] = ()
     outputs: Literal["per_token", "per_chunk"] = "per_token"
     media_head_as_system: bool = False
@@ -789,7 +804,9 @@ class PoolingEndpoint(EmbeddingEndpoint):
     def _split_special_tokens_needs_the_token_ids_wire(self) -> PoolingEndpoint:
         """The split parse changes the ids the client derives for a token-ids wire; beside ``text`` or
         ``messages`` the client sends no ids at all, so the declaration would be inert -- refused, never
-        ignored."""
+        ignored. The query-side declaration reproduces the reference's prefix-plus-body construction, so it
+        needs a template whose query shape ends on its content span (a fixed tail has no such
+        construction)."""
         if self.document_split_special_tokens and self.request_shape != "token_ids":
             raise ConfigError(
                 "document_split_special_tokens selects the document side's tokenization on the token-ids "
@@ -798,6 +815,31 @@ class PoolingEndpoint(EmbeddingEndpoint):
                 hint="declare request_shape: token_ids (the reference's id-level render), or drop "
                 "document_split_special_tokens",
             )
+        if self.query_split_special_tokens and self.request_shape != "token_ids":
+            raise ConfigError(
+                "query_split_special_tokens selects the query side's tokenization on the token-ids wire, "
+                f"but request_shape is {self.request_shape!r}: the client sends no ids there, so the "
+                "declaration would be inert",
+                hint="declare request_shape: token_ids (the reference's id-level render), or drop "
+                "query_split_special_tokens",
+            )
+        if self.query_split_special_tokens and self.template is None:
+            raise ConfigError(
+                "query_split_special_tokens reproduces the reference's prefix-plus-body construction, but "
+                "the config declares no template: there is no fixed head to keep under the file's own parse",
+                hint="declare the query shape's segments in `template`, or drop query_split_special_tokens",
+            )
+        if self.query_split_special_tokens:
+            segments = self.template.segments("query")  # type: ignore[union-attr]  # the None case raised above
+            content = [index for index, segment in enumerate(segments) if segment.content is not None]
+            if len(content) != 1 or content[0] != len(segments) - 1:
+                raise ConfigError(
+                    "query_split_special_tokens reproduces the reference's prefix-plus-body construction, "
+                    f"but the query shape does not end on a single content span ({len(content)} content "
+                    f"span(s), {len(segments)} segment(s)): there is no such construction to reproduce",
+                    hint="declare the query shape as a fixed head followed by one content span, or drop "
+                    "query_split_special_tokens",
+                )
         return self
 
     @model_validator(mode="after")

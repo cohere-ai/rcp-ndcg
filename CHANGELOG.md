@@ -1363,6 +1363,16 @@ owner pushes, with the move to a Hugging Face organisation).
   (`rcp_ndcg_vllm.models.embedding_gemma2.fold`) is a keyed module too (E2 round 5): importing it installs
   the folded modules under their upstream names before any folded module body runs, and it carries the
   folded classes `install_fold` declares it as their `__module__`.
+- **The pooling endpoint declares the query side's reference construction**: `PoolingEndpoint` gains
+  `query_split_special_tokens: bool | None` (CONTENT; refused beside `text`/`messages`, and without a
+  template whose query shape is a fixed head followed by one content span). Set, the query's fixed head
+  tokenizes with the file's own parse (its `[Q] ` crosses as the reference's one prefix id) and its content
+  span with the reference's split parse -- the checkpoint's own
+  `prefix_id + tokenizer(body, split_special_tokens=True)` construction -- and `TemplateSpec.split_ids` is
+  the one home of the rule the client and the harness share. Unset (the default), every existing run keeps
+  one parse of the whole render and is not re-keyed; the pplx-embed-v2-context recipe declares it. The
+  contract snapshots, the exported schemas and the generated API pages record the field and the method
+  (regenerate them as below).
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
@@ -1388,6 +1398,55 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
+
+- **The pplx-embed-v2-context plugin pools the reference's empty-document zero vector** (the E2 round-7
+  0.0 cosine): the `[D] ` prefix's trailing space crosses as its own token (id 220) exactly when the
+  content's first token is an added token that cannot carry it, or when the content is empty, and the
+  reference's char spans start after it; the plugin stripped only the two literal prefix ids, so the empty
+  document pooled the space token -- a nonzero vector where the reference pools the zero vector -- and a
+  document starting with an added-token spelling gained one token in its first chunk's mean. The plugin now
+  drops a leading 220 from the document body (measured at the pinned tokenizer: a content-initial space
+  merges into the next token, so a leading 220 is always the prefix's), with a CPU test.
+
+- **The pplx-embed-v2-context client sends the query's reference construction** (the E2 round-7 0.576
+  cosine on the pairs' spellings row): the checkpoint's own `prepare_inputs` split-tokenizes the query body
+  and prepends the `[Q] ` prefix id, while the client sent one added-token parse of the whole render --
+  identical for spelling-free queries, different when the query carries a literal added SPECIAL token (the
+  wave compared the engine's 71 body ids with the reference's 182). `query_split_special_tokens` (see
+  Public surface) now sends the head's added ids followed by the split-parsed body, and the harness's
+  render check derives the reference's ids through the same `TemplateSpec.split_ids`.
+
+- **The harness's vector gate scores two zero vectors 1.0** (the E2 round-7 pplx-context empty row): a
+  contextual model's empty-chunk branch pools the zero vector on both sides, and the cosine mapped the pair
+  to 0.0 -- failing a perfect agreement. Two zero vectors now score 1.0 (the same degenerate output); a
+  zero against a non-zero vector still scores 0.0, so a one-sided degenerate output still fails.
+
+- **The topk-embed-v1 reference promotes the remote code's 2-D text position ids** (the E2 round-7
+  reference crash): the wrapper's text branch builds 2-D rope positions (`within.unsqueeze(0)`) and
+  transformers 5.17's `Qwen3_5RotaryEmbedding.forward` reads only the 3-D mrope form
+  (`position_ids[:, :, None, :]`), so every text-only embed died with `IndexError: too many indices for
+  tensor of dimension 2`. The declared shim promotes a 2-D input to `(3, bs, positions)` -- the remote
+  code's own image branch shows the layout -- and leaves a 3-D input untouched; a CPU test pins both.
+
+- **The qwen3-vl-embedding-2b/-8b declare their measured bf16 cosine floors** (the E2 round-7 stage-2): the
+  2b declares 0.9985 (measured 0.998541 at full width and k=2048, 0.998906 at k=64; 14 of 282 comparisons
+  below the published 0.999) and the 8b 0.9983 (0.998335 at full width and k=4096, 0.998674 at k=64; 15 of
+  282). Both sides are bf16, so the residual is the two kernel stacks, not a cast; each bound sits just
+  below its measured floor, so a real regression still fails.
+
+- **The qwen3-vl-reranker-2b/-8b declare their measured probability bounds** (the E2 round-7 stage-2):
+  `p99_documents_within` was 0.9818 at the published 0.02 tolerance, with max |delta| 0.0293 (2b) /
+  0.0273 (8b) inside the published 0.05 all-documents bound and Kendall tau median 1.0. Each variant
+  declares `overrides.gates.prob_p99_abs: 0.03`, the tight tolerance covering its measured maximum.
+
+- **The embeddinggemma-2 engine runs on the FA4 backend its own config hook selects** (the E2 round-7
+  Triton crash): the TRITON_ATTN prefill kernel cannot compile for the model's full-attention head_dim 512
+  on this GPU (266240 B > 232448 B of shared memory) during model warmup, and the image's Gemma4 config
+  hook had already selected FA4 before the plugin's folded EmbeddingGemma2 hook overrode it to TRITON_ATTN
+  (the v0.31.0-based image's Gemma4 hook sets only `flash_attn_version=4` and leaves `backend` None). The
+  recipe pins `--attention-backend FLASH_ATTN` (FA4 supports any head size, all attention types and
+  SM10.x); neither `--enforce-eager` nor `--max-num-batched-tokens` changes the kernel's compile-time
+  demand, and the recipe notes record why.
 
 - **The pplx-embed-v2-context-9b-preview reference answers one matrix per query/document text** (the E2
   round-4 stage-2 shape mismatch): the reference wrote only the FIRST document's vectors, so stage 2 read

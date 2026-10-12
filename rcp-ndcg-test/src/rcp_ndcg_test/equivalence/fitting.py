@@ -27,6 +27,7 @@ __all__ = [
     "declared_shapes",
     "default_shape",
     "load_pairs",
+    "query_split_special_tokens",
     "resolved_tokenizer_spec",
     "split_special_tokens",
     "tokenizer_of",
@@ -69,12 +70,25 @@ def split_special_tokens(recipe: Recipe, shape: str) -> bool:
 
     The recipe's ``client.document_split_special_tokens`` (the pplx-embed-v2-context document contract:
     the plugin's role check reads the reference's id space, where an added SPECIAL token is textified):
-    the document shape tokenises with ``split_special_tokens=True``, the query shape and every recipe
+    the document shape tokenises with ``split_special_tokens=True``, the query shape (see
+    :func:`query_split_special_tokens`, which is not one parse of the whole render) and every recipe
     that declares nothing with the file's own parse.  One home for the flag: the product's client
     (``PoolingClient._sent_ids``) sends these ids, so every harness check that derives ids to compare
     against them reads the same declaration (R30).
     """
     return bool(shape == "document" and recipe.client.get("document_split_special_tokens"))
+
+
+def query_split_special_tokens(recipe: Recipe) -> bool:
+    """Whether the client sends the query side's reference construction (``client.query_split_special_tokens``).
+
+    The reference tokenizes the query *body* with ``split_special_tokens=True`` and prepends its prefix id
+    (pplx-embed-v2-context's remote ``prepare_inputs``), so the sent ids are the fixed head's added ids
+    followed by the split-parsed body -- not one parse of the whole render.  A check that derives the
+    query's ids therefore goes through the product's ``TemplateSpec.split_ids``, the one home of the rule
+    the client sends (R30); this function is only the declaration's reader.
+    """
+    return bool(recipe.client.get("query_split_special_tokens"))
 
 
 def declared_shapes(recipe: Recipe) -> list[str]:

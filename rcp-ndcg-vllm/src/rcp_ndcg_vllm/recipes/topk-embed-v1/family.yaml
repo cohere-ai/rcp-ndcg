@@ -321,7 +321,13 @@ notes: |
   shim's class-level check never fired; the shim now reads the new name from the class or from the
   attribute its `__init__` assigns, and the remote code's subclass inherits the alias), so reference.py's
   declared `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's
-  stack. The reference's load()
+  stack. The r4 wave then hit the second 5.9-vs-5.17 divergence on the same path: the wrapper's text
+  branch builds 2-D rope positions (`topk_embed_st.py` `_position_ids`: `within.unsqueeze(0)`), and
+  transformers 5.17's `Qwen3_5RotaryEmbedding.forward` reads only the 3-D mrope form
+  (`position_ids[:, :, None, :]`, `modeling_qwen3_5.py:192`), so every text-only embed died with
+  `IndexError: too many indices for tensor of dimension 2`; reference.py's declared
+  `_promote_qwen3_5_rope_position_ids` shim promotes a 2-D input to `(3, bs, positions)` (the remote
+  code's own image branch already stacks that shape) and leaves a 3-D input untouched. The reference's load()
   asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers change fails
   loudly.
 
