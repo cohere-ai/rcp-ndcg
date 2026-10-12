@@ -66,7 +66,10 @@ SERVE = {
         "--media-io-kwargs",
         '{"video": {"fps": 60, "max_frames": 32}}',
         "--attention-backend",
-        "FLASH_ATTN",
+        # E2 round 8: the heterogeneous head dims (sliding 256, full 512) leave no default backend --
+        # TRITON_ATTN's tile needs 266240 B of shared memory against the 232448 B limit, FA4's kernel
+        # caps head_dim at 256, and TORCH_SDPA is not a decoder backend on this image.
+        "FLEX_ATTENTION",
     ],
 }
 CLIENT = {
@@ -254,25 +257,36 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 60, "max_frames": 32}}'
 
 
-def test_the_engine_uses_the_backend_the_gemma4_hook_selected() -> None:
-    """E2 round 7: the engine now reaches model load and dies in the TRITON_ATTN prefill kernel --
-    ``triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 266240,
-    Hardware limit: 232448`` at ``triton_prefill_attention.py`` ``context_attention_fwd``, during
-    ``compile_or_warm_up_model`` (the nightly wave's serve log). The demand is compile-time
-    (head_dim 512 x BLOCK 128), so neither ``--enforce-eager`` (the crash is not a graph or compile
-    one: pooling already overrides the cudagraph mode to NONE) nor ``--max-num-batched-tokens`` (the
-    kernel's BLOCK sizes come from the dtype and head_dim, not the sequence length) lowers it; the
-    lever is the attention backend. The image's own Gemma4 config hook had already selected FA4 for
-    this model's heterogeneous head dimensions ("Using FA4 for all layers", the serve log), and the
-    plugin's folded EmbeddingGemma2 hook then overrode it to TRITON_ATTN (on the v0.31.0-based image
-    the Gemma4 hook sets only ``flash_attn_version=4`` and leaves ``backend`` None, so the folded
-    hook's "no backend requested" branch fires). The recipe therefore pins
-    ``--attention-backend FLASH_ATTN``: FA4 supports any head size, all attention types (encoder-only
-    included) and SM10.x, and an invalid backend fails loudly at startup instead of silently."""
+def test_the_engine_uses_a_backend_that_can_run_the_heterogeneous_head_dims() -> None:
+    """E2 rounds 7-8: the model's heterogeneous head dimensions (sliding 256, full 512) leave no
+    default backend on this image. TRITON_ATTN cannot compile its prefill kernel for head_dim 512
+    (``triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 266240,
+    Hardware limit: 232448`` at ``triton_prefill_attention.py`` ``context_attention_fwd``, the
+    round-7 serve log), and FA4 -- which the image's own Gemma4 config hook selects for these
+    dimensions -- then dies in its kernel (``FlashAttention forward only supports head dimension at
+    most 256``, the round-8 wave). Neither ``--enforce-eager`` nor ``--max-num-batched-tokens`` moves
+    a compile-time demand (round 7), and the Triton tile cannot be narrowed either: ``BLOCK`` comes
+    from ``get_block_size(dtype)`` (128 for bf16 on SM10x) and only ROCm narrows ``BLOCK_N``. The
+    fallback order is in the notes: ``TORCH_SDPA`` is refused for decoder attention on the
+    v0.31.0-based image (the enum's value is the empty string -- "this tag is only used for ViT" -- so
+    the manual-selection path's ``get_class()`` raises ``Backend TORCH_SDPA must be registered before
+    use``), and ``FLEX_ATTENTION`` is the pin: no head-size restriction, bf16, the model's
+    encoder-only/sliding/non-causal attention, and the image-token full attention all supported. An
+    invalid backend fails loudly at startup instead of silently."""
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
-    assert argv[argv.index("--attention-backend") + 1] == "FLASH_ATTN"
-    for evidence in ("266240", "232448", "FLASH_ATTN", "head_dim 512", "--enforce-eager"):
+    assert argv[argv.index("--attention-backend") + 1] == "FLEX_ATTENTION"
+    for evidence in (
+        "266240",
+        "232448",
+        "FLASH_ATTN",
+        "head_dim 512",
+        "--enforce-eager",
+        "TORCH_SDPA",
+        "must be registered before use",
+        "FLEX_ATTENTION",
+        "head dimension at most 256",
+    ):
         assert evidence in recipe.notes, evidence
 
 
