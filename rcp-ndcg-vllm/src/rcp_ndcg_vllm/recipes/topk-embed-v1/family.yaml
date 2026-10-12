@@ -304,40 +304,61 @@ notes: |
   the model card's own published path (config_sentence_transformers.json: model_type
   MultiVectorEncoder, similarity MaxSim; modules.json: topk_embed_st.TopkEmbedTransformer). Its
   environment is the checkpoint's requirements.txt pins, declared in reference.in/reference.lock
-  (torch 2.11.0, torchvision 0.26.0, transformers >= 5.10.4,< 5.18.0, sentence-transformers 6.0.1,
+  (torch 2.11.0, torchvision 0.26.0, transformers==5.9.0, sentence-transformers 6.0.1,
   flash-linear-attention 0.5.1, kernels 0.14.1, safetensors >= 0.7.0, Pillow >= 12.0; GPU for the
-  embed mode; render mode needs only huggingface_hub and tokenizers). The two render-mode names are
-  pinned inside the range the family's own transformers==5.17.0 declares (Requires-Dist:
-  huggingface-hub<2.0,>=1.5.0, tokenizers<0.24.0,>=0.23.1): left unpinned, `uv pip compile --no-deps`
-  resolved huggingface-hub to 2.2.0 -- a version the family's own transformers forbids -- so the
-  bootstrap's completion step moved the venv's copy to a wheelhouse version and the import check
-  failed with only the version mismatch (the r4 wave: `huggingface-hub is installed at 1.33.0, the
-  lock pins 2.2.0`). The lock now pins 1.33.0 (the image's, inside the range) and the reference-env
-  check names any pin another pin's requirement forbids. The checkpoint pins
-  transformers 5.9.0; its remote hf_backbone.py:178 reads `layer.layer_type`, which transformers 5.17
-  renamed to `block_type` (GPU-E1: the unshimmed load crashed there; the r4 wave re-crashed with
-  `AttributeError: 'PackedQwen3_5DecoderLayer' object has no attribute 'layer_type'`, because 5.17 sets
-  `block_type` on the INSTANCE -- `__init__`: `self.block_type = config.layer_types[layer_idx]` -- so the
-  shim's class-level check never fired; the shim now reads the new name from the class or from the
-  attribute its `__init__` assigns, and the remote code's subclass inherits the alias), so reference.py's
-  declared `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's
-  stack. The r4 wave then hit the second 5.9-vs-5.17 divergence on the same path: the wrapper's text
-  branch builds 2-D rope positions (`topk_embed_st.py` `_position_ids`: `within.unsqueeze(0)`), and
-  transformers 5.17's `Qwen3_5TextRotaryEmbedding.forward` reads only the 3-D mrope form
-  (`position_ids[:, :, None, :]`, `modeling_qwen3_5.py:192`), so every text-only embed died with
-  `IndexError: too many indices for tensor of dimension 2`. The class is the one the remote code calls:
-  `Qwen3_5TextModel.__init__` assigns `self.rotary_emb = Qwen3_5TextRotaryEmbedding(config=config)` and
-  the remote `PackedQwen3_5TextModel.forward` calls `self.rotary_emb(inputs_embeds, position_ids)`. The
-  checkpoint's own 5.9.0 pin carried the 2-D branch in that class's forward (`position_ids[None, ...]
-  .expand(3, position_ids.shape[0], -1)`); 5.17 removed it. Reference.py's declared
-  `_promote_qwen3_5_rope_position_ids` shim restores the branch on the class the remote code calls --
-  promoting a 2-D input to `(3, bs, positions)`, exactly 5.9.0's own promotion, and leaving a 3-D input
-  untouched. Round 7's version imported `Qwen3_5RotaryEmbedding`, a name no transformers release defines
-  (5.9.0 and 5.17.0 both carry `Qwen3_5TextRotaryEmbedding`), so the import raised and the shim returned
-  silently; the r8 wave still raised the same `IndexError` at line 192. The shim now resolves the class
-  from the module and raises loudly when the module exists without it -- never a silent no-op. The
-  reference's load() asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers
-  change fails loudly.
+  embed mode; render mode needs only huggingface_hub and tokenizers). The family is own-torch: the
+  bootstrap builds its reference venv WITHOUT --system-site-packages (jobs/bootstrap.sh), so the
+  lock's pins ARE the environment and the image's transformers is never involved. The two
+  render-mode names are pinned inside the range the family's own transformers==5.9.0 declares
+  (Requires-Dist: huggingface-hub<2.0,>=1.5.0, tokenizers<=0.23.0,>=0.22.0): left unpinned,
+  `uv pip compile --no-deps` resolves the newest release, which the family's own pin forbids -- so
+  the bootstrap's completion step fails the import check (the r4 wave's huggingface-hub incident:
+  `huggingface-hub is installed at 1.33.0, the lock pins 2.2.0`). The lock pins 1.33.0 (inside the
+  range) and tokenizers 0.22.2 (the newest release 5.9.0's range allows; 0.23.0 was never
+  published), and the reference-env check names any pin another pin's requirement forbids.
+
+  Round 9 pinned transformers==5.9.0 -- the checkpoint's own release -- after the remote
+  hf_backbone.py:111 call `self.chunk_gated_delta_rule(...)` died on the image's stack with
+  `AttributeError: 'PackedGatedDeltaNet' object has no attribute 'chunk_gated_delta_rule'`. 5.9.0's
+  `Qwen3_5GatedDeltaNet.__init__` assigns that instance attribute
+  (`self.chunk_gated_delta_rule = chunk_gated_delta_rule or torch_chunk_gated_delta_rule`,
+  modeling_qwen3_5.py:422) and its own forward calls it (:535); 5.17.0 removed the attribute (its
+  forward calls the module-level `torch_chunk_gated_delta_rule`, :639), whose signature takes
+  `**kwargs` and never reads the `cu_seqlens` the remote code passes to keep packed documents
+  apart -- so delegating the call to the 5.17 name would silently change packed-document numerics,
+  and a shim was refused for that reason. The earlier `>=5.10.4,<5.18.0` range was written to run
+  the reference on "the image's transformers stack"; that rationale does not hold for this family
+  (own-torch: the venv reads nothing from the image, and decision 35's design is exactly "a
+  checkpoint's remote code needing an older release"), so the family declares the checkpoint's own
+  pin and the earlier rounds' divergences stop applying. The divergences below remain the history
+  of the earlier waves, and reference.py's declared shims are inert under 5.9.0:
+  - the r4 wave: the remote hf_backbone.py:178 reads `layer.layer_type`, which transformers 5.17
+    renamed to `block_type` (GPU-E1: the unshimmed load crashed there; the r4 wave re-crashed with
+    `AttributeError: 'PackedQwen3_5DecoderLayer' object has no attribute 'layer_type'`, because
+    5.17 sets `block_type` on the INSTANCE -- `__init__`: `self.block_type =
+    config.layer_types[layer_idx]` -- so the shim's class-level check never fired; the shim now
+    reads the new name from the class or from the attribute its `__init__` assigns, and the remote
+    code's subclass inherits the alias). 5.9.0 carries `layer_type` itself, so the alias installs
+    nothing on the pinned stack.
+  - the r4/r8 rope divergence: the wrapper's text branch builds 2-D rope positions
+    (`topk_embed_st.py` `_position_ids`: `within.unsqueeze(0)`), and transformers 5.17's
+    `Qwen3_5TextRotaryEmbedding.forward` reads only the 3-D mrope form
+    (`position_ids[:, :, None, :]`, `modeling_qwen3_5.py:192`), so every text-only embed died with
+    `IndexError: too many indices for tensor of dimension 2`. The class is the one the remote code
+    calls: `Qwen3_5TextModel.__init__` assigns `self.rotary_emb =
+    Qwen3_5TextRotaryEmbedding(config=config)` and the remote `PackedQwen3_5TextModel.forward`
+    calls `self.rotary_emb(inputs_embeds, position_ids)`. The checkpoint's own 5.9.0 pin carries
+    the 2-D branch in that class's forward (`position_ids[None, ...].expand(3,
+    position_ids.shape[0], -1)`); 5.17 removed it. Reference.py's declared
+    `_promote_qwen3_5_rope_position_ids` shim restores the branch on the class the remote code
+    calls -- promoting a 2-D input to `(3, bs, positions)`, exactly 5.9.0's own promotion, and
+    leaving a 3-D input untouched. Round 7's version imported `Qwen3_5RotaryEmbedding`, a name no
+    transformers release defines (5.9.0 and 5.17.0 both carry `Qwen3_5TextRotaryEmbedding`), so the
+    import raised and the shim returned silently; the r8 wave still raised the same `IndexError` at
+    line 192. The shim now resolves the class from the module and raises loudly when the module
+    exists without it -- never a silent no-op.
+  The reference's load() asserts the MultiVectorEncoder surface it relies on, so a
+  sentence-transformers change fails loudly.
 
   What the GPU wave must check (NOT MEASURED on CPU):
   - Per-token cosine + MaxSim of served vs reference on real weights (the 6 full-attention
