@@ -110,6 +110,19 @@ specials included) and the stratum is judged on the rendered input: `long_under`
    case (file level everywhere, recipe level where the recipe exists; the measured token lengths run in
    the network-marked test, because a recipe whose tokenizer lives on the Hub cannot load offline), so a
    malformed case fails CI.
+4. Fill the generated cases' expected values from the recipe's **reference implementation** (never from
+   the engine, never by hand):
+
+   ```bash
+   uv run --no-sync python -m rcp_ndcg_test.case_fill --recipe <variant-id> \
+       --reference-python <the family's reference venv's python>
+   ```
+
+   The tool runs the reference once over every pending case's inputs (the pairs rows the reference already
+   reads) and writes its own outputs into the case YAML — `values`, `status: reproduced`, and the pending
+   note's sentence retired. A media-bearing case and a kind the mode cannot produce are refused by name
+   before the reference runs, so nothing is half-filled; a `kind: none` case carries no values by design
+   and is left alone. `--device` and `--budget-s` bound and place the reference subprocess.
 
 Media: only files whose licence allows redistribution in an Apache-2.0 repository; otherwise generate a
 synthetic image or video with a script kept in the case directory as `media/make_media.py` and say so in

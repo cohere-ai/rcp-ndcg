@@ -44,11 +44,12 @@ source:
   kind: generated
 expected:
   kind: scores
-  values: null
+  values:
+  - - 0.9921875
   tolerance:
     abs: 0.02
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'Generated for the stratum cell modality=text, length=long_over, batch=single. Documents are exact
   repetitions of fixed original filler sentences authored for this lane (no external text), padded with
   single-token filler words to the recorded count; built deterministically (no randomness at build or
@@ -64,7 +65,6 @@ notes: 'Generated for the stratum cell modality=text, length=long_over, batch=si
   tokens, suffix re-attached) while the served path cuts the query''s share first, so the two may keep
   different content tokens; the wave records both scores and reports over-cap pairs separately, without
   the score gate. Scores are probability-scale (use_activation true; the served head scores sigmoid, the
-  reference softmax([no, yes])[yes] of token ids 2152/9693): expected.values are filled at the GPU wave
-  from the recipe''s reference implementation and the engine, both recorded, gated at the declared abs
+  reference softmax([no, yes])[yes] of token ids 2152/9693): expected.values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; the wave conformance run compares the served engine against them), gated at the declared abs
   0.02 (the stage-2 gate for probability-scale scores: at most 0.02 for 99% of documents, 0.05
-  for all). status pending_gpu.'
+  for all). status reproduced (values filled from the reference implementation on cpu, 2026-10-12).'

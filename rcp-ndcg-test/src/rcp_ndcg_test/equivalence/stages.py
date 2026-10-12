@@ -31,7 +31,7 @@ from rcp_ndcg_test.errors import HarnessError
 from . import fitting
 from .fitting import load_pairs
 from .gates import kendall_tau_b, resolve_gates
-from .reference import reference_of, run_reference
+from .reference import reference_entry, reference_of, run_reference
 from .wire import Capture, prompt_tokens, role_client
 
 __all__ = [
@@ -905,10 +905,7 @@ def _render_check(
     """
     if reference_python is None:
         return {"status": "not_run", "passed": None, "reason": "no --reference-python given"}
-    recipe_dir = recipe._dir
-    if recipe_dir is None:  # pragma: no cover - load_recipe sets it
-        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory; use load_recipe")
-    entry = str(recipe_dir / reference_of(recipe).entry)
+    entry = reference_entry(recipe)
     user_rows = [row for row in sampled if not row.get("over_length")]
     served_by_key = _served_texts_by_row(recipe, probe, sampled)
     reference_rows, origin = _reference_rows(recipe, user_rows)
@@ -1958,7 +1955,7 @@ def _reference_outputs(
     recipe_dir = recipe._dir
     if recipe_dir is None:  # pragma: no cover - load_recipe sets it
         raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
-    entry = str(recipe_dir / reference_of(recipe).entry)
+    entry = reference_entry(recipe)
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         pairs_path = Path(work) / "pairs.jsonl"
         out_path = Path(work) / "reference.json"
@@ -2447,13 +2444,13 @@ def _compare_shape(
             }
         )
         return
-    for index, (served_matrix, reference_entry) in enumerate(zip(served_vectors, expected, strict=True)):
+    for index, (served_matrix, reference_item) in enumerate(zip(served_vectors, expected, strict=True)):
         over = bool(cut_flags[index]) if cut_flags and index < len(cut_flags) else False
         # A reference entry is one vector (wrap it) or one ragged matrix per text (use it as given).
         expected_matrix = (
-            reference_entry
-            if isinstance(reference_entry, list) and (not reference_entry or isinstance(reference_entry[0], list))
-            else [reference_entry]
+            reference_item
+            if isinstance(reference_item, list) and (not reference_item or isinstance(reference_item[0], list))
+            else [reference_item]
         )
         if len(served_matrix) != len(expected_matrix):
             per_vector.append(

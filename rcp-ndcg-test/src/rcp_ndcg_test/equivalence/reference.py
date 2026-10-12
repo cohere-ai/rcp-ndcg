@@ -54,7 +54,7 @@ from rcp_ndcg_vllm.recipe import Recipe, ReferenceSpec
 from rcp_ndcg_test.errors import HarnessError
 from rcp_ndcg_test.stepwatch import current_watch
 
-__all__ = ["REFERENCE_MODES", "reference_of", "run_reference"]
+__all__ = ["REFERENCE_MODES", "reference_entry", "reference_of", "run_reference"]
 
 REFERENCE_MODES = ("render", "score", "embed", "media")
 
@@ -74,6 +74,21 @@ def reference_of(recipe: Recipe) -> ReferenceSpec:
             "embed/rerank recipes -- a judge's conformance is `rcp-ndcg judge check` and the T4 scenarios"
         )
     return recipe.reference
+
+
+def reference_entry(recipe: Recipe) -> str:
+    """The recipe's reference subprocess entry file: its family directory plus ``reference.entry``.
+
+    One home for the path the reference subprocess is launched with (stages 1-2, the media stage and the
+    case fill read it the same way).
+
+    Raises:
+        HarnessError: the recipe is a judge recipe (no reference), or it was not loaded from a directory.
+    """
+    directory = recipe._dir
+    if directory is None:
+        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory; use load_recipe")
+    return str(Path(directory) / reference_of(recipe).entry)
 
 
 """The reference CLI's modes: ``render`` for stage 1's id comparison, ``score`` and ``embed`` for stage 2, ``media``

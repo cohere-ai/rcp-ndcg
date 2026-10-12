@@ -219,13 +219,33 @@ def _listwise_builder(recipe: Any):
 @functools.cache
 def _build_emulator(recipe_id: str) -> Any:
     """The one emulator of ``recipe_id``, built once per process (facts from the recipe and its corpus)."""
+    from rcp_ndcg_test.fingerprint import behaviour_fingerprint
+
+    recipe = load_recipe(recipe_id)
+    corpus = corpus_of(recipe)
+    emulator = emulator_over(recipe_id, corpus)
+    assert emulator.verified is not None
+    emulator.require_verified_for(
+        recipe.id, recipe.revision, behaviour_fingerprint(recipe), str(corpus.manifest["engine"]["version"])
+    )
+    return emulator
+
+
+def emulator_over(recipe_id: str, corpus: Any) -> Any:
+    """The recipe's emulator over a given corpus, registered for the recipe's id.
+
+    The standard build (:func:`_build_emulator`) resolves the corpus through the staleness gate, which
+    refuses a declared-stale recipe; this seam takes the corpus the caller resolved (the stale-corpus
+    replay: the recorded exchanges are still the recipe's behaviour, and only the fingerprint inputs
+    moved).  The emulator's own verification guard still applies: it was verified against this corpus's
+    manifest.
+    """
     harness()
     from rcp_ndcg_test.engines import EngineFacts, VllmEmulator, registry
-    from rcp_ndcg_test.fingerprint import behaviour_fingerprint, load_recipe_tokenizer
+    from rcp_ndcg_test.fingerprint import load_recipe_tokenizer
 
     recipe = load_recipe(recipe_id)
     tokenizer = load_recipe_tokenizer(recipe)
-    corpus = corpus_of(recipe)
     # The engine-side Matryoshka gate is the serve block's own declaration (a checkpoint's config.json
     # carries neither key; the recipe enables the gate through serve.hf_overrides, which is also what the
     # engine is served with).
@@ -241,10 +261,6 @@ def _build_emulator(recipe_id: str) -> Any:
         matryoshka_dimensions=declared_dims or None,
     )
     emulator = VllmEmulator.from_corpus(corpus, prompt_strategy(recipe, tokenizer), tokenizer, facts)
-    assert emulator.verified is not None
-    emulator.require_verified_for(
-        recipe.id, recipe.revision, behaviour_fingerprint(recipe), str(corpus.manifest["engine"]["version"])
-    )
     registry.register(emulator)
     return emulator
 
