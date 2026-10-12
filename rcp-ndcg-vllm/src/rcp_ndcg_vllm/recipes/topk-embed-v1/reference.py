@@ -200,16 +200,34 @@ def render(
     return {"rows": out_rows}
 
 
+def _carries_new_name(layer_cls: Any) -> bool:
+    """Whether the class carries transformers' new ``block_type`` name.
+
+    transformers 5.17's ``Qwen3_5DecoderLayer.__init__`` sets ``self.block_type =
+    config.layer_types[layer_idx]`` -- an INSTANCE attribute, so ``hasattr`` on the class is False and a
+    class-level check never fires (the r4 wave's ``hf_backbone.py:178`` ``AttributeError:
+    'PackedQwen3_5DecoderLayer' object has no attribute 'layer_type'``: the remote subclass inherits
+    whatever the shim installs on the base class). The compiled ``__init__`` names every attribute its
+    body assigns, which is what tells the new naming apart from a class with neither name.
+    """
+    if hasattr(layer_cls, "block_type"):
+        return True
+    code = getattr(getattr(layer_cls, "__init__", None), "__code__", None)
+    return code is not None and "block_type" in code.co_names
+
+
 def _alias_qwen3_5_layer_type(layer_cls: Any = None) -> None:
     """Alias transformers' renamed ``layer_type`` attribute for the checkpoint's remote code.
 
     The checkpoint's ``hf_backbone.patch_packing`` reads ``layer.layer_type`` (the transformers 5.9
-    attribute its own ``requirements.txt`` pins); transformers 5.17's ``Qwen3_5DecoderLayer`` renamed it
-    to ``block_type``. When only the new name exists, the old one is aliased to it -- a declared shim, so
+    attribute its own ``requirements.txt`` pins); transformers 5.10+ renamed it to ``block_type``. When
+    only the new name exists -- as a class attribute or as the instance attribute the class's
+    ``__init__`` assigns (:func:`_carries_new_name`) -- the old one is aliased to it: a declared shim, so
     the reference runs on the image's transformers stack (GPU-E1: the unshimmed load crashed at
     ``hf_backbone.py:178`` with ``AttributeError: 'Qwen3_5DecoderLayer' object has no attribute
-    'layer_type'``). Nothing else is patched: a checkpoint whose remote code needs more of 5.9 fails
-    loudly at its own call.
+    'layer_type'``; the r4 wave re-crashed there because the class-level check could not see 5.17's
+    instance attribute). Nothing else is patched: a checkpoint whose remote code needs more of 5.9, or a
+    runtime whose class carries neither name, fails loudly at its own call.
 
     Args:
         layer_cls: The decoder-layer class to shim; ``None`` imports transformers' own. A seam for the
@@ -220,7 +238,7 @@ def _alias_qwen3_5_layer_type(layer_cls: Any = None) -> None:
             from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5DecoderLayer as layer_cls
         except ImportError:  # a transformers without the class: the remote code will say so itself
             return
-    if not hasattr(layer_cls, "layer_type") and hasattr(layer_cls, "block_type"):
+    if not hasattr(layer_cls, "layer_type") and _carries_new_name(layer_cls):
         layer_cls.layer_type = property(lambda self: self.block_type)  # type: ignore[attr-defined]
 
 

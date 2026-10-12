@@ -315,8 +315,13 @@ notes: |
   lock pins 2.2.0`). The lock now pins 1.33.0 (the image's, inside the range) and the reference-env
   check names any pin another pin's requirement forbids. The checkpoint pins
   transformers 5.9.0; its remote hf_backbone.py:178 reads `layer.layer_type`, which transformers 5.17
-  renamed to `block_type` (GPU-E1: the unshimmed load crashed there), so reference.py's declared
-  `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's stack. The reference's load()
+  renamed to `block_type` (GPU-E1: the unshimmed load crashed there; the r4 wave re-crashed with
+  `AttributeError: 'PackedQwen3_5DecoderLayer' object has no attribute 'layer_type'`, because 5.17 sets
+  `block_type` on the INSTANCE -- `__init__`: `self.block_type = config.layer_types[layer_idx]` -- so the
+  shim's class-level check never fired; the shim now reads the new name from the class or from the
+  attribute its `__init__` assigns, and the remote code's subclass inherits the alias), so reference.py's
+  declared `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's
+  stack. The reference's load()
   asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers change fails
   loudly.
 

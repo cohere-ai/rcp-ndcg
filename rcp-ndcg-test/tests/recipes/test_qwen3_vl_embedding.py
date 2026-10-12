@@ -619,6 +619,57 @@ def test_the_reference_reads_media_rows_into_the_cards_own_inputs() -> None:
                 module.side_parts("", entries)
 
 
+def test_the_reference_processes_each_input_on_its_own(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The card's ``process`` batches every input into one processor call; transformers' processor
+    replaces every multimodal placeholder spelling found in the batch's texts from ONE shared iterator
+    per modality (``processing_utils.get_text_with_replacements``), so a text row carrying the
+    tokenizer's literal image/video placeholder spellings -- the pairs' special-token-spellings
+    stratum, which the served engine tokenizes as plain special ids -- consumes the batch's media
+    replacements and the call dies with StopIteration (reproduced against the real processor and
+    transformers 5.19 on the wave's pairs; 5.10.4 carries the same shared iterator). The reference
+    therefore calls the card's ``process`` once per input -- the card pools per sequence, so each
+    vector is unchanged -- and this pins that contract plus the positional pairing of the assembled
+    rows. No model weights: the fake card records every call's input count."""
+    import types
+
+    module = _reference_module()
+    calls: list[int] = []
+
+    class _FakeModel:
+        def to(self, device):
+            return self
+
+    class _FakeCard:
+        """The card's ``Qwen3VLEmbedder`` surface: the conversation builder plus ``process``."""
+
+        def __init__(self, model_name_or_path: str) -> None:
+            self.model = _FakeModel()
+
+        def format_model_input(self, **kwargs):
+            return [{"role": "user", "content": [{"type": "text", "text": str(kwargs.get("text") or "NULL")}]}]
+
+        def process(self, inputs, normalize=True):  # noqa: ARG002
+            calls.append(len(inputs))
+            return [[float(len(calls) - 1)] for _ in inputs]
+
+    card = types.ModuleType("qwen3_vl_embedding")
+    card.Qwen3VLEmbedder = _FakeCard  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "qwen3_vl_embedding", card)
+    hub = types.ModuleType("huggingface_hub")
+    hub.snapshot_download = lambda *args, **kwargs: "/stub/checkpoint"  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+
+    recipe = load_recipe("qwen3-vl-embedding-2b").model_dump(mode="json")
+    pairs = [{"query": "q0", "documents": ["d0", "d1"]}, {"query": "q1", "documents": ["d2"]}]
+    document = module.mode_embed(recipe, pairs, "cpu")
+    assert calls == [1, 1, 1, 1, 1], "one process call per input, never one call over the whole batch"
+    rows = document["rows"]
+    assert rows[0]["query_vectors"] == [[0.0]]
+    assert rows[0]["document_vectors"] == [[2.0], [3.0]]
+    assert rows[1]["query_vectors"] == [[1.0]]
+    assert rows[1]["document_vectors"] == [[4.0]]
+
+
 @pytest.mark.network
 def test_the_engine_media_count_holds_under_the_pin_and_fails_unpinned(
     tmp_path: Path, tmp_path_factory: pytest.TempPathFactory

@@ -254,6 +254,15 @@ notes: |-
   are scored like text rows and gate by the same score rule; the retired query_image/documents_images
   columns are refused loudly, never scored as text. The media stage still gates placement, geometry
   and tokens.
+  One declared deviation from the card's script (E2 round 4): the reference hands the model a TENSOR
+  `mm_token_type_ids`. The card's `tokenize` calls the processor without `return_tensors` (it truncates
+  `input_ids` in place, which needs lists), and transformers' processor answers `mm_token_type_ids` as a
+  list of lists; the pinned model's `get_rope_index` indexes it as a tensor
+  (`input_token_type[attention_mask[batch_idx].bool()]`, modeling_qwen3_vl.py:996 at transformers
+  5.17.0), so every image-bearing row died with `TypeError: only integer tensors of a single element can
+  be converted to an index` while text-only rows passed (they never reach `get_rope_index`). The
+  reference rebuilds the types for the truncated/padded ids with the processor's own builder -- the type
+  of every kept token is unchanged by the cut -- and hands the model a tensor of the padded shape.
 
 variants:
   - id: qwen3-vl-reranker-2b
@@ -262,6 +271,22 @@ variants:
   - id: qwen3-vl-reranker-8b
     model: Qwen/Qwen3-VL-Reranker-8B
     revision: "b212dc8c91a8164aef1ea2de9c1a867611e75c04"
+    overrides:
+      serve:
+        # The family's scorer keys restated (a per-variant serve key replaces the family's value at that
+        # path) plus the text-config tie declaration vLLM's seq-cls weight loader reads. The 8b's
+        # config.json declares tie_word_embeddings false at the top level only: its text_config carries
+        # no such key (the 2b's does), so vLLM's adapters.py:542/611 (`if
+        # text_config.tie_word_embeddings:`) died at model load with `AttributeError: 'Qwen3VLTextConfig'
+        # object has no attribute 'tie_word_embeddings'` (the r4 wave's engine init). Untied is this
+        # checkpoint's fact: it ships an lm_head of its own. Dict-valued hf_overrides entries are applied
+        # to the nested config object (vllm/config/model.py `_apply_dict_overrides` -> `_update_nested`).
+        hf_overrides:
+          architectures: ["Qwen3VLForSequenceClassification"]
+          classifier_from_token: ["no", "yes"]
+          is_original_qwen3_reranker: true
+          head_dtype: model
+          text_config: {tie_word_embeddings: false}
     notes: >-
       Per-size facts, read at the pinned revision. Architecture: Qwen3VLForConditionalGeneration
       (config.json:architectures); text_config.hidden_size 4096, 36 layers, 32 attention heads,
@@ -295,6 +320,19 @@ variants:
       MAX_LENGTH 8192, the same truncation and the same default instruction). The family's ONE
       reference loads this row's checkpoint from the resolved recipe's model/revision (--recipe) and its
       tokenizer's own 1_LogitScore/config.json.
+      Untied embeddings and the engine's text config (E2 round 4): the 8b's config.json declares
+      tie_word_embeddings false at the top level, and its text_config carries NO tie_word_embeddings key
+      (the 2b's text_config does -- the difference between the two checkpoints' config.json files), so
+      vLLM's seq-cls weight loader, which reads text_config.tie_word_embeddings
+      (vllm/model_executor/models/adapters.py:542 and :611 at v0.31.0), raised AttributeError:
+      'Qwen3VLTextConfig' object has no attribute 'tie_word_embeddings' at model load while the 2b
+      served. The variant's overrides.serve.hf_overrides restates the family's scorer keys and declares
+      text_config.tie_word_embeddings false -- vLLM applies a dict-valued hf_overrides entry to the
+      nested config object (vllm/config/model.py _apply_dict_overrides -> _update_nested), so the loader
+      sees the checkpoint's own untied fact and builds the lm_head instead of tying it to the
+      embeddings. The 2b keeps the family's dict: its checkpoint already declares the tie inside
+      text_config, and the two sizes disagree. The engine-init fix is GPU-confirmed by the next wave
+      (T0 model load).
     sources:
       - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Reranker-8B (sha b212dc8c91a8164aef1ea2de9c1a867611e75c04, gated false, cardData.license apache-2.0; checked 2026-10-09)"
       - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144, top-level tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24])"
