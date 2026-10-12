@@ -28,9 +28,11 @@ REFERENCE_DEPS = JOBS / "reference_deps.py"
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" / "wave0.sh"
 E2E_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" / "e2e.sh"
 CASEFILL_SH = JOBS / "casefill.sh"
+JUDGECHECK_SH = JOBS / "judgecheck.sh"
+JUDGECHECK_PROBE = JOBS / "judgecheck_probe.py"
 WAVE0_HOST = JOBS / "wave0_host.py"
 
-SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH)
+SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH)
 
 needs_shellcheck = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 
@@ -1170,7 +1172,7 @@ def test_submit_refuses_an_unknown_script(tmp_path: Path, monkeypatch: pytest.Mo
         tmp_path, monkeypatch, "--script", "deploy", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a"
     )
     assert completed.returncode == 2
-    assert "bootstrap, wave0, e2e or casefill" in completed.stderr
+    assert "bootstrap, wave0, e2e, casefill or judgecheck" in completed.stderr
 
 
 def test_submit_forwards_record_corpus_only_when_the_operator_set_it(
@@ -1877,3 +1879,429 @@ def test_rc_build_pin_check_refuses_a_missing_core_pin(tmp_path: Path) -> None:
     completed = _check_pins(tmp_path, core_pin="")
     assert completed.returncode != 0
     assert "rcp-ndcg-core==0.0.1" in completed.stderr
+
+
+# --- judgecheck.sh: the release checklist's judge item (both thinking modes, the media probe) --------
+
+
+#: The ten shipped judges, in the script's own order: the six the release checklist names first (a
+#: time-boxed run covers them before the four Gemma 4 judges).
+JUDGE_PRIORITY = (
+    "qwen3.5-397b-a17b-nvfp4",
+    "gpt-oss-120b",
+    "qwen3.6-27b-fp8",
+    "qwen3.8-27b-fp8",
+    "qwen3.8-flash-next-fp8",
+    "qwen3.8-flash-next-nvfp4",
+)
+JUDGE_EXTRA = ("gemma-4-12b-it", "gemma-4-26b-a4b-it", "gemma-4-26b-a4b-nvfp4", "gemma-4-31b-it-nvfp4")
+JUDGES = JUDGE_PRIORITY + JUDGE_EXTRA
+
+
+def _judgecheck_recipes() -> list[str]:
+    """The recipe ids the script's RECIPES array names, in order."""
+    import re
+
+    text = JUDGECHECK_SH.read_text(encoding="utf-8")
+    block = text.split("RECIPES=(", 1)[1].split(")", 1)[0]
+    return re.findall(r'^\s*"([^"]+)"\s*$', block, flags=re.MULTILINE)
+
+
+def test_judgecheck_pins_the_ten_judges_to_the_catalog_and_the_checklists_six_first() -> None:
+    """The script's ten ids are exactly the catalog's judge variants, the checklist's six first: a renamed
+    recipe or a new judge fails here first (the casefill recipe/family pin's shape)."""
+    from rcp_ndcg_vllm.recipe import load_recipe
+
+    recipes = _judgecheck_recipes()
+    assert recipes == list(JUDGES), recipes
+    for recipe_id in recipes:
+        recipe = load_recipe(recipe_id)
+        assert recipe.role == "judge", recipe_id
+        assert recipe.client.get("tokenizer"), recipe_id  # a served judge declares its tokenizer
+    import re
+
+    recipes_root = JOBS.parents[3] / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+    judge_ids = set()
+    for family in sorted(path for path in recipes_root.iterdir() if path.is_dir()):
+        text = (family / "family.yaml").read_text(encoding="utf-8")
+        if "role: judge" not in text:
+            continue
+        judge_ids.update(re.findall(r"^\s+- id: (\S+)\s*$", text, flags=re.MULTILINE))
+    assert set(recipes) == judge_ids, sorted(judge_ids)
+
+
+def test_judgecheck_runs_each_familys_documented_thinking_modes() -> None:
+    """Only the Gemma 4 recipe documents a thinking-mode toggle: its judges run both modes (off, the shipped
+    default, and on, the declared `chat_template_kwargs` choice), and the `on` body carries the recipe's own
+    `extra_body` merged in (`--set judge.extra_body` replaces the whole block).  Every other recipe
+    documents none: its single `default` mode passes no toggle at all, never a guessed flag."""
+    from rcp_ndcg_test.jobs.judgecheck_probe import judge_modes
+    from rcp_ndcg_vllm.recipe import load_recipe
+
+    for recipe_id in JUDGES:
+        recipe = load_recipe(recipe_id)
+        shipped = recipe.client.get("extra_body") or {}
+        modes = judge_modes(recipe_id)
+        if recipe.client.get("image_processor") == "gemma4":
+            assert [row["name"] for row in modes] == ["off", "on"], modes
+            assert modes[0]["extra_body"] == {}, modes  # the shipped block is the documented default
+            assert modes[1]["extra_body"] == {**shipped, "chat_template_kwargs": {"enable_thinking": True}}, modes
+        else:
+            assert [row["name"] for row in modes] == ["default"], modes
+            assert modes[0]["extra_body"] == {}, modes  # no toggle: the recipe's own block stands
+
+
+def test_judgecheck_vision_toggle_is_the_gemma_recipe_s_documented_choice() -> None:
+    """The Gemma 4 recipe's own note documents the thinking-on toggle verbatim (`--set judge.extra_body`
+    with `chat_template_kwargs.enable_thinking`); the helper's vision-family switch is that choice, so a
+    changed recipe note fails here before the node runs a different instrument."""
+    notes = (
+        JOBS.parents[3] / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes" / "gemma-4-12b" / "family.yaml"
+    ).read_text(encoding="utf-8")
+    assert '"chat_template_kwargs": {"enable_thinking": true}' in notes
+    assert "the parser reads the template kwarg, not reasoning_effort" in notes
+
+
+def test_judgecheck_media_probe_uses_the_engines_own_stock_budget() -> None:
+    """The media probe's declared policy is the processor family's own stock budget (the engine keeps the
+    prepared size, so the engine's delta and the client's count describe the same bytes); a text-only
+    config declares none."""
+    from rcp_ndcg_test.jobs.judgecheck_probe import probe_policy
+
+    from rcp_ndcg.data.resolution import PROCESSORS
+
+    qwen = probe_policy("qwen3_vl")
+    assert (qwen.min_px, qwen.max_px) == (PROCESSORS["qwen3_vl"].min_pixels, PROCESSORS["qwen3_vl"].max_pixels)
+    gemma = probe_policy("gemma4")
+    assert gemma.max_soft_tokens == PROCESSORS["gemma4"].soft_tokens
+    assert probe_policy(None) is None
+
+
+def test_judgecheck_media_report_is_the_products_verdict() -> None:
+    """The media report runs the product's own probe (`RoleClient.check_engine_media`) under the resolved
+    policy and reports its outcome; a text-only judge is recorded `checked: false`, never silently passed."""
+
+    from rcp_ndcg_test.jobs.judgecheck_probe import media_report
+
+    from rcp_ndcg.data.prepare import MediaCensus
+    from rcp_ndcg.judging.client import JudgeConfig
+
+    class StubClient:
+        """The product's client surface the report reads: the policy it was given, the census, the probe."""
+
+        def __init__(self) -> None:
+            self.image_policy = None
+            self.media_census = MediaCensus()
+
+        async def check_engine_media(self) -> None:
+            assert self.image_policy is not None, "the report must hand the probe its policy"
+            self.media_census.record(corpus="judge", doc_id="engine_media_check:ok", media=[], dropped=False)
+
+    vision = JudgeConfig.model_validate({"model": "qwen3.5-397b-a17b-nvfp4", "image_processor": "qwen3_vl"})
+    report = media_report(vision, client=StubClient())
+    assert report["checked"] is True and report["ok"] is True and report["outcome"] == "ok", report
+    assert report["processor"] == "qwen3_vl" and report["policy"]["min_px"] == 65536, report
+
+    text_only = JudgeConfig.model_validate({"model": "gpt-oss-120b"})
+    report = media_report(text_only, client=StubClient())
+    assert report["checked"] is False and report["reason"] == "text-only", report
+
+
+def test_judgecheck_media_report_checks_an_engine_over_the_wire() -> None:
+    """The media report against a stub chat engine: an engine whose media delta equals the client's counted
+    tokens passes and both numbers are recorded; an engine whose delta differs is the product's typed
+    mismatch (never a silent pass).  The probe's prepared 224x224 image resizes to the qwen3_vl stock floor
+    (256x256 = 8x8 patches + the two vision markers = 66 media tokens)."""
+    import http.server
+    import threading
+
+    from rcp_ndcg_test.jobs.judgecheck_probe import media_report
+
+    from rcp_ndcg.judging.client import JudgeConfig
+
+    state = {"delta": 66}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - stdlib name
+            self._send({"object": "list", "data": [{"id": "qwen3.6-27b-fp8"}]})
+
+        def do_POST(self) -> None:  # noqa: N802 - stdlib name
+            payload = json.loads(self.rfile.read(int(self.headers.get("content-length", "0"))) or b"{}")
+            carries = any(
+                part.get("type") == "image_url"
+                for message in payload.get("messages", [])
+                for part in (message.get("content") if isinstance(message.get("content"), list) else [])
+                if isinstance(part, dict)
+            )
+            usage = {"prompt_tokens": 137 + (state["delta"] if carries else 0), "completion_tokens": 4}
+            answer = {
+                "id": "stub",
+                "model": payload.get("model"),
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "{}"}, "finish_reason": "stop"}],
+                "usage": usage,
+            }
+            self._send(answer)
+
+        def _send(self, document: dict) -> None:
+            body = json.dumps(document).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        config = JudgeConfig.model_validate(
+            {
+                "model": "qwen3.6-27b-fp8",
+                "image_processor": "qwen3_vl",
+                "max_images": 10,
+                "base_url": f"http://127.0.0.1:{server.server_address[1]}/v1",
+            }
+        )
+        honest = media_report(config)
+        assert honest["outcome"] == "ok" and honest["ok"] is True, honest
+        assert (honest["counted"], honest["reported"]) == (66, 66), honest
+        state["delta"] = 67
+        lying = media_report(config)
+        assert lying["outcome"] == "mismatch" and lying["ok"] is False, lying
+        assert "the client counted 66" in lying["detail"], lying
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=10)
+
+
+def test_submit_judgecheck_mounts_the_judgecheck_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The judge-check job: judgecheck.sh mounted beside bootstrap.sh (whose envs mode builds the client
+    environment) and its probe helper beside it, run with the stage and the wave's output prefix; no token
+    value in the plan."""
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "--script",
+        "judgecheck",
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "judgecheck",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    command = next(word for word in words if word.startswith("worker.command="))
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/judgecheck/judgecheck.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/judgecheck"
+    )
+    assert any(word.startswith("files.judgecheck.from_file=") and word.endswith("judgecheck.sh") for word in words)
+    assert any(
+        word.startswith("files.judgecheckprobe.from_file=") and word.endswith("judgecheck_probe.py") for word in words
+    )
+    assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    for stream in (completed.stdout, completed.stderr):
+        assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes() -> None:
+    """``JUDGECHECK_DRY=1`` prints what the node would run (the operator's plan), and runs nothing: the ten
+    judges in order, each served on its own port, both thinking modes' checks with the recipe's client block
+    and the family's toggle, the media probe, and the upload prefix."""
+    completed = subprocess.run(
+        ["bash", str(JUDGECHECK_SH), "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves/judgecheck"],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "JUDGECHECK_DRY": "1", "RCP_GCS_AUTH_FILE": "/nonexistent"},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    plan = completed.stdout
+    for index, recipe in enumerate(JUDGES):
+        port = 8100 + index
+        assert f"rcp-ndcg-vllm serve {recipe} --port {port}" in plan, plan
+        assert f"--judge {recipe} --judge-model {recipe}" in plan, plan
+        assert f"--set judge.base_url=http://127.0.0.1:{port}/v1" in plan, plan
+        assert f"modes --judge {recipe}" in plan, plan
+        assert f"media --judge {recipe}" in plan, plan
+    assert plan.count("rcp-ndcg judge check") == 10, plan  # one command shape per judge, per documented mode
+    assert "the Gemma 4 judges' two (off, on), the others'" in plan, plan
+    assert "bootstrap.sh envs" in plan and "judgecheck-wave.txt" in plan
+    assert "gs://YOUR-BUCKET/waves/judgecheck/" in plan
+    assert "continuing past a failure" in plan
+
+
+def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -> None:
+    """Drive judgecheck.sh's node path with stubs: bootstrap envs builds the client wrapper, every judge is
+    served and waited for on its own port, both thinking modes' checks run with the recipe's client block and
+    the family's toggle, the media probe runs for every judge, one judge whose engine dies does not stop the
+    next, every engine's process group is stopped, the JSONs and the report upload, and the job exits 1 with
+    the failure recorded."""
+    auth = tmp_path / "gcs_auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    gcs_log = tmp_path / "gcs.log"
+    gcs_sh = tmp_path / "gcs.sh"
+    gcs_sh.write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_cp() { printf "%s\\n" "cp $*" >> "$STUB_GCS_LOG"; }\n', encoding="utf-8"
+    )
+    helper = tmp_path / "gcs.py"
+    helper.write_text("", encoding="utf-8")
+    # The stub engine: a /v1/models server (the job's readiness wait reads it).
+    stub_engine = tmp_path / "stub_engine.py"
+    stub_engine.write_text(
+        "import http.server, json, sys\n"
+        "class H(http.server.BaseHTTPRequestHandler):\n"
+        "    def do_GET(self):\n"
+        "        body = json.dumps({'object': 'list', 'data': [{'id': sys.argv[2]}]}).encode()\n"
+        "        self.send_response(200)\n"
+        "        self.send_header('content-type', 'application/json')\n"
+        "        self.send_header('content-length', str(len(body)))\n"
+        "        self.end_headers()\n"
+        "        self.wfile.write(body)\n"
+        "    def log_message(self, *args):\n"
+        "        pass\n"
+        "http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()\n",
+        encoding="utf-8",
+    )
+    bootstrap_log = tmp_path / "bootstrap.log"
+    client_log = tmp_path / "client.log"
+    serve_pids = tmp_path / "serve-pids"
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" >> "$STUB_BOOTSTRAP_LOG"\n'
+        'state=""; wave_list=""\n'
+        "while (($#)); do\n"
+        '  case "$1" in --state) state="$2"; shift 2;; --wave-list) wave_list="$2"; shift 2;; *) shift;; esac\n'
+        "done\n"
+        'printf "%s\\n" "wave-list: $wave_list" >> "$STUB_BOOTSTRAP_LOG"\n'
+        'echo \'{"schema": "stub-bootstrap"}\' > "$state/bootstrap.json"\n'
+        "cat > \"$state/client\" <<'CLIENT'\n"
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" >> "$STUB_CLIENT_LOG"\n'
+        'case "$1" in\n'
+        "  rcp-ndcg-vllm)\n"
+        '    port=""; prev=""\n'
+        '    for arg in "$@"; do [[ "$prev" == "--port" ]] && port="$arg"; prev="$arg"; done\n'
+        '    echo "$$" >> "$STUB_SERVE_PIDS"\n'
+        '    if [[ "${3:-}" == "gpt-oss-120b" ]]; then echo "stub engine: CUDA out of memory" >&2; exit 3; fi\n'
+        '    exec python3 "$STUB_ENGINE_PY" "$port" "${3:-}"\n'
+        "    ;;\n"
+        "  rcp-ndcg)\n"
+        '    echo \'{"schema": "rcp-ndcg.cli.v1", "command": "judge check", "ok": true}\'\n'
+        "    ;;\n"
+        "  python)\n"
+        '    if [[ "${2:-}" == "-m" && "${3:-}" == "rcp_ndcg_test.jobs.judgecheck_probe" ]]; then\n'
+        '      recipe=""; prev=""\n'
+        '      for arg in "$@"; do [[ "$prev" == "--judge" ]] && recipe="$arg"; prev="$arg"; done\n'
+        '      case "${4:-}" in\n'
+        "        modes)\n"
+        '          if [[ "$recipe" == gemma-4-* ]]; then\n'
+        '            printf \'off\\non\\t{"mode": "on"}\\n\'\n'
+        "          else\n"
+        "            printf 'default\\n'\n"
+        "          fi\n"
+        "          ;;\n"
+        "        media)\n"
+        '          out=""; prev=""\n'
+        '          for arg in "$@"; do [[ "$prev" == "--out" ]] && out="$arg"; prev="$arg"; done\n'
+        '          printf \'{"checked": true, "outcome": "ok"}\\n\' > "$out"\n'
+        "          ;;\n"
+        "      esac\n"
+        "    fi\n"
+        "    ;;\n"
+        "esac\n"
+        "CLIENT\n"
+        'chmod +x "$state/client"\n',
+        encoding="utf-8",
+    )
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "manifest.json").write_text('{"version": "0.0.1"}\n', encoding="utf-8")
+    completed = subprocess.run(
+        ["bash", str(JUDGECHECK_SH), str(stage), "gs://YOUR-BUCKET/waves/judgecheck"],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "RCP_GCS_AUTH_FILE": str(auth),
+            "RCP_GCS_HELPER_SH": str(gcs_sh),
+            "RCP_GCS_HELPER_PY": str(helper),
+            "RCP_BOOTSTRAP_SH": str(bootstrap),
+            "RCP_REPORT_PY": str(REPORT_PY),
+            "RCP_JUDGECHECK_PROBE_PY": str(JUDGECHECK_PROBE),
+            "STUB_BOOTSTRAP_LOG": str(bootstrap_log),
+            "STUB_CLIENT_LOG": str(client_log),
+            "STUB_SERVE_PIDS": str(serve_pids),
+            "STUB_ENGINE_PY": str(stub_engine),
+            "STUB_GCS_LOG": str(gcs_log),
+            "RCP_JUDGECHECK_STARTUP_S": "20",
+        },
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr  # the dead engine fails the job
+    assert "judgecheck: 1 recipe(s) failed: gpt-oss-120b" in completed.stderr
+    state_line = next(line for line in completed.stdout.splitlines() if "judgecheck: state " in line)
+    state = Path(state_line.split("judgecheck: state ", 1)[1])
+    # the bootstrap envs call carries the ten-recipe wave list (the client environment)
+    wave_list = (state / "judgecheck-wave.txt").read_text(encoding="utf-8").splitlines()
+    assert wave_list == list(JUDGES), wave_list
+    bootstrap_argv = bootstrap_log.read_text(encoding="utf-8")
+    assert f"envs {stage} --state {state}" in bootstrap_argv, bootstrap_argv
+    assert f"--wave-list {state}/judgecheck-wave.txt" in bootstrap_argv, bootstrap_argv
+    # every judge served on its own port and waited for; the dead one recorded, the next still ran
+    log = client_log.read_text(encoding="utf-8")
+    for index, recipe in enumerate(JUDGES):
+        assert f"rcp-ndcg-vllm serve {recipe} --port {8100 + index}" in log, log
+    # the documented thinking modes: the Gemma 4 judges' two (off without a toggle, on with the declared
+    # body), every other judge's single `default` mode with no toggle passed; the dead judge ran neither
+    for index, recipe in enumerate(JUDGES):
+        lines = [entry for entry in log.splitlines() if f"judge check --judge {recipe} " in entry]
+        expected = 0 if recipe == "gpt-oss-120b" else (2 if recipe.startswith("gemma-4-") else 1)
+        assert len(lines) == expected, (recipe, lines)
+        for line in lines:
+            assert f"--judge-model {recipe}" in line, line
+            assert f"--set judge.base_url=http://127.0.0.1:{8100 + index}/v1" in line, line
+            assert "--json" in line, line
+        if recipe.startswith("gemma-4-"):
+            assert any('--set judge.extra_body={"mode": "on"}' in line for line in lines), lines
+            assert any("judge.extra_body" not in line for line in lines), lines
+        else:
+            assert all("judge.extra_body" not in line for line in lines), lines
+    assert log.count("judge check") == 13, log  # five single-mode judges + four two-mode ones
+    # the media probe ran for every judge (the helper records text-only itself); gpt-oss's engine never booted
+    assert log.count("judgecheck_probe media") == 9, log
+    assert not (state / "media-gpt-oss-120b.json").exists()
+    # every engine's process group was stopped
+    for pid in (int(line) for line in serve_pids.read_text(encoding="utf-8").splitlines()):
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    # the checks' JSONs upload per judge and mode; the failed judge's engine log does not become a check
+    calls = gcs_log.read_text(encoding="utf-8")
+    single_upload = (
+        f"cp {state}/check-qwen3.5-397b-a17b-nvfp4-default.json "
+        "gs://YOUR-BUCKET/waves/judgecheck/qwen3.5-397b-a17b-nvfp4/default.json file"
+    )
+    gemma_upload = (
+        f"cp {state}/check-gemma-4-31b-it-nvfp4-on.json "
+        "gs://YOUR-BUCKET/waves/judgecheck/gemma-4-31b-it-nvfp4/on.json file"
+    )
+    assert single_upload in calls and gemma_upload in calls, calls
+    assert "check-gpt-oss-120b-default.json gs://YOUR-BUCKET/waves/judgecheck/gpt-oss-120b/default.json" not in calls
+    assert f"cp {state}/judgecheck-report.json gs://YOUR-BUCKET/waves/judgecheck/judgecheck-report.json file" in calls
+    report = json.loads((state / "judgecheck-report.json").read_text(encoding="utf-8"))
+    assert report["schema"] == "rcp-ndcg.judgecheck-report.v1"
+    assert report["passed"] is False and report["failed_step"] == "judgecheck"
+    assert set(report["recipes"]) == set(JUDGES)
+    assert report["recipes"]["gpt-oss-120b"]["state"] == "failed"
+    assert "CUDA out of memory" in report["recipes"]["gpt-oss-120b"]["error"]
+    assert report["recipes"]["qwen3.5-397b-a17b-nvfp4"]["state"] == "verified"
+    single = report["recipes"]["qwen3.5-397b-a17b-nvfp4"]
+    assert set(single["modes"]) == {"default"} and single["modes"]["default"]["ok"] is True
+    assert single["modes_note"] == "single documented mode: the recipe documents no thinking-mode toggle"
+    assert single["media"]["outcome"] == "ok"
+    gemma = report["recipes"]["gemma-4-12b-it"]
+    assert set(gemma["modes"]) == {"off", "on"} and all(row["ok"] for row in gemma["modes"].values())
+    assert "modes_note" not in gemma
+    assert isinstance(report["engine"]["vllm"], str)

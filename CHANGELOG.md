@@ -1423,6 +1423,18 @@ owner pushes, with the move to a Hugging Face organisation).
   reviewed commit.  `qwen3-vl-reranker-2b/gen-text-short-uniform`'s `expected.kind` is corrected from
   `similarity_matrix` to `scores` (a rerank case's shape), with a test pinning every shipped case's kind
   to its role's stage shape.
+- **The release checklist's judge item is a submittable job** (the unpublished `rcp-ndcg-test`): a new
+  `submit.sh --script judgecheck` job serves each of the ten shipped judge recipes one at a time
+  (`rcp-ndcg-vllm serve <id> --port <N>`), waits for `GET /v1/models`, runs `rcp-ndcg judge check --judge
+  <id> --judge-model <id> --set judge.base_url=http://127.0.0.1:<N>/v1 --json` in each recipe's documented
+  thinking mode (the Gemma 4 judges' `chat_template_kwargs.enable_thinking` choice, merged over the
+  recipe's own `extra_body` -- `--set judge.extra_body` replaces the whole block; the other recipes document
+  none, so their single documented mode is the shipped client block, never a guessed flag), runs the engine
+  media probe (`judgecheck_probe.py`: one prepared probe image beside its no-media baseline under the
+  processor family's own stock budget, the engine's media delta against the client's counted tokens, the
+  product's `RoleClient.check_engine_media`), stops each engine's process group, records the verdicts, the
+  engine version and the NVFP4/Marlin backend lines, continues past a failed judge, and uploads
+  `<OUT>/<recipe>/<mode>.json` plus `judgecheck-report.json`.
 - **The listwise replay stays covered while jina-reranker-v3's corpus is declared stale**: the staleness
   gate keeps that corpus out of the standard conformance replay set, and with it the package's only
   listwise prompt path; a conformance test replays the corpus's recorded exchanges (its `/rerank` probes

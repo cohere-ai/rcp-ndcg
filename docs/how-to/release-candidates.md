@@ -153,6 +153,7 @@ the edited YAMLs to `<OUT_PREFIX>/<wave>/cases/<recipe>/` and a `casefill-report
 operator reviews the diff and copies the YAMLs into the repository. A pending case the fill cannot
 produce is recorded skipped, its file untouched (the media-bearing ones: the reference's text mode reads
 text, and its `media` mode reports input facts, not model outputs).
+- **The judge item of the release checklist** is its own job: `submit.sh --script judgecheck` (below).
 
 A recipe's `status` flips to `verified` only from a wave whose document records the gates it needs; the
 wave document's `recipes[].steps` names exactly which ran in that job.
@@ -172,7 +173,7 @@ rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BU
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
-rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0|e2e|casefill`,
+rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0|e2e|casefill|judgecheck`,
 and `KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file under
 `RCP_SUBMIT_DIR` (default: a fresh temp directory; the directory is created when it does not exist);
 only job names and states are printed. `RCP_RECORD_CORPUS=1` is forwarded into every submitted job's
@@ -294,3 +295,32 @@ the wave's `OUT_URI`.
 The stage must carry the scenario YAMLs under `scenarios/` beside `recipes/` (until `rc_build.sh`
 stages them with the recipe data, copy `rcp-ndcg-test/scenarios/*.yaml` into the stage).
 `E2E_DRY=1 bash e2e.sh ...` prints the plan the node would run.
+
+## The judge-check job (`--script judgecheck`)
+
+The release checklist's judge item — `rcp-ndcg judge check` against each judge recipe's served engine,
+plus the engine's media token count — runs as one job through `judgecheck.sh`, which builds the node's
+client environment with `bootstrap.sh envs` and then, **one judge at a time** (the big judges need
+tensor parallelism, so they never share the node):
+
+```bash
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script judgecheck --priority dev-high \
+  "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves judgecheck
+```
+
+Per judge it serves the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`), waits for
+`GET /v1/models` within `RCP_JUDGECHECK_STARTUP_S` (3600 s; a dead engine fails fast), runs
+`rcp-ndcg judge check --judge <id> --judge-model <id> --set judge.base_url=http://127.0.0.1:<N>/v1 --json`
+for each **documented** thinking mode of the recipe (`jobs/judgecheck_probe.py` owns the table: the Gemma 4
+judges' `chat_template_kwargs.enable_thinking` choice merged over the recipe's own `extra_body`; the other
+recipes document none, so their single documented mode is the shipped client block), runs the engine media
+probe (one prepared probe image beside its no-media baseline under the processor family's stock budget; the
+engine's media delta against the client's counted tokens), stops the engine's process group, records the
+verdicts, the engine version and the NVFP4/Marlin backend lines from the engine log, and moves on — a
+failed judge is recorded, never fatal. The outputs are `<OUT_PREFIX>/<wave>/<recipe>/<mode>.json`, the
+`<recipe>/media.json` probes, and `judgecheck-report.json` beside them; the job exits 1 when any judge
+failed. `JUDGECHECK_DRY=1 bash judgecheck.sh ...` prints the plan.
+
+The knobs: `RCP_JUDGECHECK_PORT_BASE` (8100; judge *i* serves on base + *i*),
+`RCP_JUDGECHECK_STARTUP_S` (3600), `RCP_JUDGECHECK_CHECK_S` / `RCP_JUDGECHECK_MEDIA_S` (900; the per-command
+budgets).

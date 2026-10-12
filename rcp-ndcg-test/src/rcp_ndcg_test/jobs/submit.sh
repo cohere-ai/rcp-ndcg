@@ -19,7 +19,9 @@
 #                  (the node test; its script is mounted next to bootstrap.sh), e2e (the T4 run
 #                  scenarios: e2e.sh drives them in the pod; the wave list names scenario ids) or
 #                  casefill (the cuda reference-case fills: casefill.sh builds the four families'
-#                  reference environments and uploads the edited case YAMLs)
+#                  reference environments and uploads the edited case YAMLs) or judgecheck (the
+#                  release checklist's judge item: judgecheck.sh serves each judge recipe and runs
+#                  `rcp-ndcg judge check` in both thinking modes plus the engine media probe)
 #
 # Environment (required, no defaults: this script must not name any machine's paths or buckets):
 #   RCP_KJOBS_CONFIG   the job-CLI config file (the job CLI's -f argument)
@@ -40,7 +42,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill] \\
+  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill|judgecheck] \\
          <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]" >&2
 }
 
@@ -56,7 +58,7 @@ while (($#)); do
   case "$1" in
     --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
     --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
-    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e or casefill}"; shift 2 ;;
+    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e, casefill or judgecheck}"; shift 2 ;;
     --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
@@ -64,8 +66,8 @@ while (($#)); do
   esac
 done
 [[ -n "$RC_STAGE_URI" && -n "$OUT_PREFIX" && ${#WAVES[@]} -ge 1 ]] || { usage; exit 2; }
-[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" ]] || {
-  echo "submit.sh: --script must be bootstrap, wave0, e2e or casefill, got $SCRIPT_NAME" >&2
+[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" || "$SCRIPT_NAME" == "judgecheck" ]] || {
+  echo "submit.sh: --script must be bootstrap, wave0, e2e, casefill or judgecheck, got $SCRIPT_NAME" >&2
   exit 2
 }
 [[ "$MAX_JOBS" =~ ^[0-9]+$ && "$MAX_JOBS" -ge 1 ]] || { echo "submit.sh: --max-jobs must be a positive number" >&2; exit 2; }
@@ -125,6 +127,14 @@ case "$(basename "$HERE")" in
   jobs) CASEFILL_SH="$HERE/casefill.sh" ;;
   *) CASEFILL_SH="$HERE/jobs/casefill.sh" ;;
 esac
+case "$(basename "$HERE")" in
+  jobs) JUDGECHECK_SH="$HERE/judgecheck.sh" ;;
+  *) JUDGECHECK_SH="$HERE/jobs/judgecheck.sh" ;;
+esac
+case "$(basename "$HERE")" in
+  jobs) JUDGECHECK_PROBE_PY="$HERE/judgecheck_probe.py" ;;
+  *) JUDGECHECK_PROBE_PY="$HERE/jobs/judgecheck_probe.py" ;;
+esac
 [[ "$SCRIPT_NAME" != "wave0" || -f "$WAVE0_SH" ]] || {
   echo "submit.sh: wave0.sh not found at $WAVE0_SH (run submit.sh from the checkout)" >&2
   exit 2
@@ -135,6 +145,14 @@ esac
 }
 [[ "$SCRIPT_NAME" != "casefill" || -f "$CASEFILL_SH" ]] || {
   echo "submit.sh: casefill.sh not found at $CASEFILL_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "judgecheck" || -f "$JUDGECHECK_SH" ]] || {
+  echo "submit.sh: judgecheck.sh not found at $JUDGECHECK_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "judgecheck" || -f "$JUDGECHECK_PROBE_PY" ]] || {
+  echo "submit.sh: judgecheck_probe.py not found at $JUDGECHECK_PROBE_PY (run submit.sh from the checkout)" >&2
   exit 2
 }
 
@@ -361,6 +379,15 @@ for plan_row in "${PLAN[@]}"; do
     args+=(
       "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/casefill/casefill.sh $RC_STAGE_URI $OUT_URI"
       "files.casefill.from_file=$CASEFILL_SH" "files.casefill.mount_path=/etc/rcp/files/casefill/casefill.sh"
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+  elif [[ "$SCRIPT_NAME" == "judgecheck" ]]; then
+    # The judge item: judgecheck.sh serves each judge recipe one at a time and runs the checks in both
+    # thinking modes; its probe helper owns the toggles and the engine media probe.
+    args+=(
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/judgecheck/judgecheck.sh $RC_STAGE_URI $OUT_URI"
+      "files.judgecheck.from_file=$JUDGECHECK_SH" "files.judgecheck.mount_path=/etc/rcp/files/judgecheck/judgecheck.sh"
+      "files.judgecheckprobe.from_file=$JUDGECHECK_PROBE_PY" "files.judgecheckprobe.mount_path=/etc/rcp/files/judgecheckprobe/judgecheck_probe.py"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
   else
