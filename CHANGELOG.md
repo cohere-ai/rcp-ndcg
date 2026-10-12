@@ -1386,6 +1386,59 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
 
+- **The pplx-embed-v2-context-9b-preview reference answers one matrix per query/document text** (the E2
+  round-4 stage-2 shape mismatch): the reference wrote only the FIRST document's vectors, so stage 2 read
+  "the engine returned 4 matrix/matrices, the reference 1" on every pairs row with more than one document
+  (the wave's rows carry up to four). `embed` now emits the query's one-element list and one entry per
+  document in the row's own order -- the positional contract the served client's one-request-per-text
+  answer has -- and a CPU test pins both counts.
+
+- **The qwen3-vl-embedding reference processes each input on its own** (the E2 round-4 stage-2
+  `StopIteration`): transformers' processor replaces every multimodal placeholder spelling found in the
+  batch's texts from ONE shared iterator per modality
+  (`processing_utils.get_text_with_replacements`), so a text row carrying the tokenizer's literal
+  image/video placeholder spellings -- the pairs' special-token-spellings stratum, which the served
+  engine tokenizes as plain special ids and embeds like any other text -- consumed the batch's media
+  replacements and the batched `Qwen3VLEmbedder.process` call died with `StopIteration`. Reproduced
+  offline against the checkpoint's own processor at transformers 5.19 (the wave's query batch of 38
+  inputs with one image row raises; each input alone answers; 5.10.4 carries the same shared iterator),
+  so an older transformers pin cannot fix it: the reference now calls the card's `process` once per
+  input -- the card pools per sequence and its batch is padding-only, so each vector is unchanged -- and
+  a CPU test pins the one-input-per-call contract and the assembled rows' pairing.
+
+- **The qwen3-vl-reranker reference hands the model a tensor `mm_token_type_ids`** (the E2 round-4 2b
+  stage-2 `TypeError`): the card's `tokenize` calls the processor without `return_tensors` (it truncates
+  `input_ids` in place, which needs lists), so transformers answers `mm_token_type_ids` as a list of
+  lists, and the pinned model's `get_rope_index` indexes it as a tensor
+  (`input_token_type[attention_mask[batch_idx].bool()]`, modeling_qwen3_vl.py:996 at 5.17.0): every
+  image-bearing row died with "only integer tensors of a single element can be converted to an index"
+  while text-only rows passed (they never reach `get_rope_index`). The reference rebuilds the types for
+  the truncated/padded ids with the processor's own builder -- the type of every kept token is unchanged
+  by the cut -- and hands the model a tensor of the padded shape; a CPU test pins the type and shape.
+
+- **The qwen3-vl-reranker-8b declares `text_config.tie_word_embeddings` for the engine** (the E2 round-4
+  engine init): the 8b's `config.json` declares `tie_word_embeddings: false` at the top level only -- its
+  `text_config` carries no such key, while the 2b's does -- so vLLM's seq-cls weight loader
+  (`model_executor/models/adapters.py:542`/`:611` at v0.31.0) raised `AttributeError: 'Qwen3VLTextConfig'
+  object has no attribute 'tie_word_embeddings'` at model load while the 2b served. The variant's
+  `overrides.serve.hf_overrides` restates the family's scorer keys (a per-variant serve key replaces the
+  family's value at that path) and declares `text_config.tie_word_embeddings: false`, which vLLM applies
+  to the nested config object (`config/model.py` `_apply_dict_overrides` -> `_update_nested`); the 2b
+  keeps the family's dict because its checkpoint already declares the tie inside `text_config`, and the
+  two sizes disagree. The engine-init fix is confirmed by the next wave's T0 model load.
+
+- **The topk-embed-v1 `layer_type` shim reads the new name where transformers 5.17 puts it** (the E2
+  round-4 reference crash): transformers 5.17's `Qwen3_5DecoderLayer.__init__` sets `block_type` on the
+  INSTANCE (`self.block_type = config.layer_types[layer_idx]`), so the shim's class-level
+  `hasattr(..., "block_type")` check never fired and the checkpoint's remote `hf_backbone.py:178
+  patch_packing` re-crashed with `AttributeError: 'PackedQwen3_5DecoderLayer' object has no attribute
+  'layer_type'` -- the remote subclass inherits only what the shim installs on the base class. The shim
+  now reads the new name from the class or from the attribute the class's `__init__` assigns; a class
+  that still carries `layer_type` is untouched and a class with neither name stays a no-op (the remote
+  code fails loudly at its own call). A CPU test pins the instance-attribute shape, and the real
+  transformers 5.17 class was checked outside the test environment (the alias is installed and the
+  remote code's subclass reads `layer_type`).
+
 - **The generator bounds the special-token-spelling set by the checkpoint's declared vocabulary** (the
   E2 round-4 harrier-oss-v1-270m device assert): that checkpoint's tokenizer declares
   `<image_soft_token>` at id 262144 while its `config.json` declares `vocab_size: 262144` (its embedding
