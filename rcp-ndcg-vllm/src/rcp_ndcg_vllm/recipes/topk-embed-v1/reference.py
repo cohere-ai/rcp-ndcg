@@ -29,9 +29,11 @@ Declared shims (the reference runs on the image's transformers stack, not the ch
 the environment's exact pins are in ``reference.in``/``reference.lock`` beside this file):
 ``_alias_qwen3_5_layer_type`` aliases transformers 5.10+'s renamed ``block_type`` to the
 ``layer_type`` the remote ``hf_backbone.py:178`` reads, and ``_promote_qwen3_5_rope_position_ids``
-promotes the remote code's 2-D text position ids to the 3-D mrope form transformers 5.17's
-``Qwen3_5RotaryEmbedding.forward`` requires (``modeling_qwen3_5.py:192``). Nothing else is patched:
-a checkpoint whose remote code needs more of 5.9, or a runtime whose classes carry neither name,
+restores, on transformers 5.17's ``Qwen3_5TextRotaryEmbedding.forward`` (the class the remote
+``PackedQwen3_5TextModel.forward`` calls through ``self.rotary_emb``), the 2-D position-id branch
+5.9.0's own forward carried (``position_ids.ndim == 2`` -> ``(3, bs, positions)``; 5.17 removed the
+branch and indexes the 3-D form at ``modeling_qwen3_5.py:192``). Nothing else is patched: a
+checkpoint whose remote code needs more of 5.9, or a runtime whose classes carry neither name,
 fails loudly at its own call.
 
 Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
@@ -76,6 +78,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import importlib
 import json
 from pathlib import Path
 from typing import Any
@@ -253,29 +256,44 @@ def _alias_qwen3_5_layer_type(layer_cls: Any = None) -> None:
 
 
 def _promote_qwen3_5_rope_position_ids(rope_cls: Any = None) -> None:
-    """Promote the remote code's 2-D text position ids to the 3-D mrope form transformers 5.17 requires.
+    """Restore the 2-D position-id branch transformers 5.9's ``Qwen3_5TextRotaryEmbedding`` carried.
 
     The checkpoint's ``topk_embed_st.py`` builds the rope positions in two shapes: its text branch
     passes ``within.unsqueeze(0)`` -- 2-D, ``(1, total)`` -- and its image branch stacks the three
-    grids into ``(3, 1, total)``. transformers 5.17's ``Qwen3_5RotaryEmbedding.forward`` reads only
-    the 3-D form (``position_ids[:, :, None, :]``, ``modeling_qwen3_5.py:192``), so every text-only
-    embed died with ``IndexError: too many indices for tensor of dimension 2`` (the r4 wave, after
-    the ``layer_type`` shim let the load get that far). The wrapper promotes a 2-D input to
-    ``(3, bs, positions)`` -- the three axes equal, which is exactly the text-only case the remote
-    code's own image branch shows the layout for -- and passes a 3-D input through unchanged, so the
-    image path is untouched. transformers 5.9, the version the checkpoint pins, accepted the 2-D
-    form; this keeps the reference on the image's transformers stack, like the ``layer_type`` shim
-    beside it.
+    grids into ``(3, 1, total)``. The checkpoint pins transformers 5.9.0, whose
+    ``Qwen3_5TextRotaryEmbedding.forward`` promotes a 2-D input itself (``position_ids[None, ...]
+    .expand(3, position_ids.shape[0], -1)``); transformers 5.17 removed that branch and reads only the
+    3-D form (``position_ids[:, :, None, :]``, ``modeling_qwen3_5.py:192``), so every text-only embed
+    died with ``IndexError: too many indices for tensor of dimension 2`` (the r4 wave). The class is
+    the one the remote code calls: ``Qwen3_5TextModel.__init__`` assigns ``self.rotary_emb =
+    Qwen3_5TextRotaryEmbedding(config=config)`` and the remote ``PackedQwen3_5TextModel.forward``
+    calls ``self.rotary_emb(inputs_embeds, position_ids)``. The wrapper promotes a 2-D input to
+    ``(3, bs, positions)`` -- the three axes equal, exactly 5.9.0's own promotion and the text-only
+    case -- and passes a 3-D input through unchanged, so the image path is untouched.
+
+    Round 7's version of this shim imported ``Qwen3_5RotaryEmbedding`` -- a name no transformers
+    release defines (5.9.0 and 5.17.0 both carry ``Qwen3_5TextRotaryEmbedding``) -- so the import
+    raised, the ``ImportError`` branch returned, and the wave still raised the same ``IndexError``.
+    The class is resolved from the module rather than imported blind, and a module that exists
+    without the class is a loud error, never a silent no-op.
 
     Args:
-        rope_cls: The rotary-embedding class to shim; ``None`` imports transformers' own. A seam for
-            the CPU test, which runs without transformers.
+        rope_cls: The rotary-embedding class to shim; ``None`` resolves transformers' own
+            ``Qwen3_5TextRotaryEmbedding`` from its module. A seam for the CPU test, which runs
+            without transformers.
     """
     if rope_cls is None:
         try:
-            from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5RotaryEmbedding as rope_cls
-        except ImportError:  # a transformers without the class: the remote code will say so itself
+            modeling_qwen3_5 = importlib.import_module("transformers.models.qwen3_5.modeling_qwen3_5")
+        except ImportError:  # a transformers without qwen3_5: the remote code's own import fails loudly
             return
+        rope_cls = getattr(modeling_qwen3_5, "Qwen3_5TextRotaryEmbedding", None)
+        if rope_cls is None:
+            raise RuntimeError(
+                "transformers' qwen3_5 modeling module carries no Qwen3_5TextRotaryEmbedding: the "
+                "reference's rope shim cannot restore the 2-D position-id branch the remote code's "
+                "self.rotary_emb needs (the class was renamed upstream)"
+            )
     original = rope_cls.forward
     if getattr(original, "_rcp_accepts_2d_position_ids", False):
         return  # installed already: never wrap the wrapper

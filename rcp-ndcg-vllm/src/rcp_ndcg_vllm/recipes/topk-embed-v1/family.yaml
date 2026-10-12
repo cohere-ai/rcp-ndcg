@@ -323,13 +323,21 @@ notes: |
   declared `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's
   stack. The r4 wave then hit the second 5.9-vs-5.17 divergence on the same path: the wrapper's text
   branch builds 2-D rope positions (`topk_embed_st.py` `_position_ids`: `within.unsqueeze(0)`), and
-  transformers 5.17's `Qwen3_5RotaryEmbedding.forward` reads only the 3-D mrope form
+  transformers 5.17's `Qwen3_5TextRotaryEmbedding.forward` reads only the 3-D mrope form
   (`position_ids[:, :, None, :]`, `modeling_qwen3_5.py:192`), so every text-only embed died with
-  `IndexError: too many indices for tensor of dimension 2`; reference.py's declared
-  `_promote_qwen3_5_rope_position_ids` shim promotes a 2-D input to `(3, bs, positions)` (the remote
-  code's own image branch already stacks that shape) and leaves a 3-D input untouched. The reference's load()
-  asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers change fails
-  loudly.
+  `IndexError: too many indices for tensor of dimension 2`. The class is the one the remote code calls:
+  `Qwen3_5TextModel.__init__` assigns `self.rotary_emb = Qwen3_5TextRotaryEmbedding(config=config)` and
+  the remote `PackedQwen3_5TextModel.forward` calls `self.rotary_emb(inputs_embeds, position_ids)`. The
+  checkpoint's own 5.9.0 pin carried the 2-D branch in that class's forward (`position_ids[None, ...]
+  .expand(3, position_ids.shape[0], -1)`); 5.17 removed it. Reference.py's declared
+  `_promote_qwen3_5_rope_position_ids` shim restores the branch on the class the remote code calls --
+  promoting a 2-D input to `(3, bs, positions)`, exactly 5.9.0's own promotion, and leaving a 3-D input
+  untouched. Round 7's version imported `Qwen3_5RotaryEmbedding`, a name no transformers release defines
+  (5.9.0 and 5.17.0 both carry `Qwen3_5TextRotaryEmbedding`), so the import raised and the shim returned
+  silently; the r8 wave still raised the same `IndexError` at line 192. The shim now resolves the class
+  from the module and raises loudly when the module exists without it -- never a silent no-op. The
+  reference's load() asserts the MultiVectorEncoder surface it relies on, so a sentence-transformers
+  change fails loudly.
 
   What the GPU wave must check (NOT MEASURED on CPU):
   - Per-token cosine + MaxSim of served vs reference on real weights (the 6 full-attention
