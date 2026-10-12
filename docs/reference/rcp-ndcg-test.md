@@ -24,9 +24,13 @@ README has the runnable commands; this page maps what lives where.
   batches.
 - **Filling the cases.** `python -m rcp_ndcg_test.case_fill --recipe <id> --reference-python <the family's
   reference venv>` runs the recipe's reference implementation over every pending case's inputs and writes
-  its own outputs into the case YAML (`values`, `status: reproduced`); a pending case the mode cannot fill
-  is skipped per case with its reason recorded and its file untouched (a media case's values cannot come
-  from the text-only reference). The cuda families' fills run as the `submit.sh --script casefill` job.
+  its own outputs into the case YAML (`values`, `status: reproduced`, the fill recorded in the note). A
+  media-bearing case's `media/` files enter the pairs row's `media` field, so the reference's own mode
+  reads them and the case fills like a text one; a case the reference refuses (a container it cannot
+  sample at the recipe's pin) is retried on its own and recorded as an exception -- the reason in the
+  report and in the case's note, the case left `pending_gpu` -- and a pending case the mode cannot fill
+  (`kind: none`, or another stage's kind) is skipped per case with its reason recorded and its file
+  untouched. The cuda families' fills run as the `submit.sh --script casefill` job.
 - **Conformance.** One suite, two targets -- a live engine and a recipe-level fake engine -- both driven
   through the product's role clients (never raw HTTP, never a copy of the client), on CPU.
 - **Fakes.** Model-level fakes rebuilt from the GPU observation recordings. The generic `fake://` transport

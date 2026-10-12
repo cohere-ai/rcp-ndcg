@@ -119,13 +119,18 @@ specials included) and the stratum is judged on the rendered input: `long_under`
    ```
 
    The tool runs the reference once over every pending case's inputs (the pairs rows the reference already
-   reads) and writes its own outputs into the case YAML — `values`, `status: reproduced`, and the pending
-   note's sentence retired. A pending case the mode cannot fill is **skipped per case**, its file left
-   untouched and the reason recorded in the report: a media-bearing case's values cannot come from the
-   text-only reference (its `media` mode reports input facts, not model outputs), so a media-value fill
-   is a follow-up, and a `kind: none` case carries no values by design. `--device` and `--budget-s` bound
-   and place the reference subprocess. The cuda families' fills run as the `submit.sh --script casefill`
-   job, which builds their reference venvs and passes the RC's staged `cases/`.
+   reads) and writes its own outputs into the case YAML — `values`, `status: reproduced`, and the fill
+   recorded in the note (a known pending sentence is retired; otherwise the fill's provenance sentence is
+   appended, so every filled case's note says where its values came from). A media-bearing case's
+   `media/` files enter the pairs row's `media` field, which the reference's own mode reads, so media
+   cases fill like text ones. A case the reference refuses (a container it cannot sample at the recipe's
+   pin) is retried on its own and recorded as an **exception** — the reason in the report and in the
+   case's note, the case left `pending_gpu` — so one refused case cannot take the recipe's other cases
+   down. A pending case the mode cannot fill is **skipped per case**, its file left untouched and the
+   reason recorded in the report: a `kind: none` case carries no values by design, and a kind the role's
+   mode does not produce is another stage's values. `--device` and `--budget-s` bound and place the
+   recipe's whole fill. The cuda families' fills run as the `submit.sh --script casefill` job, which
+   builds their reference venvs and passes the RC's staged `cases/`.
 
 Media: only files whose licence allows redistribution in an Apache-2.0 repository; otherwise generate a
 synthetic image or video with a script kept in the case directory as `media/make_media.py` and say so in

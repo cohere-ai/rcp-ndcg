@@ -21,19 +21,21 @@
 #                    merges into the job's report
 #   3. upload        the edited YAMLs only (the media inputs are the repository's) and the report
 #
-# A pending case the fill cannot produce is skipped, its file untouched and its reason recorded: a
-# media-bearing case's values cannot come from the text-only reference (the reference's media mode
-# reports input facts, not model outputs), so a media-value fill is a follow-up; a kind the role's mode
-# does not produce, and a kind: none case, carry no values by design.  The job exits 1 when any recipe
+# A pending case the fill cannot produce is skipped, its file untouched and its reason recorded: a kind
+# the role's mode does not produce, and a kind: none case, carry no values by design.  A media-bearing
+# case fills like a text one (the pairs row carries the case's media/ files, which the reference's own
+# mode reads); a case the reference refuses is a recorded exception -- its reason in the fill report and
+# in its own note, its file uploaded with them, and it stays pending.  The job exits 1 when any recipe
 # failed (after uploading everything it filled); it exits 0 when the four recipes' fills ran, even when
-# cases were skipped.
+# cases were skipped or refused.
 #
 # The four recipes and their reference family directories (the venv keys under <state>/reference/); the
 # pairs are pinned to the recipe catalog and the committed cases by tests/test_jobs_scripts.py:
-#   topk-embed-v1-small   -> topk-embed-v1     (8 text fills; 6 media + 1 kind: none skipped)
+#   topk-embed-v1-small   -> topk-embed-v1     (8 text + 6 media fills; 1 kind: none skipped)
 #   qwen3-embedding-0.6b  -> qwen3-embedding   (8 text fills)
-#   qwen3-vl-embedding-2b -> qwen3-vl-embedding (5 text fills; 4 media skipped)
-#   qwen3-vl-reranker-2b  -> qwen3-vl-reranker  (5 text fills; 4 media skipped)
+#   qwen3-vl-embedding-2b -> qwen3-vl-embedding (5 text + 3 media fills; the video case is a recorded
+#                                                exception at the recipe's video pin)
+#   qwen3-vl-reranker-2b  -> qwen3-vl-reranker  (5 text + 4 media fills)
 #
 # Environment: RCP_GCS_AUTH_FILE (the mounted auth script; executed, never printed), HF_TOKEN (from the
 # mounted token file, exported by submit.sh's wrapper; never printed), RCP_BOOTSTRAP_SH / RCP_REPORT_PY /
@@ -212,7 +214,8 @@ for row in sys.argv[2:]:
 PYEOF
 python3 "$REPORT_PY" merge --file "$REPORT" --key fills --fragment "$STATE/fills.json"
 
-# The edited YAMLs only (the report names them): <state>/filled-cases/<recipe>/<case>.yaml.
+# The edited YAMLs only (the report names them): <state>/filled-cases/<recipe>/<case>.yaml.  A filled
+# case's file carries its values; an exception's file carries the reference's recorded refusal.
 python3 - "$STATE" "${RECIPES[@]}" <<'PYEOF'
 import json
 import shutil
@@ -230,7 +233,7 @@ for row in sys.argv[2:]:
     except (OSError, json.JSONDecodeError):
         continue  # a failed fill wrote no report; its record is in the job report
     out = state / "filled-cases" / recipe
-    for entry in report.get("filled", []):
+    for entry in [*report.get("filled", []), *report.get("exceptions", [])]:
         out.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(entry["path"], out / Path(entry["path"]).name)
 PYEOF
