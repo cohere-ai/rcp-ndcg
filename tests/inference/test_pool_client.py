@@ -695,6 +695,87 @@ class TestDocumentSplitSpecialTokens:
             )
 
 
+class TestQuerySplitSpecialTokens:
+    """``query_split_special_tokens``: the reference's split parse for the query side of a token-ids wire
+    (the pplx-embed-v2-context contract -- the checkpoint's own query construction is ``[prefix id] +
+    tokenize(body, split_special_tokens=True)``, so a query carrying a literal added-token spelling must
+    send the split body; the whole-render added-token parse keeps a different id sequence)."""
+
+    @staticmethod
+    def _client(sender: Any, **config: Any) -> PoolingClient:
+        settings: dict[str, Any] = {
+            "base_url": "http://engine:8000/v1",
+            "model": "pplx-context",
+            "dim": 2,
+            "normalize": False,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+            "request_shape": "token_ids",
+            "query_split_special_tokens": True,
+            "template": {"query": [{"fixed": "{special:[Q] }"}, {"content": "query"}]},
+        }
+        settings.update(config)
+        return PoolingClient(PoolingEndpoint(**settings), sender=sender)
+
+    def test_the_query_leg_sends_the_prefix_id_then_the_split_body(self, tmp_path: Any) -> None:
+        from tests._tokenizers import save, spaced_special_tokenizer
+
+        tokenizer = spaced_special_tokenizer()
+        path = save(tokenizer, tmp_path)
+        body = "what is [Q] x"  # a literal spelling of the tokenizer's added special
+        expected = [*tokenizer.ids("[Q] "), *tokenizer.ids(body, split_special_tokens=True)]
+        assert expected != tokenizer.ids("[Q] " + body), "the fixture must make the two constructions differ"
+        sender = _GatedSender(PoolingServer({}, default=np.ones((len(expected), 2), dtype=np.float16)))
+        client = self._client(sender, tokenizer=str(path))
+        asyncio.run(client.aencode([Content.from_text(body)], EncodeRole.QUERY))
+        assert sender.sent[0][0]["input"] == [expected]
+
+    def test_the_flag_needs_the_token_ids_wire(self, tokenizer_json: str) -> None:
+        """The flag changes the ids only on the token-ids wire: beside ``text``/``messages`` the client
+        sends no ids, so the declaration would be inert -- refused, never ignored."""
+        with pytest.raises(ConfigError, match="query_split_special_tokens"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                query_split_special_tokens=True,
+            )
+
+    def test_the_flag_needs_a_template_whose_query_ends_on_its_content(self, tokenizer_json: str) -> None:
+        """The reference's construction is a prefix plus a body: without a template there is no prefix to
+        keep as ids, and a fixed segment after the content span has no such construction -- refused, never
+        tokenized some other way."""
+        with pytest.raises(ConfigError, match="query_split_special_tokens"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                request_shape="token_ids",
+                query_split_special_tokens=True,
+            )
+        with pytest.raises(ConfigError, match="content"):
+            PoolingEndpoint(
+                base_url="http://engine:8000/v1",
+                model="m",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                request_shape="token_ids",
+                query_split_special_tokens=True,
+                template={
+                    "query": [
+                        {"fixed": "{special:[Q] }"},
+                        {"content": "query"},
+                        {"fixed": " [END]"},
+                    ]
+                },
+            )
+
+
 class TestMediaKeepIds:
     """``media_keep_token_ids``: the media allowlist the served plugin applies engine-side (topk-embed-v1's
     image-patch token, the only positions its reference keeps for an image document). The wire carries only

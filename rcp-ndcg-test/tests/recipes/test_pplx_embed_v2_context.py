@@ -24,6 +24,8 @@ from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
+from rcp_ndcg.data.templates import TemplateSpec
+
 from ._contract import assert_recipe_contract
 
 RECIPE_ID = "pplx-embed-v2-context-9b-preview"
@@ -79,6 +81,7 @@ EXPECTED_CLIENT = {
     "instruction": "none",
     "request_shape": "token_ids",
     "document_split_special_tokens": True,
+    "query_split_special_tokens": True,
     "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba",
     "max_tokens": 131070,
     "outputs": "per_chunk",
@@ -448,15 +451,19 @@ def _split_ids(tokenizer, text: str) -> list[int]:
 def test_the_wire_ids_match_the_reference_on_both_legs(tokenizer) -> None:
     """The reference's id space, matched on both legs by the declared client config.
 
-    The client's query render tokenizes to the reference's ids (the remote prepends the 248077
-    id and split-tokenizes the body; the added-token parse of the render equals it). The
-    client's document render, under the declared ``document_split_special_tokens: true`` (the
-    reference's ``split_special_tokens`` parse), opens with the two literal prefix tokens the
-    plugin's role check reads, and the marker keeps its one id in both parses (a non-special
-    added token survives the split toggle). This test used to pin the divergence as a declared
-    product gap; the seam landed, so it asserts equality on both legs.
+    The client's query render is the reference's own construction: the remote tokenizes the query BODY
+    with ``split_special_tokens=True`` and prepends the 248077 prefix id, so under the declared
+    ``query_split_special_tokens: true`` the client sends the head's added ids followed by the
+    split-parsed body -- which differs from one added-token parse of the whole render exactly when the
+    query carries a literal added-token spelling (the pairs' spellings stratum; the r4 wave measured
+    cosine 0.576 on that row). The client's document render, under the declared
+    ``document_split_special_tokens: true`` (the reference's ``split_special_tokens`` parse), opens with
+    the two literal prefix tokens the plugin's role check reads, and the marker keeps its one id in both
+    parses (a non-special added token survives the split toggle).
     """
     query = "what drives scientific breakthroughs"
+    spelling = tokenizer.special_text("endoftext")  # a SPECIAL added token: it textifies under the split parse
+    spelled_query = f"which page shows {spelling} the quarterly chart"
     marker = tokenizer.special_text("chunk_sep")
     document = marker.join(["first chunk text", "second chunk text"])
 
@@ -469,6 +476,14 @@ def test_the_wire_ids_match_the_reference_on_both_legs(tokenizer) -> None:
     assert client_document_ids == reference_document_ids
     assert client_document_ids[:2] == list(DOCUMENT_PREFIX_LITERAL_IDS)
     assert client_document_ids.count(BOUNDARY_ID) == 1
+
+    # The spellings query: the declared query construction is the reference's (the prefix id + the split
+    # body), and one added-token parse of the whole render is NOT -- it keeps every spelled token as one
+    # id, which is what the wave compared the engine's 71 ids against the reference's 182 with.
+    spelled_expected = [QUERY_PREFIX_ID, *_split_ids(tokenizer, spelled_query)]
+    assert spelled_expected != tokenizer.ids(f"[Q] {spelled_query}")
+    template = TemplateSpec.model_validate({"query": [{"fixed": "{special:[Q] }"}, {"content": "query"}]})
+    assert template.split_ids("query", tokenizer, f"[Q] {spelled_query}") == spelled_expected
 
 
 def test_the_declared_document_parse_is_the_plugins_role_prefix(tokenizer) -> None:
@@ -513,6 +528,26 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer) -> None:
     assert document["template_render_check"] is None  # no chat_template: the route applies none
     engine = document["engine_tokenize_check"]
     assert engine["status"] == "not_run" and engine["passed"] is None
+    assert document["passed"] is True
+
+
+def test_stage1_render_check_reads_the_declared_query_construction(tmp_path: Path, tokenizer) -> None:
+    """E2 round 7: a query carrying a literal added-token spelling is compared under the declared
+    construction (the 248077 prefix id followed by the split-parsed body), which is what the client
+    sends and what the checkpoint's own ``prepare_inputs`` reads. The check is not vacuous: one
+    added-token parse of the whole render is a different sequence, so a render check that read it (the
+    behaviour before the declaration) fails this row."""
+    spelling = tokenizer.special_text("endoftext")
+    spelled = f"which page shows {spelling} the quarterly chart"
+    assert [QUERY_PREFIX_ID, *_split_ids(tokenizer, spelled)] != tokenizer.ids(f"[Q] {spelled}"), (
+        "the fixture must make the two constructions differ"
+    )
+    rows = [*_pairs(tokenizer)[:1], {"query": spelled, "documents": ["a quarterly chart page"]}]
+    pairs_path = tmp_path / "pairs.jsonl"
+    pairs_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    recipe = load_recipe(RECIPE_ID, root=_probe_recipe(tmp_path / "probe").parent)
+    document = stage1_prompts(recipe, pairs_path, sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
     assert document["passed"] is True
 
 

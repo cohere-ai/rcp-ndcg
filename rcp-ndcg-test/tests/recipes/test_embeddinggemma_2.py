@@ -62,7 +62,12 @@ SERVE = {
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
-    "extra_args": ["--media-io-kwargs", '{"video": {"fps": 60, "max_frames": 32}}'],
+    "extra_args": [
+        "--media-io-kwargs",
+        '{"video": {"fps": 60, "max_frames": 32}}',
+        "--attention-backend",
+        "FLASH_ATTN",
+    ],
 }
 CLIENT = {
     "api": "openai_embeddings",
@@ -247,6 +252,28 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
     assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 60, "max_frames": 32}}'
+
+
+def test_the_engine_uses_the_backend_the_gemma4_hook_selected() -> None:
+    """E2 round 7: the engine now reaches model load and dies in the TRITON_ATTN prefill kernel --
+    ``triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 266240,
+    Hardware limit: 232448`` at ``triton_prefill_attention.py`` ``context_attention_fwd``, during
+    ``compile_or_warm_up_model`` (the nightly wave's serve log). The demand is compile-time
+    (head_dim 512 x BLOCK 128), so neither ``--enforce-eager`` (the crash is not a graph or compile
+    one: pooling already overrides the cudagraph mode to NONE) nor ``--max-num-batched-tokens`` (the
+    kernel's BLOCK sizes come from the dtype and head_dim, not the sequence length) lowers it; the
+    lever is the attention backend. The image's own Gemma4 config hook had already selected FA4 for
+    this model's heterogeneous head dimensions ("Using FA4 for all layers", the serve log), and the
+    plugin's folded EmbeddingGemma2 hook then overrode it to TRITON_ATTN (on the v0.31.0-based image
+    the Gemma4 hook sets only ``flash_attn_version=4`` and leaves ``backend`` None, so the folded
+    hook's "no backend requested" branch fires). The recipe therefore pins
+    ``--attention-backend FLASH_ATTN``: FA4 supports any head size, all attention types (encoder-only
+    included) and SM10.x, and an invalid backend fails loudly at startup instead of silently."""
+    recipe = load_recipe(RECIPE_DIR)
+    argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
+    assert argv[argv.index("--attention-backend") + 1] == "FLASH_ATTN"
+    for evidence in ("266240", "232448", "FLASH_ATTN", "head_dim 512", "--enforce-eager"):
+        assert evidence in recipe.notes, evidence
 
 
 def test_the_client_block_builds_the_product_endpoint() -> None:

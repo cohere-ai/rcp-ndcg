@@ -332,6 +332,60 @@ class TemplateSpec(BaseModel):
             _OVERHEAD_CACHE[key] = cached
         return cached
 
+    def split_ids(
+        self,
+        shape: RequestShape,
+        tokenizer: TextTokenizer,
+        text: str,
+        *,
+        add_special_tokens: bool = False,
+    ) -> list[int]:
+        """The ids of ``shape``'s rendered ``text`` under the reference's split construction.
+
+        The fixed frame tokenizes with the tokenizer file's own parse -- its specials cross as their
+        added ids, which is the reference's prepend construction (the one ``[Q] `` prefix id) -- and the
+        content span with ``split_special_tokens=True`` (an added SPECIAL token inside the content
+        textifies). This is the one home of the rule: the pooling client's token-ids wire sends these ids
+        and the harness's id comparisons read the same call (R30).
+
+        Args:
+            shape: The declared shape ``text`` was rendered as.
+            tokenizer: The tokenizer the render was built with.
+            text: The rendered text: the fixed head's resolved text followed by the content span.
+            add_special_tokens: Apply the tokenizer's post-processor to the content span. The shape must
+                end on its content span, so this places the post-processor's tokens at the render's end,
+                exactly as tokenizing the whole render would.
+
+        Returns:
+            The ids, in order.
+
+        Raises:
+            ConfigError: the shape has no single content span, a fixed segment follows the content span
+                (the reference's construction is a prefix plus a body: it has no fixed tail), or ``text``
+                does not open with the shape's fixed head.
+        """
+        segments = self.segments(shape)
+        content = [index for index, segment in enumerate(segments) if segment.content is not None]
+        if len(content) != 1 or content[0] != len(segments) - 1:
+            raise ConfigError(
+                f"split_ids reproduces the reference's prefix-plus-body construction, but the {shape!r} "
+                f"shape does not end on a single content span ({len(content)} content span(s), "
+                f"{len(segments)} segment(s)): there is no such construction to reproduce",
+                hint="declare the shape as a fixed head followed by one content span, or do not declare "
+                "the split parse for it",
+            )
+        head = "".join(segment.render(tokenizer) for segment in segments[: content[0]])
+        if not text.startswith(head):
+            raise ConfigError(
+                f"split_ids was handed a text that does not open with the {shape!r} shape's fixed head "
+                f"{head!r}: it is not this shape's render",
+                hint="pass the shape's rendered text (TemplateSpec.render)",
+            )
+        return [
+            *tokenizer.ids(head, add_special_tokens=False),
+            *tokenizer.ids(text[len(head) :], add_special_tokens=add_special_tokens, split_special_tokens=True),
+        ]
+
 
 _OVERHEAD_CACHE: dict[tuple[str, str, str, bool, str], int] = {}
 """The measured fixed overhead, keyed by (template canonical JSON, shape, tokenizer SHA-256, flag,

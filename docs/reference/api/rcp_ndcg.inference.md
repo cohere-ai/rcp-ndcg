@@ -445,6 +445,8 @@ class PoolingEndpoint(rcp_ndcg.inference.config.EmbeddingEndpoint)
 
 - `query_prompt: str` = ''
 
+- `query_split_special_tokens: bool | None` = None
+
 - `recipe: str | None` = None
 
 - `request_shape: Literal['text', 'messages', 'token_ids']` = 'text'

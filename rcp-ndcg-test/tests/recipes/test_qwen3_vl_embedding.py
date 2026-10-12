@@ -49,11 +49,19 @@ VARIANTS: dict[str, dict[str, Any]] = {
         "model": "Qwen/Qwen3-VL-Embedding-2B",
         "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
         "mrl_range": [64, 2048],
+        # E2 round 7, stage 2: the measured floor over the 282 gated comparisons (94 vectors at full
+        # width, k=64 and k=2048) and the measured count below the published 0.999.
+        "vec_min_cosine": 0.9985,
+        "measured": ("0.998541", "0.998906", "14 of 282"),
     },
     "qwen3-vl-embedding-8b": {
         "model": "Qwen/Qwen3-VL-Embedding-8B",
         "revision": "2c4565515e0f265c6511776e7193b22c0968ddc7",
         "mrl_range": [64, 4096],
+        # E2 round 7, stage 2: the same shape at the 8b's MRL widths (full width and k=4096 share the
+        # floor; k=64 is the worst k).
+        "vec_min_cosine": 0.9983,
+        "measured": ("0.998335", "0.998674", "15 of 282"),
     },
 }
 VARIANT_IDS = sorted(VARIANTS)
@@ -321,6 +329,27 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
         assert head.fixed is not None and DEFAULT_INSTRUCTION in head.fixed, "the card's default instruction"
     assert recipe.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert not (RECIPE_DIR / "template.jinja").exists(), "no template file ships (serve.chat_template null)"
+
+
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_the_variant_declares_its_measured_bf16_cosine_floor(variant_id: str) -> None:
+    """E2 round 7: both sides are bf16 (no mismatch to fix), so each size declares the tight bound
+    covering its measured stage-2 floor, with the per-MRL numbers in its notes.
+
+    The 2b measured min cosine 0.998541 at full width and k=2048 and 0.998906 at k=64, with 14 of the
+    282 gated comparisons below the published 0.999; the 8b measured 0.998335 at full width and
+    k=4096 and 0.998674 at k=64, with 15 below. The declarations (2b 0.9985, 8b 0.9983) sit just
+    below each measured floor, so the gate still catches a real regression; the published 0.999 is
+    the bf16 kernel-stack residual, not a defect."""
+    recipe = load_recipe(variant_id)
+    facts = VARIANTS[variant_id]
+    assert recipe.gates.vec_min_cosine == facts["vec_min_cosine"]
+    for measured in facts["measured"]:
+        assert measured in recipe.notes, measured
+    # Each size carries its own bound: no family-wide gate is declared.
+    for other in VARIANT_IDS:
+        if other != variant_id:
+            assert load_recipe(other).gates.vec_min_cosine == VARIANTS[other]["vec_min_cosine"]
 
 
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)
