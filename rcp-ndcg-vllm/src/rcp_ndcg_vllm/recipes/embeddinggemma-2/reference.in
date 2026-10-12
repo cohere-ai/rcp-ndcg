@@ -13,5 +13,5 @@ transformers==5.19.0          # the first release with EmbeddingGemma2Model/Proc
 sentence-transformers>=6.1.0  # the checkpoint's own config_sentence_transformers.json requirement (older versions ignore multimodal input order)
 torch>=2.8                   # the card's dtype rule (bfloat16 or float32, never float16); the image's own torch is the environment (decision 35)
 Pillow                       # the media mode reads the inline image bytes
-huggingface_hub              # SentenceTransformer pins the checkpoint at the recipe's revision
+huggingface_hub>=1.5,<2.0     # SentenceTransformer pins the checkpoint at the recipe's revision (its requirement is <2.0)
 numpy

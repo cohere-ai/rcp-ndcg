@@ -20,5 +20,5 @@
 # transformers 5.x APIs (`processing_utils.Unpack`, `masking_utils.create_causal_mask`).
 sentence-transformers>=6.0.0,<7.0.0
 transformers>=5.0.0,<6.0.0
-huggingface_hub  # the render mode's dependencies besides the stdlib: this and
+huggingface_hub>=1.5,<2.0  # the render mode's dependencies besides the stdlib: this and
 tokenizers       # tokenizers (a transformers dependency, listed for the render mode)
