@@ -1,9 +1,9 @@
 # Lane `judge8`: the judge-instrument review re-verified, and the two gaps it left
 
-**Status: DONE.** Branch `lane/judge8`, tip `749a641c` (plus this report's commit). **GATE: PASS** on the merged
-tree (run 4; runs 1-3 failed on machine-wide load flakes -- a different test each time, all of them passing
-locally and failing identically in other lanes' gates at the same minute; see Verification). Base `b83a3e00`;
-`rfc-0001` was merged at `3217b5ed` (the E2 round-7 fixes).
+**Status: DONE.** Branch `lane/judge8`, tip `e1fdcfc0` (this report's commit; the gate ran on it). **GATE: PASS**
+(run 5; runs 1-3 failed on machine-wide load flakes -- a different test each time, all of them passing locally and
+failing identically in other lanes' gates at the same minute; see Verification). Base `b83a3e00`; `rfc-0001` was
+merged at `3217b5ed` (the E2 round-7 fixes).
 
 ## Commits
 
@@ -11,7 +11,8 @@ locally and failing identically in other lanes' gates at the same minute; see Ve
 |---|---|
 | `38a1b59d` | judging: the resumed tournament retires one generation, and a contextless judge warns |
 | `749a641c` | Merge `rfc-0001` (`3217b5ed`) into `lane/judge8` |
-| (this commit) | handover: the lane report |
+| `e1fdcfc0` | handover: the judge8 lane report (the ten findings re-verified, the two gaps closed) |
+| (this commit) | handover: the judge8 report names the gated tip `e1fdcfc0` |
 
 ## Method
 
@@ -85,7 +86,8 @@ unfixed code.
 - `uv run --no-sync ruff format --check . && uv run --no-sync ruff check .` -> clean; `basedpyright` -> 0 errors.
 - Focused: `tests/judging tests/calibration tests/cli/test_judge.py` -> 430 passed; with `tests/contract
   tests/docs` -> 843 passed, 107 skipped.
-- `timeout 7200 bin/gate lane/judge8` -> **GATE: PASS** (all steps exit 0: ruff, basedpyright, 4138 passed,
+- `timeout 7200 bin/gate lane/judge8` -> **GATE: PASS** (run 5, rev `e1fdcfc0`; all steps exit 0: ruff,
+  basedpyright, 4138 passed,
   contract-docs 413 passed, mkdocs strict, test-pkg 1139 passed, recipes, vllm-pkg, vllm-models, run_all,
   public-names, clean). The first three runs failed on the machine's load (load average 170+): run 1
   `test-pkg` SIGSEGV in a wave test, run 2 a 60 s per-test timeout in `tests/retrieval/test_topk.py` plus a
