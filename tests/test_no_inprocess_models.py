@@ -1,8 +1,8 @@
 """No in-process model code under ``rcp-ndcg/src/rcp_ndcg/``.
 
-RFC-0001 (option 1, section 6.2): the package carries no model that loads weights. The only torch
-left is the core's IRT estimators, reached through the ``[calibrate]`` extra; nothing under
-``rcp-ndcg/src/rcp_ndcg/`` may import torch, transformers, accelerate or vllm, at module level or lazily.
+The package carries no model that loads weights. The only torch left is the core's IRT estimators,
+reached through the ``[calibrate]`` extra; nothing under ``rcp-ndcg/src/rcp_ndcg/`` may import torch,
+transformers, accelerate or vllm, at module level or lazily.
 The ``[local]`` and ``[vllm]`` extras have left ``pyproject.toml``: every model is served, and the
 package installs cleanly next to an engine image without touching it.
 """

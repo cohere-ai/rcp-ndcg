@@ -57,7 +57,7 @@ from rcp_ndcg.support.serve import (
 )
 
 # ---------------------------------------------------------------------------------------------------------------
-# The wire types (rfc-0001 section 4.2)
+# The wire types
 # ---------------------------------------------------------------------------------------------------------------
 
 
@@ -353,11 +353,10 @@ class TestRoleConfigs:
 
 
 class TestIdentityExtra:
-    """One tokenizer-identity rule for every role config (RFC-0001 section 7.4).
-
-    ``identity_extra()`` carries the SHA-256 of the config's ``tokenizer.json`` under the one key
-    ``tokenizer_sha256`` -- never the tokenizer's name (RUNTIME) -- and the judge's own identity payload
-    never moves: its family carries the digest under its own keys, which stay as they are.
+    """One tokenizer-identity rule for every role config: ``identity_extra()`` carries the SHA-256 of the
+    config's ``tokenizer.json`` under the one key ``tokenizer_sha256`` -- never the tokenizer's name (RUNTIME)
+    -- and the judge's own identity payload never moves: its family carries the digest under its own keys,
+    which stay as they are.
     """
 
     @pytest.mark.parametrize(
@@ -669,7 +668,7 @@ class TestTransport:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The serve-by-role types (rfc-0001 section 5)
+# The serve-by-role types
 # ---------------------------------------------------------------------------------------------------------------
 
 
