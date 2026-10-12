@@ -21,11 +21,12 @@ inputs:
       sha256: d257bbd5ef0be02a97d59499c5c5fa8e2b1e8e0829fbdd1fa1f883e28ff03a45
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.0003491680693382057
   tolerance:
     abs: 0.002
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'Long text built deterministically: 900 paragraph blocks, each ''Entry NNNNN of the ledger.'' plus
   two of 7 fixed sentences in rotation (generator kept with the lane; no RNG). Rendered length measured
   with the recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a: 39995
@@ -34,4 +35,4 @@ notes: 'Long text built deterministically: 900 paragraph blocks, each ''Entry NN
   client.template anchor: last, on_overflow: cut); the reference applies the same anchor-preserving cut
   (recipe note 5). The engine must never see an over-length request (vLLM would 400). Tolerance: bf16
   serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research
-  r-zembed1), headroom to 2e-3. Values are filled by the GPU wave (reference + engine recorded).'
+  r-zembed1), headroom to 2e-3. Values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; the wave conformance run compares the served engine against them).'

@@ -106,13 +106,20 @@ inputs:
       sha256: bdad83f60b77437cb84351fa5f5fee43dad35c66d93d615816c2f0e116102866
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.640151925377506
+    - 0.4817831471726767
+    - 0.5642456259373215
+    - 0.5660571716077495
+  - - 0.49169792539163043
+    - 0.4935830864557132
+    - 0.6039512837228825
+    - 0.617395133056071
   tolerance:
     abs: 0.002
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'Mixed-length batch, all inputs well under the cap (rendered documents 28/58/900/3208 tokens, recipe
   tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a); near-cap and over-cap
   paths live in long-under-single and long-over-single. Tolerance: bf16 serve (recipe dtype) vs bf16 sentence-transformers
-  reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are filled
-  by the GPU wave (reference + engine recorded).'
+  reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom to 2e-3. Values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; the wave conformance run compares the served engine against them).'
