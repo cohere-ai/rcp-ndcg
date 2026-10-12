@@ -1,8 +1,8 @@
 """The phase plan (:func:`rcp_ndcg.support.serve.plan_phases`) and the engines overlay it is planned from.
 
-``plan_phases`` is a pure function of the steps, the engines and their use; every grouping below is the one
-RFC-0001 5.2 option B asks for: consecutive steps that call the same served engines share a phase, steps that
-call no served engine run in a phase without one, and the paper run becomes four phases.
+``plan_phases`` is a pure function of the steps, the engines and their use: consecutive steps that call the
+same served engines share a phase, steps that call no served engine run in a phase without one, and the paper
+run becomes four phases.
 """
 
 from __future__ import annotations

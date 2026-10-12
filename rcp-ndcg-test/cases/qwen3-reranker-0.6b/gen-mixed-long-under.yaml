@@ -133,5 +133,5 @@ notes: 'Generated for the stratum cell modality=text, length=long_under, batch=m
   4096-token query share (the wave''s pairs keep queries within the share). Scores are probability-scale
   (use_activation true; the served head scores sigmoid, the reference softmax([no, yes])[yes] of token
   ids 2152/9693): expected.values are filled at the GPU wave from the recipe''s reference implementation
-  and the engine, both recorded, gated at the declared abs 0.02 (the RFC-0001 stage-2 gate for probability-scale
+  and the engine, both recorded, gated at the declared abs 0.02 (the stage-2 gate for probability-scale
   scores: at most 0.02 for 99% of documents, 0.05 for all). status pending_gpu.'

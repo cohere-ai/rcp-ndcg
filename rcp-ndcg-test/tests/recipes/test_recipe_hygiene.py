@@ -1,15 +1,20 @@
-"""One repo-wide hygiene guard over every shipped recipe file and template.
+"""The repo-wide hygiene guards over the shipped tree.
 
 A shipped recipe is package data of a public distribution: every line must read as a self-contained public
 statement. Internal process shorthand (a lane or sweep name, a private review id), a private work directory or
 a local machine path is not a source a reader of the wheel can resolve, and the standing rule forbids them
 (the ctxl family's own guard is the pattern; this module is its one repo-wide home, so a family that ships a
-new file cannot pass unnoticed). Offline by construction: it reads the package data, nothing else.
+new file cannot pass unnoticed). The same rule covers the rest of the shipped tree: no tracked file outside
+the scaffolding (``handover/``, ``experiments/``) cites the internal design document or a lane branch -- the
+docs wording test forbids those ids in Markdown and the gate's public-names step forbids operator paths, so
+this scan is their one home everywhere else. Offline by construction: it reads the tracked tree, nothing else.
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
+from pathlib import Path
 
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
@@ -24,6 +29,15 @@ INTERNAL_LABELS = re.compile(
 )
 """The internal-label and private-path pattern every shipped recipe file is scanned with."""
 
+#: The internal design-document and lane-branch citations no shipped file may carry: the design document is
+#: operator scaffolding and a lane branch is unknown outside this workspace. Case-insensitive: a lowercased
+#: citation of the same design id is the same id. The scan skips :data:`SCAFFOLDING` (see the module docstring).
+DESIGN_AND_LANE_IDS = re.compile(r"\bRFC[- ]?\d{3,4}\b|\blane/", re.IGNORECASE)
+
+#: The scaffolding directories the shipped-tree scan skips: working notes and paper reproduction, deleted at
+#: release.
+SCAFFOLDING = ("handover", "experiments")
+
 
 #: The per-column media fields the harness retired in favour of one ``media`` field (W2). Every family's
 #: ``reference.py`` refuses them, because a row carrying one would otherwise be encoded or scored as text --
@@ -33,6 +47,39 @@ INTERNAL_LABELS = re.compile(
 RETIRED_MEDIA_COLUMNS = ("query_image", "query_video", "documents_images", "documents_videos")
 
 _COLUMN_TUPLE = re.compile(r"for key in \(([^)]*)\) if row\.get\(key\)")
+
+
+def _repository_root() -> Path:
+    """The checkout root: this module lives three directories below it."""
+    return Path(__file__).resolve().parents[3]
+
+
+def _shipped_files(root: Path) -> list[Path]:
+    """Every tracked file under ``root`` except the scaffolding (see :data:`SCAFFOLDING`).
+
+    The tracked tree is what a release ships; an untracked file is not part of it.
+    """
+    listed = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], check=True, capture_output=True).stdout
+    return [
+        root / name for name in listed.decode("utf-8").split("\0") if name and name.split("/", 1)[0] not in SCAFFOLDING
+    ]
+
+
+def test_no_shipped_file_cites_an_internal_design_or_lane_id() -> None:
+    """No tracked file outside the scaffolding cites the internal design document or a lane branch.
+
+    ``handover/`` and ``experiments/`` are scaffolding, deleted at release; the docs wording test covers
+    Markdown and the gate's public-names step operator paths, so this scan is the one home for the rest of the
+    shipped tree (the product's code and tests, the test package's cases and goldens).
+    """
+    root = _repository_root()
+    hits = [
+        f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
+        for path in _shipped_files(root)
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
+        if DESIGN_AND_LANE_IDS.search(line)
+    ]
+    assert not hits, "internal design or lane ids in the shipped tree:\n" + "\n".join(hits)
 
 
 def test_every_reference_refuses_the_same_retired_media_columns() -> None:

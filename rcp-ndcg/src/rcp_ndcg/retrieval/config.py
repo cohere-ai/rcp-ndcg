@@ -2,7 +2,7 @@
 
 A retriever is a union discriminated on ``kind``: :class:`BM25Config`, :class:`DenseConfig` or
 :class:`LateInteractionConfig`. Dense and late-interaction retrievers carry an encoder, and a reranker is a model;
-all three are :mod:`rcp_ndcg.inference` role configs selected by ``api`` (RFC-0001 section 7.2), each variant
+all three are :mod:`rcp_ndcg.inference` role configs selected by ``api``, each variant
 carrying only the fields its wire uses:
 
 =====================  ==========================================================  =========  ========
