@@ -250,6 +250,12 @@ is skipped per case with its reason recorded, its file untouched: the 14 media-b
 text-only reference cannot read them; the reference's `media` mode reports input facts, not model
 outputs, so a media-value fill is a follow-up) and topk's `kind: none` one -- 26 of the 40 values fill.)
 
+**Superseded by lane mediafill** (owner decision 2026-10-12: the media cases are in scope): the media
+cases fill from the references' existing `embed`/`score` modes over the pairs row's `media` field, so 39
+of the 40 values-bearing cases fill (the qwen3-vl-embedding video case is a recorded exception at the
+recipe's video pin) and only topk's `kind: none` case is the structural non-fill.  See
+`handover/reports/mediafill.md`.
+
 ## 5. Verification
 
 - `bin/gate lane/confprep` at `43c9de5d`, five attempts: all steps exit=0 except the test-package SIGSEGV
