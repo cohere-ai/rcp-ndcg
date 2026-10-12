@@ -8,7 +8,11 @@ case was skipped. This lane closes it without a new reference mode (the referenc
 (none of which the fill's vocabulary knew), and makes one case's refusal a recorded exception instead of
 the recipe's loss.
 
-**Gate:** `timeout 7200 bin/gate lane/mediafill` on `96046f4f` (slot 2), first attempt — **GATE: PASS**.
+**Gate:** `timeout 7200 bin/gate lane/mediafill` on the merged tip `ceb12da2` (slot 2): attempt 1 hit
+the documented test-package SIGSEGV environment flake
+(`test_wave_corpus.py::test_the_corpus_is_keyed_by_the_engine_version_the_pod_reports`, exit 139 --
+`handover/reports/07a-qa-prep.md` section 2), attempt 2 **GATE: PASS** (every step exit=0; the pre-merge
+commit `96046f4f` also passed on its first attempt).
 
 ## 1. Status — per-item disposition
 
@@ -134,11 +138,14 @@ with **zero of the 14 media cases silently skipped**. The notes of all 39 filled
 - The failing tests first (section 3), then green: `rcp-ndcg-test/tests/test_case_fill.py` (12 passed),
   `test_jobs_scripts.py` (88 passed with `test_case_fill.py`), the family test
   `tests/recipes/test_qwen3_vl_embedding.py`.
-- The whole test package through `heavy`: **1167 passed, 229 skipped**.
+- The whole test package through `heavy`: **1167 passed, 229 skipped** (pre-merge; the merged tree's
+gate step: **1170 passed, 229 skipped**, the r9 merge adding three tests).
 - The root suite through `heavy`: **4145 passed, 155 skipped**.
 - `tests/test_cases_package.py tests/contract tests/docs`: **416 passed, 108 skipped**.
 - `ruff format --check` clean, `ruff check` clean, `basedpyright` 0 errors.
-- `bin/gate lane/mediafill` on `96046f4f`: every step exit=0 (SUMMARY quoted above).
+- `bin/gate lane/mediafill`: `96046f4f` (pre-merge) passed on its first attempt; the merged tip `ceb12da2`
+  passed on attempt 2 after attempt 1 hit the documented test-package SIGSEGV flake (both SUMMARYs quoted
+  in the lane workspace's gate logs).
 
 ## 6. Open questions / residual risks
 
