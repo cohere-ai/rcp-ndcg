@@ -10,8 +10,11 @@ a clean checkout). Everything unticked needs the owner, the GPU waves, or a deci
 - [x] 08 vLLM only, recipes for every role, the six judge recipes
 - [x] 09 one ordered processing pipeline
 - [x] 10 data I/O and MTEB interoperability
-- [ ] 06 final docs and the CHANGELOG fold into `## 0.0.1 — <date at tag time>` (docs 06 owns the fold; this
-      lane added its own entries under `## Unreleased`)
+- [x] 06 final docs and the CHANGELOG fold into `## 0.0.1 — <date at tag time>`: the docs lane is done
+      (`handover/reports/06-docs.md`, status DONE) and the fold holds -- `CHANGELOG.md` carries no `## Unreleased`
+      section, its release entry is `## 0.0.1 — <date at tag time>`, and every later lane's entries were added
+      inside that section (checked 2026-10-12: `grep -n '^## ' CHANGELOG.md` lists only `## Versioning` and
+      `## 0.0.1 — <date at tag time>`)
 - [x] 07 QA passes and fixes: the four read-only passes (`reviews/qa-artifacts/`), the two HIGH fixes (the
       conformance mixed-delta case, the test package's per-test timeout guard), the MEDIUMs this lane fixed (the
       stage-2 default pins, the unframed-instruction overhead, the root tree's DNS watchdog, the single-suite
@@ -24,12 +27,18 @@ a clean checkout). Everything unticked needs the owner, the GPU waves, or a deci
 - [x] Public surface frozen and curated: `PUBLIC_MODULES` in `rcp_ndcg.support.api_docs`, the snapshot in
       `tests/contract/snapshots/`, and the generated pages under `docs/reference/api/` (`rcp-ndcg docs api`);
       every pinned name is documented and the contract suite keeps the pages current
-- [ ] `pip-audit` alerts reviewed and the Dependabot PRs (#1 oauthlib, #2 vllm, #3 transformers 5.10.1) closed or
-      superseded: needs the owner's `gh` access and a network advisory database (this lane could only read the
-      lock: oauthlib 4.0.0, transformers 5.17.0 -- the PRs are stale against it, see the report)
+- [x] `pip-audit` alerts reviewed and the Dependabot PRs (#1 oauthlib, #2 vllm, #3 transformers 5.10.1) closed or
+      superseded: the analysis is in `handover/reports/dependabot-analysis.md`. The three PRs are closed
+      (2026-09-30); the 40 open alerts are all against `main`'s initial lock, not the release tree's -- the
+      release `uv.lock` carries oauthlib 4.0.0, transformers 5.17.0, setuptools 84.0.0 and torch 2.14.0 (every
+      open alert's fixed version or above) and no vllm/sglang/xgrammar/diskcache at all; `pip-audit` against
+      `requirements-constraints.txt` finds pyjwt 2.14.0 (fixed in 2.15.0, reached only through the optional
+      `[azure]` extra), which the owner decides on
 - [ ] GitHub CI green on the final `rfc-0001` tip (the last run this lane saw was for `0d3a20b3`; the tip has moved
       since). The nightly shuffled run was reproduced locally on samples, not dispatched
-- [ ] README images use absolute URLs pinned to the tag (06)
+- [x] README images use absolute URLs pinned to the tag (06): `rcp-ndcg/README.md`'s two images point at
+      `https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.0.1/docs/assets/...` (checked 2026-10-12); the
+      root README carries no images
 
 ## 2. GPU waves (owner; per recipe, on the stock `vllm/vllm-openai:v0.31.0`, except `embeddinggemma-2` on its
 digest-pinned nightly)
@@ -62,15 +71,25 @@ re-running or queued. Every recipe's `status` is still `unverified` (24 families
       7,864,320 px); record a page-image observation so the ViDoRe golden's retrieval view needs no waiver
 - [ ] Real infrastructure: one SLURM and one Kubernetes run of the one-container and StatefulSet job shapes
 - [ ] Flip each recipe's `status` to `verified` from its wave evidence only
-- [ ] Clean the judge families' `handover/specs/judge-catalog.md` / lane-report citations from their shipped notes
-      and sources before `handover/` is deleted; the repo-wide recipe hygiene guard scopes itself to the non-judge
-      families until then
+- [x] The judge families' `handover/specs/judge-catalog.md` / lane-report citations are gone from their shipped
+      notes and sources (lane relmech, commit `07db730a`), and the repo-wide recipe hygiene guard now scans every
+      shipped family (its non-judge scoping is removed; `rcp-ndcg-test/tests/recipes/test_recipe_hygiene.py`
+      passes with the ten judge goldens regenerated)
 
 ## 3. Release (owner)
-- [ ] `pip-audit` alerts reviewed; Dependabot PRs closed or superseded with a reason
-- [ ] The owner-revisit item from `ORCHESTRATION-STATE.md` section 11 is decided: the shipped judge sampling
-      (`temperature: null`, `max_output_tokens` 8192/16384) diverges from handover decision 4.3 (`temperature 0.0`,
-      `max_output_tokens 12288`). Changing those fields moves the judge family keys, so it is a decision, not a fix
+- [x] `pip-audit` alerts reviewed; Dependabot PRs closed or superseded with a reason: see
+      `handover/reports/dependabot-analysis.md` (51 alerts: 11 fixed, 40 open, every open one against `main`'s
+      initial lock; the release tree's lock is clean except pyjwt 2.14.0 in the optional `[azure]` chain, and the
+      three Dependabot PRs are closed)
+- [x] The judge-sampling decision is recorded: the shipped judge recipes send each checkpoint's own
+      `generation_config.json` sampling at the pinned revision -- gemma-4-12b/26b/31b 1.0/0.95/64; qwen3.5-397b
+      0.6/0.95/20; qwen3.6-27b, qwen3.8-27b and qwen3.8-flash-next 1.0/0.95/20; gpt-oss-120b temperature 0.0 with
+      no top_p/top_k -- each keeping its own `max_output_tokens` (8192 for gpt-oss-120b, 16384 for the others).
+      This is the 2026-10-10 owner decision (the checkpoint's own sampling; the owner's HF-default call), which
+      supersedes handover decision 4.3's paper sampling. Recorded as `00-MASTER.md` decision 42, in
+      `handover/specs/judge-catalog.md` section 1, in the recipes' notes and in the CHANGELOG. The fields are
+      CONTENT fields of the judgement family (a change re-keys every judge family), so the shipped values stand
+      and are not changed again silently
 - [ ] Hugging Face datasets republished in MTEB's exact layout (decision 31), into an organisation if wanted; every
       pinned reference updated; mteb's `RetrievalDatasetLoader` loads each
 - [ ] Delete `handover/` and its exclusion in `tests/docs/_markdown.py` in one commit
