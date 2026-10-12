@@ -108,11 +108,16 @@ variable (a job's own value would be silently overridden), and a run without `se
   is scratch, an `emptyDir` at `/scratch`, and the model weights and the Hugging Face cache live on a declared
   `cache_volume` (a `PersistentVolumeClaim` mounted at `/cache`, shared by every replica and kept across restarts)
   or else on that scratch volume, never the container's writable layer; every engine process gets its own
-  `TMPDIR` under `/scratch/tmp`. A run-scoped engine (several replicas) lives in its own StatefulSet for the whole
+  `TMPDIR` under `/scratch/tmp`. `/dev/shm` is a Memory `emptyDir` bounded by `dshm_size`
+  (`runner.options.dshm_size`, `16Gi` by default): the engines' shared-memory working set fits, and a runaway
+  engine fails its own pod instead of exhausting the node (raise it for a phase that runs several engines in one
+  container, whose requirements add up). A run-scoped engine (several replicas) lives in its own StatefulSet for the whole
   run; a finished Job that owns one is deleted, with its engines, an hour after it finishes unless
   `ttl_seconds_after_finished` says otherwise, and `run status` reports a pod the scheduler cannot place as
   `pending` with the scheduler's own reason in the note (the Job's pods and the engine pods alike; a pod list that
-  cannot be read reports `unknown` with a note, never `running`). The pod needs a `mirror:`
+  cannot be read reports `unknown` with a note, never `running`). A multi-phase job whose init container is still
+  initializing reads `pending` with the container's own `PodInitializing` reason in the note -- the phase's engine
+  is still starting, not stalled. The pod needs a `mirror:`
   ([durability](#durability-local-runs-and-a-mirror)), since it does not see the submitting host's files either.
   Every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
   rankings file, evaluation system, judge config file or prompt file is refused before anything is written, naming
@@ -600,7 +605,7 @@ spec:
           volumeMounts: [{name: dshm, mountPath: /dev/shm}]
       volumes:
         - name: dshm
-          emptyDir: {medium: Memory}
+          emptyDir: {medium: Memory, sizeLimit: 16Gi}
 ---
 apiVersion: v1
 kind: Service

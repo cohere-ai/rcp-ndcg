@@ -1,12 +1,12 @@
-# The Qwen3.6-27B judge family (decision 34): the paper's TREC-DL judge, one variant.
+# The Qwen3.6-27B judge family: the paper's TREC-DL judge, one variant.
 #
-# The family's client block is rcp-ndcg's judge config (decision 15, R30). The paper recorded only this
-# judge's served name and reasoning parser (experiments/paper/README.md:40-42); the rest of the serve block is
-# the catalog's translation of the checkpoint's own config (handover/specs/judge-catalog.md section 3.3, open
-# question 1).
+# The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
+# rcp-ndcg reads `recipe: qwen3.6-27b-fp8` (this package carries no second model of a judge). The paper
+# recorded only this judge's served name and reasoning parser (experiments/paper/README.md:40-42); the rest of
+# the serve block is a translation of the checkpoint's own config, every flag checked in the vLLM v0.31.0
+# source.
 #
-# Serving shape (owner decision 41): the weights fit one GPU of either class, so TP1 and throughput by
-# replicas.
+# Serving shape: the weights fit one GPU of either class (B200 or H100), so TP1 and throughput by replicas.
 id: qwen3.6-27b
 schema_version: "1"
 role: judge
@@ -36,7 +36,7 @@ serve:
 client:
   api: chat
   # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
-  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): temperature 1.0, top_p 0.95,
+  # (2026-10-10 owner decision, superseding the paper's run-level sampling): temperature 1.0, top_p 0.95,
   # top_k 20. The max_output_tokens stays 16384.
   temperature: 1.0
   extra_body: {top_p: 0.95, top_k: 20}
@@ -51,23 +51,22 @@ client:
 notes: >-
   The paper's TREC-DL judge (Qwen3.6-27B in its FP8 release). Client block: temperature 1.0 / top_p 0.95 /
   top_k 20 -- the checkpoint's own generation_config.json at the pinned revision (2026-10-10 owner decision:
-  every judge sends its checkpoint's generation defaults, superseding decision 4.3's paper sampling) --
+  every judge sends its checkpoint's generation defaults, superseding the paper's run-level sampling) --
   max_output_tokens 16384, and NO context_tokens -- the paper's preset declared none, so
   documents are sent whole and the engine's context is the only bound (a documented, deliberate difference from
   the other judges' per-window budgets). The paper's own client files did declare `context_size: 262144` (their
   per-window truncation window), which equals their engine's `--context-length` 262144: with the window at the
   engine's own limit the truncation never binds a TREC-DL window, so sending documents whole under the same
   engine bound is the same effective policy. The checkpoint is natively multimodal, so the client declares
-  image_processor qwen3_vl and max_images 10 (the catalog's recommendation, open question 3: the preset left
+  image_processor qwen3_vl and max_images 10 (the preset left
   max_images unset and run configs set it); limit_mm_per_prompt matches it at the engine. No video.
-  DECLARED DIVERGENCE from the paper's runs (recorded, never silent; the R5 pre-flight found it): the paper's
+  DECLARED DIVERGENCE from the paper's runs (recorded, never silent): the paper's
   TREC-DL runs drove this judge's deploy strategies with `strategy.max_response_tokens: 12288`, a per-call
   override that wins over the client's own `max_tokens: 16384` (the paper's experiment configs
   msmarco_trecdl_dl_tournament.yaml / _rasch.yaml / _dl20_tournament_restart.yaml; its deploy strategies build
   GenerationParams(max_tokens=cfg.max_response_tokens)). This recipe follows the preset's 16384. The cap is a
   CONTENT field of the judgement family, so a run under this recipe never pools with a paper run; the sampling
-  change above re-keys the family too (the owner accepted the re-key) -- see
-  handover/reports/08bd-judge-recipes.md.
+  change above re-keys the family too (the owner accepted the re-key).
   Serving: --reasoning-parser qwen3 (the one setting the paper recorded), --max-model-len 262144 (the
   checkpoint's own limit), TP1.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default).
@@ -81,15 +80,14 @@ notes: >-
     sequences, thousands of 2k windows. Same shape -- no `--set` override needed.
   `--kv-cache-dtype fp8_e4m3` would halve the KV; the paper set nothing, so the recipe declares nothing.
   History: the paper's own engine settings for this judge are not recorded beyond the served name and parser;
-  the catalog's pin is the Hub head at the check date (open question 1), chosen so the conformance replay stays
-  reproducible.
+  the pin is the Hub head at the check date, chosen so the conformance replay stays reproducible.
   Engine support: Qwen3_5ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:596, module
-  qwen3_5); checked at the pinned revision 2026-10-09. status: unverified until the E2 judge wave passes.
+  qwen3_5); checked at the pinned revision 2026-10-09. status: unverified until its GPU validation wave passes.
 sources:
   - "https://huggingface.co/api/models/Qwen/Qwen3.6-27B-FP8 (revision e89b16ebf1988b3d6befa7de50abc2d76f26eb09 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/Qwen/Qwen3.6-27B-FP8/raw/e89b16ebf1988b3d6befa7de50abc2d76f26eb09/config.json (Qwen3_5ForConditionalGeneration, 64 layers, hidden 5120, head_dim 256, 24 query / 4 KV heads, vocab 248 320, mpe 262 144, FP8 block [128,128]; vision tower depth 27, hidden 1152, patch 16, merge 2), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px)"
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:596; layers/quantization/fp8.py:92,138-139 (fp8 auto-detected)"
-  - "handover/specs/judge-catalog.md sections 1-3.3 (the catalog's facts and open question 1: the paper's engine settings for this judge are not recorded)"
+  - "https://huggingface.co/Qwen/Qwen3.6-27B-FP8 (the model card: the checkpoint facts and the recommended engine settings the blocks above translate; the paper's own engine settings for this judge are not recorded beyond its served name and parser)"
   - "experiments/paper/README.md:40-42 at this tree's HEAD (the served name and reasoning parser the paper recorded; the paper's judges ran on SGLang and this release serves the same checkpoint on vLLM v0.31.0)"
 status: {state: unverified, image: null, date: null, report: null}
 variants:
@@ -98,7 +96,7 @@ variants:
     revision: "e89b16ebf1988b3d6befa7de50abc2d76f26eb09"
     notes: >-
       The Hub head at the check date: the paper's checkpoint revision was never recorded (the preset carried
-      revision: null), so the catalog pins the head for a reproducible conformance replay (open question 1). The
+      revision: null), so the recipe pins the head for a reproducible conformance replay. The
       served name is the recipe id; the T4 scenarios override it to their slot name at run time. B200 and H100:
       TP1 (resources.gpus 1).
     sources:
