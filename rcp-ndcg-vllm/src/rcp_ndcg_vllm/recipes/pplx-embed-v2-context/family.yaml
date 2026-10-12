@@ -205,11 +205,13 @@ notes: |-
   asserts "ChunkGatedDeltaRuleFunction does not support float32. Please use
   bfloat16.", third_party/flash_linear_attention/ops/chunk.py:213-215 at the
   tag). The recipe therefore serves dtype: bfloat16 (16.8 GB of weights; the
-  33,604,334,528-byte fp32 checkpoint is cast at load) while the REFERENCE
-  runs the checkpoint's own fp32 (the card's AutoModel.from_pretrained passes
-  no dtype, so the config's float32 loads) -- the served-vs-reference difference is the
-  cast plus the kernels, and stage 2's tolerance gate and the wave's retrieval
-  numbers quantify it. The first equivalence plan's float32 rung is deleted:
+  33,604,334,528-byte fp32 checkpoint is cast at load), and the REFERENCE loads the
+  same bfloat16 (E2 round 4: the fp32 load OOMed the stage-2 subprocess on a long
+  row -- 69.48 GiB allocated by PyTorch, one ~88 GiB allocation -- and the owner's
+  like-for-like precision rule compares the engine and the reference at one dtype;
+  the remote code's _keep_in_fp32_modules keeps the contextual projection fp32 and
+  the pooling casts to fp32 before round(tanh(x) * 127), so the int8-valued vectors
+  are unaffected). The first equivalence plan's float32 rung is deleted:
   it is unservable on this engine. The int8 head stays fp32 on both sides (the
   remote code's _keep_in_fp32_modules; the plugin's head_dtype). Skipping the
   unused vision tower saves 1.82 GB fp32 (parsed from the checkpoint's shard

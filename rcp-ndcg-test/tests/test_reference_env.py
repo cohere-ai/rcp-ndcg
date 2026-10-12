@@ -88,14 +88,22 @@ def test_import_problems_names_the_family_and_the_failure(monkeypatch: pytest.Mo
     assert "definitely-not-installed==1.0 is not installed" in problems[0]
 
 
-def _fake_site(tmp_path: Path, distributions: dict[str, tuple[str, list[str]]]) -> Path:
-    """A site directory of fake installed distributions: name -> (version, RECORD entries)."""
+def _fake_site(
+    tmp_path: Path, distributions: dict[str, tuple[str, list[str]]], *, requires: dict[str, list[str]] | None = None
+) -> Path:
+    """A site directory of fake installed distributions: name -> (version, RECORD entries).
+
+    ``requires`` adds ``Requires-Dist:`` lines to a distribution's METADATA (the cross-pin check reads
+    them through ``importlib.metadata``).
+    """
     site = tmp_path / "site"
     site.mkdir()
     for name, (version, record) in distributions.items():
         info = site / f"{name.replace('-', '_')}-{version}.dist-info"
         info.mkdir()
-        (info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n", encoding="utf-8")
+        lines = ["Metadata-Version: 2.1", f"Name: {name}", f"Version: {version}"]
+        lines.extend(f"Requires-Dist: {requirement}" for requirement in (requires or {}).get(name, []))
+        (info / "METADATA").write_text("\n".join(lines) + "\n", encoding="utf-8")
         (info / "RECORD").write_text("".join(f"{entry},,\n" for entry in record), encoding="utf-8")
     return site
 
@@ -143,6 +151,51 @@ def test_import_problems_skips_a_library_only_wheel(monkeypatch: pytest.MonkeyPa
     assert any("fake-broken" in problem and "RuntimeError" in problem for problem in problems), problems
     assert any("fake-missing" in problem for problem in problems), problems
     assert not any("fake-ok" in problem for problem in problems), problems
+
+
+def test_import_problems_names_a_pin_another_pins_requirement_forbids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The r4 wave's topk bootstrap failure, as the check's own line: the lock pinned
+    ``huggingface-hub==2.2.0`` while its own ``transformers==5.17.0`` declares
+    ``huggingface-hub<2.0,>=1.5.0`` (its METADATA's Requires-Dist).  ``uv pip compile --no-deps``
+    never consults another pin's requirements, so the lock shipped unsatisfiable, the completion step
+    moved the venv's copy, and the version check failed without naming the cause; this check names
+    both pins and the requirement.  A pin inside the range is clean."""
+    site = _fake_site(
+        tmp_path,
+        {
+            "transformers-fake": ("5.17.0", ["transformers_fake/__init__.py"]),
+            "huggingface-hub-fake": ("2.2.0", ["huggingface_hub_fake/__init__.py"]),
+        },
+        requires={"transformers-fake": ["huggingface-hub-fake<2.0,>=1.5.0"]},
+    )
+    (site / "transformers_fake").mkdir()
+    (site / "transformers_fake" / "__init__.py").write_text("", encoding="utf-8")
+    (site / "huggingface_hub_fake").mkdir()
+    (site / "huggingface_hub_fake" / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(site))
+    monkeypatch.setattr(
+        rl,
+        "compile_requirements",
+        lambda requirements, **kwargs: "transformers-fake==5.17.0\nhuggingface-hub-fake==2.2.0\n",
+    )
+    lock_path = _lock(tmp_path, "transformers-fake\nhuggingface-hub-fake\n")
+    lock = renv.parse_lock(lock_path)
+    problems, _facts = renv.import_problems(sys.executable, lock)
+    assert any(
+        "transformers-fake==5.17.0 requires huggingface-hub-fake<2.0,>=1.5.0" in problem
+        and "the lock pins huggingface-hub-fake==2.2.0" in problem
+        for problem in problems
+    ), problems
+
+    inside = tmp_path / "inside.lock"
+    inside.write_text(
+        lock_path.read_text(encoding="utf-8").replace("huggingface-hub-fake==2.2.0", "huggingface-hub-fake==1.33.0"),
+        encoding="utf-8",
+    )
+    ok, _facts = renv.import_problems(sys.executable, renv.parse_lock(inside))
+    assert not any("requires huggingface-hub-fake" in problem for problem in ok), ok
 
 
 def test_check_cli_reports_ok_and_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys) -> None:

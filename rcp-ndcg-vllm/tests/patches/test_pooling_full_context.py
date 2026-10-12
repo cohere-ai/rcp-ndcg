@@ -159,6 +159,7 @@ def test_the_entry_point_seam_applies_the_opted_in_patch(monkeypatch: pytest.Mon
     monkeypatch.setattr("rcp_ndcg_vllm.models.version_guard.require_vllm_version", lambda: (0, 31))
     monkeypatch.setattr("rcp_ndcg_vllm.models.topk.plugin.register_topk", lambda: None)
     monkeypatch.setattr("rcp_ndcg_vllm.models.pplx.register_pplx", lambda: None)
+    monkeypatch.setattr("rcp_ndcg_vllm.models.embedding_gemma2.register_embedding_gemma2", lambda: None)
 
     scheduler_cls = _scheduler_class()
     fake = {

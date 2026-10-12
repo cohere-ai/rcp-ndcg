@@ -985,6 +985,28 @@ def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
     assert variant["weights_bytes"] in notes
 
 
+def test_the_reference_lock_pins_huggingface_hub_inside_transformers_own_range() -> None:
+    """The r4 wave's bootstrap failure: the lock pinned ``huggingface-hub==2.2.0`` while the same
+    lock pins ``transformers==5.17.0``, whose METADATA declares ``huggingface-hub<2.0,>=1.5.0``.  The
+    name was unpinned in ``reference.in``, and ``uv pip compile --no-deps`` resolves an unpinned name
+    to the newest release without consulting another pin's requirements, so the completion step moved
+    the venv's copy to a wheelhouse version and the import check failed with only the version
+    mismatch.  The range is now declared (both render-mode names sit inside the range the family's own
+    transformers declares) and the lock pins the image's 1.33.0, which every staged wheelhouse
+    carries; the check names any future violation."""
+    from rcp_ndcg_test.jobs.reference_deps import satisfies
+    from rcp_ndcg_test.jobs.reference_env import parse_lock
+
+    text = (RECIPE_DIR / "reference.in").read_text(encoding="utf-8")
+    assert "huggingface-hub>=1.5,<2.0" in text
+    assert "tokenizers>=0.23.1,<0.24.0" in text
+    lock = parse_lock(RECIPE_DIR / "reference.lock")
+    assert lock.pins["huggingface-hub"] == "1.33.0"
+    assert lock.pins["transformers"] == "5.17.0"
+    assert satisfies("huggingface-hub<2.0,>=1.5.0", lock.pins["huggingface-hub"])
+    assert satisfies("tokenizers<0.24.0,>=0.23.1", lock.pins["tokenizers"])
+
+
 def _reference_module() -> Any:
     """The recipe's reference.py as a module (its top level imports only the standard library)."""
     import importlib.util

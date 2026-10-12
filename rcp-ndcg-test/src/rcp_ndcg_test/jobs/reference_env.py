@@ -34,7 +34,7 @@ from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
 
 from rcp_ndcg_test.errors import HarnessError
 
-from .reference_deps import canonical
+from .reference_deps import _marker_allows, canonical, requirement_name, satisfies
 from .reference_lock import LOCK_SCHEMA, _lock_header, _pinned_versions
 
 __all__ = [
@@ -66,6 +66,7 @@ import sys
 spec = json.loads(sys.argv[1])
 problems = []
 versions = {}
+requires = {}
 library_only = []
 try:
     import torch
@@ -118,6 +119,7 @@ for name, pin in spec["pins"].items():
         problems.append(f"{name}=={pin} is not installed")
         continue
     versions[name] = seen
+    requires[name] = list(distribution.requires or [])
     if release(seen) != release(pin):
         problems.append(f"{name} is installed at {seen}, the lock pins {pin}")
     module = spec["imports"].get(name, name.replace("-", "_"))
@@ -136,7 +138,7 @@ if own_torch and "torch" in spec["pins"] and versions.get("torch") is not None:
         problems.append(
             f"the own-torch family must see torch {spec['pins']['torch']}, the venv sees {versions['torch']}"
         )
-print(json.dumps({"versions": versions, "problems": problems, "library_only": library_only}))
+print(json.dumps({"versions": versions, "problems": problems, "library_only": library_only, "requires": requires}))
 """
 
 
@@ -310,9 +312,38 @@ def import_problems(python: str | Path, lock: LockInfo) -> tuple[list[str], dict
     except (ValueError, IndexError) as error:
         raise HarnessError(f"the reference environment check wrote no JSON: {completed.stdout[-500:]!r}") from error
     problems = [f"family {lock.family}: {problem}" for problem in document.get("problems", [])]
+    problems.extend(_unsatisfiable_pins(lock, document.get("requires") or {}))
     facts = dict(document.get("versions", {}))
     facts["library_only"] = list(document.get("library_only", []))
     return problems, facts
+
+
+def _unsatisfiable_pins(lock: LockInfo, requires: dict[str, list[str]]) -> list[str]:
+    """The lock's own pins that another pinned distribution's requirement forbids.
+
+    Inputs: the parsed lock and ``{pin: [Requires-Dist strings]}`` from the probe (the installed
+    distributions' metadata).  Output: one problem line per violated requirement, naming both pins
+    (empty when every requirement the markers admit is satisfied).
+
+    This is the r4 wave's topk failure, named: the lock pinned ``huggingface-hub==2.2.0`` while its
+    own ``transformers==5.17.0`` declares ``huggingface-hub<2.0,>=1.5.0``.  ``uv pip compile
+    --no-deps`` resolves an unpinned name to the newest release and never consults another pin's
+    requirements, so the completion step then moved the venv's copy and the check failed with only
+    the version mismatch; this check reports the requirement that made the lock unsatisfiable.
+    """
+    problems: list[str] = []
+    for name in sorted(lock.pins):
+        for requirement in requires.get(name, []):
+            dependency = requirement_name(requirement)
+            if dependency not in lock.pins or dependency == name or not _marker_allows(requirement):
+                continue
+            if not satisfies(requirement, lock.pins[dependency]):
+                problems.append(
+                    f"family {lock.family}: {name}=={lock.pins[name]} requires "
+                    f"{requirement.partition(';')[0].strip()}, but the lock pins "
+                    f"{dependency}=={lock.pins[dependency]}"
+                )
+    return problems
 
 
 def _read_ids(value: str) -> list[str]:

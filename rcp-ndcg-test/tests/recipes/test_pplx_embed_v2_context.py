@@ -592,7 +592,7 @@ def test_embed_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest
             AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_tokenizer),
         ),
     )
-    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(bfloat16=object()))
     spec = importlib.util.spec_from_file_location("pplx_context_reference", RECIPES / "reference.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -657,7 +657,7 @@ def test_the_reference_sets_the_tokenizer_the_remote_code_expects(
             AutoTokenizer=types.SimpleNamespace(from_pretrained=fake_tokenizer),
         ),
     )
-    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(bfloat16=object()))
     spec = importlib.util.spec_from_file_location("pplx_context_reference_tokenizer", RECIPES / "reference.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -671,6 +671,54 @@ def test_the_reference_sets_the_tokenizer_the_remote_code_expects(
     assert loaded["tokenizer"]["name"] == f"perplexity-ai/{RECIPE_ID}"
     assert loaded["tokenizer"]["revision"] == REVISION
     assert loaded["tokenizer"]["padding_side"] == "right"
+
+
+def test_the_reference_loads_the_checkpoint_in_the_served_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E2 round 4: the reference loaded the checkpoint at its config dtype (float32, 33.6 GB) and the
+    stage-2 subprocess OOMed on a long row (69.48 GiB allocated by PyTorch). The engine cannot serve
+    float32 on this image (the GDN prefill kernels refuse it), so the reference loads the served
+    bfloat16 -- the like-for-like dtype the owner's precision rule asks for -- and the int8 head's
+    values survive the cast (the pooling casts to fp32 before ``round(tanh(x) * 127)``)."""
+    import importlib.util
+    import types
+
+    sentinel = object()
+    loaded: dict = {}
+
+    class _FakeModel:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+    def fake_from_pretrained(name, **kwargs):
+        loaded["model"] = {"name": name, **kwargs}
+        return _FakeModel()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=fake_from_pretrained),
+            AutoTokenizer=types.SimpleNamespace(from_pretrained=lambda name, **kwargs: types.SimpleNamespace()),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(bfloat16=sentinel))
+    spec = importlib.util.spec_from_file_location("pplx_context_reference_dtype", RECIPES / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module._load(
+        "cuda:0",
+        repo="perplexity-ai/pplx-embed-v2-context-9b-preview",
+        revision=REVISION,
+        tokenizer_spec=TOKENIZER_SPEC,
+    )
+    assert loaded["model"]["dtype"] is sentinel
+    assert loaded["model"]["revision"] == REVISION
+    assert loaded["model"]["trust_remote_code"] is True
 
 
 def test_reference_embed_refuses_cpu_before_any_download(tmp_path: Path) -> None:

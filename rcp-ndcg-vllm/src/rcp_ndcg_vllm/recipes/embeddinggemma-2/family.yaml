@@ -26,16 +26,19 @@ serve:
   max_model_len: 8192           # the card's 8K context; the nightly config caps an unset max_model_len at 8192 too (config.py:293-340)
   dtype: bfloat16               # the card: bfloat16 or float32, NEVER float16 (README.md:189-193)
   plugin: rcp-ndcg-vllm      # the fold carrier: the embeddinggemma2-transformers-fold patch below installs the
-                             # transformers classes the digest-pinned nightly's transformers lacks (E2 r1)
-  plugin_architectures: [EmbeddingGemma2Config]   # the config/processor/video-processor registration the
-                             # patch installs; the fingerprint keys its modules (rcp_ndcg_vllm.models.
-                             # ARCHITECTURE_MODULES) and the patch module
+                             # transformers classes the image's transformers lacks (E2 r1) and the plugin
+                             # registers the folded model class (E2 round 4)
+  plugin_architectures: [EmbeddingGemma2Config, EmbeddingGemma2Model]   # the config/processor/
+                             # video-processor/modeling registration (E2 r1) and the folded model class the
+                             # image's registry lacks (E2 round 4); the fingerprint keys their modules
+                             # (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES) and the patch module
   patches: [embeddinggemma2-transformers-fold]   # E2 r1: the image's transformers does not know
-                             # model_type embedding_gemma2, so AutoConfig refuses config.json and vLLM's
-                             # own embedding_gemma2 model module cannot import its transformers classes;
-                             # the patch folds transformers 5.19.0's three embedding_gemma2 modules in
-                             # (see notes, "Engine"). Delete both the patch and the plugin when engine.image
-                             # moves to a vLLM image whose transformers carries the classes.
+                             # model_type embedding_gemma2, so AutoConfig refuses config.json; the patch
+                             # folds transformers 5.19.0's four embedding_gemma2 modules in (E2 round 4
+                             # added the modeling module, whose classes the folded model's
+                             # AutoModel.from_config calls resolve through; see notes, "Engine"). Delete
+                             # both the patch and the plugin when engine.image moves to a vLLM image whose
+                             # transformers carries the classes and whose registry carries the model.
   mm_processor_kwargs: {}       # no pin: the engine reads the checkpoint's own budgets (image 280 soft tokens, video 140 per frame)
   limit_mm_per_prompt: {image: 1, video: 1}   # one media item per request (the client's max_images/max_videos carry the same numbers)
   extra_args:
@@ -106,15 +109,33 @@ notes: >-
   embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's embedding_gemma2 model
   module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`
   installs the plugin wheel and `serve.patches: [embeddinggemma2-transformers-fold]` opts into the patch
-  that loads transformers 5.19.0's three embedding_gemma2 modules (configuration, processing, video
-  processing) from the wheel under their upstream module names and registers the config class with
-  AutoConfig and the processor and video-processor classes with AutoProcessor/AutoVideoProcessor; vLLM's own
-  registry carries the model class. The patch is inert when the image's transformers already has the classes
-  (it probes the import first), and it is verified on CPU against transformers 5.17.0: the checkpoint's
-  config.json parses, the processor loads, and text, image and video calls all return tensors. SWITCH TO
-  RELEASE / REMOVAL: needs vLLM commit 02b83919aa2e (PR #60254) and transformers >= 5.19.0; switch engine.image
-  to the first vLLM release that carries both, delete `serve.plugin`, `plugin_architectures` and `patches`,
-  and re-validate. The wave records the image's actual transformers version in its provenance.
+  that loads transformers 5.19.0's embedding_gemma2 modules (configuration, processing, video processing and,
+  since E2 round 4, modeling) from the wheel under their upstream module names and registers the config
+  class with AutoConfig, the processor and video-processor classes with AutoProcessor/AutoVideoProcessor and
+  the two model classes (EmbeddingGemma2Model, EmbeddingGemma2TextModel) with AutoModel. E2 round 4 (the
+  re-run on this image): serve failed again -- `Model architectures ['EmbeddingGemma2Model'] are not
+  supported for now`, and the wave's serve log's supported-architecture list is exactly the vLLM v0.31.0
+  tag's (plus the plugin's own registrations), while the nightly commit the image tag names
+  (8cbd5d03006c33185f402249ff2b448efd594986) carries both `vllm/model_executor/models/embedding_gemma2.py`
+  and its registry entry: the pinned image is a v0.31.0-based build, so vLLM's registry does NOT carry the
+  model class (the r1 log's claim that it did was inferred from the PR, not from the image). The plugin
+  therefore also ships vLLM's own `embedding_gemma2.py` from that commit (1142 lines, byte-identical plus
+  a header; `rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2`) and transformers 5.19.0's
+  `modeling_embedding_gemma2.py` (933 lines, the model's `AutoModel.from_config` calls resolve through
+  it), and `register_embedding_gemma2` registers
+  it lazily when the running registry lacks the architecture, with upstream's config hook
+  (`EmbeddingGemma2ModelConfig`: the Gemma4 heterogeneous-head-dimension handling, TRITON_ATTN as the
+  declared default backend, the 8192 cap) added to `MODELS_CONFIG_MAP` when absent. The patch and the
+  registration are inert when the image already carries the classes and the architecture (both probe
+  first), and the fold is verified on CPU against transformers 5.17.0 with the real checkpoint files: the
+  config.json parses, the processor loads, text, image and video calls all return tensors, and
+  `AutoModel.from_config` builds the text backbone (271,002,624 params) and the full model (744,371,488
+  params, the card's 740M class) -- the vendored model's vLLM-internal imports were checked symbol by symbol
+  against the v0.31.0 tag (its gemma4.py and gemma4_mm.py are byte-identical between the tag and the
+  nightly commit). SWITCH TO RELEASE / REMOVAL: needs vLLM commit 02b83919aa2e (PR #60254) -- or any release
+  whose registry carries EmbeddingGemma2Model -- and transformers >= 5.19.0; switch engine.image to the first
+  vLLM release that carries both, delete `serve.plugin`, `plugin_architectures` and `patches`, and
+  re-validate. The wave records the image's actual transformers version in its provenance.
 
   Frame. The model reads its input through no frame at all: the checkpoint's chat_template.jinja renders a
   message's text and media placeholders in order and adds nothing (no role markers, no default system turn).

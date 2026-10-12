@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_test.equivalence.fitting import load_pairs, tokenizer_of
-from rcp_ndcg_test.observe.adversarial import CONTENT_KINDS
+from rcp_ndcg_test.observe.adversarial import (
+    CONTENT_KINDS,
+    checkpoint_vocab_size,
+    omitted_spellings,
+    special_token_spellings,
+    synthetic_text,
+)
 from rcp_ndcg_test.observe.requests import (
     GENERATOR_SEED,
     GENERATOR_VERSION,
@@ -219,6 +225,67 @@ def test_a_declared_query_share_keeps_the_query_side_within_its_room() -> None:
         for row in plan.rows:
             if row.source and row.source.get("content_kind") == kind:
                 assert f"content:{kind}@query" not in row.strata, row.strata
+
+
+def test_the_spelling_set_is_bounded_by_the_checkpoints_declared_vocabulary() -> None:
+    """E2 round 4's harrier-oss-v1-270m device assert, as the generator's rule: the checkpoint's tokenizer
+    declares ``<image_soft_token>`` at id 262144 while its ``config.json`` declares ``vocab_size: 262144``
+    (embedding [262144, 640]), so a text carrying that spelling reaches a gather with no such row and kills
+    the engine.  The spelling set is bounded by the declared vocabulary -- the 27b sibling declares 262208
+    for the same token and keeps it -- and the omission is recorded in the stratum, never silent."""
+    import types
+
+    tokenizer = types.SimpleNamespace(
+        backend=types.SimpleNamespace(
+            get_added_tokens_decoder=lambda: {
+                151643: types.SimpleNamespace(content="<|endoftext|>"),
+                262143: types.SimpleNamespace(content="<|video|>"),
+                262144: types.SimpleNamespace(content="<image_soft_token>"),
+            }
+        )
+    )
+    unbounded = special_token_spellings(tokenizer)
+    assert "<image_soft_token>" in unbounded and "<|endoftext|>" in unbounded
+    bounded = special_token_spellings(tokenizer, vocab_size=262144)
+    assert "<image_soft_token>" not in bounded
+    assert "<|endoftext|>" in bounded and "<|video|>" in bounded
+    assert synthetic_text("special_token_spellings", tokenizer, vocab_size=262144) == bounded
+    assert omitted_spellings(tokenizer, vocab_size=262144) == [{"content": "<image_soft_token>", "id": 262144}]
+    # The 27b sibling's declared 262208 covers the same token: nothing is left out.
+    assert special_token_spellings(tokenizer, vocab_size=262208) == unbounded
+    assert omitted_spellings(tokenizer, vocab_size=262208) == []
+    # A fixture recipe names no Hub repository: the bound is unresolved (None), never a crash.
+    assert checkpoint_vocab_size(load_recipe(RECIPES / "fixture-embed")) is None
+
+
+def test_an_omitted_spelling_is_recorded_in_the_stratum() -> None:
+    """The plan's ``content:special_token_spellings`` stratum carries the omitted token and the reason
+    (the checkpoint's embedding has no such row), so the manifest says what was left out and why."""
+    import types
+
+    class _Spelled:
+        """The real fixture tokenizer with one extra out-of-range added token (everything else delegates)."""
+
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+            self.backend = types.SimpleNamespace(
+                get_added_tokens_decoder=lambda: {
+                    151643: types.SimpleNamespace(content="<|endoftext|>"),
+                    262144: types.SimpleNamespace(content="<image_soft_token>"),
+                }
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._inner, name)
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    _, plan = _plan()
+    bounded = plan_recipe(recipe, _Spelled(tokenizer_of(recipe)), {"nanobeir": []}, embeddable_vocab_size=262144)
+    record = bounded.strata["content:special_token_spellings"]
+    assert record["present"] is True
+    assert record["omitted_added_tokens"] == [{"content": "<image_soft_token>", "id": 262144}]
+    assert "vocab_size 262144" in record["omitted_reason"]
+    assert "omitted_added_tokens" not in plan.strata["content:special_token_spellings"]
 
 
 def test_pairs_rows_are_the_harness_pairs_format(tmp_path: Path) -> None:

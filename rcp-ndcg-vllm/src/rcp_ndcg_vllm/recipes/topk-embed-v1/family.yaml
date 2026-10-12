@@ -306,7 +306,14 @@ notes: |
   environment is the checkpoint's requirements.txt pins, declared in reference.in/reference.lock
   (torch 2.11.0, torchvision 0.26.0, transformers >= 5.10.4,< 5.18.0, sentence-transformers 6.0.1,
   flash-linear-attention 0.5.1, kernels 0.14.1, safetensors >= 0.7.0, Pillow >= 12.0; GPU for the
-  embed mode; render mode needs only huggingface_hub and tokenizers). The checkpoint pins
+  embed mode; render mode needs only huggingface_hub and tokenizers). The two render-mode names are
+  pinned inside the range the family's own transformers==5.17.0 declares (Requires-Dist:
+  huggingface-hub<2.0,>=1.5.0, tokenizers<0.24.0,>=0.23.1): left unpinned, `uv pip compile --no-deps`
+  resolved huggingface-hub to 2.2.0 -- a version the family's own transformers forbids -- so the
+  bootstrap's completion step moved the venv's copy to a wheelhouse version and the import check
+  failed with only the version mismatch (the r4 wave: `huggingface-hub is installed at 1.33.0, the
+  lock pins 2.2.0`). The lock now pins 1.33.0 (the image's, inside the range) and the reference-env
+  check names any pin another pin's requirement forbids. The checkpoint pins
   transformers 5.9.0; its remote hf_backbone.py:178 reads `layer.layer_type`, which transformers 5.17
   renamed to `block_type` (GPU-E1: the unshimmed load crashed there), so reference.py's declared
   `_alias_qwen3_5_layer_type` shim aliases the old name and the reference runs on the image's stack. The reference's load()

@@ -46,6 +46,8 @@ Modes and outputs (written to ``--out``):
   pairs against the served answer. Needs torch, transformers >= 5.4 (the
   ``Qwen3_5Model`` base) and a GPU host: the fp32 checkpoint is
   33,604,334,528 bytes, so a ``cpu`` device is refused before anything downloads.
+  The load dtype is the engine's served bfloat16, not the config's float32 (see
+  :func:`_load`; E2 round 4's OOM).
 
 Vectors are returned unnormalised -- the model's raw int8-valued output
 (``round(tanh(x) * 127).clamp(-128, 127)``, ``:214``), float16-exact for the
@@ -189,7 +191,13 @@ def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION, tok
     """The checkpoint as the model card prescribes: transformers AutoModel, trust_remote_code=True.
 
     ``repo``/``revision`` are the resolved recipe's; the defaults are the shipped variant's constants.
-    The tokenizer the remote code expects is set explicitly (see :func:`_pinned_tokenizer`).
+    The tokenizer the remote code expects is set explicitly (see :func:`_pinned_tokenizer`).  The load
+    dtype is the engine's served bfloat16, not the config's float32: this image's GDN prefill kernels
+    refuse float32 (``serve.dtype``'s declaration), the owner's like-for-like precision rule compares
+    the engine and the reference at one dtype, and the fp32 load OOMed the stage-2 subprocess on a long
+    row (E2 round 4: 69.48 GiB allocated by PyTorch, one ~88 GiB allocation).  The remote class's
+    ``_keep_in_fp32_modules`` (``contextual_projection``) stays fp32, and the pooling casts to fp32
+    before ``round(tanh(x) * 127)``, so the int8-valued vectors are unaffected.
     """
     if device == "cpu":
         raise RuntimeError(
@@ -198,10 +206,10 @@ def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION, tok
             "(the Qwen3_5Model base); run stage 2 on the GPU wave with --reference-python "
             "pointing at the reference environment (reference.in/reference.lock beside this file)"
         )
-    import torch  # noqa: F401, PLC0415  (imported only on the GPU path, never in the harness process)
+    import torch  # noqa: PLC0415  (imported only on the GPU path, never in the harness process)
     from transformers import AutoModel  # noqa: PLC0415
 
-    model = AutoModel.from_pretrained(repo, revision=revision, trust_remote_code=True)
+    model = AutoModel.from_pretrained(repo, revision=revision, trust_remote_code=True, dtype=torch.bfloat16)
     model.tokenizer = _pinned_tokenizer(tokenizer_spec or f"{repo}@{revision}", repo, revision)
     model.to(device)
     model.eval()

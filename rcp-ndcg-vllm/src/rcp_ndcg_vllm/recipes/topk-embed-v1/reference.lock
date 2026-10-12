@@ -2,7 +2,7 @@
 # family: topk-embed-v1
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 6b536d6eb9bf2ec5ec880cf091a2aa48bdde273edaf225f9777d7b77dc0a41e1
+# reference-in-sha256: b51f126f603e2f3a479e32b6913854b72580b2b3c406a544bc5d2f00a8ac7ba3
 # own-torch: true
 # own-torch-evidence: the checkpoint's own requirements.txt at the pinned revision pins torch==2.11.0 and torchvision==0.26.0 beside flash-linear-attention 0.5.1 (a compiled extension); the card's published path is the reference, so the family owns its stack
 #
@@ -10,9 +10,9 @@
 flash-linear-attention==0.5.1 \
     --hash=sha256:8840fd4c37de8b0612dc8fd493867f3d330672ba2f17c024a2ce37239634e247 \
     --hash=sha256:9022862f0a238752372c81290694b8b2ed1cb2d13fc40d340ffeeb554d6bee5c
-huggingface-hub==2.2.0 \
-    --hash=sha256:1667f145dc56dc210d60966069397df9ecfca9607a5d43db88b308c89dae56b3 \
-    --hash=sha256:5d1b47537394e4215cb858aa12fd493d0f7ef7f58990f5dcd24bc173107b2871
+huggingface-hub==1.33.0 \
+    --hash=sha256:04e434b06e100eddbce9a6e817d72693a7884b10a79bd67ab48080d5c07eb899 \
+    --hash=sha256:367be21a201db9523eddf8aeac7048f2602c1b308691c97640d5e72ed188007e
 kernels==0.14.1 \
     --hash=sha256:ba21b7b509b7a0c2d2c7a0efd546e9dda2b1022ed5ff2b8fde8e94d7637754d3 \
     --hash=sha256:be1a91116e14be1e012fc8f47afb51173ee052586a570fba3d594ef0d1b38920

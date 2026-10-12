@@ -26,7 +26,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .adversarial import CONTENT_KINDS, SYNTHETIC_TEXTS, special_token_spellings, synthetic_text
+from .adversarial import (
+    CONTENT_KINDS,
+    SYNTHETIC_TEXTS,
+    checkpoint_vocab_size,
+    omitted_spellings,
+    special_token_spellings,
+    synthetic_text,
+)
 
 if TYPE_CHECKING:  # the type checker sees the lazy re-exports; runtime resolves them in __getattr__
     from .requests import (
@@ -87,6 +94,8 @@ __all__ = [
     "RecipePlan",
     "pairs_jsonl",
     "plan_recipe",
+    "checkpoint_vocab_size",
+    "omitted_spellings",
     "special_token_spellings",
     "synthetic_text",
     "write_manifest",

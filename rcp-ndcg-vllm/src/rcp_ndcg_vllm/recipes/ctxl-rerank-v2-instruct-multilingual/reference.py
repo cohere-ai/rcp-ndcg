@@ -6,10 +6,11 @@ unchanged from the former ``rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.p
 package stopped carrying in-process models; the paper's numbers rest on it). The paper pipeline
 loaded it with ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp_ndcg.retrieval.cross_encoder``),
 the config's per-model ``batch_size`` (:data:`BATCH_SIZES`, 32/16/8 — the original in-process
-forms of ``experiments/paper/rerankers/ctxl_rerank_{1b,2b,6b}.yaml``), bfloat16 (the pipeline's
-``DTYPE``) and the config's revision (the paper configs pin none; the family-expanded recipe pins
-each variant's commit, read from ``--recipe``, so a moved default checkpoint cannot silently break
-equivalence).
+forms of ``experiments/paper/rerankers/ctxl_rerank_{1b,2b,6b}.yaml``), the engine's SERVED dtype
+(the pipeline's ``DTYPE`` was bfloat16; E2 round 4's like-for-like decision makes the reference
+compute at ``serve.dtype``, so the 1b/2b load float32 and the 6b keeps bfloat16) and the config's
+revision (the paper configs pin none; the family-expanded recipe pins each variant's commit, read
+from ``--recipe``, so a moved default checkpoint cannot silently break equivalence).
 
 The prompt is the paper's two-line frame (document before query, the " ??" tail the score reads
 out from)::
@@ -25,9 +26,11 @@ pooling head construction -- the head defaults to fp32 for pooling runners and t
 longer overrides ``head_dtype`` (``vllm/config/model.py:2047-2057`` at the v0.31.0 tag). The paper
 pipeline's own ``logits[:, -1, 0]`` is the same quantity with the bf16 head's rounding; the
 like-for-like comparison the owner's precision rule asks for reads both sides through the engine's
-fp32 head (E2 r1: 1b 0.2482, 2b 0.1337 against the 0.05 logit bound with both heads bf16; the
-head dtype is the only instrument difference this reference carries from the paper's code, and the
-recipe notes record the decision). Whole-prompt right truncation at
+fp32 head at the engine's served dtype (E2 r1: 1b 0.2482, 2b 0.1337 against the 0.05 logit bound
+with both heads bf16; E2 round 4 reproduced the residual as the two bf16 attention-kernel stacks
+-- the reference's own CPU-vs-GPU spread on the same rows is 0.21/0.62 -- so those two sizes now
+serve float32 and the reference loads it; the recipe notes record the decisions). Whole-prompt
+right truncation at
 8192 tokens is the paper's own behaviour (``truncation=True, max_length=8192`` on the whole
 prompt): over the cap it drops the trailing " ??" anchor and the query behind it — the recipe
 declares that as ``reference.known_deviations: [anchor_drop_over_cap]`` instead of copying it
@@ -102,6 +105,11 @@ BATCH_SIZE_TOKENS = 15_000
 #: position 0 is the checkpoints' relevance logit, ``1_LogitScore/config.json`` true_token_id 0).
 VOCAB_POSITION = 0
 
+#: The declared serving dtypes this reference can load (``serve.dtype`` -> the ``torch`` attribute
+#: name). The mapping is resolved inside ``load`` because the module never imports torch at import
+#: time (render mode is pure string work and runs in any interpreter).
+_DTYPE_NAMES: dict[str, str] = {"bfloat16": "bfloat16", "float32": "float32", "float16": "float16"}
+
 #: The fixed frame, exactly the served template's fixed segments (and the paper's
 #: ``_format_prompts``). The tail is the anchor: the model reads its score at the final
 #: position, so the " ??" tokens must survive every cut (the served cut reserves them;
@@ -109,6 +117,20 @@ VOCAB_POSITION = 0
 HEAD = "Check whether a given document contains information helpful to answer the query.\n<Document> "
 MID = "\n<Query> "
 TAIL = " ??"
+
+
+def _served_dtype(recipe: dict[str, Any]) -> str:
+    """The dtype the engine serves this variant at: ``serve.dtype`` of the resolved recipe.
+
+    One rule for the family's reference: it computes at the engine's dtype (the owner's like-for-like
+    precision rule; the schema default is ``bfloat16``). The 1b/2b declare ``float32`` (E2 round 4:
+    the bf16 attention-kernel stacks diverge further than the logit gate on their small logits), the
+    6b keeps ``bfloat16`` (it verified).
+    """
+    dtype = str((recipe.get("serve") or {}).get("dtype") or "bfloat16")
+    if dtype not in _DTYPE_NAMES:
+        raise SystemExit(f"serve.dtype {dtype!r} is not a dtype this reference can load ({', '.join(_DTYPE_NAMES)})")
+    return dtype
 
 
 def _tokenizer_dir(spec: str) -> str:
@@ -188,22 +210,23 @@ class CtxlRerankReference:
     def load(self, device: str) -> CtxlRerankReference:
         """Load the checkpoint (first call) and move it to ``device`` (e.g. ``cuda:0`` or ``cpu``).
 
-        The weights load here, in the reference process: the harness imports no torch. dtype is
-        the paper pipeline's bfloat16 on every device (the same rule in the 1b, 2b and 6b
-        references); the attention implementation is the recipe's DECLARED parameter
-        (``reference.attn_implementation``, ``sdpa`` here), never a silent torch.cuda.is_available()
-        choice: the stock reference environment carries the image's torch and no flash-attn, so the
-        paper's flash-attention-2 path cannot load there (GPU-E1). The GPU-E1 follow-up measured an
-        sdpa reference: ctxl-6b verified, 2b 0.087 and 1b 0.249 against the 0.05 logit bound, and the
-        E2 r1 wave measured 0.1337/0.2482 with both heads bf16 -- so the score head is now the fp32
-        one the engine serves (``_forward_scores``; see the family notes).
+        The weights load here, in the reference process: the harness imports no torch. dtype is the
+        engine's SERVED dtype (``serve.dtype`` of the resolved recipe, :func:`_served_dtype`): the
+        owner's like-for-like precision rule compares the two sides at one dtype, and E2 round 4's
+        measurements showed the bf16 attention-kernel stacks diverging further than the logit gate
+        on the 1b/2b's small logits, so those two sizes serve float32 and this reference loads
+        float32 with them (the 6b keeps bfloat16). The attention implementation is the recipe's
+        DECLARED parameter (``reference.attn_implementation``, ``sdpa`` here), never a silent
+        torch.cuda.is_available() choice: the stock reference environment carries the image's torch
+        and no flash-attn, so the paper's flash-attention-2 path cannot load there (GPU-E1). The
+        score head is the engine's fp32 one (``_forward_scores``; see the family notes).
         """
         import torch
         from transformers import AutoModelForCausalLM
 
         if self.model is None:
             model_kwargs: dict[str, Any] = {
-                "dtype": torch.bfloat16 if self.dtype == "bfloat16" else None,
+                "dtype": getattr(torch, _DTYPE_NAMES[self.dtype]),
                 "revision": self.revision,
             }
             if self.attn_implementation is not None:
@@ -349,6 +372,7 @@ def main() -> int:
             tokenizer_spec=args.tokenizer,
             batch_size=BATCH_SIZES[variant_id],
             revision=recipe["revision"],
+            dtype=_served_dtype(recipe),
             attn_implementation=(recipe.get("reference") or {}).get("attn_implementation"),
         )
         reference.load(device_name(args.device))

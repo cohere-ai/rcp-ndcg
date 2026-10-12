@@ -54,7 +54,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .adversarial import CONTENT_KINDS, synthetic_text
+from .adversarial import CONTENT_KINDS, omitted_spellings, synthetic_text
 from .sources import SUITE_SUBSETS, SourceCorpus, SourceDoc, SourceQuery
 
 __all__ = [
@@ -365,14 +365,16 @@ def _declared_sides(recipe: Any) -> tuple[bool, bool]:
     return "query" in shapes, bool(shapes & {"document", "pair"})
 
 
-def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
+def _synthetic_rows(recipe: Any, tokenizer: Any, *, embeddable_vocab_size: int | None = None) -> list[PlannedRow]:
     """One row per content kind (the synthetic adversarial set as text).
 
     The kind's text goes on the sides whose budget it fits (the recipe's own tokens); a side it does
     not fit carries a short honest anchor instead (``on_overflow: cut`` would shorten it silently --
     never in a pairs file).  A kind that fits neither side is planned absent and recorded so in the
     manifest (``absent only when inapplicable, said why``); the corpus request set sends the full text
-    uncut on purpose.
+    uncut on purpose.  ``embeddable_vocab_size`` bounds the ``special_token_spellings`` text to the
+    tokens the checkpoint's embedding can address (E2 round 4's harrier-oss-v1-270m device assert); the
+    omission is recorded by :func:`plan_recipe` in that kind's stratum.
     """
     anchor = "synthetic adversarial anchor text about retrieval"
     pair = recipe.role == "rerank"
@@ -393,7 +395,7 @@ def _synthetic_rows(recipe: Any, tokenizer: Any) -> list[PlannedRow]:
     )
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
-        text = synthetic_text(kind, tokenizer)
+        text = synthetic_text(kind, tokenizer, vocab_size=embeddable_vocab_size)
         count = tokenizer.count(text) if text else 0
         on_query = declares_query and count <= query_room
         on_document = declares_document and count <= doc_room
@@ -583,12 +585,21 @@ def _length_rows(
     return rows, strata
 
 
-def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpus]]) -> RecipePlan:
+def plan_recipe(
+    recipe: Any,
+    tokenizer: Any,
+    corpora: dict[str, list[SourceCorpus]],
+    *,
+    embeddable_vocab_size: int | None = None,
+) -> RecipePlan:
     """One recipe's deterministic request plan (OBSERVATIONS-SPEC section 1).
 
-    Inputs: the loaded :class:`~rcp_ndcg_vllm.recipe.Recipe`, the recipe's tokenizer and the source
+    Inputs: the loaded :class:`~rcp_ndcg_vllm.recipe.Recipe`, the recipe's tokenizer, the source
     corpora by suite name (:func:`rcp_ndcg_test.observe.sources.load_corpora` at
-    :data:`PINNED_DATASET_COMMITS`).  Output: the :class:`RecipePlan` -- real-item rows (NanoBEIR,
+    :data:`PINNED_DATASET_COMMITS`) and the checkpoint's declared vocabulary size when the caller
+    resolved it (:func:`~rcp_ndcg_test.observe.adversarial.checkpoint_vocab_size`: the spelling set's
+    bound, recorded in that kind's stratum when it leaves an added token out).  Output: the
+    :class:`RecipePlan` -- real-item rows (NanoBEIR,
     BRIGHT, TREC DL, ViDoRe pages for the media recipes), one row per content kind and the length
     ladder -- with every stratum recorded present or absent.  Deterministic in
     (:data:`GENERATOR_SEED`, :data:`SEED`, the pinned commits, the recipe's role and shapes): the
@@ -597,7 +608,7 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
     from ..equivalence import fitting
 
     source_rows, used_suites, skipped_sources = _source_rows(recipe, corpora)
-    synthetic = _synthetic_rows(recipe, tokenizer)
+    synthetic = _synthetic_rows(recipe, tokenizer, embeddable_vocab_size=embeddable_vocab_size)
     synthetic_kinds = {str(row.source.get("content_kind")) for row in synthetic if row.source}
     length_rows, length_strata = _length_rows(recipe, tokenizer, _token_medians(source_rows, tokenizer))
 
@@ -626,11 +637,20 @@ def plan_recipe(recipe: Any, tokenizer: Any, corpora: dict[str, list[SourceCorpu
         plan.strata.setdefault(f"shapes:{shape}", {"present": True})
     mode = recipe.client.get("instruction") or "none"
     plan.strata[f"instruction:{mode}"] = {"present": True}
+    omissions = omitted_spellings(tokenizer, vocab_size=embeddable_vocab_size)
     for kind in CONTENT_KINDS:
-        plan.strata[f"content:{kind}"] = {
+        entry: dict[str, Any] = {
             "present": kind in synthetic_kinds,
             **({} if kind in synthetic_kinds else {"reason": _kind_absent_reason(kind, recipe)}),
         }
+        if kind == "special_token_spellings" and omissions:
+            # Nothing is cut silently: the manifest says which added token was left out and why.
+            entry["omitted_added_tokens"] = omissions
+            entry["omitted_reason"] = (
+                "the checkpoint's embedding has no row for it: the tokenizer declares an added token at "
+                f"id {omissions[0]['id']} while config.json declares vocab_size {embeddable_vocab_size}"
+            )
+        plan.strata[f"content:{kind}"] = entry
     for suite in SUITE_SUBSETS:
         plan.strata[f"source:{suite}"] = {
             "present": suite in used_suites,
@@ -688,11 +708,19 @@ def _bare_body(recipe: Any, query: str, documents: list[str], **fields: Any) -> 
     return {**body, **fields}
 
 
-def corpus_plan(recipe: Any, tokenizer: Any, pairs_rows: list[dict[str, Any]]) -> CorpusPlan:
+def corpus_plan(
+    recipe: Any,
+    tokenizer: Any,
+    pairs_rows: list[dict[str, Any]],
+    *,
+    embeddable_vocab_size: int | None = None,
+) -> CorpusPlan:
     """The corpus request plan of one recipe (OBSERVATIONS-SPEC section 1, :data:`CORPUS_PLAN_VERSION`).
 
-    Inputs: the loaded recipe, its tokenizer and the recipe's pairs rows (the generator's own plan, as the
-    pairs file carries it).  Output: the :class:`CorpusPlan`.  Beyond the pairs rows it plans, deterministically:
+    Inputs: the loaded recipe, its tokenizer, the recipe's pairs rows (the generator's own plan, as the
+    pairs file carries it) and the checkpoint's declared vocabulary size (the same bound
+    :func:`plan_recipe` applies to the spelling set).  Output: the :class:`CorpusPlan`.  Beyond the pairs
+    rows it plans, deterministically:
 
     - the **length ladder** past the budget (one token over, 2x and 10x, in the recipe's own tokens), sent
       through the client (its cut) and bare (uncut, so the engine's own refusal is observed);
@@ -1357,13 +1385,19 @@ def main(argv: list[str] | None = None) -> int:
     for suite in [s.strip() for s in args.suites.split(",") if s.strip()]:
         corpora[suite] = load_corpora(suite, SUITE_SUBSETS[suite], PINNED_DATASET_COMMITS)
     from ..equivalence.fitting import tokenizer_of
+    from .adversarial import checkpoint_vocab_size
 
     out = Path(args.out)
     plans: list[RecipePlan] = []
     pruned: list[dict[str, Any]] = []
     for recipe in recipes:
         try:
-            plan = plan_recipe(recipe, tokenizer_of(recipe), corpora)
+            plan = plan_recipe(
+                recipe,
+                tokenizer_of(recipe),
+                corpora,
+                embeddable_vocab_size=checkpoint_vocab_size(recipe),
+            )
             if args.reference_python:
                 plan, pruned_rows = _validate_and_prune(recipe, plan, args.reference_python)
                 if not plan.rows and pruned_rows:

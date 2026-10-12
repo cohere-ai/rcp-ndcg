@@ -37,6 +37,7 @@ UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELO
 #: it (one interface, one implementation per patch), so each patch module defines it by design.
 KNOWN_SECOND_HOMES: frozenset[str] = frozenset({"apply"})
 
+
 def _update() -> bool:
     return os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS") == "1"
 

@@ -53,6 +53,9 @@ VARIANTS: dict[str, dict[str, str | int]] = {
         "architecture": "Qwen3ForSequenceClassification",
         "classifier_token": "!",
         "batch_size": 32,
+        # E2 round 4: the bf16 attention-kernel stacks exceed the logit gate on this size's small
+        # logits, so the 1b/2b serve float32 (and the reference loads the served dtype).
+        "dtype": "float32",
     },
     "ctxl-rerank-v2-instruct-multilingual-2b": {
         "repo": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b",
@@ -62,6 +65,7 @@ VARIANTS: dict[str, dict[str, str | int]] = {
         "architecture": "Qwen3ForSequenceClassification",
         "classifier_token": "!",
         "batch_size": 32,
+        "dtype": "float32",
     },
     "ctxl-rerank-v2-instruct-multilingual-6b": {
         "repo": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b",
@@ -71,6 +75,7 @@ VARIANTS: dict[str, dict[str, str | int]] = {
         "architecture": "MistralForSequenceClassification",
         "classifier_token": "<unk>",
         "batch_size": 32,
+        "dtype": "bfloat16",  # the 6b verified at bf16 (0.0307); it keeps the family default
     },
 }
 VARIANT_IDS = list(VARIANTS)
@@ -92,7 +97,7 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "patches": [],
             "chat_template": "template.jinja",
             "convert": None,
-            "dtype": "bfloat16",
+            "dtype": variant["dtype"],
             "extra_args": [],
             "hf_overrides": {
                 "architectures": [variant["architecture"]],
@@ -351,6 +356,69 @@ def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suff
     assert module._tokenizer_dir(f"{repo}@rev") == repo
     assert module._tokenizer_dir(repo) == repo
     assert "@" not in module._tokenizer_dir(f"{repo}@rev")
+
+
+def test_the_1b_and_2b_serve_fp32_and_the_reference_computes_at_the_served_dtype() -> None:
+    """E2 round 4: the 1b/2b served-vs-reference deltas (0.2557/0.1337) are the two bf16
+    attention-kernel stacks -- the reference's own CPU-vs-GPU spread on the same rows is 0.21/0.62 --
+    so those two sizes serve float32 (small checkpoints; the 6b keeps bfloat16, its passing
+    measurement) and the reference loads the checkpoint at the engine's SERVED dtype (one rule, read
+    from the resolved recipe's ``serve.dtype``): the fp32 score head stays on both sides."""
+    import importlib.util
+    import types
+
+    expected = {
+        "ctxl-rerank-v2-instruct-multilingual-1b": "float32",
+        "ctxl-rerank-v2-instruct-multilingual-2b": "float32",
+        "ctxl-rerank-v2-instruct-multilingual-6b": "bfloat16",
+    }
+    for variant_id, dtype in expected.items():
+        assert resolve_recipe(variant_id).serve.dtype == dtype, variant_id
+
+    loads: list[dict] = []
+
+    class _StubModel:
+        def eval(self) -> object:
+            return self
+
+        def to(self, device: str) -> object:
+            return self
+
+    class _StubAutoModel:
+        @staticmethod
+        def from_pretrained(*args: object, **kwargs: object) -> object:
+            loads.append(kwargs)
+            return _StubModel()
+
+    torch_stub = types.ModuleType("torch")
+    torch_stub.bfloat16 = "bfloat16"
+    torch_stub.float32 = "float32"
+    transformers_stub = types.ModuleType("transformers")
+    transformers_stub.AutoModelForCausalLM = _StubAutoModel
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setattr(sys, "dont_write_bytecode", True)
+        monkey.setitem(sys.modules, "torch", torch_stub)
+        monkey.setitem(sys.modules, "transformers", transformers_stub)
+        spec = importlib.util.spec_from_file_location("ctxl_reference_served_dtype", RECIPE_DIR / "reference.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        # the reader is the one rule: the resolved recipe's serve.dtype
+        recipe_json = {"id": "ctxl-rerank-v2-instruct-multilingual-1b", "serve": {"dtype": "float32"}}
+        assert module._served_dtype(recipe_json) == "float32"
+        assert module._served_dtype({"id": "x", "serve": {"dtype": "bfloat16"}}) == "bfloat16"
+        assert module._served_dtype({"id": "x"}) == "bfloat16"  # the schema default
+        for dtype, expected_torch in (("float32", "float32"), ("bfloat16", "bfloat16")):
+            reference = object.__new__(module.CtxlRerankReference)
+            reference.model = None
+            reference.model_name = "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b"
+            reference.revision = "0" * 40
+            reference.dtype = dtype
+            reference.attn_implementation = "sdpa"
+            reference.load("cpu")
+            assert loads[-1]["dtype"] == expected_torch, dtype
+    finally:
+        monkey.undo()
 
 
 def test_the_reference_loads_with_the_declared_attention_implementation() -> None:

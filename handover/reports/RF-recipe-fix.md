@@ -683,3 +683,148 @@ the reference-env test fails on the unfixed probe with the r4 wave's own `Module
   head: per the owner's rule that is a finding for the operator (no bound).
 * The embeddinggemma-2 fold's removal condition is on the recipe and in the fold's headers: delete it when
   `engine.image` moves to a vLLM image whose transformers ships `embedding_gemma2`.
+
+## 10. E2 round 4 (the fourth fix run)
+
+The wave on `rc0-202610102115` verified nine more recipes (jina-nano; r2's seven) and left five failing.
+The branch fast-forwarded to the `rfc-0001` tip `54193376` first (the round-3 merge; no newer tip existed),
+then landed eight commits (`8fb8a2be` .. `2350fe74`).  `bin/gate lane/recipe-fix` is **GATE: PASS** on
+`2350fe74` (the report commit follows it).
+
+### 10.1 embeddinggemma-2: the pinned image's vLLM is a v0.31.0 build, so the plugin ships the model
+
+**Fixed.** The r1 serve log's supported-architecture list is exactly the vLLM v0.31.0 tag's (plus the
+plugin's own `TopkEmbedModel`/`PplxContextualModel`/`Qwen3_5Model`), and the image banner reads `version
+0.31.0`; upstream v0.31.0 has neither the registry entry nor `vllm/model_executor/models/embedding_gemma2.py`
+(404 at the tag), while the nightly commit the image tag names (`8cbd5d03...`) carries both.  The r1 log's
+claim that the image's registry carried the model class was inferred from the PR, not from the image.
+The plugin therefore ships vLLM's `embedding_gemma2.py` from that commit and transformers 5.19.0's
+`modeling_embedding_gemma2.py` (both byte-identical plus a header, under the fold's ruff/basedpyright
+exclusions), `install_fold` installs the modeling module and registers `EmbeddingGemma2Model`/
+`EmbeddingGemma2TextModel` with `AutoModel`, and `register_embedding_gemma2` registers the architecture
+(and upstream's `EmbeddingGemma2ModelConfig` hook, added to `MODELS_CONFIG_MAP` when absent) only when the
+running vLLM lacks them.  The recipe declares `plugin_architectures: [EmbeddingGemma2Config,
+EmbeddingGemma2Model]`.  Verified on CPU against transformers 5.17.0 with the real checkpoint files: the
+config parses, the processor loads, text/image/video calls return tensors, and `AutoModel.from_config`
+builds the text backbone (271,002,624 params) and the full model (744,371,488 params).  The vendored
+model's vLLM-internal imports were checked symbol by symbol against the v0.31.0 tag (`gemma4.py` and
+`gemma4_mm.py` are byte-identical between the tag and the nightly commit).
+
+### 10.2 ctxl-rerank-v2-instruct-multilingual 1b/2b: both sides fp32 (no bound)
+
+**Fixed** (the owner's decision, via the supervisor).  The bf16 residual is the two attention-kernel
+stacks, measured: the reference's own CPU-vs-GPU spread on the same rows is 0.21 max (1b) / 0.62 max (2b),
+versus the wave's served-vs-reference 0.26 / 0.40; the 6b shows the same absolute spread (0.16) and passes
+only because its logits are larger; token position, head (fp32 both), pooling (LAST both), dtype (bf16
+both) and activation (off both) all match.  The 1b/2b now declare `serve.dtype: float32` (a new per-size
+`overrides.serve` field; the 6b keeps `bfloat16`), and the reference loads `serve.dtype` from the resolved
+recipe (`_served_dtype`), keeping its fp32 score head and sdpa attention.  A `--attention-backend
+FLASH_ATTN` pin was rejected: flash-attention kernels cannot run fp32.
+
+### 10.3 harrier-oss-v1-270m: a checkpoint defect, bounded in the generator
+
+**Fixed in the harness; the checkpoint defect is declared.**  The round-4 failure was not the engine bug
+the brief assumed: the checkpoint's `tokenizer.json` declares `<image_soft_token>` at id 262144 while its
+`config.json` declares `vocab_size: 262144` (embedding [262144, 640]), so the harness's
+`content:special_token_spellings` row (built from the tokenizer's added tokens; pairs row 18) reached the
+embedding gather with an out-of-range index and the CUDA device asserted (`vectorized_gather_kernel: index
+out of bounds`; the r1 inductor signature had the same `0 <= tmp1 < 262144` bound, so `--enforce-eager`
+was never the fix).  The 27b sibling declares `vocab_size: 262208` for the same token and serves it.  The
+generator now bounds the spelling set by the checkpoint's declared vocabulary (read from `config.json` at
+the pinned revision at generation and recording time), and the plan's `content:special_token_spellings`
+stratum records the omitted token with its id and the reason.  The 270m pairs file was regenerated with
+`--reference-python` (25 rows; exactly one row changed, by that one line; `render_check` passed) and its
+manifest entry carries the omission.  The recipe's notes record the reproduction; any user text carrying
+the spelling still kills this engine -- that is the checkpoint's defect, declared.
+
+### 10.4 harrier-oss-v1-27b: the measured tight bf16 floor
+
+**Declared.**  Stage 2's min cosine was 0.996906 over 69 vectors, four below the published 0.999
+(0.996906, 0.997561, 0.997741, 0.998371), Kendall tau 1.0; both sides are bf16 (the engine serves the
+family's bfloat16, the reference loads the checkpoint's own), so the residual is the two bf16 kernel
+stacks.  The variant declares `overrides.gates.vec_min_cosine: 0.9969` with the per-vector numbers in its
+notes; the 270m and the 0.6b keep the published 0.999.
+
+### 10.5 pplx-embed-v2-context-9b-preview: the reference loads bfloat16
+
+**Fixed.**  The serve passed; the stage-2 reference subprocess OOMed with 69.48 GiB allocated by PyTorch
+(one ~88 GiB allocation) on the `length:over_cap` row (393,208 chars) because it loaded the checkpoint at
+its config dtype (float32, 33.6 GB).  The engine cannot serve float32 on this image (the GDN prefill
+kernels refuse it), so the reference now loads `dtype=torch.bfloat16` -- the served dtype the owner's
+like-for-like rule asks for; the remote class's `_keep_in_fp32_modules` (`contextual_projection`) stays
+fp32 and the pooling casts to fp32 before `round(tanh(x) * 127)`, so the int8-valued vectors are
+unaffected.
+
+### 10.6 The mid-run topk reference-environment blocker (the resubmitted r4 wave)
+
+**Fixed.**  The r4 bootstrap died for every recipe with `reference_env: family topk-embed-v1:
+huggingface-hub is installed at 1.33.0, the lock pins 2.2.0`.  Diagnosed from the job's own bootstrap log
+plus the wheelhouse and the wheel metadata: the lock pinned `huggingface-hub==2.2.0` while the same lock
+pins `transformers==5.17.0`, whose METADATA declares `huggingface-hub<2.0,>=1.5.0`; `uv pip compile
+--no-deps` resolves an unpinned name to the newest release and never consults another pin's requirements,
+so the lock shipped unsatisfiable, the completion step (`reference_deps.py`) moved the venv's own copy to
+a wheelhouse version (1.33.0), and the import check then failed with only the version mismatch.  The
+own-torch venv is built WITHOUT `--system-site-packages` (checked in `bootstrap.sh`), and the lock install
+did install 2.2.0 (the completion then downgraded it) -- both of the brief's hypotheses were refuted with
+evidence.  `reference.in` now pins `huggingface-hub>=1.5,<2.0` and `tokenizers>=0.23.1,<0.24.0` (both
+inside the family's transformers range) and the lock was regenerated with the documented tool against
+PyPI (the only two diff lines: the hf-hub pin and the `reference-in-sha256` header; the pin is 1.33.0, the
+image's, whose staged-wheelhouse wheel hash matches the lock's).  The reference-environment check now also
+reports any lock pin another pinned distribution's requirement forbids, naming both pins and the
+requirement (red-first: the check's new test fails with the guard removed).  Verified end to end with a
+scratch venv: the lock installs 1.33.0 + transformers 5.17.0, and the completion plans no
+`huggingface-hub` (with 2.2.0 installed it plans `huggingface-hub<2.0.0` -- the drift).
+
+### 10.7 The re-key and the checks
+
+The round's fingerprint moves, all deliberate:
+
+* the ctxl 1b/2b (`serve.dtype` is CONTENT) and the harrier-27b (`overrides.gates`);
+* the pplx-context and topk references (their notes/`reference.in` changed) and the topk lock's SHA-256
+  (the environment identity, so topk's stored reference outputs re-record);
+* embeddinggemma-2 (`plugin_architectures`), and **every other plugin recipe** (`rcp_ndcg_vllm.models`
+  and the new `embedding_gemma2` modules are in `PLUGIN_ENGINE_MODULES`/`ARCHITECTURE_MODULES`, so their
+  `plugin_sha256` inputs moved): harrier x3, jina x2, pplx-v1 x2, pplx-late x2, pplx-context, topk x2,
+  zembed.
+
+Final gate on the code tip `2350fe74` (`bin/gate lane/recipe-fix`, slot 2; the commit above it is the
+docstring/notes polish that names the round-4 vendoring):
+
+```
+ruff-check exit=0 All checks passed! / ruff-format exit=0 624 files already formatted / basedpyright exit=0 0 errors, 0 warnings, 0 notes
+pytest exit=0 4127 passed, 153 skipped
+contract-docs exit=0 410 passed, 105 skipped
+mkdocs exit=0
+test-pkg exit=0 1128 passed, 228 skipped
+recipes exit=0 (network) -> no failure outside the baseline
+vllm-pkg exit=0 50 passed / vllm-models exit=0 100 passed, 7 skipped
+run_all exit=0 -> 1022 checks, 987 match, 35 known deviations, 0 failed; 67/67; 82/82
+public-names exit=0 (clean) / clean exit=0
+GATE: PASS
+```
+
+The lane's own runs on the same tree: `pytest tests -q` 4127 passed/153 skipped; `pytest
+rcp-ndcg-test/tests -q` 1128 passed/228 skipped; `pytest rcp-ndcg-vllm/tests -q` 140 passed/12 skipped
+(the machine's `UV_EXTRA_INDEX_URL` unset for the wheel-build tests); `pytest tests/contract tests/docs`
+410 passed/105 skipped; ruff, basedpyright and `mkdocs build --strict` clean.  Red-first evidence: the
+ctxl `_served_dtype`/load test failed before the reference read the recipe and the recipe served fp32; the
+pplx-context dtype test failed with `KeyError: 'dtype'` on the unfixed `_load`; the harrier-27b gate test
+failed with `None == 0.9969`; the topk lock test failed before the pin; the reference-env cross-pin test
+fails with the guard removed; the spelling-bound test failed with the filter removed; the
+embeddinggemma-2 recipe test failed before `plugin_architectures` gained the model.
+
+### 10.8 Open items for the wave
+
+* E2 re-runs the five recipes: embeddinggemma-2 (watch the engine log for the architecture resolving and
+  the fold's install line), ctxl 1b/2b (the fp32 pair; the gate's published 0.05 is the target), harrier
+  270m (the spelling row no longer reaches the engine; any *other* text carrying `<image_soft_token>`
+  still asserts -- the checkpoint's defect), harrier-27b (the 0.9969 floor), pplx-context (the bf16
+  reference must complete stage 2 within the slot's memory).
+* The r4 wave re-runs from a rebuilt RC: the topk family's reference venv now installs 1.33.0 and the
+  check passes; the other families' locks were not regenerated (only topk's was unsatisfiable -- the
+  guard will name any other).
+* The plugin recipes' corpora re-record (the shared module hashes moved).
+* `checkpoint_vocab_size` returns `None` when a config cannot be read (offline/uncached): the spelling
+  set is then unbounded and the manifest records nothing.  On the node the config is cached (the engine
+  loads it), and an unbounded row fails loudly on the engine rather than silently -- recorded here as a
+  known corner, not a silent default.
