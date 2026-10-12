@@ -6,7 +6,9 @@ then-tip `9c3adf0b` as `aaf60c36`. **Gate:** `timeout 7200 bin/gate lane/identit
 **GATE: PASS**, every step exit 0 (the SUMMARY is below; the two earlier gates at `1dbfdec6` and `0b62931c`
 passed too, and two attempts on heavily loaded machines failed a single per-test timeout each — the recipe
 stage-1 and topk tests, proven passing alone — see the Gate section). No GPU work; nothing pushed;
-`rfc-0001` was not merged into.
+`rfc-0001` was not merged into. **Integrated:** `rfc-0001` merged this lane's gated tree as `909ddca5`
+(parents `9c3adf0b` + `aaf60c36`, no conflicts); its later commits (`d2e1a70d` r8, `97f4b64b` confprep) are
+other lanes' work merged on top, so this branch is not re-merged with them.
 
 ## 1. Status
 
@@ -51,6 +53,8 @@ What this lane did:
 | `0b62931c` | merge of `rfc-0001`'s then-tip (`0d613818`, lanes names and mteb) into the lane, clean |
 | `b88f1d11` | the report carries the `0b62931c` merge and gate |
 | `aaf60c36` | merge of `rfc-0001`'s then-tip (`9c3adf0b`, lane judge8) into the lane, clean (judging.py, its tests, judges.md and the CHANGELOG auto-merged; the judging suites re-run green) |
+| `cf4d80fe` | the report carries the judge8 merge and the `aaf60c36` gate |
+| `909ddca5` (on `rfc-0001`) | the integrator's merge of this lane's gated tree (`aaf60c36`); no conflicts |
 | the report commit | this report |
 
 No co-author lines, no attribution, nothing pushed.
