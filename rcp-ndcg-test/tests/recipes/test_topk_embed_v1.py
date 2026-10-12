@@ -529,10 +529,15 @@ def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer, variant_id: str) -> Non
 
 
 def test_the_layer_type_shim_aliases_only_the_new_name() -> None:
-    """The checkpoint's remote code reads transformers 5.9's ``layer.layer_type``, which 5.17 renamed to
-    ``block_type``: the declared CPU shim aliases the old name to the new one -- a block_type-only class gets
-    the alias, a class that still carries ``layer_type`` is untouched, and a class with neither name is a
-    no-op (the remote code fails loudly at its own call, as it did before the shim)."""
+    """The checkpoint's remote code reads transformers 5.9's ``layer.layer_type``, which 5.10+ renamed to
+    ``block_type``: the declared CPU shim aliases the old name to the new one. transformers 5.17's
+    ``Qwen3_5DecoderLayer`` sets ``block_type`` on the INSTANCE (``__init__``: ``self.block_type =
+    config.layer_types[layer_idx]``), so the class carries no ``block_type`` and a class-level check never
+    fired -- the r4 wave's ``hf_backbone.py:178`` ``AttributeError: 'PackedQwen3_5DecoderLayer' object has
+    no attribute 'layer_type'``, whose subclass inherits whatever the shim installed on the base class.
+    The shim reads the new name from the class OR from the attribute its ``__init__`` assigns; a class
+    that still carries ``layer_type`` is untouched, and a class with neither name is a no-op (the remote
+    code fails loudly at its own call, as it did before the shim)."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("topk_reference_shim", RECIPE_DIR / "reference.py")
@@ -545,11 +550,20 @@ def test_the_layer_type_shim_aliases_only_the_new_name() -> None:
     finally:
         sys.dont_write_bytecode = bytecode
 
-    class BlockTypeOnly:
+    class InstanceAttribute:
+        """transformers 5.17's shape: the renamed attribute is set by ``__init__``, never on the class."""
+
+        def __init__(self) -> None:
+            self.block_type = "full_attention"
+
+    module._alias_qwen3_5_layer_type(InstanceAttribute)
+    assert InstanceAttribute().layer_type == "full_attention"
+
+    class ClassAttribute:
         block_type = "full_attention"
 
-    module._alias_qwen3_5_layer_type(BlockTypeOnly)
-    assert BlockTypeOnly.layer_type.__get__(BlockTypeOnly()) == "full_attention"
+    module._alias_qwen3_5_layer_type(ClassAttribute)
+    assert ClassAttribute().layer_type == "full_attention"
 
     class OldName:
         layer_type = "kept"
