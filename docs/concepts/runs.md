@@ -115,7 +115,9 @@ variable (a job's own value would be silently overridden), and a run without `se
   run; a finished Job that owns one is deleted, with its engines, an hour after it finishes unless
   `ttl_seconds_after_finished` says otherwise, and `run status` reports a pod the scheduler cannot place as
   `pending` with the scheduler's own reason in the note (the Job's pods and the engine pods alike; a pod list that
-  cannot be read reports `unknown` with a note, never `running`). The pod needs a `mirror:`
+  cannot be read reports `unknown` with a note, never `running`). A multi-phase job whose init container is still
+  initializing reads `pending` with the container's own `PodInitializing` reason in the note -- the phase's engine
+  is still starting, not stalled. The pod needs a `mirror:`
   ([durability](#durability-local-runs-and-a-mirror)), since it does not see the submitting host's files either.
   Every input must be a URI it can read (`hf://`, `s3://`, `gs://`, `https://`): a run that names a local dataset,
   rankings file, evaluation system, judge config file or prompt file is refused before anything is written, naming
