@@ -2585,8 +2585,7 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   template alone loses one trailing newline at the scored position), the paper budgets
   (`max_tokens` 8192 = `MAX_SEQ_LENGTH`, `query_max_tokens` 4096 = `MAX_QUERY_LENGTH`,
   `on_overflow: cut`), `use_activation: true` on the probability scale, and a reference subprocess
-  derived from `experiments/paper/rerankers/reference/qwen3.py` (on branch lane/l5-packaging at this
-  HEAD; probability =
+  derived from `experiments/paper/rerankers/reference/qwen3.py` (probability =
   `softmax([no, yes])[yes]`, bfloat16, batch 16, no anchor ever dropped). Status `unverified`
   until the GPU waves run the harness's stages 2–3.
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no

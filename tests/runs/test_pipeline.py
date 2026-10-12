@@ -438,7 +438,7 @@ class TestEstimateAndRetrieve:
 
 
 class TestTheRetrieveAndRerankIdentities:
-    """RFC-0001 5.4: the retrieve and rerank step identities hold the content payload of the candidates config
+    """The retrieve and rerank step identities hold the content payload of the candidates config
     (``identity_payload``, like the judge steps), never its runtime fields: a served encoder's or reranker's URL,
     its key variable, its concurrency, timeouts and retries move the work, not the numbers.
     """
