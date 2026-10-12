@@ -145,6 +145,25 @@ TOP = {
     "licence": "apache-2.0",
 }
 
+#: The 8b's own ``serve.hf_overrides``: the family's scorer keys -- a per-variant serve key REPLACES
+#: the family's value at that path, so the whole dict is restated -- plus the text-config tie
+#: declaration vLLM's seq-cls weight loader reads. The 8b's config.json declares
+#: ``tie_word_embeddings: false`` at the top level only, and its ``text_config`` carries no such key
+#: (the 2b's does), so the engine died at model load with ``AttributeError: 'Qwen3VLTextConfig'
+#: object has no attribute 'tie_word_embeddings'`` -- ``adapters.py:542`` at v0.31.0 reads
+#: ``text_config.tie_word_embeddings`` to decide whether the lm_head is tied to the embeddings, and
+#: vLLM's ``hf_overrides`` dict entries are applied to the nested config
+#: (``ModelConfig._apply_dict_overrides`` -> ``_update_nested``). Untied is the 8b's fact: it ships
+#: an lm_head (``config.json:tie_word_embeddings false``).
+EIGHT_B_HF_OVERRIDES = {**SERVE["hf_overrides"], "text_config": {"tie_word_embeddings": False}}
+
+
+def _expected_serve(variant_id: str) -> dict[str, object]:
+    """The variant's resolved serve block: the family's, with the 8b's text-config tie declaration."""
+    if variant_id == "qwen3-vl-reranker-8b":
+        return {**SERVE, "hf_overrides": EIGHT_B_HF_OVERRIDES}
+    return SERVE
+
 
 def _expected_top(variant_id: str) -> dict[str, object]:
     facts = VARIANTS[variant_id]
@@ -170,7 +189,7 @@ def _assert_contract(loaded: object) -> None:
     """The variant's full resolved contract: every serve/client/reference field plus the top-level facts."""
     assert_recipe_contract(
         loaded,
-        serve=SERVE,
+        serve=_expected_serve(loaded.id),
         client=_expected_client(loaded.id),
         reference=REFERENCE,
         top=_expected_top(loaded.id),
@@ -337,12 +356,7 @@ def test_serve_argv_carries_the_pinned_flags(variant_id: str) -> None:
     argv = serve_argv(loaded, port=8100, served_model_name=loaded.id)
     assert argv[:3] == ["vllm", "serve", VARIANTS[variant_id]["model"]]
     assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
-    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == {
-        "architectures": ["Qwen3VLForSequenceClassification"],
-        "classifier_from_token": ["no", "yes"],
-        "is_original_qwen3_reranker": True,
-        "head_dtype": "model",
-    }
+    assert json.loads(argv[argv.index("--hf-overrides") + 1]) == _expected_serve(variant_id)["hf_overrides"]
     assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
         "images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}
     }
@@ -351,6 +365,21 @@ def test_serve_argv_carries_the_pinned_flags(variant_id: str) -> None:
     assert argv[argv.index("--chat-template") + 1] == str(RECIPE_DIR / "template.jinja")
     assert "--dtype" in argv and argv[argv.index("--dtype") + 1] == "bfloat16"
     assert argv[argv.index("--max-model-len") + 1] == "32768"
+
+
+def test_the_8b_declares_the_text_config_tie_word_embeddings_vllm_reads() -> None:
+    """The 8b's ``text_config`` carries no ``tie_word_embeddings`` key (the 2b's does: both checked at
+    their pinned revisions), so vLLM's seq-cls weight loader -- ``adapters.py:542``/``:611`` at v0.31.0:
+    ``if text_config.tie_word_embeddings:`` -- died with ``AttributeError: 'Qwen3VLTextConfig' object
+    has no attribute 'tie_word_embeddings'`` (the r4 wave's engine init). The 8b variant declares the
+    key through ``serve.hf_overrides``, restating the family's scorer keys (a per-variant serve key
+    replaces the family's value at that path); the 2b keeps the family's dict untouched, because its
+    checkpoint already declares the tie inside ``text_config`` and the two checkpoints disagree."""
+    two = load_recipe("qwen3-vl-reranker-2b").model_dump(mode="json")
+    eight = load_recipe("qwen3-vl-reranker-8b").model_dump(mode="json")
+    assert two["serve"]["hf_overrides"] == SERVE["hf_overrides"], "the 2b keeps the family's scorer keys"
+    assert eight["serve"]["hf_overrides"] == EIGHT_B_HF_OVERRIDES
+    assert eight["serve"]["hf_overrides"]["text_config"] == {"tie_word_embeddings": False}
 
 
 # ---------------------------------------------------------------------------
@@ -649,6 +678,54 @@ def _reference_module() -> Any:
     finally:
         sys.dont_write_bytecode = bytecode
     return module
+
+
+def test_the_reference_hands_the_model_tensor_token_type_ids() -> None:
+    """The card's ``tokenize`` calls the processor without ``return_tensors`` (it truncates
+    ``input_ids`` in place, so it cannot ask for tensors), and transformers' processor answers
+    ``mm_token_type_ids`` as a LIST of lists (``ProcessorMixin.create_mm_token_type_ids``); the pinned
+    model's ``get_rope_index`` indexes it as a tensor
+    (``input_token_type[attention_mask[batch_idx].bool()]``, modeling_qwen3_vl.py:996 at 5.17.0), which
+    is the r4 wave's ``TypeError: only integer tensors of a single element can be converted to an
+    index`` on every image-bearing row. The reference rebuilds the types for the truncated/padded ids
+    (the processor's own builder) and hands the model a tensor of the padded shape; a text-only row
+    never reaches ``get_rope_index``, which is why only the media rows failed."""
+    import torch
+
+    module = _reference_module()
+
+    class _StubTokenizer:
+        all_special_ids = [1]
+
+        def pad(self, data, padding, return_tensors, max_length):  # noqa: ARG002
+            ids = torch.tensor(data["input_ids"])
+            return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
+
+    class _StubProcessor:
+        """The processor's surface ``tokenize`` uses: the card's call, the pad, the type builder."""
+
+        tokenizer = _StubTokenizer()
+
+        def apply_chat_template(self, *args, **kwargs):  # noqa: ARG002
+            return ["rendered"]
+
+        def __call__(self, *args, **kwargs):  # noqa: ARG002
+            return {
+                "input_ids": [[1, 2, 3, 4, 5, 6, 7]],
+                "attention_mask": [[1, 1, 1, 1, 1, 1, 1]],
+                "mm_token_type_ids": [[0, 0, 0, 0, 0, 0, 0]],
+            }
+
+        def create_mm_token_type_ids(self, input_ids):
+            return [[0] * len(row) for row in input_ids]
+
+    reference = module.Qwen3VLRerankerReference("example-org/checkpoint")
+    reference.processor = _StubProcessor()
+    inputs = reference.tokenize([[{"role": "user", "content": [{"type": "text", "text": "a pair"}]}]])
+    types = inputs["mm_token_type_ids"]
+    assert isinstance(types, torch.Tensor), "the model's get_rope_index indexes it as a tensor"
+    assert types.shape == inputs["input_ids"].shape
+    assert types.dtype.is_floating_point is False
 
 
 def test_the_score_mode_reads_the_harness_media_field_and_refuses_the_retired_columns() -> None:

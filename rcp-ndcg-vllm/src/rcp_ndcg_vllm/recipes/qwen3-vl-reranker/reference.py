@@ -289,6 +289,11 @@ class Qwen3VLRerankerReference:
         """The card script's tokenize: render, run the vision wiring, processor-encode, truncate
         the body (all but the last 5 ids) and left-pad to the longest, capped at MAX_LENGTH.
 
+        One declared deviation from the card's script: the returned ``mm_token_type_ids`` is a tensor of
+        the padded shape, rebuilt with the processor's own builder -- the processor's list of lists is
+        what the pinned model's ``get_rope_index`` cannot index (the r4 wave's ``TypeError``); see the
+        inline comment.
+
         Args:
             pairs: One formatted message list per document (``format_mm_instruction`` output).
 
@@ -337,6 +342,17 @@ class Qwen3VLRerankerReference:
         # would drop them and the backbone call would score garbage or fail.
         for key, value in padded.items():
             inputs[key] = value
+        # The processor's ``mm_token_type_ids`` comes back as a list of lists (the card's call passes no
+        # ``return_tensors``: it truncates ``input_ids`` in place, which needs lists), and the pinned
+        # model's ``get_rope_index`` indexes it as a tensor --
+        # ``input_token_type[attention_mask[batch_idx].bool()]`` -- so an image-bearing row dies with
+        # ``TypeError: only integer tensors of a single element can be converted to an index`` (the r4
+        # wave; modeling_qwen3_vl.py:996 at 5.17.0). Rebuild the types for the truncated/padded ids with
+        # the processor's own builder: the type of every kept token is unchanged by the cut, so this is
+        # exactly the list sliced to the kept positions, as a tensor of the padded shape.
+        import torch
+
+        inputs["mm_token_type_ids"] = torch.tensor(self.processor.create_mm_token_type_ids(inputs["input_ids"]))
         return inputs
 
     def score(self, query: dict[str, Any], docs: list[dict[str, Any]], instruction: str) -> list[float]:
