@@ -34,7 +34,7 @@ report's round-3 text).
 vLLM model, ctxl 1b/2b, harrier-270m, harrier-27b, pplx-context) are section 10. The final run on
 `rc0-202610120115` passed everything except embeddinggemma-2, whose vendored model module imports the
 upstream `transformers.models.embedding_gemma2.*` paths the image lacks; section 11 records the fix.
-HEAD `55d0e2de`, `bin/gate lane/recipe-fix` **GATE: PASS**.
+HEAD `db00ea3c`, `bin/gate lane/recipe-fix` **GATE: PASS**.
 
 ## 2. Commits
 
@@ -842,7 +842,7 @@ except that recipe: r1/vllm 7/7 (ctxl x3, harrier x3, jina-nano), r3 8/8, r5 2/2
 re-running behind the failed dependency.  embeddinggemma-2 died at engine init with
 `ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'`.  The branch fast-forwarded
 to the `rfc-0001` tip `8cc7fe51` (the five sentence-transformers families' `huggingface-hub<2.0` pin)
-first, then landed three commits (`76f7b768`, `d336d4f6`, `55d0e2de`).
+first, then landed four commits (`76f7b768`, `d336d4f6`, `55d0e2de`, `db00ea3c`).
 
 ### 11.1 The diagnosis (CPU, the real vLLM nightly source)
 
@@ -897,7 +897,7 @@ goldens were regenerated the documented way
 (`pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py --update-goldens`).  The wave re-records
 those corpora.
 
-Final gate on the code tip `55d0e2de` (`bin/gate lane/recipe-fix`, slot 2):
+Final gate on the code tip `db00ea3c` (`bin/gate lane/recipe-fix`, slot 2):
 
 ```
 ruff-check exit=0 All checks passed! / ruff-format exit=0 624 files already formatted / basedpyright exit=0 0 errors
