@@ -27,9 +27,10 @@ REPORT_PY = JOBS / "report.py"
 REFERENCE_DEPS = JOBS / "reference_deps.py"
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" / "wave0.sh"
 E2E_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" / "e2e.sh"
+CASEFILL_SH = JOBS / "casefill.sh"
 WAVE0_HOST = JOBS / "wave0_host.py"
 
-SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH)
+SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH)
 
 needs_shellcheck = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 
@@ -537,6 +538,65 @@ def test_bootstrap_finds_the_staged_plugin_wheel(bootstrap_functions: str, tmp_p
     (empty / "wheelhouse").mkdir(parents=True)
     completed = _bash_bootstrap_function(f'STAGE_DIR="{empty}"; staged_plugin_wheel rcp-ndcg-vllm')
     assert completed.returncode != 0 and completed.stdout.strip() == ""
+
+
+# --- the wave-mode command: RCP_RECORD_CORPUS is the recording pass's switch ---------------------------
+
+
+def test_bootstrap_wave_command_adds_record_corpus_only_when_asked(tmp_path: Path) -> None:
+    """The recording pass's switch (plan v2 C1): ``RCP_RECORD_CORPUS=1`` adds ``--record-corpus`` to
+    the wave-mode ``run_wave`` argv, and unset (or 0) leaves the argv byte-identical.
+
+    Wave mode's argv was untested before this: the block execs ``run_wave`` directly and no test
+    constructed the command.  The pairs directory, the staged plugin wheel and the reference store are
+    resolved by the same helper the exec runs, so this asserts the command the pod really runs.
+    """
+    stage = tmp_path / "stage"
+    (stage / "pairs").mkdir(parents=True)
+    state = tmp_path / "state"
+    state.mkdir()
+    wave_list = stage / "wave-lists" / "wave-a.txt"
+
+    def wave_command(record: str | None) -> list[str]:
+        env = {"PATH": "/usr/bin:/bin"}
+        if record is not None:
+            env["RCP_RECORD_CORPUS"] = record
+        completed = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f'source "{BOOTSTRAP}" && STATE="{state}" OUT_URI="gs://YOUR-BUCKET/waves/wave-a" '
+                f'STAGE_DIR="{stage}" wave_command "{wave_list}" "{stage}/recipes" 8',
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.splitlines()
+
+    base = [
+        "--recipes",
+        f"@{wave_list}",
+        "--recipes-root",
+        f"{stage}/recipes",
+        "--gpus",
+        "8",
+        "--out",
+        f"{state}/wave",
+        "--upload",
+        "gs://YOUR-BUCKET/waves/wave-a",
+        "--record",
+        "--failed-plugins",
+        f"{state}/plugin-failures.txt",
+        "--reference-root",
+        f"{state}/reference",
+        "--pairs-dir",
+        f"{stage}/pairs",
+    ]
+    assert wave_command(None) == base
+    assert wave_command("0") == base  # only 1 turns the recording on
+    assert wave_command("1") == base[:15] + ["--record-corpus"] + base[15:]
 
 
 def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
@@ -1110,7 +1170,239 @@ def test_submit_refuses_an_unknown_script(tmp_path: Path, monkeypatch: pytest.Mo
         tmp_path, monkeypatch, "--script", "deploy", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a"
     )
     assert completed.returncode == 2
-    assert "bootstrap, wave0 or e2e" in completed.stderr
+    assert "bootstrap, wave0, e2e or casefill" in completed.stderr
+
+
+def test_submit_forwards_record_corpus_only_when_the_operator_set_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recording pass's switch reaches the pod: ``RCP_RECORD_CORPUS`` set in the operator's
+    environment becomes ``env.RCP_RECORD_CORPUS`` in the job spec (the way RCP_IMAGE is forwarded);
+    unset, the spec carries no such line."""
+    plain = _submit(tmp_path, monkeypatch, "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a")
+    assert plain.returncode == 0, plain.stdout + plain.stderr
+    assert "env.RCP_RECORD_CORPUS" not in plain.stdout
+
+    recorded = _submit(
+        tmp_path,
+        monkeypatch,
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "wave-a",
+        env_overrides={"RCP_RECORD_CORPUS": "1"},
+    )
+    assert recorded.returncode == 0, recorded.stdout + recorded.stderr
+    words = shlex.split(next(line for line in recorded.stdout.splitlines() if line.startswith("echo ")))
+    assert "env.RCP_RECORD_CORPUS=1" in words
+
+
+def test_submit_casefill_mounts_the_casefill_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cuda case-fill job: casefill.sh mounted beside bootstrap.sh (which it runs in envs mode) and
+    run with the stage and the wave's output prefix; no token value in the plan."""
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "--script",
+        "casefill",
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "casefill",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    command = next(word for word in words if word.startswith("worker.command="))
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/casefill/casefill.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/casefill"
+    )
+    assert any(word.startswith("files.casefill.from_file=") and word.endswith("casefill.sh") for word in words)
+    assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    for stream in (completed.stdout, completed.stderr):
+        assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path: Path) -> None:
+    """Drive casefill.sh's node path with stubs: the bootstrap envs call carries the four-recipe wave
+    list (the reference venvs), each fill runs through the client with ``--device cuda`` over the
+    staged cases copy, one recipe's failure does not stop the next, the edited YAMLs upload under
+    ``<OUT>/cases/<recipe>/``, and the job exits 1 with the failure recorded in the report."""
+    stage = tmp_path / "stage"
+    for recipe in ("topk-embed-v1-small", "qwen3-embedding-0.6b", "qwen3-vl-embedding-2b", "qwen3-vl-reranker-2b"):
+        (stage / "cases" / recipe).mkdir(parents=True)
+        (stage / "cases" / recipe / "gen-short.yaml").write_text(f"id: {recipe}/gen-short\n", encoding="utf-8")
+    (stage / "manifest.json").write_text('{"version": "0.0.1"}\n', encoding="utf-8")
+    auth = tmp_path / "gcs_auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    helper = tmp_path / "gcs.py"
+    helper.write_text("", encoding="utf-8")
+    gcs_log = tmp_path / "gcs.log"
+    gcs_sh = tmp_path / "gcs.sh"
+    gcs_sh.write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_cp() { printf "%s\\n" "cp $*" >> "$STUB_GCS_LOG"; }\n',
+        encoding="utf-8",
+    )
+    bootstrap_log = tmp_path / "bootstrap.log"
+    client_log = tmp_path / "client.log"
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" >> "$STUB_BOOTSTRAP_LOG"\n'
+        'state=""; wave_list=""\n'
+        'while (($#)); do case "$1" in --state) state="$2"; shift 2;;'
+        ' --wave-list) wave_list="$2"; shift 2;; *) shift;; esac; done\n'
+        "while read -r recipe; do\n"
+        '  case "$recipe" in\n'
+        "    topk-embed-v1-small) family=topk-embed-v1 ;;\n"
+        "    qwen3-embedding-0.6b) family=qwen3-embedding ;;\n"
+        "    qwen3-vl-embedding-2b) family=qwen3-vl-embedding ;;\n"
+        "    qwen3-vl-reranker-2b) family=qwen3-vl-reranker ;;\n"
+        '    *) echo "stub bootstrap: unknown recipe $recipe" >&2; exit 1 ;;\n'
+        "  esac\n"
+        '  mkdir -p "$state/reference/$family/bin"\n'
+        '  printf "#!/usr/bin/env bash\\nexit 0\\n" > "$state/reference/$family/bin/python"\n'
+        '  chmod +x "$state/reference/$family/bin/python"\n'
+        'done < "$wave_list"\n'
+        'echo \'{"schema": "stub-bootstrap"}\' > "$state/bootstrap.json"\n'
+        "cat > \"$state/client\" <<'CLIENT'\n"
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" >> "$STUB_CLIENT_LOG"\n'
+        'recipe=""; cases=""; prev=""\n'
+        'for arg in "$@"; do [[ "$prev" == "--recipe" ]] && recipe="$arg";'
+        ' [[ "$prev" == "--cases-root" ]] && cases="$arg"; prev="$arg"; done\n'
+        'if [[ "$recipe" == "qwen3-vl-embedding-2b" ]]; then'
+        ' echo "casefill: the stub reference failed" >&2; exit 2; fi\n'
+        'printf \'{"recipe": "%s", "mode": "score", "device": "cuda", "pending_before": 1,'
+        ' "filled": [{"case_id": "%s/gen-short", "path": "%s/%s/gen-short.yaml",'
+        ' "notes_updated": true}], "skipped": []}\\n\' "$recipe" "$recipe" "$cases" "$recipe"\n'
+        "CLIENT\n"
+        'chmod +x "$state/client"\n',
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        ["bash", str(CASEFILL_SH), str(stage), "gs://YOUR-BUCKET/waves/casefill"],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "RCP_GCS_AUTH_FILE": str(auth),
+            "RCP_GCS_HELPER_SH": str(gcs_sh),
+            "RCP_GCS_HELPER_PY": str(helper),
+            "RCP_BOOTSTRAP_SH": str(bootstrap),
+            "RCP_REPORT_PY": str(REPORT_PY),
+            "RCP_CASEFILL_DATE": "2026-10-12",
+            "STUB_GCS_LOG": str(gcs_log),
+            "STUB_BOOTSTRAP_LOG": str(bootstrap_log),
+            "STUB_CLIENT_LOG": str(client_log),
+        },
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr  # the failed recipe fails the job
+    assert "casefill: 1 recipe(s) failed: qwen3-vl-embedding-2b" in completed.stderr
+    state_line = next(line for line in completed.stdout.splitlines() if "casefill: state " in line)
+    state = Path(state_line.split("casefill: state ", 1)[1])
+    # the wave list is the four recipes (the reference environments the fills need)
+    assert (state / "case-fill-wave.txt").read_text(encoding="utf-8").splitlines() == [
+        "topk-embed-v1-small",
+        "qwen3-embedding-0.6b",
+        "qwen3-vl-embedding-2b",
+        "qwen3-vl-reranker-2b",
+    ]
+    bootstrap_argv = bootstrap_log.read_text(encoding="utf-8")
+    assert f"envs {stage} --state {state} --recipes {stage}/recipes" in bootstrap_argv, bootstrap_argv
+    assert f"--wave-list {state}/case-fill-wave.txt" in bootstrap_argv, bootstrap_argv
+    # every fill ran through the client, on cuda, over the cases copy; the failure did not stop the next
+    fills = client_log.read_text(encoding="utf-8").splitlines()
+    assert len(fills) == 4, fills
+    for recipe, family in (
+        ("topk-embed-v1-small", "topk-embed-v1"),
+        ("qwen3-embedding-0.6b", "qwen3-embedding"),
+        ("qwen3-vl-embedding-2b", "qwen3-vl-embedding"),
+        ("qwen3-vl-reranker-2b", "qwen3-vl-reranker"),
+    ):
+        line = next(entry for entry in fills if f"--recipe {recipe} " in entry)
+        assert f"--reference-python {state}/reference/{family}/bin/python" in line, line
+        assert "--device cuda" in line and "--filled-at 2026-10-12" in line and "--budget-s 7200" in line, line
+        assert f"--cases-root {state}/cases" in line, line
+    # the edited YAMLs of the three successful recipes upload -- the failure did not stop the recipe
+    # after it; the failed one's does not
+    for recipe in ("topk-embed-v1-small", "qwen3-embedding-0.6b", "qwen3-vl-reranker-2b"):
+        assert (state / "filled-cases" / recipe / "gen-short.yaml").is_file(), recipe
+    assert not (state / "filled-cases" / "qwen3-vl-embedding-2b").exists()
+    calls = gcs_log.read_text(encoding="utf-8")
+    assert f"cp {state}/filled-cases gs://YOUR-BUCKET/waves/casefill/cases dir" in calls, calls
+    assert f"cp {state}/casefill-report.json gs://YOUR-BUCKET/waves/casefill/casefill-report.json file" in calls, calls
+    report = json.loads((state / "casefill-report.json").read_text(encoding="utf-8"))
+    assert report["passed"] is False and report["failed_step"] == "casefill"
+    fills = report["fills"]
+    assert fills["qwen3-vl-embedding-2b"]["state"] == "failed" and "exit 2" in fills["qwen3-vl-embedding-2b"]["error"]
+    assert fills["qwen3-embedding-0.6b"]["recipe"] == "qwen3-embedding-0.6b"
+    assert set(fills) == {
+        "topk-embed-v1-small",
+        "qwen3-embedding-0.6b",
+        "qwen3-vl-embedding-2b",
+        "qwen3-vl-reranker-2b",
+    }
+    assert report["bootstrap"]["schema"] == "stub-bootstrap"
+
+
+def test_the_casefill_dry_plan_names_the_four_recipes_and_the_reference_pythons() -> None:
+    """``CASEFILL_DRY=1`` prints what the node would run (the operator's plan), and runs nothing: the
+    four recipes' case_fill commands with ``--device cuda`` and the staged cases root, the wave list
+    the reference environments are built from, and the upload prefix."""
+    completed = subprocess.run(
+        ["bash", str(CASEFILL_SH), "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves/casefill"],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", "CASEFILL_DRY": "1", "RCP_GCS_AUTH_FILE": "/nonexistent"},
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    plan = completed.stdout
+    for recipe, family in (
+        ("topk-embed-v1-small", "topk-embed-v1"),
+        ("qwen3-embedding-0.6b", "qwen3-embedding"),
+        ("qwen3-vl-embedding-2b", "qwen3-vl-embedding"),
+        ("qwen3-vl-reranker-2b", "qwen3-vl-reranker"),
+    ):
+        assert f"--recipe {recipe}" in plan, plan
+        assert f"--reference-python <state>/reference/{family}/bin/python" in plan, plan
+    assert plan.count("--device cuda") == 4, plan
+    assert plan.count("--cases-root <stage>/cases") == 4, plan
+    assert "bootstrap.sh envs" in plan and "case-fill-wave.txt" in plan
+    assert "gs://YOUR-BUCKET/waves/casefill/cases/" in plan
+    for recipe in ("topk-embed-v1-small", "qwen3-embedding-0.6b", "qwen3-vl-embedding-2b", "qwen3-vl-reranker-2b"):
+        assert recipe in plan
+
+
+def test_casefill_pins_the_four_recipes_to_the_catalog_and_the_cases() -> None:
+    """The script's four recipe id -> family pairs are the real catalog's (a renamed family directory
+    fails here first), and the pending cuda values are exactly the four recipes' ``pending_gpu``
+    cases -- 41 pending files of which topk's ``query-cap-1024`` is ``kind: none``, so 40 values are
+    fillable by kind, and the media-bearing ones are the fill's recorded skips (14)."""
+    from rcp_ndcg_vllm.recipe import load_recipe
+
+    script = CASEFILL_SH.read_text(encoding="utf-8")
+    cases_root = Path(__file__).resolve().parents[1] / "cases"
+    expected = [
+        ("topk-embed-v1-small", "topk-embed-v1"),
+        ("qwen3-embedding-0.6b", "qwen3-embedding"),
+        ("qwen3-vl-embedding-2b", "qwen3-vl-embedding"),
+        ("qwen3-vl-reranker-2b", "qwen3-vl-reranker"),
+    ]
+    for recipe_id, family in expected:
+        assert f"{recipe_id} {family}" in script, (recipe_id, family)
+        recipe = load_recipe(recipe_id)
+        assert recipe._dir is not None and recipe._dir.name == family, (recipe_id, recipe._dir)
+    pending = 0
+    kind_none = 0
+    media = 0
+    for recipe_id, _family in expected:
+        for path in (cases_root / recipe_id).glob("*.yaml"):
+            text = path.read_text(encoding="utf-8")
+            if "status: pending_gpu" not in text:
+                continue
+            pending += 1
+            kind_none += int("kind: none" in text)
+            media += int("image:" in text or "video:" in text)
+    assert (pending, kind_none, media) == (41, 1, 14)
 
 
 def test_submit_e2e_mounts_the_e2e_script_and_names_the_wave(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1304,6 +1596,58 @@ def test_rc_build_without_any_pairs_stages_nothing(tmp_path: Path) -> None:
     assert not (tmp_path / "stage" / "pairs").exists()
 
 
+# --- rc_build.sh: the cases staging (one home: rcp-ndcg-test/cases/) --------------------------
+
+
+def _stage_cases(tmp_path: Path, checkout: Path) -> subprocess.CompletedProcess[str]:
+    """Source rc_build.sh and run its ``stage_cases`` over a scratch checkout and stage."""
+    stage = tmp_path / "stage"
+    stage.mkdir(exist_ok=True)
+    return subprocess.run(
+        ["bash", "-c", f'source "{RC_BUILD}" && stage_cases "{checkout}" "{stage}"', "bash"],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_rc_build_stages_the_cases_from_the_packages_home(tmp_path: Path) -> None:
+    """The reference cases live at rcp-ndcg-test/cases/ (the cases lanes' home): rc_build.sh stages
+    exactly that directory as <stage>/cases/ -- what the casefill job reads and edits on the node
+    (the wheel drops cases/, so the stage is the node's only copy)."""
+    checkout = tmp_path / "checkout"
+    cases = checkout / "rcp-ndcg-test" / "cases" / "fixture-embed"
+    cases.mkdir(parents=True)
+    (cases / "gen-short.yaml").write_text("id: fixture-embed/gen-short\n", encoding="utf-8")
+    completed = _stage_cases(tmp_path, checkout)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert (tmp_path / "stage" / "cases" / "fixture-embed" / "gen-short.yaml").is_file()
+
+
+def test_rc_build_refuses_a_stray_root_cases_directory(tmp_path: Path) -> None:
+    """One home: a stray <checkout-root>/cases/ is refused (never silently staged), said on stderr
+    with the one home named."""
+    checkout = tmp_path / "checkout"
+    (checkout / "cases" / "fixture-embed").mkdir(parents=True)
+    (checkout / "cases" / "fixture-embed" / "gen-short.yaml").write_text(
+        "id: fixture-embed/gen-short\n", encoding="utf-8"
+    )
+    completed = _stage_cases(tmp_path, checkout)
+    assert completed.returncode != 0
+    assert "rcp-ndcg-test/cases" in completed.stderr
+    assert not (tmp_path / "stage" / "cases").exists()
+
+
+def test_rc_build_without_any_cases_stages_nothing(tmp_path: Path) -> None:
+    """A checkout without the cases stages none, said on stderr (the casefill job then reports its
+    missing cases root); it is a warning, not a build failure."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    completed = _stage_cases(tmp_path, checkout)
+    assert completed.returncode == 0
+    assert "staging no cases" in completed.stderr
+    assert not (tmp_path / "stage" / "cases").exists()
+
+
 # --- rc_build.sh: the recipes come from the built wheel's package data ------------------------
 
 
@@ -1474,6 +1818,11 @@ def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
     )
     lists_src = repo / "rcp-ndcg-test" / "wave-lists"
     assert (stage / "wave-lists" / "all-retrieval.txt").read_bytes() == (lists_src / "all-retrieval.txt").read_bytes()
+    cases_src = repo / "rcp-ndcg-test" / "cases"
+    assert sorted(path.name for path in (stage / "cases").iterdir()) == sorted(
+        path.name for path in cases_src.iterdir()
+    )
+    assert (stage / "cases" / "topk-embed-v1-small" / "text-short-single.yaml").is_file()
 
 
 # --- rc_build.sh: the pins (decision 18: vllm names no sibling) --------------------------------

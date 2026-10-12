@@ -25,6 +25,8 @@
 #                                          (layout-move item 3: the recipes ship inside the wheel)
 #   <RC_NAME>/wave-lists/<wave>.txt        the wave lists (one recipe id per line)
 #   <RC_NAME>/pairs/                       the stage-2 pairs files, from rcp-ndcg-test/pairs/ (one home)
+#   <RC_NAME>/cases/                       the reference cases, from rcp-ndcg-test/cases/ (one home; the
+#                                          casefill job reads and edits them on the node)
 #   <RC_NAME>/extra/<name>/                the EXTRA_DIRS entries, as they are
 #   <RC_NAME>/manifest.json                the commit, the version and the SHA-256 of every staged file
 
@@ -106,7 +108,6 @@ stage_recipes() {
 # The wave lists' one home in the checkout (owner decision, 2026-10-09: the lists are committed under the
 # tooling home, decision 20; generated from the recipe catalog by jobs/wavelist.py, never hand-maintained).
 PACKAGES_WAVE_LISTS="rcp-ndcg-test/wave-lists"
-
 # stage_wave_lists SRC STAGE: stage <SRC>/rcp-ndcg-test/wave-lists/ as <STAGE>/wave-lists/ (what the
 # node's bootstrap resolves a wave name against).  One home: a stray <SRC>/wave-lists/ is refused; no
 # lists at all stages none (EXTRA_DIRS can carry private ones), said on stderr.
@@ -123,15 +124,36 @@ stage_wave_lists() {
   fi
 }
 
+# The reference cases' one home in the checkout (the cases lanes' home; the wheel drops cases/, so the
+# staged tree is the node's only copy).
+PACKAGES_CASES="rcp-ndcg-test/cases"
+
+# stage_cases SRC STAGE: stage <SRC>/rcp-ndcg-test/cases/ as <STAGE>/cases/ (what the casefill job
+# reads and edits on the node).  One home: a stray <SRC>/cases/ is refused (never silently staged), and
+# no cases at all stages none, said on stderr (the casefill job then reports its missing cases root).
+stage_cases() {
+  local src="$1" stage="$2"
+  if [[ -d "$src/$PACKAGES_CASES" ]]; then
+    cp -r "$src/$PACKAGES_CASES" "$stage/cases"
+    echo "rc_build: staged the cases from $PACKAGES_CASES"
+  elif [[ -d "$src/cases" ]]; then
+    echo "rc_build: cases have one home: $PACKAGES_CASES (found a stray $src/cases instead; move the files)" >&2
+    return 1
+  else
+    echo "rc_build: no $PACKAGES_CASES in the checkout; staging no cases" >&2
+  fi
+}
+
 # stage_tree SRC STAGE [WHEEL]: everything the node reads beside the wheels -- the recipes (from the built
-# wheel's package data), the wave lists, the pairs files and the EXTRA_DIRS entries.  Split from the build
-# so the staging half is testable (and rehearsable) without building or uploading.
+# wheel's package data), the wave lists, the pairs files, the reference cases and the EXTRA_DIRS entries.
+# Split from the build so the staging half is testable (and rehearsable) without building or uploading.
 stage_tree() {
   local src="$1" stage="$2" wheel="${3:-}" extra
   mkdir -p "$stage"
   stage_recipes "$src" "$stage" "$wheel" || return 1
   stage_wave_lists "$src" "$stage" || return 1
   stage_pairs "$src" "$stage" || return 1
+  stage_cases "$src" "$stage" || return 1
   if [[ -n "${EXTRA_DIRS:-}" ]]; then
     for extra in $EXTRA_DIRS; do
       [[ -d "$extra" ]] || { echo "rc_build: EXTRA_DIRS entry is not a directory: $extra" >&2; return 1; }
@@ -249,10 +271,11 @@ echo "rc_build: twine check"
 uvx twine check dist/*
 
 # The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
-# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, and the
-# EXTRA_DIRS entries (layout-move item 3: no separate plugin wheels -- the folded models ship inside
-# rcp-ndcg-vllm).  Staged BEFORE the wheelhouse: the family locks are read from the staged recipes, so
-# an empty stage would silently download no reference wheels (the rc0 wave0 bootstrap failure).
+# data, the wave lists from rcp-ndcg-test/wave-lists, the pairs from rcp-ndcg-test/pairs, the reference
+# cases from rcp-ndcg-test/cases, and the EXTRA_DIRS entries (layout-move item 3: no separate plugin
+# wheels -- the folded models ship inside rcp-ndcg-vllm).  Staged BEFORE the wheelhouse: the family locks
+# are read from the staged recipes, so an empty stage would silently download no reference wheels (the
+# rc0 wave0 bootstrap failure).
 stage_tree "$SRC" "stage/$RC_NAME" || exit 1
 
 # The wheelhouse: the release wheels plus every locked dependency for the node's platform (the CPU

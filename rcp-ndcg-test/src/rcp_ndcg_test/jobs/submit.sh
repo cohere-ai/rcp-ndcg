@@ -16,8 +16,10 @@
 #                  priority_class=<C> to kjobs-go submit (which renders <C>-training-priority;
 #                  default dev-medium; verify with a dry run)
 #   --script NAME  what the job runs on the node: bootstrap (a recipe wave; the default), wave0
-#                  (the node test; its script is mounted next to bootstrap.sh) or e2e (the T4 run
-#                  scenarios: e2e.sh drives them in the pod; the wave list names scenario ids)
+#                  (the node test; its script is mounted next to bootstrap.sh), e2e (the T4 run
+#                  scenarios: e2e.sh drives them in the pod; the wave list names scenario ids) or
+#                  casefill (the cuda reference-case fills: casefill.sh builds the four families'
+#                  reference environments and uploads the edited case YAMLs)
 #
 # Environment (required, no defaults: this script must not name any machine's paths or buckets):
 #   RCP_KJOBS_CONFIG   the job-CLI config file (the job CLI's -f argument)
@@ -25,6 +27,9 @@
 #   RCP_HF_TOKEN_FILE  the Hugging Face token file, mounted into the job and read there by the wrapper
 #                      (its value never reaches a process argv, an echo or a log)
 #   RCP_SHARED_MEMORY  the job's worker.shared_memory (defaults to 128Gi, sized for eight engines)
+#   RCP_RECORD_CORPUS  optional: 1 forwards env.RCP_RECORD_CORPUS=1 into the job spec, which makes
+#                      bootstrap.sh's wave mode pass --record-corpus (the recording pass; unset means
+#                      no line is forwarded and every wave's argv is unchanged)
 #   KJOBS              the job CLI, "kjobs-go" by default; KJOBS=echo prints every command instead of
 #                      running it (the plan, with the secret value elided)
 #   RCP_SUBMIT_DIR     where the job CLI's output files land (default: a mktemp dir; created when it
@@ -35,7 +40,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e] \\
+  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill] \\
          <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]" >&2
 }
 
@@ -51,7 +56,7 @@ while (($#)); do
   case "$1" in
     --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
     --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
-    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0 or e2e}"; shift 2 ;;
+    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e or casefill}"; shift 2 ;;
     --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
@@ -59,8 +64,8 @@ while (($#)); do
   esac
 done
 [[ -n "$RC_STAGE_URI" && -n "$OUT_PREFIX" && ${#WAVES[@]} -ge 1 ]] || { usage; exit 2; }
-[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" ]] || {
-  echo "submit.sh: --script must be bootstrap, wave0 or e2e, got $SCRIPT_NAME" >&2
+[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" ]] || {
+  echo "submit.sh: --script must be bootstrap, wave0, e2e or casefill, got $SCRIPT_NAME" >&2
   exit 2
 }
 [[ "$MAX_JOBS" =~ ^[0-9]+$ && "$MAX_JOBS" -ge 1 ]] || { echo "submit.sh: --max-jobs must be a positive number" >&2; exit 2; }
@@ -116,12 +121,20 @@ case "$(basename "$HERE")" in
   jobs) E2E_SH="$HERE/e2e.sh" ;;
   *) E2E_SH="$HERE/jobs/e2e.sh" ;;
 esac
+case "$(basename "$HERE")" in
+  jobs) CASEFILL_SH="$HERE/casefill.sh" ;;
+  *) CASEFILL_SH="$HERE/jobs/casefill.sh" ;;
+esac
 [[ "$SCRIPT_NAME" != "wave0" || -f "$WAVE0_SH" ]] || {
   echo "submit.sh: wave0.sh not found at $WAVE0_SH (run submit.sh from the checkout)" >&2
   exit 2
 }
 [[ "$SCRIPT_NAME" != "e2e" || -f "$E2E_SH" ]] || {
   echo "submit.sh: e2e.sh not found at $E2E_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "casefill" || -f "$CASEFILL_SH" ]] || {
+  echo "submit.sh: casefill.sh not found at $CASEFILL_SH (run submit.sh from the checkout)" >&2
   exit 2
 }
 
@@ -322,6 +335,11 @@ for plan_row in "${PLAN[@]}"; do
     "env.RCP_IMAGE=$row_image"
     "env.RCP_IMAGE_DIGEST=$ROW_IMAGE_DIGEST"
   )
+  if [[ -n "${RCP_RECORD_CORPUS:-}" ]]; then
+    # The recording pass's switch (bootstrap.sh's wave mode reads it): forwarded only when the operator
+    # set it, so every other wave's job spec is unchanged.
+    args+=("env.RCP_RECORD_CORPUS=$RCP_RECORD_CORPUS")
+  fi
   if [[ "$SCRIPT_NAME" == "wave0" ]]; then
     args+=(
       "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/wave0/wave0.sh $RC_STAGE_URI $OUT_URI"
@@ -335,6 +353,14 @@ for plan_row in "${PLAN[@]}"; do
     args+=(
       "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/e2e/e2e.sh $RC_STAGE_URI $OUT_URI --wave $wave"
       "files.e2e.from_file=$E2E_SH" "files.e2e.mount_path=/etc/rcp/files/e2e/e2e.sh"
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+  elif [[ "$SCRIPT_NAME" == "casefill" ]]; then
+    # The cuda reference-case fills: casefill.sh runs bootstrap.sh envs for the four families'
+    # reference environments, then the fills, and uploads the edited case YAMLs.
+    args+=(
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/casefill/casefill.sh $RC_STAGE_URI $OUT_URI"
+      "files.casefill.from_file=$CASEFILL_SH" "files.casefill.mount_path=/etc/rcp/files/casefill/casefill.sh"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
   else

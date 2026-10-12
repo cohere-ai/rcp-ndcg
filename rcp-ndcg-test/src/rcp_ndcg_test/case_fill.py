@@ -19,10 +19,12 @@ Run from a checkout of the repository::
 The reference runs in its own environment (owner decision 35: this process holds no torch) with the
 role's mode (``score`` for rerank, ``embed`` for embed/multi_vector) and the recipe's own tokenizer
 spec; ``--budget-s`` bounds the subprocess, because a CPU reference of a large checkpoint can outlive
-the one-hour default.  A media-bearing case and a kind the mode cannot produce are refused **before**
-the reference runs, so nothing is half-filled; ``kind: none`` cases carry no values by design and are
-left alone.  The reference python's path is never written into the repository: the note carries the
-device and the date only.
+the one-hour default.  A pending case the mode cannot fill is **skipped per case**, with the reason
+recorded in the report and its file left untouched: ``kind: none`` carries no values by design, a
+``expected.kind`` the mode does not produce is another stage's values, and a media-bearing case's
+values cannot come from the text-only reference (its ``media`` mode reports input facts, not model
+outputs), so a media-value fill is a follow-up.  The reference python's path is never written into
+the repository: the note carries the device and the date only.
 """
 
 from __future__ import annotations
@@ -46,7 +48,7 @@ from rcp_ndcg_test.equivalence.reference import reference_entry, reference_of, r
 from rcp_ndcg_test.errors import CaseError, HarnessError, RecipeError
 from rcp_ndcg_test.stepwatch import StepWatch, watched
 
-__all__ = ["FillReport", "FilledCase", "expected_values", "fill_cases", "main"]
+__all__ = ["FillReport", "FilledCase", "SkippedCase", "expected_values", "fill_cases", "main"]
 
 _MODE_OF_ROLE = {"rerank": "score", "embed": "embed", "multi_vector": "embed"}
 """The reference subprocess mode each role's cases are filled from."""
@@ -100,6 +102,21 @@ class FilledCase:
 
 
 @dataclass(frozen=True)
+class SkippedCase:
+    """One pending case the fill cannot produce values for (its file is left untouched).
+
+    Attributes:
+        case_id: The case's id (``<recipe>/<case-slug>``).
+        reason: Why no values were written: ``kind: none`` carries no values by design, the case's
+            ``expected.kind`` is not what the mode produces, or the case carries media the text-only
+            reference cannot read (a media-value fill is a follow-up).
+    """
+
+    case_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class FillReport:
     """What one fill did.
 
@@ -108,7 +125,8 @@ class FillReport:
         mode: The reference subprocess mode (``score`` or ``embed``).
         device: The reference's device.
         filled: The cases written, sorted by id.
-        pending_before: The pending cases found (including ``kind: none`` ones, which carry no values).
+        pending_before: The pending cases found (including the skipped ones).
+        skipped: The pending cases no values were written for, each with its reason.
     """
 
     recipe_id: str
@@ -116,6 +134,7 @@ class FillReport:
     device: str
     filled: tuple[FilledCase, ...]
     pending_before: int
+    skipped: tuple[SkippedCase, ...] = ()
 
     def as_document(self) -> dict[str, Any]:
         """The report as JSON-ready data (the CLI's stdout)."""
@@ -128,13 +147,14 @@ class FillReport:
                 {"case_id": filled.case_id, "path": str(filled.path), "notes_updated": filled.notes_updated}
                 for filled in self.filled
             ],
+            "skipped": [{"case_id": skipped.case_id, "reason": skipped.reason} for skipped in self.skipped],
         }
 
     def summary(self) -> str:
         """One line for a log: the recipe, the mode, the counts."""
         return (
             f"{self.recipe_id} [{self.mode} on {self.device}]: filled {len(self.filled)} of "
-            f"{self.pending_before} pending case(s)"
+            f"{self.pending_before} pending case(s), skipped {len(self.skipped)}"
         )
 
 
@@ -147,21 +167,23 @@ def fill_cases(
     filled_at: str | None = None,
     budget_s: float = _DEFAULT_BUDGET_S,
 ) -> FillReport:
-    """Fill every pending case of ``recipe`` with the reference implementation's own outputs.
+    """Fill every fillable pending case of ``recipe`` with the reference implementation's own outputs.
 
     Inputs: the loaded recipe, the cases root (the package's ``cases/`` when ``None``), the python that
     runs the recipe's reference (its own environment; never this process), the reference's device, the
     date the fill records in the notes (today when ``None``) and the reference subprocess's wall-clock
     budget in seconds.
 
-    Outputs: a :class:`FillReport`.  Every pending case the mode can produce is written (values, status
-    and note) after the reference returns; the run is one subprocess per recipe, so a failure leaves
-    every case untouched.
+    Outputs: a :class:`FillReport`.  Every pending case the mode can fill is written (values, status
+    and note) after the reference returns; a pending case the mode cannot fill is skipped with its
+    reason (see :func:`_unfillable_reason`) and its file left untouched.  The run is one subprocess per
+    recipe, so a reference failure leaves every case untouched.
 
     Raises:
-        CaseError: a pending case carries media (the mode reads text), its ``expected.kind`` is not the
-            one the mode produces, or the reference's outputs cannot be shaped into it.
-        HarnessError: the recipe has no reference (a judge) or the reference subprocess fails.
+        CaseError: the recipe's case root or a case's text does not load (a ``text_ref`` whose hash does
+            not match).
+        HarnessError: the recipe has no reference (a judge), the reference's answers do not align with
+            the planned rows, or the reference subprocess fails.
     """
     mode = _MODE_OF_ROLE.get(str(recipe.role))
     if mode is None:
@@ -171,10 +193,17 @@ def fill_cases(
     root = cases_root if cases_root is not None else default_cases_root()
     bundle = load_cases(root, recipe=recipe, check_lengths=False)
     pending = [case for case in bundle.cases if case.expected.values is None and case.expected.status == "pending_gpu"]
-    fillable = [case for case in pending if case.expected.kind != "none"]
+    fillable: list[Case] = []
+    skipped: list[SkippedCase] = []
+    for case in pending:
+        reason = _unfillable_reason(case, mode)
+        if reason is None:
+            fillable.append(case)
+        else:
+            skipped.append(SkippedCase(case_id=case.id, reason=reason))
     if not fillable:
-        return FillReport(recipe.id, mode, device, (), pending_before=len(pending))
-    rows, mapping = _plan_rows(fillable, mode)
+        return FillReport(recipe.id, mode, device, (), pending_before=len(pending), skipped=tuple(skipped))
+    rows, mapping = _plan_rows(fillable)
     document = _run_reference(recipe, mode, rows, reference_python=reference_python, device=device, budget_s=budget_s)
     answers = _answers_by_case(document, rows, mapping)
     filled: list[FilledCase] = []
@@ -188,7 +217,35 @@ def fill_cases(
                 filled_at=filled_at or date.today().isoformat(),
             )
         )
-    return FillReport(recipe.id, mode, device, tuple(filled), pending_before=len(pending))
+    return FillReport(recipe.id, mode, device, tuple(filled), pending_before=len(pending), skipped=tuple(skipped))
+
+
+def _unfillable_reason(case: Case, mode: str) -> str | None:
+    """Why the fill cannot produce this pending case's values, or ``None`` when it can.
+
+    The one home for the fill's per-case refusals: ``kind: none`` carries no values by design, a
+    ``expected.kind`` the mode does not produce is another stage's values (the fill never guesses),
+    and a media-bearing case's values cannot come from the text-only reference -- its ``media`` mode
+    reports input facts, not model outputs -- so it stays ``pending_gpu`` until a media-value fill
+    exists.  A skipped case's file is never touched.
+    """
+    if case.expected.kind == "none":
+        return "kind: none carries no values by design"
+    wanted = _KIND_OF_MODE[mode]
+    if case.expected.kind != wanted:
+        return (
+            f"expected.kind {case.expected.kind!r} is not what the {mode} mode produces ({wanted!r}); "
+            "the fill does not guess another stage's values"
+        )
+    media = [
+        document.id for document in case.inputs.documents if document.image is not None or document.video is not None
+    ]
+    if media:
+        return (
+            f"document(s) {', '.join(media)} carry media; the reference's {mode} mode reads text only "
+            "and its media mode reports input facts, not model outputs, so a media-value fill is a follow-up"
+        )
+    return None
 
 
 def _case_path(case: Case) -> Path:
@@ -199,38 +256,23 @@ def _case_path(case: Case) -> Path:
     return Path(directory) / f"{case.id.split('/', 1)[1]}.yaml"
 
 
-def _plan_rows(cases: list[Case], mode: str) -> tuple[list[dict[str, Any]], list[tuple[Case, int]]]:
+def _plan_rows(cases: list[Case]) -> tuple[list[dict[str, Any]], list[tuple[Case, int]]]:
     """The reference's pairs rows and, per row, the case and query index it carries.
 
     One row per query (the reference's own pairs format): the query's text and the case's documents, in
-    the case's order.  The run's instruction travels per row when the case declares one.  A case the
-    mode cannot produce or read is refused here, in case order, before the reference runs.
+    the case's order.  The run's instruction travels per row when the case declares one.  Only
+    fillable cases reach here (the partition owns the refusals), so a document or query without text is
+    an internal inconsistency, refused rather than silently sent as a missing part.
     """
-    wanted = _KIND_OF_MODE[mode]
     rows: list[dict[str, Any]] = []
     mapping: list[tuple[Case, int]] = []
     for case in cases:
-        if case.expected.kind != wanted:
-            raise CaseError(
-                f"case {case.id}: expected.kind {case.expected.kind!r} is not what the {mode} mode produces "
-                f"({wanted!r}); the fill does not guess another stage's values"
-            )
-        media = [
-            document.id
-            for document in case.inputs.documents
-            if document.image is not None or document.video is not None
-        ]
-        if media:
-            raise CaseError(
-                f"case {case.id}: document(s) {', '.join(media)} carry media, and the reference's {mode} mode "
-                "reads text only; a media case's values come from the media stage, not the fill"
-            )
         documents = [text_of(document) for document in case.inputs.documents]
-        if any(document is None for document in documents):  # pragma: no cover - the media check above
+        if any(document is None for document in documents):
             raise CaseError(f"case {case.id}: a document carries no text")
         for index, query in enumerate(case.inputs.queries):
             text = text_of(query)
-            if text is None:  # pragma: no cover - the case format requires a query text
+            if text is None:
                 raise CaseError(f"case {case.id}: query {query.id!r} carries no text")
             row: dict[str, Any] = {"query": text, "documents": documents}
             if case.inputs.instruction is not None:

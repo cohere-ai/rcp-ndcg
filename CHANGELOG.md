@@ -1408,10 +1408,21 @@ owner pushes, with the move to a Hugging Face organisation).
   similarity matrix for an embed or multi_vector one -- the cosine of the L2-normalized single vectors, the
   product's MaxSim for a late-interaction reference), and a line-wise YAML edit (`values`,
   `status: reproduced`, the pending note's own sentence retired) that leaves every other byte of the
-  hand-written case in place.  A media-bearing case and a kind the mode cannot produce are refused by name
-  before the reference runs; a `kind: none` case carries no values by design and is left alone.  The
-  reference entry path has one home now (`rcp_ndcg_test.equivalence.reference.reference_entry`, used by
-  stages 1-2, the media stage and the fill).
+  hand-written case in place.  A pending case the mode cannot fill is **skipped per case**, its file left
+  untouched and the reason recorded in the report: a media-bearing case's values cannot come from the
+  text-only reference (its `media` mode reports input facts, not model outputs), so a media-value fill is a
+  follow-up, and a `kind: none` case carries no values by design.  The reference entry path has one home now
+  (`rcp_ndcg_test.equivalence.reference.reference_entry`, used by stages 1-2, the media stage and the fill).
+- **The recording pass and the cuda case fills are submittable jobs** (the unpublished `rcp-ndcg-test`):
+  `RCP_RECORD_CORPUS=1` is forwarded by `submit.sh` into the job spec and makes `bootstrap.sh`'s wave mode
+  pass `--record-corpus` (unset, the wave argv is byte-identical), so the observation corpora are
+  re-recorded as their own wave -- a corpus failure is a corpus re-run, not a recipe failure.  A new
+  `submit.sh --script casefill` job stages `rcp-ndcg-test/cases` into the RC (the wheel drops `cases/`),
+  builds the four cuda families' reference environments through `bootstrap.sh envs`, runs
+  `python -m rcp_ndcg_test.case_fill --device cuda` per recipe and uploads the edited case YAMLs for a
+  reviewed commit.  `qwen3-vl-reranker-2b/gen-text-short-uniform`'s `expected.kind` is corrected from
+  `similarity_matrix` to `scores` (a rerank case's shape), with a test pinning every shipped case's kind
+  to its role's stage shape.
 - **The listwise replay stays covered while jina-reranker-v3's corpus is declared stale**: the staleness
   gate keeps that corpus out of the standard conformance replay set, and with it the package's only
   listwise prompt path; a conformance test replays the corpus's recorded exchanges (its `/rerank` probes

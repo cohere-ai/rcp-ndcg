@@ -251,10 +251,12 @@ def run_wave(
     Each ready recipe's steps run in a worker thread of their own, under per-step budgets (GPU-E1), and each
     finished recipe's directory is uploaded the moment it ends.
 
-    ``record_corpus`` writes one observation corpus per recipe under ``<out>/<id>/corpus/`` (the request
-    plan's rows twice in one process and once after an engine restart -- the runner stops and restarts
-    the engine between the passes).  ``--changed-since <index>`` re-records only the recipes whose
-    behaviour fingerprint differs from the index (a previous ``wave.json`` or corpus index), listing
+    ``record_corpus`` writes one observation corpus per recipe under
+    ``<out>/observations/vllm-<version>/<recipe>/<fingerprint>/<stamp>/`` (the request plan's rows twice
+    in one process and once after an engine restart -- the runner stops and restarts the engine between
+    the passes; the version is the pod-reported one, the stamp the recording's start time).
+    ``--changed-since <index>`` re-records only the recipes whose behaviour fingerprint differs from the
+    index (a previous ``wave.json`` with its ``fingerprints`` and ``engine_versions`` maps), listing
     the rest as ``skipped_unchanged`` (OBSERVATIONS-SPEC section 7).
     """
     out = Path(out_dir)
@@ -2126,8 +2128,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--changed-since",
         default=None,
-        help="a previous wave.json or corpus index: re-record only the recipes whose behaviour "
-        "fingerprint or pod-reported engine version changed; an all-skipped wave reports SKIPPED",
+        help="a previous recording wave's wave.json (its fingerprints and engine_versions maps): "
+        "re-record only the recipes whose behaviour fingerprint or pod-reported engine version changed; "
+        "an all-skipped wave reports SKIPPED",
     )
     parser.add_argument("--pairs-dir", default=None, help="directory with <id>.jsonl (or default.jsonl) pairs files")
     parser.add_argument(

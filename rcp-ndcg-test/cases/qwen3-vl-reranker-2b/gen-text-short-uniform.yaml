@@ -24,7 +24,7 @@ inputs:
   - id: d4
     text: Wind turbines convert the kinetic energy of moving air into electricity. The rotor blades spin a shaft that drives a generator, and power electronics condition the output for the grid.
 expected:
-  kind: similarity_matrix
+  kind: scores
   values: null
   tolerance:
     abs: 0.01

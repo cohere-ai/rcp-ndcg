@@ -68,13 +68,14 @@ final full gate on the merged `rfc-0001` tip in a quiet window; no code was chan
 | qwen3-vl-reranker-2b | changed | 1 (`serve.hf_overrides`) | `32420aee…` |
 | zembed-1-embedding | changed | 13 | `80bba022…` |
 
-GCS holds no observation corpus for any of them: no `<recipe>/corpus/` directory exists under any
-`waves-*` prefix (checked `rc0-202610101230` through `rc0-202610120530`, the `e1*`/`shake` prefixes, and
--- the final re-check at the end of the lane -- the newest RC `rc0-202610120815`, 08:15 UTC). That RC
-re-ran r2/r3/r4 for the eight: each recipe's `status.json` lists the steps `serve`, `smoke`,
-`equivalence`, `record` and reports `verified`, but there is no `observation_corpus` step and no
-`corpus/` directory -- the wave runner's `--record-corpus` step (the observation corpus: the plan's rows
-twice in one process, once after a restart, plus the probes and `/tokenize`) has not run. `tests/conformance/stale.json` therefore keeps all eight entries, and the
+GCS holds no observation corpus for any of them: no `observations/vllm-<version>/<recipe>/...` tree
+exists under any `waves-*` prefix (checked `rc0-202610101230` through `rc0-202610120530`, the
+`e1*`/`shake` prefixes, and -- the final re-check at the end of the lane -- the newest RC
+`rc0-202610120815`, 08:15 UTC). That RC re-ran r2/r3/r4 for the eight: each recipe's `status.json` lists
+the steps `serve`, `smoke`, `equivalence`, `record` and reports `verified`, but there is no
+`observation_corpus` step and no corpus tree -- the wave runner's `--record-corpus` step (the
+observation corpus: the plan's rows twice in one process, once after a restart, plus the probes and
+`/tokenize`) has not run. `tests/conformance/stale.json` therefore keeps all eight entries, and the
 release-flag test (`RCP_NDCG_RELEASE=1`) still fails until they are replaced.
 
 ### 3.2 Emulator re-verification
@@ -115,22 +116,31 @@ Exact command sequence, once the recordings land (paths are relative to the repo
 scratch directory outside it):
 
 ```bash
-# 0. the recording wave (on the node, in the bootstrap's client environment, same flags as bootstrap.sh's
-#    wave exec plus --record-corpus; --changed-since re-records only what moved)
+# 0. the recording wave (on the node, in the bootstrap's client environment).  The wave bootstrap now
+#    carries the switch: submit a recording pass with RCP_RECORD_CORPUS=1 (submit.sh forwards it into
+#    the job spec; bootstrap.sh's wave mode then passes --record-corpus).  --changed-since takes a
+#    PREVIOUS RECORDING wave's wave.json (its fingerprints and engine_versions maps) -- the committed
+#    repository corpus index is a different schema and would re-record everything; to select the
+#    recipes whose corpora are stale against the committed ones, use the changes command above and
+#    make that list the wave list.
+#
+#    The equivalent direct command, run in the client environment the bootstrap built:
 "$STATE/client" python -m rcp_ndcg_test.jobs.run_wave \
     --recipes "@$WAVE_LIST_FILE" --recipes-root "$RECIPES_ROOT" --gpus "$gpus" \
     --out "$STATE/wave" --upload "$OUT_URI" --record --record-corpus \
-    --changed-since "<a previous wave.json or corpus index>" \
+    --changed-since "<a previous recording wave's wave.json>" \
     --failed-plugins "$STATE/plugin-failures.txt" --reference-root "$STATE/reference" \
     --pairs-dir "$STAGE_DIR/pairs"
-#    (bootstrap.sh's wave mode passes --record only: see Open questions 6.1)
+#    (bootstrap.sh's wave mode passes --record and, with RCP_RECORD_CORPUS=1, --record-corpus; the
+#    changed-only index has no job-spec forwarding today -- see Open questions 6.1)
 
-# 1. locate the recording (the wave runner writes <out>/<id>/corpus/ and uploads it with the recipe dir)
-gcloud storage ls "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-<rc>/<wave>/<engine-dir>/<recipe>/corpus/"
+# 1. locate the recording (the wave runner writes
+#    <out>/observations/vllm-<version>/<recipe>/<fingerprint>/<stamp>/ and uploads it with the wave)
+gcloud storage ls "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-<rc>/<wave>/<engine-dir>/observations/vllm-<version>/<recipe>/<fingerprint>/"
 
-# 2. download the full corpus
+# 2. download the full corpus (the stamped directory of the recording)
 mkdir -p "<work>/<recipe>"
-gcloud storage rsync --recursive "gs://…/<recipe>/corpus" "<work>/<recipe>/corpus"
+gcloud storage rsync --recursive "gs://…/<recipe>/<fingerprint>/<stamp>" "<work>/<recipe>/corpus"
 
 # 3. the acceptance checks on the full corpus (completeness, statuses, vector widths, credentials, hashes)
 uv run --no-sync python -m rcp_ndcg_test.observe.corpus verify "<work>/<recipe>/corpus"
@@ -218,7 +228,10 @@ and the brief classes qwen3-vl cuda-only -- see Open questions 6.2). One of topk
 `query-cap-1024`, a `kind: none` case that carries no values by design; the fill leaves it pending.
 
 On the node, in the client environment, with the wave bootstrap's per-family reference venvs
-(`<reference-root>` is the bootstrap's `$STATE/reference`; the family directory names are the venv keys):
+(`<reference-root>` is the bootstrap's `$STATE/reference`; the family directory names are the venv keys).
+The fill now ships as the `--script casefill` job (the runplumb lane: `handover/reports/runplumb.md`),
+which builds those venvs through `bootstrap.sh envs` and passes `--cases-root <stage>/cases` (the wheel
+drops `cases/`, so the RC stages them); the same commands by hand:
 
 ```bash
 python -m rcp_ndcg_test.case_fill --recipe topk-embed-v1-small \
@@ -232,7 +245,10 @@ python -m rcp_ndcg_test.case_fill --recipe qwen3-vl-reranker-2b \
 ```
 
 (`--device cuda` is what the wave runner passes when a reference GPU is reserved; qwen3-vl-reranker's
-reference accepts `cpu` too, since its family declares no device.)
+reference accepts `cpu` too, since its family declares no device.  A pending case the fill cannot produce
+is skipped per case with its reason recorded, its file untouched: the 14 media-bearing ones (the
+text-only reference cannot read them; the reference's `media` mode reports input facts, not model
+outputs, so a media-value fill is a follow-up) and topk's `kind: none` one -- 26 of the 40 values fill.)
 
 ## 5. Verification
 
@@ -252,18 +268,21 @@ reference accepts `cpu` too, since its family declares no device.)
 
 ## 6. Open questions
 
-1. **The wave bootstrap cannot submit a corpus re-recording.** `bootstrap.sh`'s wave mode execs
-   `run_wave … --record` only, and neither `submit.sh` nor the operator's `e2-run`/`wave-run` exposes
-   `--record-corpus`; the re-record command in section 3.4 step 0 therefore runs `run_wave` directly in
-   the client environment (what the bootstrap itself execs). The tooling fix is a small env-gated flag in
-   `bootstrap.sh` (`RCP_RECORD_CORPUS=1` -> `--record-corpus`), testable through the existing shell tests;
-   it was left out of this lane to keep the change surface narrow.
+1. **The wave bootstrap carries the corpus re-recording switch now, but not `--changed-since`.**
+   `bootstrap.sh`'s wave mode execs `run_wave … --record` plus `--record-corpus` when
+   `RCP_RECORD_CORPUS=1`, and `submit.sh` forwards the variable into the job spec (the runplumb lane's
+   change: see `handover/reports/runplumb.md`).  What is still unplumbed is the changed-only index:
+   `--changed-since` takes a previous RECORDING wave's `wave.json`, and no env variable forwards it
+   into the job spec -- a changed-only pass either runs `run_wave` directly in the client environment
+   (the command in section 3.4 step 0) or makes the changed list the wave list (the `changes changed`
+   selection above, which is the comparison against the committed corpora).
 2. **qwen3-vl-reranker-2b declares no `reference.device`** while the brief classes the qwen3-vl family
    cuda-only. Its reference's score mode accepts `cpu`; the next lane decides whether to CPU-fill its nine
    cases here (its media cases still need the media path) or leave them to the node.
 3. **`qwen3-vl-reranker-2b/gen-text-short-uniform` declares `kind: similarity_matrix` for a rerank
-   recipe** (the loader accepts it; the fill refuses it by name, and the conformance runner would fail it
-   on the shape). The cases lane's slip; a rerank case's kind should be `scores`.
+   recipe** (the loader accepts it; the fill skips it as another stage's shape, and the conformance
+   runner would fail it on the shape). The cases lane's slip; a rerank case's kind should be `scores` --
+   fixed in the runplumb lane, with a test pinning every shipped case's kind to its role's stage shape.
 4. The eight corpora's re-recording is the release blocker for `stale.json`; every other stale-related
    check is in place (the declarations match the recomputed inputs exactly, the waivers file is empty, the
    release-flag test enforces the empty list).
@@ -317,9 +336,9 @@ and `CHANGELOG.md`.
 
 ## For the next lanes
 
-1. Run the re-record wave with `--record-corpus` (section 3.4 step 0; see Open question 6.1 for the
-   bootstrap gap), then the ten-step replacement sequence; empty `tests/conformance/stale.json` only when
-   all eight match, and re-verify every emulator with `RCP_APPEND_VERIFICATION=1`.
+1. Run the re-record wave with `--record-corpus` (section 3.4 step 0; `RCP_RECORD_CORPUS=1` reaches the
+   wave through `submit.sh`), then the ten-step replacement sequence; empty `tests/conformance/stale.json`
+   only when all eight match, and re-verify every emulator with `RCP_APPEND_VERIFICATION=1`.
 2. Fill the four cuda-reference families' 41 cases on the node with the commands in section 4.3, then run
    the conformance suite against each family's engine (the cases are the reference side; the engine side is
    the wave's conformance target).
