@@ -15,12 +15,23 @@
 #
 # These are the checkpoint's own requirements.txt pins at revision
 # e54485ebab921f2c18c4d092b3f4c40dcca26781 -- the model card's published path is
-# sentence-transformers MultiVectorEncoder over the checkpoint's trusted code -- except for
-# transformers: the checkpoint pins 5.9.0, whose `layer_type` attribute transformers 5.17 renamed to
-# `block_type` (the remote hf_backbone.py:178 read crashed at load, GPU-E1); reference.py's declared
-# `_alias_qwen3_5_layer_type` shim aliases the old name to the new one, so the reference runs on the
-# image's transformers stack (>=5.10.4,<5.18.0 at vLLM v0.31.0) instead of a 5.9.0 that the node's
-# constraint install cannot replace the image's with.
+# sentence-transformers MultiVectorEncoder over the checkpoint's trusted code.  The family is
+# own-torch, so the bootstrap builds its reference venv WITHOUT --system-site-packages
+# (jobs/bootstrap.sh) and installs exactly these pins: the image's transformers is never involved.
+# E2 round 9 pinned transformers==5.9.0, the checkpoint's own release, after the remote
+# hf_backbone.py:111 call `self.chunk_gated_delta_rule(...)` died on the image's stack with
+# `AttributeError: 'PackedGatedDeltaNet' object has no attribute 'chunk_gated_delta_rule'`:
+# 5.9.0's `Qwen3_5GatedDeltaNet.__init__` assigns that instance attribute
+# (`self.chunk_gated_delta_rule = chunk_gated_delta_rule or torch_chunk_gated_delta_rule`,
+# modeling_qwen3_5.py:422) and its forward calls it (:535); 5.17.0 removed the attribute (its
+# forward calls the module-level `torch_chunk_gated_delta_rule`, :639), whose signature takes
+# `**kwargs` and never reads the `cu_seqlens` the remote code passes to keep packed documents
+# apart -- delegating the call to the 5.17 name would silently change packed-document numerics.
+# The earlier range (>=5.10.4,<5.18.0, "the image's stack") no longer holds: it was written to
+# avoid installing transformers into the reference venv, but this family's venv is its own and
+# reads nothing from the image.  reference.py's declared `_alias_qwen3_5_layer_type` and
+# `_promote_qwen3_5_rope_position_ids` shims are inert under 5.9.0 (it carries `layer_type` and
+# the 2-D rope promotion); they stay as the conditional aliases they are.
 torch==2.11.0
 torchvision==0.26.0
 # torch 2.11.0's Linux CUDA stack, pinned here because this family owns its torch (own-torch): torch
@@ -45,18 +56,19 @@ nvidia-cudnn-cu13==9.19.0.56
 nvidia-cusparselt-cu13==0.8.0
 nvidia-nccl-cu13==2.28.9
 nvidia-nvshmem-cu13==3.4.5
-transformers>=5.10.4,<5.18.0
+transformers==5.9.0
 sentence-transformers==6.0.1
 flash-linear-attention==0.5.1
 kernels==0.14.1
 safetensors>=0.7.0
 Pillow>=12.0
-# The render mode's dependencies besides the stdlib: this and tokenizers.  Both are pinned inside
-# the range the family's own transformers==5.17.0 declares (Requires-Dist: huggingface-hub<2.0,>=1.5.0;
-# tokenizers<0.24.0,>=0.23.1): with the name left unpinned, `uv pip compile --no-deps` resolves it to
-# the newest release (2.2.0), which transformers' own pin forbids -- the bootstrap's completion step
-# then downgrades the venv's copy to a wheelhouse version and the import check fails (the r4 wave:
-# `huggingface-hub is installed at 1.33.0, the lock pins 2.2.0`).  The pinned range resolves to the
-# image's 1.33.0, which every staged wheelhouse carries.
+# The render mode's dependencies besides the stdlib: this and tokenizers.  tokenizers is pinned
+# inside transformers 5.9.0's own range (Requires-Dist: tokenizers<=0.23.0,>=0.22.0): with the name
+# left unpinned, `uv pip compile --no-deps` resolves the newest release, which the family's own pin
+# forbids -- the bootstrap's completion step then fails the import check (the r4 wave's
+# huggingface-hub incident: `huggingface-hub is installed at 1.33.0, the lock pins 2.2.0`).  The
+# pinned range resolves to 0.22.2, the newest release the range allows (0.23.0 was never published);
+# huggingface-hub 1.33.0 (inside 5.9.0's own >=1.5.0,<2.0 range) is what the staged wheelhouse
+# carries.
 huggingface-hub>=1.5,<2.0
-tokenizers>=0.23.1,<0.24.0
+tokenizers>=0.22.0,<=0.23.0
