@@ -113,11 +113,16 @@ def test_importing_the_fold_package_installs_the_fold_before_any_folded_module(
     fake_transformers.__spec__ = importlib.machinery.ModuleSpec("transformers", loader=None)
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
     monkeypatch.setattr(embedding_gemma2, "install_fold", lambda: calls.append("install_fold"))
-    monkeypatch.delitem(sys.modules, FOLD_PACKAGE_MODULE, raising=False)
+    previous = sys.modules.pop(FOLD_PACKAGE_MODULE, None)
 
-    importlib.import_module(FOLD_PACKAGE_MODULE)
-
-    assert calls == ["install_fold"], "the fold package must install the fold at its own import"
+    try:
+        importlib.import_module(FOLD_PACKAGE_MODULE)
+        assert calls == ["install_fold"], "the fold package must install the fold at its own import"
+    finally:
+        # The import runs once: a package left in ``sys.modules`` would not run its body for the next test.
+        sys.modules.pop(FOLD_PACKAGE_MODULE, None)
+        if previous is not None:
+            sys.modules[FOLD_PACKAGE_MODULE] = previous
 
 
 def test_the_vendored_models_upstream_imports_resolve_from_the_fold(
@@ -145,22 +150,28 @@ def test_the_vendored_models_upstream_imports_resolve_from_the_fold(
     for name in list(sys.modules):
         if name == FOLD_PACKAGE or name.startswith(f"{FOLD_PACKAGE}."):
             monkeypatch.delitem(sys.modules, name)
-    monkeypatch.delitem(sys.modules, FOLD_PACKAGE_MODULE, raising=False)
     monkeypatch.setattr(sys, "meta_path", [_UpstreamPackageBlocker(), *sys.meta_path])
+    previous = sys.modules.pop(FOLD_PACKAGE_MODULE, None)
 
-    importlib.import_module(FOLD_PACKAGE_MODULE)
+    try:
+        importlib.import_module(FOLD_PACKAGE_MODULE)
 
-    # The vendored model module's own import statements (fold/embedding_gemma2.py).
-    from transformers.models.embedding_gemma2.configuration_embedding_gemma2 import (
-        EmbeddingGemma2Config,
-        EmbeddingGemma2TextConfig,
-    )
-    from transformers.models.embedding_gemma2.processing_embedding_gemma2 import EmbeddingGemma2Processor
+        # The vendored model module's own import statements (fold/embedding_gemma2.py).
+        from transformers.models.embedding_gemma2.configuration_embedding_gemma2 import (
+            EmbeddingGemma2Config,
+            EmbeddingGemma2TextConfig,
+        )
+        from transformers.models.embedding_gemma2.processing_embedding_gemma2 import EmbeddingGemma2Processor
 
-    assert EmbeddingGemma2Config.model_type == HF_MODEL_TYPE
-    assert EmbeddingGemma2TextConfig.model_type == "embedding_gemma2_text"
-    assert EmbeddingGemma2Processor.__name__ == "EmbeddingGemma2Processor"
-    assert EmbeddingGemma2Config.__module__ == FOLD_PACKAGE_MODULE, "the folded class, not the library's"
+        assert EmbeddingGemma2Config.model_type == HF_MODEL_TYPE
+        assert EmbeddingGemma2TextConfig.model_type == "embedding_gemma2_text"
+        assert EmbeddingGemma2Processor.__name__ == "EmbeddingGemma2Processor"
+        assert EmbeddingGemma2Config.__module__ == FOLD_PACKAGE_MODULE, "the folded class, not the library's"
+    finally:
+        # The import runs once: a package left in ``sys.modules`` would not run its body for the next test.
+        sys.modules.pop(FOLD_PACKAGE_MODULE, None)
+        if previous is not None:
+            sys.modules[FOLD_PACKAGE_MODULE] = previous
 
 
 def test_the_folded_modules_are_registry_lazy() -> None:
