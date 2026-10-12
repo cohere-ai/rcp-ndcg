@@ -77,8 +77,9 @@ class StageEntry(BaseModel):
         identity: The identity of the judging pass that writes the stage; a later pass into the store is compared
             with it field by field. Its keys: ``stage``, ``family`` (the JudgementFamily), ``judge`` (the judge config's
             content fields), ``schedule`` (its numbers; the prompt is the family's ``prompt_hash``), ``dataset``
-            (its name, and for a loaded dataset its URI, local paths absolute, and resolved revision),
-            ``preprocessing`` (the effective policy, with the tokenizer's SHA-256), and for the tournament
+            (its name, and for a loaded dataset its URI, local paths absolute, resolved revision and, for a local
+            source, the content digest of the files its reader reads), ``preprocessing`` (the effective policy,
+            with the tokenizer's SHA-256), and for the tournament
             ``bt_l2`` (the penalty of the live Bradley-Terry fit that chose its adaptive windows). Only content
             enters it: the names the inputs were given are ``sources``.
         family: The family of the stage's judgements.
