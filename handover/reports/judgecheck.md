@@ -48,6 +48,9 @@ on the current RC); `judge check` needs a live endpoint, so it runs inside the p
 | `60f1c068` | The judge-check job: `judgecheck.sh` + `judgecheck_probe.py` |
 | `734ceb30` | `submit.sh --script judgecheck`: the mounted job, its argv tests and the docs |
 | `b696e847` | The helper's parser description is a literal, not `__doc__` (basedpyright) |
+| `c343ba91` | This report |
+| `94ed7605` | The catalog pin reads the shipped package data, not a checkout path (the gate's dirty slot) |
+| `a8c6e682` | Merge of the current `rfc-0001` tip (`4eb2d742`, lane r9) — the gated tree |
 
 ## 3. Red-first evidence (quoted)
 
@@ -105,7 +108,13 @@ sequential job is ~2 h; `RCP_JUDGECHECK_STARTUP_S` bounds the wait, `RCP_JUDGECH
 - The media probe against a stub chat engine (CPU): an honest engine (delta 66 = the client's counted
   66) reports `ok` with both numbers; a lying one (67) is the product's typed `mismatch`.
 - `shellcheck` on `judgecheck.sh` and `submit.sh` — clean.
-- `timeout 7200 bin/gate lane/judgecheck` — see the gate result in the lane's final handoff.
+- `timeout 7200 bin/gate lane/judgecheck` — **GATE: PASS** on `a8c6e682` (the current `rfc-0001` tip
+  `4eb2d742` merged): ruff-check/format, basedpyright, the root suite (4145 passed, 155 skipped),
+  contract+docs (413 passed, 107 skipped), mkdocs --strict, the test package (1173 passed, 229 skipped),
+  the recipes, the vLLM packages, the paper reproduction and the public-names scan — all green. The first
+  gate on `c343ba91` failed one test (the catalog pin read a checkout path, and the gate's shared slot held a
+  stale recipes directory); the fix reads the shipped package data (`default_recipes_root()`), and the gate
+  passed on the merged tree.
 
 ## 6. Per-judge coverage plan (the node run)
 
