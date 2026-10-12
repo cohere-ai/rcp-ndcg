@@ -470,7 +470,7 @@ class TestPhases:
         ]
         assert pod["volumes"] == [
             {"name": "scratch", "emptyDir": {}},
-            {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+            {"name": "dshm", "emptyDir": {"medium": "Memory", "sizeLimit": "16Gi"}},
         ]
         assert not {"startupProbe", "readinessProbe", "livenessProbe"} & set(container)
         bash, flag, script = container["command"]
@@ -510,6 +510,29 @@ class TestPhases:
         )
         assert "command -v uvx >/dev/null" in worker  # the engine's image gets uv from pip when it has none
         check_objects([job_obj])
+
+    def test_every_dshm_volume_is_bounded_by_the_declared_size(self) -> None:
+        """A Memory emptyDir with no bound can exhaust the node: every pod's dshm volume carries the declared
+        ``dshm_size`` (16Gi by default), on the Job's own pod and on a StatefulSet engine pod alike."""
+        local = JobSpec(name="run", phases=(JobPhase(engines={"judge": SERVE}, argv=("a",)),))
+        (job_obj,) = yaml.safe_load_all(KubernetesRunner(namespace="eval").render([local])["run"])
+        (volume,) = [v for v in job_obj["spec"]["template"]["spec"]["volumes"] if v["name"] == "dshm"]
+        assert volume["emptyDir"] == {"medium": "Memory", "sizeLimit": "16Gi"}
+
+        remote = JobSpec(name="run", phases=(JobPhase(engines={"reranker": RERANKER}, argv=("a",)),))
+        _, stateful_set, _ = yaml.safe_load_all(KubernetesRunner(namespace="eval").render([remote])["run"])
+        (volume,) = [v for v in stateful_set["spec"]["template"]["spec"]["volumes"] if v["name"] == "dshm"]
+        assert volume["emptyDir"] == {"medium": "Memory", "sizeLimit": "16Gi"}
+
+        raised = JobSpec(name="run", phases=(JobPhase(engines={"judge": SERVE}, argv=("a",)),))
+        (job_obj,) = yaml.safe_load_all(KubernetesRunner(namespace="eval", dshm_size="64Gi").render([raised])["run"])
+        (volume,) = [v for v in job_obj["spec"]["template"]["spec"]["volumes"] if v["name"] == "dshm"]
+        assert volume["emptyDir"]["sizeLimit"] == "64Gi"
+        check_objects([job_obj])
+
+    def test_a_dshm_size_that_is_not_a_memory_quantity_is_refused(self) -> None:
+        with pytest.raises(ConfigError, match="dshm_size"):
+            KubernetesRunner(dshm_size="16 GB")
 
     def test_each_engine_phase_is_an_init_container_and_the_last_phase_the_main_container(self) -> None:
         """The paper run's three phases: encoder, judge, and an engine-free phase, the run directory on emptyDir."""
