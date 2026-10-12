@@ -120,9 +120,12 @@ specials included) and the stratum is judged on the rendered input: `long_under`
 
    The tool runs the reference once over every pending case's inputs (the pairs rows the reference already
    reads) and writes its own outputs into the case YAML — `values`, `status: reproduced`, and the pending
-   note's sentence retired. A media-bearing case and a kind the mode cannot produce are refused by name
-   before the reference runs, so nothing is half-filled; a `kind: none` case carries no values by design
-   and is left alone. `--device` and `--budget-s` bound and place the reference subprocess.
+   note's sentence retired. A pending case the mode cannot fill is **skipped per case**, its file left
+   untouched and the reason recorded in the report: a media-bearing case's values cannot come from the
+   text-only reference (its `media` mode reports input facts, not model outputs), so a media-value fill
+   is a follow-up, and a `kind: none` case carries no values by design. `--device` and `--budget-s` bound
+   and place the reference subprocess. The cuda families' fills run as the `submit.sh --script casefill`
+   job, which builds their reference venvs and passes the RC's staged `cases/`.
 
 Media: only files whose licence allows redistribution in an Apache-2.0 repository; otherwise generate a
 synthetic image or video with a script kept in the case directory as `media/make_media.py` and say so in
@@ -230,7 +233,8 @@ The package's own tests run from the root venv (the dev dependency group install
 uv run --no-sync pytest rcp-ndcg-test/tests -q
 ```
 
-The real cases under `cases/` are repository data, staged to a GPU node by the wave runner; the fixture
+The real cases under `cases/` are repository data, staged into the release candidate by `rc_build.sh`
+(`<stage>/cases/`; the wheel drops `cases/`) and edited on the node by the casefill job; the fixture
 recipe, its tokenizer and its fixture cases are package data (in the wheel), so the suite runs end to end
 anywhere the package is installed. See `docs/how-to/add-a-model.md` for the recipe side and
 `docs/how-to` for the wider guides.

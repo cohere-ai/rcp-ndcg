@@ -3,8 +3,9 @@
 The tool is :mod:`rcp_ndcg_test.case_fill`.  These tests copy a fixture recipe whose ``reference.py``
 is a fake subprocess and exercise the tool end to end over case YAMLs in ``tmp_path``: the values
 written are the reference's outputs, ``status: pending_gpu`` becomes ``reproduced``, the pending note's
-own sentence is retired, a media-bearing case is refused by name **before** the reference runs, a
-second run finds nothing pending, and the CLI prints the report.
+own sentence is retired, an un-fillable case (media-bearing, or a kind the mode does not produce) is
+skipped per case with its reason recorded while the rest of the recipe still fills, a second run finds
+nothing pending, and the CLI prints the report.
 """
 
 from __future__ import annotations
@@ -16,8 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 from rcp_ndcg_test.cases import load_case
-from rcp_ndcg_test.errors import CaseError
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
 
 from tests.conftest import RECIPES, TOKENIZER
 
@@ -76,14 +76,16 @@ def _recipe_copy(
     *,
     root: Path | None = None,
     drop_template: bool = False,
+    variant: str | None = None,
 ) -> object:
     """A copy of a recipe whose ``reference.py`` is ``reference`` and whose tokenizer resolves.
 
     ``root`` is the recipe's family directory (the fixture recipes by default); a shipped family passes
-    its own directory, since the family directory name is not the variant id.  ``drop_template`` removes
-    the client template: the fixture embed recipes declare a document shape only, and the case loader
-    requires a query shape for an embed role when a template is declared (the fill's rows are the
-    reference's own pairs format, which the fake reads).
+    its own directory, since the family directory name is not the variant id (``variant`` names the
+    variant of a multi-variant family).  ``drop_template`` removes the client template: the fixture embed
+    recipes declare a document shape only, and the case loader requires a query shape for an embed role
+    when a template is declared (the fill's rows are the reference's own pairs format, which the fake
+    reads).
     """
     source = root if root is not None else RECIPES / recipe_id
     target = tmp_path / "recipes" / source.name  # the family directory name IS the family id
@@ -97,7 +99,7 @@ def _recipe_copy(
         data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
         data["client"].pop("template", None)
         (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    return load_recipe(target)
+    return load_recipe(target, variant=variant)
 
 
 def _write_case(
@@ -111,13 +113,14 @@ def _write_case(
     queries: list[dict],
     documents: list[dict],
     note: str = _PENDING_NOTE,
+    role: str | None = None,
 ) -> Path:
     """One pending generated case, written the way the cases lanes write them (values null, pending)."""
     directory.mkdir(parents=True, exist_ok=True)
     case = {
         "id": f"{recipe_id}/{slug}",
         "recipe": recipe_id,
-        "role": "embed" if kind == "similarity_matrix" else "rerank",
+        "role": role or ("embed" if kind == "similarity_matrix" else "rerank"),
         "source": {"kind": "generated"},
         "strata": {"modality": "text", "length": length, "batch": batch},
         "inputs": {"queries": queries, "documents": documents},
@@ -242,22 +245,80 @@ def test_the_fill_writes_the_similarity_matrix_from_the_references_vectors(tmp_p
     assert mixed.expected.values == [[1.0, 0.0], [1.0, 0.0]]
 
 
-def test_a_media_case_is_refused_by_name_before_anything_is_written(tmp_path: Path) -> None:
+def test_a_media_case_is_skipped_with_its_reason_and_the_text_cases_still_fill(tmp_path: Path) -> None:
     """The qwen3-vl-reranker-2b cases carry images: the reference's score mode takes text, so the fill
-    refuses the first media case by name and leaves every case file byte-identical."""
+    skips each media case with the reason recorded, fills the recipe's text cases, and leaves every
+    media case byte-identical -- its values cannot come from the reference's ``media`` mode, which
+    reports input facts, not model outputs (a media-value fill is a follow-up)."""
     from rcp_ndcg_test.case_fill import fill_cases
 
-    recipe = load_recipe("qwen3-vl-reranker-2b")
+    recipe = _recipe_copy(
+        tmp_path,
+        "qwen3-vl-reranker-2b",
+        _RERANK_REFERENCE,
+        root=default_recipes_root() / "qwen3-vl-reranker",
+        variant="qwen3-vl-reranker-2b",
+    )
     cases_root = tmp_path / "cases"
     shutil.copytree(REAL_CASES / "qwen3-vl-reranker-2b", cases_root / "qwen3-vl-reranker-2b")
-    before = {path.name: path.read_bytes() for path in (cases_root / "qwen3-vl-reranker-2b").glob("*.yaml")}
+    media = {
+        path.name: path.read_bytes()
+        for path in (cases_root / "qwen3-vl-reranker-2b").glob("*.yaml")
+        if "image:" in path.read_text(encoding="utf-8")
+    }
+    assert len(media) == 4
 
-    with pytest.raises(CaseError) as error:
-        fill_cases(recipe, cases_root, reference_python="python")
-    assert "gen-image-long-over" in str(error.value)
-    assert "media" in str(error.value)
-    after = {path.name: path.read_bytes() for path in (cases_root / "qwen3-vl-reranker-2b").glob("*.yaml")}
-    assert after == before
+    report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
+    assert [skipped.case_id.split("/", 1)[1] for skipped in report.skipped] == [
+        "gen-image-long-over",
+        "gen-image-short-single",
+        "gen-image-uniform",
+        "gen-mixed-modality",
+    ]
+    assert all(
+        "carry media" in skipped.reason and "media-value fill is a follow-up" in skipped.reason
+        for skipped in report.skipped
+    )
+    assert [filled.case_id.split("/", 1)[1] for filled in report.filled] == [
+        "gen-text-long-over",
+        "gen-text-long-under",
+        "gen-text-mixed-length",
+        "gen-text-short-single",
+        "gen-text-short-uniform",
+    ]
+    assert report.pending_before == 9
+    after = {
+        path.name: path.read_bytes()
+        for path in (cases_root / "qwen3-vl-reranker-2b").glob("*.yaml")
+        if "image:" in path.read_text(encoding="utf-8")
+    }
+    assert after == media
+    filled = load_case(cases_root / "qwen3-vl-reranker-2b" / "gen-text-short-single.yaml")
+    assert filled.expected.status == "reproduced" and filled.expected.values is not None
+
+
+def test_a_kind_the_mode_does_not_produce_is_skipped_not_fatal(tmp_path: Path) -> None:
+    """A pending case whose ``expected.kind`` is another stage's shape (an embed case on a rerank
+    recipe) is skipped with its reason recorded; the recipe's other cases still fill."""
+    from rcp_ndcg_test.case_fill import fill_cases
+
+    recipe = _recipe_copy(tmp_path, "fixture-rerank-pointwise", _RERANK_REFERENCE)
+    cases_root = _pending_cases(tmp_path, "fixture-rerank-pointwise", kind="scores")
+    _write_case(
+        (cases_root / "fixture-rerank-pointwise"),
+        "fixture-rerank-pointwise",
+        "gen-similarity",
+        kind="similarity_matrix",
+        length="short",
+        queries=[{"id": "q1", "text": "the short query"}],
+        documents=[{"id": "d1", "text": "the short document"}],
+        role="rerank",
+    )
+
+    report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
+    assert [skipped.case_id for skipped in report.skipped] == ["fixture-rerank-pointwise/gen-similarity"]
+    assert "similarity_matrix" in report.skipped[0].reason and "score" in report.skipped[0].reason
+    assert len(report.filled) == 4
 
 
 def test_the_cli_prints_the_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -281,6 +342,7 @@ def test_the_cli_prints_the_report(tmp_path: Path, capsys: pytest.CaptureFixture
     assert report["recipe"] == "fixture-rerank-pointwise"
     assert report["mode"] == "score"
     assert len(report["filled"]) == 4
+    assert report["skipped"] == []
     assert load_case(_case(cases_root, "fixture-rerank-pointwise", "gen-short")).expected.values == [[0.25]]
 
 

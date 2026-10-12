@@ -132,6 +132,33 @@ def test_the_shipped_cases_resolve_their_recipes() -> None:
     assert sorted(document.recipes) == directories
 
 
+def test_every_shipped_case_kind_matches_its_roles_stage_shape() -> None:
+    """A case's ``expected.kind`` is the shape its role's stage produces: a rerank recipe's cases are
+    ``scores`` (or ``ranking``/``none``), an embed or multi_vector recipe's are ``similarity_matrix``
+    (or ``none``).
+
+    The regression: ``qwen3-vl-reranker-2b/gen-text-short-uniform`` declared ``similarity_matrix`` for a
+    rerank recipe -- the case loader accepted it, the fill skipped the case as another stage's shape,
+    and the conformance runner would have failed it on the shape.  The kind vocabulary is
+    ``handover/specs/case-format.md``'s; the role-to-shape rule is the stage contract.
+    """
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    allowed = {
+        "embed": {"similarity_matrix", "none"},
+        "multi_vector": {"similarity_matrix", "none"},
+        "rerank": {"scores", "ranking", "none"},
+    }
+    cases_root = Path(__file__).resolve().parents[1] / "cases"
+    document = load_cases(cases_root, recipes_root=default_recipes_root(), check_lengths=False)
+    wrong = [
+        (case.id, case.role, case.expected.kind)
+        for case in document.cases
+        if case.expected.kind not in allowed[case.role]
+    ]
+    assert wrong == [], wrong
+
+
 def test_a_valid_case_loads(tmp_path: Path) -> None:
     case = load_case(write_case(tmp_path, "fake-embed", "short", VALID))
     assert case.id == "fake-embed/short"
