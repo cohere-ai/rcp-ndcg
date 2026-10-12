@@ -222,6 +222,16 @@ branches themselves are not needed. `origin/wip/*` are superseded history: do no
     by replicas, not tensor parallelism; a model that does not fit one GPU declares the smallest TP that fits a
     B200 with useful cache, and documents the H100 shape as a `serve --set` override. The memory arithmetic is
     stated for both classes.
+42. **The shipped judge sampling stands** (owner, 2026-10-10, closing the release-revisit item; supersedes
+    decision 4.3's paper sampling). Every judge recipe sends the sampling its checkpoint's own
+    `generation_config.json` declares at the recipe's pinned revision -- gemma-4-12b/26b/31b `temperature 1.0` /
+    `top_p 0.95` / `top_k 64`; qwen3.5-397b `0.6`/`0.95`/`20`; qwen3.6-27b, qwen3.8-27b and qwen3.8-flash-next
+    `1.0`/`0.95`/`20`; gpt-oss-120b `temperature 0.0` with no `top_p`/`top_k` (its config declares no sampling
+    parameters) -- each keeping its own `max_output_tokens` (8192 for gpt-oss-120b, 16384 for the others). The
+    reason is the owner's HF-default call: a judge's sampling is the checkpoint's own instrument, fetched and
+    recorded, not the paper's run-level override. The sampling fields are CONTENT fields of the judgement
+    family, so a change re-keys every judge family: these values stand and are never changed silently. Recorded
+    in the recipes' notes, the CHANGELOG and `handover/specs/judge-catalog.md` section 1.
 
 ## 6. Engineering rules (in addition to AGENTS.md)
 

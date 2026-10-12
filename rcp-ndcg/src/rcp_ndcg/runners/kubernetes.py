@@ -84,6 +84,10 @@ PROBE_PERIOD_S = 10
 #: Seconds a finished Job that owns run-scoped engine StatefulSets is kept before deletion, with them, unless
 #: ``ttl_seconds_after_finished`` says otherwise: while they exist, their engine pods hold their GPUs.
 DEFAULT_ENGINE_TTL_S = 3600
+#: The default bound on every pod's ``/dev/shm`` Memory ``emptyDir`` (``KubernetesOptions.dshm_size``): room for
+#: one engine's shared-memory working set (NCCL, tensor transport), so a runaway engine fails its pod instead of
+#: exhausting the node.
+DEFAULT_DSHM_SIZE = "16Gi"
 
 #: The container security context: a process may not gain more privileges than its parent had (no setuid, no
 #: file capabilities); combined with the pod's non-root user and RuntimeDefault seccomp profile.
@@ -134,6 +138,12 @@ class KubernetesOptions(JobOptions):
             every replica and kept across restarts. Without one they live on the pod's scratch emptyDir
             (``/scratch``), never the container's writable layer. Every engine process gets its own ``TMPDIR``
             under ``/scratch/tmp``.
+        dshm_size: The ``sizeLimit`` of every pod's ``/dev/shm`` Memory ``emptyDir`` (a Kubernetes memory
+            quantity with a binary unit: ``Ki``/``Mi``/``Gi``/``Ti``; default ``16Gi``). The engines' shared
+            memory (NCCL, tensor transport) fits one engine comfortably; a phase that runs several engines in
+            one container adds their requirements up, so raise it there. A bound is what keeps a runaway engine
+            from exhausting the node's memory: without one, an unbounded Memory ``emptyDir`` can consume the
+            node.
         tolerations: ``tolerations`` of the Job's pod and of every engine pod (e.g. the GPU nodes' taint).
         affinity: ``affinity`` of the Job's pod and of every engine pod.
         priority_class: ``priorityClassName`` of the Job's pod and of every engine pod.
@@ -157,6 +167,7 @@ class KubernetesOptions(JobOptions):
     node_selector: dict[str, str] = Field(default_factory=dict)
     engine_node_selector: dict[str, str] = Field(default_factory=dict)
     cache_volume: str | None = Field(default=None, min_length=1)
+    dshm_size: str = Field(default=DEFAULT_DSHM_SIZE, pattern=r"^\d+(\.\d+)?(Ki|Mi|Gi|Ti)$")
     tolerations: list[dict[str, Any]] = Field(default_factory=list)
     affinity: dict[str, Any] = Field(default_factory=dict)
     priority_class: str | None = None
@@ -165,7 +176,7 @@ class KubernetesOptions(JobOptions):
     backoff_limit: int = Field(default=0, ge=0)
     ttl_seconds_after_finished: int | None = Field(default=None, ge=0)
 
-    @field_validator("image", "context", "service_account", "priority_class", "cache_volume")
+    @field_validator("image", "context", "service_account", "priority_class", "cache_volume", "dshm_size")
     @classmethod
     def _no_control_characters(cls, value: str | None) -> str | None:
         return None if value is None else no_control_characters(value)
@@ -450,6 +461,10 @@ class KubernetesRunner:
         """The mount of the declared weights/cache volume, or none."""
         return [] if self.options.cache_volume is None else [{"name": "cache", "mountPath": CACHE}]
 
+    def _dshm_volume(self) -> dict[str, Any]:
+        """The pod's ``/dev/shm``: a Memory ``emptyDir`` bounded by the declared ``dshm_size``."""
+        return {"name": "dshm", "emptyDir": {"medium": "Memory", "sizeLimit": self.options.dshm_size}}
+
     def _coordinator_cuda(self, job: JobSpec) -> str:
         """The coordinator's ``CUDA_VISIBLE_DEVICES``: the devices it reserved, none when it asked for none.
 
@@ -558,7 +573,7 @@ class KubernetesRunner:
             ]
             mounts = [*mounts, {"name": "dshm", "mountPath": "/dev/shm"}]
             if "dshm" not in {volume["name"] for volume in volumes}:
-                volumes.append({"name": "dshm", "emptyDir": {"medium": "Memory"}})
+                volumes.append(self._dshm_volume())
             resources = _together(job.resources, [serve.resources for serve in local.values()])
             return self._container(name, image, "\n".join(script) + "\n", mounts, resources)
         if remote:
@@ -661,7 +676,7 @@ class KubernetesRunner:
             pod: dict[str, Any] = {
                 "containers": [self._engine(serve)],
                 "volumes": [
-                    {"name": "dshm", "emptyDir": {"medium": "Memory"}},
+                    self._dshm_volume(),
                     {"name": "scratch", "emptyDir": {}},
                     {"name": "engine-tmp", "emptyDir": {}},
                     *self._cache_volumes(),
