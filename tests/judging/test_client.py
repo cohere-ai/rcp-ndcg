@@ -73,6 +73,28 @@ class TestConfig:
         per_doc = window_tokens(config, 10, overhead_tokens=5_000)
         assert per_doc is not None and 5_000 + 10 * per_doc + (config.max_output_tokens or 0) <= 272_000
 
+    def test_every_shipped_judge_recipe_carries_its_pin_and_its_context_pair(self) -> None:
+        """Every shipped judge config carries a checkpoint pin and a context+tokenizer pair (judge review E2).
+
+        The one declared exception is ``qwen3.6-27b-fp8``, which follows the paper's TREC-DL preset: it names
+        its checkpoint's tokenizer but no ``context_tokens``, so its windows send documents whole under the
+        engine's own bound -- the recipe's notes and ``docs/concepts/judges.md`` state it, and the pass warns
+        (``judging._plan``). A judge that ships unpinned, without its checkpoint's tokenizer, or without a
+        context outside that exception fails here.
+        """
+        from rcp_ndcg_vllm.recipe import iter_recipes
+
+        judges = sorted((recipe for recipe in iter_recipes() if recipe.role == "judge"), key=lambda item: item.id)
+        assert judges, "no shipped judge recipe"
+        no_context: set[str] = set()
+        for recipe in judges:
+            config = JudgeConfig.load(recipe.id)
+            assert config.revision is not None and len(config.revision) == 40, f"{recipe.id}: no checkpoint pin"
+            assert config.tokenizer is not None, f"{recipe.id}: no tokenizer"
+            if config.context_tokens is None:
+                no_context.add(recipe.id)
+        assert no_context == {"qwen3.6-27b-fp8"}, "a new judge without a context must be a declared exception"
+
     def test_identity_is_the_content_fields_only(self) -> None:
         config = JudgeConfig(base_url="http://a/v1", model="m", revision="abc")
         moved = config.model_copy(update={"base_url": "http://b/v1", "concurrency": 2})

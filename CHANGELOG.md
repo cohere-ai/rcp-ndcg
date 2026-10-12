@@ -1702,7 +1702,8 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   own size's text budget; `reparse` refuses a source at the current parse version (a same-key copy) and a
   newer one (a downgrade) before writing anything; a resumed pass that re-asks a refused window retires the
   later-phase windows its first fit selected with an appended `superseded` tombstone, scoped to the pass's own
-  generation (its schedule's window sequences and its units, so a full pass and a `docs=` subset never retire
+  generation (its schedule's window sequences -- per call, so the tournament's mirrored random and stratified
+  windows are in -- their window sizes and its units, so a full pass and a `docs=` subset never retire
   each other's windows; a `windows=` plan retires nothing), so the refit never reads two generations and the
   stage file stays append-only for the mirror; the calibration's coverage skips tombstones and `records_stored`
   counts live records (a torn last line included). `docs` naming no
@@ -1722,6 +1723,12 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   markup escaped, a marker with no media refused).
 - **Prompt pins**: every shipped prompt's SHA-256 is pinned in the suite, so a wording edit
   fails CI and states that a changed prompt is a new judgement family.
+- **A judge that names a tokenizer but no `context_tokens` warns** (judge review E2): no per-window text
+  budget is counted, so each window sends the documents as the load-time text policy left them (whole, unless
+  that policy cut them) under the engine's own context, and the pass says so instead of leaving the
+  configuration silent. The one shipped judge that follows the paper's preset and declares no context (its
+  TREC-DL judge) now warns on every pass, and a test pins every shipped judge recipe's checkpoint pin and its
+  context+tokenizer pair, with that one declared exception.
 
 - **`JudgeConfig.is_fake` on a config that names no URL** (a recipe-derived config before the runtime overlay
   supplies one): it indexed the empty URL tuple and raised `IndexError`; it now returns `False`, and the
