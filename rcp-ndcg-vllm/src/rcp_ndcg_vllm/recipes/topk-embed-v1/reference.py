@@ -25,16 +25,20 @@ embed mode (about 4.4 GB of weights). ``--mode render`` needs only ``huggingface
 ``tokenizers``: it reads the pinned ``config.json``, ``tokenizer_config.json``,
 ``sentence_bert_config.json`` and ``tokenizer.json`` and never imports torch.
 
-Declared shims (the reference runs on the image's transformers stack, not the checkpoint's 5.9.0 pin;
-the environment's exact pins are in ``reference.in``/``reference.lock`` beside this file):
-``_alias_qwen3_5_layer_type`` aliases transformers 5.10+'s renamed ``block_type`` to the
-``layer_type`` the remote ``hf_backbone.py:178`` reads, and ``_promote_qwen3_5_rope_position_ids``
-restores, on transformers 5.17's ``Qwen3_5TextRotaryEmbedding.forward`` (the class the remote
+Declared shims (E2 rounds 4-9; the environment's exact pins are in ``reference.in``/``reference.lock``
+beside this file -- since round 9 the family pins the checkpoint's own ``transformers==5.9.0``, so the
+remote code's ``self.chunk_gated_delta_rule`` call (``hf_backbone.py:111``; the instance attribute
+5.9.0's ``Qwen3_5GatedDeltaNet.__init__`` assigns, ``modeling_qwen3_5.py:422``) resolves natively and
+the shims below install nothing on the pinned stack): ``_alias_qwen3_5_layer_type`` aliases
+transformers 5.10+'s renamed ``block_type`` to the ``layer_type`` the remote ``hf_backbone.py:178``
+reads, and ``_promote_qwen3_5_rope_position_ids`` restores, on a
+``Qwen3_5TextRotaryEmbedding.forward`` that reads only the 3-D mrope form (the class the remote
 ``PackedQwen3_5TextModel.forward`` calls through ``self.rotary_emb``), the 2-D position-id branch
-5.9.0's own forward carried (``position_ids.ndim == 2`` -> ``(3, bs, positions)``; 5.17 removed the
-branch and indexes the 3-D form at ``modeling_qwen3_5.py:192``). Nothing else is patched: a
-checkpoint whose remote code needs more of 5.9, or a runtime whose classes carry neither name,
-fails loudly at its own call.
+5.9.0's own forward carries (``position_ids.ndim == 2`` -> ``(3, bs, positions)``). Both are
+conditional -- a stack that already carries the old names is left alone -- and the CPU tests pin
+their behaviour on stubs shaped like the 5.10-5.17 stack. Nothing else is patched: a checkpoint whose
+remote code needs more of 5.9, or a runtime whose classes carry neither name, fails loudly at its own
+call.
 
 Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
 
@@ -235,12 +239,13 @@ def _alias_qwen3_5_layer_type(layer_cls: Any = None) -> None:
     The checkpoint's ``hf_backbone.patch_packing`` reads ``layer.layer_type`` (the transformers 5.9
     attribute its own ``requirements.txt`` pins); transformers 5.10+ renamed it to ``block_type``. When
     only the new name exists -- as a class attribute or as the instance attribute the class's
-    ``__init__`` assigns (:func:`_carries_new_name`) -- the old one is aliased to it: a declared shim, so
-    the reference runs on the image's transformers stack (GPU-E1: the unshimmed load crashed at
-    ``hf_backbone.py:178`` with ``AttributeError: 'Qwen3_5DecoderLayer' object has no attribute
-    'layer_type'``; the r4 wave re-crashed there because the class-level check could not see 5.17's
-    instance attribute). Nothing else is patched: a checkpoint whose remote code needs more of 5.9, or a
-    runtime whose class carries neither name, fails loudly at its own call.
+    ``__init__`` assigns (:func:`_carries_new_name`) -- the old one is aliased to it: a declared shim
+    for the 5.10-5.17 stack (GPU-E1: the unshimmed load crashed at ``hf_backbone.py:178`` with
+    ``AttributeError: 'Qwen3_5DecoderLayer' object has no attribute 'layer_type'``; the r4 wave
+    re-crashed there because the class-level check could not see 5.17's instance attribute). It is
+    inert on the pinned 5.9.0 stack, which carries ``layer_type`` itself. Nothing else is patched: a
+    checkpoint whose remote code needs more of 5.9, or a runtime whose class carries neither name,
+    fails loudly at its own call.
 
     Args:
         layer_cls: The decoder-layer class to shim; ``None`` imports transformers' own. A seam for the
@@ -269,7 +274,8 @@ def _promote_qwen3_5_rope_position_ids(rope_cls: Any = None) -> None:
     Qwen3_5TextRotaryEmbedding(config=config)`` and the remote ``PackedQwen3_5TextModel.forward``
     calls ``self.rotary_emb(inputs_embeds, position_ids)``. The wrapper promotes a 2-D input to
     ``(3, bs, positions)`` -- the three axes equal, exactly 5.9.0's own promotion and the text-only
-    case -- and passes a 3-D input through unchanged, so the image path is untouched.
+    case -- and passes a 3-D input through unchanged, so the image path is untouched; on the pinned
+    5.9.0 stack the promotion is a no-op result-wise (the class promotes the same way).
 
     Round 7's version of this shim imported ``Qwen3_5RotaryEmbedding`` -- a name no transformers
     release defines (5.9.0 and 5.17.0 both carry ``Qwen3_5TextRotaryEmbedding``) -- so the import

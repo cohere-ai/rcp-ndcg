@@ -70,6 +70,10 @@ SERVE = {
         # TRITON_ATTN's tile needs 266240 B of shared memory against the 232448 B limit, FA4's kernel
         # caps head_dim at 256, and TORCH_SDPA is not a decoder backend on this image.
         "FLEX_ATTENTION",
+        # E2 round 9: FLEX_ATTENTION reaches engine init and dies in a dynamo/CUDAGraph interaction
+        # (the compiled block-mask output overwritten before the compiled flex attention reads it),
+        # so the owner's eager-first guidance pins the engine eager.
+        "--enforce-eager",
     ],
 }
 CLIENT = {
@@ -244,8 +248,8 @@ def test_two_contract_mutants_are_red() -> None:
 
 
 def test_serve_argv_carries_the_pinned_flags() -> None:
-    """The argv the wave runner renders: no template, the pooling runner, the 8K context, the media limit
-    and the video policy's fps/max_frames pin."""
+    """The argv the wave runner renders: no template, the pooling runner, the 8K context, the media limit,
+    the video policy's fps/max_frames pin and the round-9 eager pin beside the flex-attention backend."""
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert "--chat-template" not in argv
@@ -255,27 +259,37 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
     assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 60, "max_frames": 32}}'
+    assert "--enforce-eager" in argv
 
 
 def test_the_engine_uses_a_backend_that_can_run_the_heterogeneous_head_dims() -> None:
-    """E2 rounds 7-8: the model's heterogeneous head dimensions (sliding 256, full 512) leave no
+    """E2 rounds 7-9: the model's heterogeneous head dimensions (sliding 256, full 512) leave no
     default backend on this image. TRITON_ATTN cannot compile its prefill kernel for head_dim 512
     (``triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 266240,
     Hardware limit: 232448`` at ``triton_prefill_attention.py`` ``context_attention_fwd``, the
     round-7 serve log), and FA4 -- which the image's own Gemma4 config hook selects for these
     dimensions -- then dies in its kernel (``FlashAttention forward only supports head dimension at
-    most 256``, the round-8 wave). Neither ``--enforce-eager`` nor ``--max-num-batched-tokens`` moves
-    a compile-time demand (round 7), and the Triton tile cannot be narrowed either: ``BLOCK`` comes
-    from ``get_block_size(dtype)`` (128 for bf16 on SM10x) and only ROCm narrows ``BLOCK_N``. The
-    fallback order is in the notes: ``TORCH_SDPA`` is refused for decoder attention on the
-    v0.31.0-based image (the enum's value is the empty string -- "this tag is only used for ViT" -- so
-    the manual-selection path's ``get_class()`` raises ``Backend TORCH_SDPA must be registered before
-    use``), and ``FLEX_ATTENTION`` is the pin: no head-size restriction, bf16, the model's
-    encoder-only/sliding/non-causal attention, and the image-token full attention all supported. An
-    invalid backend fails loudly at startup instead of silently."""
+    most 256``, the round-8 wave). Round 8 pinned FLEX_ATTENTION (no head-size restriction, bf16, the
+    model's encoder-only/sliding/non-causal attention and the image-token full attention), and round 9
+    reaches engine init and dies there in a dynamo/CUDAGraph interaction:
+    ``torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing tensor output of
+    CUDAGraphs that has been overwritten by a subsequent run`` at
+    ``torch/nn/attention/flex_attention.py:2369`` (``block_mask_q_len = block_mask.shape[-2]``) -- the
+    backend's compiled ``create_block_mask`` (``mode="reduce-overhead"``, ``flex_attention.py:54-58``
+    at the nightly) hands a block mask to the compiled ``flex_attention`` after a later run of the
+    block-mask graph has overwritten its tensors. The owner's eager-first guidance applies:
+    ``--enforce-eager`` sets the engine's compilation and cudagraph modes to NONE
+    (``vllm/config/vllm.py:1733-1745`` at the nightly), so the capture/warmup run that overwrites the
+    mask is skipped, and the wave confirms it. The fallback order stays recorded in the notes:
+    ``TORCH_SDPA`` cannot be pinned directly (the enum's value is the empty string -- "this tag is
+    only used for ViT" -- so the manual-selection path raises ``Backend TORCH_SDPA must be registered
+    before use``), and the nightly ships no decoder SDPA backend class to hand ``register_backend``,
+    so that fallback needs a plugin-provided AttentionBackend, not a registration of an image class.
+    An invalid backend still fails loudly at startup instead of silently."""
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[argv.index("--attention-backend") + 1] == "FLEX_ATTENTION"
+    assert "--enforce-eager" in argv
     for evidence in (
         "266240",
         "232448",
@@ -286,6 +300,11 @@ def test_the_engine_uses_a_backend_that_can_run_the_heterogeneous_head_dims() ->
         "must be registered before use",
         "FLEX_ATTENTION",
         "head dimension at most 256",
+        "CUDAGraphs",
+        "block_mask",
+        "reduce-overhead",
+        "register_backend",
+        "only used for ViT",
     ):
         assert evidence in recipe.notes, evidence
 

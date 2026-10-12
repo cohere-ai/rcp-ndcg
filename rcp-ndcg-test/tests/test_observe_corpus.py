@@ -331,6 +331,81 @@ def test_a_base64_pooling_reply_is_decoded_and_checked_at_the_declared_width(tmp
     assert check["passed"] is False, check
 
 
+def test_an_mrl_probes_reply_is_accepted_at_the_requested_width(tmp_path: Path) -> None:
+    """E2 round 9 (the r3 wave's ``vector width 32 differs from 1024 on /v1/embeddings``): the corpus
+    plan's MRL stratum sends one bare ``dimensions=k`` probe per declared ``k`` (requests.py
+    ``_wire_variants``), and the engine's own Matryoshka gate cuts the reply to ``k``.  The check
+    expected the recipe's full declared width on every vector row and tracked one width per route, so
+    every MRL recipe's corpus failed on its own declared probes (the quoted mismatch is the per-route
+    one; a recipe declaring ``client.dim`` gets the declared-width mismatch beside it).  This records a
+    real MRL fixture end to end -- the stub slices every declared ``k``, the plan's probes included --
+    and requires acceptance; the synthetic test below pins that a genuinely wrong width is still
+    refused."""
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+    from rcp_ndcg_test.observe.requests import plan_recipe
+    from rcp_ndcg_vllm.recipe import serve_argv
+
+    recipe = load_recipe(RECIPES / "fixture-embed-mrl")
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    rows = [{**row.to_pairs_row(), "request_id": f"pairs:{index}"} for index, row in enumerate(plan.rows)]
+    argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
+    flags = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
+    first = start_stub("--tokenizer", str(TOKENIZER), *flags)
+    second = start_stub("--tokenizer", str(TOKENIZER), *flags)
+    try:
+        report = record_corpus(
+            recipe,
+            first.base_url,
+            rows,
+            tmp_path / "corpus",
+            server_run_id="run-1",
+            engine_facts=_engine_facts(),
+            after_restart=(second.base_url, "run-2"),
+            batch_sizes=(1,),
+        )
+    finally:
+        first.stop()
+        second.stop()
+    check = _checks(report)["scores_finite_and_vector_widths"]
+    assert check["passed"] is True, check["mismatches"]
+    probes = {
+        record["inputs"]["request_id"]: len(record["response"]["body_parsed"]["data"][0]["embedding"])
+        for record in _records(tmp_path / "corpus")
+        if str(record["inputs"].get("request_id", "")).startswith("mrl:dimensions=")
+        and record["response"]["status"] == 200
+    }
+    assert probes, "the plan's MRL stratum must have been recorded"
+    assert probes["mrl:dimensions=2"] == 2 and probes["mrl:dimensions=4"] == 4 and probes["mrl:dimensions=8"] == 8
+
+
+def test_a_reply_at_neither_the_requested_nor_the_declared_width_still_fails(tmp_path: Path) -> None:
+    """The requested width is the expectation for a ``dimensions=k`` probe -- not a licence: a reply
+    that is neither the requested ``k`` nor the declared width still fails the check, and the mismatch
+    names the requested width."""
+    declared = _synthetic_corpus(
+        tmp_path / "ok", [_embedding_record(2, dimensions=2)], recipe_id="fixture-multi-vector"
+    )
+    assert _checks(verify_corpus(declared))["scores_finite_and_vector_widths"]["passed"] is True
+    wrong = _synthetic_corpus(
+        tmp_path / "wrong", [_embedding_record(6, dimensions=2)], recipe_id="fixture-multi-vector"
+    )
+    check = _checks(verify_corpus(wrong))["scores_finite_and_vector_widths"]
+    assert check["passed"] is False, check
+    assert any("requested 2" in mismatch for mismatch in check["mismatches"]), check["mismatches"]
+    uncut = _synthetic_corpus(tmp_path / "uncut", [_embedding_record(6)], recipe_id="fixture-multi-vector")
+    check = _checks(verify_corpus(uncut))["scores_finite_and_vector_widths"]
+    assert check["passed"] is False and any("declared 8" in mismatch for mismatch in check["mismatches"])
+
+
+def _embedding_record(width: int, *, dimensions: int | None = None) -> dict[str, Any]:
+    """One ``/v1/embeddings`` exchange: an optional ``dimensions`` probe and a reply of the given width."""
+    request: dict[str, Any] = {"model": "m", "input": ["a b c"], "encoding_format": "float"}
+    if dimensions is not None:
+        request["dimensions"] = dimensions
+    reply = {"object": "list", "data": [{"index": 0, "embedding": [0.5] * width}]}
+    return _exchange("/v1/embeddings", request, reply)
+
+
 def test_the_equivalence_stage_must_have_seen_the_same_replies(tmp_path: Path) -> None:
     """Section 6: the equivalence stage's results for the same wave are consistent with the corpus."""
     from rcp_ndcg_core.content import Content

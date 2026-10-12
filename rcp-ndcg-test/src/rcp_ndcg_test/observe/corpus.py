@@ -419,7 +419,8 @@ def verify_corpus(
     a subset is a sample and defers to its full corpus), ``repetitions`` (the three planned sendings,
     the after-restart one included), ``statuses_as_expected``,
     ``scores_finite_and_vector_widths`` (every number finite, every vector decoded by the product's adapter
-    at the declared width and dtype, one width per route), ``nondeterminism_report``,
+    at the width its request asked for -- a ``dimensions=k`` MRL probe -- or the declared width, and its
+    dtype; one width per route and requested dimensions), ``nondeterminism_report``,
     ``provenance_complete``, ``no_credentials``, and -- given the equivalence exchanges --
     ``equivalence_consistent`` (the same served replies, within the measured tolerance).
     """
@@ -562,12 +563,29 @@ def _statuses(corpus: ObservationCorpus, record_check: Any) -> None:
     )
 
 
+def _requested_dimensions(record: dict[str, Any]) -> int | None:
+    """The ``dimensions`` one record's request asked the engine to cut to, when it carries an integer one.
+
+    The corpus plan's MRL stratum sends one bare ``dimensions=k`` probe per declared ``k``
+    (``observe/requests.py`` ``_wire_variants``), and the engine's own Matryoshka gate cuts the reply to
+    ``k``: such a row's expected width is the requested ``k``, never the recipe's full declared width.  A
+    row without the field (every client-rendered request) keeps the declared width.  Inputs: one record.
+    Output: the requested width, or ``None``.  Units: none.
+    """
+    body = (record.get("request") or {}).get("body_parsed")
+    if not isinstance(body, dict):
+        return None
+    value = body.get("dimensions")
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def _numbers(corpus: ObservationCorpus, record_check: Any) -> None:
-    """Every numeric leaf finite; every vector reply decoded at the declared width; one width per route."""
+    """Every numeric leaf finite; every vector reply decoded at its requested (or declared) width; one width
+    per route and requested dimensions."""
     recipe_block = corpus.manifest.get("recipe") or {}
     dim = recipe_block.get("declared_dim") if isinstance(recipe_block.get("declared_dim"), int) else None
     problems: list[str] = []
-    widths: dict[str, int] = {}
+    widths: dict[tuple[str, int | None], int] = {}
     for row in corpus.records:
         exchange = str(row.get("exchange_id"))
         for leaf, value in _numeric_leaves(row.get("response", {}).get("body_parsed")):
@@ -579,21 +597,29 @@ def _numbers(corpus: ObservationCorpus, record_check: Any) -> None:
             problems.append(str(error))
             continue
         path = str(row.get("request", {}).get("path", ""))
+        requested = _requested_dimensions(row)
+        expected = requested if requested is not None else dim
         for vector in vectors or []:
             array = np.asarray(vector)
             if not np.all(np.isfinite(array)):
                 problems.append(f"{exchange}: a decoded vector is not finite")
             width = int(array.shape[-1]) if array.ndim else 0
-            if dim is not None and width != dim:
-                problems.append(f"{exchange}: vector width {width} is not the declared {dim}")
-            widths.setdefault(path, width)
-            if widths[path] != width:
-                problems.append(f"{exchange}: vector width {width} differs from {widths[path]} on {path}")
+            if expected is not None and width != expected:
+                problems.append(
+                    f"{exchange}: vector width {width} is not the requested {requested}"
+                    if requested is not None
+                    else f"{exchange}: vector width {width} is not the declared {dim}"
+                )
+            key = (path, requested)
+            widths.setdefault(key, width)
+            if widths[key] != width:
+                problems.append(f"{exchange}: vector width {width} differs from {widths[key]} on {path}")
     record_check(
         "scores_finite_and_vector_widths",
         not problems,
-        "every numeric leaf finite; every vector reply decoded by the product's adapter at the declared width "
-        "and dtype; one width per route",
+        "every numeric leaf finite; every vector reply decoded by the product's adapter at the width its "
+        "request asked for (a dimensions=k probe) or the declared width, and dtype; one width per route and "
+        "requested dimensions",
         mismatches=problems[:50],
     )
 
