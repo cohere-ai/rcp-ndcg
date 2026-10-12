@@ -1,10 +1,11 @@
 # Lane identity4 — the local-dataset content identity (the pre-tag review fix)
 
 **Lane:** `lane/identity4` (worktree outside the operator's checkout). **Base:** `rfc-0001` at `3217b5ed`,
-merged with its current tip `9d119c5e` as `1dbfdec6` before gating. **Gate:** `timeout 7200 bin/gate
-lane/identity4` on `1dbfdec6` (slot 5) — **GATE: PASS**, every step exit 0 (the SUMMARY is below; a first
-attempt at the same revision failed only the `recipes` step on a load-induced per-test timeout — see the
-Gate section). No GPU work; nothing pushed; `rfc-0001` was not merged into.
+merged with its tip `9d119c5e` as `1dbfdec6` and, after that gate, with the current tip `0d613818` as
+`0b62931c`. **Gate:** `timeout 7200 bin/gate lane/identity4` on `0b62931c` (slot 3) — **GATE: PASS**, every
+step exit 0 (the SUMMARY is below; an earlier gate at `1dbfdec6`, slot 5, also passed, and its first attempt
+failed only the `recipes` step on a load-induced per-test timeout — see the Gate section). No GPU work;
+nothing pushed; `rfc-0001` was not merged into.
 
 ## 1. Status
 
@@ -45,6 +46,8 @@ What this lane did:
 | `3e4b5584` | the one home in `rcp_ndcg.data.revisions`, consumed by the run and the store |
 | `6486dcc5` | the docs, the regenerated surface (snapshot, schema, API page) and the CHANGELOG entries |
 | `1dbfdec6` | merge of `rfc-0001` (`9d119c5e`) into the lane, CHANGELOG conflict resolved (both bullets kept) |
+| `b1990d9b` | this report (first version) |
+| `0b62931c` | merge of `rfc-0001`'s current tip (`0d613818`, lanes names and mteb) into the lane, clean |
 | the report commit | this report |
 
 No co-author lines, no attribution, nothing pushed.
@@ -116,7 +119,8 @@ Restored afterwards (`grep -c MUTATION` = 0); the four test classes pass (`29 pa
 
 - `uv run --no-sync pytest tests/runs tests/judging tests/data tests/retrieval tests/contract tests/docs -q -n 4`
   — **2046 passed, 138 skipped**.
-- `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q` — **1139 passed, 229 skipped**.
+- `heavy uv run --no-sync pytest rcp-ndcg-test/tests -q` — **1139 passed, 229 skipped** (`1140 passed` on the
+  final gate's `test-pkg` step, after the mteb lane's test landed in the second merge).
 - `ruff format --check`, `ruff check` — clean; `basedpyright` — **0 errors, 0 warnings, 0 notes**;
   `mkdocs build --strict` — built.
 - The gate's recipe step env, the file that timed out on the loaded first attempt:
@@ -125,7 +129,7 @@ Restored afterwards (`grep -c MUTATION` = 0); the four test classes pass (`29 pa
 
 ### Gate
 
-First attempt, same revision `1dbfdec6` (slot 3, machine load ~157/96 with three other gates and the GPU
+First attempt, revision `1dbfdec6` (slot 3, machine load ~157/96 with three other gates and the GPU
 waves): every step exit 0 except `recipes`, whose log shows a per-test timeout in a tokenizer encode —
 `TimeoutError: the test exceeded its 300s per-test timeout (a hang fails fast)` at
 `rcp-ndcg-test/tests/conftest.py:133`, inside
@@ -146,6 +150,29 @@ test-pkg exit=0 ================ 1139 passed, 229 skipped in 770.66s (0:12:50) =
 recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
 vllm-pkg exit=0 50 passed in 5.17s
 vllm-models exit=0 102 passed, 8 skipped in 61.54s (0:01:01)
+run_all exit=0   external_judges  ok
+leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
+human study: 67 checks, 67 match, 0 known deviations, 0 failed
+external LLM judges: 82 checks, 82 match, 0 known deviations, 0 failed
+public-names exit=0 public-names: clean (0 baselined hits remain)
+clean exit=0 clean
+GATE: PASS
+```
+
+After the merge with `rfc-0001`'s current tip (`0d613818`), the authoritative gate on the final tree:
+
+```
+rev lane/identity4 = 0b62931c (slot 3)
+ruff-check exit=0 All checks passed!
+ruff-format exit=0 624 files already formatted
+basedpyright exit=0 0 errors, 0 warnings, 0 notes
+pytest exit=0 4141 passed, 155 skipped in 56.07s
+contract-docs exit=0 413 passed, 107 skipped in 45.78s
+mkdocs exit=0 INFO    -  Documentation built in 2.21 seconds
+test-pkg exit=0 ================ 1140 passed, 229 skipped in 928.49s (0:15:28) =================
+recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
+vllm-pkg exit=0 50 passed in 9.30s
+vllm-models exit=0 102 passed, 8 skipped in 72.59s (0:01:12)
 run_all exit=0   external_judges  ok
 leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
 human study: 67 checks, 67 match, 0 known deviations, 0 failed
