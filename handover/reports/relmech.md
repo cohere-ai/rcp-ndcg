@@ -1,7 +1,8 @@
 # Lane relmech — release mechanics and hygiene
 
 **Lane:** `lane/relmech` (worktree outside the operator's checkout). **Base:** `rfc-0001` at `b83a3e00`, merged
-with its tip `3217b5ed` as `919de61d` before the lane's work. **Gate:** see below. No GPU work; nothing pushed;
+with its tip `3217b5ed` as `919de61d` before the lane's work. **Gate:** `timeout 7200 bin/gate lane/relmech` on
+`f1478298` (slot 3) — **GATE: PASS**, every step exit 0 (the SUMMARY is below). No GPU work; nothing pushed;
 `rfc-0001` was not merged into.
 
 ## 1. Status
@@ -106,6 +107,34 @@ Root suite (heavy slot): `4136 passed, 155 skipped in 86.84s`. `tests/runners te
 The bare root venv's `rcp-ndcg-vllm/tests/models/topk/test_no_deps_install.py` wheel-build tests fail with
 `401 Unauthorized` from the environment's extra package index (they need `uv build` to resolve `setuptools`);
 the gate's own vllm steps run in the package's venv and are the authority. Unrelated to this lane's changes.
+
+### Gate
+
+`timeout 7200 bin/gate lane/relmech` on `f1478298` (slot 3) — **GATE: PASS**, every step exit 0:
+
+```
+rev lane/relmech = f1478298 (slot 3)
+ruff-check exit=0 All checks passed!
+ruff-format exit=0 624 files already formatted
+basedpyright exit=0 0 errors, 0 warnings, 0 notes
+pytest exit=0 4136 passed, 155 skipped in 71.52s (0:01:11)
+contract-docs exit=0 413 passed, 107 skipped in 45.74s
+mkdocs exit=0 INFO    -  Documentation built in 2.35 seconds
+test-pkg exit=0 ================ 1139 passed, 229 skipped in 887.52s (0:14:47) =================
+recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
+vllm-pkg exit=0 50 passed in 12.03s
+vllm-models exit=0 102 passed, 8 skipped in 121.21s (0:02:01)
+run_all exit=0   external_judges  ok
+leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
+human study: 67 checks, 67 match, 0 known deviations, 0 failed
+external LLM judges: 82 checks, 82 match, 0 known deviations, 0 failed
+public-names exit=0 public-names: clean (0 baselined hits remain)
+clean exit=0 clean
+GATE: PASS
+```
+
+The commit after the gate changes only this report (handover Markdown); `public-names` and `mkdocs --strict`
+were re-run on the final tip and stay clean.
 
 ## 5. Open questions
 
