@@ -38,6 +38,7 @@ from __future__ import annotations
 __all__ = [
     "BOUNDARY_TOKEN_ID",
     "DOCUMENT_PREFIX_TOKEN_IDS",
+    "PREFIX_SPACE_TOKEN_ID",
     "QUERY_PREFIX_TOKEN_ID",
     "PplxInt8Projection",
     "pool_sequence",
@@ -53,6 +54,13 @@ QUERY_PREFIX_TOKEN_ID = 248077
 #: ``split_special_tokens=True``) as the two literal tokens ``'[D', ']'`` — measured, not
 #: assumed; this is why the client must send token ids rather than text.
 DOCUMENT_PREFIX_TOKEN_IDS = (62724, 60)
+
+#: The ``[D] `` prefix's trailing space as its own token, measured at the pinned tokenizer: the
+#: render is ``"[D] " + content`` and the space stands alone exactly when the content's first token
+#: is an added token that cannot carry it (or when the content is empty); a content-initial space
+#: merges into the next token (ids 256/262/...), so a leading 220 in the body is always the
+#: prefix's. The reference's char spans start at char 4 and never pool it.
+PREFIX_SPACE_TOKEN_ID = 220
 
 #: The ``<|chunk_sep|>`` boundary marker, one added token in both the reference and a
 #: server-side tokenization of the joined text.
@@ -141,6 +149,14 @@ def pool_sequence(hidden_states: torch.Tensor, token_ids_cpu: torch.Tensor) -> t
         prefix_len = len(DOCUMENT_PREFIX_TOKEN_IDS)
         body = token_ids[prefix_len:]
         body_hidden = hidden[prefix_len:]
+        if body[:1] == [PREFIX_SPACE_TOKEN_ID]:
+            # The prefix's trailing space as its own token (see PREFIX_SPACE_TOKEN_ID): the
+            # reference's char spans start after it, so it belongs to no chunk. Without this the
+            # empty document pools the space token -- a nonzero vector where the reference pools
+            # the zero vector -- and every document starting with an added token gains one token
+            # in its first chunk's mean.
+            body = body[1:]
+            body_hidden = body_hidden[1:]
         spans = _document_spans(body)
         n_chunks = len(spans)
         # -1 marks the boundary markers themselves: they are excluded from every span
