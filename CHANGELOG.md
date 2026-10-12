@@ -1428,12 +1428,18 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   to 0.0 -- failing a perfect agreement. Two zero vectors now score 1.0 (the same degenerate output); a
   zero against a non-zero vector still scores 0.0, so a one-sided degenerate output still fails.
 
-- **The topk-embed-v1 reference promotes the remote code's 2-D text position ids** (the E2 round-7
-  reference crash): the wrapper's text branch builds 2-D rope positions (`within.unsqueeze(0)`) and
-  transformers 5.17's `Qwen3_5RotaryEmbedding.forward` reads only the 3-D mrope form
-  (`position_ids[:, :, None, :]`), so every text-only embed died with `IndexError: too many indices for
-  tensor of dimension 2`. The declared shim promotes a 2-D input to `(3, bs, positions)` -- the remote
-  code's own image branch shows the layout -- and leaves a 3-D input untouched; a CPU test pins both.
+- **The topk-embed-v1 reference restores the 2-D rope branch on the class the remote code calls** (the
+  E2 rounds 7-8 reference crash): the wrapper's text branch builds 2-D rope positions
+  (`within.unsqueeze(0)`), which the checkpoint's own transformers 5.9.0 promotes inside
+  `Qwen3_5TextRotaryEmbedding.forward`; transformers 5.17 removed that branch and reads only the 3-D
+  mrope form (`position_ids[:, :, None, :]`), so every text-only embed died with `IndexError: too many
+  indices for tensor of dimension 2`. The declared shim wraps `Qwen3_5TextRotaryEmbedding` -- the class
+  `Qwen3_5TextModel.__init__` assigns to `self.rotary_emb`, which the remote
+  `PackedQwen3_5TextModel.forward` calls -- promotes a 2-D input to `(3, bs, positions)`, exactly
+  5.9.0's own promotion, and leaves a 3-D input untouched. Round 7's version imported a
+  `Qwen3_5RotaryEmbedding` that no transformers release defines and swallowed the ImportError, so it
+  never wrapped anything; the shim now resolves the class from the module and raises loudly when the
+  module exists without it. CPU tests pin the wrapper, the symbol resolution and the loud miss.
 
 - **The qwen3-vl-embedding-2b/-8b declare their measured bf16 cosine floors** (the E2 round-7 stage-2): the
   2b declares 0.9985 (measured 0.998541 at full width and k=2048, 0.998906 at k=64; 14 of 282 comparisons
@@ -1446,14 +1452,17 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   0.0273 (8b) inside the published 0.05 all-documents bound and Kendall tau median 1.0. Each variant
   declares `overrides.gates.prob_p99_abs: 0.03`, the tight tolerance covering its measured maximum.
 
-- **The embeddinggemma-2 engine runs on the FA4 backend its own config hook selects** (the E2 round-7
-  Triton crash): the TRITON_ATTN prefill kernel cannot compile for the model's full-attention head_dim 512
-  on this GPU (266240 B > 232448 B of shared memory) during model warmup, and the image's Gemma4 config
-  hook had already selected FA4 before the plugin's folded EmbeddingGemma2 hook overrode it to TRITON_ATTN
-  (the v0.31.0-based image's Gemma4 hook sets only `flash_attn_version=4` and leaves `backend` None). The
-  recipe pins `--attention-backend FLASH_ATTN` (FA4 supports any head size, all attention types and
-  SM10.x); neither `--enforce-eager` nor `--max-num-batched-tokens` changes the kernel's compile-time
-  demand, and the recipe notes record why.
+- **The embeddinggemma-2 engine runs on FLEX_ATTENTION** (the E2 rounds 7-8 backend search): the model's
+  heterogeneous head dimensions (sliding 256, full 512) leave no default backend -- TRITON_ATTN's
+  prefill kernel needs 266240 B of shared memory against the 232448 B limit, and FA4's kernel rejects
+  head_dim 512 (`FlashAttention forward only supports head dimension at most 256`) -- while TORCH_SDPA
+  is not a decoder backend on the v0.31.0-based image (its enum value is empty: "this tag is only used
+  for ViT", so the manual-selection path raises `Backend TORCH_SDPA must be registered before use`).
+  The recipe pins `--attention-backend FLEX_ATTENTION` (no head-size cap; encoder-only,
+  sliding-window, non-causal and image-token attention all supported); neither `--enforce-eager` nor
+  `--max-num-batched-tokens` changes a compile-time demand, and the Triton tile is not configurable on
+  CUDA. The recipe notes record the fallback order and each rejected backend's error; a CPU test pins
+  the argv.
 
 - **The pplx-embed-v2-context-9b-preview reference answers one matrix per query/document text** (the E2
   round-4 stage-2 shape mismatch): the reference wrote only the FIRST document's vectors, so stage 2 read
