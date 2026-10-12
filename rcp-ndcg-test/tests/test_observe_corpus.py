@@ -175,11 +175,13 @@ def _exchange(path: str, request: dict[str, Any], response: dict[str, Any], *, r
     )
 
 
-def _synthetic_corpus(directory: Path, records: list[dict[str, Any]], **manifest: Any) -> Path:
+def _synthetic_corpus(
+    directory: Path, records: list[dict[str, Any]], *, recipe_id: str = "fixture-multi-vector", **manifest: Any
+) -> Path:
     """A corpus of hand-built records with the stub's provenance, written through the collector's writer."""
     from rcp_ndcg_test.observe.provenance import collector_facts, model_facts, recipe_facts
 
-    recipe = load_recipe(RECIPES / "fixture-multi-vector")
+    recipe = load_recipe(RECIPES / recipe_id)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "nondeterminism.json").write_text(json.dumps(summarise_nondeterminism(records)), encoding="utf-8")
     blocks = {
@@ -577,3 +579,44 @@ def test_a_media_side_the_client_refuses_is_recorded_as_its_refusal(tmp_path: Pa
     assert {r["inputs"]["request_id"] for r in refused} == {rows[0]["request_id"]}
     assert any(r["inputs"].get("request_id") == rows[1]["request_id"] for r in records), "the text row recorded"
     assert report["passed"] is True, [check for check in report["checks"] if not check.get("passed")]
+
+
+# --- the repository corpus index (what a re-record replaces) ------------------------------------------------
+
+
+def test_the_corpus_index_regenerates_from_the_committed_corpora(tmp_path: Path) -> None:
+    """The repository's corpus index is generated from the committed corpora, never hand-edited.
+
+    A re-record replaces a corpus directory; the index must follow it.  The tool writes one entry per
+    corpus directory (``<recipe>/<fingerprint>``) with the facts the conformance suite's integrity
+    check reads: the behaviour fingerprint, the SHA-256 of the committed manifest and the model
+    revision.
+    """
+    import hashlib
+
+    from rcp_ndcg_test.corpus import load_corpus, write_corpus_index
+
+    engine = tmp_path / "vllm-0.31.0"
+    records = [_exchange("/v1/embeddings", {"model": "m", "input": ["x"]}, {"object": "list", "data": []})]
+    corpora = {
+        "fixture-multi-vector": _synthetic_corpus(engine / "fixture-multi-vector" / ("a" * 64), records),
+        "fixture-embed": _synthetic_corpus(engine / "fixture-embed" / ("b" * 64), records, recipe_id="fixture-embed"),
+    }
+    path = write_corpus_index(engine)
+    index = json.loads(path.read_text(encoding="utf-8"))
+    assert set(index["corpora"]) == {
+        f"{recipe}/{fingerprint}"
+        for recipe, fingerprint in [
+            ("fixture-multi-vector", "a" * 64),
+            ("fixture-embed", "b" * 64),
+        ]
+    }
+    for recipe_id, directory in corpora.items():
+        manifest = load_corpus(directory).manifest
+        entry = index["corpora"][f"{recipe_id}/{directory.name}"]
+        assert entry["behaviour_fingerprint"] == manifest["recipe"]["behaviour_fingerprint"]
+        assert entry["manifest_sha256"] == hashlib.sha256((directory / "manifest.json").read_bytes()).hexdigest()
+        assert entry["recipe_revision"] == manifest["model"]["revision"]
+
+    # the file the tool writes is exactly the shape the conformance suite's integrity check reads
+    assert load_corpus(corpora["fixture-embed"]).manifest["recipe"]["id"] == "fixture-embed"

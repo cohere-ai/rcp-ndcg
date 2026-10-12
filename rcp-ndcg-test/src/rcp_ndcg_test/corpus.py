@@ -46,6 +46,7 @@ from typing import Any
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.identity import hash_payload
+from rcp_ndcg_test.errors import HarnessError
 
 __all__ = [
     "CORPUS_SCHEMA",
@@ -71,6 +72,7 @@ __all__ = [
     "normalise_raw",
     "register_record_migration",
     "verification_records",
+    "write_corpus_index",
     "write_subset_index",
 ]
 
@@ -406,6 +408,47 @@ def write_subset_index(directory: str | Path, *, full_corpus_path: str, sampling
     }
     path = root / INDEX_FILE
     path.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def write_corpus_index(corpora_root: str | Path) -> Path:
+    """Regenerate the repository's corpus index: ``index.json`` under ``corpora_root``, from the corpora.
+
+    One entry per committed corpus directory under ``corpora_root`` (``<recipe>/<fingerprint>``), each
+    naming the behaviour fingerprint, the SHA-256 of the committed ``manifest.json`` and the model
+    revision -- exactly the facts the conformance suite's integrity check reads.  A re-record replaces
+    a corpus directory and regenerates this file; it is never hand-edited.
+
+    Args:
+        corpora_root: The engine-version directory holding the corpus directories (e.g.
+            ``corpora/vllm-0.31.0``); the index is written beside the recipe directories.
+
+    Returns:
+        The written ``index.json``.
+
+    Raises:
+        HarnessError: a corpus directory carries no readable manifest, or one without the recipe/model
+            facts the index names.
+    """
+    from rcp_ndcg_test.engines import find_corpora
+
+    root = Path(corpora_root)
+    corpora: dict[str, dict[str, Any]] = {}
+    for directory in find_corpora(root):
+        try:
+            manifest = json.loads((directory / MANIFEST_FILE).read_bytes())
+        except (OSError, json.JSONDecodeError) as error:
+            raise HarnessError(f"corpus {directory}: no readable {MANIFEST_FILE}: {error}") from error
+        try:
+            corpora[f"{directory.parent.name}/{directory.name}"] = {
+                "behaviour_fingerprint": str(manifest["recipe"]["behaviour_fingerprint"]),
+                "manifest_sha256": hashlib.sha256((directory / MANIFEST_FILE).read_bytes()).hexdigest(),
+                "recipe_revision": str(manifest["model"]["revision"]),
+            }
+        except (KeyError, TypeError) as error:
+            raise HarnessError(f"corpus {directory}: its manifest lacks the index fact {error}") from error
+    path = root / INDEX_FILE
+    path.write_text(json.dumps({"corpora": corpora}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
 

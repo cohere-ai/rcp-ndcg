@@ -1387,6 +1387,22 @@ owner pushes, with the move to a Hugging Face organisation).
   the public modules, `tests/contract/snapshots/` pins every name, and every pinned name is documented --
   `rcp-ndcg docs api` generates the per-module pages that cover the long tail, and `tests/contract` fails on
   a name no page carries or a page the snapshot no longer matches (see `### Public surface`).
+- **The pending reference cases are filled by `rcp_ndcg_test.case_fill`** (the unpublished `rcp-ndcg-test`):
+  the release checklist's "fill every `pending_gpu` expected value" is now a tool -- one reference
+  subprocess per recipe over every pending case's inputs (the pairs rows the reference already reads), the
+  outputs shaped into the case's `expected.kind` (a scores matrix for a rerank recipe; the query x document
+  similarity matrix for an embed or multi_vector one -- the cosine of the L2-normalized single vectors, the
+  product's MaxSim for a late-interaction reference), and a line-wise YAML edit (`values`,
+  `status: reproduced`, the pending note's own sentence retired) that leaves every other byte of the
+  hand-written case in place.  A media-bearing case and a kind the mode cannot produce are refused by name
+  before the reference runs; a `kind: none` case carries no values by design and is left alone.  The
+  reference entry path has one home now (`rcp_ndcg_test.equivalence.reference.reference_entry`, used by
+  stages 1-2, the media stage and the fill).
+- **The listwise replay stays covered while jina-reranker-v3's corpus is declared stale**: the staleness
+  gate keeps that corpus out of the standard conformance replay set, and with it the package's only
+  listwise prompt path; a conformance test replays the corpus's recorded exchanges (its `/rerank` probes
+  included) against the current recipe's emulator, which they reproduce exactly, and skips once the
+  re-recording removes the declaration.
 
 ### Fixed
 

@@ -46,7 +46,7 @@ from rcp_ndcg_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 
-from .reference import reference_of, run_reference
+from .reference import reference_entry, run_reference
 from .wire import prompt_tokens, role_client
 
 __all__ = [
@@ -451,9 +451,7 @@ def _reference_facts(
     positions in the pairs file and the side."""
     from .fitting import resolved_tokenizer_spec
 
-    recipe_dir = recipe._dir
-    if recipe_dir is None:  # pragma: no cover - load_recipe sets it
-        raise HarnessError(f"recipe {recipe.id} was not loaded from a directory")
+    entry = reference_entry(recipe)
     # ignore_cleanup_errors: the scratch files are written, read by the reference subprocess and closed; on
     # a network-backed tempdir an entry can turn visible after the cleanup's scan, and a scratch cleanup
     # race must never fail the stage.
@@ -463,7 +461,7 @@ def _reference_facts(
         pairs_path.write_text("".join(json.dumps(row) + "\n" for row in public), encoding="utf-8")
         document = run_reference(
             reference_python,
-            str(recipe_dir / reference_of(recipe).entry),
+            entry,
             mode="media",
             pairs_path=pairs_path,
             out_path=Path(work) / "reference.json",

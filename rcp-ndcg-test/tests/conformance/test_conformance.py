@@ -436,3 +436,35 @@ def test_a_rekeyed_corpus_names_the_manifest_it_was_rekeyed_from() -> None:
                 value = entry.get(key)
                 assert isinstance(value, str) and len(value) == 64, f"{name}: rekeyed entry lacks {key}"
     assert found, "no re-keyed corpus: the check would pass vacuously"
+
+
+def test_the_declared_stale_listwise_corpus_still_replays_its_role_requests() -> None:
+    """Listwise replay coverage while jina-reranker-v3's corpus is declared stale.
+
+    The staleness gate keeps the corpus out of the standard replay set (:func:`current_corpora`), and
+    with it the package's only listwise prompt path (``EnginePrompts`` over the recipe's own N-passage
+    builder).  The corpus's fingerprint inputs moved, but its recorded exchanges -- the ``/rerank``
+    probes among them -- still replay identically against the current recipe's emulator, so the listwise
+    path stays exercised on CPU until the re-recording lands; once the declaration is gone the standard
+    replay covers it and this test skips.  The corpus stays non-gating release evidence: its status is
+    the stale declaration's, and this test never relaxes that.
+    """
+    from rcp_ndcg_test.engines import compare_exchange, corpus_tolerance, exchanges_of
+    from tests._engines import emulator_over
+
+    if "jina-reranker-v3" not in stale_corpora():
+        pytest.skip("the corpus is no longer declared stale: the standard replay set covers the listwise path")
+    directory = next(
+        directory
+        for directory in all_corpus_dirs()
+        if load_corpus(directory).manifest["recipe"]["id"] == "jina-reranker-v3"
+    )
+    corpus = load_corpus(directory)
+    emulator = emulator_over("jina-reranker-v3", corpus)
+    role_requests = [
+        exchange for exchange in exchanges_of(corpus) if exchange.path.endswith("/rerank") and exchange.status == 200
+    ]
+    assert role_requests, "the corpus records no successful role request: the replay would pass vacuously"
+    for exchange in exchanges_of(corpus):
+        problems = compare_exchange(exchange, emulator.handle(as_request(exchange)), corpus_tolerance(corpus))
+        assert not problems, f"{directory.name} #{exchange.sequence}: {problems}"

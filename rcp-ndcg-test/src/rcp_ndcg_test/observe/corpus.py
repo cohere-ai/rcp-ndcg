@@ -54,6 +54,7 @@ from rcp_ndcg_test.corpus import (
     manifest_digest,
     missing_provenance,
     normalise_body,
+    write_corpus_index,
     write_subset_index,
 )
 from rcp_ndcg_test.errors import HarnessError
@@ -753,8 +754,9 @@ def changed_since(recipes: list[Recipe], corpus_index: dict[str, Any], *, engine
 
 
 def main(argv: list[str] | None = None) -> int:
-    """``python -m rcp_ndcg_test.observe.corpus verify DIR`` (the acceptance checks, exit 1 on a refusal) and
-    ``... subset DIR OUT --gcs-path URI`` (the repository subset of a full corpus, checked before it is kept)."""
+    """``python -m rcp_ndcg_test.observe.corpus verify DIR`` (the acceptance checks, exit 1 on a refusal),
+    ``... subset DIR OUT --gcs-path URI`` (the repository subset of a full corpus, checked before it is kept)
+    and ``... index ENGINE-DIR`` (regenerate the repository's corpus index from the committed corpora)."""
     import argparse
 
     parser = argparse.ArgumentParser(prog="python -m rcp_ndcg_test.observe.corpus")
@@ -766,10 +768,16 @@ def main(argv: list[str] | None = None) -> int:
     subset.add_argument("out")
     subset.add_argument("--gcs-path", required=True, help="the full corpus's immutable storage path")
     subset.add_argument("--max-bytes", type=int, default=2 * 1024 * 1024)
+    index = commands.add_parser("index", help="regenerate the repository corpus index from the committed corpora")
+    index.add_argument("corpora_root", help="the engine-version directory (e.g. corpora/vllm-0.31.0)")
     args = parser.parse_args(argv)
     if args.command == "subset":
         out = subset_for_repository(args.corpus, args.out, gcs_path=args.gcs_path, per_recipe_bytes=args.max_bytes)
         report = verify_corpus(out)
+    elif args.command == "index":
+        path = write_corpus_index(args.corpora_root)
+        print(json.dumps({"index": str(path)}, indent=2))
+        return 0
     else:
         report = verify_corpus(args.corpus)
     print(json.dumps(report, indent=2))
