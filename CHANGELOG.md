@@ -1484,6 +1484,18 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   never wrapped anything; the shim now resolves the class from the module and raises loudly when the
   module exists without it. CPU tests pin the wrapper, the symbol resolution and the loud miss.
 
+- **The topk-embed-v1 reference runs on the checkpoint's own transformers 5.9.0** (the E2 round-9
+  `chunk_gated_delta_rule` crash): the checkpoint's remote `hf_backbone.py:111` calls
+  `self.chunk_gated_delta_rule(...)`, the instance attribute 5.9.0's `Qwen3_5GatedDeltaNet.__init__`
+  assigns; transformers 5.17 removed it (its forward calls the module-level
+  `torch_chunk_gated_delta_rule`), whose `**kwargs` never reads the `cu_seqlens` the remote code
+  passes to keep packed documents apart, so delegating the call would silently change
+  packed-document numerics. The family's reference venv is its own (`# own-torch: true`, built
+  without `--system-site-packages`), so the earlier "run on the image's stack" rationale no longer
+  holds: the family now pins `transformers==5.9.0` (regenerated lock; tokenizers 0.22.2, inside
+  5.9.0's own `<=0.23.0` range), and the declared shims are inert under it. CPU tests pin the
+  declared pin and the render names' ranges.
+
 - **The qwen3-vl-embedding-2b/-8b declare their measured bf16 cosine floors** (the E2 round-7 stage-2): the
   2b declares 0.9985 (measured 0.998541 at full width and k=2048, 0.998906 at k=64; 14 of 282 comparisons
   below the published 0.999) and the 8b 0.9983 (0.998335 at full width and k=4096, 0.998674 at k=64; 15 of
@@ -1503,9 +1515,31 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   for ViT", so the manual-selection path raises `Backend TORCH_SDPA must be registered before use`).
   The recipe pins `--attention-backend FLEX_ATTENTION` (no head-size cap; encoder-only,
   sliding-window, non-causal and image-token attention all supported); neither `--enforce-eager` nor
-  `--max-num-batched-tokens` changes a compile-time demand, and the Triton tile is not configurable on
-  CUDA. The recipe notes record the fallback order and each rejected backend's error; a CPU test pins
-  the argv.
+  `--max-num-batched-tokens` changes that compile-time demand (round 9 adds `--enforce-eager` for a
+  different, graph-capture interaction), and the Triton tile is not configurable on CUDA. The recipe
+  notes record the fallback order and each rejected backend's error; a CPU test pins the argv.
+
+- **The embeddinggemma-2 engine runs eager beside FLEX_ATTENTION** (the E2 round-9 engine-init crash):
+  FLEX_ATTENTION reaches engine init and dies in a dynamo/CUDAGraph interaction
+  (`torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing tensor output of
+  CUDAGraphs that has been overwritten by a subsequent run` at
+  `torch/nn/attention/flex_attention.py:2369`): the backend's compiled `create_block_mask`
+  (`mode="reduce-overhead"`) output is overwritten before the compiled `flex_attention` reads it.
+  `--enforce-eager` sets the engine's compilation and cudagraph modes to NONE, so the capture/warmup
+  run is skipped; the recipe pins it beside the backend. The notes record the fallback: the nightly
+  ships no decoder SDPA backend to hand `register_backend(Backend.TORCH_SDPA, ...)`, so that path
+  needs a plugin-provided AttentionBackend. A CPU test pins the argv and the recorded evidence.
+
+- **The corpus check accepts an MRL probe at the width its request asked for** (the E2 round-9 r3
+  recording failure: `scores_finite_and_vector_widths` was False with `vector width 32 differs from
+  1024 on /v1/embeddings` for every MRL recipe): the corpus plan's MRL stratum sends one bare
+  `dimensions=k` probe per declared `k`, and the engine's own Matryoshka gate cuts the reply to `k`,
+  while the check expected the recipe's full declared width on every vector row. A row carrying an
+  integer `dimensions` is now checked at the requested `k`, and the route's width is tracked per
+  requested dimensions, so the full-width rows beside a probe no longer disagree; a reply at neither
+  the requested nor the declared width still fails, naming the width it should have been. Two CPU
+  tests pin it: an end-to-end recording of a declared MRL fixture against the stub engine (which
+  slices every declared `k`), and a synthetic reply at a wrong width.
 
 - **The pplx-embed-v2-context-9b-preview reference answers one matrix per query/document text** (the E2
   round-4 stage-2 shape mismatch): the reference wrote only the FIRST document's vectors, so stage 2 read

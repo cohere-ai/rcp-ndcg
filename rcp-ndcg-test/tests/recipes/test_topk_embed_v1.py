@@ -693,6 +693,29 @@ def test_the_rope_shim_resolves_the_class_the_remote_code_actually_calls(monkeyp
         module._promote_qwen3_5_rope_position_ids()
 
 
+def test_the_reference_environment_pins_the_checkpoints_own_transformers() -> None:
+    """E2 round 9: the checkpoint's remote ``hf_backbone.py:111`` calls
+    ``self.chunk_gated_delta_rule`` -- the instance attribute transformers 5.9.0's
+    ``Qwen3_5GatedDeltaNet.__init__`` assigns (``self.chunk_gated_delta_rule = chunk_gated_delta_rule
+    or torch_chunk_gated_delta_rule``, ``modeling_qwen3_5.py:422``) and its own forward calls
+    (``modeling_qwen3_5.py:535``). transformers 5.17.0 -- the release the previous
+    ``>=5.10.4,<5.18.0`` range resolved to -- removed the attribute: its forward calls the module-level
+    ``torch_chunk_gated_delta_rule`` directly (``modeling_qwen3_5.py:639``) and that function takes
+    ``**kwargs`` and never reads the ``cu_seqlens`` the remote code passes to keep packed documents
+    apart, so delegating the call to the 5.17 name would silently change packed-document numerics.
+    The family's reference venv is its own (``# own-torch: true``; the bootstrap builds it without
+    ``--system-site-packages``), so the declared stack is the checkpoint's own pin rather than the
+    image's: ``reference.in``/``reference.lock`` must pin ``transformers==5.9.0``; the render-mode
+    names' ranges are checked beside the lock's own pins by
+    :func:`test_the_reference_lock_pins_huggingface_hub_inside_transformers_own_range`."""
+    from rcp_ndcg_test.jobs.reference_env import parse_lock
+
+    reference_in = (RECIPE_DIR / "reference.in").read_text(encoding="utf-8")
+    assert "transformers==5.9.0" in reference_in, reference_in
+    lock = parse_lock(RECIPE_DIR / "reference.lock")
+    assert lock.pins["transformers"] == "5.9.0"
+
+
 def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(
     tmp_path: Path, tokenizer, variant_id: str
 ) -> None:
@@ -1115,24 +1138,25 @@ def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
 
 def test_the_reference_lock_pins_huggingface_hub_inside_transformers_own_range() -> None:
     """The r4 wave's bootstrap failure: the lock pinned ``huggingface-hub==2.2.0`` while the same
-    lock pins ``transformers==5.17.0``, whose METADATA declares ``huggingface-hub<2.0,>=1.5.0``.  The
-    name was unpinned in ``reference.in``, and ``uv pip compile --no-deps`` resolves an unpinned name
-    to the newest release without consulting another pin's requirements, so the completion step moved
-    the venv's copy to a wheelhouse version and the import check failed with only the version
-    mismatch.  The range is now declared (both render-mode names sit inside the range the family's own
-    transformers declares) and the lock pins the image's 1.33.0, which every staged wheelhouse
-    carries; the check names any future violation."""
+    lock pins transformers, whose METADATA declares ``huggingface-hub<2.0,>=1.5.0``.  The name was
+    unpinned in ``reference.in``, and ``uv pip compile --no-deps`` resolves an unpinned name to the
+    newest release without consulting another pin's requirements, so the completion step moved the
+    venv's copy to a wheelhouse version and the import check failed with only the version mismatch.
+    Both render-mode names sit inside the range the family's own transformers pin declares (5.9.0,
+    E2 round 9: ``huggingface-hub<2.0,>=1.5.0`` and ``tokenizers<=0.23.0,>=0.22.0``), and the lock
+    pins the image's 1.33.0 and tokenizers 0.22.2 -- the newest release 5.9.0's range allows, since
+    0.23.0 was never published; the check names any future violation."""
     from rcp_ndcg_test.jobs.reference_deps import satisfies
     from rcp_ndcg_test.jobs.reference_env import parse_lock
 
     text = (RECIPE_DIR / "reference.in").read_text(encoding="utf-8")
     assert "huggingface-hub>=1.5,<2.0" in text
-    assert "tokenizers>=0.23.1,<0.24.0" in text
+    assert "tokenizers>=0.22.0,<=0.23.0" in text
     lock = parse_lock(RECIPE_DIR / "reference.lock")
     assert lock.pins["huggingface-hub"] == "1.33.0"
-    assert lock.pins["transformers"] == "5.17.0"
+    assert lock.pins["transformers"] == "5.9.0"
     assert satisfies("huggingface-hub<2.0,>=1.5.0", lock.pins["huggingface-hub"])
-    assert satisfies("tokenizers<0.24.0,>=0.23.1", lock.pins["tokenizers"])
+    assert satisfies("tokenizers<=0.23.0,>=0.22.0", lock.pins["tokenizers"])
 
 
 def _reference_module() -> Any:

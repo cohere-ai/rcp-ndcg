@@ -94,7 +94,9 @@ behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VA
 `manifest_hashes` (every hashed file and the manifest's digest; a subset: its index's hashes),
 `completeness` (every planned request id; a subset defers to its full corpus), `statuses_as_expected` (the
 measured vLLM v0.31.0 table: over-length `400`, an unknown field ignored with `200`, malformed JSON `400`),
-`scores_finite_and_vector_widths` (every number finite, every vector reply decoded at the declared width),
+`scores_finite_and_vector_widths` (every number finite, every vector reply decoded at the width its request
+asked for -- a bare `dimensions=k` MRL probe, cut by the engine's own Matryoshka gate -- or the declared
+width; one width per route and requested dimensions),
 `nondeterminism_report`, `provenance_complete`, `no_credentials` (every byte, a subset's `.gz` decompressed),
 and, given the equivalence stage's exchanges of the same wave, `equivalence_consistent` (the same replies
 within the measured tolerance; no common request is a failure). A corpus failing any check is not used.
