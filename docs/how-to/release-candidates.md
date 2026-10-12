@@ -35,6 +35,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time (owner decisions 38/35) |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, from `rcp-ndcg-test/pairs/` |
+| `cases/` | the reference cases, from `rcp-ndcg-test/cases/` (the `--script casefill` job reads and edits them on the node; the wheel drops `cases/`) |
 | `extra/<name>/` | the `EXTRA_DIRS` entries (private pairs, wave lists or recipes, and the wheelhouses for family pins with no index wheel such as `flash-attn`), as they are |
 | `manifest.json` | the commit, the version, the CUDA-lock wheels inert on a CPU client (`nvidia-*`, `triton`), the SHA-256 of every staged file |
 
@@ -122,22 +123,36 @@ id is.
 
 The submitted wave passes `--record` only (plus the staged pairs directory, the reference python and the
 staged plugin wheel): it runs **T0 smoke**, **T2 equivalence** (stages 1 and 2) and the **recorder** for
-every recipe. The other gates are operator-run against the same staged RC, with the wave runner in the
-client environment the bootstrap built:
+every recipe. With `RCP_RECORD_CORPUS=1` in the operator's environment, `submit.sh` forwards
+`env.RCP_RECORD_CORPUS=1` into the job spec and the bootstrap adds `--record-corpus`: that is the
+**recording pass**, run as its own wave (a corpus failure is a corpus re-run, never a recipe failure --
+the corpus step is part of the recipe's end state). The other gates are operator-run against the same
+staged RC, with the wave runner in the client environment the bootstrap built:
 
-- **T1 observations** — `--record-corpus` (with `--changed-since <previous wave.json>` to re-record only
-  what moved). It needs the client environment and the reference python a `bootstrap.sh envs` run built
-  on the node; run the wave runner from that state's client wrapper with the staged recipes and pairs,
-  and pass the staged plugin wheel (`--plugin-wheel <stage>/wheelhouse/rcp_ndcg_vllm-<version>-*.whl`,
-  the wheel the engine environment installed) so the corpus step cross-checks its modules against the
-  behaviour fingerprint's `plugin_sha256` inputs. `--changed-since` needs the pod's engine version
-  before engines start: the bootstrap exports `RCP_ENGINE_PYTHON` for it.
+- **T1 observations** — `--record-corpus` (with `--changed-since <previous recording wave.json>` to
+  re-record only what moved; the flag takes a previous recording wave's `fingerprints`/`engine_versions`
+  maps -- the repository corpus index is a different schema). It needs the client environment and the
+  reference python a `bootstrap.sh envs` run built on the node; run the wave runner from that state's
+  client wrapper with the staged recipes and pairs, and pass the staged plugin wheel
+  (`--plugin-wheel <stage>/wheelhouse/rcp_ndcg_vllm-<version>-*.whl`, the wheel the engine environment
+  installed) so the corpus step cross-checks its modules against the behaviour fingerprint's
+  `plugin_sha256` inputs. `--changed-since` needs the pod's engine version before engines start: the
+  bootstrap exports `RCP_ENGINE_PYTHON` for it. The corpora land at
+  `<out>/observations/vllm-<version>/<recipe>/<fingerprint>/<stamp>/` and upload with the wave's final
+  whole-tree copy.
 - **T3 quality** — `--quality --paper-numbers <file>`. Its reference subprocess needs `mteb`,
   `rcp_ndcg[mteb]` and the harness (`rcp_ndcg_test`, the staged wheel) in the reference environment,
   which the bootstrap does not stage today, so run it in an environment built for it (the reference venv
   plus those packages) and keep its `quality.json` beside the recipe's status.
 - **The negative controls (a)-(f)** — `--controls`, with the same client/reference environments as T2.
 - **T4 end to end** is its own job: `submit.sh --script e2e` (below).
+- **The cuda reference-case fills** are their own job too: `submit.sh --script casefill`. The job builds
+the four cuda families' reference venvs through `bootstrap.sh envs` and runs
+`python -m rcp_ndcg_test.case_fill --device cuda` per recipe over the staged `cases/` copy, then uploads
+the edited YAMLs to `<OUT_PREFIX>/<wave>/cases/<recipe>/` and a `casefill-report.json` beside them; the
+operator reviews the diff and copies the YAMLs into the repository. A pending case the fill cannot
+produce is recorded skipped, its file untouched (the media-bearing ones: the reference's text mode reads
+text, and its `media` mode reports input facts, not model outputs).
 
 A recipe's `status` flips to `verified` only from a wave whose document records the gates it needs; the
 wave document's `recipes[].steps` names exactly which ran in that job.
@@ -157,10 +172,11 @@ rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BU
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
-rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0|e2e`, and
-`KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file under
+rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0|e2e|casefill`,
+and `KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file under
 `RCP_SUBMIT_DIR` (default: a fresh temp directory; the directory is created when it does not exist);
-only job names and states are printed.
+only job names and states are printed. `RCP_RECORD_CORPUS=1` is forwarded into every submitted job's
+spec (the recording pass, above).
 
 For a bootstrap wave, `submit.sh` downloads the staged wave list and recipes, groups the ids by each
 variant's `engine.image` (`python -m rcp_ndcg_test.jobs.wavegroups`), and submits **one job per image**:
