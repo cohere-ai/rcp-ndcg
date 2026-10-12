@@ -129,6 +129,8 @@ class KubernetesOptions(rcp_ndcg.runners.base.JobOptions)
 
 - `context: str | None` = None
 
+- `dshm_size: str` = '16Gi'
+
 - `engine_node_selector: dict[str, str]` = '<factory dict>'
 
 - `env: dict[str, str]` = '<factory dict>'

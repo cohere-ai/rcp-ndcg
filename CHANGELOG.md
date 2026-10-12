@@ -1373,10 +1373,17 @@ owner pushes, with the move to a Hugging Face organisation).
   one parse of the whole render and is not re-keyed; the pplx-embed-v2-context recipe declares it. The
   contract snapshots, the exported schemas and the generated API pages record the field and the method
   (regenerate them as below).
+- **`KubernetesOptions` gains `dshm_size`**: the `sizeLimit` of every pod's `/dev/shm` Memory `emptyDir`
+  (`16Gi` by default; a Kubernetes memory quantity with a binary unit -- `Ki`/`Mi`/`Gi`/`Ti` -- refused
+  otherwise). The rendered Job and engine-StatefulSet manifests carry it, so a runaway engine fails its pod
+  instead of exhausting the node; a phase that runs several engines in one container raises it.
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
 
+- **Every Kubernetes pod's `/dev/shm` is bounded**: the Job's pod and every engine StatefulSet pod render the
+  dshm Memory `emptyDir` with a `sizeLimit` (the declared `dshm_size`, `16Gi` by default) where it used to be
+  unbounded, so an engine that fills `/dev/shm` fails its pod instead of consuming the node's memory.
 - **The entry-point lookup has one home and one duplicate-name policy**: `rcp_ndcg.support.entrypoints` now
   owns the listing, the load check and the ambiguity refusal for the readers, the writers, the result sinks
   and the job runners.  A name that more than one installed distribution provides is **refused, naming the
