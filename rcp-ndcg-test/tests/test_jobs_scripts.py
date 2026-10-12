@@ -1238,8 +1238,7 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
     gcs_log = tmp_path / "gcs.log"
     gcs_sh = tmp_path / "gcs.sh"
     gcs_sh.write_text(
-        "gcs_sdk_on_path() { :; }\n"
-        'gcs_cp() { printf "%s\\n" "cp $*" >> "$STUB_GCS_LOG"; }\n',
+        'gcs_sdk_on_path() { :; }\ngcs_cp() { printf "%s\\n" "cp $*" >> "$STUB_GCS_LOG"; }\n',
         encoding="utf-8",
     )
     bootstrap_log = tmp_path / "bootstrap.log"
@@ -1262,7 +1261,7 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
         '  mkdir -p "$state/reference/$family/bin"\n'
         '  printf "#!/usr/bin/env bash\\nexit 0\\n" > "$state/reference/$family/bin/python"\n'
         '  chmod +x "$state/reference/$family/bin/python"\n'
-        "done < \"$wave_list\"\n"
+        'done < "$wave_list"\n'
         'echo \'{"schema": "stub-bootstrap"}\' > "$state/bootstrap.json"\n'
         "cat > \"$state/client\" <<'CLIENT'\n"
         "#!/usr/bin/env bash\n"
@@ -1270,7 +1269,7 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
         'recipe=""; cases=""; prev=""\n'
         'for arg in "$@"; do [[ "$prev" == "--recipe" ]] && recipe="$arg";'
         ' [[ "$prev" == "--cases-root" ]] && cases="$arg"; prev="$arg"; done\n'
-        'if [[ "$recipe" == "qwen3-vl-reranker-2b" ]]; then'
+        'if [[ "$recipe" == "qwen3-vl-embedding-2b" ]]; then'
         ' echo "casefill: the stub reference failed" >&2; exit 2; fi\n'
         'printf \'{"recipe": "%s", "mode": "score", "device": "cuda", "pending_before": 1,'
         ' "filled": [{"case_id": "%s/gen-short", "path": "%s/%s/gen-short.yaml",'
@@ -1297,7 +1296,7 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
         },
     )
     assert completed.returncode == 1, completed.stdout + completed.stderr  # the failed recipe fails the job
-    assert "casefill: 1 recipe(s) failed: qwen3-vl-reranker-2b" in completed.stderr
+    assert "casefill: 1 recipe(s) failed: qwen3-vl-embedding-2b" in completed.stderr
     state_line = next(line for line in completed.stdout.splitlines() if "casefill: state " in line)
     state = Path(state_line.split("casefill: state ", 1)[1])
     # the wave list is the four recipes (the reference environments the fills need)
@@ -1323,17 +1322,18 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
         assert f"--reference-python {state}/reference/{family}/bin/python" in line, line
         assert "--device cuda" in line and "--filled-at 2026-10-12" in line and "--budget-s 7200" in line, line
         assert f"--cases-root {state}/cases" in line, line
-    # the edited YAMLs of the three successful recipes upload; the failed one's does not
-    for recipe in ("topk-embed-v1-small", "qwen3-embedding-0.6b", "qwen3-vl-embedding-2b"):
+    # the edited YAMLs of the three successful recipes upload -- the failure did not stop the recipe
+    # after it; the failed one's does not
+    for recipe in ("topk-embed-v1-small", "qwen3-embedding-0.6b", "qwen3-vl-reranker-2b"):
         assert (state / "filled-cases" / recipe / "gen-short.yaml").is_file(), recipe
-    assert not (state / "filled-cases" / "qwen3-vl-reranker-2b").exists()
+    assert not (state / "filled-cases" / "qwen3-vl-embedding-2b").exists()
     calls = gcs_log.read_text(encoding="utf-8")
     assert f"cp {state}/filled-cases gs://YOUR-BUCKET/waves/casefill/cases dir" in calls, calls
     assert f"cp {state}/casefill-report.json gs://YOUR-BUCKET/waves/casefill/casefill-report.json file" in calls, calls
     report = json.loads((state / "casefill-report.json").read_text(encoding="utf-8"))
     assert report["passed"] is False and report["failed_step"] == "casefill"
     fills = report["fills"]
-    assert fills["qwen3-vl-reranker-2b"]["state"] == "failed" and "exit 2" in fills["qwen3-vl-reranker-2b"]["error"]
+    assert fills["qwen3-vl-embedding-2b"]["state"] == "failed" and "exit 2" in fills["qwen3-vl-embedding-2b"]["error"]
     assert fills["qwen3-embedding-0.6b"]["recipe"] == "qwen3-embedding-0.6b"
     assert set(fills) == {
         "topk-embed-v1-small",
