@@ -8,11 +8,17 @@ case was skipped. This lane closes it without a new reference mode (the referenc
 (none of which the fill's vocabulary knew), and makes one case's refusal a recorded exception instead of
 the recipe's loss.
 
-**Gate:** `timeout 7200 bin/gate lane/mediafill` on the merged tip `ceb12da2` (slot 2): attempt 1 hit
-the documented test-package SIGSEGV environment flake
-(`test_wave_corpus.py::test_the_corpus_is_keyed_by_the_engine_version_the_pod_reports`, exit 139 --
-`handover/reports/07a-qa-prep.md` section 2), attempt 2 **GATE: PASS** (every step exit=0; the pre-merge
-commit `96046f4f` also passed on its first attempt).
+**Gate:** `timeout 7200 bin/gate lane/mediafill` (slot 2), every step exit=0 on:
+
+| revision | attempt 1 | attempt 2 |
+|---|---|---|
+| `96046f4f` (pre-merge implementation) | **GATE: PASS** | — |
+| `ceb12da2` (merged tip, lane r9) | FAIL: the documented test-package SIGSEGV environment flake (`test_wave_corpus.py::test_the_corpus_is_keyed_by_the_engine_version_the_pod_reports`, exit 139) | **GATE: PASS** |
+| `592d1fd8` (final tip) | FAIL: the same flake (`test_record_and_wave.py::test_wave_verifies_a_recipe_whose_controls_all_pass`, exit 139) | **GATE: PASS** |
+
+The flake is the one `handover/reports/07a-qa-prep.md` section 2 documents (a random test's process dying under
+concurrent pytest load; the retry is green, the test-package step at 1170 passed, 229 skipped).  No test
+failed on any attempt.
 
 ## 1. Status — per-item disposition
 
@@ -144,8 +150,8 @@ gate step: **1170 passed, 229 skipped**, the r9 merge adding three tests).
 - `tests/test_cases_package.py tests/contract tests/docs`: **416 passed, 108 skipped**.
 - `ruff format --check` clean, `ruff check` clean, `basedpyright` 0 errors.
 - `bin/gate lane/mediafill`: `96046f4f` (pre-merge) passed on its first attempt; the merged tip `ceb12da2`
-  passed on attempt 2 after attempt 1 hit the documented test-package SIGSEGV flake (both SUMMARYs quoted
-  in the lane workspace's gate logs).
+  and the final tip `592d1fd8` each passed on attempt 2 after attempt 1 hit the documented test-package
+  SIGSEGV flake (no test failed on any attempt).
 
 ## 6. Open questions / residual risks
 
