@@ -29,7 +29,12 @@ read from the vendored script's source, never restated.
   and is not part of the text. Nothing here follows the product client's cut.
 - ``--mode embed`` (stage 2's reference side): ``{"rows": [{"index", "query_vectors", "document_vectors"}]}``
   -- one L2-normalised vector per text or media side (2048-d at the 2b size, 4096-d at the 8b), through
-  ``Qwen3VLEmbedder.process``. The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the
+  ``Qwen3VLEmbedder.process``. One declared deviation from the card's script: the reference calls
+  ``process`` once per input instead of once per batch (:func:`_one_vector_per_input`) -- transformers'
+  processor replaces every multimodal placeholder spelling found in the batch's texts from one shared
+  iterator per modality, so a text row carrying the tokenizer's literal placeholder spellings makes the
+  batched call raise ``StopIteration``; the card pools per sequence, so each input's vector is unchanged.
+  The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the
   revision the resolved recipe names, so model and processor load the same pinned snapshot. A pairs row's
   ``media`` field is read (:func:`card_inputs`): an image entry becomes a loaded PIL image, a video entry is
   written to a scratch file and handed to the card's own loader at the recipe's declared fps
@@ -567,6 +572,11 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
     """Stage 2's reference side: the card's own embeddings — chat template + processor, last-token
     pooling, L2 — one vector per side, queries and documents alike (the card encodes both sides alike).
 
+    The card's ``process`` is called once per input (:func:`_one_vector_per_input`): the batched call
+    dies with ``StopIteration`` when any text in the batch carries the tokenizer's literal multimodal
+    placeholder spellings (see the helper's docstring), and the card's per-sequence pooling makes the
+    per-input calls answer the same vectors.
+
     A media row's ``media`` field rides the card's own input keys (:func:`card_inputs`): the inline image
     bytes as a PIL image, a container through the card's loader at the recipe's declared fps, resized
     under the recipe's whole-clip pixel pin (:func:`video_pixel_pin`/ :func:`frame_bounds`). The card
@@ -600,7 +610,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
     constants = card_media_constants()
     policy = (recipe.get("client") or {}).get("video_policy") or {}
     declared_fps = policy.get("fps")
-    import numpy as np
 
     # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's scan;
     # a scratch cleanup race must never fail a reference run (the harness's own tempdirs say the same).
@@ -632,24 +641,39 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                         constants=constants,
                     )
                 )
-        query_matrix = model.process(query_inputs, normalize=True)
-        document_matrix = (
-            model.process(document_inputs, normalize=True) if document_inputs else np.zeros((0, 1), dtype=np.float32)
-        )
+        query_vectors = _one_vector_per_input(model, query_inputs)
+        document_vectors = _one_vector_per_input(model, document_inputs)
     rows: list[dict[str, Any]] = []
     cursor = 0
     for index, row in enumerate(pairs):
         width = len(row["documents"])
-        document_vectors = [[float(value) for value in vector] for vector in document_matrix[cursor : cursor + width]]
+        documents = document_vectors[cursor : cursor + width]
         cursor += width
         rows.append(
             {
                 "index": index,
-                "query_vectors": [[float(value) for value in query_matrix[index]]],
-                "document_vectors": document_vectors,
+                "query_vectors": [[float(value) for value in query_vectors[index]]],
+                "document_vectors": [[float(value) for value in document] for document in documents],
             }
         )
     return {"rows": rows}
+
+
+def _one_vector_per_input(model: Any, inputs: list[dict[str, Any]]) -> list[Any]:
+    """One vector per input: the card's ``process`` called once per input, never over the whole batch.
+
+    The card batches every input into one processor call. transformers' processor replaces every
+    multimodal placeholder spelling found in the batch's texts from ONE shared iterator per modality
+    (``processing_utils.get_text_with_replacements``: ``next(replacements_iters[mm_type])``), so a text
+    row carrying the tokenizer's literal image/video placeholder spellings -- the pairs'
+    special-token-spellings stratum, which the served engine tokenizes as plain special ids -- consumes
+    the batch's media replacements and the whole call dies with StopIteration (measured on the wave's
+    pairs against the checkpoint's own processor: the query batch, 38 inputs with one image row, raises;
+    each input on its own answers; transformers 5.10.4 carries the same shared iterator). The card pools
+    per sequence and its batch is padding-only, so one call per input is the same vector per input
+    without the cross-row contamination.
+    """
+    return [model.process([item], normalize=True)[0] for item in inputs]
 
 
 def main() -> int:
