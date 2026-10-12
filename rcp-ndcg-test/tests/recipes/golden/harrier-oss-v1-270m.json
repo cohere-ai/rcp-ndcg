@@ -32,7 +32,7 @@
   "tokenizer": "microsoft/harrier-oss-v1-270m@31de22b673913c7d658c0f03f792d77c2dcf8ebd"
  },
  "fingerprint": {
-  "fingerprint": "989ad9b942d7656ef47b8d6e8e27b094648290dafffd71367fa29eb6881da931",
+  "fingerprint": "5e1e7e41e3aa3f0dfca0c961225816ddbfc62621b3ee374cfa98203377795c5d",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -51,7 +51,7 @@
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "microsoft/harrier-oss-v1-270m",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:31d18404cb7c2cc8202b51bf911bd00a92ff3d2f4a0d6227f6dfe25ee27eccea",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:2429d4744eb2f8b37e490684bc4c89d37fab550ee2ee3ab3ba635e1b03e098b9",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",

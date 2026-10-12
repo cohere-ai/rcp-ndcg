@@ -1359,7 +1359,10 @@ owner pushes, with the move to a Hugging Face organisation).
   gains `EmbeddingGemma2Model` (the folded vLLM model, upstream's config hook and the folded modules its
   transformers imports resolve through), and `rcp_ndcg_vllm.models.embedding_gemma2` exports
   `MODEL_ARCHITECTURE`, `MODEL_QUALNAME` and `register_embedding_gemma2`; the recipe declares
-  `plugin_architectures: [EmbeddingGemma2Config, EmbeddingGemma2Model]`.
+  `plugin_architectures: [EmbeddingGemma2Config, EmbeddingGemma2Model]`.  The fold package
+  (`rcp_ndcg_vllm.models.embedding_gemma2.fold`) is a keyed module too (E2 round 5): importing it installs
+  the folded modules under their upstream names before any folded module body runs, and it carries the
+  folded classes `install_fold` declares it as their `__module__`.
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
@@ -1442,6 +1445,20 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   plus a header) and transformers 5.19.0's modeling module, registers the architecture (and upstream's
   config hook) when the running vLLM lacks them, and the recipe declares both registrations; the fold is
   verified on CPU against transformers 5.17.0 with the real checkpoint files.
+
+- **The embeddinggemma-2 fold installs the upstream module paths at the model's own import** (the E2 round-5
+  serve): the vendored vLLM model module's first statements are
+  `from transformers.models.embedding_gemma2...`, and the pinned image's transformers does not carry the
+  package, so importing the model in a process where the fold's patch had not applied died at engine init
+  with `ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'`.  Importing the fold
+  package -- which every import of the folded model module does first -- now installs the folded modules
+  under their upstream names before any folded module body runs (idempotent; inert where the library
+  already carries the classes), so the model's imports resolve in every process that imports it, whatever
+  loaded the plugin; the patch stays the early install, before vLLM parses the checkpoint's `config.json`,
+  and `register` applies the opted-in patches before it registers the architectures.  The folded classes
+  are also set on the fold package, the module their `__module__` names, so the checkpoint's config can be
+  pickled when vLLM spawns the engine core.  Verified on CPU with the real vLLM nightly source and
+  transformers 5.17.0, with the patch opted in and with it not applied at all.
 
 - **The tokenizer's split parse and the pooling endpoint's `document_split_special_tokens`** (the E2 round-2
   wave's pplx-embed-v2-context gap): `TextTokenizer.ids`/`count`/`offsets` gain
