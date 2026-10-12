@@ -192,6 +192,89 @@ class TestResume:
         fresh = JudgementStore(tmp_path / "clean").read("rubric").judgements
         assert window_coverage(resumed, ("rubric",)) == window_coverage(fresh, ("rubric",))
 
+    def test_a_resumed_tournament_refusal_supersedes_its_later_phase_windows(self, tmp_path: Path) -> None:
+        """The tournament numbers a window sequence per call (each random and stratified window is asked with
+        its mirror), so a resumed refusal must retire the first fit's stratified and adaptive windows too: the
+        refit reads one generation and the resumed store's window set equals a clean pass's."""
+        from rcp_ndcg.judging import TournamentSchedule
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = TournamentSchedule(
+            window=5, random_placements=2.0, stratified_placements=1.0, adaptive_batches=1, adaptive_placements=1.0
+        )
+        n_random, _, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        first = judge(rows, None, _RefusesOne(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        assert any(not j.valid for j in first.judgements)
+        judge(rows, None, FakeJudge(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        records = list(JudgementStore(tmp_path).records("tournament").values())
+        valid = [j for j in records if j.valid]
+        superseded = [j for j in records if j.invalid_category == "superseded"]
+        assert superseded, "the first fit's later-phase windows are retired, not kept as valid"
+        clean = judge(rows, None, FakeJudge(ability), stage="tournament", out=tmp_path / "clean", schedule=schedule)
+
+        def window_set(judgements):
+            return {(j.window_seq, tuple(p.doc_id for p in j.placements)) for j in judgements}
+
+        assert window_set(valid) == window_set(clean.judgements)
+
+    def test_a_full_tournament_resume_leaves_a_subset_passs_windows_alone(self, tmp_path: Path) -> None:
+        """A `docs=` subset runs the tournament on its own pool, so its windows hold the subset's effective
+        window: a full pass resuming a refusal retires its own generation only, never the subset's."""
+        from rcp_ndcg.judging import TournamentSchedule
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(6)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = TournamentSchedule(
+            window=5, random_placements=2.0, stratified_placements=1.0, adaptive_batches=1, adaptive_placements=1.0
+        )
+        n_random, _, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        before = {j.record_id for j in JudgementStore(tmp_path).records("tournament").values() if j.valid}
+        judge(
+            rows, None, FakeJudge(ability), stage="tournament", out=tmp_path, schedule=schedule,
+            docs={"q": docs[:4]},
+        )  # fmt: skip
+        subset = {j.record_id for j in JudgementStore(tmp_path).records("tournament").values() if j.valid} - before
+        assert subset, "the subset pass asked no window"
+        judge(rows, None, FakeJudge(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        records = {j.record_id: j for j in JudgementStore(tmp_path).records("tournament").values()}
+        assert any(j.invalid_category == "superseded" for j in records.values()), "the full pass retired nothing"
+        retired = {record_id for record_id, j in records.items() if j.invalid_category == "superseded"}
+        assert not (subset & retired), "the full pass retired the subset pass's windows"
+
     def test_a_docs_subset_resume_retires_its_own_first_generation(self, tmp_path: Path) -> None:
         """A `docs=` pass runs the schedule on its own subset: resuming it re-asks its refused window and
         retires the subset's own later-phase windows, so its refit reads one generation."""
@@ -648,6 +731,18 @@ class TestTheWindowTextBudget:
         assert bodies and all(html.unescape(body) == self.DOCS[body.split()[0]].strip() for body in bodies)
         assert "no tokenizer" in caplog.text
 
+    def test_a_tokenizer_without_a_context_warns_that_no_window_budget_is_counted(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture, word_tokenizer_file: Path
+    ) -> None:
+        """A judge that names a tokenizer but no ``context_tokens`` has no per-window text budget: the windows
+        send the documents as the load-time policy left them and the engine's context is the only bound, so the
+        pass says so (the shipped judges that declare no context are deliberate, never silent)."""
+        fake = _tokenized(_fake(), word_tokenizer_file)
+        assert fake.config.context_tokens is None
+        with caplog.at_level(logging.WARNING):
+            _rubric(tmp_path, fake)
+        assert "context_tokens" in caplog.text and "no per-window text budget" in caplog.text
+
 
 class TestTheTokenizer:
     def test_a_policy_that_cuts_without_a_tokenizer_is_refused_before_a_call(self, tmp_path: Path) -> None:
@@ -1092,6 +1187,10 @@ class TestIdentities:
         assert second_family.text_formatting == "rcp-text/999"
         assert second_family.key != first_family.key
         assert not {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements}
+        # A resume of the first store under the bumped rule re-asks (a new store) instead of reusing
+        # judgements built from the old strings: the store's identity carries the formatting version.
+        with pytest.raises(IdentityError, match="text_formatting"):
+            _rubric(tmp_path / "a")
 
     def test_another_fake_seed_is_another_instrument(self, tmp_path: Path) -> None:
         """The offline judge's seed decides every draw, so it is part of the instrument: two seeds never

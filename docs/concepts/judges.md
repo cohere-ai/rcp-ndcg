@@ -77,7 +77,7 @@ A recipe whose weights do not fit one GPU declares the smallest tensor parallel 
 useful cache, and documents its H100 shape as a `serve --set resources.gpus=<n>` override in the recipe notes
 (one B200 or one H100 is the default serving environment; throughput scales by replicas).
 The table's "the model's" context is the paper's TREC-DL preset, which declared no `context_tokens`: documents
-are sent whole and the engine's own context bounds the window.
+are sent whole and the engine's own context bounds the window (the pass warns that no window budget is counted).
 
 Every shipped judge recipe sends its checkpoint's own generation defaults: the `client` block's `temperature`
 and `extra_body` (`top_p`/`top_k`) are the values the checkpoint's `generation_config.json` declares at the
@@ -265,7 +265,8 @@ reproducible from the store after its file moves or changes.
   window refits under the new answer: the later-phase windows its first fit selected are retired with an
   appended ``superseded`` tombstone and asked again, so the fit never reads two generations of one query's
   schedule (and the stage file stays append-only, as the mirror's immutable parts require). The retirement is
-  scoped to the pass's own generation -- its schedule's window sequences and its units -- so a full pass never
+  scoped to the pass's own generation -- its schedule's window sequences (per call: the tournament's mirrors
+  are in), their window sizes and its units -- so a full pass never
   retires a subset pass's windows and a subset pass never retires the full pass's; a planned pass with
   `windows=` runs no schedule and retires nothing. The calibration's coverage does not count a tombstone as an
   invalid window, and `run status` counts the live records.
