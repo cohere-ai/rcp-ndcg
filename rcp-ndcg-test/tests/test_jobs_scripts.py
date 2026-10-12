@@ -1920,10 +1920,15 @@ def test_judgecheck_pins_the_ten_judges_to_the_catalog_and_the_checklists_six_fi
         assert recipe.client.get("tokenizer"), recipe_id  # a served judge declares its tokenizer
     import re
 
-    recipes_root = JOBS.parents[3] / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    # The shipped package data, never a checkout path: a dirty worktree's stale directories are not recipes.
     judge_ids = set()
-    for family in sorted(path for path in recipes_root.iterdir() if path.is_dir()):
-        text = (family / "family.yaml").read_text(encoding="utf-8")
+    for family in sorted(default_recipes_root().iterdir()):
+        yaml_path = family / "family.yaml"
+        if not yaml_path.is_file():
+            continue
+        text = yaml_path.read_text(encoding="utf-8")
         if "role: judge" not in text:
             continue
         judge_ids.update(re.findall(r"^\s+- id: (\S+)\s*$", text, flags=re.MULTILINE))
@@ -1955,9 +1960,9 @@ def test_judgecheck_vision_toggle_is_the_gemma_recipe_s_documented_choice() -> N
     """The Gemma 4 recipe's own note documents the thinking-on toggle verbatim (`--set judge.extra_body`
     with `chat_template_kwargs.enable_thinking`); the helper's vision-family switch is that choice, so a
     changed recipe note fails here before the node runs a different instrument."""
-    notes = (
-        JOBS.parents[3] / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes" / "gemma-4-12b" / "family.yaml"
-    ).read_text(encoding="utf-8")
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    notes = (default_recipes_root() / "gemma-4-12b" / "family.yaml").read_text(encoding="utf-8")
     assert '"chat_template_kwargs": {"enable_thinking": true}' in notes
     assert "the parser reads the template kwarg, not reasoning_effort" in notes
 
