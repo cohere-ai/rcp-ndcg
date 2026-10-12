@@ -314,7 +314,10 @@ class PoolingClient(RoleClient):
         the same count the fit verified -- so the ids are what the engine reads; a reply whose vector count
         disagrees is a typed error. A document under ``document_split_special_tokens`` is tokenised with the
         reference's split parse (an added SPECIAL token textified: the pplx-embed-v2-context plugin's id
-        contract), the query side always with the file's own parse. A MEDIA item's ids are its sent text's
+        contract); a query under ``query_split_special_tokens`` is the reference's prefix-plus-body
+        construction (the fixed head's added ids followed by the split-parsed body, via
+        :meth:`~rcp_ndcg.data.templates.TemplateSpec.split_ids`); otherwise the file's own parse. A MEDIA
+        item's ids are its sent text's
         (a caption): the messages route's
         render is the engine's chat-template render, which the client cannot tokenise, so those ids feed the
         declared kept count under ``document_skip_engine_side`` (the caption's positions) and are otherwise
@@ -329,6 +332,12 @@ class PoolingClient(RoleClient):
         assert self._tokenizer is not None, "the config refuses tracked ids without a tokenizer (inert without one)"
         shape: RequestShape = "query" if role is EncodeRole.QUERY else "document"
         flag = self.config.template.adds_special_tokens(shape) if self.config.template is not None else True
+        if role is EncodeRole.QUERY and self.config.query_split_special_tokens:
+            template = self.config.template
+            assert template is not None, "the config refuses the query split without a template"
+            return tuple(
+                tuple(template.split_ids("query", self._tokenizer, text, add_special_tokens=flag)) for text in texts
+            )
         split = role is EncodeRole.DOCUMENT and bool(self.config.document_split_special_tokens)
         return tuple(
             tuple(self._tokenizer.ids(text, add_special_tokens=flag, split_special_tokens=split)) for text in texts

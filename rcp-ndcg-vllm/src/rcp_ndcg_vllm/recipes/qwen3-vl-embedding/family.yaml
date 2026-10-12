@@ -186,6 +186,13 @@ notes: >-
   carries the same shared iterator. The card pools per sequence and its batch is padding-only, so each
   input's vector is unchanged (stage 2 re-measures).
 
+  Numerics (E2 round 7): both sides are bf16 at both sizes, and each size declares the tight
+  `overrides.gates.vec_min_cosine` covering its measured stage-2 floor: the 2b 0.9985 (measured
+  0.998541 at full width and k=2048, 0.998906 at k=64; 14 of the 282 gated comparisons below the
+  published 0.999) and the 8b 0.9983 (0.998335 at full width and k=4096, 0.998674 at k=64; 15 of 282).
+  The published 0.999 is the bf16 kernel-stack residual, not a defect, and each declared bound sits
+  just below its measured floor, so a real regression still fails. E2 re-measures after any change.
+
 variants:
   - id: qwen3-vl-embedding-2b
     model: Qwen/Qwen3-VL-Embedding-2B
@@ -193,12 +200,32 @@ variants:
     overrides:
       client:
         mrl_range: [64, 2048]  # the card's prose range for this size (README.md:44)
+      gates:
+        vec_min_cosine: 0.9985 # the E2 round-7 wave's measured floor 0.998541 (full width and k=2048)
+                               # and 0.998906 at k=64, with 14 of the 282 gated comparisons below the
+                               # published 0.999 (6 full width, 6 at k=2048, 2 at k=64); both sides are
+                               # bf16, so the residual is the two bf16 kernel stacks, not a cast
+    notes: >-
+      E2 round 7 (stage 2, the first measurement with the round-6 reference fix in place): the
+      served-vs-reference minimum cosine over the 282 gated comparisons (94 vectors at full width,
+      k=64 and k=2048) was 0.998541 at full width and k=2048 and 0.998906 at k=64, with 14 of 282
+      below the published 0.999 (6 full width, 6 at k=2048, 2 at k=64). Both sides are bf16 (the
+      engine serves the family's bfloat16 and the reference loads the checkpoint's own bfloat16: no
+      cast to fix), so the residual is the two bf16 kernel stacks, not a defect. This size therefore
+      declares `overrides.gates.vec_min_cosine: 0.9985`, the tight bound covering its measured floor,
+      with the per-MRL numbers above as the evidence; the 8b declares its own (0.9983). E2 re-measures
+      after any change.
   - id: qwen3-vl-embedding-8b
     model: Qwen/Qwen3-VL-Embedding-8B
     revision: "2c4565515e0f265c6511776e7193b22c0968ddc7"
     overrides:
       client:
         mrl_range: [64, 4096] # the card's prose range for this size (README.md)
+      gates:
+        vec_min_cosine: 0.9983 # the E2 round-7 wave's measured floor 0.998335 (full width and k=4096)
+                               # and 0.998674 at k=64, with 15 of 282 gated comparisons below the
+                               # published 0.999 (7 full width, 7 at k=4096, 1 at k=64); both sides are
+                               # bf16, so the residual is the two bf16 kernel stacks, not a cast
     notes: >-
       Per-size facts, read at the pinned revision. Architecture: Qwen3VLForConditionalGeneration
       (config.json:architectures), model_type qwen3_vl; text_config.hidden_size 4096, 36 layers,

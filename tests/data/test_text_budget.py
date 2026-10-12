@@ -235,6 +235,29 @@ class TestTemplateSpec:
         with pytest.raises(ConfigError, match="pair"):
             query_template().render("pair", FRAMED, query="q")
 
+    def test_split_ids_keep_the_frame_and_split_only_the_content(self) -> None:
+        """``split_ids``: the reference's own construction for a query -- the fixed frame tokenizes with
+        the file's own parse (its special crosses as its added id, the reference's prefix id) and the
+        content span with ``split_special_tokens=True`` (an added SPECIAL spelling in the content
+        textifies). A shape that does not end on its content span has no such construction and is
+        refused, never tokenized some other way."""
+        spec = TemplateSpec(query=(Segment(fixed="{special:[Q] }"), Segment(content="query")))
+        body = "what is [Q] x"  # a literal spelling of the tokenizer's added special
+        text = spec.render("query", SPACED, query=body)
+        assert text == "[Q] " + body
+        expected = [*SPACED.ids("[Q] "), *SPACED.ids(body, split_special_tokens=True)]
+        assert spec.split_ids("query", SPACED, text) == expected
+        assert spec.split_ids("query", SPACED, text) != SPACED.ids(text), (
+            "the whole-render parse is not the reference's construction"
+        )
+        tailed = TemplateSpec(
+            query=(Segment(fixed="{special:[Q] }"), Segment(content="query"), Segment(fixed=" [END]"))
+        )
+        with pytest.raises(ConfigError, match="content"):
+            tailed.split_ids("query", SPACED, tailed.render("query", SPACED, query=body))
+        with pytest.raises(ConfigError, match="render"):
+            spec.split_ids("query", SPACED, "not the shape's render")
+
     def test_a_last_content_anchor_needs_no_fixed_tail(self) -> None:
         """``anchor: last_content`` (jina-embeddings-v5): the model pools the last real token of raw text, so
         the shape may end on a content span -- which ``anchor: last`` refuses, because there the model reads

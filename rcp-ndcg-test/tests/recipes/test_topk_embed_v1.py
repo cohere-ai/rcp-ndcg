@@ -579,6 +579,63 @@ def test_the_layer_type_shim_aliases_only_the_new_name() -> None:
     assert not hasattr(Neither, "layer_type"), "no new name: nothing to alias"
 
 
+def test_the_rope_shim_promotes_the_cards_two_dimensional_position_ids() -> None:
+    """E2 round 7: the checkpoint's remote code builds 2-D position ids for text-only rows (the
+    measured ``topk_embed_st.py`` text branch: ``within.unsqueeze(0)``, shape ``(1, total)``; its
+    image branch already stacks to ``(3, 1, total)``), while transformers 5.17's
+    ``Qwen3_5RotaryEmbedding.forward`` indexes a 3-D ``(3, bs, positions)`` tensor
+    (``position_ids[:, :, None, :]``, ``modeling_qwen3_5.py:192``): every text-only embed died with
+    ``IndexError: too many indices for tensor of dimension 2`` (the r4 wave). The declared shim
+    promotes a 2-D input to ``(3, bs, positions)`` -- the three grids equal, which is the text-only
+    case -- and leaves a 3-D input untouched, so the remote code's image path is unchanged. A class
+    the shim already wrapped is not wrapped again."""
+    import importlib.util
+
+    import torch
+
+    spec = importlib.util.spec_from_file_location("topk_reference_rope_shim", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+
+    class Rope517:
+        """transformers 5.17's shape: the forward indexes a 3-D ``(3, bs, positions)`` tensor."""
+
+        seen: torch.Tensor | None = None
+
+        def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+            self.seen = position_ids
+            return position_ids[:, :, None, :]
+
+    module._promote_qwen3_5_rope_position_ids(Rope517)
+
+    rope = Rope517()
+    text = torch.tensor([[0, 1, 2]])
+    out = rope.forward(torch.zeros(1), text)
+    assert rope.seen is not None and tuple(rope.seen.shape) == (3, 1, 3)
+    assert torch.equal(rope.seen[0], text), "the promoted grid is the 2-D input"
+    assert torch.equal(rope.seen[1], text) and torch.equal(rope.seen[2], text), (
+        "a text-only row uses the same grid on all three mrope axes"
+    )
+    assert tuple(out.shape) == (3, 1, 1, 3)
+
+    rope = Rope517()
+    stacked = torch.stack([text, text + 10, text + 20]).unsqueeze(1)  # the remote code's image shape
+    rope.forward(torch.zeros(1), stacked)
+    assert rope.seen is not None and torch.equal(rope.seen, stacked), "a 3-D input is never re-promoted"
+
+    # Installing twice does not nest the wrappers: the seen tensor is still the promoted shape once.
+    module._promote_qwen3_5_rope_position_ids(Rope517)
+    rope = Rope517()
+    rope.forward(torch.zeros(1), text)
+    assert rope.seen is not None and tuple(rope.seen.shape) == (3, 1, 3)
+
+
 def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(
     tmp_path: Path, tokenizer, variant_id: str
 ) -> None:

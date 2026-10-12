@@ -1180,6 +1180,31 @@ def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> N
     )
 
 
+def test_a_zero_vector_pair_is_an_agreement_not_a_cosine_failure() -> None:
+    """E2 round 7: the pplx-embed-v2-context empty-document row pools the model's own empty-chunk
+    branch on both sides -- the reference's char spans cover no token, and the served plugin (after
+    the prefix-space fix) pools none either -- so both vectors are the zero vector. A cosine has no
+    direction there, and mapping it to 0.0 failed a perfect agreement (the wave's 0.0 min_cosine).
+    Two zero vectors are the same degenerate output and score 1.0; a zero against a non-zero vector
+    still scores 0.0 and fails, so a one-sided degenerate output is still caught."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    recipe = load("fixture-embed")
+    gates = resolve_gates(recipe)
+    per_vector: list[dict[str, Any]] = []
+    stages_module._compare_shape(recipe, [[[0.0, 0.0]]], [[0.0, 0.0]], 0, "document", per_vector, gates)
+    assert per_vector and per_vector[0]["cosine"] == 1.0
+    assert per_vector[0]["within"] is True
+    assert stages_module._vector_summary(recipe, per_vector, gates)["passed"] is True
+
+    per_vector = []
+    stages_module._compare_shape(recipe, [[[0.0, 0.0]]], [[1.0, 0.0]], 0, "document", per_vector, gates)
+    assert per_vector and per_vector[0]["cosine"] == 0.0
+    assert per_vector[0]["within"] is False
+    assert stages_module._vector_summary(recipe, per_vector, gates)["passed"] is False
+
+
 def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
     """A served vector whose width differs from the reference's is a named gate failure carrying both
     widths -- never a ValueError out of the cosine (MRL's declared dimension makes this live: a served

@@ -25,6 +25,15 @@ embed mode (about 4.4 GB of weights). ``--mode render`` needs only ``huggingface
 ``tokenizers``: it reads the pinned ``config.json``, ``tokenizer_config.json``,
 ``sentence_bert_config.json`` and ``tokenizer.json`` and never imports torch.
 
+Declared shims (the reference runs on the image's transformers stack, not the checkpoint's 5.9.0 pin;
+the environment's exact pins are in ``reference.in``/``reference.lock`` beside this file):
+``_alias_qwen3_5_layer_type`` aliases transformers 5.10+'s renamed ``block_type`` to the
+``layer_type`` the remote ``hf_backbone.py:178`` reads, and ``_promote_qwen3_5_rope_position_ids``
+promotes the remote code's 2-D text position ids to the 3-D mrope form transformers 5.17's
+``Qwen3_5RotaryEmbedding.forward`` requires (``modeling_qwen3_5.py:192``). Nothing else is patched:
+a checkpoint whose remote code needs more of 5.9, or a runtime whose classes carry neither name,
+fails loudly at its own call.
+
 Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
 
     reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> [--device <d>]
@@ -66,6 +75,7 @@ code path and the modes.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 from pathlib import Path
 from typing import Any
@@ -242,6 +252,44 @@ def _alias_qwen3_5_layer_type(layer_cls: Any = None) -> None:
         layer_cls.layer_type = property(lambda self: self.block_type)  # type: ignore[attr-defined]
 
 
+def _promote_qwen3_5_rope_position_ids(rope_cls: Any = None) -> None:
+    """Promote the remote code's 2-D text position ids to the 3-D mrope form transformers 5.17 requires.
+
+    The checkpoint's ``topk_embed_st.py`` builds the rope positions in two shapes: its text branch
+    passes ``within.unsqueeze(0)`` -- 2-D, ``(1, total)`` -- and its image branch stacks the three
+    grids into ``(3, 1, total)``. transformers 5.17's ``Qwen3_5RotaryEmbedding.forward`` reads only
+    the 3-D form (``position_ids[:, :, None, :]``, ``modeling_qwen3_5.py:192``), so every text-only
+    embed died with ``IndexError: too many indices for tensor of dimension 2`` (the r4 wave, after
+    the ``layer_type`` shim let the load get that far). The wrapper promotes a 2-D input to
+    ``(3, bs, positions)`` -- the three axes equal, which is exactly the text-only case the remote
+    code's own image branch shows the layout for -- and passes a 3-D input through unchanged, so the
+    image path is untouched. transformers 5.9, the version the checkpoint pins, accepted the 2-D
+    form; this keeps the reference on the image's transformers stack, like the ``layer_type`` shim
+    beside it.
+
+    Args:
+        rope_cls: The rotary-embedding class to shim; ``None`` imports transformers' own. A seam for
+            the CPU test, which runs without transformers.
+    """
+    if rope_cls is None:
+        try:
+            from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5RotaryEmbedding as rope_cls
+        except ImportError:  # a transformers without the class: the remote code will say so itself
+            return
+    original = rope_cls.forward
+    if getattr(original, "_rcp_accepts_2d_position_ids", False):
+        return  # installed already: never wrap the wrapper
+
+    @functools.wraps(original)
+    def forward(self: Any, x: Any, position_ids: Any) -> Any:
+        if position_ids.ndim == 2:
+            position_ids = position_ids.unsqueeze(0).expand(3, *position_ids.shape)
+        return original(self, x, position_ids)
+
+    forward._rcp_accepts_2d_position_ids = True  # type: ignore[attr-defined]
+    rope_cls.forward = forward  # type: ignore[method-assign]
+
+
 def _load_reference(device: str, model: str, revision: str, expected_dim: int) -> Any:
     """Load the model card's MultiVectorEncoder and assert the surface this file relies on.
 
@@ -253,6 +301,7 @@ def _load_reference(device: str, model: str, revision: str, expected_dim: int) -
     from sentence_transformers import MultiVectorEncoder
 
     _alias_qwen3_5_layer_type()
+    _promote_qwen3_5_rope_position_ids()
     model_obj = MultiVectorEncoder(
         model,
         revision=revision,

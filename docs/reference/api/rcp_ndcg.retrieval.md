@@ -541,6 +541,8 @@ class PluginPooling(rcp_ndcg.retrieval.config._ApiSelected, rcp_ndcg.inference.c
 
 - `query_prompt: str` = ''
 
+- `query_split_special_tokens: bool | None` = None
+
 - `recipe: str | None` = None
 
 - `request_shape: Literal['text', 'messages', 'token_ids']` = 'text'
@@ -846,6 +848,8 @@ class ServedPooling(rcp_ndcg.retrieval.config._ApiSelected, rcp_ndcg.inference.c
 - `query_max_tokens: int | None` = None
 
 - `query_prompt: str` = ''
+
+- `query_split_special_tokens: bool | None` = None
 
 - `recipe: str | None` = None
 
