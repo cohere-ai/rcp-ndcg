@@ -172,8 +172,10 @@ def _write(path: str, document: dict[str, Any]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """The helper's CLI: ``extra-body`` or ``media`` (see the module docstring)."""
-    parser = argparse.ArgumentParser(prog="judgecheck_probe.py", description=__doc__.splitlines()[0])
+    """The helper's CLI: ``modes`` or ``media`` (see the module docstring)."""
+    parser = argparse.ArgumentParser(
+        prog="judgecheck_probe.py", description="the judgecheck job's thinking-mode table and engine media probe"
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     modes = commands.add_parser("modes", help="the recipe's documented thinking modes, one per line")
