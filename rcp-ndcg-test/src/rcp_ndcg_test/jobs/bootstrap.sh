@@ -35,6 +35,9 @@
 # $RCP_GCS_AUTH_FILE is executed, never printed; HF_TOKEN reaches the engines from the job's secret.
 # A Cloud SDK it installs is put on PATH from the first of RCP_GCLOUD_SDK_DIRS holding a CLI (jobs/gcs.sh:
 # colon-separated, the SDK's usual locations when unset, no search when empty).
+# Wave mode's operator switches (submit.sh forwards them into the job spec): RCP_RECORD_CORPUS=1 adds
+# the wave runner's --record-corpus (the recording pass; unset leaves the argv byte-identical), and
+# RCP_REFERENCE_STORE reuses a previous wave's downloaded reference store.
 # The staged files must hash to the manifest rc_build.sh wrote; anything else fails fast, one line.
 
 set -euo pipefail
@@ -109,6 +112,40 @@ staged_plugin_wheel() {
     fi
   done
   return 1
+}
+
+# wave_command WAVE_LIST_FILE RECIPES_ROOT GPUS: print the wave-mode run_wave argv, one word per line
+# (the caller's exec and the tests' assertion read the same command).  The optional pieces are resolved
+# here: the pairs directory, the staged plugin wheel, a downloaded reference store, and the recording
+# pass's --record-corpus (RCP_RECORD_CORPUS=1; unset leaves the argv byte-identical).
+wave_command() {
+  local wave_list="$1" recipes_root="$2" gpus="$3"
+  local -a argv=(
+    --recipes "@$wave_list" --recipes-root "$recipes_root" --gpus "$gpus"
+    --out "$STATE/wave" --upload "$OUT_URI" --record
+    --failed-plugins "$STATE/plugin-failures.txt" --reference-root "$STATE/reference"
+  )
+  if [[ -n "${RCP_REFERENCE_STORE:-}" ]]; then
+    # A previous wave's downloaded reference store: the wave computes only the missing/stale outputs.
+    argv+=(--reference-store "$RCP_REFERENCE_STORE")
+  fi
+  if [[ "${RCP_RECORD_CORPUS:-0}" == "1" ]]; then
+    # The recording pass: the wave writes one observation corpus per recipe (the verification pass and
+    # the recording pass are separate waves: a corpus failure is a corpus re-run, not a recipe failure).
+    argv+=(--record-corpus)
+  fi
+  local plugin_wheel
+  if plugin_wheel="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+    argv+=(--plugin-wheel "$plugin_wheel")
+  fi
+  local candidate
+  for candidate in "$STAGE_DIR/pairs" "$STAGE_DIR"/extra/*/pairs; do
+    if [[ -d "$candidate" ]]; then
+      argv+=(--pairs-dir "$candidate")
+      break
+    fi
+  done
+  printf '%s\n' "${argv[@]}"
 }
 
 # --- the freeze-diff guard: the engine environment may gain exactly the declared plugins -------------
@@ -770,30 +807,10 @@ python3 "$REPORT_PY" emit --file "$REPORT"
 # --- wave mode: the wave runs through the client mechanism -------------------------------------------
 
 if [[ "$MODE" == "wave" ]]; then
-  pairs_args=()
-  for candidate in "$STAGE_DIR/pairs" "$STAGE_DIR"/extra/*/pairs; do
-    if [[ -d "$candidate" ]]; then
-      pairs_args+=(--pairs-dir "$candidate")
-      break
-    fi
-  done
-  plugin_wheel_args=()
-  if plugin_wheel="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
-    plugin_wheel_args+=(--plugin-wheel "$plugin_wheel")
-  fi
   gpus="$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 0)"
   echo "bootstrap: running the wave '$WAVE_NAME' on $gpus GPUs (list: $WAVE_LIST_FILE)" >&2
-  store_args=()
-  if [[ -n "${RCP_REFERENCE_STORE:-}" ]]; then
-    # A previous wave's downloaded reference store: the wave computes only the missing/stale outputs.
-    store_args=(--reference-store "$RCP_REFERENCE_STORE")
-  fi
-  exec "$STATE/client" python -m rcp_ndcg_test.jobs.run_wave \
-    --recipes "@$WAVE_LIST_FILE" --recipes-root "$RECIPES_ROOT" --gpus "$gpus" \
-    --out "$STATE/wave" --upload "$OUT_URI" --record \
-    --failed-plugins "$STATE/plugin-failures.txt" \
-    --reference-root "$STATE/reference" "${store_args[@]+${store_args[@]}}" \
-    "${plugin_wheel_args[@]+${plugin_wheel_args[@]}}" "${pairs_args[@]+${pairs_args[@]}}"
+  mapfile -t wave_argv < <(wave_command "$WAVE_LIST_FILE" "$RECIPES_ROOT" "$gpus")
+  exec "$STATE/client" python -m rcp_ndcg_test.jobs.run_wave "${wave_argv[@]}"
 fi
 }
 
