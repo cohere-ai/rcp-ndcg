@@ -1,11 +1,14 @@
 # Lane identity4 — the local-dataset content identity (the pre-tag review fix)
 
 **Lane:** `lane/identity4` (worktree outside the operator's checkout). **Base:** `rfc-0001` at `3217b5ed`,
-merged with its tip `9d119c5e` as `1dbfdec6` and, after that gate, with the current tip `0d613818` as
-`0b62931c`. **Gate:** `timeout 7200 bin/gate lane/identity4` on `0b62931c` (slot 3) — **GATE: PASS**, every
-step exit 0 (the SUMMARY is below; an earlier gate at `1dbfdec6`, slot 5, also passed, and its first attempt
-failed only the `recipes` step on a load-induced per-test timeout — see the Gate section). No GPU work;
-nothing pushed; `rfc-0001` was not merged into.
+merged with its tip `9d119c5e` as `1dbfdec6`, then with the then-tip `0d613818` as `0b62931c`, then with the
+then-tip `9c3adf0b` as `aaf60c36`. **Gate:** `timeout 7200 bin/gate lane/identity4` on `aaf60c36` (slot 3) —
+**GATE: PASS**, every step exit 0 (the SUMMARY is below; the two earlier gates at `1dbfdec6` and `0b62931c`
+passed too, and two attempts on heavily loaded machines failed a single per-test timeout each — the recipe
+stage-1 and topk tests, proven passing alone — see the Gate section). No GPU work; nothing pushed;
+`rfc-0001` was not merged into. **Integrated:** `rfc-0001` merged this lane's gated tree as `909ddca5`
+(parents `9c3adf0b` + `aaf60c36`, no conflicts); its later commits (`d2e1a70d` r8, `97f4b64b` confprep) are
+other lanes' work merged on top, so this branch is not re-merged with them.
 
 ## 1. Status
 
@@ -47,7 +50,11 @@ What this lane did:
 | `6486dcc5` | the docs, the regenerated surface (snapshot, schema, API page) and the CHANGELOG entries |
 | `1dbfdec6` | merge of `rfc-0001` (`9d119c5e`) into the lane, CHANGELOG conflict resolved (both bullets kept) |
 | `b1990d9b` | this report (first version) |
-| `0b62931c` | merge of `rfc-0001`'s current tip (`0d613818`, lanes names and mteb) into the lane, clean |
+| `0b62931c` | merge of `rfc-0001`'s then-tip (`0d613818`, lanes names and mteb) into the lane, clean |
+| `b88f1d11` | the report carries the `0b62931c` merge and gate |
+| `aaf60c36` | merge of `rfc-0001`'s then-tip (`9c3adf0b`, lane judge8) into the lane, clean (judging.py, its tests, judges.md and the CHANGELOG auto-merged; the judging suites re-run green) |
+| `cf4d80fe` | the report carries the judge8 merge and the `aaf60c36` gate |
+| `909ddca5` (on `rfc-0001`) | the integrator's merge of this lane's gated tree (`aaf60c36`); no conflicts |
 | the report commit | this report |
 
 No co-author lines, no attribution, nothing pushed.
@@ -159,7 +166,7 @@ clean exit=0 clean
 GATE: PASS
 ```
 
-After the merge with `rfc-0001`'s current tip (`0d613818`), the authoritative gate on the final tree:
+After the merge with `rfc-0001`'s then-tip (`0d613818`):
 
 ```
 rev lane/identity4 = 0b62931c (slot 3)
@@ -173,6 +180,33 @@ test-pkg exit=0 ================ 1140 passed, 229 skipped in 928.49s (0:15:28) =
 recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
 vllm-pkg exit=0 50 passed in 9.30s
 vllm-models exit=0 102 passed, 8 skipped in 72.59s (0:01:12)
+run_all exit=0   external_judges  ok
+leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
+human study: 67 checks, 67 match, 0 known deviations, 0 failed
+external LLM judges: 82 checks, 82 match, 0 known deviations, 0 failed
+public-names exit=0 public-names: clean (0 baselined hits remain)
+clean exit=0 clean
+GATE: PASS
+```
+
+After the merge with `rfc-0001`'s then-tip (`9c3adf0b`, lane judge8) — the authoritative gate on the final
+tree — an attempt at load ~150/96 failed one root test (`tests/retrieval/test_topk.py::
+TestTheSelectedSetIsAFunctionOfTheInputsOnly::test_a_huge_orthogonal_document_does_not_hide_the_true_winner`,
+`TimeoutError: the test exceeded its 60s per-test timeout` in a 100,000-query numpy call, untouched by this
+lane; it passes alone in 8.5s at load ~27), so it was retried when the load dropped:
+
+```
+rev lane/identity4 = aaf60c36 (slot 3)
+ruff-check exit=0 All checks passed!
+ruff-format exit=0 624 files already formatted
+basedpyright exit=0 0 errors, 0 warnings, 0 notes
+pytest exit=0 4145 passed, 155 skipped in 50.78s
+contract-docs exit=0 413 passed, 107 skipped in 40.61s
+mkdocs exit=0 INFO    -  Documentation built in 2.68 seconds
+test-pkg exit=0 ================ 1140 passed, 229 skipped in 884.61s (0:14:44) =================
+recipes exit=0 recipes: no failure outside the baseline (0 baseline failures remain, 0 fixed; pytest exit 0)
+vllm-pkg exit=0 50 passed in 8.45s
+vllm-models exit=0 102 passed, 8 skipped in 79.36s (0:01:19)
 run_all exit=0   external_judges  ok
 leaderboards: 1022 checks, 987 match, 35 known deviations, 0 failed
 human study: 67 checks, 67 match, 0 known deviations, 0 failed
