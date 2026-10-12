@@ -39,6 +39,17 @@ def _rubric(out: Path, judge_client: FakeJudge | None = None, **kwargs):
     return judge(ROWS, None, judge_client or _fake(), stage="rubric", out=out, **kwargs)
 
 
+def _rows_jsonl(rows: tuple[RankingExample, ...]) -> str:
+    """``rows`` as the ranking layout of a ``jsonl:`` dataset (the keys the pipeline's own fixture writes)."""
+    return "".join(
+        json.dumps(
+            {"query_id": row.id, "query": row.text, "doc_ids": row.doc_ids, "docs": row.docs, "qrels": row.qrels}
+        )
+        + "\n"
+        for row in rows
+    )
+
+
 def _tokenized(fake: FakeJudge, tokenizer: Path | str, **update) -> FakeJudge:
     """``fake`` with a tokenizer (and any other config fields) on its judge config."""
     fake.config = fake.config.model_copy(update={"tokenizer": str(tokenizer), **update})
@@ -1031,6 +1042,37 @@ class TestIdentities:
         (entry,) = JudgementStore(tmp_path).identities().values()
         assert entry["identity"]["dataset"]["name"] == "dataset"
         assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
+
+    def test_a_local_dataset_is_named_by_its_content_and_an_edited_file_is_refused(self, tmp_path: Path) -> None:
+        """A local source has no revision to pin it: the digest of the file its reader reads enters the store
+        identity, so editing ``rows.jsonl`` in place is another dataset -- refused, never reused (the same
+        bytes still resume)."""
+        from rcp_ndcg.data import load_dataset
+
+        rows = tmp_path / "rows.jsonl"
+        rows.write_text(_rows_jsonl(ROWS), encoding="utf-8")
+        store = tmp_path / "store"
+        first = _fake()
+        judge(load_dataset(f"jsonl:{rows}"), None, first, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+        assert first.usage.requests > 0
+        (entry,) = JudgementStore(store).identities().values()
+        assert entry["identity"]["dataset"]["content"]["dataset"], "a local source is named by its content"
+
+        # The same bytes are the same dataset: the store resumes.
+        again = _fake()
+        judge(load_dataset(f"jsonl:{rows}"), None, again, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+        assert again.usage.requests == 0
+
+        # An edited file is another dataset: the store refuses it, and no stored answer is reused.
+        lines = rows.read_text(encoding="utf-8").splitlines()
+        edited = json.loads(lines[0])
+        edited["docs"][0] = f"{edited['docs'][0]} (edited)"
+        rows.write_text("\n".join([json.dumps(edited), *lines[1:]]) + "\n", encoding="utf-8")
+        changed = _fake()
+        with pytest.raises(IdentityError, match="dataset.content") as refused:
+            judge(load_dataset(f"jsonl:{rows}"), None, changed, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+        assert any("dataset.content" in line for line in refused.value.details["differences"])
+        assert changed.usage.requests == 0
 
     def test_the_text_formatting_version_enters_the_family_and_the_record_ids(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
