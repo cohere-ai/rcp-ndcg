@@ -2109,6 +2109,13 @@
           "description": "The kubectl context; default the current one.",
           "title": "Context"
         },
+        "dshm_size": {
+          "default": "16Gi",
+          "description": "The ``sizeLimit`` of every pod's ``/dev/shm`` Memory ``emptyDir`` (a Kubernetes memory quantity with a binary unit: ``Ki``/``Mi``/``Gi``/``Ti``; default ``16Gi``). The engines' shared memory (NCCL, tensor transport) fits one engine comfortably; a phase that runs several engines in one container adds their requirements up, so raise it there. A bound is what keeps a runaway engine from exhausting the node's memory: without one, an unbounded Memory ``emptyDir`` can consume the node.",
+          "pattern": "^\\d+(\\.\\d+)?(Ki|Mi|Gi|Ti)$",
+          "title": "Dshm Size",
+          "type": "string"
+        },
         "engine_node_selector": {
           "additionalProperties": {
             "type": "string"
@@ -2260,6 +2267,7 @@
             "cache_volume": null,
             "constraints": null,
             "context": null,
+            "dshm_size": "16Gi",
             "engine_node_selector": {},
             "env": {},
             "image": null,

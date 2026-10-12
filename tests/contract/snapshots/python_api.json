@@ -20629,6 +20629,13 @@
             "required": false,
             "type": "str | None"
           },
+          "dshm_size": {
+            "alias": null,
+            "default": "16Gi",
+            "frozen": false,
+            "required": false,
+            "type": "str"
+          },
           "engine_node_selector": {
             "alias": null,
             "default": "<factory dict>",

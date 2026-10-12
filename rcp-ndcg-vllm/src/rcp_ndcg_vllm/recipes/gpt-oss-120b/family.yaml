@@ -1,11 +1,12 @@
-# The gpt-oss-120b judge family (decision 34): the paper's second judge, one variant.
+# The gpt-oss-120b judge family: the paper's second judge, one variant.
 #
-# The family's client block is rcp-ndcg's judge config (decision 15, R30). The serve block is the paper's
-# SGLang command translated to vLLM v0.31.0 flags (handover/specs/judge-catalog.md section 2). A text-only
-# judge: the checkpoint has no vision config, so no image_processor, no max_images and no media limit.
+# The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
+# rcp-ndcg reads `recipe: gpt-oss-120b` (this package carries no second model of a judge). The serve block is
+# the paper's SGLang command translated to vLLM v0.31.0 flags, every flag checked in the vLLM v0.31.0 source.
+# A text-only judge: the checkpoint has no vision config, so no image_processor, no max_images and no media
+# limit.
 #
-# Serving shape (owner decision 41): the weights fit one GPU of either class, so TP1 and throughput by
-# replicas.
+# Serving shape: the weights fit one GPU of either class (B200 or H100), so TP1 and throughput by replicas.
 id: gpt-oss-120b
 schema_version: "1"
 role: judge
@@ -37,7 +38,7 @@ serve:
 client:
   api: chat
   # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
-  # (2026-10-10 owner decision, superseding decision 4.3's paper sampling): the config declares no sampling
+  # (2026-10-10 owner decision, superseding the paper's run-level sampling): the config declares no sampling
   # parameters (bos/eos/pad and do_sample only), so the recipe sends temperature 0.0 -- greedy, the
   # config-without-sampling-parameters rule -- and no top_p/top_k. max_output_tokens stays 8192.
   temperature: 0.0
@@ -49,7 +50,7 @@ notes: >-
   The paper's second judge. Client block: max_output_tokens 8192, context_tokens 131072
   (the checkpoint's own maximum via YARN factor 32, and the engine's --max-model-len), concurrency 256,
   decoding json_schema. Text-only: no image_processor, no max_images.
-  Sampling (2026-10-10 owner decision, superseding decision 4.3's paper sampling): the checkpoint's own
+  Sampling (2026-10-10 owner decision, superseding the paper's run-level sampling): the checkpoint's own
   generation_config.json at the pinned revision declares no sampling parameters -- only bos_token_id,
   eos_token_id, pad_token_id, do_sample and transformers_version -- so the recipe sends temperature 0.0
   (greedy; the config-without-sampling-parameters rule) and no top_p/top_k. The paper's gpt-oss clients also
@@ -58,7 +59,7 @@ notes: >-
   `max_response_tokens: 12288` where this recipe keeps the preset's 8192 (a DECLARED DIVERGENCE, recorded).
   temperature and max_output_tokens are CONTENT fields of the judgement family, so this sampling change
   re-keys the family (the owner accepted the re-key): a judgement recorded before it never pools with one
-  recorded after -- see handover/reports/08bd-judge-recipes.md.
+  recorded after.
   Serving: vLLM's name for this checkpoint's reasoning parser is `openai_gptoss` (SGLang's was `gpt-oss`); vLLM
   also auto-selects it when unset, and the recipe declares it explicitly. No media flags.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper set none here).
@@ -73,14 +74,14 @@ notes: >-
     same -- no `--set` override is needed; the cache is tight (~1.8 full-length sequences, thousands of 2k
     windows), and a denser node runs one replica per GPU. Hopper serves MXFP4 natively.
   History: the paper served this judge as TP4 x DP2 on 8x B200 in its pooled configuration (the second-judge
-  TREC-DL run); the decision-41 shape is one TP1 replica per engine, scaled by replicas.
+  TREC-DL run); the one-GPU-per-replica shape is one TP1 replica per engine, scaled by replicas.
   Engine support: GptOssForCausalLM is in vLLM v0.31.0's registry (registry.py:123, module gpt_oss); the pin
-  equals the Hub head (checked 2026-10-09). status: unverified until the E2 judge wave passes (decision 1).
+  equals the Hub head (checked 2026-10-09). status: unverified until its GPU validation wave passes.
 sources:
   - "https://huggingface.co/api/models/openai/gpt-oss-120b (revision b5c939de8f754692c1647ca79fbf85e8c1e70f8a == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/openai/gpt-oss-120b/raw/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/config.json (GptOssForCausalLM, 36 layers, hidden 2880, head_dim 64, 8 KV heads, 128 local experts top-4, vocab 201 088, mpe 131 072 via YARN factor 32, sliding window 128 on alternating layers, quant_method mxfp4), model.safetensors.index.json (metadata.total_size 65 248 815 744 B, 15 shards)"
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser); reasoning/__init__.py:71-73 (openai_gptoss -> gptoss_reasoning_parser); model_executor/models/registry.py:123; model_executor/models/config.py:414-421 (mxfp4 -> gpt_oss_mxfp4)"
-  - "handover/specs/judge-catalog.md sections 1-3.2 (the catalog's facts, the pin and the parser-name translation)"
+  - "https://huggingface.co/openai/gpt-oss-120b (the model card: the recommended engine settings and the parser the serve block above translates)"
   - "experiments/paper/README.md at this tree's HEAD (the paper's judges ran on SGLang; this release serves the same checkpoints on vLLM v0.31.0)"
 status: {state: unverified, image: null, date: null, report: null}
 variants:

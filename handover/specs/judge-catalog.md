@@ -69,8 +69,15 @@ Evidence for the groupings, checked at the pinned revisions:
 - `decoding: json_schema`: the server constrains each answer to the stage's JSON schema (response_format
   json_schema, strict). Serve the model with its reasoning parser so the schema constrains the answer, not the
   reasoning; vLLM applies the grammar only after reasoning ends (`vllm/v1/structured_output/__init__.py:240-262`).
-- No temperature is sent: the server's default sampling, as the paper's runs used (`temperature: null` in every
-  preset and scenario).
+- **Sampling (decided 2026-10-10; decision 42):** every judge recipe sends its checkpoint's own
+  `generation_config.json` sampling at the pinned revision -- gemma-4-12b/26b/31b `temperature 1.0`, `top_p 0.95`,
+  `top_k 64`; qwen3.5-397b `0.6`/`0.95`/`20`; qwen3.6-27b, qwen3.8-27b and qwen3.8-flash-next `1.0`/`0.95`/`20`;
+  gpt-oss-120b `temperature 0.0` and no `top_p`/`top_k` (its config declares no sampling parameters) -- each
+  keeping its own `max_output_tokens` (8192 for gpt-oss-120b, 16384 for the others). The sampling fields are
+  CONTENT fields of the judgement family, so a change re-keys every judge family: the shipped values stand (the
+  owner's HF-default call), recorded in `00-MASTER.md` decision 42, the recipes' notes and the CHANGELOG. This
+  bullet supersedes the 2026-10-09 draft's "no temperature is sent" rule; the recipes' `client` blocks are the
+  authority wherever a per-family block below still quotes `temperature: null`.
 - Engine: the stock image `vllm/vllm-openai:v0.31.0` only (decision 2); SGLang is retired (workstream 08 A). Every
   judge's architecture is in vLLM v0.31.0's registry (section 4).
 - The recipe pins `revision` and the client's `tokenizer` at the same 40-hex commit (the `repo@revision` shape the
@@ -125,6 +132,12 @@ No `--quantization` flag is passed where the checkpoint quantises itself and vLL
 ---
 
 ## 3. The five families in detail
+
+**Sampling note (2026-10-10, decision 42):** the per-family blocks below quote the 2026-10-09 draft's client
+blocks (`temperature: null`); the shipped recipes send each checkpoint's own `generation_config.json` sampling
+instead -- gemma-4-12b/26b/31b 1.0/0.95/64, qwen3.5-397b 0.6/0.95/20, qwen3.6-27b and qwen3.8-27b 1.0/0.95/20,
+gpt-oss-120b temperature 0.0 with no `top_p`/`top_k` -- and keep their own `max_output_tokens`. The values in
+`handover/specs/judge-catalog.md` section 1 and the recipes' `client` blocks are the authority.
 
 Every variant's `variants` row carries: `id`, `model` (Hub repo), `revision`, and the per-variant overrides listed
 below. Everything else is the family's shared block. `resources.gpus` is the per-replica count, followed by the
