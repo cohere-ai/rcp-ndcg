@@ -17,7 +17,18 @@ import importlib, pkgutil, sys
 import rcp_ndcg_vllm
 
 skip = set({lazy!r})
-for module_info in pkgutil.walk_packages(rcp_ndcg_vllm.__path__, prefix="rcp_ndcg_vllm."):
+
+def walk(path, prefix):
+    # ``pkgutil.walk_packages`` imports every subpackage to walk into it, which would import a
+    # registry-lazy *package* (the embeddinggemma-2 fold: its import installs the folded modules under
+    # their upstream names) and defeat the skip list; this walk honours it.
+    for module_info in pkgutil.iter_modules(path, prefix):
+        yield module_info
+        if module_info.ispkg and module_info.name not in skip:
+            module = importlib.import_module(module_info.name)
+            yield from walk(module.__path__, module_info.name + ".")
+
+for module_info in walk(rcp_ndcg_vllm.__path__, "rcp_ndcg_vllm."):
     if module_info.name in skip:
         continue
     importlib.import_module(module_info.name)

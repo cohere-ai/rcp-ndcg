@@ -13,15 +13,18 @@ importable, the registration's effect on the real library.
 
 from __future__ import annotations
 
+import importlib.abc
+import importlib.machinery
 import importlib.util
 import json
 import logging
+import pickle
 import sys
 import types
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES
+from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES, embedding_gemma2
 from rcp_ndcg_vllm.models.embedding_gemma2 import (
     FOLD_MODULES,
     FOLD_PACKAGE,
@@ -34,6 +37,9 @@ from rcp_ndcg_vllm.models.embedding_gemma2 import (
 from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
 
 FOLD_DIR = Path(__file__).resolve().parents[2] / "src" / "rcp_ndcg_vllm" / "models" / "embedding_gemma2"
+#: The fold package itself: importing it installs the folded modules under their upstream names, before
+#: any folded module body runs (the vendored vLLM model's first imports).
+FOLD_PACKAGE_MODULE = "rcp_ndcg_vllm.models.embedding_gemma2.fold"
 #: The folded transformers 5.19.0 modules, installed under their upstream names.
 UPSTREAM_FILES = (
     "configuration_embedding_gemma2.py",
@@ -45,12 +51,26 @@ UPSTREAM_FILES = (
 VLLM_MODEL_FILE = "embedding_gemma2.py"
 
 
+class _UpstreamPackageBlocker(importlib.abc.MetaPathFinder):
+    """Makes ``transformers.models.embedding_gemma2`` unimportable: the pinned image's situation.
+
+    The engine image's transformers does not carry the package, and the fold's whole point is that the
+    vendored model's imports resolve anyway; a library that does carry it (5.19+) would otherwise win the
+    import and the test would exercise the library's modules instead of the folded ones.
+    """
+
+    def find_spec(self, fullname: str, path: object = None, target: object = None) -> None:  # noqa: ARG002
+        if fullname == FOLD_PACKAGE or fullname.startswith(f"{FOLD_PACKAGE}."):
+            raise ModuleNotFoundError(f"No module named {fullname!r}", name=fullname)
+        return None
+
+
 def test_the_registration_key_carries_exactly_the_fold_modules() -> None:
     """One home: the architecture key the recipe declares names the registration module and the folded
     files, and those are what the behaviour fingerprint hashes."""
     assert ARCHITECTURE_MODULES["EmbeddingGemma2Config"] == FOLD_MODULES
-    assert FOLD_MODULES[0] == "rcp_ndcg_vllm.models.embedding_gemma2"
-    assert FOLD_MODULES[1:] == tuple(
+    assert FOLD_MODULES[:2] == ("rcp_ndcg_vllm.models.embedding_gemma2", FOLD_PACKAGE_MODULE)
+    assert FOLD_MODULES[2:] == tuple(
         f"rcp_ndcg_vllm.models.embedding_gemma2.fold.{name.removesuffix('.py')}" for name in UPSTREAM_FILES
     )
     for module in FOLD_MODULES:
@@ -66,13 +86,92 @@ def test_the_model_key_names_the_folded_model_and_the_config_hook() -> None:
     model_modules = ARCHITECTURE_MODULES[MODEL_ARCHITECTURE]
     assert model_modules[0] == "rcp_ndcg_vllm.models.embedding_gemma2.config"
     assert "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2" in model_modules
-    assert model_modules[1] == "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2"
+    assert model_modules[1:3] == (
+        FOLD_PACKAGE_MODULE,
+        "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2",
+    )
     assert set(FOLD_MODULES[1:]) <= set(model_modules)
     for module in model_modules:
         spec = importlib.util.find_spec(module)
         assert spec is not None and spec.origin is not None, module
         assert Path(spec.origin).is_file(), module
     assert MODEL_QUALNAME == "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2:EmbeddingGemma2Model"
+
+
+def test_importing_the_fold_package_installs_the_fold_before_any_folded_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The vendored vLLM model's first statements are ``from transformers.models.embedding_gemma2...``
+    (E2 r1: the digest-pinned image's transformers does not carry the package), so importing the fold
+    package must install the folded modules under those upstream paths *before* any folded module body
+    runs -- E2 round 5's ``ModuleNotFoundError`` was the model module imported without the fold.  The
+    call is pinned with a stub: the real installation executes the folded files, which import the real
+    library (the transformers-gated test below exercises those imports)."""
+    calls: list[str] = []
+    fake_transformers = types.ModuleType("transformers")
+    # ``importlib.util.find_spec`` reads the module's spec; the fold package only probes availability.
+    fake_transformers.__spec__ = importlib.machinery.ModuleSpec("transformers", loader=None)
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    monkeypatch.setattr(embedding_gemma2, "install_fold", lambda: calls.append("install_fold"))
+    previous = sys.modules.pop(FOLD_PACKAGE_MODULE, None)
+
+    try:
+        importlib.import_module(FOLD_PACKAGE_MODULE)
+        assert calls == ["install_fold"], "the fold package must install the fold at its own import"
+    finally:
+        # The import runs once: a package left in ``sys.modules`` would not run its body for the next test.
+        sys.modules.pop(FOLD_PACKAGE_MODULE, None)
+        if previous is not None:
+            sys.modules[FOLD_PACKAGE_MODULE] = previous
+
+
+def test_the_vendored_models_upstream_imports_resolve_from_the_fold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E2 round 5: the vendored vLLM model's exact transformers imports resolve from the fold alone.
+
+    The library's own ``transformers.models.embedding_gemma2`` is blocked (the pinned image's
+    transformers does not carry the package), the modules are evicted, and only the fold package is
+    imported -- then the vendored model module's own import statements must resolve, to the *folded*
+    classes (their ``__module__`` is the fold package, which ``install_fold`` sets)."""
+    pytest.importorskip(
+        "transformers",
+        reason="transformers is not importable on this CPU environment; the upstream import path the "
+        "fold serves is verified in the engine image's environment (E2 wave) and in the lane's scratch venv",
+    )
+    from transformers.utils import is_vision_available
+
+    if not is_vision_available():
+        pytest.skip(
+            "the folded processor module's class body names upstream's vision-only import (inside "
+            "transformers' own ``is_vision_available`` guard), so a CPU environment without the vision "
+            "stack cannot install the fold; the engine image carries it"
+        )
+    for name in list(sys.modules):
+        if name == FOLD_PACKAGE or name.startswith(f"{FOLD_PACKAGE}."):
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(sys, "meta_path", [_UpstreamPackageBlocker(), *sys.meta_path])
+    previous = sys.modules.pop(FOLD_PACKAGE_MODULE, None)
+
+    try:
+        importlib.import_module(FOLD_PACKAGE_MODULE)
+
+        # The vendored model module's own import statements (fold/embedding_gemma2.py).
+        from transformers.models.embedding_gemma2.configuration_embedding_gemma2 import (
+            EmbeddingGemma2Config,
+            EmbeddingGemma2TextConfig,
+        )
+        from transformers.models.embedding_gemma2.processing_embedding_gemma2 import EmbeddingGemma2Processor
+
+        assert EmbeddingGemma2Config.model_type == HF_MODEL_TYPE
+        assert EmbeddingGemma2TextConfig.model_type == "embedding_gemma2_text"
+        assert EmbeddingGemma2Processor.__name__ == "EmbeddingGemma2Processor"
+        assert EmbeddingGemma2Config.__module__ == FOLD_PACKAGE_MODULE, "the folded class, not the library's"
+    finally:
+        # The import runs once: a package left in ``sys.modules`` would not run its body for the next test.
+        sys.modules.pop(FOLD_PACKAGE_MODULE, None)
+        if previous is not None:
+            sys.modules[FOLD_PACKAGE_MODULE] = previous
 
 
 def test_the_folded_modules_are_registry_lazy() -> None:
@@ -179,8 +278,8 @@ def test_install_fold_registers_the_classes_with_the_real_transformers(
     # carry it -- 5.17 does not; a 5.19+ environment takes the inert branch above and this test then
     # asserts the registration is already the library's own).
     monkeypatch.delitem(sys.modules, FOLD_PACKAGE)
-    for module in FOLD_MODULES[1:]:
-        monkeypatch.delitem(sys.modules, f"{FOLD_PACKAGE}.{module.rsplit('.', 1)[1]}", raising=False)
+    for name in UPSTREAM_FILES:
+        monkeypatch.delitem(sys.modules, f"{FOLD_PACKAGE}.{name.removesuffix('.py')}", raising=False)
     install_fold()
     install_fold()  # idempotent
 
@@ -198,3 +297,18 @@ def test_install_fold_registers_the_classes_with_the_real_transformers(
     assert AutoModel._model_mapping[type(config)] is not None
     text_config = config.text_config
     assert AutoModel._model_mapping[type(text_config)] is not None
+
+    # The folded classes declare the fold package as their ``__module__`` (transformers'
+    # ``_LazyAutoMapping.register`` refuses a key whose module starts with ``transformers.``), so that
+    # location must carry them: vLLM pickles the checkpoint's config when it spawns the engine core,
+    # and a class whose declared module has no such attribute cannot be pickled (E2 round 5).
+    folded = (
+        type(config),
+        type(text_config),
+        AutoModel._model_mapping[type(config)],
+        AutoModel._model_mapping[type(text_config)],
+    )
+    for cls in folded:
+        module = importlib.import_module(cls.__module__)
+        assert getattr(module, cls.__name__) is cls, cls.__name__
+    assert pickle.loads(pickle.dumps(config)).model_type == HF_MODEL_TYPE

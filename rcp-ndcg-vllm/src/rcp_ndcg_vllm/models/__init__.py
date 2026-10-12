@@ -1,10 +1,11 @@
 """The folded model plugins: one ``vllm.general_plugins`` entry point registering each architecture lazily.
 
 vLLM loads this group in every engine process at startup and calls :func:`register`, which guards the engine
-version once, registers each folded model's architecture and config class, and applies the opted-in engine
-patches of :mod:`rcp_ndcg_vllm.patches` (the one place the engine process reads ``RCP_NDCG_VLLM_PATCHES``).
-Every model class is registered as a lazy ``"module:Class"`` string, so the registry imports
-``rcp_ndcg_vllm.models.topk.model`` /
+version once, applies the opted-in engine patches of :mod:`rcp_ndcg_vllm.patches` (the one place the engine
+process reads ``RCP_NDCG_VLLM_PATCHES``; the embeddinggemma-2 fold's patch installs the folded transformers
+modules the folded model module imports, so it lands before the registrations), and registers each folded
+model's architecture and config class. Every model class is registered as a lazy ``"module:Class"`` string,
+so the registry imports ``rcp_ndcg_vllm.models.topk.model`` /
 ``rcp_ndcg_vllm.models.pplx.model`` only when a request for the architecture actually needs it; importing this
 package (or executing :func:`register`) never imports torch or vLLM here — the model modules do, inside vLLM.
 The topk and pplx distributions folded into this one wheel (layout-move item 3): there is a single
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 LAZY_MODEL_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models.embedding_gemma2.config",
+    "rcp_ndcg_vllm.models.embedding_gemma2.fold",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
@@ -95,22 +97,28 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     "PplxV1Config": ("rcp_ndcg_vllm.models.pplx.hf_config",),
     # The embeddinggemma-2 fold (the engine image the recipe pins reports vLLM 0.31.0, whose registry
     # carries neither the architecture nor the checkpoint's transformers classes): the registration
-    # module and the five folded upstream files the ``embeddinggemma2-transformers-fold`` patch
-    # installs -- transformers 5.19.0's configuration/processing/video-processing/modeling modules and
-    # vLLM nightly 8cbd5d03's ``embedding_gemma2`` model.  The plugin registers the model class and the
+    # module and the fold package with the five folded upstream files the
+    # ``embeddinggemma2-transformers-fold`` patch installs -- the ``fold`` package's import installs
+    # them under their upstream names before any folded module body runs, so the vendored vLLM model's
+    # own ``from transformers.models.embedding_gemma2...`` imports resolve in every process that imports
+    # it (transformers 5.19.0's configuration/processing/video-processing/modeling modules and vLLM
+    # nightly 8cbd5d03's ``embedding_gemma2`` model).  The plugin registers the model class and the
     # config hook (``register_embedding_gemma2``); the fold's files are keyed here for the recipe that
     # declares this registration.
     "EmbeddingGemma2Config": (
         "rcp_ndcg_vllm.models.embedding_gemma2",
+        "rcp_ndcg_vllm.models.embedding_gemma2.fold",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
     ),
     # The folded vLLM model itself (the architecture the image's registry lacks): the model module,
-    # upstream's config hook and the fold files the model's transformers imports resolve through.
+    # upstream's config hook and the fold package with the folded files the model's transformers imports
+    # resolve through.
     "EmbeddingGemma2Model": (
         "rcp_ndcg_vllm.models.embedding_gemma2.config",
+        "rcp_ndcg_vllm.models.embedding_gemma2.fold",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
@@ -132,11 +140,14 @@ __all__ = ["ARCHITECTURE_MODULES", "LAZY_MODEL_MODULES", "PLUGIN_ENGINE_MODULES"
 
 
 def register() -> None:
-    """Register every folded architecture with the running vLLM and apply the opted-in engine patches
+    """Apply the opted-in engine patches, then register every folded architecture with the running vLLM
     (idempotent; runs once per engine process).
 
     The version guard runs before the registries are touched, so an unsupported engine fails with an explicit
-    message instead of importing classes whose contracts may have moved.
+    message instead of importing classes whose contracts may have moved. The patches apply before the
+    architectures are registered: the embeddinggemma-2 fold's patch installs the folded transformers
+    modules under their upstream names, which is what the folded model module's own imports need (E2
+    round 5), and a registration must never land ahead of the code that makes it importable.
 
     Raises:
         RuntimeError: the running vLLM is outside the validated range
@@ -146,6 +157,10 @@ def register() -> None:
 
     require_vllm_version()
 
+    from rcp_ndcg_vllm.patches import apply_opted_in_patches
+
+    apply_opted_in_patches()
+
     from .embedding_gemma2 import register_embedding_gemma2
     from .pplx import register_pplx
     from .topk.plugin import register_topk
@@ -153,7 +168,3 @@ def register() -> None:
     register_topk()
     register_pplx()
     register_embedding_gemma2()
-
-    from rcp_ndcg_vllm.patches import apply_opted_in_patches
-
-    apply_opted_in_patches()
