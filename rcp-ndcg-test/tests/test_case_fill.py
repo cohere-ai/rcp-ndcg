@@ -69,11 +69,21 @@ _PENDING_NOTE = (
 )
 
 
-def _recipe_copy(tmp_path: Path, recipe_id: str, reference: str, *, root: Path | None = None) -> object:
+def _recipe_copy(
+    tmp_path: Path,
+    recipe_id: str,
+    reference: str,
+    *,
+    root: Path | None = None,
+    drop_template: bool = False,
+) -> object:
     """A copy of a recipe whose ``reference.py`` is ``reference`` and whose tokenizer resolves.
 
     ``root`` is the recipe's family directory (the fixture recipes by default); a shipped family passes
-    its own directory, since the family directory name is not the variant id.
+    its own directory, since the family directory name is not the variant id.  ``drop_template`` removes
+    the client template: the fixture embed recipes declare a document shape only, and the case loader
+    requires a query shape for an embed role when a template is declared (the fill's rows are the
+    reference's own pairs format, which the fake reads).
     """
     source = root if root is not None else RECIPES / recipe_id
     target = tmp_path / "recipes" / source.name  # the family directory name IS the family id
@@ -83,6 +93,10 @@ def _recipe_copy(tmp_path: Path, recipe_id: str, reference: str, *, root: Path |
     (target / "family.yaml").write_text(
         manifest.replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}"), encoding="utf-8"
     )
+    if drop_template:
+        data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
+        data["client"].pop("template", None)
+        (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return load_recipe(target)
 
 
@@ -121,7 +135,7 @@ def _write_case(
     return path
 
 
-def _pending_cases(tmp_path: Path, recipe_id: str, *, kind: str) -> Path:
+def _pending_cases(tmp_path: Path, recipe_id: str, *, kind: str, note: str = _PENDING_NOTE) -> Path:
     """A complete strata grid (the four required cells) of pending cases for one fixture recipe.
 
     Returns the cases root (the recipe's directory lives under it, as the loader expects).
@@ -130,9 +144,27 @@ def _pending_cases(tmp_path: Path, recipe_id: str, *, kind: str) -> Path:
     short = [{"id": "q1", "text": "the short query"}]
     one = [{"id": "d1", "text": "the short document"}]
     two = [{"id": "d1", "text": "the short document"}, {"id": "d2", "text": "another short document"}]
-    _write_case(directory, recipe_id, "gen-short", kind=kind, length="short", queries=short, documents=one)
-    _write_case(directory, recipe_id, "gen-long-under", kind=kind, length="long_under", queries=short, documents=one)
-    _write_case(directory, recipe_id, "gen-long-over", kind=kind, length="long_over", queries=short, documents=one)
+    _write_case(directory, recipe_id, "gen-short", kind=kind, length="short", queries=short, documents=one, note=note)
+    _write_case(
+        directory,
+        recipe_id,
+        "gen-long-under",
+        kind=kind,
+        length="long_under",
+        queries=short,
+        documents=one,
+        note=note,
+    )
+    _write_case(
+        directory,
+        recipe_id,
+        "gen-long-over",
+        kind=kind,
+        length="long_over",
+        queries=short,
+        documents=one,
+        note=note,
+    )
     _write_case(
         directory,
         recipe_id,
@@ -142,6 +174,7 @@ def _pending_cases(tmp_path: Path, recipe_id: str, *, kind: str) -> Path:
         batch="mixed_length",
         queries=[*short, {"id": "q2", "text": "the second query"}],
         documents=two,
+        note=note,
     )
     return tmp_path / "cases"
 
@@ -187,23 +220,26 @@ def test_the_fill_writes_the_references_scores_and_retires_the_pending_note(tmp_
 
 
 def test_the_fill_writes_the_similarity_matrix_from_the_references_vectors(tmp_path: Path) -> None:
-    """The embed path, over the real zembed-1-embedding cases: the matrix is the cosine of the
-    reference's own query and document vectors, and the zembed pending sentence is retired."""
+    """The embed path: the matrix is the cosine of the reference's own query and document vectors, and
+    the zembed family's pending note sentence is retired."""
     from rcp_ndcg_test.case_fill import fill_cases
-    from rcp_ndcg_vllm.recipe import default_recipes_root
 
-    recipe = _recipe_copy(tmp_path, "zembed-1-embedding", _EMBED_REFERENCE, root=default_recipes_root() / "zembed-1")
-    cases_root = tmp_path / "cases"
-    shutil.copytree(REAL_CASES / "zembed-1-embedding", cases_root / "zembed-1-embedding")
+    recipe = _recipe_copy(tmp_path, "fixture-embed", _EMBED_REFERENCE, drop_template=True)
+    cases_root = _pending_cases(
+        tmp_path,
+        "fixture-embed",
+        kind="similarity_matrix",
+        note="Values are filled by the GPU wave (reference + engine recorded).",
+    )
     report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
-    assert report.mode == "embed" and len(report.filled) == 7  # the card case is published, not pending
+    assert report.mode == "embed" and len(report.filled) == 4
 
-    short = load_case(_case(cases_root, "zembed-1-embedding", "short-single"))
+    short = load_case(_case(cases_root, "fixture-embed", "gen-short"))
     assert short.expected.values == [[1.0]]
     assert "Values are the outputs of the reference implementation itself" in short.notes
     assert "GPU wave (reference + engine recorded)" not in short.notes
-    mixed = load_case(_case(cases_root, "zembed-1-embedding", "short-uniform"))
-    assert mixed.expected.values == [[1.0, 0.0, 0.7071067690849304, 0.0], [1.0, 0.0, 0.7071067690849304, 0.0]]
+    mixed = load_case(_case(cases_root, "fixture-embed", "gen-mixed-lengths"))
+    assert mixed.expected.values == [[1.0, 0.0], [1.0, 0.0]]
 
 
 def test_a_media_case_is_refused_by_name_before_anything_is_written(tmp_path: Path) -> None:
