@@ -286,10 +286,14 @@ def _dataset_rows(
 
 
 def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any]:
-    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI and resolved revision.
+    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI, resolved revision and --
+    for a local source -- the content digest of what its reader reads.
 
     A local URI (a reader scheme whose location is a path, not ``scheme://``) enters with its path absolute and
-    normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset. The
+    normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset, and
+    with the digest of the files the reader reads (:func:`rcp_ndcg.data.revisions.dataset_content_digest`, the
+    same one home the run steps' identity consumes): a local source has no commit, so an edited ``rows.jsonl``
+    is another dataset and the store refuses it instead of reusing answers over texts the judge never saw. The
     query selection is left out: judging more queries of the same corpus extends the store. The dataset's
     **task instruction** is in: the model read it, so a pass whose instruction differs is another instrument.
 
@@ -316,7 +320,7 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
                 }
             ),
         }
-    from rcp_ndcg.data.revisions import dataset_uri_revision
+    from rcp_ndcg.data.revisions import dataset_content_digest, dataset_uri_revision
 
     payload: dict[str, Any] = {
         "name": name,
@@ -325,6 +329,9 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
         "uri": safe_url(_normalised_uri(source.uri)),
         "revision": dataset_uri_revision(source.uri, source.revision),
     }
+    content = dataset_content_digest(source.uri)
+    if content:
+        payload["content"] = content
     if source.task_instruction is not None:
         # Only a declared instruction is keyed: an absent one is the absence of a declaration, so a dataset
         # that carries none keeps the identity it had (the same rule identity_payload applies).

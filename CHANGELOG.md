@@ -1373,6 +1373,13 @@ owner pushes, with the move to a Hugging Face organisation).
   one parse of the whole render and is not re-keyed; the pplx-embed-v2-context recipe declares it. The
   contract snapshots, the exported schemas and the generated API pages record the field and the method
   (regenerate them as below).
+- **A local dataset source's content digest has one home**: `rcp_ndcg.data.revisions` gains
+  `dataset_content_digest(uri, options=None)` -- the digest of the files a local source's reader reads (a
+  file's bytes; a directory's sorted listing of names, sizes and mtimes), empty for a remote source -- and
+  `dataset_local_locations(uri, options=None)`, the locations a source's reader reads, listed without reading
+  them. The run steps' identity and the judgement store's dataset identity both consume them, so one rule
+  names a local source everywhere. The generated API page and the exported `judgement-store.v1.json` (the
+  `identity` description) record them (regenerate as below).
 - **`KubernetesOptions` gains `dshm_size`**: the `sizeLimit` of every pod's `/dev/shm` Memory `emptyDir`
   (`16Gi` by default; a Kubernetes memory quantity with a binary unit -- `Ki`/`Mi`/`Gi`/`Ti` -- refused
   otherwise). The rendered Job and engine-StatefulSet manifests carry it, so a runaway engine fails its pod
@@ -3569,6 +3576,14 @@ text it sends to the declared budget.
   from the pinned `--tokenizer` spec (`repo@revision`) and sets it through the remote class's own setter, so
   `prepare_inputs` never touches the dead key; a CPU test with a model whose property raises until it is set
   pins the fix.  The reference's stored outputs re-record under the changed reference-file hash.
+- **A local dataset's content names it in the judgement store, not only in the run**: the run steps' identity
+  already carried the digest of a local source's files (a `jsonl:` file's bytes; a `beir:` or `images:`
+  directory's sorted listing), but the store's dataset identity keyed a local source by its path and revision
+  only -- and a local source has no revision -- so editing `rows.jsonl` in place resumed the judging step and
+  silently reused judgements computed over the old texts. The digest now enters the store's dataset identity
+  too (one home: `rcp_ndcg.data.revisions.dataset_content_digest`): an edited file is another dataset, refused
+  with `IdentityError` naming `dataset.content` (or superseded with `force=True`), never pooled or reused.
+  Remote sources are unchanged: a resolved commit is the content, and no download is paid for the digest.
 
 ### Changed
 

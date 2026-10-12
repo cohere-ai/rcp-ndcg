@@ -157,7 +157,9 @@ def test_a_loaded_dataset_without_a_task_instruction_keeps_its_identity_key(tmp_
     judge(dataset, None, _Recording(), stage="rubric", out=tmp_path / "store", schedule=TINY_RUBRIC)
 
     identity = json.loads((tmp_path / "store" / "identity.json").read_text())
-    assert set(identity["stages"]["rubric"]["identity"]["dataset"]) == {"name", "uri", "revision"}
+    dataset_identity = identity["stages"]["rubric"]["identity"]["dataset"]
+    assert set(dataset_identity) == {"name", "uri", "revision", "content"}
+    assert set(dataset_identity["content"]) == {"dataset"}, "a beir: directory is named by its listing"
 
 
 def test_the_judge_reads_the_query_side_of_a_per_side_instruction(tmp_path: Path) -> None:

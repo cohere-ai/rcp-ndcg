@@ -1,4 +1,4 @@
-"""Resolve a HuggingFace dataset revision to the exact commit it names.
+"""What names a dataset source in an identity: the commit a Hub revision resolves to, and a local source's content.
 
 A dataset revision such as ``main`` (or none at all) is a moving pointer. Identities that must say *which* corpus
 was judged record the commit it resolved to instead (a judge's ``revision`` is recorded as configured):
@@ -17,6 +17,12 @@ was judged record the commit it resolved to instead (a judge's ``revision`` is r
 
 The result is cached per ``(repo_id, revision)`` for the life of the process, so an identity that is computed many
 times (a pipeline's resume checks) costs one metadata call per repository, not one per check.
+
+A **local** source (``jsonl:rows.jsonl``, a ``beir:`` directory, ...) has no revision to pin it. It is named by
+its content instead: :func:`dataset_content_digest` digests the files the reader reads -- a file's bytes, a
+directory's sorted listing -- so editing the file in place makes every step that read it stale and refuses the
+judgement store that holds the old bytes. :func:`dataset_local_locations` lists the locations a source's reader
+reads without reading them. A remote source carries its resolved commit and pays no content digest.
 """
 
 from __future__ import annotations
@@ -25,12 +31,16 @@ import functools
 import os
 import re
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from rcp_ndcg.errors import RcpNdcgWarning
+from rcp_ndcg.storage.artifacts import artifact_ref
+from rcp_ndcg.storage.uri import is_remote
+from rcp_ndcg.support.identity import hash_strings
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -38,6 +48,46 @@ logger = get_logger(__name__)
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _TRUE = {"1", "true", "yes", "on"}
+
+#: Reader schemes whose location is a local path (``hf://``, ``suite:`` and ``mteb:`` name remote data).
+_LOCAL_SCHEMES = ("beir", "jsonl", "images", "videos", "frames", "pdf")
+
+#: The per-process digest cache for local dataset files: ``(resolved path, size, mtime_ns) -> digest``.
+#: The files of a local dataset do not change under a run, and a resume check computes the identity many times;
+#: a full hash per check would cost a pass over a multi-GB corpus each time.  A changed size or mtime is a new
+#: key, so an edited file is re-hashed (a size+mtime pre-check, as the identity rules allow).
+_LOCAL_DIGEST_CACHE: dict[tuple[str, int, int], str] = {}
+
+
+def _local_source_digest(location: str) -> str | None:
+    """A content digest of one local dataset location, or ``None`` when it is not a readable path.
+
+    A file hashes as its bytes, streamed. A directory hashes as its sorted listing -- each file's relative
+    name, size and ``mtime_ns`` -- which is the cheap size+mtime pre-check for a corpus whose readers walk a
+    tree (``beir:``, ``images:``, ``videos:``, ``frames:``): an added, removed, renamed or re-encoded file
+    moves the digest, and a full content hash of every image is never paid.
+    """
+    path = Path(location)
+    try:
+        if path.is_file():
+            stat = path.stat()
+            key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+            cached = _LOCAL_DIGEST_CACHE.get(key)
+            if cached is not None:
+                return cached
+            digest = artifact_ref(path).sha256
+            if len(_LOCAL_DIGEST_CACHE) >= 64:
+                _LOCAL_DIGEST_CACHE.clear()
+            _LOCAL_DIGEST_CACHE[key] = digest
+            return digest
+        if path.is_dir():
+            entries = sorted(entry for entry in path.rglob("*") if entry.is_file())
+            return hash_strings(
+                [f"{entry.relative_to(path)}\0{entry.stat().st_size}\0{entry.stat().st_mtime_ns}" for entry in entries]
+            )
+    except OSError:
+        return None  # an unreadable source is the reader's error to report, not the identity's
+    return None
 
 
 @dataclass(frozen=True)
@@ -240,8 +290,54 @@ def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[s
     return {"repo": repo, **resolve_revision(repo, revision).identity()}
 
 
+def dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]:
+    """``{name: location}`` of the local locations a dataset URI's reader reads, without reading them.
+
+    The dataset location of a local reader scheme (``jsonl:``, ``beir:``, ``images:``, ``videos:``, ``frames:``,
+    ``pdf:``) is ``dataset``; every reader option whose name ends in ``_uri`` and whose value is a local path is
+    ``dataset.options.<key>``. A remote source (``hf://``, ``suite:``, ``mteb:``) and a remote option value are
+    absent: nothing local is named there.
+
+    Args:
+        uri: The dataset URI a :class:`~rcp_ndcg.data.Dataset` was loaded from.
+        options: The reader options it was loaded with (``qrels_uri``, ``queries_uri``, ...).
+    """
+    locations: dict[str, str] = {}
+    scheme, sep, rest = uri.partition(":")
+    if sep and scheme in _LOCAL_SCHEMES and rest and not is_remote(rest):
+        locations["dataset"] = rest
+    for key, value in (options or {}).items():
+        if key.endswith("_uri") and isinstance(value, str) and not is_remote(value):
+            locations[f"dataset.options.{key}"] = value
+    return locations
+
+
+def dataset_content_digest(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]:
+    """``{name: digest}`` of the local files a dataset URI's reader reads (empty for a remote or unreadable one).
+
+    The one home of a local dataset source's content identity, consumed by the run steps' identity
+    (:meth:`rcp_ndcg.runs.config.DatasetSource.identity`) and by the judgement store's dataset identity alike.
+    The names are :func:`dataset_local_locations`'s, so an identity can say which location moved. Remote
+    sources have a resolved commit and pay no download here.
+
+    Args:
+        uri: The dataset URI a :class:`~rcp_ndcg.data.Dataset` was loaded from.
+        options: The reader options it was loaded with (``qrels_uri``, ``queries_uri``, ...).
+
+    Returns:
+        ``{name: sha256}`` for every readable local location; empty when the source is remote or unreadable.
+    """
+    return {
+        name: digest
+        for name, location in dataset_local_locations(uri, options).items()
+        if (digest := _local_source_digest(location)) is not None
+    }
+
+
 __all__ = [
     "ResolvedRevision",
+    "dataset_content_digest",
+    "dataset_local_locations",
     "dataset_uri_revision",
     "is_commit",
     "resolve_revision",

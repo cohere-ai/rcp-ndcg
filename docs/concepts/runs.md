@@ -14,7 +14,10 @@ A run config names the dataset, the candidates, the judge and the steps (`retrie
 runs/<run_id>`) reuses every step whose identity is unchanged (a judging step's identity includes the prompt's
 text hash and the tokenizer's SHA-256; the steps that read the dataset carry its resolved commit, the title
 join mode and the instruction policy -- content fields of the role configs -- and the text-formatting rule's
-version, so a resume after the formatting changed re-runs them instead of reusing the old strings; a judging
+version, so a resume after the formatting changed re-runs them instead of reusing the old strings; a local
+dataset has no commit, so it carries the digest of the files its reader reads -- a `jsonl:` file's bytes, a
+`beir:` or `images:` directory's sorted listing -- the same digest the judgement store's dataset identity
+carries, so editing the file in place re-runs them; a judging
 step whose store holds the old identity refuses, naming the change and its way out, and `calibrate` keys on the
 judgement stores it reads, whose content already covers the formatting), and `rcp-ndcg run status` shows the
 state of each

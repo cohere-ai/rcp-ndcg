@@ -251,8 +251,11 @@ reproducible from the store after its file moves or changes.
   version header, and the first answer's `system_fingerprint`). This is runtime information: it never enters the
   identity, so a store resumed against another engine version adds a report instead of being refused. The dataset
   enters the identity by its name and URI and, for a Hub dataset, by the commit its revision resolved to, so a moved
-  upstream is refused. Local files have no such pin: editing the documents of a local dataset after judging it is
-  your responsibility, since the stored answers would then be paired with texts the judge never saw. Adding
+  upstream is refused. A local source has no commit, so it enters by the digest of the files its reader reads
+  (a file's bytes; a directory's sorted listing of names, sizes and mtimes --
+  `rcp_ndcg.data.revisions.dataset_content_digest`, the same digest the run steps' identity carries), so editing
+  the documents of a local dataset after judging it is refused as another dataset instead of pairing the stored
+  answers with texts the judge never saw. Adding
   documents is fine: only windows that show them are new.
 - **Concurrent writers.** The store is reader-safe by design and safe to overlap: two passes claiming two
   stages, or appending records of the same stage, serialize on an advisory lock on the store directory, and the

@@ -9,6 +9,7 @@ keeps ``HF_HUB_OFFLINE=1`` and an empty cache unless a test sets up otherwise.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 from pathlib import Path
@@ -247,4 +248,64 @@ def test_a_revision_that_is_not_exactly_a_commit_is_resolved_not_echoed(hub: Fak
 
     assert seen[0].message.code == "UNPINNED_REVISION"
     assert resolved.commit is None and resolved.verified is False
+
+
+# ---------------------------------------------------------------------------
+# A local source's content: the one home the run and the judgement store share
+# ---------------------------------------------------------------------------
+
+
+class TestTheLocalDatasetContentDigest:
+    """A local source has no commit: :func:`dataset_content_digest` names it by what its reader reads, in a
+    deterministic order, and a remote source pays nothing."""
+
+    def test_a_file_digests_as_its_bytes_and_an_edit_moves_the_digest(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data.revisions import dataset_content_digest
+
+        rows = tmp_path / "rows.jsonl"
+        rows.write_text('{"query_id": "q"}\n', encoding="utf-8")
+        before = dataset_content_digest(f"jsonl:{rows}")
+        assert set(before) == {"dataset"} and len(before["dataset"]) == 64
+
+        rows.write_text('{"query_id": "q", "docs": ["a longer body"]}\n', encoding="utf-8")
+        assert dataset_content_digest(f"jsonl:{rows}") != before, "an edited file is another dataset"
+
+    def test_a_directory_digests_its_sorted_listing(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data.revisions import dataset_content_digest
+
+        stamp = 1_700_000_000_000_000_000  # the same mtimes, so only the listing's own rule is compared
+
+        def build(root: Path, names: tuple[str, ...]) -> Path:
+            (root / "corpus").mkdir(parents=True)
+            for name in names:
+                (root / "corpus" / name).write_text(f"{name[0]}\n", encoding="utf-8")
+            for entry in (root / "corpus").iterdir():
+                os.utime(entry, ns=(stamp, stamp))
+            return root
+
+        first = dataset_content_digest(f"beir:{build(tmp_path / 'one', ('a.jsonl', 'b.jsonl'))}")
+        second = dataset_content_digest(f"beir:{build(tmp_path / 'two', ('b.jsonl', 'a.jsonl'))}")
+        assert first == second, "the listing is sorted and relative: the creation order is not in it"
+        assert set(first) == {"dataset"}
+
+        (tmp_path / "two" / "corpus" / "c.jsonl").write_text("c\n", encoding="utf-8")
+        assert dataset_content_digest(f"beir:{tmp_path / 'two'}") != first, "an added file moves the digest"
+
+    def test_a_remote_source_and_a_local_reader_option(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data.revisions import dataset_content_digest, dataset_local_locations
+
+        for remote in ("hf://org/repo", "suite:bright", "mteb:NanoNFCorpus", "jsonl:s3://bucket/rows.jsonl"):
+            assert dataset_content_digest(remote) == {}, remote
+
+        qrels = tmp_path / "qrels.jsonl"
+        qrels.write_text("{}\n", encoding="utf-8")
+        assert dataset_content_digest("images:/no-such-dir", {"qrels_uri": str(qrels)}) == {
+            "dataset.options.qrels_uri": dataset_content_digest(f"jsonl:{qrels}")["dataset"]
+        }
+        # The locations are listed without being read (a mirror refusal needs them before they exist).
+        assert dataset_local_locations("images:/no-such-dir", {"qrels_uri": str(qrels), "other_uri": "s3://b/x"}) == {
+            "dataset": "/no-such-dir",
+            "dataset.options.qrels_uri": str(qrels),
+        }
+
     resolve_revision.cache_clear()
