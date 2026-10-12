@@ -1,15 +1,26 @@
-"""The embeddinggemma-2 fold: the transformers classes the digest-pinned engine nightly lacks.
+"""The embeddinggemma-2 fold: the classes the engine image the recipe pins lacks.
 
-E2 r1: ``google/embeddinggemma-2`` served by the digest-pinned nightly failed at startup -- the
-image's transformers does not know the checkpoint's ``model_type: embedding_gemma2``, so
-``AutoConfig`` refuses ``config.json``, and vLLM's own ``embedding_gemma2`` model module (which the
-nightly carries) cannot import the ``transformers.models.embedding_gemma2.*`` classes it needs. The
-owner's 2026-10-10 decision: backport the architecture into the engine environment through the
-plugin. This module ships transformers 5.19.0's three ``embedding_gemma2`` modules (``fold/``) and,
-at engine startup (the ``vllm.general_plugins`` entry point), loads each under its upstream module
-name, registers the config class with ``AutoConfig`` and the processor and video-processor classes
-with ``AutoProcessor`` / ``AutoVideoProcessor``. vLLM's own registry maps ``EmbeddingGemma2Model``
-to its ``embedding_gemma2`` module, so the plugin registers no model class.
+E2 r1: ``google/embeddinggemma-2`` served by the image failed at startup -- the image's transformers
+does not know the checkpoint's ``model_type: embedding_gemma2``, so ``AutoConfig`` refuses
+``config.json``.  The owner's 2026-10-10 decision: backport the architecture into the engine
+environment through the plugin.  This module ships transformers 5.19.0's four ``embedding_gemma2``
+modules (``fold/``, byte-identical bodies plus a header each: configuration 207 lines, modeling 933,
+processing 417, video processing 381) and, at engine startup (the ``vllm.general_plugins`` entry
+point), loads each under its upstream module name, registers the config class with ``AutoConfig``,
+the processor and video-processor classes with ``AutoProcessor`` / ``AutoVideoProcessor`` and the two
+model classes with ``AutoModel`` (the folded vLLM model's ``AutoModel.from_config`` calls resolve its
+text backbone and vision tower through it).
+
+E2 round 4: serve failed again -- ``Model architectures ['EmbeddingGemma2Model'] are not supported
+for now`` -- and the wave's serve log's supported-architecture list is exactly the vLLM v0.31.0
+tag's (plus the plugin's own registrations) while the nightly commit the image tag names
+(``8cbd5d03006c33185f402249ff2b448efd594986``) carries both the model module and its registry entry:
+the pinned image is a v0.31.0-based build, so vLLM's registry does NOT carry the model class (the r1
+reading, inferred from the PR, was wrong).  The plugin therefore also ships vLLM's own
+``embedding_gemma2.py`` from that commit (``fold/embedding_gemma2.py``, 1142 lines, byte-identical
+plus a header) and :func:`register_embedding_gemma2` registers it lazily -- with upstream's config
+hook (``.config``: the Gemma4 heterogeneous-head-dimension handling, TRITON_ATTN as the declared
+default backend, the 8192 cap) -- when the running vLLM lacks them, and only then.
 
 Two details are deliberate:
 
@@ -21,8 +32,9 @@ Two details are deliberate:
   must present itself as such for ``AutoProcessor.register`` to take effect. Without the
   registration ``processor_class_from_name`` finds nothing, and ``AutoProcessor.from_pretrained``
   silently falls back to the bare tokenizer, dropping the checkpoint's processor.
-* an engine image whose transformers already carries the classes is left alone: the import probe
-  returns before anything is installed, so the fold is inert there (the removal condition in
+* an engine image whose transformers already carries the classes -- and whose registry carries the
+  architecture -- is left alone: the import probe returns before anything is installed and the
+  registration checks the registry first, so both steps are inert there (the removal condition in
   ``fold/``'s headers).
 """
 

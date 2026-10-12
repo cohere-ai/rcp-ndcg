@@ -119,8 +119,10 @@ notes: >-
   (8cbd5d03006c33185f402249ff2b448efd594986) carries both `vllm/model_executor/models/embedding_gemma2.py`
   and its registry entry: the pinned image is a v0.31.0-based build, so vLLM's registry does NOT carry the
   model class (the r1 log's claim that it did was inferred from the PR, not from the image). The plugin
-  therefore also ships vLLM's own `embedding_gemma2.py` from that commit (byte-identical plus a header;
-  `rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2`) and `register_embedding_gemma2` registers
+  therefore also ships vLLM's own `embedding_gemma2.py` from that commit (1142 lines, byte-identical plus
+  a header; `rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2`) and transformers 5.19.0's
+  `modeling_embedding_gemma2.py` (933 lines, the model's `AutoModel.from_config` calls resolve through
+  it), and `register_embedding_gemma2` registers
   it lazily when the running registry lacks the architecture, with upstream's config hook
   (`EmbeddingGemma2ModelConfig`: the Gemma4 heterogeneous-head-dimension handling, TRITON_ATTN as the
   declared default backend, the 8192 cap) added to `MODELS_CONFIG_MAP` when absent. The patch and the
