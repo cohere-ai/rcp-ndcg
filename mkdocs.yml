@@ -42,6 +42,7 @@ nav:
       - "Reproduce the paper": how-to/reproduce-the-paper.md
       - "Serve a retrieval model": how-to/serve-a-model.md
       - "Add a serving recipe": how-to/add-a-model.md
+      - "Adopt a model: the four classes and the parity bar": how-to/adopt-a-model.md
       - "Validate a recipe on GPUs": how-to/validate-a-recipe.md
       - "Use the verified fake engines": how-to/use-verified-fake-engines.md
       - "Release candidates and the GPU waves": how-to/release-candidates.md

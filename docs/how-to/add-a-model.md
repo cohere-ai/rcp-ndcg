@@ -9,7 +9,9 @@ reference implementation, and how a wave of recipes is submitted to the GPU host
 `rcp-ndcg-vllm/` (installed into the engine image, which carries its own vLLM and torch). A family directory of
 your own needs none of that packaging to be *used*: `rcp-ndcg-vllm serve ./my-family/ [--variant <id>]` and
 `recipe:./my-family/` load it through this same schema, marked unshipped and `unverified`
-([serve a retrieval model](serve-a-model.md)).
+([serve a retrieval model](serve-a-model.md)). The class-specific doctrine — what parity means for an
+embedding, a reranker, a late-interaction model and a judge, and what to look out for — is
+[adopt a model](adopt-a-model.md).
 
 ## The family directory
 
