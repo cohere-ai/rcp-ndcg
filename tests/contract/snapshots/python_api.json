@@ -6240,6 +6240,44 @@
                 "returns": "tuple[RequestShape, ...]"
               }
             ]
+          },
+          "split_ids": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RequestShape",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "shape"
+              },
+              {
+                "annotation": "TextTokenizer",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "tokenizer"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "text"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "add_special_tokens"
+              },
+              {
+                "returns": "list[int]"
+              }
+            ]
           }
         }
       },
@@ -12732,6 +12770,13 @@
             "required": false,
             "type": "str"
           },
+          "query_split_special_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
           "recipe": {
             "alias": null,
             "default": null,
@@ -18001,6 +18046,13 @@
             "required": false,
             "type": "str"
           },
+          "query_split_special_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
           "recipe": {
             "alias": null,
             "default": null,
@@ -18938,6 +18990,13 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "query_split_special_tokens": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
           },
           "recipe": {
             "alias": null,

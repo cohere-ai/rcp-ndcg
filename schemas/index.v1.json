@@ -1844,7 +1844,7 @@
             }
           ],
           "default": null,
-          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract; the query side keeps the added-token parse, whose ``[Q] `` is the reference's prefix id). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
+          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
           "title": "Document Split Special Tokens"
         },
         "embed_dtype": {
@@ -2133,6 +2133,19 @@
           "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
           "title": "Query Prompt",
           "type": "string"
+        },
+        "query_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the QUERY side's content span of a ``request_shape: token_ids`` wire with the reference's split parse, keeping the fixed head under the file's own parse: the sent ids are then the head's added ids (the reference's own prefix id, e.g. ``[Q] ``) followed by the split-parsed body -- exactly the checkpoint's own construction (``prefix_id + tokenizer(body, split_special_tokens=True)``; pplx-embed-v2-context's remote ``prepare_inputs`` splits the query body too, so a query carrying a literal added-token spelling would otherwise read a different id sequence on the engine and in the reference). The whole-render added-token parse is what this replaces: the prefix must still cross as its added id, which is why the head is tokenized separately (``TemplateSpec.split_ids``, the one home of the rule the client and the harness share). ``None`` (the default) leaves the file's own parse -- unset, so no other run is re-keyed; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` and the template's query shape is a fixed head followed by one content span (the construction has no fixed tail). Content: it changes the ids the model reads.",
+          "title": "Query Split Special Tokens"
         },
         "recipe": {
           "anyOf": [
@@ -2939,7 +2952,7 @@
             }
           ],
           "default": null,
-          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract; the query side keeps the added-token parse, whose ``[Q] `` is the reference's prefix id). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
+          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
           "title": "Document Split Special Tokens"
         },
         "embed_dtype": {
@@ -3228,6 +3241,19 @@
           "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
           "title": "Query Prompt",
           "type": "string"
+        },
+        "query_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the QUERY side's content span of a ``request_shape: token_ids`` wire with the reference's split parse, keeping the fixed head under the file's own parse: the sent ids are then the head's added ids (the reference's own prefix id, e.g. ``[Q] ``) followed by the split-parsed body -- exactly the checkpoint's own construction (``prefix_id + tokenizer(body, split_special_tokens=True)``; pplx-embed-v2-context's remote ``prepare_inputs`` splits the query body too, so a query carrying a literal added-token spelling would otherwise read a different id sequence on the engine and in the reference). The whole-render added-token parse is what this replaces: the prefix must still cross as its added id, which is why the head is tokenized separately (``TemplateSpec.split_ids``, the one home of the rule the client and the harness share). ``None`` (the default) leaves the file's own parse -- unset, so no other run is re-keyed; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` and the template's query shape is a fixed head followed by one content span (the construction has no fixed tail). Content: it changes the ids the model reads.",
+          "title": "Query Split Special Tokens"
         },
         "recipe": {
           "anyOf": [

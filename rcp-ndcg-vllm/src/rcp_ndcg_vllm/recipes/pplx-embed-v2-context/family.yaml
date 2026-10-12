@@ -52,9 +52,16 @@ client:
                         # split_special_tokens): an added SPECIAL token is textified, so the document
                         # render's "[D] " crosses as the two literal ids (62724, 60) the reference and
                         # the plugin's role check use, not the one added id 248078 a server-side parse
-                        # keeps; the query side stays the added-token parse (its [Q] is the
-                        # reference's own prefix id 248077). Without it the plugin refuses every
-                        # document request by name (and the EngineCore dies with the refusal).
+                        # keeps. Without it the plugin refuses every document request by name (and the
+                        # EngineCore dies with the refusal).
+  query_split_special_tokens: true   # the reference's query construction, which is not one parse of the
+                        # whole render: the remote prepare_inputs tokenizes the query BODY with
+                        # split_special_tokens=True and prepends the [Q] prefix as the one added id
+                        # 248077. The declared query frame is a fixed head + the content span, so the
+                        # client sends the head's added ids followed by the split-parsed body
+                        # (TemplateSpec.split_ids, one home with the harness's render check). Without
+                        # it a query carrying a literal added-token spelling (the pairs' spellings
+                        # stratum) reads a different id sequence on the engine than in the reference.
   # The model's own limit is 262144 model-side ids, but the recipe serves at max_model_len
   # 131072 (the 2^31 arithmetic above); the model-side count of a render is the fit's count plus
   # the split parse's content-dependent prefix delta (the [D] prefix crosses as two literal ids
@@ -153,7 +160,7 @@ notes: |-
   at index 0); the boundary marker is a NON-special added token and keeps its one
   id 248079 in both parses. The plugin implements the reference's id space and
   refuses inputs whose first id is neither 248077 (the query prefix) nor
-  (62724, 60): queries are [248077] + tokenize(query); documents are the split
+  (62724, 60): queries are [248077] + the split-parsed body; documents are the split
   render of "[D] " + chunks joined by the boundary marker, with 248079 markers
   and the prefix and markers excluded from every pooled span.
 
@@ -167,13 +174,38 @@ notes: |-
   split_special_tokens over the raw tokenizers ``encode_special_tokens``
   toggle, consumed by the pooling client's token-id derivation), so the
   client's document ids open with (62724, 60) exactly as the reference's do and
-  the plugin accepts them; the query side keeps the added-token parse (measured:
-  [248077] + body equals the remote's prepend construction). The sent ids are
+  the plugin accepts them. The sent ids are
   what the engine reads, so the model-side count is the fit's count plus the
   split parse's 0..+2 prefix delta (the max_tokens reservation above). Token ids
   stay the declared wire: it is the only route that can carry the reference ids
   at all. The declared render TEXT is byte-identical to the reference's on both
   shapes (stage 1 proves it).
+
+  Query parse (E2 round 7, client.query_split_special_tokens: true): the query side is NOT one parse of
+  the whole render. The checkpoint's own ``prepare_inputs(task="query")`` tokenizes the query BODY with
+  ``split_special_tokens=True`` and prepends the ``[Q] `` prefix as the one added id 248077, while the
+  added-token parse of the whole render keeps every added-token spelling inside the body as one id. The
+  two constructions coincide for spelling-free queries -- which is why the round-2 measurement passed --
+  and diverge on the pairs' ``content:special_token_spellings`` row, where the wave measured cosine
+  0.576: the engine pooled 71 body ids, the reference 182 (both measured at the pinned tokenizer and
+  revision). The declared query frame is a fixed head followed by the content span, so the client now
+  sends the head's added ids followed by the split-parsed body (``TemplateSpec.split_ids``, one home
+  with the harness's render check): a query carrying a literal added-token spelling reads the
+  reference's own id sequence on the engine. An unset ``query_split_special_tokens`` leaves every other
+  recipe's whole-render parse untouched.
+
+  Empty document (E2 round 7, the plugin's prefix-space rule): the empty row's document render is
+  "[D] " alone, and the tokenizer renders the prefix's trailing space as its OWN token (id 220) exactly
+  when the content's first token cannot carry it or the content is empty (measured: a content-initial
+  space merges into the next token -- 256/262/... -- so a leading 220 in the body is always the
+  prefix's). The reference's char spans start at char 4 and pool no token there, so the empty document
+  is the model's zero-vector branch; the plugin used to strip only the two literal prefix ids and pooled
+  the space token -- a nonzero vector where the reference pools zero (the wave's 0.0 cosine). The plugin
+  now drops a leading 220 from the document body (``pooling_core.PREFIX_SPACE_TOKEN_ID``), which also
+  removes the one extra token from the first chunk's mean on a document starting with an added-token
+  spelling. The harness's vector gate scores two zero vectors 1.0 (an exact agreement of the model's own
+  degenerate output; a zero against a non-zero vector still scores 0.0), so the empty row gates like any
+  other.
 
   Role disambiguation on the engine (the plugin's rule): first id 248077 -> query, pooled as the mean over
   the whole sequence with the prefix token included; leading (62724, 60) ->
