@@ -688,8 +688,8 @@ the reference-env test fails on the unfixed probe with the r4 wave's own `Module
 
 The wave on `rc0-202610102115` verified nine more recipes (jina-nano; r2's seven) and left five failing.
 The branch fast-forwarded to the `rfc-0001` tip `54193376` first (the round-3 merge; no newer tip existed),
-then landed seven commits (`8fb8a2be` .. `1931a78b`).  `bin/gate lane/recipe-fix` is **GATE: PASS** on
-`1931a78b` (the report commit follows it).
+then landed eight commits (`8fb8a2be` .. `2350fe74`).  `bin/gate lane/recipe-fix` is **GATE: PASS** on
+`2350fe74` (the report commit follows it).
 
 ### 10.1 embeddinggemma-2: the pinned image's vLLM is a v0.31.0 build, so the plugin ships the model
 
@@ -787,7 +787,8 @@ The round's fingerprint moves, all deliberate:
   `plugin_sha256` inputs moved): harrier x3, jina x2, pplx-v1 x2, pplx-late x2, pplx-context, topk x2,
   zembed.
 
-Final gate on `1931a78b` (`bin/gate lane/recipe-fix`, slot 2):
+Final gate on the code tip `2350fe74` (`bin/gate lane/recipe-fix`, slot 2; the commit above it is the
+docstring/notes polish that names the round-4 vendoring):
 
 ```
 ruff-check exit=0 All checks passed! / ruff-format exit=0 624 files already formatted / basedpyright exit=0 0 errors, 0 warnings, 0 notes
