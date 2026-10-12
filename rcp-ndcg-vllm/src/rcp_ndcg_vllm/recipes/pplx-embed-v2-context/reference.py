@@ -41,9 +41,11 @@ Modes and outputs (written to ``--out``):
   on the stdlib plus PyYAML (the recipe's declared shapes), so it runs in any
   interpreter that has both.
 - ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors":
-  [[...]]}]}`` -- the query's vectors and the FIRST document's vectors as flat
-  lists of per-chunk (2048-d) rows, the shape the harness's stage-2 comparison
-  pairs against the served answer. Needs torch, transformers >= 5.4 (the
+  [[...], ...]}]}`` -- one entry per query/document text, each entry the text's vectors as flat
+  lists of per-chunk (2048-d) rows: the query's one matrix in a one-element list, and one matrix
+  per document in the row's own order, exactly the ragged matrices the harness's stage-2
+  comparison pairs positionally against the served answer (one served request per text). Needs
+  torch, transformers >= 5.4 (the
   ``Qwen3_5Model`` base) and a GPU host: the fp32 checkpoint is
   33,604,334,528 bytes, so a ``cpu`` device is refused before anything downloads.
   The load dtype is the engine's served bfloat16, not the config's float32 (see
@@ -216,6 +218,16 @@ def _load(device: str, *, repo: str = REPO, revision: str | None = REVISION, tok
     return model
 
 
+def _matrix(vectors) -> list[list[float]]:
+    """One text's vectors as nested floats: its per-chunk (2048-d) rows, one entry per text.
+
+    The remote ``encode``/``encode_queries`` answer one ``(chunk_count, embedding_dim)`` array per
+    text (``modeling_pplx_contextual.py``'s ``encode`` docstring: "Return one (chunk_count,
+    embedding_dim) array per document"); this is that one matrix as plain JSON floats.
+    """
+    return [[float(value) for value in vector] for vector in vectors]
+
+
 def embed(
     pairs: list[dict],
     device: str,
@@ -226,10 +238,12 @@ def embed(
 ) -> dict:
     """The model's own vectors: ``encode_queries`` for the query, ``encode`` for the documents.
 
-    One row of output per pairs row: the query's vectors and the FIRST document's
-    per-chunk vectors as flat lists -- the served side of the harness's stage-2
-    comparison answers one ragged matrix per text and compares the first, so the
-    wave's pairs rows carry one document each for full coverage.
+    One row of output per pairs row, one entry per text: ``query_vectors`` is a one-element list
+    holding the query's per-chunk matrix and ``document_vectors`` holds one matrix per document in
+    the row's own order -- the served client sends one request per text, so the harness's stage-2
+    comparison pairs one ragged matrix per text positionally. The r4 wave read 'the engine returned
+    4 matrix/matrices, the reference 1' on every row with more than one document, when this function
+    wrote only the FIRST document's vectors.
     """
     model = _load(device, repo=repo, revision=revision, tokenizer_spec=tokenizer_spec)
     rows: list[dict] = []
@@ -240,8 +254,8 @@ def embed(
         rows.append(
             {
                 "index": index,
-                "query_vectors": [[[float(value) for value in vector] for vector in query_vectors[0]]],
-                "document_vectors": [[[float(value) for value in vector] for vector in document_vectors[0]]],
+                "query_vectors": [_matrix(query_vectors[0])],
+                "document_vectors": [_matrix(document) for document in document_vectors],
             }
         )
     return {"rows": rows}

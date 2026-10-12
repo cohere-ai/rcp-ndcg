@@ -611,6 +611,63 @@ def test_embed_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest
     assert calls[1]["revision"] == "1" * 40
 
 
+def test_the_reference_answers_one_matrix_per_query_and_document_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stage 2 pairs one matrix per text positionally: the served client sends one request per text, so
+    the reference's ``query_vectors`` is a one-element list and ``document_vectors`` holds one entry per
+    document. The r4 wave read 'the engine returned 4 matrix/matrices, the reference 1' on every row with
+    more than one document: ``embed`` wrote only the FIRST document's vectors. No model weights: the fake
+    model answers one (chunk_count, dim) array per document, exactly as the remote ``encode`` does."""
+    import importlib.util
+    import types
+
+    import numpy as np
+
+    class _FakeModel:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+        def encode_queries(self, queries, normalize_embeddings=False):  # noqa: ARG002
+            return [np.full((1, 2), 1.0, dtype=np.float32) for _ in queries]
+
+        def encode(self, documents, normalize_embeddings=False):  # noqa: ARG002
+            return [
+                np.full((len(chunks), 2), float(position + 1), dtype=np.float32)
+                for position, chunks in enumerate(documents)
+            ]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(
+            AutoModel=types.SimpleNamespace(from_pretrained=lambda *args, **kwargs: _FakeModel()),
+            AutoTokenizer=types.SimpleNamespace(
+                from_pretrained=lambda name, **kwargs: types.SimpleNamespace(name=name, kwargs=kwargs)
+            ),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(bfloat16=object()))
+    spec = importlib.util.spec_from_file_location("pplx_context_reference_pairing", RECIPES / "reference.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    document = module.embed(
+        [{"query": "q", "documents": [f"first{module.BOUNDARY_MARKER}second", "third"]}],
+        "cuda",
+        repo="perplexity-ai/pplx-embed-v2-context-9b-preview",
+        revision=REVISION,
+        tokenizer_spec=TOKENIZER_SPEC,
+    )
+    row = document["rows"][0]
+    assert len(row["query_vectors"]) == 1, "one entry per query text"
+    assert row["query_vectors"] == [[[1.0, 1.0]]]
+    assert len(row["document_vectors"]) == 2, "one entry per document text"
+    assert row["document_vectors"] == [[[1.0, 1.0], [1.0, 1.0]], [[2.0, 2.0]]]
+
+
 def test_the_reference_sets_the_tokenizer_the_remote_code_expects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
