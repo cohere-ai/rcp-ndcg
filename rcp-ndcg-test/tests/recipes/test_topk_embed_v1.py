@@ -583,7 +583,7 @@ def test_the_rope_shim_promotes_the_cards_two_dimensional_position_ids() -> None
     """E2 round 7: the checkpoint's remote code builds 2-D position ids for text-only rows (the
     measured ``topk_embed_st.py`` text branch: ``within.unsqueeze(0)``, shape ``(1, total)``; its
     image branch already stacks to ``(3, 1, total)``), while transformers 5.17's
-    ``Qwen3_5RotaryEmbedding.forward`` indexes a 3-D ``(3, bs, positions)`` tensor
+    ``Qwen3_5TextRotaryEmbedding.forward`` indexes a 3-D ``(3, bs, positions)`` tensor
     (``position_ids[:, :, None, :]``, ``modeling_qwen3_5.py:192``): every text-only embed died with
     ``IndexError: too many indices for tensor of dimension 2`` (the r4 wave). The declared shim
     promotes a 2-D input to ``(3, bs, positions)`` -- the three grids equal, which is the text-only
@@ -634,6 +634,63 @@ def test_the_rope_shim_promotes_the_cards_two_dimensional_position_ids() -> None
     rope = Rope517()
     rope.forward(torch.zeros(1), text)
     assert rope.seen is not None and tuple(rope.seen.shape) == (3, 1, 3)
+
+
+def test_the_rope_shim_resolves_the_class_the_remote_code_actually_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """E2 round 8: the round-7 shim imported ``Qwen3_5RotaryEmbedding`` -- a name no transformers
+    release defines (5.9.0, the checkpoint's own pin, and 5.17.0 both carry
+    ``Qwen3_5TextRotaryEmbedding``) -- so the import raised and the shim returned silently; the wave
+    still died with the same ``IndexError`` at ``modeling_qwen3_5.py:192``. The class the remote code
+    calls is the text rotary embedding: ``Qwen3_5TextModel.__init__`` assigns ``self.rotary_emb =
+    Qwen3_5TextRotaryEmbedding(config=config)`` and the remote ``PackedQwen3_5TextModel.forward`` calls
+    ``self.rotary_emb(inputs_embeds, position_ids)``. This resolves the class the way the reference
+    does -- through the transformers module, here a module shaped like 5.17's, which carries no
+    ``Qwen3_5RotaryEmbedding`` -- and requires the wrapper on the class the remote code calls, plus a
+    loud error when the module exists without the class (the silent no-op that hid round 7's miss)."""
+    import importlib.util
+    import types
+
+    import torch
+
+    spec = importlib.util.spec_from_file_location("topk_reference_rope_symbol", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+
+    class TextRope517:
+        """transformers 5.17's text rotary embedding: the forward indexes a 3-D ``(3, bs, positions)``."""
+
+        seen: torch.Tensor | None = None
+
+        def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+            self.seen = position_ids
+            position_ids_expanded = position_ids[:, :, None, :].float()  # modeling_qwen3_5.py:192
+            inv_freq_expanded = torch.zeros(3, position_ids.shape[1], 2, 1)
+            return (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)
+
+    modeling_517 = types.ModuleType("transformers.models.qwen3_5.modeling_qwen3_5")
+    modeling_517.Qwen3_5TextRotaryEmbedding = TextRope517  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, modeling_517.__name__, modeling_517)
+
+    module._promote_qwen3_5_rope_position_ids()
+
+    rope = TextRope517()
+    text = torch.tensor([[0, 1, 2]])
+    out = rope.forward(torch.zeros(1), text)
+    assert rope.seen is not None and tuple(rope.seen.shape) == (3, 1, 3)
+    assert torch.equal(rope.seen[0], text), "the promoted grid is the 2-D input"
+    assert tuple(out.shape) == (3, 1, 3, 2)
+
+    # A module that exists without the class is a loud error, not a silent no-op (round 7's miss).
+    renamed = types.ModuleType("transformers.models.qwen3_5.modeling_qwen3_5")
+    monkeypatch.setitem(sys.modules, renamed.__name__, renamed)
+    with pytest.raises(RuntimeError, match="Qwen3_5TextRotaryEmbedding"):
+        module._promote_qwen3_5_rope_position_ids()
 
 
 def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(

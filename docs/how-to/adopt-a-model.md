@@ -219,8 +219,8 @@ pattern to reach for first.
 | p99 within the gate is just under 99%, while the maximum delta is above the default | the same bf16 floor, probability side | declare the measured per-variant delta tolerance |
 | engine returns one matrix where the reference returns rows | the query-vector nesting of the reply | fix the reference's nesting per the wire contract |
 | `StopIteration` in the processor at a newer transformers | the card's processor call moved to per-input processing | call the card's processor the way the card's own code does |
-| remote-code rope `TypeError` (2-D vs 3-D position ids) | a transformers API change under the checkpoint's remote code | a narrow, tested shim, or the checkpoint's required transformers |
-| engine dies at init with a Triton shared-memory limit | a compile-time kernel demand that eager/batch flags cannot move; the attention backend was overridden | pin the attention backend the image's own hook selected |
+| remote-code rope shape error (`TypeError`/`IndexError`, 2-D vs 3-D position ids) | a transformers API change under the checkpoint's remote code | a narrow, tested shim that targets the class the remote code calls, or the checkpoint's required transformers |
+| engine dies at init with a Triton shared-memory limit, or FA4 rejects the head dim | a compile-time kernel demand that eager/batch flags cannot move; the attention backend was overridden | pin a backend whose kernels accept the model's head dims -- the image's own hook choice is not automatically one |
 | the engine registry lacks the architecture | the image is a released vLLM, not a nightly | vendor the model into the plugin (backport) and declare `plugin_architectures` |
 | the vendored model imports an absent upstream module path | the fold registered classes but not the modules the model imports | install the modules under the upstream paths at the vendored model's own import |
 | cosine 0.0 on some vectors only | one side pooled a prefix's standalone space token; the other pooled nothing | fix the plugin; and two zero vectors are agreement, one-sided zero is not |
