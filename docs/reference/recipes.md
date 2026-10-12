@@ -85,7 +85,11 @@ key. Two patches ship:
   `AutoProcessor`/`AutoVideoProcessor` and the two model classes with `AutoModel`; the plugin also ships
   vLLM nightly `8cbd5d03`'s `embedding_gemma2` model (same directory, byte-identical plus a header) and
   registers it -- with upstream's config hook -- when the running registry lacks the architecture. Both
-  steps are inert when the image already carries the classes and the architecture. Delete them (and the
+  steps are inert when the image already carries the classes and the architecture. Importing the fold
+  package (which every import of the folded model module does first) installs the same modules under their
+  upstream names before any folded module body runs, so the model's own
+  `transformers.models.embedding_gemma2...` imports resolve in every process that imports it, whatever
+  loaded the plugin and whether or not the patch applied there. Delete them (and the
   recipe's `serve.plugin`/`plugin_architectures`) when `engine.image` moves to a vLLM release whose
   registry carries `EmbeddingGemma2Model` and whose transformers ships `embedding_gemma2`.
 

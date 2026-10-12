@@ -26,16 +26,27 @@ Two details are deliberate:
 
 * the fold's classes are loaded under their upstream names so their relative imports
   (``from ...configuration_utils import PreTrainedConfig``) resolve inside transformers; their
-  ``__module__`` is then set to this package. transformers 5.17's ``_LazyAutoMapping.register``
-  refuses to map a key whose ``__module__`` starts with ``"transformers."`` (``auto_factory.py``,
-  the native-config guard), and a folded class is local code -- it ships in this wheel -- so it
-  must present itself as such for ``AutoProcessor.register`` to take effect. Without the
-  registration ``processor_class_from_name`` finds nothing, and ``AutoProcessor.from_pretrained``
-  silently falls back to the bare tokenizer, dropping the checkpoint's processor.
+  ``__module__`` is then set to this package's ``fold`` subpackage. transformers 5.17's
+  ``_LazyAutoMapping.register`` refuses to map a key whose ``__module__`` starts with
+  ``"transformers."`` (``auto_factory.py``, the native-config guard), and a folded class is local
+  code -- it ships in this wheel -- so it must present itself as such for ``AutoProcessor.register``
+  to take effect. Without the registration ``processor_class_from_name`` finds nothing, and
+  ``AutoProcessor.from_pretrained`` silently falls back to the bare tokenizer, dropping the
+  checkpoint's processor. The ``fold`` package re-exports the classes, so the location their
+  ``__module__`` names carries them: vLLM pickles the checkpoint's config when it spawns the engine
+  core, and a class whose declared module has no such attribute cannot be pickled (E2 round 5).
 * an engine image whose transformers already carries the classes -- and whose registry carries the
   architecture -- is left alone: the import probe returns before anything is installed and the
   registration checks the registry first, so both steps are inert there (the removal condition in
   ``fold/``'s headers).
+
+E2 round 5: importing the ``fold`` package installs the folded modules under their upstream names
+itself, before any folded module body runs, so the vendored vLLM model's own
+``from transformers.models.embedding_gemma2...`` statements resolve in every process that imports
+it -- whatever loaded the plugin and whether or not the patch applied there (the wave's engine core
+imported the model without the fold and died with ``ModuleNotFoundError: No module named
+'transformers.models.embedding_gemma2'``). The patch's install stays the *early* one, before vLLM
+parses the checkpoint's ``config.json``.
 """
 
 from __future__ import annotations
@@ -63,9 +74,12 @@ MODEL_QUALNAME = "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2:Em
 #: The fold's own source modules, as this package ships them (the behaviour fingerprint keys exactly
 #: these for a recipe that declares the ``EmbeddingGemma2Config`` registration; the model
 #: registration adds the folded vLLM model and the config hook -- see
-#: :data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`).
+#: :data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`). The ``fold`` package itself is keyed too: its
+#: import installs the folded modules under their upstream names before the vendored model's own
+#: imports run.
 FOLD_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models.embedding_gemma2",
+    "rcp_ndcg_vllm.models.embedding_gemma2.fold",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
@@ -86,11 +100,16 @@ def install_fold() -> None:
     """Install the folded modules and register their classes with transformers (idempotent).
 
     Called by the ``embeddinggemma2-transformers-fold`` patch, which the embeddinggemma-2 recipe opts
-    into; an engine serving another recipe never runs this. Inert (returns immediately) when the
-    running transformers already carries ``transformers.models.embedding_gemma2``: an engine image
-    that ships the classes is the fold's removal condition, and shadowing its modules would be worse
-    than doing nothing.
+    into, and by the ``fold`` package's own import (which runs before the vendored vLLM model's body,
+    so its ``from transformers.models.embedding_gemma2...`` statements resolve in every process that
+    imports the model); an engine serving another recipe runs neither. Each folded class is set on the
+    ``fold`` package, the location this function declares as its ``__module__``: vLLM pickles the
+    checkpoint's config when it spawns the engine core, and a class whose declared module has no such
+    attribute cannot be pickled. Inert (returns immediately) when the running transformers already
+    carries ``transformers.models.embedding_gemma2``: an engine image that ships the classes is the
+    fold's removal condition, and shadowing its modules would be worse than doing nothing.
     """
+    import importlib
     import importlib.util
     import sys
     import types
@@ -135,6 +154,7 @@ def install_fold() -> None:
         EmbeddingGemma2VideoProcessor,
     )
 
+    fold_package = importlib.import_module(f"{__name__}.fold")
     for cls in (
         EmbeddingGemma2Config,
         EmbeddingGemma2TextConfig,
@@ -144,6 +164,7 @@ def install_fold() -> None:
         EmbeddingGemma2TextModel,
     ):
         cls.__module__ = f"{__name__}.fold"
+        setattr(fold_package, cls.__name__, cls)
 
     AutoConfig.register(HF_MODEL_TYPE, EmbeddingGemma2Config, exist_ok=True)
     AutoModel.register(EmbeddingGemma2Config, EmbeddingGemma2Model, exist_ok=True)

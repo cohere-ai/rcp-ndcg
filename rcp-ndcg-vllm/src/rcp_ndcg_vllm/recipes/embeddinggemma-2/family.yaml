@@ -132,7 +132,20 @@ notes: >-
   `AutoModel.from_config` builds the text backbone (271,002,624 params) and the full model (744,371,488
   params, the card's 740M class) -- the vendored model's vLLM-internal imports were checked symbol by symbol
   against the v0.31.0 tag (its gemma4.py and gemma4_mm.py are byte-identical between the tag and the
-  nightly commit). SWITCH TO RELEASE / REMOVAL: needs vLLM commit 02b83919aa2e (PR #60254) -- or any release
+  nightly commit). E2 round 5 (the final re-run): serve failed at engine init with
+  `ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'` -- the vendored model
+  module was imported in a process where the fold's patch had not applied, and its own first imports are
+  that upstream path. The fold now installs itself: importing the fold package (which every import of the
+  vendored model does first) loads the four modules under their upstream names before any folded module
+  body runs, so the model's imports resolve in every process that imports it, whatever loaded the plugin;
+  the patch stays the early install, before vLLM parses the checkpoint's config.json, and
+  `register_embedding_gemma2` runs after the patches at plugin load. The folded classes are also set on
+  the fold package, the module their `__module__` names (transformers refuses an AutoProcessor key whose
+  module starts with `transformers.`), so the checkpoint's config can be pickled when vLLM spawns the
+  engine core. Verified on CPU with the real vLLM nightly source and transformers 5.17.0: with the patch
+  opted in, and separately with it not applied at all, the vendored model module imports and
+  `AutoConfig.from_pretrained` returns a picklable config.
+  SWITCH TO RELEASE / REMOVAL: needs vLLM commit 02b83919aa2e (PR #60254) -- or any release
   whose registry carries EmbeddingGemma2Model -- and transformers >= 5.19.0; switch engine.image to the first
   vLLM release that carries both, delete `serve.plugin`, `plugin_architectures` and `patches`, and
   re-validate. The wave records the image's actual transformers version in its provenance.

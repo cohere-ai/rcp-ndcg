@@ -30,6 +30,12 @@ items (topk's reference-env import check, the pplx-context reference tokenizer);
 `bin/gate lane/recipe-fix` is **GATE: PASS** on the code tip `cd044cb1` (the commit above it carries this
 report's round-3 text).
 
+**The E2 round-4 and round-5 fix runs (newest).** Round 4's five persistent failures (embeddinggemma-2's
+vLLM model, ctxl 1b/2b, harrier-270m, harrier-27b, pplx-context) are section 10. The final run on
+`rc0-202610120115` passed everything except embeddinggemma-2, whose vendored model module imports the
+upstream `transformers.models.embedding_gemma2.*` paths the image lacks; section 11 records the fix.
+HEAD `db00ea3c`, `bin/gate lane/recipe-fix` **GATE: PASS**.
+
 ## 2. Commits
 
 | Commit | Subject |
@@ -828,3 +834,101 @@ embeddinggemma-2 recipe test failed before `plugin_architectures` gained the mod
   set is then unbounded and the manifest records nothing.  On the node the config is cached (the engine
   loads it), and an unbounded row fails loudly on the engine rather than silently -- recorded here as a
   known corner, not a silent default.
+
+## 11. E2 round 5 (the fifth fix run)
+
+The final run on `rc0-202610120115` (embeddinggemma-2 on the nightly-digest group) passed everything
+except that recipe: r1/vllm 7/7 (ctxl x3, harrier x3, jina-nano), r3 8/8, r5 2/2, with r2/r4/judges-j2
+re-running behind the failed dependency.  embeddinggemma-2 died at engine init with
+`ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'`.  The branch fast-forwarded
+to the `rfc-0001` tip `8cc7fe51` (the five sentence-transformers families' `huggingface-hub<2.0` pin)
+first, then landed four commits (`76f7b768`, `d336d4f6`, `55d0e2de`, `db00ea3c`).
+
+### 11.1 The diagnosis (CPU, the real vLLM nightly source)
+
+The vendored model module (`fold/embedding_gemma2.py`, byte-identical to vLLM nightly `8cbd5d03`'s) opens
+with `from transformers.models.embedding_gemma2.configuration_embedding_gemma2 import ...` and
+`...processing_embedding_gemma2 import ...`; the image's transformers (5.17.0) does not carry the package.
+Reproduced on CPU with the pinned nightly's own source tree and transformers 5.17.0:
+
+* importing the vendored module without the fold fails with exactly the wave's error
+  (`ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'`);
+* with `install_fold()` first, the same import resolves;
+* `load_general_plugins()` (the plugin's `register()`) plus the registered qualname import the module
+  fine when the fold's patch applies -- so the failing process was one where the fold was not installed
+  at the moment the model was imported.  The model's own import must be self-sufficient, in whatever
+  process vLLM resolves the architecture.
+
+A second defect on the same path: `install_fold` set each folded class's `__module__` to the fold
+package (transformers' `_LazyAutoMapping.register` refuses a `transformers.`-prefixed module), but that
+package carried no such attribute, so the checkpoint's config could not be pickled -- and vLLM pickles
+the config when it spawns the engine core.  Reproduced on CPU: `pickle.dumps(config)` raised
+`PicklingError: Can't pickle <class 'rcp_ndcg_vllm.models.embedding_gemma2.fold.EmbeddingGemma2Config'>:
+attribute lookup ... failed`.
+
+### 11.2 The fix
+
+* importing the fold package installs the folded modules under their upstream names before any folded
+  module body runs (`fold/__init__.py` calls `install_fold`, guarded by a transformers availability
+  probe so the no-transformers CPU environments still import it); every import of the vendored model
+  imports the fold package first, so its own upstream imports resolve in every process that imports it;
+* `register()` applies the opted-in patches before the architecture registrations;
+* `install_fold` sets each folded class on the fold package, the module its `__module__` names;
+* the fold package joins the keyed modules (`LAZY_MODEL_MODULES`, `FOLD_MODULES` and both
+  `ARCHITECTURE_MODULES` keys);
+* the no-torch scan walks with `iter_modules` so a registry-lazy *package* is not imported by the walk
+  (the gate's environment carries transformers 5.19, where `walk_packages` would import it).
+
+### 11.3 Red-first evidence and checks
+
+The new tests failed on the unfixed tree: the fold-package import test with
+`assert [] == ['install_fold']`; the upstream-import test with the wave's own
+`ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'` (transformers 5.17.0);
+the real-transformers test with
+`AttributeError: module 'rcp_ndcg_vllm.models.embedding_gemma2.fold' has no attribute 'EmbeddingGemma2Config'`;
+and the two key tests with the old `FOLD_MODULES`.  Verified with the real vLLM nightly source and
+transformers 5.17.0: with `RCP_NDCG_VLLM_PATCHES=embeddinggemma2-transformers-fold` and, separately,
+with it unset, the vendored model module imports, the architecture registers, and
+`AutoConfig.from_pretrained` returns a picklable config.
+
+The re-key: the plugin's shared `rcp_ndcg_vllm.models` moved (the register reorder) and
+embeddinggemma-2's keyed set gained the fold package, so every plugin recipe's fingerprint moved; the
+goldens were regenerated the documented way
+(`pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py --update-goldens`).  The wave re-records
+those corpora.
+
+Final gate on the code tip `db00ea3c` (`bin/gate lane/recipe-fix`, slot 2):
+
+```
+ruff-check exit=0 All checks passed! / ruff-format exit=0 624 files already formatted / basedpyright exit=0 0 errors
+pytest exit=0 4127 passed, 153 skipped
+contract-docs exit=0 410 passed, 105 skipped
+mkdocs exit=0
+test-pkg exit=0 1128 passed, 228 skipped
+recipes exit=0 (network) -> no failure outside the baseline
+vllm-pkg exit=0 50 passed / vllm-models exit=0 101 passed, 8 skipped
+run_all exit=0 -> 1022 checks, 987 match, 35 known deviations, 0 failed; 67/67; 82/82
+public-names exit=0 (clean) / clean exit=0
+GATE: PASS
+```
+
+The lane's own runs on the same tree: `pytest tests -n 4` 4127 passed/153 skipped; `pytest
+rcp-ndcg-test/tests -n 4` 1128 passed/228 skipped; `pytest rcp-ndcg-vllm/tests` 141 passed/13 skipped
+(the machine's `UV_EXTRA_INDEX_URL` unset for the wheel-build tests); `pytest tests/contract tests/docs`
+410 passed/105 skipped; ruff, basedpyright and `mkdocs build --strict` clean.
+
+### 11.4 CHANGELOG entry
+
+`### Fixed` (0.0.1): "**The embeddinggemma-2 fold installs the upstream module paths at the model's own
+import** (the E2 round-5 serve): ...", plus the `### Public surface` extension of the embeddinggemma-2
+architecture bullet (the fold package joins the keyed modules).
+
+### 11.5 Open items for the wave
+
+* E2 re-runs embeddinggemma-2 (the engine log should show the architecture resolving; the fold installs
+  at the model's import now, so the old failure cannot recur) and re-records every plugin recipe's
+  corpus (the fingerprints moved).
+* The fold remains version-sensitive: it is validated against the image's transformers 5.17.0 and
+  5.19.0; the folded processor module names upstream's vision-only import inside transformers' own
+  `is_vision_available` guard, so a CPU environment without the vision stack cannot install the fold
+  (the engine image carries it; the import-path test records that and skips there).
