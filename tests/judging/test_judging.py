@@ -39,6 +39,17 @@ def _rubric(out: Path, judge_client: FakeJudge | None = None, **kwargs):
     return judge(ROWS, None, judge_client or _fake(), stage="rubric", out=out, **kwargs)
 
 
+def _rows_jsonl(rows: tuple[RankingExample, ...]) -> str:
+    """``rows`` as the ranking layout of a ``jsonl:`` dataset (the keys the pipeline's own fixture writes)."""
+    return "".join(
+        json.dumps(
+            {"query_id": row.id, "query": row.text, "doc_ids": row.doc_ids, "docs": row.docs, "qrels": row.qrels}
+        )
+        + "\n"
+        for row in rows
+    )
+
+
 def _tokenized(fake: FakeJudge, tokenizer: Path | str, **update) -> FakeJudge:
     """``fake`` with a tokenizer (and any other config fields) on its judge config."""
     fake.config = fake.config.model_copy(update={"tokenizer": str(tokenizer), **update})
@@ -180,6 +191,89 @@ class TestResume:
         resumed = JudgementStore(tmp_path).read("rubric").judgements
         fresh = JudgementStore(tmp_path / "clean").read("rubric").judgements
         assert window_coverage(resumed, ("rubric",)) == window_coverage(fresh, ("rubric",))
+
+    def test_a_resumed_tournament_refusal_supersedes_its_later_phase_windows(self, tmp_path: Path) -> None:
+        """The tournament numbers a window sequence per call (each random and stratified window is asked with
+        its mirror), so a resumed refusal must retire the first fit's stratified and adaptive windows too: the
+        refit reads one generation and the resumed store's window set equals a clean pass's."""
+        from rcp_ndcg.judging import TournamentSchedule
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = TournamentSchedule(
+            window=5, random_placements=2.0, stratified_placements=1.0, adaptive_batches=1, adaptive_placements=1.0
+        )
+        n_random, _, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        first = judge(rows, None, _RefusesOne(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        assert any(not j.valid for j in first.judgements)
+        judge(rows, None, FakeJudge(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        records = list(JudgementStore(tmp_path).records("tournament").values())
+        valid = [j for j in records if j.valid]
+        superseded = [j for j in records if j.invalid_category == "superseded"]
+        assert superseded, "the first fit's later-phase windows are retired, not kept as valid"
+        clean = judge(rows, None, FakeJudge(ability), stage="tournament", out=tmp_path / "clean", schedule=schedule)
+
+        def window_set(judgements):
+            return {(j.window_seq, tuple(p.doc_id for p in j.placements)) for j in judgements}
+
+        assert window_set(valid) == window_set(clean.judgements)
+
+    def test_a_full_tournament_resume_leaves_a_subset_passs_windows_alone(self, tmp_path: Path) -> None:
+        """A `docs=` subset runs the tournament on its own pool, so its windows hold the subset's effective
+        window: a full pass resuming a refusal retires its own generation only, never the subset's."""
+        from rcp_ndcg.judging import TournamentSchedule
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(6)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = TournamentSchedule(
+            window=5, random_placements=2.0, stratified_placements=1.0, adaptive_batches=1, adaptive_placements=1.0
+        )
+        n_random, _, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        before = {j.record_id for j in JudgementStore(tmp_path).records("tournament").values() if j.valid}
+        judge(
+            rows, None, FakeJudge(ability), stage="tournament", out=tmp_path, schedule=schedule,
+            docs={"q": docs[:4]},
+        )  # fmt: skip
+        subset = {j.record_id for j in JudgementStore(tmp_path).records("tournament").values() if j.valid} - before
+        assert subset, "the subset pass asked no window"
+        judge(rows, None, FakeJudge(ability), stage="tournament", out=tmp_path, schedule=schedule)
+        records = {j.record_id: j for j in JudgementStore(tmp_path).records("tournament").values()}
+        assert any(j.invalid_category == "superseded" for j in records.values()), "the full pass retired nothing"
+        retired = {record_id for record_id, j in records.items() if j.invalid_category == "superseded"}
+        assert not (subset & retired), "the full pass retired the subset pass's windows"
 
     def test_a_docs_subset_resume_retires_its_own_first_generation(self, tmp_path: Path) -> None:
         """A `docs=` pass runs the schedule on its own subset: resuming it re-asks its refused window and
@@ -637,6 +731,18 @@ class TestTheWindowTextBudget:
         assert bodies and all(html.unescape(body) == self.DOCS[body.split()[0]].strip() for body in bodies)
         assert "no tokenizer" in caplog.text
 
+    def test_a_tokenizer_without_a_context_warns_that_no_window_budget_is_counted(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture, word_tokenizer_file: Path
+    ) -> None:
+        """A judge that names a tokenizer but no ``context_tokens`` has no per-window text budget: the windows
+        send the documents as the load-time policy left them and the engine's context is the only bound, so the
+        pass says so (the shipped judges that declare no context are deliberate, never silent)."""
+        fake = _tokenized(_fake(), word_tokenizer_file)
+        assert fake.config.context_tokens is None
+        with caplog.at_level(logging.WARNING):
+            _rubric(tmp_path, fake)
+        assert "context_tokens" in caplog.text and "no per-window text budget" in caplog.text
+
 
 class TestTheTokenizer:
     def test_a_policy_that_cuts_without_a_tokenizer_is_refused_before_a_call(self, tmp_path: Path) -> None:
@@ -1032,6 +1138,37 @@ class TestIdentities:
         assert entry["identity"]["dataset"]["name"] == "dataset"
         assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
 
+    def test_a_local_dataset_is_named_by_its_content_and_an_edited_file_is_refused(self, tmp_path: Path) -> None:
+        """A local source has no revision to pin it: the digest of the file its reader reads enters the store
+        identity, so editing ``rows.jsonl`` in place is another dataset -- refused, never reused (the same
+        bytes still resume)."""
+        from rcp_ndcg.data import load_dataset
+
+        rows = tmp_path / "rows.jsonl"
+        rows.write_text(_rows_jsonl(ROWS), encoding="utf-8")
+        store = tmp_path / "store"
+        first = _fake()
+        judge(load_dataset(f"jsonl:{rows}"), None, first, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+        assert first.usage.requests > 0
+        (entry,) = JudgementStore(store).identities().values()
+        assert entry["identity"]["dataset"]["content"]["dataset"], "a local source is named by its content"
+
+        # The same bytes are the same dataset: the store resumes.
+        again = _fake()
+        judge(load_dataset(f"jsonl:{rows}"), None, again, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+        assert again.usage.requests == 0
+
+        # An edited file is another dataset: the store refuses it, and no stored answer is reused.
+        lines = rows.read_text(encoding="utf-8").splitlines()
+        edited = json.loads(lines[0])
+        edited["docs"][0] = f"{edited['docs'][0]} (edited)"
+        rows.write_text("\n".join([json.dumps(edited), *lines[1:]]) + "\n", encoding="utf-8")
+        changed = _fake()
+        with pytest.raises(IdentityError, match="dataset.content") as refused:
+            judge(load_dataset(f"jsonl:{rows}"), None, changed, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
+        assert any("dataset.content" in line for line in refused.value.details["differences"])
+        assert changed.usage.requests == 0
+
     def test_the_text_formatting_version_enters_the_family_and_the_record_ids(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1050,6 +1187,10 @@ class TestIdentities:
         assert second_family.text_formatting == "rcp-text/999"
         assert second_family.key != first_family.key
         assert not {j.record_id for j in first.judgements} & {j.record_id for j in second.judgements}
+        # A resume of the first store under the bumped rule re-asks (a new store) instead of reusing
+        # judgements built from the old strings: the store's identity carries the formatting version.
+        with pytest.raises(IdentityError, match="text_formatting"):
+            _rubric(tmp_path / "a")
 
     def test_another_fake_seed_is_another_instrument(self, tmp_path: Path) -> None:
         """The offline judge's seed decides every draw, so it is part of the instrument: two seeds never

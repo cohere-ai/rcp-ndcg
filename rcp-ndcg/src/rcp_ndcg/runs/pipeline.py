@@ -229,6 +229,10 @@ class Pipeline:
         re-runs), plus the TEXT formatting rule's version (:data:`TEXT_FORMATTING_VERSION`) -- so a resume
         never reuses candidates, judgements or scores built from other strings.
 
+        A local source has no commit: it enters by the digest of the files its reader reads
+        (:func:`rcp_ndcg.data.revisions.dataset_content_digest`, the one home the judgement store's dataset
+        identity consumes too), so an edited ``rows.jsonl`` makes every step that read it stale.
+
         The formatting's own inputs are in the step payloads: the title mode and the instruction policy are
         CONTENT fields of the retriever, the reranker and the judge configs (``identity_payload``), and the
         instruction a Hub source carries is part of the repository at the resolved commit. A resume check

@@ -286,10 +286,14 @@ def _dataset_rows(
 
 
 def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any]:
-    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI and resolved revision.
+    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI, resolved revision and --
+    for a local source -- the content digest of what its reader reads.
 
     A local URI (a reader scheme whose location is a path, not ``scheme://``) enters with its path absolute and
-    normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset. The
+    normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset, and
+    with the digest of the files the reader reads (:func:`rcp_ndcg.data.revisions.dataset_content_digest`, the
+    same one home the run steps' identity consumes): a local source has no commit, so an edited ``rows.jsonl``
+    is another dataset and the store refuses it instead of reusing answers over texts the judge never saw. The
     query selection is left out: judging more queries of the same corpus extends the store. The dataset's
     **task instruction** is in: the model read it, so a pass whose instruction differs is another instrument.
 
@@ -316,7 +320,7 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
                 }
             ),
         }
-    from rcp_ndcg.data.revisions import dataset_uri_revision
+    from rcp_ndcg.data.revisions import dataset_content_digest, dataset_uri_revision
 
     payload: dict[str, Any] = {
         "name": name,
@@ -325,6 +329,9 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
         "uri": safe_url(_normalised_uri(source.uri)),
         "revision": dataset_uri_revision(source.uri, source.revision),
     }
+    content = dataset_content_digest(source.uri)
+    if content:
+        payload["content"] = content
     if source.task_instruction is not None:
         # Only a declared instruction is keyed: an absent one is the absence of a declaration, so a dataset
         # that carries none keeps the identity it had (the same rule identity_payload applies).
@@ -522,24 +529,37 @@ _PHASE_ORDER: dict[str, int] = {"random": 0, "stratified": 1, "adaptive": 2}
 
 def _phase_ranges(
     stage: Stage, schedule: TournamentSchedule | RubricSchedule, query: _Query
-) -> dict[str, tuple[int, int]]:
-    """The window-sequence ranges this pass's own schedule computes for one query: phase -> ``[start, end)``.
+) -> dict[str, tuple[int, int, int]]:
+    """The window-sequence range and window size this pass's own schedule computes for one query.
 
-    A scheduled window's sequence number is its position in the query's schedule, so the ranges identify the
-    slots a pass over this query's units will ask -- and therefore the records of the pass's own generation (a
-    subset or a different pool draws its own ranges, even where the numbers overlap).
+    Phase -> ``(start, end, window)``: the sequence slots a pass over this query's units will ask, and the
+    number of placements a window of the phase holds. A scheduled window's sequence number is the position of
+    its call in the query's schedule (the tournament asks every random and stratified window with its mirror
+    too), so the ranges identify the slots a pass over this query's units will ask -- and therefore the
+    records of the pass's own generation; the window size tells a generation of another pool apart where the
+    numbers overlap (a subset pass with a smaller effective window).
     """
     n_units = len(query.units)
     n_docs = len(document_ids_from_chunks(query.units, query.chunk_mapping))
     if isinstance(schedule, RubricSchedule):
+        window = min(schedule.window, n_units)
         n_random, n_stratified = schedule.windows_for(n_docs, n_units=n_units)
-        return {"random": (0, n_random), "stratified": (n_random, n_random + n_stratified)}
+        return {"random": (0, n_random, window), "stratified": (n_random, n_random + n_stratified, window)}
     n_random, n_stratified, per_batch = schedule.windows_for(n_docs)
-    start = n_random + n_stratified
+    # The tournament numbers a window sequence per CALL: every random and stratified window is asked with its
+    # mirror too (the adaptive phase is never mirrored), so the ranges count the calls the schedule makes.
+    mirror = 2 if schedule.mirror else 1
+    random_end = n_random * mirror
+    stratified_end = random_end + n_stratified * mirror
+    window = min(schedule.window, n_units)
     return {
-        "random": (0, n_random),
-        "stratified": (n_random, start),
-        "adaptive": (start, start + schedule.adaptive_batches_for(n_docs) * per_batch),
+        "random": (0, random_end, window),
+        "stratified": (random_end, stratified_end, window),
+        "adaptive": (
+            stratified_end,
+            stratified_end + schedule.adaptive_batches_for(n_docs) * per_batch,
+            min(schedule.adaptive_window, n_units),
+        ),
     }
 
 
@@ -555,13 +575,13 @@ def _stale_generation(
     A refused window (invalid, with no answer) is asked again on a resume. Its answer changes the live fit, so
     the query's later-phase windows can be selected differently; keeping the first fit's records beside the new
     ones would leave two generations in the store, and the refit reads every valid record. Only the pass's own
-    generation is touched: a record counts only when its phase and sequence fall in this pass's schedule ranges
-    for the query and every unit it showed is one of this pass's units, so a full pass never retires a subset
-    pass's windows (and a subset pass never retires the full pass's). A ``superseded`` tombstone is a retired
-    record, not a refusal: it is never re-asked or retired again.
+    generation is touched: a record counts only when its phase, sequence and window size fall in this pass's
+    schedule ranges for the query and every unit it showed is one of this pass's units, so a full pass never
+    retires a subset pass's windows (and a subset pass never retires the full pass's). A ``superseded``
+    tombstone is a retired record, not a refusal: it is never re-asked or retired again.
     """
     in_scope = {(query.dataset, query.query_id): query for query in queries}
-    ranges: dict[tuple[str, str], dict[str, tuple[int, int]]] = {
+    ranges: dict[tuple[str, str], dict[str, tuple[int, int, int]]] = {
         key: _phase_ranges(stage, schedule, query) for key, query in in_scope.items()
     }
     refused: dict[tuple[str, str], list[Judgement]] = {}
@@ -577,9 +597,11 @@ def _stale_generation(
         query = in_scope.get((record.dataset, record.query_id))
         if query is None:
             continue
-        start, end = ranges[(record.dataset, record.query_id)].get(record.phase, (0, 0))
+        start, end, window = ranges[(record.dataset, record.query_id)].get(record.phase, (0, 0, 0))
         if not start <= record.window_seq < end:
             continue  # not a slot this pass asks: another pool's or another generation's window
+        if len(record.placements) != window:
+            continue  # a slot of another pool's generation: a different effective window fills the numbers
         if not {placement.unit_id for placement in record.placements} <= set(query.units):
             continue
         refused.setdefault((record.dataset, record.query_id), []).append(record)
@@ -599,9 +621,11 @@ def _stale_generation(
                 continue
             if record.invalid_category == "superseded":
                 continue  # already retired; a later resume must not append a second tombstone for it
-            start, end = query_ranges.get(record.phase, (0, 0))
+            start, end, window = query_ranges.get(record.phase, (0, 0, 0))
             if not start <= record.window_seq < end:
                 continue  # another pool's or another generation's slot: this pass never replaces it
+            if len(record.placements) != window:
+                continue  # a slot of another pool's generation: a different effective window fills the numbers
             if not {placement.unit_id for placement in record.placements} <= units:
                 continue
             if _PHASE_ORDER[record.phase] > earliest or (
@@ -1307,6 +1331,14 @@ def _plan(
             "the judge %s declares context_tokens but no tokenizer: the per-window text budget cannot be counted, "
             "so documents are sent whole, and a window over the context is refused by the endpoint and recorded "
             "invalid; set judge.tokenizer to size the windows",
+            client.model,
+        )
+    if tokenizer is not None and client.config.context_tokens is None:
+        logger.warning(
+            "the judge %s declares a tokenizer but no context_tokens: no per-window text budget is counted, so "
+            "each window sends its documents as the load-time text policy left them (whole, unless that policy "
+            "cut them) and the engine's own context is the only bound; set judge.context_tokens to size the "
+            "windows",
             client.model,
         )
     loaded = TextTruncationCensus()

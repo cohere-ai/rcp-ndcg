@@ -77,7 +77,7 @@ A recipe whose weights do not fit one GPU declares the smallest tensor parallel 
 useful cache, and documents its H100 shape as a `serve --set resources.gpus=<n>` override in the recipe notes
 (one B200 or one H100 is the default serving environment; throughput scales by replicas).
 The table's "the model's" context is the paper's TREC-DL preset, which declared no `context_tokens`: documents
-are sent whole and the engine's own context bounds the window.
+are sent whole and the engine's own context bounds the window (the pass warns that no window budget is counted).
 
 Every shipped judge recipe sends its checkpoint's own generation defaults: the `client` block's `temperature`
 and `extra_body` (`top_p`/`top_k`) are the values the checkpoint's `generation_config.json` declares at the
@@ -251,8 +251,11 @@ reproducible from the store after its file moves or changes.
   version header, and the first answer's `system_fingerprint`). This is runtime information: it never enters the
   identity, so a store resumed against another engine version adds a report instead of being refused. The dataset
   enters the identity by its name and URI and, for a Hub dataset, by the commit its revision resolved to, so a moved
-  upstream is refused. Local files have no such pin: editing the documents of a local dataset after judging it is
-  your responsibility, since the stored answers would then be paired with texts the judge never saw. Adding
+  upstream is refused. A local source has no commit, so it enters by the digest of the files its reader reads
+  (a file's bytes; a directory's sorted listing of names, sizes and mtimes --
+  `rcp_ndcg.data.revisions.dataset_content_digest`, the same digest the run steps' identity carries), so editing
+  the documents of a local dataset after judging it is refused as another dataset instead of pairing the stored
+  answers with texts the judge never saw. Adding
   documents is fine: only windows that show them are new.
 - **Concurrent writers.** The store is reader-safe by design and safe to overlap: two passes claiming two
   stages, or appending records of the same stage, serialize on an advisory lock on the store directory, and the
@@ -262,7 +265,8 @@ reproducible from the store after its file moves or changes.
   window refits under the new answer: the later-phase windows its first fit selected are retired with an
   appended ``superseded`` tombstone and asked again, so the fit never reads two generations of one query's
   schedule (and the stage file stays append-only, as the mirror's immutable parts require). The retirement is
-  scoped to the pass's own generation -- its schedule's window sequences and its units -- so a full pass never
+  scoped to the pass's own generation -- its schedule's window sequences (per call: the tournament's mirrors
+  are in), their window sizes and its units -- so a full pass never
   retires a subset pass's windows and a subset pass never retires the full pass's; a planned pass with
   `windows=` runs no schedule and retires nothing. The calibration's coverage does not count a tombstone as an
   invalid window, and `run status` counts the live records.

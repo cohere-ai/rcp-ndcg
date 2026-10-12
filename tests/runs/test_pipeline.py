@@ -1436,6 +1436,26 @@ class TestTheLocalDatasetContentAndTheBehaviourVersions:
         plan = {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()}
         assert plan["retrieve"] == "would run", "the edited corpus makes the retrieve step stale"
 
+    def test_an_edited_local_dataset_refuses_the_store_instead_of_reusing_it(self, data: Path, tmp_path: Path) -> None:
+        """The closure test end to end: a run whose local dataset is edited in place re-runs its judging step
+        (the content names the dataset in the step identity), and the store that holds the old bytes refuses
+        it instead of pairing the stored answers with texts the judge never saw."""
+        rows = self._local_rows(data, tmp_path)
+        pipeline = Pipeline(tiny_config(rows, steps=["tournament", "rubric"]), runs_dir=str(tmp_path / "runs"))
+        pipeline.run()
+
+        first, *rest = rows.read_text(encoding="utf-8").splitlines()
+        edited = json.loads(first)
+        edited["docs"][0] = f"{edited['docs'][0]} (edited)"
+        rows.write_text("\n".join([json.dumps(edited), *rest]) + "\n", encoding="utf-8")
+
+        with pytest.raises(IdentityError, match="dataset.content") as refused:
+            Pipeline.resume(pipeline.layout.root).run()
+        assert any("dataset.content" in line for line in refused.value.details["differences"])
+        assert {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()}[
+            "tournament"
+        ] == "would run", "the edited corpus makes the judging step stale"
+
     def test_the_retrieve_step_identity_carries_its_behaviour_version(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

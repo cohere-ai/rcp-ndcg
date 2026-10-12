@@ -104,8 +104,9 @@ The rest is shared equally by the documents of the window. Each document's text,
 and XML-escaped), is cut to its share at a token boundary, and the cut is recorded under `window_budget` in
 `preprocessing.jsonl` beside the judgement store.
 
-A judge config without `context_tokens` sends documents whole. So does a judge without a tokenizer, which logs a
-warning when it declares a context: the endpoint then refuses a window that does not fit, and that window is recorded
+A judge config without `context_tokens` sends documents whole, and logs a warning when it names a tokenizer
+(which sizes no window budget without one). So does a judge without a tokenizer, which logs a warning when it
+declares a context: the endpoint then refuses a window that does not fit, and that window is recorded
 as invalid. `chunk` keeps chunks within `max_tokens`. Choose a cap below the window budget when every token must reach
 the judge.
 

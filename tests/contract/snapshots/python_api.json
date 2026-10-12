@@ -8510,6 +8510,48 @@
           "verified": "property"
         }
       },
+      "dataset_content_digest": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "options"
+          },
+          {
+            "returns": "dict[str, str]"
+          }
+        ]
+      },
+      "dataset_local_locations": {
+        "defined_in": "rcp_ndcg.data.revisions",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "str",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "uri"
+          },
+          {
+            "annotation": "Mapping[str, Any] | None",
+            "default": null,
+            "kind": "positional_or_keyword",
+            "name": "options"
+          },
+          {
+            "returns": "dict[str, str]"
+          }
+        ]
+      },
       "dataset_uri_revision": {
         "defined_in": "rcp_ndcg.data.revisions",
         "kind": "function",
