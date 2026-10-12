@@ -232,3 +232,193 @@ None.
   cause is not the batching (the pooling is per sequence) but the wave should say so with numbers.
 - The stored stage-2 reference outputs are keyed by the family reference hash: the three changed references
   invalidate their entries, so the next wave recomputes them (no action needed).
+
+---
+
+# Round 7 — the last five on `rc0-202610120530`
+
+## 1. Status
+
+**DONE.** All five brief items are fixed or declared, each code change has a failing-first CPU test (the
+declarations have red-first recipe tests), and `bin/gate lane/e2b` is **GATE: PASS** on `921bc766`
+(slot 2; every step exit=0). The branch's base is the current `rfc-0001` tip: `233bdda2` was merged first
+(clean, `fee88753`). Round-7 commits: `e86d80cd`, `56a521c2`, `fc3f28f7`, `5b3fec8d`, `96aa4fad`,
+`921bc766`, plus this report commit.
+
+The evidence is the wave's own artifacts, downloaded from the run's results prefix into a scratch
+directory outside the repository (the raw `status.json`/`equivalence.json`/`serve.log` of the five
+recipes, and the pplx-context reference store), plus the pinned tokenizers and the plugin/recipe code.
+
+## 2. Per item
+
+### 2.1 qwen3-vl-embedding-2b/-8b — **declared** (the measured bf16 floors)
+
+Both sides bf16 at both sizes (no cast to fix). Stage 2 measured over the 282 gated comparisons (94
+vectors at full width, k=64 and the size's MRL width):
+
+- 2b: min cosine 0.998541 at full width and k=2048, 0.998906 at k=64; 14 of 282 comparisons below the
+  published 0.999 (6 full width, 6 at k=2048, 2 at k=64) → `overrides.gates.vec_min_cosine: 0.9985`.
+- 8b: 0.998335 at full width and k=4096, 0.998674 at k=64; 15 of 282 below (7 full width, 7 at k=4096,
+  1 at k=64) → `0.9983`.
+
+Each variant's notes carry the per-MRL numbers and the family notes carry the summary; the per-variant
+tests (`test_the_variant_declares_its_measured_bf16_cosine_floor`) pin the values and the evidence
+strings, red first (`assert None == 0.9985`), and the goldens are regenerated. The bounds sit just below
+the measured floors, so a real regression still fails.
+
+### 2.2 qwen3-vl-reranker-2b/-8b — **declared** (the measured probability bound), with one value corrected
+
+Stage 2 measured, over 55 documents and 34 queries: `p99_documents_within` 0.9818 at the published 0.02
+tolerance (the failing gate), max |delta| 0.0293 (2b) / 0.0273 (8b) inside the published 0.05
+all-documents bound, Kendall tau median 1.0.
+
+The brief named `overrides.gates.prob_p99_abs: 0.98`; that field is the **|delta| tolerance** 99% of
+documents must meet (the qwen3-reranker family's own field: 0.025/0.04 from measured maxima
+0.0234/0.0391), so 0.98 would make the p99 gate vacuous. Escalated; the supervisor confirmed **0.03**.
+Both variants declare it (the tight tolerance covering the measured maximum, 100% of the wave's
+documents), the variant + family notes carry the numbers, the test is red first (`assert None == 0.03`),
+and the goldens are regenerated.
+
+### 2.3 pplx-embed-v2-context — **fixed**: two real defects and one comparison convention
+
+The wave's "6 of 198 vectors" were 3 comparisons at cosine 0.0 (row 15's empty document, ×3 MRL widths)
+and 3 at 0.576 (row 18's query, the spellings stratum). All three classes are resolved:
+
+**(a) The empty document (0.0) — a plugin defect, fixed.** The client sends the document render `[D] `
+under the declared split parse, and the pinned tokenizer renders the prefix's trailing space as its OWN
+token (id 220) exactly when the content's first token cannot carry it or the content is empty (measured: a
+content-initial space merges into the next token — 256/262/… — so a leading 220 in the body is always the
+prefix's). The reference's char spans start at char 4 and pool no token there (the downloaded reference
+store shows row 15's document vector at norm 0.0), while the plugin stripped only the two literal prefix
+ids and pooled the space token — a nonzero vector where the reference pools zero. `pool_sequence` now
+drops a leading `PREFIX_SPACE_TOKEN_ID` (220) from the document body, ids and hidden states alike; the
+plugin's CPU test pins the empty document's zero vector and the first chunk's span on a spelling-bearing
+document (red first: the import of the constant failed).
+
+**(b) The zero-vector convention — the harness, fixed.** Even with the plugin returning the zero vector,
+the harness's `_cosine` mapped the pair to 0.0 and failed a perfect agreement. Two zero vectors now score
+1.0 (the same degenerate output); a zero against a non-zero vector still scores 0.0, so a one-sided
+degenerate output still fails. A unit test pins both directions and the gate summary; red first
+(`0.0 == 1.0`).
+
+**(c) Row 18's query (0.576) — the client's query parse, fixed per the supervisor's Fix A.** The
+checkpoint's own `prepare_inputs(task="query")` split-tokenizes the query BODY (`split_special_tokens=True`)
+and prepends the `[Q] ` prefix as the one added id 248077 — 182 body ids on that row — while the client
+sent one added-token parse of the whole render (71 ids): the engine and the reference were compared on
+different inputs. The two constructions coincide for spelling-free queries, which is why the round-2
+measurement passed. The product now declares it per recipe: `PoolingEndpoint.query_split_special_tokens:
+bool | None` (CONTENT; refused beside `text`/`messages`, and without a template whose query shape is a
+fixed head followed by one content span), and `TemplateSpec.split_ids` is the one home of the rule — the
+fixed head tokenizes with the file's own parse (its `[Q] ` crosses as the reference's prefix id) and the
+content span with the split parse. The pooling client's query leg sends those ids; the harness's
+`fitting.query_split_special_tokens` reads the declaration and its render check derives the reference's ids
+through the same `split_ids` call, so stage 1 and stage 2 stay on one rule. Unset, every other run keeps
+one parse of the whole render and is not re-keyed (the fingerprint omits unset fields). Tests, red first:
+the client's `[prefix id] + split(body)` and the config refusals; the template method's rule and refusals;
+the recipe's wire test on a spellings query; and a stage-1 render-check test that a mutation (disabling the
+derivation) reds. The recipe declares `query_split_special_tokens: true` and its notes record the evidence.
+
+### 2.4 topk-embed-v1-small/-xsmall — **fixed** (the rope shim)
+
+The checkpoint's wrapper builds 2-D rope positions for text (`within.unsqueeze(0)`, shape `(1, total)`; its
+image branch stacks `(3, 1, total)`), while transformers 5.17's `Qwen3_5RotaryEmbedding.forward` reads only
+the 3-D mrope form (`position_ids[:, :, None, :]`, `modeling_qwen3_5.py:192`): every text-only embed died
+with `IndexError: too many indices for tensor of dimension 2`. `reference.py` declares
+`_promote_qwen3_5_rope_position_ids`, which wraps the rope class's forward: a 2-D input is promoted to
+`(3, bs, positions)` (the three axes equal — the text-only case the remote's own image branch shows the
+layout for) and a 3-D input passes through unchanged, so the image path is untouched and a second install
+is a no-op. The checkpoint's 5.9.0 pin stays out (the family's `reference.in` records why a 5.9.0 cannot
+replace the image's stack); the CPU test pins both shapes and the idempotent install (red first:
+`AttributeError: ... has no attribute '_promote_qwen3_5_rope_position_ids'`).
+
+### 2.5 embeddinggemma-2 — **fixed** (the serve flag, recorded)
+
+The engine now reaches model load and dies in the TRITON_ATTN prefill kernel:
+`triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 266240, Hardware limit:
+232448` at `triton_prefill_attention.py`'s `context_attention_fwd`, inside `compile_or_warm_up_model`. The
+demand is compile-time — the full-attention layers' head_dim 512 with the kernel's BLOCK 128 — so neither
+of the brief's two candidates applies: `--enforce-eager` does not change the attention backend (and the
+crash is not a graph/compile one; the engine already overrides the cudagraph mode to NONE for pooling),
+and `--max-num-batched-tokens` does not change the kernel's BLOCK sizes (they come from the dtype and
+head_dim, not the sequence length). The lever is the attention backend: the image's own Gemma4 config hook
+had already selected FA4 for this model's heterogeneous head dimensions ("Gemma4 model has heterogeneous
+head dimensions … Using FA4 for all layers", the serve log), and the plugin's folded EmbeddingGemma2 hook
+then overrode it to TRITON_ATTN — on this v0.31.0-based image the Gemma4 hook sets only
+`flash_attn_version=4` and leaves `backend` None, so the folded hook's "no backend requested" branch fires.
+The recipe pins `serve.extra_args: [--attention-backend, FLASH_ATTN]`, restoring the hook's own selection;
+FA4 supports any head size, every attention type (encoder-only included) and SM10.x, and an invalid backend
+fails loudly at startup. The test pins the argv and the recorded reasoning in the notes (red first:
+`ValueError: '--attention-backend' is not in list`).
+
+## 3. Checks
+
+| Check | Result |
+|---|---|
+| `bin/gate lane/e2b` | **GATE: PASS** (`921bc766`, slot 2; every step exit=0) |
+| gate pytest | 4131 passed, 153 skipped |
+| gate contract-docs | 410 passed, 105 skipped |
+| gate test-pkg | 1139 passed, 229 skipped |
+| gate recipes (network on) | no failure outside the baseline (pytest exit 0) |
+| gate vllm-pkg / vllm-models | 50 passed / 102 passed, 8 skipped |
+| gate run_all / public-names / clean | leaderboards 987 match + 35 known deviations + 0 failed; human study 67/67; judges 82/82; public-names clean; tree clean |
+| `ruff format --check` / `ruff check` / `basedpyright` | clean / clean / 0 errors |
+| `mkdocs build --strict` | built |
+| touched families with the network gate open | 133 passed (qwen3-vl embedding + reranker, topk, embeddinggemma-2, pplx-context) |
+
+Note for reproduction: an ambient `UV_EXTRA_INDEX_URL` still makes the `rcp-ndcg-vllm/tests/models`
+wheel-build tests fail in this environment; `bin/gate` unsets it, and with it unset the module is green.
+
+## 4. Decisions taken (escalated, then confirmed)
+
+- The qwen3-vl-reranker bound: 0.03, not the brief's literal 0.98 (the field's meaning; see 2.2).
+- pplx-context row 18: Fix A (the product's query construction), per the supervisor — not a declared
+  deviation.
+- The pplx empty document and the zero-vector convention: both fixed (the plugin defect first).
+- embeddinggemma-2: the FA4 pin, not `--enforce-eager`/`--max-num-batched-tokens` (recorded in the notes).
+
+## 5. Docs updated
+
+- `docs/concepts/late-interaction.md` — the token-ids wire's two per-side split declarations (the
+  document parse's bullet corrected: the query side is no longer "the file's own parse" by default, and the
+  new `query_split_special_tokens` bullet carries the reference-construction rule).
+- `docs/reference/api/rcp_ndcg.inference.md`, `docs/reference/api/rcp_ndcg.retrieval.md` — regenerated
+  (`rcp-ndcg docs api --out docs/reference/api`) for the new field.
+- `schemas/index.v1.json`, `schemas/run-config.v1.json`, `tests/contract/snapshots/python_api.json` —
+  regenerated (`pytest tests/contract --update-snapshots`).
+- Greps run: `git grep -n "query_split_special_tokens" -- docs README.md REPRODUCIBILITY.md skills
+  examples experiments mkdocs.yml` (one narrative hit, updated); `git grep -n "split_ids" -- docs README.md
+  skills examples` (none — the method is documented by the generated snapshot/API pages);
+  `git grep -n "attention-backend" -- docs README.md skills examples` (none — recipe data, recorded in the
+  recipe notes).
+
+## CHANGELOG entry
+
+Under `## 0.0.1 — <date at tag time>`: one `### Public surface` bullet (the query-side declaration and
+`TemplateSpec.split_ids`) and seven `### Fixed` bullets (the pplx empty-document prefix-space rule, the
+pplx query construction, the harness's zero-vector convention, the topk rope shim, the two qwen3-vl bound
+declarations and the embeddinggemma-2 attention backend). The exact text is in `CHANGELOG.md`.
+
+## Public surface changes
+
+- New: `PoolingEndpoint.query_split_special_tokens` (CONTENT) and `TemplateSpec.split_ids`; the contract
+  snapshot, the exported schemas (`index.v1.json`, `run-config.v1.json`) and the generated API pages
+  record them.
+- Recipe data: the qwen3-vl embedding/reranker `overrides.gates` values, the embeddinggemma-2
+  `serve.extra_args` pair and the pplx-context `client.query_split_special_tokens`; goldens regenerated.
+
+## Files outside scope
+
+None.
+
+## For the next lanes
+
+- Re-run the five families on a new RC (the plugin wheel's hash moves again: the pplx plugin module, the
+  recipe data and the reference file all changed, so the carriers re-key): qwen3-vl-embedding 2b/8b
+  (the declared floors now gate), qwen3-vl-reranker 2b/8b (the declared tolerance), pplx-context (the empty
+  row and the spellings row), topk-small/-xsmall (the reference subprocess load) and embeddinggemma-2 (T0
+  model load with the FA4 pin).
+- embeddinggemma-2's FA4 pin is CPU-verified only (argv + the serve-log/config-hook evidence): the next
+  wave's T0 model load is the confirmation, and the flag is removed with the fold when the engine image
+  moves to a release whose registry carries the model.
+- The qwen3-vl-reranker bounds are declared at 0.03; if a later wave measures a tighter maximum, the
+  declarations are the one-line tightening (each bound sits just below its measured floor by design).
