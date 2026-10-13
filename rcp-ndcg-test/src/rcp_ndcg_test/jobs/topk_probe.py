@@ -52,6 +52,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import traceback
@@ -859,8 +860,13 @@ def _per_token_cosine(engine_vectors: Any, reference_vectors: Any) -> dict[str, 
 
 
 def _index_set(value: Any) -> set[int]:
-    """A comma list of pairs indices (``--rows`` / ``--text-rows`` / ``--query-rows``) as a set."""
-    return {int(item) for item in str(value).split(",") if str(item).strip()}
+    """A list of pairs indices (``--rows`` / ``--text-rows`` / ``--query-rows``) as a set.
+
+    Commas, semicolons and plus signs all separate: the job CLI renders an operator's knob through
+    helm's ``--set``, which splits on commas (``env.RCP_TOPK_TEXT_ROWS=17,18`` is a parse error), so
+    a node submission passes the list with ``;`` while a hand-run argv may use commas.
+    """
+    return {int(item) for item in re.split(r"[,;+]", str(value)) if item.strip()}
 
 
 def _pairs_rows(args: argparse.Namespace) -> list[tuple[int, int, dict[str, Any]]]:

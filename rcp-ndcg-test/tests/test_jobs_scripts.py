@@ -2546,6 +2546,11 @@ def test_the_probe_selects_the_text_only_rows_it_is_asked_for(tmp_path: Path) ->
     ]
     assert probe._text_render(args, rows[0][1]) == "Document: row one document"
     assert probe._text_render(args, rows[1][1]) == "Query: row two query"
+    # a node submission separates the list with ';' (helm's --set splits on commas) and ',' still works
+    assert probe._index_set("17;18") == {17, 18}
+    assert probe._index_set("17,18") == {17, 18}
+    assert probe._index_set("17+18") == {17, 18}
+    assert probe._index_set("") == set()
     # the render strips, exactly as the checkpoint's format_document/format_query does
     stripped = probe._text_render(args, {"side": "document", "text": "  padded  "})
     assert stripped == "Document:   padded"
