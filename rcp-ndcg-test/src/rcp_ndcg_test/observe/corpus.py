@@ -520,8 +520,17 @@ def _cosines(
                 np.asarray(b).reshape(-1, np.asarray(a).shape[-1]),
             )
             for row_a, row_b in zip(a2, b2, strict=False):
-                norm = float(np.linalg.norm(row_a) * np.linalg.norm(row_b))
-                out.append(float(np.dot(row_a, row_b) / norm) if norm else 1.0)
+                # Stage 2's rule (:func:`rcp_ndcg_test.equivalence.stages._cosine`), mirrored: two zero
+                # vectors are the same degenerate output and score 1.0, a zero against a non-zero vector
+                # scores 0.0, so a one-sided degenerate emission is not perfect agreement.
+                norm_a = float(np.linalg.norm(row_a))
+                norm_b = float(np.linalg.norm(row_b))
+                if norm_a == 0.0 and norm_b == 0.0:
+                    out.append(1.0)
+                elif norm_a and norm_b:
+                    out.append(float(np.dot(row_a, row_b) / (norm_a * norm_b)))
+                else:
+                    out.append(0.0)
     return out
 
 
