@@ -278,11 +278,12 @@ class ServeConfig(BaseModel):
     """Everything rendered into the ``vllm serve`` argv — nothing implicit.
 
     See :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``
-    and ``patches`` never reach the argv: the first two name packages that must be installed into the image
-    before the engine starts (a ``vllm.general_plugins`` package and the checkpoint's IO-processor plugin,
-    respectively; the node's bootstrap collects a wave's ``serve.plugin`` wheels with
+    and ``patches`` never reach the argv: ``plugin`` names the ``vllm.general_plugins`` pip package the
+    engine imports (the node's bootstrap collects a wave's ``serve.plugin`` wheels with
     ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff
-    guard); ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's
+    guard); ``io_processor_plugin`` names the checkpoint's IO-processor plugin, resolved through the
+    checkpoint's own config and recorded by the harness, never installed by name;
+    ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's
     engine runs (the behaviour fingerprint hashes exactly those modules), and ``patches`` names the engine
     patches this recipe opts into (``serve`` renders them into the engine's environment, and the fingerprint
     hashes every named module).

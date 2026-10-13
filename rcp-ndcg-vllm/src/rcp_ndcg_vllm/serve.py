@@ -137,8 +137,11 @@ def run_console(argv: list[str] | None = None) -> int:
 
     try:
         recipe = load_recipe(args.recipe_id, variant=args.variant)
+        # serve.plugin is the pip package the engine imports through vllm.general_plugins; it must be
+        # installed in this environment.  serve.io_processor_plugin is NOT checked here: it names the
+        # checkpoint's IO-processor plugin, resolved through the checkpoint's own config and recorded by
+        # the harness (jobs.plugins), never an installed distribution.
         _check_plugin(recipe.serve.plugin)
-        _check_plugin(recipe.serve.io_processor_plugin)
         overrides = parse_deployment_overrides(args.set)
         port = args.port if args.port is not None else _DEFAULT_PORT
         command = serve_argv(recipe, port=port, served_model_name=recipe.id, deployment=overrides)
