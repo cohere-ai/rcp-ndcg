@@ -387,6 +387,7 @@ _DERIVED_RECIPE_AND_PLUGIN_FILES = (
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-reranker/reference.py",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/topk-embed-v1/reference.py",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank/reference.py",
+    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/chunk_rule.py",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/hf_config.py",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/model.py",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/pooler.py",

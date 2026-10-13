@@ -3778,6 +3778,24 @@ text it sends to the declared budget.
   client's own captured request for the same text, and the stub engine now serves vLLM's token-id prompts
   so the ids are accepted end to end.
 
+- **The corpus check expects the declared per-chunk count for a per-chunk recipe** (the final RC's recording
+  failure: `scores_finite_and_vector_widths` was False with "the /pooling reply reports 9 prompt token(s) but
+  its vectors decode to 1" for pplx-embed-v2-context-9b-preview): the served plugin pools one vector per
+  document chunk, so a one-chunk document legitimately answers one vector while `usage.prompt_tokens`
+  reports the whole prompt, and the corpus check decoded the reply as a token-per-position one.  The
+  manifest's recipe block now records the declared `outputs` head; the check reads it and, for
+  `outputs: per_chunk`, expects the DECLARED chunk count per item -- the plugin's own segmentation over the
+  ids the client sent, one vector per document chunk and one for a query -- naming the expected count on a
+  mismatch; a reply at the prompt-token count (the engine ignored the per-chunk head) and one at a count
+  that is neither fail.  The segmentation and the id-level contract (the role prefixes, the boundary id, the
+  prefix-space rule) moved to the plugin's new pure-Python `rcp_ndcg_vllm.models.pplx.chunk_rule` (no vLLM,
+  no torch, so the harness imports it; the pooling core reads the same one home), which is keyed into the
+  behaviour fingerprint: the shared `rcp_ndcg_vllm.models` module moved every plugin recipe's fingerprint,
+  so the wave re-records those recipes' corpora and the goldens are regenerated.  The non-determinism
+  measurement decodes per-chunk replies with the declared head too, so their vector drift is no longer
+  silently dropped.  A CPU test pins the check (a reply at the chunk count passes; one at the prompt-token
+  count and one that is neither fail, naming the expected count; a token-per-position recipe is unchanged).
+
 ### Changed
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

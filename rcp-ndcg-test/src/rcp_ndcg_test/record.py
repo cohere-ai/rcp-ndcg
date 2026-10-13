@@ -523,7 +523,12 @@ def record_corpus(
         if recipe_block["document_skip_engine_side"] and recipe_block["document_skip_token_ids"]
         else None
     )
-    nondeterminism = summarise_nondeterminism(collected.records, dim=recipe.client.get("dim"), kept_of=kept_of)
+    # The declared head (per-token or per-chunk) the non-determinism measurement and the acceptance check
+    # both decode with: a per-chunk reply's vectors are measured, never silently dropped.
+    outputs = str(recipe_block["outputs"] or "per_token")
+    nondeterminism = summarise_nondeterminism(
+        collected.records, dim=recipe.client.get("dim"), kept_of=kept_of, outputs=outputs
+    )
     (directory / "nondeterminism.json").write_text(
         json.dumps(nondeterminism, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
