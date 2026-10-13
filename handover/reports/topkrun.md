@@ -269,7 +269,7 @@ they are decisive about the mechanism (and the refusal itself is the second find
 ## 7. The text-only cells (C-T1): the majority of the failing comparisons
 
 The wave's own record (re-derived here from its `equivalence.json`, full width, `mrl_dim null`): the
-**text rows 0-19 carry 6,481 of the 10,819 sub-0.999 comparisons (54.8%)** and the image rows 20-28
+**text rows 0-19 carry 6,481 of the 11,819 sub-0.999 comparisons (54.8% -- 6,481 text + 5,338 image)** and the image rows 20-28
 carry 5,338 (49.4% of their own 5,841 — every image document row fails, while all nine of their queries
 pass at min 0.999847). Rows 17 and 18 are text-only documents (7,366 / 8,186 tokens) at min 0.7534 /
 0.7830 with 2,667 / 3,158 below the bound; row 12's query is 0.9339 with 208 of 466 below. Stage 1
