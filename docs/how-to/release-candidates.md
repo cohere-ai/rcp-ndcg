@@ -177,7 +177,8 @@ rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BU
 ```
 
 Options: `--max-jobs N` (default 1), `--priority dev-high|dev-medium` (the `priority_class=` override,
-rendered as `<class>-training-priority`; verify with a dry run), `--script bootstrap|wave0|e2e|casefill|judgecheck`,
+rendered as `<class>-training-priority`; verify with a dry run),
+`--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe`,
 and `KJOBS=echo` to print the plan instead of submitting. The job CLI's output goes to a file under
 `RCP_SUBMIT_DIR` (default: a fresh temp directory; the directory is created when it does not exist);
 only job names and states are printed. `RCP_RECORD_CORPUS=1` is forwarded into every submitted job's
@@ -328,3 +329,36 @@ failed. `JUDGECHECK_DRY=1 bash judgecheck.sh ...` prints the plan.
 The knobs: `RCP_JUDGECHECK_PORT_BASE` (8100; judge *i* serves on base + *i*),
 `RCP_JUDGECHECK_STARTUP_S` (3600), `RCP_JUDGECHECK_CHECK_S` / `RCP_JUDGECHECK_MEDIA_S` (900; the per-command
 budgets).
+
+## The topk probe job (`--script topk-probe`)
+
+One recipe family's engine-vs-reference divergence, isolated experiment by experiment on a node: the
+`topk-embed-v1` image-document gap. The job mounts `topk_probe.sh`, its `topk_probe.py` module and the
+wave's per-row cosine fixture beside `bootstrap.sh`, builds the node's client environment and the family's
+reference venv with `bootstrap.sh envs`, checks the image's vLLM API (`topk_probe.py --check-engine`:
+seconds, no weights — a moved engine API stops the job before the model loads), runs the probe on the
+engine image's own python, and uploads `probe-report.json`, `probe-report.md` and the per-row dumps to
+`<OUT_PREFIX>/<wave>/topk-probe/`.
+
+```bash
+rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script topk-probe --priority dev-high \
+  "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves topk-probe
+```
+
+The probe's experiments: **E0** the control, the probe's own engine vectors against a wave's recorded
+vectors for one row (a file passed with `RCP_TOPK_CONTROL_VECTORS`; with none the report says `not_run`
+and the numbers are uncalibrated, never a silent pass), **E1** the preprocessing isolation (the engine's
+pixels against the checkpoint's, every filter/dtype variant against both), **E2/E3** the same tensors into
+the engine's vision tower with forward hooks per layer, so the first tensor whose max-abs-diff crosses
+`max(1e-2, 10 x the in-run bf16 floor)` names the layer, **E4** the image-token embeddings (the merger
+output), **E5** the cross-feed (the reference tower on the engine's pixels and the engine tower on the
+reference's), **E6** the grid sweep (each image document row's end-to-end per-token cosine beside the
+wave's recorded minimum) and **E7** the text path layer by layer.
+
+The knobs: `RCP_TOPK_VARIANT` (small; the variant whose recipe and checkpoint the probe uses),
+`RCP_TOPK_ROWS` (empty: every image document row), `RCP_TOPK_DEVICE` (cuda:0; the engine),
+`RCP_TOPK_REFERENCE_DEVICE` (cuda:1; the reference subprocess), `RCP_TOPK_GPU_FRACTION` (0.45; the
+engine's `gpu_memory_utilization`), `RCP_TOPK_CONTROL_VECTORS` (unset: the control is `not_run`),
+`RCP_TOPK_MODEL` / `RCP_TOPK_REVISION` (unset: the staged recipe's own checkpoint pin). Each is forwarded
+into the job only when the operator sets it. `TOPK_DRY=1 bash topk_probe.sh <stage> <out>` prints the plan
+the node would run.

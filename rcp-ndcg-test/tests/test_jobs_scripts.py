@@ -6,6 +6,7 @@ submit.sh); what can be exercised on CPU is their plan, their guards and their r
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -13,9 +14,11 @@ import shlex
 import shutil
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
+import torch
 
 from tests.conftest import sandbox_path
 
@@ -30,9 +33,12 @@ E2E_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" 
 CASEFILL_SH = JOBS / "casefill.sh"
 JUDGECHECK_SH = JOBS / "judgecheck.sh"
 JUDGECHECK_PROBE = JOBS / "judgecheck_probe.py"
+TOPK_PROBE_SH = JOBS / "topk_probe.sh"
+TOPK_PROBE_PY = JOBS / "topk_probe.py"
+TOPK_PROBE_COSINES = JOBS / "wave-cosines-topk-small.json"
 WAVE0_HOST = JOBS / "wave0_host.py"
 
-SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH)
+SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH)
 
 needs_shellcheck = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 
@@ -1172,7 +1178,7 @@ def test_submit_refuses_an_unknown_script(tmp_path: Path, monkeypatch: pytest.Mo
         tmp_path, monkeypatch, "--script", "deploy", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a"
     )
     assert completed.returncode == 2
-    assert "bootstrap, wave0, e2e, casefill or judgecheck" in completed.stderr
+    assert "bootstrap, wave0, e2e, casefill, judgecheck or topk-probe" in completed.stderr
 
 
 def test_submit_forwards_record_corpus_only_when_the_operator_set_it(
@@ -2118,6 +2124,315 @@ def test_submit_judgecheck_mounts_the_judgecheck_script(tmp_path: Path, monkeypa
     assert any(word.startswith("files.bootstrap.from_file=") for word in words)
     for stream in (completed.stdout, completed.stderr):
         assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_submit_topk_probe_mounts_the_probe_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The topk probe job: topk_probe.sh mounted beside its module and the wave-cosines fixture, with
+    bootstrap.sh (whose envs mode builds the client environment and the family's reference venv), run with
+    the stage and the probe's own output prefix; no token value in the plan and no knob line when the
+    operator set none (the wrapper's own defaults apply)."""
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "--script",
+        "topk-probe",
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "topk-probe",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    command = next(word for word in words if word.startswith("worker.command="))
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/topkprobe/topk_probe.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/topk-probe"
+    )
+    assert any(word.startswith("files.topkprobe.from_file=") and word.endswith("topk_probe.sh") for word in words)
+    assert any(word.startswith("files.topkprobepy.from_file=") and word.endswith("topk_probe.py") for word in words)
+    assert any(
+        word.startswith("files.topkprobecosines.from_file=") and word.endswith("wave-cosines-topk-small.json")
+        for word in words
+    )
+    assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    assert not any(word.startswith("env.RCP_TOPK_") for word in words)
+    for stream in (completed.stdout, completed.stderr):
+        assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_submit_topk_probe_forwards_the_operators_knobs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every ``RCP_TOPK_*`` knob the wrapper documents reaches the pod as ``env.RCP_TOPK_*``; the mounted
+    helper paths are the node's own and are never forwarded from the operator's environment."""
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "--script",
+        "topk-probe",
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "topk-probe",
+        env_overrides={
+            "RCP_TOPK_VARIANT": "small",
+            "RCP_TOPK_ROWS": "26",
+            "RCP_TOPK_DEVICE": "cuda:1",
+            "RCP_TOPK_REFERENCE_DEVICE": "cuda:2",
+            "RCP_TOPK_GPU_FRACTION": "0.3",
+            "RCP_TOPK_CONTROL_VECTORS": "/etc/rcp/files/topkprobe/control-row26.json",
+            "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
+            "RCP_TOPK_REVISION": "0" * 40,
+        },
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    for knob, value in (
+        ("RCP_TOPK_VARIANT", "small"),
+        ("RCP_TOPK_ROWS", "26"),
+        ("RCP_TOPK_DEVICE", "cuda:1"),
+        ("RCP_TOPK_REFERENCE_DEVICE", "cuda:2"),
+        ("RCP_TOPK_GPU_FRACTION", "0.3"),
+        ("RCP_TOPK_CONTROL_VECTORS", "/etc/rcp/files/topkprobe/control-row26.json"),
+        ("RCP_TOPK_MODEL", "topk-io/topk-embed-v1-small"),
+        ("RCP_TOPK_REVISION", "0" * 40),
+    ):
+        assert f"env.{knob}={value}" in words, (knob, words)
+    # the mounted helpers' own node paths are the wrapper's defaults, never the operator's environment
+    assert not any(word.startswith("env.RCP_TOPK_PROBE_PY") for word in words)
+    assert not any(word.startswith("env.RCP_TOPK_WAVE_COSINES") for word in words)
+
+
+def test_the_topk_probe_dry_plan_names_the_probe_and_the_upload_prefix() -> None:
+    """``TOPK_DRY=1`` prints what the node would run (the operator's plan) and runs nothing: the
+    environments step, the engine-API check, the probe argv with the mounted module and the wave-cosines
+    fixture, the selected rows, and the upload prefix."""
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves/topk-probe"],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "TOPK_DRY": "1",
+            "RCP_GCS_AUTH_FILE": "/nonexistent",
+            "RCP_TOPK_ROWS": "26",
+        },
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    plan = completed.stdout
+    assert "bootstrap.sh envs" in plan
+    assert "/etc/rcp/files/topkprobe/topk_probe.py --check-engine" in plan
+    assert "/etc/rcp/files/topkprobe/topk_probe.py" in plan
+    assert "/etc/rcp/files/topkprobe/wave-cosines-topk-small.json" in plan
+    assert "--rows 26" in plan
+    assert "gs://YOUR-BUCKET/waves/topk-probe/" in plan
+
+
+# --- topk_probe.py: the engine-side accessor and the image's API contract ---------------------------------
+
+
+def _probe_module():
+    """The probe module (stdlib-only at import time: the vLLM and torch imports are inside functions)."""
+    from rcp_ndcg_test.jobs import topk_probe
+
+    return topk_probe
+
+
+class _DecoratedLikeVllm(torch.nn.Module):
+    """A module shaped like vLLM's ``@support_torch_compile`` output: ``__call__`` calls ``forward``."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inner = torch.nn.Linear(2, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.inner(x)
+
+    def __call__(self, *args: object, **kwargs: object) -> torch.Tensor:
+        return self.forward(*args, **kwargs)
+
+
+def test_the_probe_forces_the_single_process_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The model must live in this process for the forward hooks and the tower calls to reach it, and
+    vLLM reads the switch when it builds the engine: ``force_single_process_engine`` sets it."""
+    probe = _probe_module()
+    monkeypatch.delenv("VLLM_ENABLE_V1_MULTIPROCESSING", raising=False)
+    probe.force_single_process_engine()
+    assert os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] == "0"
+
+
+def test_the_probe_walks_the_engines_documented_model_paths() -> None:
+    """v0.31.0's in-process route (``llm_engine.model_executor.driver_worker.model_runner.model``, the
+    path ``LLMEngine._get_driver_model_for_cleanup`` itself reads) and the worker-wrapped shape both
+    resolve; the probe returns the model object itself."""
+    probe = _probe_module()
+    model = object()
+    driver_worker = types.SimpleNamespace(model_runner=types.SimpleNamespace(model=model))
+    llm = types.SimpleNamespace(
+        llm_engine=types.SimpleNamespace(model_executor=types.SimpleNamespace(driver_worker=driver_worker))
+    )
+    assert probe.engine_model(llm) is model
+    wrapped = types.SimpleNamespace(
+        llm_engine=types.SimpleNamespace(
+            model_executor=types.SimpleNamespace(
+                driver_worker=types.SimpleNamespace(
+                    worker=types.SimpleNamespace(model_runner=types.SimpleNamespace(model=model))
+                )
+            )
+        )
+    )
+    assert probe.engine_model(wrapped) is model
+
+
+def test_the_probe_names_every_model_path_it_tried_when_the_api_moves() -> None:
+    """A multiprocess engine (no ``model_executor``) fails loudly, with every path tried and the switch
+    that puts the EngineCore in this process -- never an ``AttributeError`` from a guess."""
+    probe = _probe_module()
+    llm = types.SimpleNamespace(llm_engine=types.SimpleNamespace())
+    with pytest.raises(RuntimeError) as raised:
+        probe.engine_model(llm)
+    message = str(raised.value)
+    for path in probe.ENGINE_MODEL_PATHS:
+        assert ".".join(path) in message
+    assert "VLLM_ENABLE_V1_MULTIPROCESSING=0" in message
+
+
+def test_the_probe_engine_check_names_the_api_the_probe_depends_on(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--check-engine`` is the in-image contract check: it passes on a vLLM whose switch is honoured,
+    whose ``LLMEngine`` still assigns ``model_executor`` and whose ``LLM`` carries the offline pooling
+    entry points -- and fails, naming the fact, on one that moved (the failure the first paid run hit)."""
+    probe = _probe_module()
+
+    class _Engine:
+        def __init__(self) -> None:
+            self.engine_core = types.SimpleNamespace(engine_core=types.SimpleNamespace(model_executor=object()))
+            self.model_executor = self.engine_core.engine_core.model_executor
+
+    class _LLM:
+        def encode(self) -> None: ...
+
+        def apply_model(self) -> None: ...
+
+    vllm = types.SimpleNamespace(
+        __version__="0.31.0",
+        envs=types.SimpleNamespace(VLLM_ENABLE_V1_MULTIPROCESSING=False),
+    )
+    monkeypatch.setitem(sys.modules, "vllm", vllm)
+    monkeypatch.setitem(sys.modules, "vllm.v1", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "vllm.v1.engine", types.SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "vllm.v1.engine.llm_engine", types.SimpleNamespace(LLMEngine=_Engine))
+    vllm.LLM = _LLM
+    assert probe.check_engine() == 0
+    assert "VLLM_ENABLE_V1_MULTIPROCESSING=0" in capsys.readouterr().out
+
+    # The engine in a separate process: no model_executor assignment in the class the image ships.
+    class _MultiprocessEngine:
+        def __init__(self) -> None:
+            self.engine_core = types.SimpleNamespace()
+
+    monkeypatch.setitem(sys.modules, "vllm.v1.engine.llm_engine", types.SimpleNamespace(LLMEngine=_MultiprocessEngine))
+    assert probe.check_engine() == 1
+    assert "no longer assigns model_executor" in capsys.readouterr().err
+
+
+def test_the_topk_probe_wrapper_checks_the_engine_api_before_loading_weights(tmp_path: Path) -> None:
+    """The wrapper runs ``--check-engine`` before the probe and stops there when it fails: a moved engine
+    API costs seconds, never a weights load (the first paid run's failure class)."""
+    stage = tmp_path / "stage"
+    (stage / "recipes" / "topk-embed-v1").mkdir(parents=True)
+    (stage / "recipes" / "topk-embed-v1" / "family.yaml").write_text("id: topk-embed-v1\n", encoding="utf-8")
+    (stage / "pairs").mkdir()
+    (stage / "pairs" / "topk-embed-v1-small.jsonl").write_text("", encoding="utf-8")
+    calls = tmp_path / "calls.log"
+    probe_py = tmp_path / "topk_probe.py"
+    probe_py.write_text(
+        "import sys\n"
+        f"open({str(calls)!r}, 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + chr(10))\n"
+        "sys.exit(1 if '--check-engine' in sys.argv else 0)\n",
+        encoding="utf-8",
+    )
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'state=""\n'
+        'while (($#)); do [[ "$1" == "--state" ]] && { state="$2"; shift 2; continue; }; shift; done\n'
+        'mkdir -p "$state/reference/topk-embed-v1/bin"\n'
+        "printf '#!/bin/sh\\n' > \"$state/reference/topk-embed-v1/bin/python\"\n"
+        'chmod +x "$state/reference/topk-embed-v1/bin/python"\n',
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        [
+            "bash",
+            str(TOPK_PROBE_SH),
+            str(stage),
+            str(tmp_path / "out"),
+        ],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "RCP_GCS_AUTH_FILE": "/nonexistent",
+            "RCP_BOOTSTRAP_SH": str(bootstrap),
+            "RCP_TOPK_PROBE_PY": str(probe_py),
+            "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
+            "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
+            "RCP_TOPK_REVISION": "0" * 40,
+        },
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == ["--check-engine"]
+    assert "not loading the weights" in completed.stderr
+
+
+def test_the_probe_records_a_forward_that_a_decorated_call_bypasses() -> None:
+    """vLLM's ``@support_torch_compile`` replaces a decorated class's ``__call__`` with one that calls
+    ``self.forward(...)`` directly (``Qwen3_VisionPatchEmbed`` and ``Qwen3_VisionBlock`` at v0.31.0), so
+    ``register_forward_hook`` sees nothing while the probe's recorder -- which wraps the bound
+    ``forward`` -- sees the call.  The first node run's E2/E3 tables held only the undecorated
+    ``merger``, which read as "the merger is the first divergent layer"."""
+    probe = _probe_module()
+    module = _DecoratedLikeVllm()
+    decorated_hook: dict[str, object] = {}
+    inner_hook: dict[str, object] = {}
+    handles = [
+        module.register_forward_hook(lambda m, i, o: decorated_hook.setdefault("decorated", o)),
+        module.inner.register_forward_hook(lambda m, i, o: inner_hook.setdefault("inner", o)),
+    ]
+    try:
+        output, sink = probe._run_recorded(functools.partial(module, torch.ones(1, 2)), module, {"inner": "inner"})
+    finally:
+        for handle in handles:
+            handle.remove()
+    assert decorated_hook == {}, "nn.Module's forward hooks never see a decorated module's own call"
+    assert "inner" in inner_hook, "an undecorated child's hook fires (the merger did in the first run)"
+    assert list(sink) == ["inner"]
+    assert torch.equal(sink["inner"], output)
+    # the wrap is restored, so a second call is recorded again and the module still works
+    _, again = probe._run_recorded(functools.partial(module, torch.ones(1, 2)), module, {"inner": "inner"})
+    assert list(again) == ["inner"]
+    assert module.forward.__self__ is module, "the module's own bound forward is back"
+
+
+def test_the_probe_compares_tensors_that_differ_only_by_a_singleton_dimension() -> None:
+    """vLLM's vision tower keeps a leading 1 on every block's output where the checkpoint's does not;
+    the comparison squeezes it and says so -- refusing to compare reads as "clean" (the trap the
+    missing tensors were).  A genuinely different shape still gets no elementwise comparison."""
+    probe = _probe_module()
+    squeezed = probe.stats(torch.ones(2, 1, 3), torch.ones(2, 3))
+    assert squeezed["max_abs_diff"] == 0.0 and squeezed["cosine"] == pytest.approx(1.0)
+    assert "singleton dimensions squeezed" in squeezed["note"]
+    assert squeezed["equal"] is False, "the raw tensors are not equal: only their data is"
+    differing = probe.stats(torch.ones(2, 3), torch.ones(2, 4))
+    assert differing.get("max_abs_diff") is None
+    assert differing["note"] == "shapes differ: no elementwise comparison"
+
+
+def test_the_probe_names_the_tensors_a_recording_missed() -> None:
+    """A recording that missed modules says so (an absent tensor reads as "clean" in the tables)."""
+    probe = _probe_module()
+    names = {"patch_embed": "patch_embed", "merger": "merger", "blocks.0": "block_0"}
+    assert probe._missing_recorded(names, {"merger": object()}) == ["block_0", "patch_embed"]
+    assert probe._missing_recorded(names, {key: object() for key in names.values()}) == []
 
 
 def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes() -> None:

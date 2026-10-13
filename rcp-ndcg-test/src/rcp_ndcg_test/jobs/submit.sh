@@ -21,7 +21,11 @@
 #                  casefill (the cuda reference-case fills: casefill.sh builds the four families'
 #                  reference environments and uploads the edited case YAMLs) or judgecheck (the
 #                  release checklist's judge item: judgecheck.sh serves each judge recipe and runs
-#                  `rcp-ndcg judge check` in both thinking modes plus the engine media probe)
+#                  `rcp-ndcg judge check` in both thinking modes plus the engine media probe) or
+#                  topk-probe (one family's controlled GPU probe: topk_probe.sh builds the client
+#                  environment and the family's reference venv, then runs topk_probe.py, whose
+#                  E0-E7 experiments name the first divergent tensor; its own RCP_TOPK_* knobs are
+#                  forwarded into the job when the operator sets them)
 #
 # Environment (required, no defaults: this script must not name any machine's paths or buckets):
 #   RCP_KJOBS_CONFIG   the job-CLI config file (the job CLI's -f argument)
@@ -42,7 +46,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill|judgecheck] \\
+  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe] \\
          <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]" >&2
 }
 
@@ -58,7 +62,7 @@ while (($#)); do
   case "$1" in
     --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
     --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
-    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e, casefill or judgecheck}"; shift 2 ;;
+    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e, casefill, judgecheck or topk-probe}"; shift 2 ;;
     --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
@@ -66,8 +70,8 @@ while (($#)); do
   esac
 done
 [[ -n "$RC_STAGE_URI" && -n "$OUT_PREFIX" && ${#WAVES[@]} -ge 1 ]] || { usage; exit 2; }
-[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" || "$SCRIPT_NAME" == "judgecheck" ]] || {
-  echo "submit.sh: --script must be bootstrap, wave0, e2e, casefill or judgecheck, got $SCRIPT_NAME" >&2
+[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" || "$SCRIPT_NAME" == "judgecheck" || "$SCRIPT_NAME" == "topk-probe" ]] || {
+  echo "submit.sh: --script must be bootstrap, wave0, e2e, casefill, judgecheck or topk-probe, got $SCRIPT_NAME" >&2
   exit 2
 }
 [[ "$MAX_JOBS" =~ ^[0-9]+$ && "$MAX_JOBS" -ge 1 ]] || { echo "submit.sh: --max-jobs must be a positive number" >&2; exit 2; }
@@ -135,6 +139,18 @@ case "$(basename "$HERE")" in
   jobs) JUDGECHECK_PROBE_PY="$HERE/judgecheck_probe.py" ;;
   *) JUDGECHECK_PROBE_PY="$HERE/jobs/judgecheck_probe.py" ;;
 esac
+case "$(basename "$HERE")" in
+  jobs) TOPK_PROBE_SH="$HERE/topk_probe.sh" ;;
+  *) TOPK_PROBE_SH="$HERE/jobs/topk_probe.sh" ;;
+esac
+case "$(basename "$HERE")" in
+  jobs) TOPK_PROBE_PY="$HERE/topk_probe.py" ;;
+  *) TOPK_PROBE_PY="$HERE/jobs/topk_probe.py" ;;
+esac
+case "$(basename "$HERE")" in
+  jobs) TOPK_PROBE_COSINES="$HERE/wave-cosines-topk-small.json" ;;
+  *) TOPK_PROBE_COSINES="$HERE/jobs/wave-cosines-topk-small.json" ;;
+esac
 [[ "$SCRIPT_NAME" != "wave0" || -f "$WAVE0_SH" ]] || {
   echo "submit.sh: wave0.sh not found at $WAVE0_SH (run submit.sh from the checkout)" >&2
   exit 2
@@ -153,6 +169,18 @@ esac
 }
 [[ "$SCRIPT_NAME" != "judgecheck" || -f "$JUDGECHECK_PROBE_PY" ]] || {
   echo "submit.sh: judgecheck_probe.py not found at $JUDGECHECK_PROBE_PY (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "topk-probe" || -f "$TOPK_PROBE_SH" ]] || {
+  echo "submit.sh: topk_probe.sh not found at $TOPK_PROBE_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "topk-probe" || -f "$TOPK_PROBE_PY" ]] || {
+  echo "submit.sh: topk_probe.py not found at $TOPK_PROBE_PY (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "topk-probe" || -f "$TOPK_PROBE_COSINES" ]] || {
+  echo "submit.sh: wave-cosines-topk-small.json not found at $TOPK_PROBE_COSINES (run submit.sh from the checkout)" >&2
   exit 2
 }
 
@@ -390,6 +418,24 @@ for plan_row in "${PLAN[@]}"; do
       "files.judgecheckprobe.from_file=$JUDGECHECK_PROBE_PY" "files.judgecheckprobe.mount_path=/etc/rcp/files/judgecheckprobe/judgecheck_probe.py"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
+  elif [[ "$SCRIPT_NAME" == "topk-probe" ]]; then
+    # One family's controlled GPU probe: the wrapper builds the node's client environment and the
+    # family's reference venv through bootstrap.sh envs, then runs the probe (the engine image's own
+    # python; the reference side re-executes the same module under the reference venv) and uploads the
+    # report.  The probe's own knobs are forwarded only when the operator set them (unset means the
+    # wrapper's defaults); the mounted helper paths are the node's own and are never forwarded.
+    args+=(
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/topkprobe/topk_probe.sh $RC_STAGE_URI $OUT_URI"
+      "files.topkprobe.from_file=$TOPK_PROBE_SH" "files.topkprobe.mount_path=/etc/rcp/files/topkprobe/topk_probe.sh"
+      "files.topkprobepy.from_file=$TOPK_PROBE_PY" "files.topkprobepy.mount_path=/etc/rcp/files/topkprobe/topk_probe.py"
+      "files.topkprobecosines.from_file=$TOPK_PROBE_COSINES" \
+        "files.topkprobecosines.mount_path=/etc/rcp/files/topkprobe/wave-cosines-topk-small.json"
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+    for knob in RCP_TOPK_VARIANT RCP_TOPK_ROWS RCP_TOPK_DEVICE RCP_TOPK_REFERENCE_DEVICE RCP_TOPK_GPU_FRACTION \
+      RCP_TOPK_CONTROL_VECTORS RCP_TOPK_MODEL RCP_TOPK_REVISION; do
+      if [[ -n "${!knob:-}" ]]; then args+=("env.$knob=${!knob}"); fi
+    done
   else
     # The recipe wave: bootstrap.sh builds the environments and runs the wave's list.  A grouped row
     # mounts its per-image list and passes --wave-list; the ungrouped fallback resolves the staged one.
