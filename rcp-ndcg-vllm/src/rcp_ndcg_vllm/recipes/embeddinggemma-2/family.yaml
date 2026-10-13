@@ -264,7 +264,11 @@ notes: >-
   Media outputs (stage 2 compares them): the reference's embed mode reads the harness's `media` field --
   a media side becomes a one-user-turn conversation with the parts in order (the card injects the
   declared prompt as its system message, which the checkpoint's template renders first), an image a
-  loaded PIL image, and a container handed to the checkpoint's own video processor with the declared pin
+  loaded PIL image PREPARED at the card's fixed point (the card's own resize rule, read from the loaded
+  processor's own module -- `get_aspect_ratio_preserving_size` -- and iterated to the size the processor
+  keeps, applied in one pass with the processor's own `resample`: the pixels the client's preparation
+  sends the engine, so the processor's own resize is the identity on them; see the image-row paragraph
+  below), and a container handed to the checkpoint's own video processor with the declared pin
   (fps 60, the 32-frame cap and the checkpoint's own uniform overflow strategy: video_processing_kwargs)
   -- transformers 5.19.0's EmbeddingGemma2VideoProcessor.sample_frames consumes all three and reproduces
   the digest-pinned engine's EmbeddingGemma2VideoBackend.compute_frames_index_to_sample exactly (W2
@@ -273,8 +277,8 @@ notes: >-
   card's vectors for media rows exactly as for text rows, so stage 2 gates them by the same cosine rule;
   the media stage still gates placement, geometry and tokens.
 
-  The two image rows' residual (E2 round 13, rows 31/32, cosines 0.9956 and 0.9941 full width, 0.994-0.998
-  at every declared k): NOT hidden and NOT bounded. The cause is measured on CPU against the checkpoint's own
+  The two image rows' input difference (E2 rounds 13-14, rows 31/32, cosines 0.9956 and 0.9941 full width,
+  0.994-0.998 at every declared k in round 13). The cause is measured on CPU against the checkpoint's own
   processor (transformers 5.19.0, the pinned revision): the product prepares an image at
   `rcp_ndcg.data.resolution.gemma4_fixed_point` -- the size the processor KEEPS, so the engine's own resize
   is the identity -- while the card's processor resizes the RAW image in ONE step
@@ -284,15 +288,18 @@ notes: >-
   264 + 2 = 266), and the 3000x20 strip on 13344x48 (2,502 patches = 278 + 2 = 280, the engine's 280) where
   the card's gives 9792x48 (1,836 patches = 204 + 2 = 206). The engine
   sees the prepared bytes (272/280, the client's count -- the media stage's engine check passes on both
-  rows); the reference's embed mode runs the card's own pipeline on the raw image (266/206), so the two
-  sides' patch layouts differ and the pooled vectors move by exactly the observed amount. Every other image
-  row is at or beside its fixed point, which is why only these two are off. No per-variant bound is declared:
-  a `gates.vec_min_cosine` low enough for these rows (0.994) would hide the same-sized difference on every
-  row of the variant. The named fix (the next measurement, the wave's re-run re-measures these rows): the
-  reference's embed mode should see the same bytes the engine sees (the harness's stage-2 input alignment --
-  the client's prepared media handed to the reference), or the client should prepare at the card's single
-  resize with the engine's own image resize pinned off (`serve.mm_processor_kwargs.images_kwargs.do_resize:
-  false`), which needs its own wave. Both paths keep the card's processor the definition.
+  rows); the reference's embed mode handed the checkpoint's processor the RAW image (266/206), so the two
+  sides' patch layouts differed and the pooled vectors moved by exactly the observed amount. Every other image
+  row is at or beside its fixed point, which is why only these two were off. Round 14's fix: the reference's
+  embed mode prepares the image at the card's fixed point before the processor sees it, so the processor's
+  own resize is the identity on the reference's side too -- the same pixels the served path sends -- with the
+  rule taken from the loaded processor's own module rather than a second implementation (measured on CPU
+  with the checkpoint's own processor: the reference's prepared image is pixel-identical to the client's
+  prepared bytes for these rows and for the rows already at their fixed point, and the processor's own count
+  of it is 272/280, the client's numbers). The wave's re-run re-measures the rows: they must land at the
+  bf16 floor (>= 0.999) or the residual must be explained with the same evidence. No per-variant bound is
+  declared: a `gates.vec_min_cosine` low enough for these rows (0.994) would hide the same-sized difference
+  on every row of the variant.
 
   MRL. The card's Matryoshka set {128, 256, 512, 768} is declared once, in the client's mrl_kind/mrl_dims
   and in serve.hf_overrides (the engine refuses a per-request dimensions without is_matryoshka, and the

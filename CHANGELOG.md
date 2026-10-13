@@ -1461,6 +1461,23 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
 
+- **The embeddinggemma-2 reference prepares media the way the card's processor does** (the stage-2 image
+  rows 31/32, cosines 0.9941-0.9963 against the 0.999 gate): the engine's processor runs on the bytes the
+  client prepares -- the Gemma 4 resize's fixed point (`rcp_ndcg.data.resolution.gemma4_fixed_point`, Pillow
+  BICUBIC), a size the processor keeps unchanged, so the engine's own media deltas are the client's counts
+  (272 tokens for the shipped 576x4096 receipt, 280 for the 3000x20 strip) -- while the reference's embed
+  mode handed the checkpoint's processor the RAW image, whose single pass lands on a different grid
+  (288x2112 = 266 tokens; 48x9792 = 206), so the two sides' patch layouts differed and the pooled vectors
+  moved by exactly the observed amount. The reference now prepares the image at the card's fixed point
+  before the processor sees it (the processor's own resize is then the identity on the reference's side too,
+  as it is on the engine), taking the rule from the loaded processor's own module -- transformers 5.19.0's
+  `get_aspect_ratio_preserving_size`, iterated to its fixed point -- rather than a second implementation.
+  Measured on CPU with the checkpoint's own processor: the reference's prepared image is pixel-identical to
+  the client's prepared bytes (on these rows and on the rows already at their fixed point) and the
+  processor's own count of it is 272/280, the client's numbers. CPU tests pin the reference's embed input
+  against the product's own preparation for both rows and a 16x16 icon (the card's 768x768), and that the
+  rule is the loaded processor's own; the wave's re-run re-measures the rows.
+
 - **The embeddinggemma-2 video pin reaches the processor that samples the clip** (the E2 round-13 media
   stage's rows 36/37): the pod's engine is the stock `vllm/vllm-openai:v0.31.0` (the job config's image; the
   wave's provenance records the pod's own `VLLM_IMAGE_TAG`/`VLLM_BUILD_COMMIT` and the engine's `(v0.31.0)`

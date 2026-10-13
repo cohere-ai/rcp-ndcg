@@ -383,9 +383,12 @@ python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.
 ```
 
 A recipe with image or video input also runs the **media stage** beside stages 1 and 2. Stage 2 now
-compares the media rows too — the reference reads their `media` field (an inline image as a loaded image, a
-container at the recipe's declared video pin, the parts in order) and computes the card's own vectors or
-scores for them, so the same gates apply; a recipe whose card's own pipeline cannot run an input declares
+compares the media rows too — the reference reads their `media` field (an inline image as a loaded image
+prepared as the served path sends it: the card's own resize under the declared budget, at the size the
+engine's processor keeps, so the two sides see the same pixels — an image the engine would resize again is a
+different input, and the media rows' cosines move by exactly that much; a container at the recipe's declared
+video pin, the parts in order) and computes the card's own vectors or scores for them, so the same gates
+apply; a recipe whose card's own pipeline cannot run an input declares
 `reference.known_deviations: [media_approximation]`, which reports its media rows non-gating with the reason
 in its notes.
 **The media stage itself is an INPUT gate**: it compares what the client *sends* -- and, with an engine,
