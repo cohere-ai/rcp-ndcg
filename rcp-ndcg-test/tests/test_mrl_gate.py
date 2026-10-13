@@ -108,6 +108,21 @@ def test_stage2_uses_the_product_head_for_a_k_wider_than_the_vectors(tmp_path: P
         engine.stop()
 
 
+def test_the_width_mismatch_comment_states_the_refusal_that_precedes_it() -> None:
+    """The stage's width-mismatch comment must agree with the code: a width mismatch that survives the
+    head is a named gate row with both widths, but a declared ``k`` wider than the served vectors is
+    refused by the product head's ``ConfigError`` out of ``_head_matrix`` before any row is compared
+    (the test above) -- the old "never a crash" claim denied that refusal
+    (reviews/final-harness-ds41.md D8)."""
+    import inspect
+
+    from rcp_ndcg_test.equivalence import stages as stages_module
+
+    source = inspect.getsource(stages_module._compare_shape)
+    assert "never a crash" not in source
+    assert "ConfigError" in source
+
+
 def test_the_report_names_every_gated_k(tmp_path: Path) -> None:
     """``EQUIVALENCE.md`` carries one gate row per ``k`` (and the full-width row)."""
     recipe = load("fixture-embed-mrl")
