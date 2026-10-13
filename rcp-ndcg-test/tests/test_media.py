@@ -150,6 +150,89 @@ def test_the_engine_counts_what_the_client_counts_and_an_unpinned_engine_does_no
     assert all(failure["engine_media_tokens"] > failure["client_media_tokens"] for failure in failures)
 
 
+#: The fixture tokenizer's second added token, built here so no chat-template special is typed literally.
+_PLACEHOLDER = chr(60) + "|sep|" + chr(62)
+
+_MERGE_TEMPLATE = (
+    "{%- for message in messages -%}{%- for part in message.content -%}"
+    "{%- if part.type == 'text' %}{{ part.text }}{%- elif part.type == 'image' %}" + _PLACEHOLDER + "{% endif -%}"
+    "{%- endfor -%}{%- endfor -%}"
+)
+"""A served template that renders a media part as its placeholder (the checkpoint template's rule): the
+placeholder stands between a message's text parts, which is what moves a boundary token."""
+
+
+def _merging_recipe(tmp_path: Path) -> Any:
+    """``fixture-vl-embed`` with a placeholder-rendering template and a ``doc_prompt``: a document whose text
+    is ``ance`` under the prompt ``fr`` renders ``france`` without the image and ``fr`` + placeholder +
+    ``ance`` with it, so the placeholder's presence costs the one boundary token the fixture tokenizer merges
+    (``france`` is one token; ``fr``/``ance`` are one each)."""
+    import shutil
+
+    from tests.conftest import TOKENIZER
+
+    directory = tmp_path / "recipes" / "vl-merging"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    shutil.copy(RECIPES / "fixture-vl-embed" / "reference.py", directory / "reference.py")
+    (directory / "chat.jinja").write_text(_MERGE_TEMPLATE, encoding="utf-8")
+    manifest = (
+        (RECIPES / "fixture-vl-embed" / "family.yaml")
+        .read_text(encoding="utf-8")
+        .replace("id: fixture-vl-embed", "id: vl-merging")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}")
+        .replace(
+            '  template:\n    document:\n      - {fixed: "doc: "}\n      - {content: document}\n'
+            '      - {fixed: " [END]"}',
+            '  doc_prompt: "fr"\n  template:\n    document:\n      - {content: document}',
+        )
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    return load_recipe(directory)
+
+
+def test_the_engine_check_reads_the_render_merge_the_placeholder_moves(tmp_path: Path) -> None:
+    """A media side whose text continues after the media: the engine's render puts the placeholder between the
+    two text parts and the word after it loses the token that carried the space, so the engine's own media
+    count is the client's plus this one-token merge.  The check reads the merge from the served template's
+    render (:func:`~rcp_ndcg_test.equivalence.stages.engine_render_merge`) and the stub counts the engine's own
+    way, so an engine that counts the client's tokens exactly (the pre-fix stub, or a real engine whose
+    placeholder does not move a boundary) still passes, while an unpinned engine still fails."""
+    recipe = _merging_recipe(tmp_path)
+    pairs = write_pairs(
+        tmp_path / "pairs.jsonl",
+        [
+            {
+                "query": "the red page",
+                "documents": ["ance"],
+                "media": {"query": [], "documents": [[png_entry(16, 16)]]},
+            }
+        ],
+    )
+    engine = stub_for(recipe)
+    try:
+        document = stage_media(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert document is not None and document["engine_check"]["passed"] is True, document["engine_check"]["failures"]
+    assert document["engine_check"]["checked"] == 1
+    # The fixture's reference renders the document without the declared prompt, so the stage's own
+    # placement comparison reports it: this test is the engine check's arithmetic.
+    assert {failure["check"] for failure in document["failures"]} == {"placement"}, document["failures"][:2]
+
+    unpinned = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"mm_processor_kwargs": {}})})
+    engine = stub_for(unpinned)
+    try:
+        document = stage_media(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    assert document is not None and document["engine_check"]["passed"] is False
+    assert (
+        document["engine_check"]["failures"][0]["engine_media_tokens"]
+        > document["engine_check"]["failures"][0]["client_media_tokens"]
+    )
+
+
 def test_the_harness_runs_the_media_stage_beside_stages_1_and_2(recipe: Any, tmp_path: Path) -> None:
     """``run`` adds the media stage for a recipe with media input; stage 2 compares the text rows and
     reports the fixture's declared media approximation non-gating (decision 35)."""
@@ -724,7 +807,7 @@ def test_an_fps_clip_gates_on_the_rules_realised_frame_count(tmp_path: Path) -> 
 
     recipe = fps_recipe(tmp_path)
     pairs = fps_pairs(tmp_path / "pairs.jsonl")
-    facts, _, _ = media_module._client_facts(recipe, media_rows(load_pairs(pairs)), None)
+    facts, _, _, _ = media_module._client_facts(recipe, media_rows(load_pairs(pairs)), None)
     frames = [item["frames"] for side in facts.values() for item in side["media"]]
     assert frames == [16, 16], f"the fps rule realises 16 of the clip's 64 frames at 8 fps, got {frames}"
     document = stage_media(recipe, pairs, REFERENCE_PYTHON)

@@ -39,6 +39,8 @@ __all__ = [
     "MRL_GATE_VERSION",
     "checkpoint_chat_template",
     "engine_conversation",
+    "engine_render_merge",
+    "media_placeholder_tokens",
     "text_only_conversation",
     "load_pairs",
     "render_chat",
@@ -332,6 +334,41 @@ def _probe(
     }
 
 
+def _conversation_text(conversation: list[Any]) -> str:
+    """One conversation's text content as the engine's chat route hands it to the served template: each
+    message's text parts in order, back to back, the media parts dropped (the engine expands those itself;
+    :func:`text_only_conversation` is the same walk the check's engine side takes)."""
+    out: list[str] = []
+    for message in text_only_conversation(conversation):
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, str):
+            out.append(content)
+            continue
+        for part in content or []:
+            if isinstance(part, dict) and part.get("type") == "text":
+                out.append(str(part.get("text", "")))
+    return "".join(out)
+
+
+def _declared_texts(captured: dict[str, Any]) -> list[str]:
+    """The declared render's input per captured conversation: the conversation's text as the engine reads it.
+
+    A ``messages`` request carries the conversation's parts, and the engine's ``openai`` content format hands
+    them to the served template, which joins a message's text parts itself (the checkpoint's own
+    ``chat_template.jinja`` renders them back to back) -- the served template is the one home of that join,
+    and the check still fails when it inserts a separator.  The capture's ``input`` flattens the parts with
+    ``TEXT_JOIN``, which is vLLM's *string* content format's join (``chat_utils.py``'s
+    ``_get_full_multimodal_text_prompt``): using it here would compare the engine's parts render against the
+    string route's frame, and a media side's conversation -- the side's prompt prefix, the media, the body
+    text -- would fail on the join alone (E2 round 13, the media-template probe's query row).  A body that is
+    not chat-shaped keeps the capture's own texts.
+    """
+    conversations = captured.get("conversations")
+    if not conversations:
+        return list(captured["input"])
+    return [_conversation_text(conversation) for conversation in conversations]
+
+
 def _probe_media(
     recipe: Recipe,
     client: Any,
@@ -343,9 +380,9 @@ def _probe_media(
 ) -> None:
     """One media row's sides through the client, for the template check: the captured conversations (the
     content the client sends, which the engine frames with its chat template) beside the declared render of
-    that content's text -- what the client's budget reserved.  A client that refuses the media (a recipe's
-    declared gap, e.g. the topk skip rule) is left to the media stage's refusal report: nothing captured,
-    nothing compared here."""
+    that content's text as the engine reads it (:func:`_declared_texts`) -- what the client's budget
+    reserved.  A client that refuses the media (a recipe's declared gap, e.g. the topk skip rule) is left to
+    the media stage's refusal report: nothing captured, nothing compared here."""
     from rcp_ndcg.data.preprocess import rendered_request
     from rcp_ndcg.errors import RcpNdcgError
     from rcp_ndcg.inference.types import EncodeRole
@@ -372,7 +409,7 @@ def _probe_media(
                 continue
             for exchange in capture.exchanges[start:]:
                 captured = capture.texts(exchange)
-                for text in captured["input"]:
+                for text in _declared_texts(captured):
                     texts.append(
                         rendered_request(budget, tokenizer, fitting.cast_shape(shape), query=text, document=text)
                         if budget is not None
@@ -1392,6 +1429,70 @@ def render_chat(template_text: str, conversation: list[Any], *, add_generation_p
     return template.render(
         messages=engine_conversation(conversation), add_generation_prompt=add_generation_prompt, tools=None
     )
+
+
+def _emptied_text_parts(conversation: list[Any]) -> list[Any]:
+    """The conversation with every text part's text emptied (its media parts in place): the template's render
+    of it is the frame plus the media placeholders alone."""
+    out: list[Any] = []
+    for message in conversation:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            out.append({**message, "content": ""} if isinstance(message, dict) else message)
+            continue
+        out.append(
+            {
+                **message,
+                "content": [
+                    {**part, "text": ""} if isinstance(part, dict) and part.get("type") == "text" else part
+                    for part in content
+                ],
+            }
+        )
+    return out
+
+
+def media_placeholder_tokens(
+    template_text: str, conversation: list[Any], tokenizer: Any, *, add_generation_prompt: bool
+) -> int:
+    """The tokens the served template renders for a conversation's media parts -- its placeholders.
+
+    The engine's chat route hands the template the media parts, whose placeholders the model's processor
+    replaces with the media's expansion: the prompt the engine reports is the render's tokens minus the
+    placeholders plus the expansion.  Measured as the template's render of the conversation with its text
+    parts emptied (the placeholders, the frame beside them) against the same conversation with the media
+    dropped (the frame alone), so a template that renders no placeholder for a media part -- the fixtures --
+    contributes nothing.  Floored at zero: the frame's own boundary can read one low.
+    """
+    emptied = _emptied_text_parts(conversation)
+    with_media = render_chat(template_text, emptied, add_generation_prompt=add_generation_prompt)
+    frame = render_chat(template_text, text_only_conversation(emptied), add_generation_prompt=add_generation_prompt)
+    return max(0, tokenizer.count(with_media) - tokenizer.count(frame))
+
+
+def engine_render_merge(
+    template_text: str, conversation: list[Any], tokenizer: Any, *, add_generation_prompt: bool
+) -> int:
+    """How many tokens the engine's own render carries beyond the client's text render, its placeholders aside.
+
+    The engine renders the served chat template with the media parts in place (each renders its placeholder)
+    and replaces every placeholder with the media's expansion; the client's render is the same template with
+    the media parts dropped.  Stripping the placeholders from the engine's render leaves the client's string,
+    but a tokenizer is not additive: the placeholder's presence can move a boundary token -- the checkpoint's
+    own template puts its image placeholder between the prompt and the query text, and the word after it then
+    loses the token that carried the space (the media stage's rows 33/35, one token) -- so the engine's
+    prompt may exceed the client's render by this merge, over and above the expansion both sides count.
+    Floored at zero: inserting a token cannot remove a boundary merge, and the placeholder measurement's own
+    frame boundary can read one low.
+    """
+    with_media = render_chat(template_text, conversation, add_generation_prompt=add_generation_prompt)
+    text_only = render_chat(
+        template_text, text_only_conversation(conversation), add_generation_prompt=add_generation_prompt
+    )
+    placeholders = media_placeholder_tokens(
+        template_text, conversation, tokenizer, add_generation_prompt=add_generation_prompt
+    )
+    return max(0, tokenizer.count(with_media) - tokenizer.count(text_only) - placeholders)
 
 
 CHECKPOINT_TEMPLATE_FILES = ("chat_template.jinja", "chat_template.json", "tokenizer_config.json")

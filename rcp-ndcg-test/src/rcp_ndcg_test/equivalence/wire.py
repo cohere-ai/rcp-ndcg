@@ -184,7 +184,11 @@ class Capture:
         A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``) is
         read as vLLM v0.31.0 reads it: a list of messages is ONE conversation and a list of conversations a
         batch.  It yields one ``input`` per conversation -- its messages' text parts joined in order with
-        ``TEXT_JOIN`` (``"\n"``, as the engine joins them): the content the client sent, which the engine's
+        ``TEXT_JOIN`` (``"\n"``, vLLM's *string* content format's join,
+        ``chat_utils.py``'s ``_get_full_multimodal_text_prompt``; the ``openai`` content format hands the
+        template the parts instead and the template joins them, so the render check compares on the parts:
+        :func:`~rcp_ndcg_test.equivalence.stages.engine_render_merge`'s walk): the content the client sent,
+        which the engine's
         chat template frames -- ``conversations``, the conversations as sent (the served template renders
         them), ``add_generation_prompt``, the flag the engine renders them with (false when the body sends
         none, the chat routes' default), and ``media``: per conversation, the placeholders of its media
@@ -210,7 +214,8 @@ class Capture:
                     raw = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
                     # A bare string part is a text part (vLLM's chat_utils reads it so).
                     parts += [{"type": "text", "text": part} if isinstance(part, str) else part for part in raw]
-                # The engine joins text parts with "\n" (vLLM's chat_utils): the product's TEXT_JOIN.
+                # The string content format's join (vLLM's chat_utils): the product's TEXT_JOIN.  The
+                # openai content format (this checkpoint's) hands the template the parts themselves.
                 texts.append(TEXT_JOIN.join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
                 media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
             return {

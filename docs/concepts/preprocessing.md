@@ -286,6 +286,17 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   single frame is an image), including a clip whose fps sampling realises one frame. Run
   `engine_media_check` once against a prepared probe when a serving setup
   changes (below); a mismatch says the engine's media handling is not the one the counted tokens describe.
+  An `fps` pin has two halves on an engine whose video loader samples the whole clip and reports the frames
+  as already sampled (`do_sample_frames=True`: a vLLM without the checkpoint's own video backend, e.g. the
+  stock `vllm/vllm-openai:v0.31.0` for a checkpoint whose backend landed later). There the
+  `--media-io-kwargs` pin reaches only the decoder; the checkpoint's processor resamples those decoded frames
+  with its own defaults (its `processor_config.json` fps, usually 1), so the model sees a handful of frames
+  while the client counted the declared number. The recipe declares the same numbers a second time in
+  `serve.mm_processor_kwargs` (`{fps: N, max_frames: M}`), which the engine's model hands to the processor's
+  call; on an engine whose own backend samples the pin and reports `do_sample_frames=False` the processor
+  keeps the backend's frames and the numbers are inert. embeddinggemma-2 declares both halves (E2 round 13:
+  without the processor half the 4.0 s / 8 fps / 32-frame clip became 4 frames, 492 media tokens against the
+  client's 3936).
   The engine's video-token pruning (`--video-pruning-rate`, with `--video-pruning-method` `evs` or
   `vidcom2`) changes that layout: the retained tokens render in the first temporal group and the others
   carry none. Declare the same rate and method on the policy (`engine_video_pruning`,
