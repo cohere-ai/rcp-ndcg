@@ -43,12 +43,20 @@ inputs:
     text: back lot research group work line team money room reason way book Problem. time
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.5111865116653859
+    - 0.44971713619801806
+    - 0.41789071774489595
+    - 0.5327749159365858
+  - - 0.49194923311252536
+    - 0.4748633828586192
+    - 0.4144585463460313
+    - 0.5501042755670462
   tolerance:
     abs: 0.002
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'Generated mixed_length batch: four documents spanning short to budget-filling (full prompt tokens
   per document: 8150, 1520, 170, 35; the 8150-token document sits just under max_tokens 8192, so no item
   exceeds the budget and no cut fires). Seeded generator random.Random(20261016+i), same construction
-  as text-long-under; the wave records per-item vectors for the whole batch.'
+  as text-long-under; the wave records per-item vectors for the whole batch. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'

@@ -31,11 +31,15 @@ inputs:
       sha256: ac1ff7b636f1ee9b07873eafae1f8af56e51dce135eb4c2b8c30b851ce88e6fa
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.600654235755113
+    - 0.5954893076808886
+  - - 0.596384179020287
+    - 0.5714082623279687
   tolerance:
     abs: 0.02
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'Documents within 5% under max_tokens 8192 (no cut), distinct slices of the generator stream at
   the same target token count. Generated long/medium inputs were built once by a seeded generator (never
   generated at test time; the exact texts are embedded verbatim in this file): Python random.Random(20251006)
@@ -52,4 +56,4 @@ notes: 'Documents within 5% under max_tokens 8192 (no cut), distinct slices of t
   anchor (id 151643), except that the frame''s trailing colon fuses with a capital first letter of the
   content into one token (e.g. '':M''), so every rendered count below is measured, never derived; the
   rendered document shape is content + anchor. Measured: q1 = 31 rendered ids, q2 = 31 rendered ids, d1
-  = 8100 rendered ids, 98.9% of the 8192 budget, d2 = 8099 rendered ids, 98.9% of the 8192 budget.'
+  = 8100 rendered ids, 98.9% of the 8192 budget, d2 = 8099 rendered ids, 98.9% of the 8192 budget. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'

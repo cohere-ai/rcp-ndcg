@@ -17,12 +17,12 @@ inputs:
       text: Paris is the capital of France.
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.7892610536988383
   tolerance: {abs: 0.002}
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: >-
   Generated short/single cell: the minimal 1x1 path. Both prompts measure 27 tokens with the recipe's
   tokenizer at revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda (fixed frame 20 + content 7), far
-  under max_tokens 8192. Tolerance abs 2e-3 is the declared bf16 margin. The wave fills values from
-  the reference (transformers, GPU) and the served engine and records both.
+  under max_tokens 8192. Tolerance abs 2e-3 is the declared bf16 margin. Values are the outputs of the reference implementation itself for these inputs (filled on cuda before the wave; the wave conformance run compares the served engine against them).

@@ -25,9 +25,17 @@ inputs:
     text: Wind turbines convert the kinetic energy of moving air into electricity. The rotor blades spin a shaft that drives a generator, and power electronics condition the output for the grid.
 expected:
   kind: scores
-  values: null
+  values:
+  - - 0.8359375
+    - 0.15234375
+    - 0.044677734375
+    - 0.267578125
+  - - 0.2333984375
+    - 0.85546875
+    - 0.048828125
+    - 0.3125
   tolerance:
     abs: 0.01
   origin: reference
-  status: pending_gpu
-notes: 'Two queries x four short documents (uniform batch, relevance spread across the matrix: each query has one on-topic and one adjacent document). Every rendered pair measures 106-115 tokens (recipe tokenizer at 4bd860ac4f15ad1897a214615cccc700f8f71818, add_special_tokens=True). GPU wave fills values; abs 0.01 is the declared bf16 margin (probability scale).'
+  status: reproduced
+notes: 'Two queries x four short documents (uniform batch, relevance spread across the matrix: each query has one on-topic and one adjacent document). Every rendered pair measures 106-115 tokens (recipe tokenizer at 4bd860ac4f15ad1897a214615cccc700f8f71818, add_special_tokens=True). Values are the outputs of the reference implementation itself for these inputs (filled on cuda before the wave; the wave conformance run compares the served engine against them); abs 0.01 is the declared bf16 margin (probability scale).'

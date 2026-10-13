@@ -22,11 +22,12 @@ inputs:
     text: Sailors navigated by the stars with a sextant and an astrolabe.
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.622838532896498
   tolerance:
     abs: 0.02
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'A query over max_tokens 8192: the client cuts the query content and must keep the 19-id frame
   and the anchor; a naive first-8192-token cut of the rendered ids drops the anchor and diverges at the
   pooled token (measured in the research). Generated long/medium inputs were built once by a seeded generator
@@ -44,4 +45,4 @@ notes: 'A query over max_tokens 8192: the client cuts the query content and must
   anchor (id 151643), except that the frame''s trailing colon fuses with a capital first letter of the
   content into one token (e.g. '':M''), so every rendered count below is measured, never derived; the
   rendered document shape is content + anchor. Measured: q1 = 8520 rendered ids, 8192 after the cut, 104.0%
-  of the 8192 budget, d1 = 19 rendered ids.'
+  of the 8192 budget, d1 = 19 rendered ids. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'

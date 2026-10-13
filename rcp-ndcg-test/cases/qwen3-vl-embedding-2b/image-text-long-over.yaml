@@ -25,11 +25,13 @@ inputs:
     text: The page inventory lists the figure captions for the second half of the year.
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.5473924985875085
+    - 0.554183954242794
   tolerance:
     abs: 0.002
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'Generated long_over cell in the mixed modality: a 1700x2200 page image plus a long text. Seeded
   generator (random.Random(20261026), same construction as text-long-under). Text content = 7030 content
   tokens (prompt text span 7050 with the frame); the image adds ~1776 image-pad tokens at the recipe''s
@@ -38,4 +40,4 @@ notes: 'Generated long_over cell in the mixed modality: a 1700x2200 page image p
   last must survive. Media: synthetic (media/make_media.py), no third-party material. Wave: send the image
   through the chat-messages shape (image_url part); request_shape text covers text-only frames. Regenerated
   in the test-pkg merge: a second, text-only document (d2) joins the batch so the modality ''mixed'' label
-  describes the case''s own inputs (one image+text document and one text-only document).'
+  describes the case''s own inputs (one image+text document and one text-only document). status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'
