@@ -1434,7 +1434,7 @@ class Variant(BaseModel):
 
 
 class RecipeFamily(BaseModel):
-    """One model family and its sizes (decision 34): the shared serving contract plus a ``variants`` table.
+    """One model family and its sizes: the shared serving contract plus a ``variants`` table.
 
     The family carries every block the variants share — role, input, scoring, licence, engine,
     resources, serve, client, reference, gates, status, sources, notes — and a ``variants`` table

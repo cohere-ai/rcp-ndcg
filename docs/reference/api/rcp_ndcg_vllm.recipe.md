@@ -69,7 +69,7 @@ class Recipe(pydantic.main.BaseModel)
 
 ## `RecipeFamily`
 
-pydantic_model — One model family and its sizes (decision 34): the shared serving contract plus a ``variants`` table.
+pydantic_model — One model family and its sizes: the shared serving contract plus a ``variants`` table.
 
 ```text
 class RecipeFamily(pydantic.main.BaseModel)

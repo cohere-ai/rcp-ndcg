@@ -32,7 +32,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
 | `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-ndcg-vllm wheel's package data |
-| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time (owner decisions 38/35) |
+| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, from `rcp-ndcg-test/pairs/` |
 | `cases/` | the reference cases, from `rcp-ndcg-test/cases/` (the `--script casefill` job reads and edits them on the node; the wheel drops `cases/`) |
@@ -47,7 +47,7 @@ torch index and PyPI only.
 ## The three environments on the node
 
 A GPU job runs one container image: `submit.sh` groups a bootstrap wave's recipe list by each variant's
-`engine.image` and submits one job per image (owner decisions 38/35) — the stock `vllm/vllm-openai:v0.31.0`
+`engine.image` and submits one job per image — the stock `vllm/vllm-openai:v0.31.0`
 for most recipes, the digest-pinned nightly for `embeddinggemma-2` — with three environments that are never
 mixed. `bootstrap.sh` builds them from a staged RC:
 

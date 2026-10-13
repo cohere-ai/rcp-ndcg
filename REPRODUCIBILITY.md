@@ -118,8 +118,10 @@ over-cap document can end at a different place.
 
 ### Judging defaults
 
-The judge's documents text policy defaults to 32768 tokens (`on_overflow` default `cut`, every cut recorded; chunk
-aggregation `max`; media counted in tokens). Every shipped preset and paper config that relied on the previous
+The judge's documents text policy defaults to `keep`: nothing is cut unless a policy is declared. A declared
+`truncate`/`fail` policy caps at 32768 tokens by default (`on_overflow` is one of `keep`, `truncate`, `chunk`,
+`fail`; every cut recorded in the census; chunk aggregation `max`; media counted in tokens). Every shipped
+preset and paper config that relied on the previous
 20000-token default pins it explicitly, so no judgement identity moves.
 
 ## Tournament answers the paper's code could not parse

@@ -47,8 +47,10 @@ the `/tokenize` check and the media gate for media recipes, T3 quality, and the 
 
 - [ ] `embeddinggemma-2` on its nightly image: confirm the image's transformers is 5.19.x, the architecture loads,
       the pinned video sampling (60 fps, max_frames 32) and the Gemma 4 image geometry at the engine.
-- [ ] Judge recipes (6): qwen3.5-397b-a17b-nvfp4, gpt-oss-120b, qwen3.6-27b-fp8, qwen3.8-27b-fp8,
-      qwen3.8-flash-next-fp8, qwen3.8-flash-next-nvfp4 -- T0 smoke + `rcp-ndcg judge check` (both thinking modes,
+- [ ] Judge recipes (ten variants in eight families): gemma-4-12b-it, gemma-4-26b-a4b-it,
+      gemma-4-26b-a4b-nvfp4, gemma-4-31b-it-nvfp4, gpt-oss-120b, qwen3.5-397b-a17b-nvfp4, qwen3.6-27b-fp8,
+      qwen3.8-27b-fp8, qwen3.8-flash-next-fp8, qwen3.8-flash-next-nvfp4 (the authority is `judgecheck.sh`'s
+      ten-judge wave list) -- T0 smoke + `rcp-ndcg judge check` (both thinking modes,
       the NVFP4 backends, the media token counts), on top of the retrieval waves.
 
 **Where the E2 wave stands (the RC0 `rc0-202610101520` state):** wave0 PASS; r3 verified `qwen3-embedding-4b` and

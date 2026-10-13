@@ -35,7 +35,8 @@ It ships three published distributions and one unpublished one:
   estimators, on numpy and pydantic alone.
 - **`rcp-ndcg`** -- the pipeline and the `rcp-ndcg` command built on it: datasets and rankings, retrieval,
   judging, calibration, evaluation, runs and their runners. It pins `rcp-ndcg-core` to its own version.
-- **`rcp-ndcg-vllm`** -- the serving half: the GPU-validated serving recipes (24 families, 44 variants) as
+- **`rcp-ndcg-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every variant
+  must pass its end-to-end GPU validation against its reference implementation before the tag) as
   package data, the `rcp-ndcg-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
   the stock `vllm/vllm-openai` image, the model plugins and the engine patches. Its dependencies are pydantic
   and PyYAML, it never imports `rcp-ndcg`, torch or vLLM at import time, and it pins no sibling.
@@ -120,7 +121,7 @@ that exports it.
   `Endpoint`, `RetrieverConfig`, `RerankerConfig`, `TournamentSchedule`, `RubricSchedule`, `Preprocessing`,
   `JudgementSet`, `Calibration`, `Extension`, `CostEstimate`, `EvalReport`, `Comparison`, `Protocol`, `RunConfig`
   and `Run`; and `__version__`. `rcp.run(..., estimate=True)` returns a `CostEstimate`, otherwise a `Run`.
-- `rcp_ndcg.data`: `Dataset` and `load_dataset` over URIs (`hf://`, `suite:`, `beir:`, `jsonl:`, `images:`, `videos:`,
+- `rcp_ndcg.data`: `Dataset` and `load_dataset` over URIs (`hf://`, `suite:`, `beir:`, `jsonl:`, `mteb:`, `images:`, `videos:`,
   `frames:`), the public suites `SUITES` of `Suite` records (a suite's name is also its protocol preset;
   `VIDORE_NATIVE_LANGUAGE` gives the language each ViDoRe v3 domain is scored in), `Rankings` (one table: `system`,
   `dataset`, `query_id`, `doc_id`, `score`; `DEFAULT_SYSTEM` names a single unnamed system) and `load_rankings`
@@ -1777,6 +1778,15 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   the served dtype the owner's like-for-like rule asks for; the remote class's `_keep_in_fp32_modules`
   (`contextual_projection`) stays fp32 and the pooling casts to fp32 before the int8 head, so the
   int8-valued vectors are unaffected.
+
+- **The octen-embedding family declares its measured vector floor** (the E2 stage 2 on the 8b): the
+  served-vs-reference minimum cosine was 0.99362 at the 4-token `tiny` row (0.99795 special-token
+  spellings, 0.99862 long base64, 0.99884 at-budget), unchanged with the reference on GPU (0.99372),
+  so it is not a CPU-reference artefact; the input ids, the pooled token and the appended anchor
+  (151643) are identical on both sides on every pairs row, so the residual is the two bf16 kernel
+  stacks.  The family declares `gates.vec_min_cosine: 0.993` with that evidence in its notes --
+  PROVISIONAL for the 0.6b/4b sizes: the family-wide bound was measured on the 8b's vectors only,
+  and each smaller size declares its own floor in its `overrides.gates` once measured per size.
 
 - **The harrier-oss-v1-27b declares its measured bf16 cosine floor** (the E2 round-4 stage 2): the
   served-vs-reference minimum cosine was 0.996906 over 69 vectors, with four below the published 0.999

@@ -110,7 +110,7 @@ exactly like the text rows.  A recipe whose card's own pipeline genuinely cannot
 declaration: `reference.known_deviations: [media_approximation]` reports its media rows non-gating with the
 reason (the media stage still gates placement, geometry and tokens).
 
-The wave's recipes are grouped by their `engine.image` before submission (owner decisions 38/35): one job
+The wave's recipes are grouped by their `engine.image` before submission: one job
 per image, so a digest-pinned nightly recipe runs on its own image without changing the wave list. The
 pairs files under `rcp-ndcg-test/pairs/` are the fixed request sets.
 

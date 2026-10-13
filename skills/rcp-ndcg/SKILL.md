@@ -57,8 +57,9 @@ catalogued in [recipes and serving models](../../docs/reference/recipes.md).
 **3. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model's
 tokenizer (its Hugging Face repo id, or a `tokenizer.json` path): `--set judge.tokenizer=<id>` makes text limits
 and estimates count the judge's own tokens. Without it, documents are sent whole, and a text policy that cuts
-(`truncate`, `chunk`, `fail`) exits 3. Documents run whole up to the judge's text policy -- 32 768 tokens by
-default (documented policy, every cut recorded); `--set judge.tokenizer=...` makes the counts exact.
+(`truncate`, `chunk`, `fail`) exits 3. Documents run whole -- the judge's default text policy is `keep`,
+so nothing is cut; a declared `truncate`/`fail` policy caps at 32 768 tokens by default, and every such
+cut is recorded in the census. `--set judge.tokenizer=...` makes the counts exact.
 
 ```bash
 rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model --estimate --json
