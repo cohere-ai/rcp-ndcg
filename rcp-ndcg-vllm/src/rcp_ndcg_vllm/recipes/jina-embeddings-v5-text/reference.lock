@@ -2,7 +2,7 @@
 # family: jina-embeddings-v5-text
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 01199a80acf087955e0908c1d1ceabfceafe9136634dad097c673d2c8025fd60
+# reference-in-sha256: f5d1e4af7d2952673981f139b96d025a8c3d6b6d61d17968b506e12d21cc60e5
 # own-torch: false
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.0)
 #

@@ -2,7 +2,7 @@
 # family: zembed-1
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 1592c9e47eaf795e0a2c833b23b18dac925edbce144823f08733321f9c1fdba0
+# reference-in-sha256: 60b87e93965278d24ee0466dc66f064336ae9f995f4748f9e0b3ccfeb9f3229a
 # own-torch: false
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.0)
 #

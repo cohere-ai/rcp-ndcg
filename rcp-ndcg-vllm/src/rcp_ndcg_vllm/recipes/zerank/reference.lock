@@ -2,7 +2,7 @@
 # family: zerank
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: eaad3b5f395688928c501a9dea3fa714a2a56f936739d5b775ebbde3faf721d1
+# reference-in-sha256: fded9cf990ef15da0c84e6fe28eed0a9a4a3492d8c366dbf8093b6beec7d9a3f
 # own-torch: false
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.9)
 #
