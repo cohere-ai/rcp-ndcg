@@ -1461,6 +1461,36 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
 
+- **The topk-embed-v1 reference converts every encoder matrix on the host** (the E2 round-10 CUDA
+  crash): the family's `transformers==5.9.0` pin runs the checkpoint's own wrapper, whose
+  `encode_query`/`encode_document` return CUDA tensors on a GPU reference, and the embed mode handed
+  one straight to `np.asarray` -- the wave died with `TypeError: can't convert cuda:0 device type
+  tensor to numpy` before any comparison. One conversion helper (`reference.py::_host_matrix`) now
+  detaches the matrix and moves it to CPU storage before the fp16 cast, and both output paths (the
+  query matrix and every document matrix) go through it; a device-less array-like (a nested list, a
+  numpy array, a CPU tensor) passes through unchanged. CPU tests pin the helper and both paths against
+  CUDA-like tensors, so the GPU run is the confirmation, not the first exercise.
+
+- **The case fill respects the recipe's instruction declaration** (the E2 round-10 wave's nine
+  `qwen3-vl-embedding-2b` exceptions): `case_fill` put a case's run-level `instruction` into the pairs
+  row unconditionally, and the reference refused those rows -- "pairs row 0 carries an instruction, and
+  this recipe serves the model's default instruction on both sides" -- because the recipe's client
+  declares `instruction: none` (the card's default instruction is fixed frame text). The fill now
+  resolves the recipe's instruction mode through the product's endpoint config (the same object the
+  role clients are built from) and carries the field only when the client places it, so the reference
+  reads exactly the inputs the served request carries; a recipe that folds the instruction still
+  carries it. Test-first: a case with an instruction against a no-instruction recipe builds a row
+  without the field, and a folding recipe's row keeps it.
+
+- **The qwen3-vl-reranker-2b re-declares its measured probability bound** (the E2 round-10 stage-2):
+  `p99_documents_within` was 0.9818 against the declared 0.03 (one of the 55 documents at 0.0332 --
+  exactly one bf16 quantum, 1/256 of the probability scale, above round 7's 0.0293), with Kendall tau
+  median 1.0 and every other document within one quantum of its round-7 value; the 8b re-measured its
+  round-7 0.0273 exactly (p99 1.0). Nothing in the recipe, the reference or the engine moved between
+  the two waves, so the residual is still the bf16 score-scale floor and the 2b now declares
+  `overrides.gates.prob_p99_abs: 0.035`, the tight tolerance covering its measured maximum (100% of
+  the 55 documents within 0.035); the 8b keeps 0.03.
+
 - **The pplx-embed-v2-context plugin pools the reference's empty-document zero vector** (the E2 round-7
   0.0 cosine): the `[D] ` prefix's trailing space crosses as its own token (id 220) exactly when the
   content's first token is an added token that cannot carry it, or when the content is empty, and the
@@ -1517,7 +1547,8 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
 - **The qwen3-vl-reranker-2b/-8b declare their measured probability bounds** (the E2 round-7 stage-2):
   `p99_documents_within` was 0.9818 at the published 0.02 tolerance, with max |delta| 0.0293 (2b) /
   0.0273 (8b) inside the published 0.05 all-documents bound and Kendall tau median 1.0. Each variant
-  declares `overrides.gates.prob_p99_abs: 0.03`, the tight tolerance covering its measured maximum.
+  declares `overrides.gates.prob_p99_abs: 0.03`, the tight tolerance covering its measured maximum
+  (the 2b's round-10 re-measurement moved its own to 0.035; the 8b's 0.03 stands).
 
 - **The embeddinggemma-2 engine runs on FLEX_ATTENTION** (the E2 rounds 7-8 backend search): the model's
   heterogeneous head dimensions (sliding 256, full 512) leave no default backend -- TRITON_ATTN's
