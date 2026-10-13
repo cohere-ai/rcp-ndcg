@@ -2033,14 +2033,21 @@ def _wave_document(
     skipped_unchanged: tuple[str, ...] | list[str] = (),
     change_verdict: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The wave summary: one row per recipe, the corpus keys (fingerprints and engine versions), the verdict.
+    """The wave summary: one row per recipe, the corpus keys (the recorded recipes' fingerprints and the
+    probed engine versions), the verdict.
 
     The verdict is ``passed`` only when at least one recipe ran and every one verified; ``skipped`` when the
     wave ran nothing because ``--changed-since`` skipped every recipe (it verified nothing, so it is never a
     PASS); ``failed`` otherwise.  ``passed`` is ``verdict == "passed"``.
     """
     rows = [results[recipe_id] for recipe_id in sorted(results)]
-    fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in rows if row.get("behaviour_fingerprint")}
+    # The index is the --changed-since key: a recipe whose observation-corpus step did not PASS has no
+    # recording at that key, so publishing its fingerprint would make a later wave skip it as unchanged and
+    # let a recovery wave report PASS with no corpus ever recorded (reviews D1).  The fingerprint stays on
+    # the row for reporting.  The engine version map is not gated the same way: the skip needs the
+    # fingerprint too, and the version is only present when the pod probe succeeded.
+    recorded = [row for row in rows if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"]
+    fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in recorded if row.get("behaviour_fingerprint")}
     engine_versions = {row["recipe"]: row["engine_version"] for row in rows if row.get("engine_version")}
     verified = bool(rows) and all(row["state"] == "verified" for row in rows)
     skipped = not rows and bool(skipped_unchanged)
