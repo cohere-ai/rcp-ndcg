@@ -10,11 +10,13 @@ compared without the numbers being in the report.
 
     python3 topk_probe.py --out <dir> --model <checkpoint> --revision <rev> --pairs <pairs.jsonl> \
         --reference-python <state>/reference/topk-embed-v1/bin/python [--rows 20,26,27] \
-        [--dtype bfloat16] [--reference-dtype bfloat16]
+        [--text-rows 17,18] [--query-rows 12] [--dtype bfloat16] [--reference-dtype bfloat16]
 
     # the reference side (called by the engine side, never by hand):
     <reference-python> topk_probe.py --side reference --image <file.png> --model <checkpoint> \
         --revision <rev> --recipe-dir <recipe dir> --engine-pixels <engine-input.pt> --out <dump.pt>
+    <reference-python> topk_probe.py --side reference --text <document or query text> --text-side document \
+        --model <checkpoint> --revision <rev> --recipe-dir <recipe dir> --out <dump.pt>
 
     # the engine image's API contract, seconds and no weights (the wrapper runs it first):
     python3 topk_probe.py --check-engine
@@ -212,7 +214,7 @@ def _text_layer_hook_names(layers: Any) -> dict[str, Any]:
 
 
 def reference_side(args: argparse.Namespace) -> int:
-    """Load the checkpoint's own path, dump its tensors for one image, write ``args.out``."""
+    """Load the checkpoint's own path, dump its tensors for one image or one text, write ``args.out``."""
     import numpy as np
     import torch
     import torchvision.transforms.v2.functional as tvf
@@ -233,8 +235,10 @@ def reference_side(args: argparse.Namespace) -> int:
     )
     module = next(m for m in model.modules() if type(m).__name__ == "TopkEmbedTransformer")
     topk = next(m for m in module.modules() if type(m).__name__ == "TopkEmbedModel")
-    visual = topk.model.visual
     text_layers = _reference_text_layers(topk)
+    if args.text:
+        return _reference_text(args, model, module, topk, text_layers)
+    visual = topk.model.visual
     device = model.device
     image = Image.open(args.image).convert("RGB")
 
@@ -314,6 +318,39 @@ def reference_side(args: argparse.Namespace) -> int:
         args.out,
     )
     print(f"reference: {args.image} -> {args.out} ({len(layers)} vision tensors, {len(text_hooks)} text layers)")
+    return 0
+
+
+def _reference_text(args: argparse.Namespace, model: Any, module: Any, topk: Any, text_layers: Any) -> int:
+    """The reference side for one text row: the card's own render, its vectors and its text layers.
+
+    The checkpoint's keep mask is recorded as ``kept_positions`` so the engine side can select the
+    same positions out of its own vectors -- the engine applies the *image* allowlist only (the text
+    rule is the client's), and comparing all positions against the reference's kept set would compare
+    different token sets.
+    """
+    import torch
+
+    features = module.preprocess([args.text], task=args.text_side)
+    kept = features["scoring_mask"][0].bool().nonzero().squeeze(1).tolist()
+    encode = model.encode_query if args.text_side == "query" else model.encode_document
+    with torch.no_grad():
+        document, text_hooks = _run_recorded(
+            functools.partial(encode, [args.text]),
+            text_layers,
+            _text_layer_hook_names(text_layers),
+        )
+    torch.save(
+        {
+            "kind": "text",
+            "side": args.text_side,
+            "document_vectors": _tensor(document[0]),
+            "text_layers": text_hooks,
+            "kept_positions": kept,
+        },
+        args.out,
+    )
+    print(f"reference: {args.text_side} ({len(args.text)} chars) -> {args.out} ({len(text_hooks)} text layers)")
     return 0
 
 
@@ -623,6 +660,49 @@ def engine_side(args: argparse.Namespace) -> int:
         report["rows"].append(row_report)
         _write_report(out_dir, report)
 
+    # The text-only rows (their own loop: no vision tower, no pixels, no render question).
+    for row_index, item in _text_rows(args):
+        row_report = {
+            "pairs_index": row_index,
+            "document_index": None,
+            "kind": "text",
+            "side": item["side"],
+            "chars": len(item["text"]),
+        }
+        try:
+            dump_path = out_dir / f"row{row_index}-{item['side']}-reference.pt"
+            subprocess.run(_reference_command(args, None, None, dump_path, item), check=True)
+            reference = torch.load(dump_path, map_location="cpu", weights_only=False)
+            prompt = _text_render(args, item)
+            row_report["render"] = {
+                "source": "the checkpoint's own render (format_document / format_query, the recipe's client template)",
+                "chars": len(prompt),
+            }
+            engine_vectors, engine_text_hooks = _run_recorded(
+                functools.partial(_engine_encode, llm, prompt),
+                text_layers,
+                _text_layer_hook_names(text_layers),
+            )
+            kept = torch.as_tensor(reference["kept_positions"], dtype=torch.long)
+            engine_kept = engine_vectors[kept.numpy()] if kept.numel() else engine_vectors
+            cosine = _per_token_cosine(engine_kept, reference["document_vectors"])
+            cosine["wave_min_cosine"] = (args.wave_cosines or {}).get(str(row_index))
+            row_report["E6_end_to_end"] = {
+                "engine_tokens": int(len(engine_kept)),
+                "reference_tokens": int(len(reference["document_vectors"])),
+                "cosine_per_token": cosine,
+            }
+            row_report["E7_text_layers"] = {
+                key: stats(value, reference["text_layers"].get(key)) for key, value in engine_text_hooks.items()
+            }
+            row_report["passed"] = True
+        except Exception as error:  # noqa: BLE001 - one failed row must not stop the sweep
+            row_report["passed"] = False
+            row_report["error"] = f"{type(error).__name__}: {error}"
+            row_report["traceback"] = traceback.format_exc()
+        report["rows"].append(row_report)
+        _write_report(out_dir, report)
+
     report["control"] = _control_summary(report, control)
     report["first_divergent_layer"] = _first_divergent(report, "E2_tower_on_reference_pixels")
     report["first_divergent_layer_engine_pixels"] = _first_divergent(report, "E2_tower_on_engine_pixels")
@@ -675,22 +755,25 @@ def check_engine() -> int:
     return 0
 
 
-def _reference_command(args: argparse.Namespace, image_path: Any, engine_input_path: Any, dump_path: Any) -> list[str]:
+def _reference_command(
+    args: argparse.Namespace,
+    image_path: Any,
+    engine_input_path: Any,
+    dump_path: Any,
+    item: dict[str, Any] | None = None,
+) -> list[str]:
     """The reference subprocess' argv: the same module, its own device and its own load dtype.
 
     ``--reference-dtype`` must travel here: the reference side loads the checkpoint itself, so a
     dtype experiment that moves only the engine compares two precisions (the first fp32 run did, and
-    its rows all read the engine's fp32 tower against the reference's bf16 one).
+    its rows all read the engine's fp32 tower against the reference's bf16 one).  A text row carries
+    its own text and side instead of an image (no vision path runs for it).
     """
-    return [
+    command = [
         args.reference_python,
         str(Path(__file__).resolve()),
         "--side",
         "reference",
-        "--image",
-        str(image_path),
-        "--engine-pixels",
-        str(engine_input_path),
         "--model",
         args.model,
         "--revision",
@@ -704,6 +787,11 @@ def _reference_command(args: argparse.Namespace, image_path: Any, engine_input_p
         "--out",
         str(dump_path),
     ]
+    if item is not None:
+        command += ["--text", item["text"], "--text-side", item["side"]]
+    else:
+        command += ["--image", str(image_path), "--engine-pixels", str(engine_input_path)]
+    return command
 
 
 def _read_control(args: argparse.Namespace) -> dict[str, Any] | None:
@@ -733,13 +821,12 @@ def _control_summary(report: dict[str, Any], control: dict[str, Any] | None) -> 
     return {"status": "not_run", "reason": f"row {control['row']} was not probed with an end-to-end encode"}
 
 
-def _engine_encode(llm: Any, prompt: str, image: Any) -> Any:
-    """One image document through the engine's own encode (the wave's signal, in process)."""
-    outputs = llm.encode(
-        [{"prompt": prompt, "multi_modal_data": {"image": image}}],
-        pooling_task="token_embed",
-        use_tqdm=False,
-    )
+def _engine_encode(llm: Any, prompt: str, image: Any = None) -> Any:
+    """One document through the engine's own encode (the wave's signal, in process); no image = text."""
+    request: dict[str, Any] = {"prompt": prompt}
+    if image is not None:
+        request["multi_modal_data"] = {"image": image}
+    outputs = llm.encode([request], pooling_task="token_embed", use_tqdm=False)
     return _numpy(outputs[0].outputs.data)
 
 
@@ -771,11 +858,17 @@ def _per_token_cosine(engine_vectors: Any, reference_vectors: Any) -> dict[str, 
     }
 
 
+def _index_set(value: Any) -> set[int]:
+    """A comma list of pairs indices (``--rows`` / ``--text-rows`` / ``--query-rows``) as a set."""
+    return {int(item) for item in str(value).split(",") if str(item).strip()}
+
+
 def _pairs_rows(args: argparse.Namespace) -> list[tuple[int, int, dict[str, Any]]]:
     """The pairs rows carrying an image document (or the ``--rows`` selection): (row, document, entry)."""
     rows: list[tuple[int, int, dict[str, Any]]] = []
+    selected = _index_set(args.rows)
     for index, row in enumerate(_read_pairs(args.pairs)):
-        if args.rows and index not in args.rows:
+        if selected and index not in selected:
             continue
         for position, entry in enumerate((row.get("media") or {}).get("documents") or []):
             for item in entry or []:
@@ -783,6 +876,33 @@ def _pairs_rows(args: argparse.Namespace) -> list[tuple[int, int, dict[str, Any]
                     rows.append((index, position, item))
                     break
     return rows
+
+
+def _text_rows(args: argparse.Namespace) -> list[tuple[int, dict[str, Any]]]:
+    """The text-only rows named by ``--text-rows`` (documents) and ``--query-rows`` (queries).
+
+    The image sweep cannot see them (``_pairs_rows`` selects image-carrying rows), yet the wave's own
+    record puts the majority of its sub-0.999 tokens on text documents: those rows have byte-identical
+    inputs on both sides (stage 1 passes), so their divergence is the text model's own -- no tower, no
+    pixel affine, no render question -- and the text path has to be measured on its own.
+    """
+    rows: list[tuple[int, dict[str, Any]]] = []
+    text_rows = _index_set(args.text_rows)
+    query_rows = _index_set(args.query_rows)
+    for index, row in enumerate(_read_pairs(args.pairs)):
+        if index in text_rows:
+            documents = row.get("documents") or [""]
+            rows.append((index, {"kind": "text", "side": "document", "text": str(documents[0] or "")}))
+        elif index in query_rows:
+            rows.append((index, {"kind": "text", "side": "query", "text": str(row.get("query") or "")}))
+    return rows
+
+
+def _text_render(args: argparse.Namespace, item: dict[str, Any]) -> str:
+    """The checkpoint's own text render: ``format_query`` / ``format_document`` (strip rules included)."""
+    if item["side"] == "query":
+        return args.query_template + item["text"].strip()
+    return (args.document_prompt + item["text"]).strip()
 
 
 def _read_pairs(path: str) -> list[dict[str, Any]]:
@@ -911,7 +1031,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--revision", default="")
     parser.add_argument("--pairs", default="")
     parser.add_argument("--rows", default="")
+    parser.add_argument("--text-rows", default="", help="pairs rows whose TEXT document is probed")
+    parser.add_argument("--query-rows", default="", help="pairs rows whose query is probed")
+    parser.add_argument("--document-prompt", default="Document: ", help="the checkpoint's document_prompt")
+    parser.add_argument("--query-template", default="Query: ", help="the checkpoint's query_template")
     parser.add_argument("--image", default="")
+    parser.add_argument("--text", default="", help="the reference side's text row")
+    parser.add_argument("--text-side", choices=["document", "query"], default="document")
     parser.add_argument("--engine-pixels", default="")
     parser.add_argument("--recipe-dir", default=".")
     parser.add_argument("--reference-python", default="")
@@ -946,14 +1072,14 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(args.wave_cosines)
         args.wave_cosines = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
     if args.side == "reference":
-        for name in ("out", "model", "revision", "image"):
+        required = ("out", "model", "revision", "text") if args.text else ("out", "model", "revision", "image")
+        for name in required:
             if not getattr(args, name):
                 parser.error(f"--{name} is required on the reference side")
         return reference_side(args)
     for name in ("out", "model", "revision", "pairs", "reference_python"):
         if not getattr(args, name):
             parser.error(f"--{name.replace('_', '-')} is required on the engine side")
-    args.rows = {int(value) for value in args.rows.split(",") if value.strip()} if args.rows else set()
     return engine_side(args)
 
 

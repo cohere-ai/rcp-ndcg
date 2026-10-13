@@ -2506,6 +2506,56 @@ def test_the_probe_compares_tensors_that_differ_only_by_a_singleton_dimension() 
     assert differing["note"] == "shapes differ: no elementwise comparison"
 
 
+def test_the_probe_selects_the_text_only_rows_it_is_asked_for(tmp_path: Path) -> None:
+    """The wave's sub-0.999 tokens are mostly on TEXT documents, which the image sweep cannot see
+    (``_pairs_rows`` selects image-carrying rows): ``--text-rows`` / ``--query-rows`` name them, the
+    document side takes the row's text and the query side its query."""
+    probe = _probe_module()
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(
+        json.dumps({"query": "a query", "documents": ["a document"]})
+        + "\n"
+        + json.dumps({"query": "row one query", "documents": ["row one document"]})
+        + "\n"
+        + json.dumps({"query": "row two query", "documents": ["row two document"]})
+        + "\n",
+        encoding="utf-8",
+    )
+    args = probe.build_parser().parse_args(
+        [
+            "--out",
+            "/tmp/probe",
+            "--model",
+            "topk-io/topk-embed-v1-small",
+            "--revision",
+            "0" * 40,
+            "--pairs",
+            str(pairs),
+            "--reference-python",
+            "/tmp/reference/bin/python",
+            "--text-rows",
+            "1",
+            "--query-rows",
+            "2",
+        ]
+    )
+    rows = probe._text_rows(args)
+    assert [(index, item["side"], item["text"]) for index, item in rows] == [
+        (1, "document", "row one document"),
+        (2, "query", "row two query"),
+    ]
+    assert probe._text_render(args, rows[0][1]) == "Document: row one document"
+    assert probe._text_render(args, rows[1][1]) == "Query: row two query"
+    # the render strips, exactly as the checkpoint's format_document/format_query does
+    stripped = probe._text_render(args, {"side": "document", "text": "  padded  "})
+    assert stripped == "Document:   padded"
+    # a text row's reference subprocess carries the text and the side, never an image
+    command = probe._reference_command(args, None, None, "/tmp/d.pt", rows[0][1])
+    assert command[command.index("--text") + 1] == "row one document"
+    assert command[command.index("--text-side") + 1] == "document"
+    assert "--image" not in command
+
+
 def test_the_reference_subprocess_gets_its_own_dtype() -> None:
     """The engine side spawns the reference side; a dtype experiment that moves only the engine compares
     two precisions (the first fp32 run did: every row read the engine's fp32 tower against the

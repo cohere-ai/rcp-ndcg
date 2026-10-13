@@ -432,8 +432,9 @@ for plan_row in "${PLAN[@]}"; do
         "files.topkprobecosines.mount_path=/etc/rcp/files/topkprobe/wave-cosines-topk-small.json"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
-    for knob in RCP_TOPK_VARIANT RCP_TOPK_ROWS RCP_TOPK_DEVICE RCP_TOPK_REFERENCE_DEVICE RCP_TOPK_GPU_FRACTION \
-      RCP_TOPK_DTYPE RCP_TOPK_REFERENCE_DTYPE RCP_TOPK_CONTROL_VECTORS RCP_TOPK_MODEL RCP_TOPK_REVISION; do
+    for knob in RCP_TOPK_VARIANT RCP_TOPK_ROWS RCP_TOPK_TEXT_ROWS RCP_TOPK_QUERY_ROWS \
+      RCP_TOPK_DEVICE RCP_TOPK_REFERENCE_DEVICE RCP_TOPK_GPU_FRACTION RCP_TOPK_DTYPE \
+      RCP_TOPK_REFERENCE_DTYPE RCP_TOPK_CONTROL_VECTORS RCP_TOPK_MODEL RCP_TOPK_REVISION; do
       if [[ -n "${!knob:-}" ]]; then args+=("env.$knob=${!knob}"); fi
     done
   else
