@@ -11,6 +11,7 @@ a field the route's model does not declare is ignored by the engine
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests._engines import corpus_of, emulator_for, load_recipe
@@ -119,6 +120,102 @@ def test_a_corpus_whose_key_holds_different_outputs_is_refused(tmp_path: Path) -
     facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 8)
     with pytest.raises(DataError) as error:
         VllmEmulator.from_corpus(corpus, StringsPrompts(), word_tokenizer(), facts, dim=2)
+    assert "#0" in str(error.value) and "#1" in str(error.value)
+
+
+def test_a_top_n_truncated_reply_is_the_ranked_prefix_of_the_full_observation(tmp_path: Path) -> None:
+    """``top_n`` frames the same model output shorter (protocol, never a key field): the model layer
+    stores the fullest observation for the key and compares a truncated reply as its first ranked
+    entries, within the measured tolerance. A pointwise truncation leaves an unreturned position
+    ABSENT, never a ``None`` score that would read as an observation."""
+    from rcp_ndcg_test.engines import EngineFacts, EnginePrompts, Exchange, PairPrompts, VllmEmulator
+    from tests._engines import observation_corpus
+
+    from tests._tokenizers import word_tokenizer
+
+    tokenizer = word_tokenizer()
+    facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 128)
+    body = {"model": "tiny", "query": "q", "documents": ["a", "b", "c"]}
+    full = {
+        "results": [
+            {"index": 0, "relevance_score": 0.9},
+            {"index": 2, "relevance_score": 0.4},
+            {"index": 1, "relevance_score": 0.1},
+        ]
+    }
+    top_one = {"results": [{"index": 0, "relevance_score": 0.9}]}
+
+    class _Template:
+        @staticmethod
+        def render(shape: str, tokenizer: Any, *, query: str, document: str) -> str:
+            return f"pair {query} <> {document}"
+
+        @staticmethod
+        def adds_special_tokens(shape: str) -> bool:
+            return False
+
+    def exchanges() -> list[Exchange]:
+        return [
+            Exchange(0, "POST", "/rerank", body, 200, {}, full),
+            Exchange(1, "POST", "/rerank", {**body, "top_n": 1}, 200, {}, top_one),
+        ]
+
+    # listwise: one set-level observation per request; the replay keeps the full ranking
+    listwise = VllmEmulator.from_corpus(
+        observation_corpus(tmp_path / "listwise", exchanges(), tolerance=(1e-6, 1e-6)),
+        EnginePrompts(builder=lambda query, documents: f"{query}|{'|'.join(documents)}"),
+        tokenizer,
+        facts,
+        dim=2,
+    )
+    assert [entry["index"] for entry in listwise.answer("/rerank", "POST", body).json()["results"]] == [0, 2, 1]
+    assert [entry["index"] for entry in listwise.answer("/rerank", "POST", {**body, "top_n": 1}).json()["results"]] == [
+        0
+    ]
+
+    # pointwise: the truncated record observes only the position it returned
+    pointwise = VllmEmulator.from_corpus(
+        observation_corpus(tmp_path / "pointwise", exchanges(), tolerance=(1e-6, 1e-6)),
+        PairPrompts(template=_Template(), tokenizer=tokenizer),
+        tokenizer,
+        facts,
+        dim=2,
+    )
+    observed = [observation for history in pointwise.observations.values() for observation in history]
+    assert observed and all(observation.score is not None for observation in observed), (
+        "an unreturned position is absent, never a None score"
+    )
+    assert pointwise.answer("/rerank", "POST", body).json()["results"]
+
+
+def test_a_top_n_truncated_reply_that_is_not_the_stored_prefix_is_refused(tmp_path: Path) -> None:
+    """A truncated reply is accepted only as the stored ranking's own first entries: a top_n reply that
+    returned another document (or a score beyond the measured tolerance) is still the inconsistency the
+    build refuses."""
+    from rcp_ndcg_test.engines import EngineFacts, EnginePrompts, Exchange, VllmEmulator
+    from tests._engines import observation_corpus
+
+    from tests._tokenizers import word_tokenizer
+
+    body = {"model": "tiny", "query": "q", "documents": ["a", "b", "c"]}
+    full = {"results": [{"index": 0, "relevance_score": 0.9}, {"index": 2, "relevance_score": 0.4}]}
+    moved = {"results": [{"index": 2, "relevance_score": 0.4}]}
+    corpus = observation_corpus(
+        tmp_path / "corpus",
+        [
+            Exchange(0, "POST", "/rerank", body, 200, {}, full),
+            Exchange(1, "POST", "/rerank", {**body, "top_n": 1}, 200, {}, moved),
+        ],
+        tolerance=(1e-6, 1e-6),
+    )
+    with pytest.raises(DataError) as error:
+        VllmEmulator.from_corpus(
+            corpus,
+            EnginePrompts(builder=lambda query, documents: f"{query}|{'|'.join(documents)}"),
+            word_tokenizer(),
+            EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 128),
+            dim=2,
+        )
     assert "#0" in str(error.value) and "#1" in str(error.value)
 
 

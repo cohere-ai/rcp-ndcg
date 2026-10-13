@@ -119,7 +119,10 @@ class Exchange:
         method: The HTTP method (``GET``, ``POST``).
         path: The route (``/v1/embeddings``).
         request_body: The request body as parsed JSON (``None`` when none was sent or it is not JSON).
-        status: The response status.
+        status: The response status, or ``None`` for a record whose request got no answer: the collector
+            recorded that nothing crossed the wire (a connection error before any response, a client-side
+            refusal, a declared omission). Such a record accounts for a planned request; it is not an
+            exchange and carries nothing to replay.
         response_headers: The headers that matter (content type, server, the bytes framing's metadata).
         response: The response body as parsed JSON, ``None`` when it is not JSON (a binary body).
         repetition: Which sending (``same_process_1``, ``same_process_2``, ``after_restart``).
@@ -134,7 +137,7 @@ class Exchange:
     method: str
     path: str
     request_body: Any
-    status: int
+    status: int | None
     response_headers: Mapping[str, str]
     response: Any
     repetition: str = "same_process_1"
@@ -147,6 +150,11 @@ class Exchange:
     def response_json(self) -> Any:
         """The parsed response body, or ``None`` for one that is not JSON."""
         return self.response
+
+    @property
+    def answered(self) -> bool:
+        """Whether the engine answered: a record with no recorded status carries no exchange to replay."""
+        return self.status is not None
 
     @property
     def raw_body(self) -> bytes | None:
@@ -162,12 +170,19 @@ class Exchange:
         inputs = record.get("inputs") or {}
         reconstructed = str(inputs.get("body_raw") or "").startswith("reconstructed")
         source = inputs.get("source") or {}
+        sequence = record.get("sequence")
+        if not isinstance(sequence, int):
+            raise DataError(
+                f"the record carries no integer sequence (got {sequence!r}): the collector's sending order "
+                "is part of the record, never defaulted"
+            )
+        status = response.get("status")
         return cls(
-            sequence=int(record.get("sequence", 0)),
+            sequence=sequence,
             method=str(request.get("method", "")),
             path=str(request.get("path", "")),
             request_body=request.get("body_parsed"),
-            status=int(response.get("status", 0)),
+            status=None if status is None else int(status),
             response_headers=dict(response.get("headers") or {}),
             response=response.get("body_parsed"),
             repetition=str(record.get("repetition", "")),
@@ -279,10 +294,17 @@ def compare_exchange(recorded: Exchange, replayed: httpx.Response, tolerance: tu
             jointly; ``None`` (unmeasured) compares exactly.
 
     Returns:
-        A list of differences (``[]`` is conformant); each names what moved. An undecodable replayed
-        body is a named difference, never an exception or a silent pass.
+        A list of differences (``[]`` is conformant); each names what moved. A record with no recorded
+        response is a named difference (there is no exchange to compare), never a comparison against an
+        invented status; an undecodable replayed body is a named difference, never an exception or a
+        silent pass.
     """
     problems = []
+    if not recorded.answered:
+        cause = recorded.raw_body.decode("utf-8", "replace") if recorded.raw_body else "no answer"
+        return [
+            f"the record carries no response ({cause}): nothing crossed the wire, so there is no exchange to compare"
+        ]
     if replayed.status_code != recorded.status:
         return [f"status {replayed.status_code} != recorded {recorded.status}"]
     for name, expected in dict(recorded.response_headers).items():
@@ -1040,7 +1062,8 @@ class VllmEmulator:
         facts: The engine facts (the protocol layer's inputs).
         strategy: The request -> engine prompts derivation (the model layer's key).
         tokenizer: The recipe's real tokenizer (usage, over-length and ``/tokenize`` count with it).
-        observations: Per prompt key, the replayed outputs (first observation = the replay).
+        observations: Per prompt key, the replayed outputs (the fullest observation first: the replay;
+            a ``top_n``-truncated framing never hides a fuller one).
         unmodelled_records: One entry per recorded 2xx exchange the model layer could not model (the
             request's unmodelled fields, or a prompt derivation the strategy refused), each naming the
             record and the reason.  The corpus still builds: an unmodelled record is skipped and named
@@ -1107,7 +1130,7 @@ class VllmEmulator:
             The emulator, keyed to the corpus's behaviour fingerprint (model layer) and the engine
             version (protocol layer).
         """
-        observed: dict[str, list[tuple[int, ModelObservation]]] = {}
+        observed: dict[str, list[tuple[int, ModelObservation, bool]]] = {}
         unmodelled_records: list[str] = []
         exchanges = exchanges_of(corpus)
         for exchange in exchanges:
@@ -1116,6 +1139,7 @@ class VllmEmulator:
                 continue
             body = exchange.request_body if isinstance(exchange.request_body, dict) else {}
             where = f"{exchange.source or exchange.path} #{exchange.sequence}"
+            truncated = _truncated_reply(body)
             context, unmodelled = request_context(route, body)
             if unmodelled:
                 unmodelled_records.append(f"{where}: the recorded request carries {unmodelled}, unmodelled")
@@ -1128,19 +1152,26 @@ class VllmEmulator:
                 # the whole corpus, and a replayed request for it answers the declared surrogate, marked.
                 unmodelled_records.append(f"{where}: {error}")
                 continue
-            for key, observation in _outputs_from_response(set_, exchange):
-                observed.setdefault(key, []).append((exchange.sequence, observation))
+            for key, observation in _outputs_from_response(set_, exchange, truncated=truncated):
+                observed.setdefault(key, []).append((exchange.sequence, observation, truncated))
         tolerance = corpus_tolerance(corpus)
         for key, history in observed.items():
-            first_sequence, first = history[0]
-            for sequence, other in history[1:]:
-                if _observation_differences(first, other, tolerance):
+            first_sequence, first, first_truncated = history[0]
+            for sequence, other, other_truncated in history[1:]:
+                if _observation_differences(
+                    first, other, tolerance, first_truncated=first_truncated, other_truncated=other_truncated
+                ):
                     raise DataError(
                         f"recipe {corpus.manifest['recipe']['id']}: exchanges #{first_sequence} and #{sequence} "
                         f"answer one replay key with different outputs ({key[:160]}...): the key misses a "
                         "behaviour-shaping field, or the engine varies beyond the measured tolerance"
                     )
-        merged = {key: tuple(observation for _, observation in history) for key, history in observed.items()}
+        # The replay source is the fullest observation of a key: a ``top_n``-truncated reply frames the
+        # same model output shorter, so it must never hide the full ranking from the table.
+        merged = {
+            key: tuple(observation for _, observation, _ in sorted(history, key=lambda row: -_ranked_length(row[1])))
+            for key, history in observed.items()
+        }
         routes = {route_name(exchange.method, exchange.path) for exchange in exchanges}
         widths = {
             width
@@ -1892,15 +1923,51 @@ def _canonical_context(context: Mapping[str, Any]) -> str:
 
 
 def _observation_differences(
-    first: ModelObservation, other: ModelObservation, tolerance: tuple[float, float] | None
+    first: ModelObservation,
+    other: ModelObservation,
+    tolerance: tuple[float, float] | None,
+    *,
+    first_truncated: bool = False,
+    other_truncated: bool = False,
 ) -> list[str]:
-    """Where two observations of one replay key disagree (exact when the tolerance is unmeasured)."""
+    """Where two observations of one replay key disagree (exact when the tolerance is unmeasured).
+
+    A ``top_n``-truncated reply frames the same model output shorter (the first ranked entries), so when
+    either side is truncated the shorter ranked list is compared against the fuller one's prefix, within
+    the measured tolerance. Two full observations compare over their whole ranked list.
+    """
     plain = json.loads(json.dumps(asdict(first)))
     again = json.loads(json.dumps(asdict(other)))
+    if (
+        (first_truncated or other_truncated)
+        and isinstance(plain.get("scores"), list)
+        and isinstance(again.get("scores"), list)
+    ):
+        if len(plain["scores"]) > len(again["scores"]):
+            plain["scores"] = plain["scores"][: len(again["scores"])]
+        else:
+            again["scores"] = again["scores"][: len(plain["scores"])]
     return _diff_bodies(plain, again, "", tolerance or (0.0, 0.0))
 
 
-def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[str, ModelObservation]]:
+def _ranked_length(observation: ModelObservation) -> int:
+    """The length of a ranked-list observation (0 for an observation that is not one): the fullness a
+    ``top_n``-truncated reply must never hide, because the replay source is the fullest observation."""
+    return len(observation.scores) if observation.scores is not None else 0
+
+
+def _truncated_reply(request: Mapping[str, Any]) -> bool:
+    """Whether a ``/rerank`` reply is the ranked list truncated by the request's ``top_n`` (vLLM's rule:
+    absent, ``0`` or at least the document count returns every document; a value in between returns only
+    the first ``top_n`` ranked entries -- the same model output, framed shorter)."""
+    top_n = request.get("top_n")
+    documents = request.get("documents")
+    return isinstance(top_n, int) and isinstance(documents, list) and 0 < top_n < len(documents)
+
+
+def _outputs_from_response(
+    set_: PromptSet, exchange: Exchange, *, truncated: bool = False
+) -> list[tuple[str, ModelObservation]]:
     """The model outputs one recorded 2xx exchange holds, keyed per replay key (prompt + context).
 
     Decodes vLLM v0.31.0's framings: JSON floats, ``base64`` vectors (``embed_dtype`` and
@@ -1908,6 +1975,11 @@ def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[st
     ``metadata`` header's per-item ``start``/``end``/``shape``. Anything it cannot decode -- a base64
     token matrix (vLLM sends no shape), a frame without metadata, a missing score -- is refused naming
     the record: a corpus whose outputs cannot be derived never reads as an empty or guessed table.
+
+    ``truncated`` says the reply is a ``top_n``-framed view of the ranked list (:func:`_truncated_reply`):
+    a pointwise truncation then yields observations only for the positions the reply returned -- an
+    unreturned position is ABSENT, never a ``None`` score that would read as an observation -- while a
+    listwise truncation yields the ranked prefix the consistency check compares as such.
     """
     where = f"{exchange.source or exchange.path} #{exchange.sequence}"
     request = exchange.request_body if isinstance(exchange.request_body, dict) else {}
@@ -1961,10 +2033,10 @@ def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[st
         raise DataError(f"{where}: a rerank reply without scored results cannot be decoded")
     scores = {int(entry.get("index", i)): float(entry["relevance_score"]) for i, entry in enumerate(results)}
     if set_.slot == "score":
-        return [
-            (set_.item_key(position), ModelObservation(score=scores.get(position)))
-            for position in range(len(set_.prompts))
-        ]
+        # A truncated reply returned only its top_n documents: the others were not observed, so they get
+        # no entry (a None score would read as an observation and contradict the full record's score).
+        positions: Iterable[int] = sorted(scores) if truncated else range(len(set_.prompts))
+        return [(set_.item_key(position), ModelObservation(score=scores.get(position))) for position in positions]
     return [(set_.set_key, ModelObservation(scores=tuple(sorted(scores.items()))))]
 
 

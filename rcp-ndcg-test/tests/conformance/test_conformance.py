@@ -38,12 +38,17 @@ def all_corpus_dirs() -> list[Path]:
 
 def replay_problems(directory: Path) -> tuple[object, list[str]]:
     """Replay every recorded exchange of one corpus against its emulator: the conformance differences
-    (identical status and body within the recorded non-determinism), each naming the record."""
+    (identical status and body within the recorded non-determinism), each naming the record. A record
+    whose request got no answer (no recorded status: a connection error, a client refusal, a declared
+    omission) is not an exchange: there is nothing to replay, so it is left to the plan's completeness
+    check instead."""
     corpus = load_corpus(directory)
     recipe_id = corpus.manifest["recipe"]["id"]
     emulator = emulator_for(recipe_id)
     problems = []
     for exchange in exchanges_of(corpus):
+        if not exchange.answered:
+            continue
         answer = emulator.handle(as_request(exchange))
         found = compare_exchange(exchange, answer, corpus_tolerance(corpus))
         problems.extend(f"#{exchange.sequence}: {problem}" for problem in found)
@@ -72,12 +77,14 @@ def test_every_recorded_exchange_replays_identically() -> None:
 
 def test_usage_counts_use_the_recipes_real_tokenizer() -> None:
     """The replayed ``usage.prompt_tokens`` is the engine's own count (the recipe's real tokenizer
-    files): the recorded values reproduce exactly (measured: the sum of each engine prompt's tokens)."""
+    files): the recorded values reproduce exactly (measured: the sum of each engine prompt's tokens).
+    ``/models``, ``/tokenize`` and ``/health`` are the routes whose replies carry no ``usage`` (a model
+    listing, a count and a readiness answer), so the check covers the routes that do."""
     for directory in corpus_dirs():
         corpus = load_corpus(directory)
         emulator = emulator_for(corpus.manifest["recipe"]["id"])
         for exchange in exchanges_of(corpus):
-            if exchange.status != 200 or exchange.path.endswith("/models"):
+            if exchange.status != 200 or exchange.path.endswith(("/models", "/tokenize", "/health")):
                 continue
             recorded = (exchange.response_json or {}).get("usage", {}).get("prompt_tokens")
             answered = emulator.answer(exchange.path, exchange.method, exchange.request_body).json()
@@ -385,6 +392,35 @@ def test_the_tolerance_is_the_corpus_measured_one_and_never_invented(tmp_path: P
         corpus_tolerance(replace(unmeasured, nondeterminism=None))  # the reader found no nondeterminism.json
 
 
+def test_a_record_with_no_response_status_is_a_no_answer_never_status_zero(tmp_path: Path) -> None:
+    """A record whose response carries no status is a *no answer*: the collector recorded that nothing
+    crossed the wire (a connection error before any response, a client-side refusal, a declared omission),
+    so the record is not an exchange to replay. The record view reads the absence as ``None`` -- never
+    coerced to 0 -- and ``compare_exchange`` names the absence instead of comparing an invented exchange."""
+    from rcp_ndcg_test.engines import Exchange, compare_exchange, exchanges_of
+    from tests._engines import observation_corpus
+
+    connection_error = Exchange(
+        0, "GET", "/v1/models", None, None, {}, None, source="edge:while_loading", response_raw=b"ConnectError"
+    )
+    (loaded,) = exchanges_of(observation_corpus(tmp_path / "no-answer", [connection_error]))
+    assert loaded.status is None  # before the fix: int(None) raised TypeError
+    assert not loaded.answered
+    problems = compare_exchange(loaded, httpx.Response(200, json={"object": "list"}), None)
+    assert problems and "no response" in problems[0], problems
+
+
+def test_a_record_without_an_integer_sequence_is_refused_by_name() -> None:
+    """The collector's sending order is part of the record, like the status: a record that carries no
+    integer sequence is refused by name, never defaulted to 0."""
+    from rcp_ndcg_test.engines import Exchange
+
+    from rcp_ndcg.errors import DataError
+
+    with pytest.raises(DataError, match="integer sequence"):
+        Exchange.from_record({"sequence": None, "request": {}, "response": {}})
+
+
 def test_every_value_is_bounded_by_the_joint_condition() -> None:
     """A replayed number passes only within BOTH measured bounds (absolute and relative): never the
     looser of the two, never their sum."""
@@ -401,12 +437,25 @@ def test_every_value_is_bounded_by_the_joint_condition() -> None:
     assert compare_exchange(recorded, same, None) == []
 
 
-def test_every_committed_corpus_declares_its_tolerance_unmeasured() -> None:
-    """The shakedown sent every request once: no corpus measured a repetition, so none carries a tolerance."""
+def test_every_committed_corpus_declares_the_tolerance_its_measurement_derived() -> None:
+    """The tolerance is the corpus's own measurement, never invented: the release recordings sent every
+    request twice in-process and once after a restart, so they measured non-determinism and carry the
+    bounds their report derived; the four shakedown-era corpora the release pass did not re-record sent
+    every request once, declare ``measured: false`` and compare exactly. The report and the reader agree
+    either way, and at least one corpus must measure, so the release recordings are exercised here, not
+    assumed."""
+    measured = 0
     for directory in corpus_dirs():
         report = json.loads((directory / "nondeterminism.json").read_text(encoding="utf-8"))
-        assert report["derived"]["measured"] is False and report["derived"]["repeated_requests"] == 0, directory
-        assert corpus_tolerance(load_corpus(directory)) is None
+        derived = report["derived"]
+        assert derived["measured"] == (derived["repeated_requests"] > 0), directory
+        tolerance = corpus_tolerance(load_corpus(directory))
+        if derived["measured"]:
+            measured += 1
+            assert tolerance == (derived["abs_tolerance"], derived["rel_tolerance"]), directory
+        else:
+            assert tolerance is None, directory
+    assert measured, "no committed corpus measured a repetition: the release recordings are missing"
 
 
 @pytest.mark.skipif(
@@ -466,5 +515,7 @@ def test_the_declared_stale_listwise_corpus_still_replays_its_role_requests() ->
     ]
     assert role_requests, "the corpus records no successful role request: the replay would pass vacuously"
     for exchange in exchanges_of(corpus):
+        if not exchange.answered:
+            continue  # no recorded response: not an exchange, nothing to replay (see replay_problems)
         problems = compare_exchange(exchange, emulator.handle(as_request(exchange)), corpus_tolerance(corpus))
         assert not problems, f"{directory.name} #{exchange.sequence}: {problems}"
