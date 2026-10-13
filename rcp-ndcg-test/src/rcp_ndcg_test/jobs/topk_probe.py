@@ -15,6 +15,14 @@ compared without the numbers being in the report.
     <reference-python> topk_probe.py --side reference --image <file.png> --model <checkpoint> \
         --revision <rev> --recipe-dir <recipe dir> --engine-pixels <engine-input.pt> --out <dump.pt>
 
+    # the engine image's API contract, seconds and no weights (the wrapper runs it first):
+    python3 topk_probe.py --check-engine
+
+Both the engine side and ``--check-engine`` force the single-process engine
+(``VLLM_ENABLE_V1_MULTIPROCESSING=0``, set before vLLM is imported): the experiments install forward
+hooks on the towers and call the vision tower on tensors the probe built, and vLLM's default
+multiprocess mode keeps the model in the EngineCore process where neither is reachable.
+
 The experiments (the report's Part B.1 table):
   E0  the control: the probe's engine vectors against the wave's recorded vectors for one row
       (``--control-vectors``; ``not_run`` loudly when absent, never a silent pass).
@@ -308,47 +316,81 @@ def _affine(module: Any, image: Any, *, dtype: Any) -> Any:
 # the engine side
 # ---------------------------------------------------------------------------
 
+#: The in-process route to the loaded model, in the order v0.31.0 exposes it.  ``llm.llm_engine`` is an
+#: ``LLMEngine``; its ``model_executor`` exists only when the EngineCore runs in this process, which
+#: ``force_single_process_engine`` forces (v0.31.0's ``LLMEngine.__init__`` sets it in its
+#: ``not multiprocess_mode`` branch, and its own ``_get_driver_model_for_cleanup`` reads
+#: ``driver_worker.model_runner.model``).  The second path is the worker-wrapped executor shape, the
+#: third the same route without v0.31.0's v0-compatibility alias.
+ENGINE_MODEL_PATHS: tuple[tuple[str, ...], ...] = (
+    ("llm_engine", "model_executor", "driver_worker", "model_runner", "model"),
+    ("llm_engine", "model_executor", "driver_worker", "worker", "model_runner", "model"),
+    ("llm_engine", "engine_core", "engine_core", "model_executor", "driver_worker", "model_runner", "model"),
+)
+
+
+def force_single_process_engine() -> None:
+    """Run vLLM's EngineCore in this process (``VLLM_ENABLE_V1_MULTIPROCESSING=0``).
+
+    The probe installs forward hooks on the towers and calls the vision tower on tensors it built
+    itself; in vLLM's default multiprocess mode the model lives in the EngineCore process and neither
+    is reachable here (v0.31.0's ``uniproc_executor.py`` names this switch as the way to run the
+    engine in one process).  Must run before vLLM is imported: vLLM reads the switch when it builds
+    the engine.
+    """
+    os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+
 
 def engine_model(llm: Any) -> Any:
-    """The loaded vLLM model object, through the paths the in-process engine has used."""
-    candidates = [
-        ("llm_engine", "model_executor", "driver_worker", "model_runner", "model"),
-        ("llm_engine", "model_executor", "driver_worker", "worker", "model_runner", "model"),
-    ]
-    for path in candidates:
-        target = llm
+    """The loaded vLLM model object, through :data:`ENGINE_MODEL_PATHS`; a typed error if it moved."""
+    tried: list[str] = []
+    for path in ENGINE_MODEL_PATHS:
+        target: Any = llm
         for attribute in path:
             target = getattr(target, attribute, None)
             if target is None:
                 break
+        tried.append(".".join(path))
         if target is not None:
             return target
-    for module in llm.llm_engine.named_modules():
-        if type(module).__name__ in ("TopkEmbedModel", "ColQwen3_5Model"):
-            return module
-    raise RuntimeError("cannot reach the engine's model object: the in-process accessor path changed")
+    raise RuntimeError(
+        "cannot reach the engine's model object: tried "
+        + ", ".join(tried)
+        + ".  The in-process model is only reachable when the EngineCore runs in this process "
+        "(VLLM_ENABLE_V1_MULTIPROCESSING=0, set by force_single_process_engine before vLLM is "
+        "imported); if the attribute path moved, re-read vllm/v1/engine/llm_engine.py's "
+        "non-multiprocess branch and ENGINE_MODEL_PATHS against the engine image."
+    )
 
 
 def engine_visual(model: Any) -> Any:
-    """The engine's vision tower (``visual`` on the model or on its inner model)."""
+    """The engine's vision tower (``visual`` on the model or on its inner model); loud if moved."""
     visual = getattr(model, "visual", None)
     if visual is None:
         visual = getattr(getattr(model, "model", None), "visual", None)
     if visual is None:
-        raise RuntimeError("cannot reach the engine's vision tower")
+        raise RuntimeError(
+            f"cannot reach the engine's vision tower: tried model.visual and model.model.visual on "
+            f"{type(model).__name__} (the plugin's ColQwen3_5Model subclass exposes self.visual)"
+        )
     return visual
 
 
 def engine_text_layers(model: Any) -> Any:
-    """The engine text model's decoder layers."""
+    """The engine text model's decoder layers; loud if the model's shape moved."""
     for name, module in model.named_modules():
         if "language_model" in name and hasattr(module, "layers"):
             return module.layers
-    raise RuntimeError("cannot reach the engine's text layers")
+    raise RuntimeError(
+        f"cannot reach the engine's text layers on {type(model).__name__}: no module under "
+        "language_model carries .layers (the plugin's model nests the decoder at "
+        "language_model.model.layers)"
+    )
 
 
 def engine_side(args: argparse.Namespace) -> int:
     """Load vLLM in process, run E0-E7 for the requested rows, write the report."""
+    force_single_process_engine()  # before the vLLM import: the model must be reachable in this process
     import torch
     from transformers import AutoProcessor
     from vllm import LLM
@@ -573,6 +615,51 @@ def engine_side(args: argparse.Namespace) -> int:
     return 0
 
 
+def check_engine() -> int:
+    """The engine image's API contract, checked in seconds without loading a model or a GPU.
+
+    The wrapper runs this on the node before the probe, so a moved vLLM API fails the job before the
+    weights load: the switch that puts the EngineCore in this process is honoured, ``LLMEngine``'s
+    non-multiprocess branch still exposes the ``model_executor`` the probe walks to, and the offline
+    pooling API E6 calls is present.  Prints the facts as JSON; exit 0 only when every one holds.
+    """
+    force_single_process_engine()
+    import inspect
+
+    try:
+        import vllm
+        from vllm import LLM
+        from vllm.v1.engine.llm_engine import LLMEngine
+    except Exception as error:  # noqa: BLE001 - the message is the artefact
+        print(f"check-engine: cannot import vLLM in this image: {type(error).__name__}: {error}", file=sys.stderr)
+        return 1
+    facts: dict[str, Any] = {
+        "vllm": getattr(vllm, "__version__", "unknown"),
+        "single_process_switch": "VLLM_ENABLE_V1_MULTIPROCESSING=0",
+        "engine_model_paths": [".".join(path) for path in ENGINE_MODEL_PATHS],
+    }
+    problems: list[str] = []
+    if getattr(vllm.envs, "VLLM_ENABLE_V1_MULTIPROCESSING", None) is not False:
+        problems.append("vllm.envs does not read VLLM_ENABLE_V1_MULTIPROCESSING as False after it is set")
+    # The line the first ENGINE_MODEL_PATHS entry rides on, read from the class the image ships.
+    if "self.engine_core.engine_core.model_executor" not in inspect.getsource(LLMEngine.__init__):
+        problems.append(
+            "LLMEngine.__init__ no longer assigns model_executor from the in-process engine core "
+            "(re-read ENGINE_MODEL_PATHS against vllm/v1/engine/llm_engine.py)"
+        )
+    for name in ("encode", "apply_model"):
+        if not hasattr(LLM, name):
+            problems.append(f"LLM.{name} is gone (the offline pooling API moved)")
+    facts["problems"] = problems
+    print(json.dumps(facts, indent=1))
+    if problems:
+        print("check-engine: the engine image's vLLM API moved:", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _read_control(args: argparse.Namespace) -> dict[str, Any] | None:
     """The wave-recorded vectors for the control row (``--control-vectors``), or None."""
     if not args.control_vectors:
@@ -759,9 +846,14 @@ def _write_report(out_dir: Path, report: dict[str, Any]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="topk-embed-v1's controlled GPU probe")
     parser.add_argument("--side", choices=["engine", "reference"], default="engine")
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--revision", required=True)
+    parser.add_argument(
+        "--check-engine",
+        action="store_true",
+        help="check the engine image's vLLM API (no model, no GPU) and exit",
+    )
+    parser.add_argument("--out", default="")
+    parser.add_argument("--model", default="")
+    parser.add_argument("--revision", default="")
     parser.add_argument("--pairs", default="")
     parser.add_argument("--rows", default="")
     parser.add_argument("--image", default="")
@@ -778,13 +870,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image-token-id", type=int, default=248056)
     parser.add_argument("--max-model-len", type=int, default=8448)
     args = parser.parse_args(argv)
+    if args.check_engine:
+        return check_engine()
     if args.wave_cosines:
         path = Path(args.wave_cosines)
         args.wave_cosines = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
     if args.side == "reference":
+        for name in ("out", "model", "revision", "image"):
+            if not getattr(args, name):
+                parser.error(f"--{name} is required on the reference side")
         return reference_side(args)
-    if not args.pairs or not args.reference_python:
-        parser.error("--pairs and --reference-python are required on the engine side")
+    for name in ("out", "model", "revision", "pairs", "reference_python"):
+        if not getattr(args, name):
+            parser.error(f"--{name.replace('_', '-')} is required on the engine side")
     args.rows = {int(value) for value in args.rows.split(",") if value.strip()} if args.rows else set()
     return engine_side(args)
 

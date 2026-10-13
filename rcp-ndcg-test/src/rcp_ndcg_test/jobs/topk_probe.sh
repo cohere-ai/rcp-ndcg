@@ -15,13 +15,16 @@
 #                    environment gains the recipe's plugin wheel (--no-deps, freeze-diff guarded) and
 #                    the family's reference venv (sentence-transformers + the checkpoint's own code)
 #                    lands at <state>/reference/topk-embed-v1
-#   2. probe         the engine image's own python runs topk_probe.py: E0 the one-row control (the
+#   2. check         topk_probe.py --check-engine: the image's vLLM API contract in seconds and no
+#                    weights (the single-process switch, the engine's model_executor branch, the
+#                    offline pooling entry points); a failure stops the job here
+#   3. probe         the engine image's own python runs topk_probe.py: E0 the one-row control (the
 #                    wave's recorded vectors when RCP_TOPK_CONTROL_VECTORS names them), E1
 #                    preprocessing isolation, E2 the same tensors into the engine tower, E3 layer
 #                    dumps, E4 the image-token embeddings, E5 cross-feed, E6 the grid sweep, E7 the
 #                    text path layer by layer; the reference side re-executes the same file under
 #                    <state>/reference/topk-embed-v1 (on its own GPU)
-#   3. upload        probe-report.json, probe-report.md and the per-row dumps; a failed transfer
+#   4. upload        probe-report.json, probe-report.md and the per-row dumps; a failed transfer
 #                    fails the job (no silent green with no artefacts)
 #
 # Environment: RCP_GCS_AUTH_FILE (the mounted auth script; executed, never printed), HF_TOKEN (from the
@@ -67,14 +70,16 @@ if [[ "${TOPK_DRY:-0}" == "1" ]]; then
   echo "topk_probe (dry): would run, in order, on one node:"
   echo "  1. bootstrap  $BOOTSTRAP_SH envs $RC_STAGE_URI --state <state> --recipes <stage>/recipes"
   echo "                --wave-list <state>/topk-wave.txt ($RECIPE)"
-  echo "  2. probe      python3 $PROBE_PY --out <state>/probe --pairs <stage>/pairs/$RECIPE.jsonl \\"
+  echo "  2. check      python3 $PROBE_PY --check-engine (the image's vLLM API, seconds and no weights;"
+  echo "                a failure stops the job here, before any weights load)"
+  echo "  3. probe      python3 $PROBE_PY --out <state>/probe --pairs <stage>/pairs/$RECIPE.jsonl \\"
   echo "                --model <checkpoint> --revision <pinned> --recipe-dir <stage>/recipes/topk-embed-v1 \\"
   echo "                --reference-python <state>/reference/topk-embed-v1/bin/python \\"
   echo "                --device $DEVICE --reference-device $REFERENCE_DEVICE \\"
   echo "                --gpu-memory-fraction $GPU_FRACTION --wave-cosines $WAVE_COSINES"
   [[ -n "$ROWS" ]] && echo "                --rows $ROWS"
   [[ -n "$CONTROL_VECTORS" ]] && echo "                --control-vectors $CONTROL_VECTORS"
-  echo "  3. upload     <state>/probe/* to ${OUT_URI%/}/topk-probe/ (a failed transfer fails the job)"
+  echo "  4. upload     <state>/probe/* to ${OUT_URI%/}/topk-probe/ (a failed transfer fails the job)"
   exit 0
 fi
 
@@ -129,6 +134,19 @@ PY
 )
 fi
 [[ -n "$MODEL" && -n "$REVISION" ]] || { echo "topk_probe: no checkpoint pin (set RCP_TOPK_MODEL/RCP_TOPK_REVISION)" >&2; exit 1; }
+
+# The engine image's vLLM API, checked before the weights load: a moved accessor or pooling entry
+# point fails here in seconds instead of after a multi-GPU model load (the probe's own report would
+# then only carry one traceback).  The check is the probe module's ``--check-engine``.
+echo "topk_probe: checking the engine image's vLLM API"
+set +e
+python3 "$PROBE_PY" --check-engine
+check_status=$?
+set -e
+[[ $check_status -eq 0 ]] || {
+  echo "topk_probe: the engine image's vLLM API moved (the check above names it); not loading the weights" >&2
+  exit 1
+}
 
 PAIRS="$STAGE/pairs/$RECIPE.jsonl"
 [[ -f "$PAIRS" ]] || { echo "topk_probe: no staged pairs at $PAIRS" >&2; exit 1; }

@@ -335,8 +335,10 @@ budgets).
 One recipe family's engine-vs-reference divergence, isolated experiment by experiment on a node: the
 `topk-embed-v1` image-document gap. The job mounts `topk_probe.sh`, its `topk_probe.py` module and the
 wave's per-row cosine fixture beside `bootstrap.sh`, builds the node's client environment and the family's
-reference venv with `bootstrap.sh envs`, runs the probe on the engine image's own python, and uploads
-`probe-report.json`, `probe-report.md` and the per-row dumps to `<OUT_PREFIX>/<wave>/topk-probe/`.
+reference venv with `bootstrap.sh envs`, checks the image's vLLM API (`topk_probe.py --check-engine`:
+seconds, no weights — a moved engine API stops the job before the model loads), runs the probe on the
+engine image's own python, and uploads `probe-report.json`, `probe-report.md` and the per-row dumps to
+`<OUT_PREFIX>/<wave>/topk-probe/`.
 
 ```bash
 rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script topk-probe --priority dev-high \
