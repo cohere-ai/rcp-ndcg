@@ -65,7 +65,9 @@ validation against its reference implementation before the tag (equivalence, qua
 each variant's model revision and `sources`, and `status.state` (`unverified`, `verified`, `failed`) records the
 outcome beside the engine `image`, the `date` and the report. The `status` column below is copied from each
 variant's own `status.state` (the family's until a variant declares its own), so it reads `unverified` for every
-variant the waves have not verified yet; the tag ships none unverified.
+variant the waves have not verified yet; the tag ships no `unverified` recipe, and a variant whose gate failed
+ships only when the owner's explicit disposition list names it (for 0.0.1, exactly the two `topk-embed-v1`
+variants).
 
 | family | id | model | role | input | MRL | plugin | reference | status |
 |---|---|---|---|---|---|---|---|---|

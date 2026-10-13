@@ -36,8 +36,9 @@ It ships three published distributions and one unpublished one:
 - **`rcp-ndcg`** -- the pipeline and the `rcp-ndcg` command built on it: datasets and rankings, retrieval,
   judging, calibration, evaluation, runs and their runners. It pins `rcp-ndcg-core` to its own version.
 - **`rcp-ndcg-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every variant
-  must pass its end-to-end GPU validation against its reference implementation before the tag, or carry an
-  explicit, recorded disposition in the recipe ledger) as
+  must pass its end-to-end GPU validation against its reference implementation before the tag, and the tag
+  ships no `unverified` recipe -- a variant whose gate failed ships only under the owner's explicit
+  disposition list, exactly the two `topk-embed-v1` variants for 0.0.1) as
   package data, the `rcp-ndcg-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
   the stock `vllm/vllm-openai` image, the model plugins and the engine patches. Its dependencies are pydantic
   and PyYAML, it never imports `rcp-ndcg`, torch or vLLM at import time, and it pins no sibling.
@@ -54,9 +55,10 @@ It ships three published distributions and one unpublished one:
   SLURM or Kubernetes job, and for the shipped recipes the engine command is `rcp-ndcg-vllm serve <id>`.
 - **The recipes.** 24 families and 44 variants (16 retrieval families, 8 judge families) as package data,
   read by `recipe: <id>` in a role config or a run's `serve:` block and served by `rcp-ndcg-vllm serve <id>`;
-  every variant must pass its end-to-end GPU validation against its reference implementation before the tag,
-  or carry an explicit, recorded disposition in the recipe ledger, and each family's `family.yaml` records
-  its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm` README).
+  every variant must pass its end-to-end GPU validation against its reference implementation before the tag
+  (the tag ships no `unverified` recipe; a variant whose gate failed ships only under the owner's explicit
+  disposition list, exactly the two `topk-embed-v1` variants for 0.0.1), and each family's `family.yaml`
+  records its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm` README).
 - **One preparation pipeline for every role.** Explicit budgets (a tokenizer and `max_tokens` per role),
   anchor-preserving client-side cuts, recorded in the census and in a per-row `ProcessingRecord`, chunk
   pooling by maximum, media counted in tokens -- never money, never engine-side.
