@@ -29,6 +29,7 @@ Numpy only at import; ``fit`` imports scipy's bounded L-BFGS-B lazily.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -61,6 +62,19 @@ def _moments(posterior: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     mean = posterior @ QUAD
     sd = np.sqrt(np.einsum("dq,dq->d", posterior, (QUAD[None, :] - mean[:, None]) ** 2))
     return mean, sd
+
+
+def _validate_prior_sd(prior_sd: float) -> float:
+    """The ability prior's sd (logits): finite and > 0, or a :class:`ValueError`.
+
+    A non-positive sd is not a flat prior. It is squared into the prior's exponent and divides the
+    quadrature grid, so -1 silently fits the +1 prior, 0 divides by zero and NaN propagates into the
+    ability.
+    """
+    value = float(prior_sd)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"prior_sd must be finite and > 0, got {prior_sd!r}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -127,7 +141,7 @@ class Criteria2PL:
             raise ValueError("gamma and beta must be equal-length 1-D arrays of >= 2 criteria")
         if (self.gamma <= 0).any():
             raise ValueError("every discrimination gamma_k must be positive")
-        self.prior_sd = float(prior_sd)
+        self.prior_sd = _validate_prior_sd(prior_sd)
         self.diagnostics = diagnostics
 
     # -- construction ------------------------------------------------------
@@ -149,7 +163,7 @@ class Criteria2PL:
         Args:
             n: ``(D,)`` placement counts per document.
             S: ``(D, K)`` per-criterion pass counts, ``0 <= s_k <= n``.
-            prior_sd: Gaussian prior sd on ability (1.0 is empirically best).
+            prior_sd: Gaussian prior sd on ability (1.0 is empirically best); finite and > 0.
 
         Returns:
             A fitted :class:`Criteria2PL`. Check ``.diagnostics.ordinal_only``
@@ -163,6 +177,7 @@ class Criteria2PL:
                 "Install it directly, or via the package extra: pip install 'rcp-ndcg-core[irt]'"
             ) from exc
 
+        prior_sd = _validate_prior_sd(prior_sd)
         n_arr, S_arr = _validate_observations(n, S)
         n_items = S_arr.shape[1]
         lo, hi = float(np.log(DEFAULT_GAMMA_BOUNDS[0])), float(np.log(DEFAULT_GAMMA_BOUNDS[1]))

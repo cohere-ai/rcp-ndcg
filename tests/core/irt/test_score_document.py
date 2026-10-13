@@ -172,6 +172,14 @@ class TestValidation:
         with pytest.raises(ValueError, match="finite"):
             _score(2, [float("nan"), 1, 1, 1, 1])
 
+    def test_a_nonsensical_prior_sd_is_refused(self) -> None:
+        """``prior_sd`` is squared in the prior's exponent: -1 silently fitted the +1 prior
+        (identical theta and se), while 0.0 divided by zero and NaN failed later in a bare
+        DocumentEstimate validation error."""
+        for prior_sd in (-1.0, 0.0, float("nan"), float("inf")):
+            with pytest.raises(ValueError, match="prior_sd must be finite and > 0"):
+                _score(3, [2, 2, 1], prior_sd=prior_sd)
+
     def test_reports_an_se_in_range(self) -> None:
         assert 0 < _score(8, [5, 4, 3, 2, 0]).se < 2.0
 
