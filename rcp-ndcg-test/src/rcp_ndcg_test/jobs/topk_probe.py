@@ -134,24 +134,41 @@ def bf16_floor(value: Any) -> float:
     return float((tensor.float() - tensor.to(torch.bfloat16).float()).abs().max())
 
 
-def _hooks(module: Any, names: dict[str, Any], sink: dict[str, Any]) -> list[Any]:
-    """Forward hooks over ``names`` (attribute path -> report key), recording each output in ``sink``."""
+def _record(module: Any, key: str, sink: dict[str, Any]) -> Any:
+    """Record one module's forward output in ``sink``; returns the restore callable.
 
-    def make(key: str) -> Any:
-        def record(_module: Any, _inputs: Any, output: Any) -> None:
-            if isinstance(output, tuple):
-                output = output[0]
-            sink[key] = _tensor(output)
+    Deliberately not ``register_forward_hook``: vLLM's ``@support_torch_compile`` decorator replaces a
+    decorated class's ``__call__`` with one that calls ``self.forward(...)`` directly
+    (``vllm/compilation/decorators.py`` at v0.31.0), so ``nn.Module``'s forward hooks never fire on
+    ``Qwen3_VisionPatchEmbed`` and ``Qwen3_VisionBlock`` -- the first node run's E2/E3 tables held the
+    undecorated ``merger`` alone, which reads as "the merger is the first divergent layer" when the
+    earlier tensors were simply never seen.  Wrapping the bound ``forward`` sees the call either way.
+    """
+    original = module.forward
 
-        return record
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        output = original(*args, **kwargs)
+        sink[key] = _tensor(output[0] if isinstance(output, tuple) else output)
+        return output
 
-    handles = []
+    module.forward = wrapper
+    return lambda: setattr(module, "forward", original)
+
+
+def _record_outputs(module: Any, names: dict[str, Any], sink: dict[str, Any]) -> list[Any]:
+    """Wrap ``names``' modules (attribute path -> report key) so each output lands in ``sink``."""
+    restores = []
     for path, key in names.items():
         target = module
         for attribute in path.split("."):
             target = getattr(target, attribute)
-        handles.append(target.register_forward_hook(make(key)))
-    return handles
+        restores.append(_record(target, key, sink))
+    return restores
+
+
+def _missing_recorded(names: dict[str, Any], sink: dict[str, Any]) -> list[str]:
+    """The keys ``names`` promised that ``sink`` never got: a recording that missed modules says so."""
+    return sorted(set(names.values()) - set(sink))
 
 
 def _vision_hook_names(visual: Any) -> dict[str, Any]:
@@ -160,15 +177,15 @@ def _vision_hook_names(visual: Any) -> dict[str, Any]:
     }
 
 
-def _run_with_hooks(call: Any, module: Any, names: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
-    """Run ``call()`` with hooks on ``module``, always removing them; output and per-layer sink."""
+def _run_recorded(call: Any, module: Any, names: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Run ``call()`` with ``names``' outputs recorded, always restoring the wrapped forwards."""
     sink: dict[str, Any] = {}
-    handles = _hooks(module, names, sink)
+    restores = _record_outputs(module, names, sink)
     try:
         output = call()
     finally:
-        for handle in handles:
-            handle.remove()
+        for restore in restores:
+            restore()
     return output, sink
 
 
@@ -237,7 +254,7 @@ def reference_side(args: argparse.Namespace) -> int:
     vision_inputs = _to_device(vision_inputs, device)
     pixels = row.pixel_values.to(device=device, dtype=visual.patch_embed.proj.weight.dtype)
     with torch.no_grad():
-        merged, layers = _run_with_hooks(
+        merged, layers = _run_recorded(
             functools.partial(visual, pixels, **vision_inputs), visual, _vision_hook_names(visual)
         )
     layers["merged"] = _tensor(merged)
@@ -254,7 +271,7 @@ def reference_side(args: argparse.Namespace) -> int:
         }
         engine_vision_inputs = _to_device(engine_vision_inputs, device)
         with torch.no_grad():
-            engine_merged, engine_layers = _run_with_hooks(
+            engine_merged, engine_layers = _run_recorded(
                 functools.partial(visual, engine_pixels, **engine_vision_inputs),
                 visual,
                 _vision_hook_names(visual),
@@ -264,7 +281,7 @@ def reference_side(args: argparse.Namespace) -> int:
 
     # E7: the text path's per-layer hidden states, captured during the card's own encode.
     with torch.no_grad():
-        document, text_hooks = _run_with_hooks(
+        document, text_hooks = _run_recorded(
             functools.partial(model.encode_document, [image]),
             text_layers,
             _text_layer_hook_names(text_layers),
@@ -511,16 +528,17 @@ def engine_side(args: argparse.Namespace) -> int:
                 for name, value in reference["variants"].items()
             }
             # E2/E3: the engine tower on both feeds, with the in-run bf16 floor.
-            engine_on_engine, dumps_engine = _run_with_hooks(
+            vision_names = _vision_hook_names(visual)
+            engine_on_engine, dumps_engine = _run_recorded(
                 functools.partial(
                     visual,
                     engine_pixels.to(device=args.device, dtype=visual.patch_embed.proj.weight.dtype),
                     engine_grid.to(args.device),
                 ),
                 visual,
-                _vision_hook_names(visual),
+                vision_names,
             )
-            engine_on_reference, dumps_reference = _run_with_hooks(
+            engine_on_reference, dumps_reference = _run_recorded(
                 functools.partial(
                     visual,
                     reference["variants"]["pixel_values_checkpoint"].to(
@@ -529,10 +547,14 @@ def engine_side(args: argparse.Namespace) -> int:
                     torch.as_tensor(reference["grid_thw"]).to(args.device),
                 ),
                 visual,
-                _vision_hook_names(visual),
+                vision_names,
             )
             dumps_engine["merged"] = _tensor(engine_on_engine)
             dumps_reference["merged"] = _tensor(engine_on_reference)
+            # A recording that missed modules must say so: an absent tensor reads as "clean" otherwise.
+            missing = _missing_recorded(vision_names, dumps_engine)
+            if missing:
+                row_report["E3_missing_tensors"] = missing
             row_report["bf16_floor"] = max(
                 bf16_floor(engine_pixels),
                 bf16_floor(dumps_engine.get("patch_embed")),
@@ -575,7 +597,7 @@ def engine_side(args: argparse.Namespace) -> int:
                     "mismatch": True,
                 }
             else:
-                engine_vectors, engine_text_hooks = _run_with_hooks(
+                engine_vectors, engine_text_hooks = _run_recorded(
                     functools.partial(_engine_encode, llm, rendered, pil),
                     text_layers,
                     _text_layer_hook_names(text_layers),
@@ -790,12 +812,19 @@ def _write_report(out_dir: Path, report: dict[str, Any]) -> None:
         if control.get("status") == "run"
         else str(control.get("reason", ""))
     )
+    missing = sorted({key for row in report["rows"] for key in (row.get("E3_missing_tensors") or [])})
     lines = [
         "# topk-embed-v1 GPU probe",
         "",
         f"- model: `{report['model']}` @ `{report['revision']}`",
         f"- engine image: `{report['engine_image']}`",
         f"- control (probe vectors vs the wave's recorded vectors): `{control.get('status')}` {control_note}",
+        "- engine-tower tensors recorded: "
+        + (
+            f"**missing {missing}** -- a first divergent layer read off this table is not trustworthy"
+            if missing
+            else "every expected tensor"
+        ),
         f"- first divergent layer (shared-tensor feed): `{shared.get('layer')}` "
         f"(max-abs-diff {shared.get('max_abs_diff')})",
         f"- first divergent layer (engine-pixels feed, conflated): `{conflated.get('layer')}` "

@@ -6,6 +6,7 @@ submit.sh); what can be exercised on CPU is their plan, their guards and their r
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ import types
 from pathlib import Path
 
 import pytest
+import torch
 
 from tests.conftest import sandbox_path
 
@@ -2232,6 +2234,20 @@ def _probe_module():
     return topk_probe
 
 
+class _DecoratedLikeVllm(torch.nn.Module):
+    """A module shaped like vLLM's ``@support_torch_compile`` output: ``__call__`` calls ``forward``."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inner = torch.nn.Linear(2, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.inner(x)
+
+    def __call__(self, *args: object, **kwargs: object) -> torch.Tensor:
+        return self.forward(*args, **kwargs)
+
+
 def test_the_probe_forces_the_single_process_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     """The model must live in this process for the forward hooks and the tower calls to reach it, and
     vLLM reads the switch when it builds the engine: ``force_single_process_engine`` sets it."""
@@ -2366,6 +2382,43 @@ def test_the_topk_probe_wrapper_checks_the_engine_api_before_loading_weights(tmp
     assert completed.returncode == 1, completed.stdout + completed.stderr
     assert calls.read_text(encoding="utf-8").splitlines() == ["--check-engine"]
     assert "not loading the weights" in completed.stderr
+
+
+def test_the_probe_records_a_forward_that_a_decorated_call_bypasses() -> None:
+    """vLLM's ``@support_torch_compile`` replaces a decorated class's ``__call__`` with one that calls
+    ``self.forward(...)`` directly (``Qwen3_VisionPatchEmbed`` and ``Qwen3_VisionBlock`` at v0.31.0), so
+    ``register_forward_hook`` sees nothing while the probe's recorder -- which wraps the bound
+    ``forward`` -- sees the call.  The first node run's E2/E3 tables held only the undecorated
+    ``merger``, which read as "the merger is the first divergent layer"."""
+    probe = _probe_module()
+    module = _DecoratedLikeVllm()
+    decorated_hook: dict[str, object] = {}
+    inner_hook: dict[str, object] = {}
+    handles = [
+        module.register_forward_hook(lambda m, i, o: decorated_hook.setdefault("decorated", o)),
+        module.inner.register_forward_hook(lambda m, i, o: inner_hook.setdefault("inner", o)),
+    ]
+    try:
+        output, sink = probe._run_recorded(functools.partial(module, torch.ones(1, 2)), module, {"inner": "inner"})
+    finally:
+        for handle in handles:
+            handle.remove()
+    assert decorated_hook == {}, "nn.Module's forward hooks never see a decorated module's own call"
+    assert "inner" in inner_hook, "an undecorated child's hook fires (the merger did in the first run)"
+    assert list(sink) == ["inner"]
+    assert torch.equal(sink["inner"], output)
+    # the wrap is restored, so a second call is recorded again and the module still works
+    _, again = probe._run_recorded(functools.partial(module, torch.ones(1, 2)), module, {"inner": "inner"})
+    assert list(again) == ["inner"]
+    assert module.forward.__self__ is module, "the module's own bound forward is back"
+
+
+def test_the_probe_names_the_tensors_a_recording_missed() -> None:
+    """A recording that missed modules says so (an absent tensor reads as "clean" in the tables)."""
+    probe = _probe_module()
+    names = {"patch_embed": "patch_embed", "merger": "merger", "blocks.0": "block_0"}
+    assert probe._missing_recorded(names, {"merger": object()}) == ["block_0", "patch_embed"]
+    assert probe._missing_recorded(names, {key: object() for key in names.values()}) == []
 
 
 def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes() -> None:
