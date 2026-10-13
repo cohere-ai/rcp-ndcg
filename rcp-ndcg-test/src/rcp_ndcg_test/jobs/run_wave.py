@@ -652,6 +652,10 @@ class _Worker:
         self.corpus_fingerprint: str | None = None
         """The behaviour fingerprint of the corpus step's result (the step body's side channel: the step
         document goes through the ordinary ``_step`` machinery, the fingerprint into the row)."""
+        self._step_token: object | None = None
+        """The step whose body is in flight now (``None`` between steps): the corpus step's restart reads it
+        to refuse a restart once the runner has abandoned the body (an engine death or a step-budget overrun)
+        -- an abandoned body must never stop or start an engine the wave no longer tracks."""
         self._done = threading.Event()
         self._thread = threading.Thread(target=self._work, daemon=True, name=f"run_wave:{run.recipe.id}")
 
@@ -816,7 +820,9 @@ class _Worker:
 
     def _step(self, name: str, budget_s: float, body: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         """One step under its declared budget: the pod-log lines, the watch, the overrun failure, and the
-        status rewritten the moment the step ends (GPU-E1: results used to land only at the end)."""
+        status rewritten the moment the step ends (GPU-E1: results used to land only at the end).  The
+        step's token is set while its body runs and cleared when this call returns -- including when the
+        body is abandoned -- so a step body can tell whether it is still the step in flight."""
         run = self.run
         started = time.monotonic()
         run.status["steps"][name] = {"state": "running", "budget_s": round(budget_s)}
@@ -833,48 +839,53 @@ class _Worker:
                     box["error"] = error
 
         helper = threading.Thread(target=body_under_watch, daemon=True, name=f"run_wave:{run.recipe.id}:{name}")
-        helper.start()
-        while helper.is_alive() and watch.elapsed_s() <= budget_s:
-            if self._engine_death() is not None:
-                break  # the engine died: fail the step now, never wait the budget out (GPU-E1)
-            helper.join(0.5)
-        death = self._engine_death() if helper.is_alive() else None
-        overrun = helper.is_alive() and death is None
-        if death is not None:
-            # The product's transport parks a request while every replica is down (wait_on_outage_s);
-            # with the engine dead that park never returns, so the abandoned helper is left to the wave's
-            # end -- nothing it holds (no live engine, no GPU) can stall another recipe.
-            helper.join(1.0)
-        elif overrun:
-            # The budget is out and the body is still going: the step fails HERE, whatever the body
-            # eventually returns (a late pass never overrides the budget).  A short grace lets the
-            # cooperative seams unwind (the transport cancels the in-flight request at the budget's
-            # edge and names it); the wave's sweep owns whatever a body the watch cannot reach still
-            # holds.
-            helper.join(30.0)
-        result: dict[str, Any]
-        if death is not None:
-            result = {"state": "failed", "error": death}
-        elif overrun:
-            # A cooperative seam's own message names the request that was in flight when the budget ran
-            # out; without one, the watch's in-flight description is the best the runner has.
-            late = box.get("error")
-            error_text = (
-                str(late)
-                if isinstance(late, StepBudgetExceeded)
-                else f"step {name} exceeded {budget_s:.0f}s; in flight: {watch.describe()}"
-            )
-            result = {"state": "failed", "error": error_text}
-        elif "error" in box:
-            error = box["error"]
-            if isinstance(error, StepBudgetExceeded):
-                result = {"state": "failed", "error": str(error)}
-            elif isinstance(error, HarnessError):
-                result = {"state": "failed", "error": str(error)}
+        token = object()
+        self._step_token = token
+        try:
+            helper.start()
+            while helper.is_alive() and watch.elapsed_s() <= budget_s:
+                if self._engine_death() is not None:
+                    break  # the engine died: fail the step now, never wait the budget out (GPU-E1)
+                helper.join(0.5)
+            death = self._engine_death() if helper.is_alive() else None
+            overrun = helper.is_alive() and death is None
+            if death is not None:
+                # The product's transport parks a request while every replica is down (wait_on_outage_s);
+                # with the engine dead that park never returns, so the abandoned helper is left to the wave's
+                # end -- nothing it holds (no live engine, no GPU) can stall another recipe.
+                helper.join(1.0)
+            elif overrun:
+                # The budget is out and the body is still going: the step fails HERE, whatever the body
+                # eventually returns (a late pass never overrides the budget).  A short grace lets the
+                # cooperative seams unwind (the transport cancels the in-flight request at the budget's
+                # edge and names it); the wave's sweep owns whatever a body the watch cannot reach still
+                # holds.
+                helper.join(30.0)
+            result: dict[str, Any]
+            if death is not None:
+                result = {"state": "failed", "error": death}
+            elif overrun:
+                # A cooperative seam's own message names the request that was in flight when the budget ran
+                # out; without one, the watch's in-flight description is the best the runner has.
+                late = box.get("error")
+                error_text = (
+                    str(late)
+                    if isinstance(late, StepBudgetExceeded)
+                    else f"step {name} exceeded {budget_s:.0f}s; in flight: {watch.describe()}"
+                )
+                result = {"state": "failed", "error": error_text}
+            elif "error" in box:
+                error = box["error"]
+                if isinstance(error, StepBudgetExceeded):
+                    result = {"state": "failed", "error": str(error)}
+                elif isinstance(error, HarnessError):
+                    result = {"state": "failed", "error": str(error)}
+                else:
+                    raise error
             else:
-                raise error
-        else:
-            result = box.get("result") or {"state": "failed", "error": f"step {name} produced no result"}
+                result = box.get("result") or {"state": "failed", "error": f"step {name} produced no result"}
+        finally:
+            self._step_token = None
         secs = time.monotonic() - started
         result.setdefault("budget_s", round(budget_s))
         result["secs"] = round(secs, 3)
@@ -904,6 +915,7 @@ class _Worker:
         """The observation corpus step (the runner's own sequencing, in the worker's thread); the
         fingerprint lands in :attr:`corpus_fingerprint` for the row."""
         run = self.run
+        token = self._step_token
         step, fingerprint = _observe_corpus(
             run,
             self.out,
@@ -913,6 +925,10 @@ class _Worker:
             restarted=self.restarted,
             equivalence_exchanges=equivalence_exchanges or None,
             plugin_wheel=self.plugin_wheel,
+            # The restart's guard: the body may only restart the engine while this step is still the one in
+            # flight.  The runner abandons a body on an engine death or a budget overrun and ends the recipe
+            # (its GPUs are released); a late restart from that body would start an engine no wave tracks.
+            in_flight=(lambda: self._step_token is token) if token is not None else None,
         )
         self.corpus_fingerprint = fingerprint
         return step
@@ -1504,6 +1520,7 @@ def _observe_corpus(
     restarted: list[_EngineRun],
     equivalence_exchanges: list[dict[str, Any]] | None = None,
     plugin_wheel: str | Path | None = None,
+    in_flight: Callable[[], bool] | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """One observation corpus for the recipe over the request plan's rows (OBSERVATIONS-SPEC 1-6).
 
@@ -1511,9 +1528,11 @@ def _observe_corpus(
     ``<out>/observations/vllm-<version>/<recipe>/<fingerprint>/<recorded-at>/``), keyed by the one behaviour
     fingerprint (:func:`rcp_ndcg_test.fingerprint.behaviour_fingerprint`).  The ``restart`` closure stops the
     engine and starts it again on the same slot, so the ``after_restart`` pass runs against a new engine
-    process with its own run id.  The engine block is probed (``nvidia-smi``, the engine environment's Python
-    named by ``RCP_ENGINE_PYTHON``); in test mode a stub serves and no vLLM fact is claimed.  Returns the step
-    document and the fingerprint.
+    process with its own run id; ``in_flight`` (the worker's step token, when the runner drives this step)
+    gates that closure: a body the runner has abandoned must not stop or start an engine the wave no longer
+    tracks, so the restart is refused once the step is no longer the one in flight.  The engine block is
+    probed (``nvidia-smi``, the engine environment's Python named by ``RCP_ENGINE_PYTHON``); in test mode a
+    stub serves and no vLLM fact is claimed.  Returns the step document and the fingerprint.
     """
     from ..equivalence.fitting import load_pairs
     from ..fingerprint import behaviour_fingerprint
@@ -1565,6 +1584,12 @@ def _observe_corpus(
     loading: list[dict[str, Any]] = []
 
     def restart() -> tuple[str, str] | None:
+        if in_flight is not None and not in_flight():
+            raise HarnessError(
+                "the corpus step is no longer in flight (the runner abandoned its body at an engine death or "
+                "a step-budget overrun): the restart is refused, so an abandoned body can never stop or start "
+                "an engine the wave no longer tracks"
+            )
         run.stop()
         fresh = _start(recipe, run.gpus, slot, out, vllm_cmd, port_base, disk=run.disk, wave=run.wave)
         restarted.append(fresh)

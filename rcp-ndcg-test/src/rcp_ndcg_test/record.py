@@ -33,7 +33,7 @@ from .equivalence.wire import role_client
 from .errors import HarnessError
 from .stepwatch import current_watch
 
-__all__ = ["bare_exchange", "entry_from_exchange", "record", "record_corpus", "refusal_exchange"]
+__all__ = ["bare_exchange", "entry_from_exchange", "omission_exchange", "record", "record_corpus", "refusal_exchange"]
 
 _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
@@ -349,6 +349,31 @@ def refusal_exchange(recipe: Recipe, request_id: str, item: str, error: Exceptio
     }
 
 
+def omission_exchange(recipe: Recipe, request_id: str, reason: str) -> dict[str, Any]:
+    """A request the product's client never sent because its declared empty policy omitted every item, as a
+    captured exchange: no status (nothing crossed the wire), the reason as the reply bytes, and a request
+    body that names the omitted row (``client_omission``) -- so each omission is its own record and the
+    plan's request id is accounted for, exactly as a refusal is.
+
+    The declared rule is the product's (``empty_doc: omit_zero``/``omit_zero_blank``): the client scores the
+    omitted items without a model call, so no exchange exists for the row and the completeness check would
+    fail on a request id the plan asked for.  Inputs: the recipe, the planned request id and the one-line
+    reason (which names the declared policy).  Output: the exchange in the capture's shape.
+    """
+    route = _ROLE_ROUTES[recipe.role]
+    body = {"client_omission": {"request_id": request_id, "reason": reason}}
+    return {
+        "url": f"{_PLACEHOLDER}{route}",
+        "method": "POST",
+        "request_bytes": "",
+        "request_body": body,
+        "status": None,
+        "headers": {},
+        "response_bytes": base64.b64encode(reason.encode("utf-8")).decode("ascii"),
+        "response_json": None,
+    }
+
+
 class _Collector:
     """One corpus recording: the records in sending order, the pass being sent and its engine run."""
 
@@ -435,7 +460,7 @@ def record_corpus(
     """
     from .equivalence.fitting import tokenizer_of
     from .observe.adversarial import checkpoint_vocab_size
-    from .observe.corpus import summarise_nondeterminism, verify_corpus, write_corpus
+    from .observe.corpus import declared_kept_counts, summarise_nondeterminism, verify_corpus, write_corpus
     from .observe.provenance import collector_facts, model_facts, recipe_facts, unavailable
     from .observe.requests import CORPUS_PLAN_VERSION, corpus_plan
 
@@ -451,7 +476,8 @@ def record_corpus(
         collected.repetition, collected.server_run_id = repetition, run_id
         sent = _model_layer(recipe, url, plan.rows, collected, batch_sizes)
         _bare_probes(recipe, url, plan.rows, plan.bare, collected, timeout_s=timeout_s)
-        _tokenize_probes(recipe, url, sent, collected, timeout_s=timeout_s)
+        tokenized = _tokenize_probes(recipe, url, sent, collected, timeout_s=timeout_s)
+        _attach_sent_token_ids(collected, tokenized)
         passes.append({"repetition": repetition, "server_run_id": run_id})
 
     one_pass("same_process_1", base_url, server_run_id)
@@ -483,7 +509,15 @@ def record_corpus(
 
     directory = Path(out_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    nondeterminism = summarise_nondeterminism(collected.records, dim=recipe.client.get("dim"))
+    recipe_block = recipe_facts(recipe)
+    # The declared engine-side keep rule (the product's empty/keep declarations, recorded in the recipe
+    # block): the kept-count resolver the non-determinism measurement and the acceptance check both use.
+    kept_of = (
+        (lambda record: declared_kept_counts(record, recipe_block))
+        if recipe_block["document_skip_engine_side"] and recipe_block["document_skip_token_ids"]
+        else None
+    )
+    nondeterminism = summarise_nondeterminism(collected.records, dim=recipe.client.get("dim"), kept_of=kept_of)
     (directory / "nondeterminism.json").write_text(
         json.dumps(nondeterminism, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -492,7 +526,7 @@ def record_corpus(
     manifest = {
         "engine": engine_facts,
         "model": model_facts(recipe, hub_cache=hub_cache, plugin_wheel=plugin_wheel),
-        "recipe": recipe_facts(recipe),
+        "recipe": recipe_block,
         "collector": {**collector_block, "batch_sizes": list(batch_sizes), "passes": passes},
         "plan": {
             "corpus_plan_version": CORPUS_PLAN_VERSION,
@@ -527,7 +561,9 @@ def _model_layer(
     text)`` -- the rendered prompt for an embedder, the settled query span and the document spans for a
     reranker -- for the engine's ``/tokenize`` of exactly what the client sends.  A row carrying inline media
     (the media request set) sends each media side alone, with its media
-    (:func:`~rcp_ndcg_test.equivalence.media.side_contents`).
+    (:func:`~rcp_ndcg_test.equivalence.media.side_contents`); a row the client's declared empty policy
+    omits entirely (a reranker's every document blank under ``omit_zero_blank``) is recorded as its omission
+    (:func:`omission_exchange`), so the plan's request id stays accounted for.
     """
     from rcp_ndcg_core.content import Content
 
@@ -584,10 +620,14 @@ def _model_layer(
     if recipe.role == "rerank":
         # One query per /rerank request: the candidate set is the batch, sent in the given and the reversed order.
         for row in rows:
+            sent_any = False
             for order in ("given", "reversed"):
                 documents = list(row["documents"]) if order == "given" else list(reversed(row["documents"]))
                 start = len(capture.exchanges)
                 client.rerank(row["query"], documents, instruction=row.get("instruction"))
+                if len(capture.exchanges) == start:
+                    continue  # every document is empty under the declared empty policy: no request went out
+                sent_any = True
                 context = {"size": 1, "request_ids": [row["request_id"]], "positions": [0], "order": order}
                 captured_since(start, context, collected.inputs(row, order=order))
                 if order == "given":
@@ -596,6 +636,20 @@ def _model_layer(
                         if texts.get("query"):
                             sent.append((row, "query", "pair", str(texts["query"])))
                         sent.extend((row, f"document:{k}", "pair", str(d)) for k, d in enumerate(texts["documents"]))
+            if not sent_any:
+                # The client's declared empty policy (empty_doc: omit_zero/omit_zero_blank) omitted every
+                # document: it scores the row 0.0 without a model call.  The omission is recorded so the
+                # plan's request id is accounted for (completeness), exactly as a refusal is.
+                reason = (
+                    f"the client sent no request for this row: every document is empty under the declared "
+                    f"empty_doc policy ({recipe.client.get('empty_doc') or 'send'}), so it was omitted and "
+                    "scored without a model call"
+                )
+                collected.add(
+                    omission_exchange(recipe, str(row["request_id"]), reason),
+                    batch_context={"size": 1, "request_ids": [row["request_id"]], "positions": [0]},
+                    inputs=collected.inputs(row, probe="client_omission"),
+                )
         return sent
     declared = set(declared_shapes(recipe))
     sides = [("query", EncodeRole.QUERY)] if "query" in declared else []
@@ -692,14 +746,17 @@ def _tokenize_probes(
     collected: _Collector,
     *,
     timeout_s: float,
-) -> None:
+) -> dict[str, list[int]]:
     """The engine's ``/tokenize`` of every text the client put on the wire (OBSERVATIONS-SPEC section 1): the
     exact prompt each input was sent as, with the special-tokens flag the shape is sent with, recorded as the
-    ground truth for the client's ``fit`` and the fake engines' token counting."""
+    ground truth for the client's ``fit`` and the fake engines' token counting.  Returns ``{text: ids}`` (the
+    engine's own ids of each probed text), which :func:`_attach_sent_token_ids` lands on the model-layer
+    records."""
     from .equivalence.stages import _add_specials_flag, tokenize_url
 
     route = tokenize_url(base_url).removeprefix(_engine_root(base_url))
     seen: set[tuple[str, bool]] = set()
+    tokenized: dict[str, list[int]] = {}
     with httpx.Client(base_url=_engine_root(base_url), timeout=timeout_s) as http:
         for row, item, shape, text in sent:
             flag = _add_specials_flag(recipe, shape) if recipe.role != "rerank" else False
@@ -708,11 +765,55 @@ def _tokenize_probes(
             seen.add((text, flag))
             request_id = f"tokenize:{row['request_id']}/{item}"
             inputs = collected.inputs(row, probe="tokenize", request_id=request_id, stratum="tokenize", item=item)
+            exchange = bare_exchange(
+                http, "POST", route, {"model": recipe.id, "prompt": text, "add_special_tokens": flag}
+            )
             collected.add(
-                bare_exchange(http, "POST", route, {"model": recipe.id, "prompt": text, "add_special_tokens": flag}),
+                exchange,
                 batch_context={"size": 1, "request_ids": [request_id], "positions": [0]},
                 inputs=inputs,
             )
+            ids = _tokenize_ids(exchange)
+            if ids is not None:
+                tokenized.setdefault(text, ids)
+    return tokenized
+
+
+def _tokenize_ids(exchange: dict[str, Any]) -> list[int] | None:
+    """The engine's ids one ``/tokenize`` exchange carries (vLLM's ``tokens`` list), or ``None``."""
+    body = exchange.get("response_json")
+    tokens = body.get("tokens") if isinstance(body, dict) else None
+    if not isinstance(tokens, list):
+        return None
+    return [int(token) for token in tokens]
+
+
+def _attach_sent_token_ids(collected: _Collector, tokenized: dict[str, list[int]]) -> None:
+    """Record the engine's ids of each sent text on the model-layer records that carried it.
+
+    The acceptance check derives the kept-vector count a served plugin leaves (a recipe declaring
+    ``document_skip_engine_side``) from the sent render's ids and the declared skip list, and the pass's
+    ``/tokenize`` probe is the engine's own tokenization of exactly what the client sent (R29): the ids land
+    on the record itself, so a repository subset (a sample that may drop the probe) stays checkable.  A
+    text-wire record's items are its request body's ``input`` texts; a ``token_ids`` wire's are the ids as
+    sent.  Nothing is invented: an item with no probe keeps ``None``.
+    """
+    for record in collected.records:
+        inputs = record.get("inputs") or {}
+        if inputs.get("layer") != "model" or inputs.get("probe") != "ok":
+            continue  # the client-sent model layer only: a bare probe carries no client render
+        body = (record.get("request") or {}).get("body_parsed")
+        items = body.get("input") if isinstance(body, dict) else None
+        if not isinstance(items, list) or not items:
+            continue
+        ids: list[list[int] | None] = []
+        for item in items:
+            if isinstance(item, list):
+                ids.append([int(value) for value in item])
+            else:
+                ids.append(tokenized.get(item) if isinstance(item, str) else None)
+        if any(entry is not None for entry in ids):
+            inputs["sent_token_ids"] = ids
 
 
 def _role_body(

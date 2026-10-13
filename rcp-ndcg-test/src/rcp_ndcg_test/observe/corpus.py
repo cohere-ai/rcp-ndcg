@@ -20,6 +20,7 @@ Public surface:
 - :data:`DERIVED_TOLERANCE_RULE`, :data:`REPETITIONS`.
 - :func:`corpus_key`, :func:`corpus_path`, :func:`build_record`, :func:`write_corpus`.
 - :func:`derived_vectors`, :func:`summarise_nondeterminism`, :func:`expected_status`.
+- :func:`declared_kept_counts` (the engine-side keep rule's per-item count).
 - :func:`verify_corpus` (the acceptance checks), :func:`subset_for_repository`.
 - :func:`changed_since` (section 7: re-record changed only).
 """
@@ -30,6 +31,7 @@ import gzip
 import json
 import math
 import shutil
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +70,7 @@ __all__ = [
     "changed_since",
     "corpus_key",
     "corpus_path",
+    "declared_kept_counts",
     "derived_vectors",
     "expected_status",
     "subset_for_repository",
@@ -213,7 +216,51 @@ def _raw_bytes(body_raw: Any) -> bytes:
     return str(body_raw or "").encode("utf-8")
 
 
-def derived_vectors(record: dict[str, Any], *, dim: int | None = None) -> list[np.ndarray] | None:
+def declared_kept_counts(record: dict[str, Any], recipe_block: dict[str, Any]) -> tuple[int, ...] | None:
+    """The declared kept counts of one vector reply's items, when the recipe declares the engine-side rule.
+
+    A recipe whose served plugin applies the document skip rule engine-side
+    (``document_skip_engine_side`` + ``document_skip_token_ids``) receives only the kept vectors while the
+    reply's ``usage.prompt_tokens`` counts the whole prompt, so the acceptance check must expect the KEPT
+    count per item -- each document item's sent render's ids outside the skip list, through the product's one
+    home for the rule (:func:`~rcp_ndcg.data.postprocess.kept_vector_count`).  The ids are the record's
+    ``inputs.sent_token_ids`` (the engine's own ``/tokenize`` ids of the sent render, recorded beside it) or,
+    on a ``token_ids`` wire, the request body's own id lists.
+
+    Inputs: one record and the manifest's recipe block.  Output: one count per item in the reply's order, or
+    ``None`` when the recipe declares no engine-side rule, the record is not a document-side vector reply, or
+    the sent ids are not in the corpus -- then the adapter's full prompt-token cross-check stands, never a
+    silently accepted count.  Units: none.
+    """
+    from rcp_ndcg.data.postprocess import kept_vector_count
+
+    if not recipe_block.get("document_skip_engine_side"):
+        return None
+    skip = tuple(int(value) for value in (recipe_block.get("document_skip_token_ids") or ()))
+    if not skip:
+        return None
+    inputs = record.get("inputs") or {}
+    if str(inputs.get("side") or "") != "document":
+        return None
+    body = (record.get("request") or {}).get("body_parsed")
+    items = body.get("input") if isinstance(body, dict) else None
+    if not isinstance(items, list) or not items:
+        return None
+    sent = inputs.get("sent_token_ids")
+    counts: list[int] = []
+    for index, item in enumerate(items):
+        ids = sent[index] if isinstance(sent, list) and len(sent) == len(items) else None
+        if ids is None and isinstance(item, list):
+            ids = item
+        if not isinstance(ids, list) or not ids:
+            return None
+        counts.append(kept_vector_count(ids, skip))
+    return tuple(counts)
+
+
+def derived_vectors(
+    record: dict[str, Any], *, dim: int | None = None, kept: Sequence[int] | None = None
+) -> list[np.ndarray] | None:
     """The vectors one recorded reply carries, decoded by the product's own adapters (never re-implemented).
 
     A ``/v1/embeddings`` reply decodes through :class:`~rcp_ndcg.inference.adapters.embeddings.OpenAIEmbeddings`
@@ -221,9 +268,12 @@ def derived_vectors(record: dict[str, Any], *, dim: int | None = None) -> list[n
     :class:`~rcp_ndcg.inference.adapters.pooling.VllmPooling` -- float frames, base64 frames in the request's
     ``embed_dtype`` reshaped by ``dim``, and ``bytes`` frames split by the recorded ``metadata`` header.
 
-    Inputs: one record and the recipe's declared token-vector width (``client.dim``; a base64 ``/pooling``
-    frame needs it).  Output: one array per input item (``(dim,)`` dense, ``(tokens, dim)`` per token), or
-    ``None`` for a reply that carries no vectors (another route, a refusal).  Raises :class:`HarnessError`
+    Inputs: one record, the recipe's declared token-vector width (``client.dim``; a base64 ``/pooling``
+    frame needs it) and ``kept`` -- the declared per-item kept counts when the served plugin applies a
+    document keep rule engine-side (:func:`declared_kept_counts`): the reply carries only the kept vectors
+    then, and the adapter checks each item against its own declared count instead of the reply's full
+    prompt-token report.  Output: one array per input item (``(dim,)`` dense, ``(tokens, dim)`` per token),
+    or ``None`` for a reply that carries no vectors (another route, a refusal).  Raises :class:`HarnessError`
     naming the record when a vector reply does not decode (an undecodable body is never skipped silently).
     """
     from rcp_ndcg_core.content import Content
@@ -256,6 +306,7 @@ def derived_vectors(record: dict[str, Any], *, dim: int | None = None) -> list[n
             role=EncodeRole.DOCUMENT,
             embed_dtype="float32" if dtype == "float32" else "float16",
             dim=dim,
+            kept_counts=tuple(int(count) for count in kept) if kept else (),
         )
         embeddings = VllmPooling().interpret(pool, [reply])
     except (RcpNdcgError, NotImplementedError, ValueError) as error:
@@ -285,13 +336,17 @@ def _numeric_leaves(node: Any, prefix: str = "") -> list[tuple[str, float]]:
     return out
 
 
-def _comparable(record: dict[str, Any], dim: int | None) -> dict[str, float]:
+def _comparable(
+    record: dict[str, Any], dim: int | None, kept_of: Callable[[dict[str, Any]], tuple[int, ...] | None] | None = None
+) -> dict[str, float]:
     """One reply as ``{leaf path: value}``: the normalised body's numeric leaves, plus the decoded vectors'
-    components (a base64 or bytes frame carries its numbers only once decoded)."""
+    components (a base64 or bytes frame carries its numbers only once decoded).  ``kept_of`` supplies a
+    record's declared kept counts when the recipe declares an engine-side keep rule (the same one home as
+    :func:`declared_kept_counts`)."""
     response = record.get("response") or {}
     leaves = dict(_numeric_leaves(normalise_body(response.get("body_parsed"))))
     try:
-        vectors = derived_vectors(record, dim=dim)
+        vectors = derived_vectors(record, dim=dim, kept=kept_of(record) if kept_of is not None else None)
     except HarnessError:
         vectors = None
     for item, vector in enumerate(vectors or []):
@@ -300,17 +355,24 @@ def _comparable(record: dict[str, Any], dim: int | None) -> dict[str, float]:
     return leaves
 
 
-def summarise_nondeterminism(records: list[dict[str, Any]], *, dim: int | None = None) -> dict[str, Any]:
+def summarise_nondeterminism(
+    records: list[dict[str, Any]],
+    *,
+    dim: int | None = None,
+    kept_of: Callable[[dict[str, Any]], tuple[int, ...] | None] | None = None,
+) -> dict[str, Any]:
     """The measured non-determinism over repeated sendings of the same request (OBSERVATIONS-SPEC section 2).
 
-    Inputs: the corpus's records and the recipe's declared token-vector width (for base64 ``/pooling``
-    frames).  Records are grouped by ``exchange_id`` -- the same request bytes, so the same input in the same
-    batch context -- and only a group with at least two sendings is a measurement.  Per group: the
-    repetitions and server runs it spans, the maximum absolute and relative differences of every numeric leaf
-    of the normalised bodies and of every decoded vector component, the minimum cosine per vector, and
+    Inputs: the corpus's records, the recipe's declared token-vector width (for base64 ``/pooling``
+    frames) and ``kept_of`` -- the declared kept counts of a record whose recipe has a served engine-side
+    keep rule (the reply carries only the kept vectors, so without them its vectors would silently drop out
+    of the measurement).  Records are grouped by ``exchange_id`` -- the same request bytes, so the same input
+    in the same batch context -- and only a group with at least two sendings is a measurement.  Per group:
+    the repetitions and server runs it spans, the maximum absolute and relative differences of every numeric
+    leaf of the normalised bodies and of every decoded vector component, the minimum cosine per vector, and
     whether statuses or normalised bodies differ at all.  Output: ``{"per_input", "summary", "derived"}``;
-    ``derived`` holds the verification tolerances under :data:`DERIVED_TOLERANCE_RULE`, or
-    ``measured: false`` and no tolerance when no request was sent twice.
+    ``derived`` holds the verification tolerances under :data:`DERIVED_TOLERANCE_RULE`, or ``measured:
+    false`` and no tolerance when no request was sent twice.
     """
     groups: dict[str, list[dict[str, Any]]] = {}
     for record in records:
@@ -324,10 +386,10 @@ def summarise_nondeterminism(records: list[dict[str, Any]], *, dim: int | None =
         if len(group) < 2:
             continue
         measured += 1
-        reference = _comparable(group[0], dim)
+        reference = _comparable(group[0], dim, kept_of)
         max_abs = max_rel = 0.0
         for other in group[1:]:
-            leaves = _comparable(other, dim)
+            leaves = _comparable(other, dim, kept_of)
             for key in set(reference) | set(leaves):
                 a, b = reference.get(key), leaves.get(key)
                 if a is None or b is None:
@@ -335,7 +397,7 @@ def summarise_nondeterminism(records: list[dict[str, Any]], *, dim: int | None =
                 delta = abs(a - b)
                 max_abs = max(max_abs, delta)
                 max_rel = max(max_rel, delta / max(abs(a), abs(b), 1e-12))
-        cosines = _cosines(group, dim)
+        cosines = _cosines(group, dim, kept_of)
         statuses = {row["response"].get("status") for row in group}
         normalised = {
             json.dumps(normalise_body(row["response"].get("body_parsed")), sort_keys=True)
@@ -376,16 +438,20 @@ def summarise_nondeterminism(records: list[dict[str, Any]], *, dim: int | None =
     }
 
 
-def _cosines(group: list[dict[str, Any]], dim: int | None) -> list[float]:
+def _cosines(
+    group: list[dict[str, Any]],
+    dim: int | None,
+    kept_of: Callable[[dict[str, Any]], tuple[int, ...] | None] | None = None,
+) -> list[float]:
     """The cosine of every decoded vector of the first sending against the same vector in each other one."""
     try:
-        first = derived_vectors(group[0], dim=dim)
+        first = derived_vectors(group[0], dim=dim, kept=kept_of(group[0]) if kept_of is not None else None)
     except HarnessError:
         return []
     out: list[float] = []
     for other in group[1:]:
         try:
-            vectors = derived_vectors(other, dim=dim)
+            vectors = derived_vectors(other, dim=dim, kept=kept_of(other) if kept_of is not None else None)
         except HarnessError:
             continue
         for a, b in zip(first or [], vectors or [], strict=False):
@@ -420,7 +486,8 @@ def verify_corpus(
     the after-restart one included), ``statuses_as_expected``,
     ``scores_finite_and_vector_widths`` (every number finite, every vector decoded by the product's adapter
     at the width its request asked for -- a ``dimensions=k`` MRL probe -- or the declared width, and its
-    dtype; one width per route and requested dimensions), ``nondeterminism_report``,
+    dtype; one width per route and requested dimensions; a recipe declaring an engine-side document keep
+    rule is checked against the kept count per item, :func:`declared_kept_counts`), ``nondeterminism_report``,
     ``provenance_complete``, ``no_credentials``, and -- given the equivalence exchanges --
     ``equivalence_consistent`` (the same served replies, within the measured tolerance).
     """
@@ -592,7 +659,7 @@ def _numbers(corpus: ObservationCorpus, record_check: Any) -> None:
             if not math.isfinite(value):
                 problems.append(f"{exchange}:{leaf} is not finite")
         try:
-            vectors = derived_vectors(row, dim=dim)
+            vectors = derived_vectors(row, dim=dim, kept=declared_kept_counts(row, recipe_block))
         except HarnessError as error:
             problems.append(str(error))
             continue
@@ -619,7 +686,8 @@ def _numbers(corpus: ObservationCorpus, record_check: Any) -> None:
         not problems,
         "every numeric leaf finite; every vector reply decoded by the product's adapter at the width its "
         "request asked for (a dimensions=k probe) or the declared width, and dtype; one width per route and "
-        "requested dimensions",
+        "requested dimensions; a recipe declaring an engine-side document keep rule (document_skip_engine_side) "
+        "checked against the declared kept count per document item, never the full prompt-token report",
         mismatches=problems[:50],
     )
 
@@ -635,7 +703,8 @@ def _consistency(
 
     derived = (nondeterminism or {}).get("derived") or {}
     tolerance = derived.get("abs_tolerance") if derived.get("measured") else 0.0
-    dim = (corpus.manifest.get("recipe") or {}).get("declared_dim")
+    recipe_block = corpus.manifest.get("recipe") or {}
+    dim = recipe_block.get("declared_dim")
     by_id: dict[str, dict[str, Any]] = {}
     for row in corpus.records:
         by_id.setdefault(str(row.get("exchange_id")), row)
@@ -661,7 +730,13 @@ def _consistency(
                 f"{candidate['exchange_id']}: status {response.get('status')} vs {stored['response'].get('status')}"
             )
             continue
-        ours, theirs = _comparable(stored, dim), _comparable(candidate, dim)
+        # The kept counts belong to the REQUEST (the same exchange_id), and the equivalence exchange carries
+        # no /tokenize ids of its own: the stored record's declared counts are the candidate's too, so both
+        # sides decode the served rule the same way (a candidate decoded without them would silently lose its
+        # vectors and read as a mismatch).
+        kept = declared_kept_counts(stored, recipe_block)
+        kept_of = (lambda _record, counts=kept: counts) if kept is not None else None  # noqa: E731 - one declaration
+        ours, theirs = _comparable(stored, dim, kept_of), _comparable(candidate, dim, kept_of)
         worst = max((abs(ours[key] - theirs[key]) for key in set(ours) & set(theirs)), default=0.0)
         if set(ours) != set(theirs) or worst > float(tolerance or 0.0):
             mismatches.append(f"{candidate['exchange_id']}: replies differ by {worst} (tolerance {tolerance})")

@@ -406,6 +406,114 @@ def _embedding_record(width: int, *, dimensions: int | None = None) -> dict[str,
     return _exchange("/v1/embeddings", request, reply)
 
 
+def _kept_rule_record(*, vectors: int, skip: list[int], ids: list[int]) -> dict[str, Any]:
+    """One engine-side-rule ``/pooling`` exchange: the reply carries only the kept vectors while
+    ``usage.prompt_tokens`` reports the full prompt, exactly the real engine's answer."""
+    width = 8
+    request = {
+        "model": "m",
+        "input": ["a b c d e f"],
+        "task": "token_embed",
+        "encoding_format": "float",
+        "embed_dtype": "float16",
+    }
+    reply = {
+        "object": "list",
+        "data": [{"index": 0, "data": [[0.5] * width for _ in range(vectors)]}],
+        "usage": {"prompt_tokens": len(ids), "total_tokens": len(ids)},
+    }
+    record = _exchange("/pooling", request, reply)
+    record["inputs"].update({"side": "document", "sent_token_ids": [list(ids)]})
+    return record
+
+
+def _equivalence_exchange(record: dict[str, Any]) -> dict[str, Any]:
+    """One corpus record as the equivalence stage's captured exchange of the same request (the same bytes,
+    so the check pairs them by ``exchange_id``)."""
+    request, response = record["request"], record["response"]
+    return {
+        "url": "http://engine" + request["path"],
+        "method": request["method"],
+        "request_bytes": base64.b64encode(json.dumps(request["body_parsed"]).encode("utf-8")).decode("ascii"),
+        "request_body": request["body_parsed"],
+        "status": response["status"],
+        "headers": dict(response["headers"]),
+        "response_bytes": base64.b64encode(json.dumps(response["body_parsed"]).encode("utf-8")).decode("ascii"),
+        "response_json": response["body_parsed"],
+    }
+
+
+def test_a_kept_rule_reply_is_checked_against_the_declared_kept_count(tmp_path: Path) -> None:
+    """pplx-embed-v2-late's engine-side document skip rule (E2 round-10: ``the /pooling reply reports 165
+    prompt token(s) but its vectors decode to 152``): the served plugin drops the rule's positions, so the
+    reply carries only the kept vectors while ``usage.prompt_tokens`` counts the whole prompt, and the
+    product's adapter refused the decode when the corpus check declared no kept count.  The check reads the
+    recipe's declared cut (the manifest's ``document_skip_engine_side``/``document_skip_token_ids``) and the
+    engine's sent ids (the record's ``inputs.sent_token_ids``, the ``/tokenize`` probe's own ids) and
+    expects the product's ``kept_vector_count``: a reply at the kept count passes; one at the full count
+    (the engine ignored the rule) and one at a count that is neither fails."""
+    from rcp_ndcg_test.observe.provenance import recipe_facts
+
+    skip = [7, 9]
+    ids = [1, 2, 7, 3, 9, 4]  # 6 prompt tokens, 4 kept
+    recipe = load_recipe(RECIPES / "fixture-multi-vector")
+    block = {**recipe_facts(recipe), "document_skip_engine_side": True, "document_skip_token_ids": skip}
+    kept = _synthetic_corpus(tmp_path / "kept", [_kept_rule_record(vectors=4, skip=skip, ids=ids)], recipe=block)
+    assert _checks(verify_corpus(kept))["scores_finite_and_vector_widths"]["passed"] is True
+    full = _synthetic_corpus(tmp_path / "full", [_kept_rule_record(vectors=len(ids), skip=skip, ids=ids)], recipe=block)
+    check = _checks(verify_corpus(full))["scores_finite_and_vector_widths"]
+    assert check["passed"] is False, check
+    assert any("declared keep-rule leaves 4 kept vector(s)" in mismatch for mismatch in check["mismatches"]), check
+    neither = _synthetic_corpus(tmp_path / "neither", [_kept_rule_record(vectors=5, skip=skip, ids=ids)], recipe=block)
+    check = _checks(verify_corpus(neither))["scores_finite_and_vector_widths"]
+    assert check["passed"] is False and any("carries 5 token vector(s)" in m for m in check["mismatches"]), check
+    # The equivalence stage's own exchange of the same request stays consistent: its candidate record carries
+    # no /tokenize ids of its own, so the stored record's declared counts must decode BOTH sides (a candidate
+    # decoded without them would lose its vectors and read as a mismatch).
+    record = _kept_rule_record(vectors=4, skip=skip, ids=ids)
+    consistent = _synthetic_corpus(tmp_path / "consistent", [record], recipe=block)
+    check = _checks(verify_corpus(consistent, equivalence_exchanges=[_equivalence_exchange(record)]))[
+        "equivalence_consistent"
+    ]
+    assert check["passed"] is True, check
+
+
+def test_the_recorder_records_the_engine_ids_of_each_sent_render(tmp_path: Path) -> None:
+    """The corpus carries the engine's own token ids of every sent render on the model-layer record
+    (``inputs.sent_token_ids``), taken from the pass's ``/tokenize`` probes: the kept-count check needs them
+    (and a repository subset, a sample, would otherwise drop the pairing and could not decode an
+    engine-side-rule reply)."""
+    directory, report = _record(tmp_path)
+    assert report["passed"], [check for check in report["checks"] if not check["passed"]]
+    records = _records(directory)
+    tokenized = {
+        record["request"]["body_parsed"]["prompt"]: record["response"]["body_parsed"]["tokens"]
+        for record in records
+        if record["inputs"].get("probe") == "tokenize" and record["response"].get("status") == 200
+    }
+    model = [
+        record
+        for record in records
+        if record["inputs"].get("probe") == "ok"
+        and record["inputs"].get("layer") == "model"
+        and isinstance(record["request"].get("body_parsed"), dict)
+        and isinstance(record["request"]["body_parsed"].get("input"), list)
+    ]
+    assert model, "the model layer must be recorded"
+    checked = 0
+    for record in model:
+        texts = record["request"]["body_parsed"]["input"]
+        ids = record["inputs"].get("sent_token_ids")
+        assert isinstance(ids, list) and len(ids) == len(texts), record["inputs"]
+        for text, sent in zip(texts, ids, strict=True):
+            if text not in tokenized:
+                assert sent is None  # no /tokenize probe for it: nothing is invented
+                continue
+            assert sent == tokenized[text], (record["inputs"]["request_id"], text)
+            checked += 1
+    assert checked, "at least one model-layer item must carry the engine's ids"
+
+
 def test_the_equivalence_stage_must_have_seen_the_same_replies(tmp_path: Path) -> None:
     """Section 6: the equivalence stage's results for the same wave are consistent with the corpus."""
     from rcp_ndcg_core.content import Content
@@ -615,6 +723,54 @@ def test_the_media_request_set_is_recorded_with_its_media(tmp_path: Path) -> Non
     }
     assert edges["edge:too_many_images"] == 400 and edges["edge:corrupt_image"] == 400
     assert report["passed"] is True, [check for check in report["checks"] if not check.get("passed")]
+
+
+def test_a_row_the_empty_policy_omits_is_recorded_as_its_omission(tmp_path: Path) -> None:
+    """jina-reranker-v3's paper rule (``empty_doc: omit_zero_blank``): a whitespace-only document is never
+    sent -- the client omits it and scores 0.0 without a model call -- so the plan's model-layer row for
+    the ``content:whitespace_only`` kind (whose pairs row the stage-1 render check pruned) produced no
+    exchange, and the corpus failed ``completeness`` with ``content:whitespace_only`` missing.  The
+    omission is recorded like a client refusal -- the request id accounted for, nothing sent, no status --
+    so the stratum is recorded and completeness holds."""
+    recipe = load_recipe(RECIPES / "fixture-rerank-pointwise")
+    omitting = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "omit_zero_blank"}})
+    rows = [
+        {
+            "request_id": "pairs:0",
+            "stratum": "source:nanobeir",
+            "query": "a query about retrieval",
+            "documents": ["a document about retrieval"],
+            "_source": {"suite": "nanobeir", "subset": "NanoNQRetrieval", "query_id": "q0"},
+            "_strata": ["source:nanobeir"],
+        }
+    ]
+    first = start_stub("--tokenizer", str(TOKENIZER))
+    second = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        report = record_corpus(
+            omitting,
+            first.base_url,
+            rows,
+            tmp_path / "corpus",
+            server_run_id="run-1",
+            engine_facts=_engine_facts(),
+            after_restart=(second.base_url, "run-2"),
+            batch_sizes=(1,),
+        )
+    finally:
+        first.stop()
+        second.stop()
+    records = _records(tmp_path / "corpus")
+    omitted = [record for record in records if record["inputs"].get("probe") == "client_omission"]
+    assert len(omitted) == 3, "one omission per pass (two in-process and one after the restart)"
+    assert {record["inputs"]["request_id"] for record in omitted} == {"content:whitespace_only"}
+    assert all(record["response"]["status"] is None for record in omitted)
+    assert all("omit_zero_blank" in json.dumps(record["response"]) for record in omitted)
+    assert report["passed"] is True, [check for check in report["checks"] if not check["passed"]]
+    completeness = _checks(report)["completeness"]
+    assert completeness["passed"] is True and completeness["missing"] == []
+    # The kept row's model-layer request is recorded as before: the omission accounting never hides one.
+    assert any(record["inputs"].get("request_id") == "pairs:0" for record in records)
 
 
 def test_a_media_side_the_client_refuses_is_recorded_as_its_refusal(tmp_path: Path) -> None:
