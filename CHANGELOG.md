@@ -1461,6 +1461,52 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
 
+- **The embeddinggemma-2 video pin reaches the processor that samples the clip** (the E2 round-13 media
+  stage's rows 36/37): the pod's engine is the stock `vllm/vllm-openai:v0.31.0` (the job config's image; the
+  wave's provenance records the pod's own `VLLM_IMAGE_TAG`/`VLLM_BUILD_COMMIT` and the engine's `(v0.31.0)`
+  log line), and vLLM v0.31.0 has no `EmbeddingGemma2VideoBackend` (vllm-project/vllm#60254 landed after the
+  tag). `--media-io-kwargs '{"video": {"fps": 60, "max_frames": 32}}'` therefore reached only the generic
+  `VideoBackend`, which samples the shipped 4.0 s / 8 fps / 32-frame clip whole and reports
+  `do_sample_frames=True`; the checkpoint's processor then resampled those 32 decoded frames with its own
+  defaults (fps 1, `max_frames` 32) -- 4 frames, `492 = 4 x 123` against the client's `3936 = 32 x 123`, and
+  the row-36 cosine 0.9343. `serve.mm_processor_kwargs: {fps: 60, max_frames: 32}` now carries the same
+  numbers into the engine's processor call (`vllm/model_executor/models/embedding_gemma2.py:707-721` hands
+  the model's `mm_processor_kwargs` to it), so the processor samples at 60 fps capped at 32 frames in every
+  engine the pod runs; on the declared nightly (whose own backend samples the pin and reports
+  `do_sample_frames=False`) the numbers are inert. Proven on CPU against the pod's engine image plus the
+  staged plugin wheel with the shipped clip: without the pin the processor returns 4 frames / 492 tokens,
+  with it 32 / 3936 (the reference passes the same numbers through `processing_kwargs`). A CPU test pins the
+  argv's `--mm-processor-kwargs`, the processor's own sampling rule on the clip (32 pinned, 4 default) and
+  the recipe contract; the wave's media stage and stage 2 are the confirmation.
+
+- **The media-template render check reads a message's parts as the engine's chat route hands them to the
+  template** (the E2 round-13 stage-1 query row 65): the client's declared render flattens a `messages`
+  body's text parts with `TEXT_JOIN` (`"\n"`, the product's one home for a content's text,
+  `rcp_ndcg_core/content.py:32` and `rcp_ndcg_test/equivalence/wire.py:213-214`), which is vLLM's *string*
+  content format's join (`_get_full_multimodal_text_prompt`), while the engine's `openai` content format
+  hands the served template the parts and the checkpoint's own `chat_template.jinja` renders them back to
+  back -- so the check compared `task: search result | query: which page...` against
+  `task: search result | query: \nwhich page...` on the query-image probe (pairs row 35). The probe's
+  declared side is now built from the conversation's own text parts as the engine reads them
+  (`_declared_texts`), the served template staying the one home of the join: a served template that inserts a
+  separator between the parts still fails, and a text row (one text part) is unchanged. The client's budget
+  render still joins with `TEXT_JOIN`; on a multi-part media side that is an over-reserve of the join's
+  tokens, recorded here rather than moved (the join is the product's cut arithmetic). A CPU test pins the
+  pass and the separator mutant red.
+
+- **The media stage's engine check reads the render merge its subtraction baseline loses** (the E2 round-13
+  media rows 33/35, off by exactly one token): the engine's prompt is its render (the served template with
+  the media placeholder) minus the placeholder plus the media expansion, and the check's baseline (the same
+  request without its media parts) carries no placeholder, so a tokenizer that moves a boundary token when
+  the placeholder stands between a message's text parts (the word after it loses the token that carried the
+  space: 17 tokens against 15, one of them the placeholder) left the engine one token above the client's
+  count. The check now subtracts the engine's own render merge, read from the served template's own render
+  (`rcp_ndcg_test.equivalence.stages.engine_render_merge`, the placeholders' tokens measured from the
+  template's media-only render against the frame), so the rows pass and a genuine engine difference still
+  fails; the CPU stub engine counts the engine's way now (it rendered the text without the placeholders and
+  added the expansion, which is what hid the merge). A CPU test pins the pinned stub passing, the pre-fix
+  arithmetic red, and the unpinned control still failing.
+
 - **The embeddinggemma-2 reference takes the card's tokenizer path for a text-only row** (the E2 round-11
   reference failure): `SentenceTransformer.encode` hands a text-only input to the checkpoint's multimodal
   processor (its `sentence_bert_config.json` declares the `message` modality), and the processor's
