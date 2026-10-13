@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib.util
 import io
 import json
 import re
@@ -46,7 +47,9 @@ DOC_PROMPT = "title: none | text: "
 SERVE = {
     # E2 r1: the digest-pinned nightly's transformers does not carry the checkpoint's embedding_gemma2
     # classes, so the recipe opts into the plugin's fold patch (the owner's 2026-10-10 backport decision).
-    "patches": ["embeddinggemma2-transformers-fold"],
+    # E2 round 10: torch-sdpa-attention registers the plugin's encoder-only SDPA backend as
+    # Backend.TORCH_SDPA, which the --attention-backend pin below selects.
+    "patches": ["embeddinggemma2-transformers-fold", "torch-sdpa-attention"],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {"is_matryoshka": True, "matryoshka_dimensions": [128, 256, 512, 768]},
@@ -66,13 +69,15 @@ SERVE = {
         "--media-io-kwargs",
         '{"video": {"fps": 60, "max_frames": 32}}',
         "--attention-backend",
-        # E2 round 8: the heterogeneous head dims (sliding 256, full 512) leave no default backend --
-        # TRITON_ATTN's tile needs 266240 B of shared memory against the 232448 B limit, FA4's kernel
-        # caps head_dim at 256, and TORCH_SDPA is not a decoder backend on this image.
-        "FLEX_ATTENTION",
+        # E2 round 10: the plugin's torch-sdpa-attention patch registers an encoder-only SDPA backend
+        # under this enum member (the engine's own error names register_backend(Backend.TORCH_SDPA,
+        # ...)); the image's own backends cannot run the model's heterogeneous head dims and
+        # FLEX_ATTENTION dies in its own compile/CUDAGraph interaction.
+        "TORCH_SDPA",
         # E2 round 9: FLEX_ATTENTION reaches engine init and dies in a dynamo/CUDAGraph interaction
-        # (the compiled block-mask output overwritten before the compiled flex attention reads it),
-        # so the owner's eager-first guidance pins the engine eager.
+        # (the compiled block-mask output overwritten before the compiled flex attention reads it);
+        # --enforce-eager does not stop it (the flex backend compiles independently), so the SDPA
+        # backend compiles nothing and the flag stays as the engine-eager safety pin.
         "--enforce-eager",
     ],
 }
@@ -249,7 +254,7 @@ def test_two_contract_mutants_are_red() -> None:
 
 def test_serve_argv_carries_the_pinned_flags() -> None:
     """The argv the wave runner renders: no template, the pooling runner, the 8K context, the media limit,
-    the video policy's fps/max_frames pin and the round-9 eager pin beside the flex-attention backend."""
+    the video policy's fps/max_frames pin and the round-10 registered-SDPA backend pin."""
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert "--chat-template" not in argv
@@ -259,52 +264,63 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
     assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 60, "max_frames": 32}}'
+    assert argv[argv.index("--attention-backend") + 1] == "TORCH_SDPA"
     assert "--enforce-eager" in argv
 
 
-def test_the_engine_uses_a_backend_that_can_run_the_heterogeneous_head_dims() -> None:
-    """E2 rounds 7-9: the model's heterogeneous head dimensions (sliding 256, full 512) leave no
-    default backend on this image. TRITON_ATTN cannot compile its prefill kernel for head_dim 512
+def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
+    """E2 rounds 7-10: the model's heterogeneous head dimensions (sliding 256, full 512) leave no
+    image backend. TRITON_ATTN cannot compile its prefill kernel for head_dim 512
     (``triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 266240,
     Hardware limit: 232448`` at ``triton_prefill_attention.py`` ``context_attention_fwd``, the
-    round-7 serve log), and FA4 -- which the image's own Gemma4 config hook selects for these
+    round-7 serve log), FA4 -- which the image's own Gemma4 config hook selects for these
     dimensions -- then dies in its kernel (``FlashAttention forward only supports head dimension at
-    most 256``, the round-8 wave). Round 8 pinned FLEX_ATTENTION (no head-size restriction, bf16, the
-    model's encoder-only/sliding/non-causal attention and the image-token full attention), and round 9
-    reaches engine init and dies there in a dynamo/CUDAGraph interaction:
-    ``torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing tensor output of
-    CUDAGraphs that has been overwritten by a subsequent run`` at
-    ``torch/nn/attention/flex_attention.py:2369`` (``block_mask_q_len = block_mask.shape[-2]``) -- the
-    backend's compiled ``create_block_mask`` (``mode="reduce-overhead"``, ``flex_attention.py:54-58``
-    at the nightly) hands a block mask to the compiled ``flex_attention`` after a later run of the
-    block-mask graph has overwritten its tensors. The owner's eager-first guidance applies:
-    ``--enforce-eager`` sets the engine's compilation and cudagraph modes to NONE
-    (``vllm/config/vllm.py:1733-1745`` at the nightly), so the capture/warmup run that overwrites the
-    mask is skipped, and the wave confirms it. The fallback order stays recorded in the notes:
-    ``TORCH_SDPA`` cannot be pinned directly (the enum's value is the empty string -- "this tag is
-    only used for ViT" -- so the manual-selection path raises ``Backend TORCH_SDPA must be registered
-    before use``), and the nightly ships no decoder SDPA backend class to hand ``register_backend``,
-    so that fallback needs a plugin-provided AttentionBackend, not a registration of an image class.
-    An invalid backend still fails loudly at startup instead of silently."""
+    most 256``, the round-8 wave), and TORCH_SDPA's enum value is the empty string on the image
+    ("this tag is only used for ViT"), so the manual-selection path raises ``Backend TORCH_SDPA must
+    be registered before use. Use register_backend(Backend.TORCH_SDPA, 'your.module.YourClass')``
+    (``vllm/v1/attention/backends/registry.py``). FLEX_ATTENTION is the one image backend that clears
+    the head dimensions, and rounds 9-10 show it dying in its own ``torch.compile``/CUDAGraph
+    interaction -- ``torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing
+    tensor output of CUDAGraphs that has been overwritten by a subsequent run`` at
+    ``torch/nn/attention/flex_attention.py:2369`` (``block_mask_q_len = block_mask.shape[-2]``) --
+    because its ``create_block_mask`` compiles with ``mode="reduce-overhead"`` and
+    ``--enforce-eager`` does not reach that backend-owned compile. The shipped path is the
+    mechanism the engine's own error names: the recipe opts into the plugin's
+    ``torch-sdpa-attention`` patch, which registers ``TorchSdpaAttentionBackend`` (encoder-only SDPA
+    over ``torch.nn.functional.scaled_dot_product_attention``, no head-dimension cap) under
+    ``Backend.TORCH_SDPA``, and pins ``--attention-backend TORCH_SDPA``. The plugin suite imports
+    that class against a fake engine interface and the lane's image read runs it against the real
+    one; the wave's T0 model load confirms it on the GPU. The full rejection chain stays recorded in
+    the notes, and an invalid backend still fails loudly at startup instead of silently."""
+    from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
+
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
-    assert argv[argv.index("--attention-backend") + 1] == "FLEX_ATTENTION"
+    assert argv[argv.index("--attention-backend") + 1] == "TORCH_SDPA"
     assert "--enforce-eager" in argv
+    assert "torch-sdpa-attention" in recipe.serve.patches
+    assert "torch-sdpa-attention" in PATCH_NAMES
+    assert PATCH_MODULES["torch-sdpa-attention"] == "rcp_ndcg_vllm.patches.torch_sdpa_attention"
+    spec = importlib.util.find_spec("rcp_ndcg_vllm.models.embedding_gemma2.attention")
+    assert spec is not None and spec.origin is not None, "the backend module ships with the plugin"
+    source = Path(spec.origin).read_text(encoding="utf-8")
+    assert "class TorchSdpaAttentionBackend" in source and "def register_torch_sdpa_backend" in source
     for evidence in (
         "266240",
         "232448",
         "FLASH_ATTN",
         "head_dim 512",
-        "--enforce-eager",
-        "TORCH_SDPA",
-        "must be registered before use",
-        "FLEX_ATTENTION",
         "head dimension at most 256",
+        "must be registered before use",
+        "only used for ViT",
+        "register_backend",
         "CUDAGraphs",
         "block_mask",
         "reduce-overhead",
-        "register_backend",
-        "only used for ViT",
+        "FLEX_ATTENTION",
+        "TORCH_SDPA",
+        "--enforce-eager",
+        "scaled_dot_product_attention",
     ):
         assert evidence in recipe.notes, evidence
 

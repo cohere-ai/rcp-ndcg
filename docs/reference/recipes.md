@@ -68,7 +68,7 @@ process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave r
 comma-separated list read by the one `vllm.general_plugins` entry point), overriding any inherited value so
 the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
 with, and the behaviour fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's
-key. Two patches ship:
+key. Three patches ship:
 
 - `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
   scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`
@@ -92,6 +92,18 @@ key. Two patches ship:
   loaded the plugin and whether or not the patch applied there. Delete them (and the
   recipe's `serve.plugin`/`plugin_architectures`) when `engine.image` moves to a vLLM release whose
   registry carries `EmbeddingGemma2Model` and whose transformers ships `embedding_gemma2`.
+- `torch-sdpa-attention` -- the embeddinggemma-2 backend: the model's heterogeneous head dimensions
+  (sliding 256, full 512) leave no backend the engine image can run -- TRITON_ATTN's prefill kernel
+  cannot compile for head_dim 512, FA4's kernel caps head_dim at 256, `TORCH_SDPA`'s enum value is the
+  empty string ("this tag is only used for ViT") and FLEX_ATTENTION dies in its own
+  `torch.compile`/CUDAGraph interaction. The patch registers the plugin's
+  `TorchSdpaAttentionBackend` (an encoder-only backend over
+  `torch.nn.functional.scaled_dot_product_attention`, in
+  `rcp_ndcg_vllm/models/embedding_gemma2/attention.py`) under `Backend.TORCH_SDPA`, which is the
+  member the recipe's `--attention-backend TORCH_SDPA` selects; the class has no head-dimension cap
+  and runs the model's non-causal attention with the sliding layers' window as a mask. Delete the
+  patch (and the recipe's `--attention-backend` pin) when `engine.image` moves to a release whose own
+  backends clear the model's head dimensions.
 
 ## The catalog's columns
 

@@ -1,8 +1,10 @@
 # google/embeddinggemma-2 served with the vLLM nightly pinned by digest (decision 38): the released
 # vllm/vllm-openai:v0.31.0 image lacks the architecture (EmbeddingGemma2Model) and its transformers
 # (5.17.0) lacks the checkpoint's config and processor; the nightly below carries vLLM commit
-# 02b83919aa2e (PR #60254) but its transformers still lacks the embeddinggemma-2 classes, so the recipe
-# folds them in through the plugin (`serve.plugin` + the embeddinggemma2-transformers-fold patch).
+# 02b83919aa2e (PR #60254). The recipe carries the plugin's fold patch and registration anyway: the
+# pinned digest's own environment (read at E2 round 10: transformers 5.19.0 with
+# transformers/models/embedding_gemma2/, the registry carrying EmbeddingGemma2Model) makes both
+# probes return early, and an engine image that lacks them is covered by the fold.
 # See notes, "Engine".
 id: embeddinggemma-2
 schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
@@ -32,23 +34,27 @@ serve:
                              # video-processor/modeling registration (E2 r1) and the folded model class the
                              # image's registry lacks (E2 round 4); the fingerprint keys their modules
                              # (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES) and the patch module
-  patches: [embeddinggemma2-transformers-fold]   # E2 r1: the image's transformers does not know
-                             # model_type embedding_gemma2, so AutoConfig refuses config.json; the patch
-                             # folds transformers 5.19.0's four embedding_gemma2 modules in (E2 round 4
-                             # added the modeling module, whose classes the folded model's
-                             # AutoModel.from_config calls resolve through; see notes, "Engine"). Delete
-                             # both the patch and the plugin when engine.image moves to a vLLM image whose
-                             # transformers carries the classes and whose registry carries the model.
+  patches: [embeddinggemma2-transformers-fold, torch-sdpa-attention]   # E2 r1: the fold patch installs
+                             # transformers 5.19.0's four embedding_gemma2 modules under their upstream
+                             # names when the running transformers lacks them (E2 round 4 added the
+                             # modeling module; see notes, "Engine"). E2 round 10: the torch-sdpa-attention
+                             # patch registers the plugin's encoder-only SDPA backend as
+                             # Backend.TORCH_SDPA, which the --attention-backend pin below selects (the
+                             # engine's own error names register_backend). Delete the fold patch and the
+                             # plugin when engine.image moves to a vLLM image whose transformers carries
+                             # the classes and whose registry carries the model; delete the SDPA patch
+                             # and its pin when the image's own backends clear the model's head
+                             # dimensions.
   mm_processor_kwargs: {}       # no pin: the engine reads the checkpoint's own budgets (image 280 soft tokens, video 140 per frame)
   limit_mm_per_prompt: {image: 1, video: 1}   # one media item per request (the client's max_images/max_videos carry the same numbers)
   extra_args:
     - "--media-io-kwargs"
     - '{"video": {"fps": 60, "max_frames": 32}}'   # THE video pin: 60 fps capped at 32 frames realizes the declared 32 uniformly spaced frames for any clip of at least 0.53 s (the client refuses a clip under 32 frames, so a normal clip is admitted only above it); see notes, "Media"
     - "--attention-backend"
-    - FLEX_ATTENTION   # E2 round 8: the heterogeneous head dims (sliding 256, full 512) leave no default backend -- the TRITON_ATTN prefill kernel needs 266240 B of shared memory against the 232448 B limit, FA4's kernel caps head_dim at 256, and TORCH_SDPA is not a decoder backend on this image (its enum value is empty); FLEX_ATTENTION has no head-size cap and supports the model's encoder-only, sliding-window and non-causal attention; see notes, "Engine flags"
-    - "--enforce-eager"   # E2 round 9: FLEX_ATTENTION reaches engine init and dies there in a dynamo/CUDAGraph interaction -- the backend's compiled create_block_mask (mode "reduce-overhead", flex_attention.py:54-58 at the nightly) hands a block mask to the compiled flex attention after a later run of the block-mask graph overwrote its tensors (torch._dynamo InternalTorchDynamoError at torch/nn/attention/flex_attention.py:2369, `block_mask_q_len = block_mask.shape[-2]`); --enforce-eager sets the engine's compilation and cudagraph modes to NONE (vllm/config/vllm.py:1733-1745 at the nightly), so the capture/warmup run that overwrites the mask is skipped; the wave confirms it, and the TORCH_SDPA fallback evidence is in notes, "Engine flags"
+    - TORCH_SDPA   # E2 round 10: the plugin's torch-sdpa-attention patch registers the encoder-only SDPA backend under this enum member (the engine's own error names register_backend(Backend.TORCH_SDPA, ...)); the model's heterogeneous head dims (sliding 256, full 512) leave no image backend -- the TRITON_ATTN prefill kernel needs 266240 B of shared memory against the 232448 B limit, FA4's kernel caps head_dim at 256, TORCH_SDPA's enum value is empty (ViT-only), and FLEX_ATTENTION dies in its own torch.compile/CUDAGraph interaction (rounds 9-10, still under --enforce-eager); see notes, "Engine flags"
+    - "--enforce-eager"   # E2 round 9: FLEX_ATTENTION reached engine init and died there in a dynamo/CUDAGraph interaction -- the backend's compiled create_block_mask (mode "reduce-overhead", flex_attention.py:54-58 at the nightly) hands a block mask to the compiled flex attention after a later run of the block-mask graph overwrote its tensors (torch._dynamo InternalTorchDynamoError at torch/nn/attention/flex_attention.py:2369, `block_mask_q_len = block_mask.shape[-2]`), which --enforce-eager does not stop because the flex backend compiles independently of the engine's cudagraph mode (the round-10 wave still failed with it). The SDPA backend compiles nothing, so the flag is kept as the engine-eager safety pin: the engine's compilation and cudagraph modes stay NONE (vllm/config/vllm.py:1733-1745 at the nightly), and the wave's T0 model load is the confirmation.
 client:
-#   recipe: "the vLLM nightly 8cbd5d03: --runner pooling; EmbeddingGemma2Model (MEAN+ALL, PoolerNormalize); no served chat template (the checkpoint's own frames the messages route); the checkpoint's media budgets (image 280 soft tokens, video 140 per frame); one media item per request; video pinned to 60 fps capped at 32 frames by --media-io-kwargs; FLEX_ATTENTION pinned by --attention-backend FLEX_ATTENTION (the only backend that clears the heterogeneous head dims on this image) with --enforce-eager beside it (the round-9 dynamo/CUDAGraph interaction at engine init); request_shape messages with add_special_tokens true; the card's SearchQuery/Document prompts ride the client's query_prompt/doc_prompt (a content-only template)"
+#   recipe: "the vLLM nightly 8cbd5d03: --runner pooling; EmbeddingGemma2Model (MEAN+ALL, PoolerNormalize); no served chat template (the checkpoint's own frames the messages route); the checkpoint's media budgets (image 280 soft tokens, video 140 per frame); one media item per request; video pinned to 60 fps capped at 32 frames by --media-io-kwargs; the plugin's registered TORCH_SDPA backend pinned by --attention-backend TORCH_SDPA (the plugin's torch-sdpa-attention patch registers an encoder-only SDPA backend under the enum member, the one path the image leaves) with --enforce-eager beside it (the round-9/10 FLEX_ATTENTION dynamo/CUDAGraph interaction at engine init); request_shape messages with add_special_tokens true; the card's SearchQuery/Document prompts ride the client's query_prompt/doc_prompt (a content-only template)"
   api: openai_embeddings
   request_shape: messages       # the chat-style /v1/embeddings input: each item one conversation carrying its content (the cut text, its image or video parts), framed once by the engine's chat template -- the only route that carries media
   max_tokens: 8192              # the card's 8K context: the frame's fixed tokens (the BOS/EOS post-processor pair) are reserved, only the content span is cut (on_overflow: cut); no query_max_tokens -- the card caps the WHOLE prompt
@@ -108,9 +114,9 @@ notes: >-
   5.17.0, which has no embedding_gemma2 config or processor; and vLLM v0.31.0 has no Gemma video backend.
   The architecture landed in vLLM commit 02b83919aa2e (PR #60254, 2026-10-06) and the checkpoint's classes in
   transformers 5.19.0 (released 2026-10-06). Decision 38: this recipe pins the nightly by digest. E2 r1 (the
-  first wave on this image): serve failed -- the digest-pinned nightly's own transformers does NOT carry the
-  embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's embedding_gemma2 model
-  module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`
+  first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
+  does not carry the embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's
+  embedding_gemma2 model module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`
   installs the plugin wheel and `serve.patches: [embeddinggemma2-transformers-fold]` opts into the patch
   that loads transformers 5.19.0's embedding_gemma2 modules (configuration, processing, video processing and,
   since E2 round 4, modeling) from the wheel under their upstream module names and registers the config
@@ -147,13 +153,18 @@ notes: >-
   module starts with `transformers.`), so the checkpoint's config can be pickled when vLLM spawns the
   engine core. Verified on CPU with the real vLLM nightly source and transformers 5.17.0: with the patch
   opted in, and separately with it not applied at all, the vendored model module imports and
-  `AutoConfig.from_pretrained` returns a picklable config.
+  `AutoConfig.from_pretrained` returns a picklable config. E2 round 10's direct read of the pinned
+  digest (its own python): `transformers.__version__` is 5.19.0, `transformers/models/embedding_gemma2/`
+  is present, `ModelRegistry.get_supported_archs()` carries EmbeddingGemma2Model and
+  `MODELS_CONFIG_MAP` carries its hook -- so on that digest both the fold patch's `install_fold` (its
+  import probe) and `register_embedding_gemma2` (the registry check) return without installing
+  anything, and the fold stays as the carrier for an engine image that lacks the classes.
   SWITCH TO RELEASE / REMOVAL: needs vLLM commit 02b83919aa2e (PR #60254) -- or any release
   whose registry carries EmbeddingGemma2Model -- and transformers >= 5.19.0; switch engine.image to the first
   vLLM release that carries both, delete `serve.plugin`, `plugin_architectures` and `patches`, and
   re-validate. The wave records the image's actual transformers version in its provenance.
 
-  Engine flags (E2 rounds 8-9). The model's heterogeneous head dimensions (sliding 256, full 512)
+  Engine flags (E2 rounds 8-10). The model's heterogeneous head dimensions (sliding 256, full 512)
   leave no default backend on this image, and the backend is the only lever: TRITON_ATTN cannot
   compile its prefill kernel for head_dim 512 (`triton.runtime.errors.OutOfResources: out of
   resource: shared memory, Required: 266240, Hardware limit: 232448` at `triton_prefill_attention.py`'s
@@ -164,36 +175,39 @@ notes: >-
   Triton tile cannot be narrowed either: `BLOCK` comes from `get_block_size(dtype)` (128 for bf16 on
   SM10x) and only ROCm narrows `BLOCK_N` to 32, so no flag reaches the kernel. `--enforce-eager` and
   `--max-num-batched-tokens` do not apply to that compile-time demand (round 7: the tile does not
-  depend on the sequence length, and pooling already overrides the cudagraph mode to NONE). Round 8
-  pinned `FLEX_ATTENTION`: the registered `vllm.v1.attention.backends.flex_attention.FlexAttentionBackend`
-  has no head-size restriction, is in the CUDA platform's own decoder backend list, and supports
-  bf16, the model's encoder-only attention type (the vendored `embedding_gemma2.py` passes
+  depend on the sequence length). Round 8 pinned `FLEX_ATTENTION`: the registered
+  `vllm.v1.attention.backends.flex_attention.FlexAttentionBackend` has no head-size restriction and
+  supports bf16, the model's encoder-only attention type (the vendored `embedding_gemma2.py` passes
   `AttentionType.ENCODER_ONLY`), sliding windows, non-causal attention and the image-token full
-  attention. Round 9's wave reaches engine init and dies there in a dynamo/CUDAGraph interaction:
-  `torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing tensor output of
-  CUDAGraphs that has been overwritten by a subsequent run` at
+  attention. Rounds 9-10: FLEX_ATTENTION reaches engine init and dies there in a dynamo/CUDAGraph
+  interaction: `torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing tensor
+  output of CUDAGraphs that has been overwritten by a subsequent run` at
   `torch/nn/attention/flex_attention.py:2369` (`block_mask_q_len = block_mask.shape[-2]`). The
   backend compiles `create_block_mask` with `mode="reduce-overhead"` and `flex_attention` with
   `fullgraph=True` (`vllm/v1/attention/backends/flex_attention.py:54-58` at the nightly), so the
   block mask handed to the compiled flex attention is a CUDA-graph output that a later run of the
-  block-mask graph has overwritten. The owner's eager-first guidance applies: `--enforce-eager` sets
-  the engine's compilation mode and cudagraph mode to NONE (`vllm/config/vllm.py:1733-1745` at the
-  nightly), so the capture/warmup run that overwrites the mask is skipped. The recipe pins
-  `serve.extra_args: [--attention-backend, FLEX_ATTENTION, --enforce-eager]`; the plugin's folded
-  EmbeddingGemma2 hook leaves a requested backend alone (it only defaults when none was requested),
-  and the image's Gemma4 hook forces FA4 only for a None or FLASH_ATTN backend, so the pin survives
-  both. An invalid backend still fails loudly at startup (the manual-selection validation), never
-  silently. Fallback order if the eager wave still fails: `TORCH_SDPA` cannot be pinned directly --
-  the enum's value is the empty string ('this tag is only used for ViT'), so the manual-selection
-  path's `AttentionBackendEnum.get_class()` raises `ValueError: Backend TORCH_SDPA must be
-  registered before use. Use register_backend(Backend.TORCH_SDPA, 'your.module.YourClass')`
-  (`vllm/v1/attention/backends/registry.py:70`; `CudaPlatform.get_attn_backend_cls` wraps only
+  block-mask graph has overwritten -- and `--enforce-eager` does not stop it: that compile is the
+  backend's own, independent of the engine's compilation and cudagraph modes (`vllm/config/vllm.py`
+  sets both to NONE under the flag; the round-10 wave failed with it all the same). Round 10's chosen
+  path is the mechanism the engine's own error names. `TORCH_SDPA` cannot be pinned directly -- the
+  enum's value is the empty string ('this tag is only used for ViT'), so the manual-selection path's
+  `AttentionBackendEnum.get_class()` raises `ValueError: Backend TORCH_SDPA must be registered before
+  use. Use register_backend(Backend.TORCH_SDPA, 'your.module.YourClass')`
+  (`vllm/v1/attention/backends/registry.py`; `CudaPlatform.get_attn_backend_cls` wraps only
   ImportError/OSError) -- and the nightly ships no decoder SDPA backend class to hand that
-  registration: its backends directory carries no `torch_sdpa.py`, and the only SDPA users are the
-  quantized attention backends and the CPU encoder path (`zentorch_sdpa.py`, `cpu_attn.py`), so the
-  fallback needs a plugin-provided AttentionBackend implementation, not a registration of an image
-  class. The flags are removed together with the fold when the engine image moves to a release whose
-  registry carries the model.
+  registration (its backends directory carries no `torch_sdpa.py`; the only SDPA users are the
+  quantized attention backends and the CPU encoder path, `zentorch_sdpa.py`/`cpu_attn.py`). The
+  recipe therefore opts into the plugin's `torch-sdpa-attention` patch, which registers
+  `rcp_ndcg_vllm.models.embedding_gemma2.attention.TorchSdpaAttentionBackend` -- a small encoder-only
+  backend over `torch.nn.functional.scaled_dot_product_attention` (non-causal, no KV cache, no
+  head-dimension cap, the sliding layers' window as a mask, one SDPA call per packed request) --
+  under `Backend.TORCH_SDPA`, and pins `serve.extra_args: [--attention-backend, TORCH_SDPA,
+  --enforce-eager]`. The plugin's folded EmbeddingGemma2 hook leaves a requested backend alone (it
+  only defaults when none was requested), and the image's Gemma4 hook forces FA4 only for a None or
+  FLASH_ATTN backend, so the pin survives both; an invalid backend still fails loudly at startup (the
+  manual-selection validation), never silently. The GPU wave's T0 model load is the confirmation; the
+  flags and the patch are removed together with the fold when the engine image moves to a release
+  whose registry carries the model and whose own backends clear its head dimensions.
 
   Frame. The model reads its input through no frame at all: the checkpoint's chat_template.jinja renders a
   message's text and media placeholders in order and adds nothing (no role markers, no default system turn).
