@@ -93,13 +93,14 @@ reference:
   entry: reference.py
   known_deviations: [over_cap_cut_differs]   # the card's ST encode truncates the assembled prompt right at max_seq_length; the client cuts the content at the 8192 budget. The reference keeps the anchors (there is no anchor token; the frame is a prefix) but cuts differently over-cap, so those rows ride the non-gating table
 gates: {}
-# Verified by the rc0-202610131335 nightly wave (r1, the digest-pinned nightly image above), after the
-# fix14gemma fix. NOTE: the harness's plugin-module keying (b2621274, 2026-10-13) moved this recipe's
-# behaviour fingerprint after that wave, so the wave's fingerprint no longer matches this recipe's
-# golden; re-verification on the final RC is the release plan's A1b step, and this status is only
-# honest again once that wave is green at the current fingerprint.
+# The rc0-202610131335 nightly wave (r1, the digest-pinned nightly image above) passed every gate after
+# the fix14gemma fix, and the wave's serve argv equals this recipe's golden. NOTE: the harness's
+# plugin-module keying (b2621274, 2026-10-13) moved this recipe's behaviour fingerprint after that wave
+# (7b81c893 -> d0e1e968), so the wave's evidence is at a superseded fingerprint. The state stays
+# `unverified` until the release plan's A1b re-verification runs on the final RC at the current
+# fingerprint; the wave record below is kept as history.
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21"
   date: "2026-10-13"
   report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves-rc0-202610131335/r1/vllm-vllm-openai-nightly-8cbd5d03006c33185f40224-b25e8a046fdb/"

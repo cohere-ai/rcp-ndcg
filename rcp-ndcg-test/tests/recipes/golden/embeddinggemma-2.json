@@ -263,7 +263,7 @@
    "date": "2026-10-13",
    "image": "vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21",
    "report": "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves-rc0-202610131335/r1/vllm-vllm-openai-nightly-8cbd5d03006c33185f40224-b25e8a046fdb/",
-   "state": "verified"
+   "state": "unverified"
   }
  },
  "serve_argv": [

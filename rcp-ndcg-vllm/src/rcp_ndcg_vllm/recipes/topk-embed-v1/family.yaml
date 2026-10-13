@@ -179,7 +179,11 @@ gates: {}
 # The wave ran and the per-token gate FAILED (stage 1 passed; stage 2 failed on text and image
 # rows; every run rc0-202610120045..rc0-202610131205-record failed the same gate). The state is the
 # schema's `failed` -- "a gate failed; the report says which" -- not `unverified`: the measurement
-# exists. The gate itself, its dtype and the disposition stay untouched (owner decision).
+# exists. NOTE: the harness's plugin-module keying (b2621274, 2026-10-13) moved this recipe's
+# behaviour fingerprint after that wave (1fdf2847 -> 1ac72016 for -small), so the failed evidence is
+# at a superseded fingerprint too; the release plan's A1b re-verification re-runs the gate on the
+# final RC at the current one. The gate itself, its dtype and the disposition stay untouched (the
+# disposition is the owner's).
 status:
   state: failed
   image: "vllm/vllm-openai:v0.31.0"
