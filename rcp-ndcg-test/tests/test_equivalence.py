@@ -614,7 +614,6 @@ def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> Non
         vec_min_cosine=0.999,
         tau_min=0.98,
         metrics_max_abs=2e-3,
-        embed_dtype="float16",
     )
     document = stage3_metrics(rankings_dir, gates)
     assert document["passed"] is True
@@ -1236,7 +1235,6 @@ def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> N
         "vec_min_cosine": 1.0 - 1e-3,
         "tau_min": 0.98,
         "metrics_max_abs": 2e-3,
-        "embed_dtype": "float16",
     }
     declared = recipe.model_copy(update={"gates": recipe.gates.model_copy(update={"tau_min": 0.5})})
     overridden = resolve_gates(declared)
@@ -1244,6 +1242,17 @@ def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> N
     assert overridden.model_dump(exclude={"tau_min"}) == gates.model_dump(exclude={"tau_min"}), (
         "one declared field overrides itself, not its neighbours"
     )
+
+
+def test_the_resolved_gates_carry_no_dead_transfer_precision() -> None:
+    """The vector gate compares the decoded vectors as they arrive; the client's transfer precision is
+    keyed by the fingerprint and is not re-applied here.  The stage applies no float16 cast, so the dead
+    ``embed_dtype`` field and the module docstring's cast claim must not stand
+    (reviews/final-harness-ds41.md D7)."""
+    from rcp_ndcg_test.equivalence import gates as gates_module
+
+    assert "embed_dtype" not in ResolvedGates.model_fields
+    assert "float16 cast" not in (gates_module.__doc__ or "")
 
 
 def test_a_zero_vector_pair_is_an_agreement_not_a_cosine_failure() -> None:
