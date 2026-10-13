@@ -8,7 +8,9 @@ against the stored reference.
 
 The key is :func:`reference_fingerprint`: the SHA-256 of the named inputs the brief fixes -- the family's
 reference hash, the variant revision, the pairs-file hash, the reference environment's lock hash, the
-device and the dtype -- plus the model, the role's mode and the reference block's own facts.  Staleness
+device and the dtype -- plus the model, the role's mode, the reference block's own facts and the client
+fields the reference renders from (the request-classified fields, :data:`CLIENT_FIELDS`; a query-prompt or
+template change re-renders the reference, so it must move the key).  Staleness
 reuses the observation corpora's mechanism, one home (:mod:`rcp_ndcg_test.fingerprint`): a store entry
 carries a ``manifest.json`` with its named inputs and :func:`~rcp_ndcg_test.fingerprint.fingerprint_changes`
 names exactly what moved when a new run no longer matches a stored one.  An entry is immutable: the
@@ -40,7 +42,7 @@ from typing import Any
 
 from rcp_ndcg_test.errors import HarnessError
 
-from .fingerprint import fingerprint_changes
+from .fingerprint import CLIENT_FIELDS, fingerprint_changes
 
 __all__ = [
     "REFERENCE_FINGERPRINT_SCHEMA",
@@ -52,9 +54,10 @@ __all__ = [
     "store_path",
 ]
 
-REFERENCE_FINGERPRINT_SCHEMA = "rcp-ref-fp/1"
+REFERENCE_FINGERPRINT_SCHEMA = "rcp-ref-fp/2"
 """The reference-output key rule's version: changing the input set is a new schema, so old and new
-entries never collide in one key."""
+entries never collide in one key.  Version 2 adds the client render inputs (``client.<field>``): an entry
+keyed without them could hold a reference rendered from a different client block."""
 
 _MANIFEST = "manifest.json"
 _OUTPUT = "output.json"
@@ -85,6 +88,12 @@ class ReferenceKey:
     inputs: dict[str, str]
 
 
+_STORE_CLIENT_EXCLUSIONS = frozenset({"dimensions"})
+"""The request-classified client fields the store key still excludes: the MRL selection is deliberately
+out of the key (the stored reference is the model's full-width output and every declared k is derived
+from it), exactly as ``mrl_dim`` is."""
+
+
 def reference_fingerprint_inputs(
     *,
     reference_sha256: str,
@@ -96,14 +105,17 @@ def reference_fingerprint_inputs(
     model: str,
     mode: str,
     reference: dict[str, Any] | None = None,
+    client: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Every named input of a stored reference output's key.
 
     Inputs: the family reference hash (every reference module's bytes), the variant revision, the hash of the
     pairs the reference receives, the reference environment's lock hash (``None`` when the reference
     runs outside a family environment), the device and dtype, the model id, the reference mode
-    (``score`` or ``embed``) and the resolved recipe's ``reference`` block (its score scale, known
-    deviations, ... -- whatever shapes the output).  Output: the flat map, dotted names to canonical
+    (``score`` or ``embed``), the resolved recipe's ``reference`` block (its score scale, known
+    deviations, ... -- whatever shapes the output) and the resolved recipe's ``client`` block (only the
+    request-classified fields are keyed, named ``client.<field>``, because the reference renders from
+    them; the MRL selection is excluded).  Output: the flat map, dotted names to canonical
     strings.  Units: none.
     """
     inputs: dict[str, str] = {
@@ -119,6 +131,9 @@ def reference_fingerprint_inputs(
     }
     for field, value in sorted((reference or {}).items()):
         inputs[f"reference.{field}"] = _canonical(value)
+    for field, value in sorted((client or {}).items()):
+        if CLIENT_FIELDS.get(field) == "request" and field not in _STORE_CLIENT_EXCLUSIONS:
+            inputs[f"client.{field}"] = _canonical(value)
     return inputs
 
 

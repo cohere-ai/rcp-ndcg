@@ -168,6 +168,44 @@ def test_the_store_key_ignores_the_mrl_selection(tmp_path: Path, monkeypatch: py
     assert not any("mrl" in name for name in inputs)
 
 
+def test_the_store_key_covers_the_client_render_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reference renders from the resolved recipe's client block (embeddinggemma-2's
+    ``client.query_prompt``/``doc_prompt``, octen's ``client.template``): a client change must move the
+    stored output's key, or stage 2 compares the served engine against a reference produced from the OLD
+    client rendering (reviews/final-harness-ds41.md D2)."""
+    from rcp_ndcg_test.equivalence import stages
+    from rcp_ndcg_vllm import load_recipe
+
+    from tests.conftest import sample_pairs
+
+    base = load_recipe(RECIPES / "fixture-embed")
+    rendered = base.model_copy(
+        update={"client": {**base.client, "query_prompt": "a new query prompt", "doc_prompt": "a new doc prompt"}}
+    )
+    rows = [{"query": row["query"], "documents": list(row["documents"])} for row in sample_pairs()[:1]]
+    store = tmp_path / "references"
+    calls: list[object] = []
+
+    def fake_run(
+        reference_python: str, entry: str, *, mode: str, pairs_path: Path, out_path: Path, recipe: Any, **kwargs: object
+    ) -> dict[str, Any]:  # fmt: skip
+        calls.append(recipe.client.get("query_prompt"))
+        return {"rows": [{"index": 0, "query_vectors": [[[1.0, 0.0]]], "document_vectors": [[[1.0, 0.0]]]}]}
+
+    monkeypatch.setattr(stages, "run_reference", fake_run)
+    first, first_state = stages._reference_outputs(
+        base, "fake", rows, device="cpu", cuda_visible_devices=None, store=store
+    )
+    second, second_state = stages._reference_outputs(
+        rendered, "fake", rows, device="cpu", cuda_visible_devices=None, store=store
+    )
+    assert first_state["state"] == "computed"
+    assert second_state["state"] == "computed", "a changed client rendering must not reuse the stale reference"
+    assert second_state["changed_inputs"] == ["client.doc_prompt", "client.query_prompt"]
+    assert calls == [None, "a new query prompt"]  # the reference ran again under the new rendering
+    assert len(list(store.iterdir())) == 2
+
+
 def test_stage2_without_a_store_never_writes_one(tmp_path: Path) -> None:
     """No store: the reference runs and the state says so (the library's pure path)."""
     import sys
