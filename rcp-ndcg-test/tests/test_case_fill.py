@@ -3,13 +3,18 @@
 The tool is :mod:`rcp_ndcg_test.case_fill`.  These tests copy a fixture recipe whose ``reference.py``
 is a fake subprocess and exercise the tool end to end over case YAMLs in ``tmp_path``: the values
 written are the reference's outputs, ``status: pending_gpu`` becomes ``reproduced``, the pending note's
-own sentence is retired, an un-fillable case (media-bearing, or a kind the mode does not produce) is
-skipped per case with its reason recorded while the rest of the recipe still fills, a second run finds
-nothing pending, and the CLI prints the report.
+own sentence is retired (or, for the shipped cases' notes, which carry no such sentence, the fill's
+provenance is appended), a media-bearing case's files enter the pairs row's ``media`` field so the case
+fills like a text one, an un-fillable case (a kind the mode does not produce, or ``kind: none``) is
+skipped per case with its reason recorded while the rest of the recipe still fills, a case the
+reference refuses is recorded as an exception (its reason in the report and its note) without taking
+the recipe's other cases down, a second run finds nothing pending, and the CLI prints the report.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -23,6 +28,26 @@ from tests.conftest import RECIPES, TOKENIZER
 
 ROOT = Path(__file__).resolve().parent.parent
 REAL_CASES = ROOT / "cases"
+
+_POISON_REFERENCE = """
+import argparse, json, sys
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--mode", required=True)
+parser.add_argument("--pairs", required=True)
+parser.add_argument("--out", required=True)
+parser.add_argument("--tokenizer", required=True)
+parser.add_argument("--recipe", required=True)
+parser.add_argument("--device", default="cpu")
+args = parser.parse_args()
+rows = [json.loads(line) for line in open(args.pairs, encoding="utf-8") if line.strip()]
+for row in rows:
+    if any("POISON" in str(document) for document in row["documents"]):
+        print("the reference refuses this row: POISON is not an input this reference can score", file=sys.stderr)
+        sys.exit(1)
+out = [{"index": index, "scores": [0.5] * len(row["documents"])} for index, row in enumerate(rows)]
+json.dump({"rows": out}, open(args.out, "w", encoding="utf-8"))
+"""
 
 _RERANK_REFERENCE = """
 import argparse, json
@@ -55,7 +80,7 @@ parser.add_argument("--recipe", required=True)
 parser.add_argument("--device", default="cpu")
 args = parser.parse_args()
 rows = [json.loads(line) for line in open(args.pairs, encoding="utf-8") if line.strip()]
-vectors = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, -1.0]]
+vectors = [[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, -1.0], [1.0, -1.0], [0.5, 0.5], [-1.0, 0.0], [0.0, 0.5]]
 out = [
     {"index": index, "query_vectors": [[1.0, 0.0]], "document_vectors": vectors[: len(row["documents"])]}
     for index, row in enumerate(rows)
@@ -115,7 +140,11 @@ def _write_case(
     note: str = _PENDING_NOTE,
     role: str | None = None,
 ) -> Path:
-    """One pending generated case, written the way the cases lanes write them (values null, pending)."""
+    """One pending generated case, written the way the cases lanes write them (values null, pending).
+
+    ``kind: none`` carries no values and no tolerance by design (the case format refuses a tolerance on
+    one), so its ``expected`` block holds nulls where the other kinds hold the declared rule.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     case = {
         "id": f"{recipe_id}/{slug}",
@@ -127,7 +156,7 @@ def _write_case(
         "expected": {
             "kind": kind,
             "values": None,
-            "tolerance": {"abs": 0.02},
+            "tolerance": None if kind == "none" else {"abs": 0.02},
             "origin": "reference",
             "status": "pending_gpu",
         },
@@ -135,6 +164,36 @@ def _write_case(
     }
     path = directory / f"{slug}.yaml"
     path.write_text(yaml.safe_dump(case, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def _write_case_with_note(
+    directory: Path,
+    recipe_id: str,
+    slug: str,
+    note_block: str,
+    *,
+    kind: str = "scores",
+    length: str = "short",
+) -> Path:
+    """One pending case whose ``notes`` scalar is the hand-written block ``note_block``.
+
+    The fixture writer dumps a plain scalar; the shipped cases' notes are folded blocks and
+    single-quoted scalars, so the block replaces the dumped one verbatim (the block includes its own
+    style indicator and its leading space).
+    """
+    path = _write_case(
+        directory,
+        recipe_id,
+        slug,
+        kind=kind,
+        length=length,
+        queries=[{"id": "q1", "text": "the short query"}],
+        documents=[{"id": "d1", "text": "the short document"}],
+    )
+    head, separator, _ = path.read_text(encoding="utf-8").partition("notes:")
+    assert separator, "the fixture writer always writes a notes key"
+    path.write_text(head + "notes:" + note_block, encoding="utf-8")
     return path
 
 
@@ -245,11 +304,76 @@ def test_the_fill_writes_the_similarity_matrix_from_the_references_vectors(tmp_p
     assert mixed.expected.values == [[1.0, 0.0], [1.0, 0.0]]
 
 
-def test_a_media_case_is_skipped_with_its_reason_and_the_text_cases_still_fill(tmp_path: Path) -> None:
-    """The qwen3-vl-reranker-2b cases carry images: the reference's score mode takes text, so the fill
-    skips each media case with the reason recorded, fills the recipe's text cases, and leaves every
-    media case byte-identical -- its values cannot come from the reference's ``media`` mode, which
-    reports input facts, not model outputs (a media-value fill is a follow-up)."""
+def test_a_media_case_plans_the_case_files_into_the_pairs_media_field() -> None:
+    """The media translation: a media document's file is read from the case's own directory and enters
+    the pairs row as the media set's own entry shape (the ``data:`` URI plus its kind), the document's
+    text is empty (the reference reads the media as the side's content), the query side stays empty
+    (the case format's queries are text-only), and a text-only case's row carries no ``media`` at all."""
+    from rcp_ndcg_test.case_fill import _plan_rows
+
+    media_dir = REAL_CASES / "qwen3-vl-embedding-2b" / "media"
+    cases = [
+        load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "image-short-single.yaml"),
+        load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "video-short-single.yaml"),
+        load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "mixed-modality-batch.yaml"),
+    ]
+    rows, mapping = _plan_rows(cases)
+    assert [case.id for case, _ in mapping] == [
+        "qwen3-vl-embedding-2b/image-short-single",
+        "qwen3-vl-embedding-2b/video-short-single",
+        "qwen3-vl-embedding-2b/mixed-modality-batch",
+        "qwen3-vl-embedding-2b/mixed-modality-batch",
+    ]
+
+    stand_in = (media_dir / "stand_in.png").read_bytes()
+    assert rows[0]["documents"] == [""]
+    assert rows[0]["media"] == {
+        "query": [],
+        "documents": [
+            [
+                {
+                    "kind": "image",
+                    "uri": "data:image/png;base64," + base64.b64encode(stand_in).decode("ascii"),
+                    "sha256": hashlib.sha256(stand_in).hexdigest(),
+                    "mime": "image/png",
+                    "width": 934,
+                    "height": 612,
+                    "num_bytes": len(stand_in),
+                }
+            ]
+        ],
+    }
+
+    clip = (media_dir / "clip.mp4").read_bytes()
+    video = rows[1]["media"]["documents"][0][0]
+    assert video["kind"] == "video" and video["mime"] == "video/mp4"
+    assert video["uri"] == "data:video/mp4;base64," + base64.b64encode(clip).decode("ascii")
+    assert video["sha256"] == hashlib.sha256(clip).hexdigest() and video["num_bytes"] == len(clip)
+    # the container's own facts, off its header: 448x256, 4 frames at 2 fps (2 s)
+    assert (video["width"], video["height"], video["num_frames"]) == (448, 256, 4)
+    assert (video["fps"], video["duration_s"]) == (2.0, 2.0)
+
+    # a batch mixing text-only and media documents: every document keeps its own side, in order
+    page = (media_dir / "page.png").read_bytes()
+    assert rows[2]["documents"] == [
+        "A woman shares a happy moment with her golden retriever on a sunny beach.",
+        "",
+        "A woman shares a happy moment with her golden retriever on a sunny beach.",
+    ]
+    documents = rows[2]["media"]["documents"]
+    assert documents[0] == []
+    assert documents[1][0]["sha256"] == hashlib.sha256(stand_in).hexdigest()
+    assert (documents[2][0]["width"], documents[2][0]["height"]) == (1700, 2200)
+    assert documents[2][0]["sha256"] == hashlib.sha256(page).hexdigest()
+
+    text_only, _ = _plan_rows([load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "text-short-single.yaml")])
+    assert "media" not in text_only[0]
+
+
+def test_a_media_case_is_no_longer_skipped_and_a_kind_none_case_still_is(tmp_path: Path) -> None:
+    """The qwen3-vl-reranker-2b cases carry images: the fill now sends them in the pairs row's ``media``
+    field, so every media case fills like the text ones (no skip); ``kind: none`` still carries no values
+    by design, is skipped with its reason recorded, and its file is left byte-identical."""
     from rcp_ndcg_test.case_fill import fill_cases
 
     recipe = _recipe_copy(
@@ -261,40 +385,153 @@ def test_a_media_case_is_skipped_with_its_reason_and_the_text_cases_still_fill(t
     )
     cases_root = tmp_path / "cases"
     shutil.copytree(REAL_CASES / "qwen3-vl-reranker-2b", cases_root / "qwen3-vl-reranker-2b")
-    media = {
-        path.name: path.read_bytes()
-        for path in (cases_root / "qwen3-vl-reranker-2b").glob("*.yaml")
-        if "image:" in path.read_text(encoding="utf-8")
-    }
-    assert len(media) == 4
+    none_case = _write_case(
+        cases_root / "qwen3-vl-reranker-2b",
+        "qwen3-vl-reranker-2b",
+        "gen-kind-none",
+        kind="none",
+        length="short",
+        queries=[{"id": "q1", "text": "the short query"}],
+        documents=[{"id": "d1", "text": "the short document"}],
+    )
+    before = none_case.read_bytes()
 
     report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
-    assert [skipped.case_id.split("/", 1)[1] for skipped in report.skipped] == [
+    assert report.pending_before == 10
+    assert [skipped.case_id.split("/", 1)[1] for skipped in report.skipped] == ["gen-kind-none"]
+    assert "kind: none" in report.skipped[0].reason
+    assert [filled.case_id.split("/", 1)[1] for filled in report.filled] == [
         "gen-image-long-over",
         "gen-image-short-single",
         "gen-image-uniform",
         "gen-mixed-modality",
-    ]
-    assert all(
-        "carry media" in skipped.reason and "media-value fill is a follow-up" in skipped.reason
-        for skipped in report.skipped
-    )
-    assert [filled.case_id.split("/", 1)[1] for filled in report.filled] == [
         "gen-text-long-over",
         "gen-text-long-under",
         "gen-text-mixed-length",
         "gen-text-short-single",
         "gen-text-short-uniform",
     ]
-    assert report.pending_before == 9
-    after = {
-        path.name: path.read_bytes()
-        for path in (cases_root / "qwen3-vl-reranker-2b").glob("*.yaml")
-        if "image:" in path.read_text(encoding="utf-8")
-    }
-    assert after == media
-    filled = load_case(cases_root / "qwen3-vl-reranker-2b" / "gen-text-short-single.yaml")
-    assert filled.expected.status == "reproduced" and filled.expected.values is not None
+    assert all(filled.notes_updated for filled in report.filled)
+    assert none_case.read_bytes() == before
+
+    filled = load_case(cases_root / "qwen3-vl-reranker-2b" / "gen-image-short-single.yaml")
+    assert filled.expected.status == "reproduced" and filled.expected.values == [[0.25]]
+    assert filled.expected.tolerance is not None and filled.expected.tolerance.abs == 0.01
+    # the note's own pending sentence is retired where it stood (the case's "GPU wave fills values;")
+    assert "the outputs of the reference implementation itself for these inputs" in filled.notes
+    assert "(filled on cpu before the wave" in filled.notes
+    assert "GPU wave fills values" not in filled.notes
+
+
+def test_an_embed_media_case_fills_and_carries_its_own_tolerance(tmp_path: Path) -> None:
+    """The embed path over media: the qwen3-vl-embedding-2b cases (image, video and mixed documents)
+    fill like the text ones -- the reference's ``embed`` mode reads the pairs row's ``media`` field --
+    and each case's own tolerance (the media cases declare 0.002) is carried through unchanged."""
+    from rcp_ndcg_test.case_fill import fill_cases
+
+    recipe = _recipe_copy(
+        tmp_path,
+        "qwen3-vl-embedding-2b",
+        _EMBED_REFERENCE,
+        root=default_recipes_root() / "qwen3-vl-embedding",
+        variant="qwen3-vl-embedding-2b",
+    )
+    cases_root = tmp_path / "cases"
+    shutil.copytree(REAL_CASES / "qwen3-vl-embedding-2b", cases_root / "qwen3-vl-embedding-2b")
+
+    report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
+    assert report.mode == "embed" and report.pending_before == 9
+    assert report.skipped == () and report.exceptions == ()
+    assert len(report.filled) == 9
+    image = load_case(cases_root / "qwen3-vl-embedding-2b" / "image-short-single.yaml")
+    assert image.expected.status == "reproduced" and image.expected.values == [[1.0]]
+    assert image.expected.tolerance is not None and image.expected.tolerance.abs == 0.002
+    video = load_case(cases_root / "qwen3-vl-embedding-2b" / "video-short-single.yaml")
+    assert video.expected.status == "reproduced" and video.expected.tolerance is not None
+    assert video.expected.tolerance.abs == 0.002
+
+
+def test_one_cases_refusal_is_recorded_and_leaves_the_other_cases_filling(tmp_path: Path) -> None:
+    """The isolation: the reference runs once over every case's rows, and when that run fails every
+    case is retried on its own -- so a row the reference refuses (here a poisoned document) is recorded
+    as an exception (its reason in the report and in its own note, its values left null, status
+    ``pending_gpu``) while the recipe's other cases still fill.  A second run records the same exception
+    without appending the reason a second time."""
+    from rcp_ndcg_test.case_fill import fill_cases
+
+    recipe = _recipe_copy(tmp_path, "fixture-rerank-pointwise", _POISON_REFERENCE)
+    cases_root = _pending_cases(tmp_path, "fixture-rerank-pointwise", kind="scores")
+    poisoned = _case(cases_root, "fixture-rerank-pointwise", "gen-long-over")
+    poisoned.write_text(
+        poisoned.read_text(encoding="utf-8").replace("the short document", "POISONED document text"),
+        encoding="utf-8",
+    )
+
+    report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
+    assert [filled.case_id.split("/", 1)[1] for filled in report.filled] == [
+        "gen-long-under",
+        "gen-mixed-lengths",
+        "gen-short",
+    ]
+    assert [exception.case_id.split("/", 1)[1] for exception in report.exceptions] == ["gen-long-over"]
+    assert report.exceptions[0].notes_updated
+    assert "refuses this row" in report.exceptions[0].reason
+    refused = load_case(poisoned)
+    assert refused.expected.values is None and refused.expected.status == "pending_gpu"
+    assert "could not produce this case's values" in refused.notes
+    assert "refuses this row" in refused.notes
+    assert refused.notes.count("refuses this row") == 1
+
+    again = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
+    assert again.filled == () and again.pending_before == 1
+    assert [exception.case_id.split("/", 1)[1] for exception in again.exceptions] == ["gen-long-over"]
+    assert again.exceptions[0].notes_updated is False
+    assert load_case(poisoned).notes.count("refuses this row") == 1
+
+
+def test_a_filled_case_records_the_fill_when_its_note_has_no_pending_sentence(tmp_path: Path) -> None:
+    """Tonight's gap: the shipped cases' notes carry no sentence the retirement vocabulary knows, so a
+    filled case's note was left untouched (``notes_updated: false``).  The fill now appends its own
+    provenance sentence to the note -- in whichever scalar style the note is written (a folded block, a
+    single-quoted scalar, a plain one) -- so every filled case's note records the fill, and the note's
+    own text survives."""
+    from rcp_ndcg_test.case_fill import fill_cases
+
+    recipe = _recipe_copy(tmp_path, "fixture-rerank-pointwise", _RERANK_REFERENCE)
+    directory = tmp_path / "cases" / "fixture-rerank-pointwise"
+    _pending_cases(tmp_path, "fixture-rerank-pointwise", kind="scores")
+    note = "A note with no pending sentence at all: the notes of the shipped cases look like this."
+    _write_case_with_note(directory, "fixture-rerank-pointwise", "gen-short", f" >-\n  {note}\n")
+    _write_case_with_note(directory, "fixture-rerank-pointwise", "gen-long-under", f" '{note}'\n", length="long_under")
+    _write_case_with_note(
+        directory,
+        "fixture-rerank-pointwise",
+        "gen-long-over",
+        " 'A note with no pending sentence at all: the notes of the shipped\n  cases look like this.'\n",
+        length="long_over",
+    )
+
+    report = fill_cases(recipe, tmp_path / "cases", reference_python="python", filled_at="2026-10-12")
+    assert all(filled.notes_updated for filled in report.filled)
+    sentence = "status reproduced (values filled from the reference implementation on cpu, 2026-10-12)."
+    for slug in ("gen-short", "gen-long-under", "gen-long-over"):
+        filled = load_case(directory / f"{slug}.yaml")
+        assert filled.notes.endswith(sentence), filled.notes
+        assert "A note with no pending sentence at all: the notes of the shipped cases look like this." in filled.notes
+
+
+def test_a_note_with_a_known_pending_sentence_is_retired_not_appended(tmp_path: Path) -> None:
+    """A note the retirement vocabulary knows is rewritten where the pending sentence stands -- the
+    provenance sentence is not appended a second time (the retired sentence already records the fill)."""
+    from rcp_ndcg_test.case_fill import fill_cases
+
+    recipe = _recipe_copy(tmp_path, "fixture-rerank-pointwise", _RERANK_REFERENCE)
+    cases_root = _pending_cases(tmp_path, "fixture-rerank-pointwise", kind="scores")
+    report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
+    assert all(filled.notes_updated for filled in report.filled)
+    short = load_case(_case(cases_root, "fixture-rerank-pointwise", "gen-short"))
+    assert short.notes.count("status reproduced (values filled from the reference implementation") == 1
+    assert "Generated for the tool's test." in short.notes
 
 
 def test_a_kind_the_mode_does_not_produce_is_skipped_not_fatal(tmp_path: Path) -> None:
@@ -343,7 +580,44 @@ def test_the_cli_prints_the_report(tmp_path: Path, capsys: pytest.CaptureFixture
     assert report["mode"] == "score"
     assert len(report["filled"]) == 4
     assert report["skipped"] == []
+    assert report["exceptions"] == []
     assert load_case(_case(cases_root, "fixture-rerank-pointwise", "gen-short")).expected.values == [[0.25]]
+
+
+def test_the_retirement_vocabulary_covers_every_shipped_generated_note() -> None:
+    """The shipped generated cases' pending notes carry their own phrasings, not the three the fill
+    started with (measured: none of the 41 matched, so every fill left the note contradicting the
+    values).  Every one of the four cuda recipes' generated cases is run through the same note update
+    the fill applies: no note keeps a pending claim (``pending_gpu``, ``stays null``, a ``GPU wave``
+    fill) and every note ends up naming the reference implementation as the values' source."""
+    import re
+
+    from rcp_ndcg_test.case_fill import _update_note
+
+    sentence = "values filled from the reference implementation on cuda, 2026-10-13"
+    generated = 0
+    for recipe_id in (
+        "topk-embed-v1-small",
+        "qwen3-embedding-0.6b",
+        "qwen3-vl-embedding-2b",
+        "qwen3-vl-reranker-2b",
+    ):
+        for path in sorted((REAL_CASES / recipe_id).glob("*.yaml")):
+            text = path.read_text(encoding="utf-8")
+            if "source:\n  kind: generated" not in text:
+                continue
+            generated += 1
+            updated, notes_updated = _update_note(text, device="cuda", filled_at="2026-10-13", path=path)
+            assert notes_updated
+            notes = yaml.safe_load(updated)["notes"]
+            for stale in ("pending_gpu", "stays null", "GPU wave", "wave fills"):
+                assert stale not in notes, (path.name, stale, notes)
+            assert sentence in notes or "the outputs of the reference implementation itself" in notes, (
+                path.name,
+                notes,
+            )
+            assert not re.search(r"\bnull until\b", notes), (path.name, notes)
+    assert generated == 41
 
 
 def test_a_late_interaction_reference_scores_through_the_products_maxsim() -> None:

@@ -858,3 +858,39 @@ def test_the_reference_refuses_a_video_without_a_declared_rate_or_with_an_odd_re
     odd = video_entry("icon", 64, 64, 30)  # 30 frames at 8 fps: int(30 / 8 * 2) = 7 frames, an odd count
     with pytest.raises(SystemExit, match="even"):
         module.card_inputs("", [odd], work=tmp_path, clip_name="query-1", declared_fps=2.0, constants=constants)
+
+
+def test_the_shipped_video_case_reaches_the_card_route_and_its_pin_refuses_it(tmp_path: Path) -> None:
+    """The media translation, proven on the shipped video case's own container: the case fill's entry
+    builder reads ``media/clip.mp4`` off the case file and the reference's card route accepts it (the
+    declared fps 2 realises the container's 4 frames, the bytes land in the file the card's loader
+    reads, the side carries the video alone) -- and the recipe's whole-clip pin cannot express that
+    4-frame clip through the card's loader (the per-frame share exceeds the loader's per-frame ceiling),
+    so the reference refuses it loudly.  That refusal is why the case stays a recorded exception in the
+    fill (``case_fill``'s exception path) instead of silently filling."""
+    import base64
+
+    from rcp_ndcg_test.case_fill import _media_entry
+    from rcp_ndcg_test.cases import load_case
+
+    cases = Path(__file__).resolve().parents[2] / "cases"
+    case = load_case(cases / "qwen3-vl-embedding-2b" / "video-short-single.yaml")
+    entry = _media_entry(case, "media/clip.mp4")
+    assert entry["kind"] == "video" and entry["mime"] == "video/mp4"
+    assert (entry["width"], entry["height"], entry["num_frames"], entry["fps"]) == (448, 256, 4, 2.0)
+
+    module = _reference_module()
+    constants = module.card_media_constants()
+    payload = module.card_inputs(
+        "", [entry], work=tmp_path, clip_name="document-0-0", declared_fps=2.0, constants=constants
+    )
+    assert payload["fps"] == 2.0 and payload["max_frames"] == 4
+    assert "image" not in payload and "text" not in payload
+    clip = Path(payload["video"])
+    assert clip.read_bytes() == base64.b64decode(str(entry["uri"]).split(",", 1)[1])
+
+    recipe = load_recipe("qwen3-vl-embedding-2b").model_dump(mode="json")
+    pin = module.video_pixel_pin(recipe)
+    assert pin == (4096, 7864320)
+    with pytest.raises(SystemExit, match="per-frame ceiling"):
+        module.frame_bounds(payload["max_frames"], pin)

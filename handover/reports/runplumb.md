@@ -27,7 +27,11 @@ lane brief (plan v2 plus the two adversarial reviews).
    (topk 8, qwen3-embedding 8, qwen3-vl-embedding 5, qwen3-vl-reranker 5) and **15 recorded skips** (14
    media-bearing + topk's `query-cap-1024`, `kind: none`) — the 14 media cases stay `pending_gpu` with the
    recorded reason (the reference's `media` mode reports input facts, not model outputs; a media-value fill
-   is a follow-up, **not** built here). The mislabelled `qwen3-vl-reranker-2b/gen-text-short-uniform` case
+   is a follow-up, **not** built here).  **Superseded by lane mediafill**: the media cases fill now (the
+   pairs row carries the case's `media/` files, built by the media set's own entry builders; the
+   qwen3-vl-embedding video case is a recorded exception at the recipe's video pin), and only topk's
+   `kind: none` case stays the structural non-fill — see `handover/reports/mediafill.md`.  The mislabelled
+   `qwen3-vl-reranker-2b/gen-text-short-uniform` case
    (`kind: similarity_matrix` on a rerank recipe) is corrected to `scores`, and a test pins every shipped
    case's `expected.kind` to its role's stage shape.
 3. **The changed-only recording index (verified; documentation, no code change).** The committed repository
@@ -203,7 +207,11 @@ GATE: PASS
    `media` mode reports input facts, not model outputs). This is the owner-visible residual of the case
    fills: 26 of the 40 cuda values land; a media-value fill needs a reference mode that returns model
    outputs for media, which this lane did not build. The conformance runner treats `values: null` as a skip,
-   never a pass.
+   never a pass.  **Superseded by lane mediafill** (owner decision 2026-10-12: the media cases are in
+   scope): the references' existing `embed`/`score` modes read the pairs row's `media` field, the fill
+   builds it from the case's `media/` files, and the media cases fill — the qwen3-vl-embedding video case
+   excepted, recorded with the recipe's video pin's per-frame-ceiling reason.  See
+   `handover/reports/mediafill.md`.
 2. **`--changed-since` still has no job-spec forwarding.** The recording pass re-records what its wave list
    names; a changed-only submitted pass needs the changed list *as* the wave list (section 4), or a
    `RCP_CHANGED_SINCE`-style forwarding added later. The committed repository corpus index cannot drive the

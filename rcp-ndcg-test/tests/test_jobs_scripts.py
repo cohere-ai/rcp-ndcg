@@ -1232,6 +1232,7 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
     for recipe in ("topk-embed-v1-small", "qwen3-embedding-0.6b", "qwen3-vl-embedding-2b", "qwen3-vl-reranker-2b"):
         (stage / "cases" / recipe).mkdir(parents=True)
         (stage / "cases" / recipe / "gen-short.yaml").write_text(f"id: {recipe}/gen-short\n", encoding="utf-8")
+        (stage / "cases" / recipe / "gen-video.yaml").write_text(f"id: {recipe}/gen-video\n", encoding="utf-8")
     (stage / "manifest.json").write_text('{"version": "0.0.1"}\n', encoding="utf-8")
     auth = tmp_path / "gcs_auth.sh"
     auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
@@ -1273,9 +1274,12 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
         ' [[ "$prev" == "--cases-root" ]] && cases="$arg"; prev="$arg"; done\n'
         'if [[ "$recipe" == "qwen3-vl-embedding-2b" ]]; then'
         ' echo "casefill: the stub reference failed" >&2; exit 2; fi\n'
-        'printf \'{"recipe": "%s", "mode": "score", "device": "cuda", "pending_before": 1,'
+        'printf \'{"recipe": "%s", "mode": "score", "device": "cuda", "pending_before": 2,'
         ' "filled": [{"case_id": "%s/gen-short", "path": "%s/%s/gen-short.yaml",'
-        ' "notes_updated": true}], "skipped": []}\\n\' "$recipe" "$recipe" "$cases" "$recipe"\n'
+        ' "notes_updated": true}], "skipped": [],'
+        ' "exceptions": [{"case_id": "%s/gen-video", "path": "%s/%s/gen-video.yaml",'
+        ' "reason": "the reference refuses this container", "notes_updated": true}]}\\n\''
+        ' "$recipe" "$recipe" "$cases" "$recipe" "$recipe" "$cases" "$recipe"\n'
         "CLIENT\n"
         'chmod +x "$state/client"\n',
         encoding="utf-8",
@@ -1324,10 +1328,12 @@ def test_casefill_end_to_end_fills_the_four_and_uploads_what_it_filled(tmp_path:
         assert f"--reference-python {state}/reference/{family}/bin/python" in line, line
         assert "--device cuda" in line and "--filled-at 2026-10-12" in line and "--budget-s 7200" in line, line
         assert f"--cases-root {state}/cases" in line, line
-    # the edited YAMLs of the three successful recipes upload -- the failure did not stop the recipe
-    # after it; the failed one's does not
+    # the edited YAMLs of the three successful recipes upload -- the filled cases and the refused
+    # case's recorded exception -- and the failure did not stop the recipe after it; the failed one's
+    # do not
     for recipe in ("topk-embed-v1-small", "qwen3-embedding-0.6b", "qwen3-vl-reranker-2b"):
         assert (state / "filled-cases" / recipe / "gen-short.yaml").is_file(), recipe
+        assert (state / "filled-cases" / recipe / "gen-video.yaml").is_file(), recipe
     assert not (state / "filled-cases" / "qwen3-vl-embedding-2b").exists()
     calls = gcs_log.read_text(encoding="utf-8")
     assert f"cp {state}/filled-cases gs://YOUR-BUCKET/waves/casefill/cases dir" in calls, calls
@@ -1376,9 +1382,11 @@ def test_the_casefill_dry_plan_names_the_four_recipes_and_the_reference_pythons(
 
 def test_casefill_pins_the_four_recipes_to_the_catalog_and_the_cases() -> None:
     """The script's four recipe id -> family pairs are the real catalog's (a renamed family directory
-    fails here first), and the pending cuda values are exactly the four recipes' ``pending_gpu``
-    cases -- 41 pending files of which topk's ``query-cap-1024`` is ``kind: none``, so 40 values are
-    fillable by kind, and the media-bearing ones are the fill's recorded skips (14)."""
+    fails here first), and the four recipes' generated case corpus is the one the job fills: 41 cases,
+    of which topk's ``query-cap-1024`` is ``kind: none`` -- the fill's one recorded skip, it carries no
+    values by design -- and 14 are media-bearing (fillable since the media translation landed).  A new
+    case, a changed kind or a media file moving the counts must revisit the job's scope; the model-card
+    cases are not counted (the card printed their values, so no fill applies)."""
     from rcp_ndcg_vllm.recipe import load_recipe
 
     script = CASEFILL_SH.read_text(encoding="utf-8")
@@ -1393,18 +1401,18 @@ def test_casefill_pins_the_four_recipes_to_the_catalog_and_the_cases() -> None:
         assert f"{recipe_id} {family}" in script, (recipe_id, family)
         recipe = load_recipe(recipe_id)
         assert recipe._dir is not None and recipe._dir.name == family, (recipe_id, recipe._dir)
-    pending = 0
+    generated = 0
     kind_none = 0
     media = 0
     for recipe_id, _family in expected:
         for path in (cases_root / recipe_id).glob("*.yaml"):
             text = path.read_text(encoding="utf-8")
-            if "status: pending_gpu" not in text:
+            if "source:\n  kind: generated" not in text:
                 continue
-            pending += 1
+            generated += 1
             kind_none += int("kind: none" in text)
             media += int("image:" in text or "video:" in text)
-    assert (pending, kind_none, media) == (41, 1, 14)
+    assert (generated, kind_none, media) == (41, 1, 14)
 
 
 def test_submit_e2e_mounts_the_e2e_script_and_names_the_wave(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

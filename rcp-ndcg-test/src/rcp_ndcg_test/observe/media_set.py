@@ -213,37 +213,55 @@ def mjpeg_avi(name: str, width: int, height: int, num_frames: int, *, fps: float
     return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
-def image_entry(name: str, width: int, height: int, *, payload: bytes | None = None) -> dict[str, Any]:
-    """One pairs media entry: an image of the bucket ``name`` inline, as a ``MediaRef`` object plus its kind."""
+def image_entry(
+    name: str, width: int, height: int, *, payload: bytes | None = None, mime: str = "image/png"
+) -> dict[str, Any]:
+    """One pairs media entry: an image of the bucket ``name`` inline, as a ``MediaRef`` object plus its kind.
+
+    ``payload`` overrides the image the bucket ``name`` draws (a case's own ``media/<file>`` bytes, say);
+    ``width``/``height`` and ``mime`` are the caller's declared facts then (the file's own dimensions and
+    its suffix's MIME type from the product's table), so the entry never claims the drawn bucket's shape.
+    """
     data = payload if payload is not None else _png(name, width, height)
     return {
         "kind": "image",
-        "uri": "data:image/png;base64," + base64.b64encode(data).decode("ascii"),
+        "uri": f"data:{mime};base64," + base64.b64encode(data).decode("ascii"),
         "sha256": hashlib.sha256(data).hexdigest(),
-        "mime": "image/png",
+        "mime": mime,
         "width": width,
         "height": height,
         "num_bytes": len(data),
     }
 
 
-def video_entry(name: str, width: int, height: int, num_frames: int, *, fps: float = VIDEO_FPS) -> dict[str, Any]:
+def video_entry(
+    name: str,
+    width: int,
+    height: int,
+    num_frames: int,
+    *,
+    fps: float = VIDEO_FPS,
+    payload: bytes | None = None,
+    mime: str = _VIDEO_MIME,
+) -> dict[str, Any]:
     """One pairs media entry: an MJPEG AVI clip of the size ``name``, inline, with its container facts.
 
     ``num_frames`` is the clip's real frame count -- the recipe's declared video policy's ``num_frames``
     when it pins one, else :data:`VIDEO_FRAMES` (:func:`video_plan`), so the client's policy accepts the
     container and the engine's declared rule samples it; ``width``/``height``/``fps``/``duration_s`` are what
-    :func:`rcp_ndcg.data.media.probe_video_header` reads back off the header.
+    :func:`rcp_ndcg.data.media.probe_video_header` reads back off the header.  ``payload`` overrides the clip
+    the size ``name`` writes (a case's own ``media/<file>`` container, say) and ``mime`` its declared type:
+    the caller then owns the container facts, which must be the ones the header states.
     """
-    payload = mjpeg_avi(name, width, height, num_frames, fps=fps)
+    data = payload if payload is not None else mjpeg_avi(name, width, height, num_frames, fps=fps)
     return {
         "kind": "video",
-        "uri": f"data:{_VIDEO_MIME};base64," + base64.b64encode(payload).decode("ascii"),
-        "sha256": hashlib.sha256(payload).hexdigest(),
-        "mime": _VIDEO_MIME,
+        "uri": f"data:{mime};base64," + base64.b64encode(data).decode("ascii"),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "mime": mime,
         "width": width,
         "height": height,
-        "num_bytes": len(payload),
+        "num_bytes": len(data),
         "num_frames": num_frames,
         "duration_s": num_frames / fps if fps else None,
         "fps": fps,

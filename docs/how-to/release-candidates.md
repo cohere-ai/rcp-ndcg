@@ -151,8 +151,10 @@ the four cuda families' reference venvs through `bootstrap.sh envs` and runs
 `python -m rcp_ndcg_test.case_fill --device cuda` per recipe over the staged `cases/` copy, then uploads
 the edited YAMLs to `<OUT_PREFIX>/<wave>/cases/<recipe>/` and a `casefill-report.json` beside them; the
 operator reviews the diff and copies the YAMLs into the repository. A pending case the fill cannot
-produce is recorded skipped, its file untouched (the media-bearing ones: the reference's text mode reads
-text, and its `media` mode reports input facts, not model outputs).
+produce is recorded skipped, its file untouched (a `kind: none` case carries no values by design); a
+media-bearing case's `media/` files enter the pairs row's `media` field, so it fills like a text one; a
+case the reference refuses is a recorded exception (its reason in the report and in its note, the case
+left `pending_gpu`, the recipe's other cases still filling).
 - **The judge item of the release checklist** is its own job: `submit.sh --script judgecheck` (below).
 
 A recipe's `status` flips to `verified` only from a wave whose document records the gates it needs; the

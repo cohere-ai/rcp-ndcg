@@ -1403,16 +1403,25 @@ owner pushes, with the move to a Hugging Face organisation).
   a name no page carries or a page the snapshot no longer matches (see `### Public surface`).
 - **The pending reference cases are filled by `rcp_ndcg_test.case_fill`** (the unpublished `rcp-ndcg-test`):
   the release checklist's "fill every `pending_gpu` expected value" is now a tool -- one reference
-  subprocess per recipe over every pending case's inputs (the pairs rows the reference already reads), the
+  subprocess over every pending case's inputs (the pairs rows the reference already reads), the
   outputs shaped into the case's `expected.kind` (a scores matrix for a rerank recipe; the query x document
   similarity matrix for an embed or multi_vector one -- the cosine of the L2-normalized single vectors, the
   product's MaxSim for a late-interaction reference), and a line-wise YAML edit (`values`,
-  `status: reproduced`, the pending note's own sentence retired) that leaves every other byte of the
-  hand-written case in place.  A pending case the mode cannot fill is **skipped per case**, its file left
-  untouched and the reason recorded in the report: a media-bearing case's values cannot come from the
-  text-only reference (its `media` mode reports input facts, not model outputs), so a media-value fill is a
-  follow-up, and a `kind: none` case carries no values by design.  The reference entry path has one home now
+  `status: reproduced`, the fill recorded in the note: a known pending sentence retired, the fill's own
+  provenance appended where the note carries none) that leaves every other byte of the hand-written case
+  in place.  A media-bearing case is fillable -- its `media/` files ride the pairs row's `media` field in
+  the media set's own entry shape, which the reference's `embed`/`score` modes read exactly as stage 2's
+  media rows -- and a case the reference refuses (a container it cannot sample at the recipe's declared
+  video pin) is retried on its own and recorded as an exception (the reason in the report and in the
+  case's note, the case left `pending_gpu`) so one refused case cannot take the recipe's other cases down.
+  A pending case the mode cannot fill is **skipped per case**, its file left untouched and the reason
+  recorded in the report: `kind: none` carries no values by design and another stage's kind is not the
+  fill's to guess.  The reference entry path has one home now
   (`rcp_ndcg_test.equivalence.reference.reference_entry`, used by stages 1-2, the media stage and the fill).
+- **The media set's entry builders encode a caller's own bytes** (`rcp_ndcg_test.observe.media_set`):
+  `image_entry` and `video_entry` take a `payload` and a MIME type, so a reference case's `media/<file>`
+  and the synthetic media set go through one `data:`-URI encoder, and the case fill's `media` rows carry
+  the same entry shape the media stage sends.
 - **The recording pass and the cuda case fills are submittable jobs** (the unpublished `rcp-ndcg-test`):
   `RCP_RECORD_CORPUS=1` is forwarded by `submit.sh` into the job spec and makes `bootstrap.sh`'s wave mode
   pass `--record-corpus` (unset, the wave argv is byte-identical), so the observation corpora are
