@@ -37,7 +37,7 @@ It ships three published distributions and one unpublished one:
   judging, calibration, evaluation, runs and their runners. It pins `rcp-ndcg-core` to its own version.
 - **`rcp-ndcg-vllm`** -- the serving half: the GPU-validated serving recipes (24 families, 44 variants) as
   package data, the `rcp-ndcg-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
-  the stock `vllm/vllm-openai` image, the model plugins and the one engine patch. Its dependencies are pydantic
+  the stock `vllm/vllm-openai` image, the model plugins and the engine patches. Its dependencies are pydantic
   and PyYAML, it never imports `rcp-ndcg`, torch or vLLM at import time, and it pins no sibling.
 - **`rcp-ndcg-test`** -- the unpublished validation tooling: the model-card reference cases and their
   generated strata, one conformance suite with two targets, the verified fake engines, the equivalence harness
@@ -1519,28 +1519,30 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   0.0273 (8b) inside the published 0.05 all-documents bound and Kendall tau median 1.0. Each variant
   declares `overrides.gates.prob_p99_abs: 0.03`, the tight tolerance covering its measured maximum.
 
-- **The embeddinggemma-2 engine runs on FLEX_ATTENTION** (the E2 rounds 7-8 backend search): the model's
-  heterogeneous head dimensions (sliding 256, full 512) leave no default backend -- TRITON_ATTN's
-  prefill kernel needs 266240 B of shared memory against the 232448 B limit, and FA4's kernel rejects
-  head_dim 512 (`FlashAttention forward only supports head dimension at most 256`) -- while TORCH_SDPA
-  is not a decoder backend on the v0.31.0-based image (its enum value is empty: "this tag is only used
-  for ViT", so the manual-selection path raises `Backend TORCH_SDPA must be registered before use`).
-  The recipe pins `--attention-backend FLEX_ATTENTION` (no head-size cap; encoder-only,
-  sliding-window, non-causal and image-token attention all supported); neither `--enforce-eager` nor
-  `--max-num-batched-tokens` changes that compile-time demand (round 9 adds `--enforce-eager` for a
-  different, graph-capture interaction), and the Triton tile is not configurable on CUDA. The recipe
-  notes record the fallback order and each rejected backend's error; a CPU test pins the argv.
-
-- **The embeddinggemma-2 engine runs eager beside FLEX_ATTENTION** (the E2 round-9 engine-init crash):
-  FLEX_ATTENTION reaches engine init and dies in a dynamo/CUDAGraph interaction
-  (`torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing tensor output of
-  CUDAGraphs that has been overwritten by a subsequent run` at
-  `torch/nn/attention/flex_attention.py:2369`): the backend's compiled `create_block_mask`
-  (`mode="reduce-overhead"`) output is overwritten before the compiled `flex_attention` reads it.
-  `--enforce-eager` sets the engine's compilation and cudagraph modes to NONE, so the capture/warmup
-  run is skipped; the recipe pins it beside the backend. The notes record the fallback: the nightly
-  ships no decoder SDPA backend to hand `register_backend(Backend.TORCH_SDPA, ...)`, so that path
-  needs a plugin-provided AttentionBackend. A CPU test pins the argv and the recorded evidence.
+- **The embeddinggemma-2 engine runs on the plugin's registered `TORCH_SDPA` backend** (the E2 rounds
+  7-10 backend search): the model's heterogeneous head dimensions (sliding 256, full 512) leave no
+  image backend -- TRITON_ATTN's prefill kernel needs 266240 B of shared memory against the 232448 B
+  limit, FA4's kernel rejects head_dim 512 (`FlashAttention forward only supports head dimension at
+  most 256`), and TORCH_SDPA's enum value is the empty string ("this tag is only used for ViT"), so
+  the manual-selection path raises `Backend TORCH_SDPA must be registered before use. Use
+  register_backend(Backend.TORCH_SDPA, 'your.module.YourClass')`. FLEX_ATTENTION was the one image
+  backend that cleared the dimensions, and rounds 9-10 show it dying in its own
+  `torch.compile`/CUDAGraph interaction: `torch._dynamo.exc.InternalTorchDynamoError: RuntimeError:
+  Error: accessing tensor output of CUDAGraphs that has been overwritten by a subsequent run` at
+  `torch/nn/attention/flex_attention.py:2369` -- its compiled `create_block_mask`
+  (`mode="reduce-overhead"`) output is overwritten before the compiled `flex_attention` reads it, and
+  `--enforce-eager` does not stop it (that compile is the backend's own). The shipped path is the
+  mechanism the engine's own error names: the plugin's new `torch-sdpa-attention` patch registers
+  `TorchSdpaAttentionBackend` -- a small encoder-only backend over
+  `torch.nn.functional.scaled_dot_product_attention` (non-causal, no KV cache, no head-dimension cap,
+  the sliding layers' window as a mask, one SDPA call per packed request) -- under
+  `Backend.TORCH_SDPA`, and the recipe pins `--attention-backend TORCH_SDPA` with `--enforce-eager`
+  beside it. The recipe notes record the whole rejection chain and each rejected backend's error; a
+  CPU test pins the argv, the patch opt-in and the notes evidence, the plugin suite pins the
+  registration and the forward against a manual reference, and the lane's image read runs the class
+  against the pinned nightly's own vLLM. The GPU wave's T0 model load is the confirmation. (The
+  plugin's shared engine modules moved every plugin recipe's behaviour fingerprint, so the wave
+  re-records those recipes' corpora.)
 
 - **The corpus check accepts an MRL probe at the width its request asked for** (the E2 round-9 r3
   recording failure: `scores_finite_and_vector_widths` was False with `vector width 32 differs from
