@@ -2176,6 +2176,8 @@ def test_submit_topk_probe_forwards_the_operators_knobs(tmp_path: Path, monkeypa
             "RCP_TOPK_DEVICE": "cuda:1",
             "RCP_TOPK_REFERENCE_DEVICE": "cuda:2",
             "RCP_TOPK_GPU_FRACTION": "0.3",
+            "RCP_TOPK_DTYPE": "float32",
+            "RCP_TOPK_REFERENCE_DTYPE": "float32",
             "RCP_TOPK_CONTROL_VECTORS": "/etc/rcp/files/topkprobe/control-row26.json",
             "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
             "RCP_TOPK_REVISION": "0" * 40,
@@ -2189,6 +2191,8 @@ def test_submit_topk_probe_forwards_the_operators_knobs(tmp_path: Path, monkeypa
         ("RCP_TOPK_DEVICE", "cuda:1"),
         ("RCP_TOPK_REFERENCE_DEVICE", "cuda:2"),
         ("RCP_TOPK_GPU_FRACTION", "0.3"),
+        ("RCP_TOPK_DTYPE", "float32"),
+        ("RCP_TOPK_REFERENCE_DTYPE", "float32"),
         ("RCP_TOPK_CONTROL_VECTORS", "/etc/rcp/files/topkprobe/control-row26.json"),
         ("RCP_TOPK_MODEL", "topk-io/topk-embed-v1-small"),
         ("RCP_TOPK_REVISION", "0" * 40),
@@ -2220,8 +2224,83 @@ def test_the_topk_probe_dry_plan_names_the_probe_and_the_upload_prefix() -> None
     assert "/etc/rcp/files/topkprobe/topk_probe.py --check-engine" in plan
     assert "/etc/rcp/files/topkprobe/topk_probe.py" in plan
     assert "/etc/rcp/files/topkprobe/wave-cosines-topk-small.json" in plan
+    assert "--dtype bfloat16 --reference-dtype bfloat16" in plan
     assert "--rows 26" in plan
     assert "gs://YOUR-BUCKET/waves/topk-probe/" in plan
+
+
+def test_the_topk_probe_wrapper_forwards_the_dtypes(tmp_path: Path) -> None:
+    """The dtype knobs reach the probe's argv: the engine's LLM dtype and the checkpoint's own load
+    dtype on the reference side; unset means bfloat16 on both sides (the family's shipped dtype)."""
+    stage = tmp_path / "stage"
+    (stage / "recipes" / "topk-embed-v1").mkdir(parents=True)
+    (stage / "recipes" / "topk-embed-v1" / "family.yaml").write_text("id: topk-embed-v1\n", encoding="utf-8")
+    (stage / "pairs").mkdir()
+    (stage / "pairs" / "topk-embed-v1-small.jsonl").write_text("", encoding="utf-8")
+    calls = tmp_path / "calls.log"
+    probe_py = tmp_path / "topk_probe.py"
+    probe_py.write_text(
+        "import pathlib, sys\n"
+        f"open({str(calls)!r}, 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + chr(10))\n"
+        "if '--check-engine' not in sys.argv:\n"
+        "    out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1])\n"
+        "    out.mkdir(parents=True, exist_ok=True)\n"
+        "    (out / 'probe-report.md').write_text('stub', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'state=""\n'
+        'while (($#)); do [[ "$1" == "--state" ]] && { state="$2"; shift 2; continue; }; shift; done\n'
+        'mkdir -p "$state/reference/topk-embed-v1/bin"\n'
+        "printf '#!/bin/sh\\n' > \"$state/reference/topk-embed-v1/bin/python\"\n"
+        'chmod +x "$state/reference/topk-embed-v1/bin/python"\n',
+        encoding="utf-8",
+    )
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text("upload_tree() { :; }\n", encoding="utf-8")
+    # A gcloud that succeeds shadows the real one: the transfer is not this test's subject.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gcloud = bin_dir / "gcloud"
+    gcloud.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    gcloud.chmod(0o755)
+    base_env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "RCP_GCS_AUTH_FILE": "/nonexistent",
+        "RCP_BOOTSTRAP_SH": str(bootstrap),
+        "RCP_TOPK_PROBE_PY": str(probe_py),
+        "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
+        "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
+        "RCP_TOPK_REVISION": "0" * 40,
+        "RCP_GCS_HELPER_SH": str(gcs),
+    }
+    for extra, expected in (
+        ({}, "--dtype bfloat16 --reference-dtype bfloat16"),
+        (
+            {"RCP_TOPK_DTYPE": "float32", "RCP_TOPK_REFERENCE_DTYPE": "float32"},
+            "--dtype float32 --reference-dtype float32",
+        ),
+    ):
+        calls.unlink(missing_ok=True)
+        completed = subprocess.run(
+            ["bash", str(TOPK_PROBE_SH), str(stage), str(tmp_path / "out")],
+            capture_output=True,
+            text=True,
+            env=base_env | extra,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        lines = calls.read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "--check-engine"
+        assert expected in lines[1], lines[1]
+        # the wrapper builds the probe's argv by hand: the module's own parser must accept every flag
+        parsed = _probe_module().build_parser().parse_args(shlex.split(lines[1]))
+        assert (parsed.dtype, parsed.reference_dtype) == (
+            extra.get("RCP_TOPK_DTYPE", "bfloat16"),
+            extra.get("RCP_TOPK_REFERENCE_DTYPE", "bfloat16"),
+        )
 
 
 # --- topk_probe.py: the engine-side accessor and the image's API contract ---------------------------------
@@ -2425,6 +2504,89 @@ def test_the_probe_compares_tensors_that_differ_only_by_a_singleton_dimension() 
     differing = probe.stats(torch.ones(2, 3), torch.ones(2, 4))
     assert differing.get("max_abs_diff") is None
     assert differing["note"] == "shapes differ: no elementwise comparison"
+
+
+def test_the_probe_selects_the_text_only_rows_it_is_asked_for(tmp_path: Path) -> None:
+    """The wave's sub-0.999 tokens are mostly on TEXT documents, which the image sweep cannot see
+    (``_pairs_rows`` selects image-carrying rows): ``--text-rows`` / ``--query-rows`` name them, the
+    document side takes the row's text and the query side its query."""
+    probe = _probe_module()
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(
+        json.dumps({"query": "a query", "documents": ["a document"]})
+        + "\n"
+        + json.dumps({"query": "row one query", "documents": ["row one document"]})
+        + "\n"
+        + json.dumps({"query": "row two query", "documents": ["row two document"]})
+        + "\n",
+        encoding="utf-8",
+    )
+    args = probe.build_parser().parse_args(
+        [
+            "--out",
+            "/tmp/probe",
+            "--model",
+            "topk-io/topk-embed-v1-small",
+            "--revision",
+            "0" * 40,
+            "--pairs",
+            str(pairs),
+            "--reference-python",
+            "/tmp/reference/bin/python",
+            "--text-rows",
+            "1",
+            "--query-rows",
+            "2",
+        ]
+    )
+    rows = probe._text_rows(args)
+    assert [(index, item["side"], item["text"]) for index, item in rows] == [
+        (1, "document", "row one document"),
+        (2, "query", "row two query"),
+    ]
+    assert probe._text_render(args, rows[0][1]) == "Document: row one document"
+    assert probe._text_render(args, rows[1][1]) == "Query: row two query"
+    # a node submission separates the list with ';' (helm's --set splits on commas) and ',' still works
+    assert probe._index_set("17;18") == {17, 18}
+    assert probe._index_set("17,18") == {17, 18}
+    assert probe._index_set("17+18") == {17, 18}
+    assert probe._index_set("") == set()
+    # the render strips, exactly as the checkpoint's format_document/format_query does
+    stripped = probe._text_render(args, {"side": "document", "text": "  padded  "})
+    assert stripped == "Document:   padded"
+    # a text row's reference subprocess carries the text and the side, never an image
+    command = probe._reference_command(args, None, None, "/tmp/d.pt", rows[0][1])
+    assert command[command.index("--text") + 1] == "row one document"
+    assert command[command.index("--text-side") + 1] == "document"
+    assert "--image" not in command
+
+
+def test_the_reference_subprocess_gets_its_own_dtype() -> None:
+    """The engine side spawns the reference side; a dtype experiment that moves only the engine compares
+    two precisions (the first fp32 run did: every row read the engine's fp32 tower against the
+    reference's bf16 one), so ``--reference-dtype`` must travel in the subprocess argv."""
+    probe = _probe_module()
+    args = probe.build_parser().parse_args(
+        [
+            "--out",
+            "/tmp/probe",
+            "--model",
+            "topk-io/topk-embed-v1-small",
+            "--revision",
+            "0" * 40,
+            "--pairs",
+            "/tmp/pairs.jsonl",
+            "--reference-python",
+            "/tmp/reference/bin/python",
+            "--reference-dtype",
+            "float32",
+        ]
+    )
+    command = probe._reference_command(args, "/tmp/i.png", "/tmp/e.pt", "/tmp/d.pt")
+    assert command[command.index("--side") + 1] == "reference"
+    assert command[command.index("--reference-dtype") + 1] == "float32"
+    assert command[command.index("--model") + 1] == "topk-io/topk-embed-v1-small"
+    assert command[command.index("--out") + 1] == "/tmp/d.pt"
 
 
 def test_the_probe_names_the_tensors_a_recording_missed() -> None:

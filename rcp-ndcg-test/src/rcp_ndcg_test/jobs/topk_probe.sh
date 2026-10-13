@@ -31,11 +31,14 @@
 # mounted token file, exported by submit.sh's wrapper; never printed), RCP_BOOTSTRAP_SH /
 # RCP_TOPK_PROBE_PY / RCP_TOPK_WAVE_COSINES / RCP_GCS_HELPER_SH / RCP_GCS_HELPER_PY (the mounted
 # helpers), RCP_TOPK_VARIANT (small; the variant whose recipe and checkpoint the probe uses),
-# RCP_TOPK_ROWS (empty: every image document row), RCP_TOPK_DEVICE (cuda:0; the engine),
+# RCP_TOPK_ROWS (empty: every image document row), RCP_TOPK_TEXT_ROWS / RCP_TOPK_QUERY_ROWS (empty:
+# no text-only row; the named pairs rows are probed as text documents / queries), RCP_TOPK_DEVICE
+# (cuda:0; the engine),
 # RCP_TOPK_REFERENCE_DEVICE (cuda:1; the reference subprocess), RCP_TOPK_GPU_FRACTION (0.45; vLLM's
-# gpu_memory_utilization), RCP_TOPK_CONTROL_VECTORS (unset: the control is `not_run` and the report
-# says so), RCP_TOPK_MODEL / RCP_TOPK_REVISION (unset: read from the staged family.yaml in the client
-# environment, the recipe's own pin).
+# gpu_memory_utilization), RCP_TOPK_DTYPE / RCP_TOPK_REFERENCE_DTYPE (bfloat16; the engine's LLM dtype
+# and the checkpoint's own load dtype on the reference side), RCP_TOPK_CONTROL_VECTORS (unset: the
+# control is `not_run` and the report says so), RCP_TOPK_MODEL / RCP_TOPK_REVISION (unset: read from the
+# staged family.yaml in the client environment, the recipe's own pin).
 # TOPK_DRY=1 prints the plan and runs nothing.  The transfer runs gcloud or gsutil when either is
 # present, else the python gcsfs helper (jobs/gcs.sh owns the dispatch).
 
@@ -60,9 +63,13 @@ GCS_SH="${RCP_GCS_HELPER_SH:-/etc/rcp/files/gcshelper/gcs.sh}"
 GCS_HELPER_PY="${RCP_GCS_HELPER_PY:-/etc/rcp/files/gcshelper/gcs.py}"
 VARIANT="${RCP_TOPK_VARIANT:-small}"
 ROWS="${RCP_TOPK_ROWS:-}"
+TEXT_ROWS="${RCP_TOPK_TEXT_ROWS:-}"
+QUERY_ROWS="${RCP_TOPK_QUERY_ROWS:-}"
 DEVICE="${RCP_TOPK_DEVICE:-cuda:0}"
 REFERENCE_DEVICE="${RCP_TOPK_REFERENCE_DEVICE:-cuda:1}"
 GPU_FRACTION="${RCP_TOPK_GPU_FRACTION:-0.45}"
+DTYPE="${RCP_TOPK_DTYPE:-bfloat16}"
+REFERENCE_DTYPE="${RCP_TOPK_REFERENCE_DTYPE:-bfloat16}"
 CONTROL_VECTORS="${RCP_TOPK_CONTROL_VECTORS:-}"
 RECIPE="topk-embed-v1-$VARIANT"
 
@@ -76,8 +83,11 @@ if [[ "${TOPK_DRY:-0}" == "1" ]]; then
   echo "                --model <checkpoint> --revision <pinned> --recipe-dir <stage>/recipes/topk-embed-v1 \\"
   echo "                --reference-python <state>/reference/topk-embed-v1/bin/python \\"
   echo "                --device $DEVICE --reference-device $REFERENCE_DEVICE \\"
+  echo "                --dtype $DTYPE --reference-dtype $REFERENCE_DTYPE \\"
   echo "                --gpu-memory-fraction $GPU_FRACTION --wave-cosines $WAVE_COSINES"
   [[ -n "$ROWS" ]] && echo "                --rows $ROWS"
+  [[ -n "$TEXT_ROWS" ]] && echo "                --text-rows $TEXT_ROWS"
+  [[ -n "$QUERY_ROWS" ]] && echo "                --query-rows $QUERY_ROWS"
   [[ -n "$CONTROL_VECTORS" ]] && echo "                --control-vectors $CONTROL_VECTORS"
   echo "  4. upload     <state>/probe/* to ${OUT_URI%/}/topk-probe/ (a failed transfer fails the job)"
   exit 0
@@ -163,9 +173,13 @@ probe_args=(
   --reference-python "$REFERENCE_PYTHON"
   --device "$DEVICE"
   --reference-device "$REFERENCE_DEVICE"
+  --dtype "$DTYPE"
+  --reference-dtype "$REFERENCE_DTYPE"
   --gpu-memory-fraction "$GPU_FRACTION"
 )
 [[ -n "$ROWS" ]] && probe_args+=(--rows "$ROWS")
+[[ -n "$TEXT_ROWS" ]] && probe_args+=(--text-rows "$TEXT_ROWS")
+[[ -n "$QUERY_ROWS" ]] && probe_args+=(--query-rows "$QUERY_ROWS")
 [[ -n "$CONTROL_VECTORS" ]] && probe_args+=(--control-vectors "$CONTROL_VECTORS")
 [[ -f "$WAVE_COSINES" ]] && probe_args+=(--wave-cosines "$WAVE_COSINES")
 set +e
