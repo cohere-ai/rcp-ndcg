@@ -85,16 +85,21 @@ class MediaRef(BaseModel):
 
 
 class TextPart(BaseModel):
+    """A run of text in a ``Content``; ``text`` is the string, empty runs allowed."""
+
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["text"] = "text"
     text: str
 
     def media_refs(self) -> list[MediaRef]:
+        """The media references of a text part: none (media is carried by media parts)."""
         return []
 
 
 class ImagePart(BaseModel):
+    """One image reference in a ``Content``; ``page`` cites a rendered page's source page."""
+
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["image"] = "image"
@@ -104,6 +109,7 @@ class ImagePart(BaseModel):
     page: int | None = None
 
     def media_refs(self) -> list[MediaRef]:
+        """The part's own media references: the one image at ``ref``."""
         return [self.ref]
 
 
@@ -188,6 +194,7 @@ class Content(RootModel[list[Part]]):
     # -- construction ------------------------------------------------------
     @classmethod
     def from_text(cls, text: str) -> Content:
+        """One text part holding ``text``."""
         return cls(root=[TextPart(text=text)])
 
     @classmethod
@@ -197,11 +204,13 @@ class Content(RootModel[list[Part]]):
 
     @classmethod
     def from_parts(cls, parts: Sequence[Part]) -> Content:
+        """A content of ``parts`` in order: text and media keep their places."""
         return cls(root=list(parts))
 
     # -- views -------------------------------------------------------------
     @property
     def parts(self) -> list[Part]:
+        """The parts in order: the body as the model reads it."""
         return self.root
 
     @property
@@ -222,14 +231,17 @@ class Content(RootModel[list[Part]]):
 
     @property
     def has_media(self) -> bool:
+        """Whether any part is an image or video part: media is carried by parts, not by text."""
         return any(isinstance(part, ImagePart | VideoPart) for part in self.root)
 
     @property
     def has_text(self) -> bool:
+        """Whether any text part carries non-empty text (empty runs count as no text)."""
         return any(isinstance(part, TextPart) and part.text for part in self.root)
 
     @property
     def modality(self) -> Modality:
+        """The content's modality: ``TEXT``, ``IMAGE``, ``VIDEO``, or ``MULTIMODAL`` for text beside media."""
         has_image = any(isinstance(p, ImagePart) for p in self.root)
         has_video = any(isinstance(p, VideoPart) for p in self.root)
         if self.has_text and (has_image or has_video):

@@ -67,7 +67,7 @@ class Dataset(pydantic.main.BaseModel)
 
 ## `Document`
 
-pydantic_model
+pydantic_model — One document: its body (``text`` or ``content``), its id, and its optional ``title``.
 
 ```text
 class Document(rcp_ndcg_core.records.Text)
@@ -241,7 +241,7 @@ class QrelRow(pydantic.main.BaseModel)
 
 ## `Query`
 
-pydantic_model
+pydantic_model — One query: its body (``text`` or ``content``), its id, and its optional per-query ``instruction``.
 
 ```text
 class Query(rcp_ndcg_core.records.Text)
@@ -257,7 +257,7 @@ class Query(rcp_ndcg_core.records.Text)
 
 ## `RankingExample`
 
-pydantic_model
+pydantic_model — One query with its candidate documents: ids, bodies (``docs`` or ``contents``), qrels and scores.
 
 ```text
 class RankingExample(rcp_ndcg_core.records.Query)
