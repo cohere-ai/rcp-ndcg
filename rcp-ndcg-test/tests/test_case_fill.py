@@ -203,6 +203,25 @@ def _write_case_with_note(
     return path
 
 
+def _pending_copies(source: Path, destination: Path) -> None:
+    """Copy a recipe's shipped cases and rewrite every generated one as pending, keeping its inputs.
+
+    The shipped cases are the cuda fill's outputs (values written, pending notes retired); these tests
+    exercise the fill itself over pending cases, the state the cases lanes' generator writes, so the
+    generated cases are written back to it -- values null, ``status: pending_gpu``, the fixture's pending
+    note -- while every other field (the media refs, the declared tolerances, the inputs) stays.
+    """
+    shutil.copytree(source, destination)
+    for path in sorted(destination.glob("*.yaml")):
+        case = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if (case.get("source") or {}).get("kind") != "generated":
+            continue  # a hand-written card case carries its own values, never the fill's pending state
+        case["expected"]["values"] = None
+        case["expected"]["status"] = "pending_gpu"
+        case["notes"] = _PENDING_NOTE
+        path.write_text(yaml.safe_dump(case, sort_keys=False, allow_unicode=True, width=110), encoding="utf-8")
+
+
 def _pending_cases(tmp_path: Path, recipe_id: str, *, kind: str, note: str = _PENDING_NOTE) -> Path:
     """A complete strata grid (the four required cells) of pending cases for one fixture recipe.
 
@@ -423,7 +442,7 @@ def test_a_media_case_is_no_longer_skipped_and_a_kind_none_case_still_is(tmp_pat
         variant="qwen3-vl-reranker-2b",
     )
     cases_root = tmp_path / "cases"
-    shutil.copytree(REAL_CASES / "qwen3-vl-reranker-2b", cases_root / "qwen3-vl-reranker-2b")
+    _pending_copies(REAL_CASES / "qwen3-vl-reranker-2b", cases_root / "qwen3-vl-reranker-2b")
     none_case = _write_case(
         cases_root / "qwen3-vl-reranker-2b",
         "qwen3-vl-reranker-2b",
@@ -476,7 +495,7 @@ def test_an_embed_media_case_fills_and_carries_its_own_tolerance(tmp_path: Path)
         variant="qwen3-vl-embedding-2b",
     )
     cases_root = tmp_path / "cases"
-    shutil.copytree(REAL_CASES / "qwen3-vl-embedding-2b", cases_root / "qwen3-vl-embedding-2b")
+    _pending_copies(REAL_CASES / "qwen3-vl-embedding-2b", cases_root / "qwen3-vl-embedding-2b")
 
     report = fill_cases(recipe, cases_root, reference_python="python", filled_at="2026-10-12")
     assert report.mode == "embed" and report.pending_before == 9
