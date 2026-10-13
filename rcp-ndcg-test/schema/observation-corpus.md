@@ -59,6 +59,12 @@ MJPEG AVI clip per size at the recipe's declared video sampling, written on CPU 
 test; its protocol edges go bare -- more images than `max_images`, an undecodable image, and, for a recipe
 that takes video, more clips than `max_videos` and an undecodable container.
 
+The plan's version (`CORPUS_PLAN_VERSION`) is provenance, not a staleness key: the re-record selectors key a
+corpus by the behaviour fingerprint, which deliberately excludes harness inputs, so a plan change (a new
+stratum, a changed ladder) neither moves a fingerprint nor invalidates a committed corpus -- the release's
+re-record wave re-observes the new contexts. That is a known limit: a corpus recorded under an older plan
+keeps passing replay until the wave replaces it.
+
 ## The observation corpus (one directory per recording)
 
 Written at `observations/vllm-<version>/<recipe>/<fingerprint>/<recorded-at>/` under the wave's output
