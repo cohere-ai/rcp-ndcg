@@ -1904,7 +1904,7 @@ def iter_families(root: str | Path | None = None) -> list[RecipeFamily]:
 
     Inputs: a root directory whose direct children are family directories (``family.yaml``).  Outputs: the
     families, sorted by id.  Raises :class:`RecipeError` naming the directory when any family fails to load —
-    a broken family among thirteen must not pass silently.
+    a broken family must not pass silently.
     """
     root = Path(root) if root is not None else default_recipes_root()
     if not root.is_dir():

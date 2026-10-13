@@ -176,11 +176,12 @@ where = ["src"]
 "*" = ["*.txt", "*.yaml"]
 "rcp_ndcg.examples" = ["tiny/*.jsonl", "tiny/*.json", "runs/*.yaml"]
 
-# The repository is a uv workspace.  ``rcp-ndcg`` (this manifest) is the
+# The repository is a uv workspace with four members: this manifest (the
 # pipeline: storage, data, retrieval, judging, calibration, evaluation, runs and
-# the CLI.  ``rcp-ndcg-core`` is the metric, the gains, the protocols,
-# the schemas and the IRT estimators (numpy + pydantic; the estimators need its
-# [irt] extra: torch, scipy), released in lockstep with this package.
-# ``rcp-ndcg-vllm`` is deliberately outside the workspace: it installs
-# into an engine image that carries its own vLLM and torch, and a lock entry
-# would bring their conflict back.  See rcp-ndcg-vllm/README.md.
+# the CLI), ``rcp-ndcg-core`` (the metric, the gains, the protocols,
+# the schemas and the IRT estimators; numpy + pydantic, its [irt] extra: torch,
+# scipy; released in lockstep with this package) and the unpublished
+# ``rcp-ndcg-test``, plus ``rcp-ndcg-vllm`` (the serving half).
+# ``rcp-ndcg-vllm`` depends on pydantic and PyYAML alone, so the same wheel
+# installs into an engine image that carries its own vLLM and torch; its
+# workspace lock entry is inert there.  See rcp-ndcg-vllm/README.md.

@@ -1,9 +1,9 @@
-# What ships in an sdist besides the package code.
-include LICENSE NOTICE CITATION.cff *.md requirements-constraints.txt
+# What ships in an sdist besides the package code.  Paths are relative to this directory: the
+# citation, the constraints file, schemas/, skills/ and examples/ live at the repository root and are
+# not part of this sdist (setuptools refuses paths outside the project), so naming them here only
+# produced "no files found" build warnings.
+include LICENSE NOTICE
 recursive-include src/rcp_ndcg *.py *.txt *.yaml *.json *.jsonl
-recursive-include schemas *.json
-recursive-include skills *.md
-recursive-include examples *.py *.yaml *.json *.jsonl
 
 # setuptools adds tests/test*.py to an sdist by default; the suite is not shipped.
 prune tests

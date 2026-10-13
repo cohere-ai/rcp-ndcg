@@ -49,6 +49,32 @@ jobs:
           ls -a dist
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
           test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
+      - name: every workspace manifest carries the tag's version
+        run: |
+          # The tag's version is that of all four pyproject.toml files (AGENTS.md): the release builds three,
+          # but a stale version in the unpublished rcp-ndcg-test leaves uv.lock and the stated rule
+          # disagreeing. The tag is the authority; every manifest must agree with it.
+          version="${GITHUB_REF_NAME#v}"
+          python3 - "$version" <<'PY'
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          version = sys.argv[1]
+          for path in (
+              "rcp-ndcg/pyproject.toml",
+              "rcp-ndcg-core/pyproject.toml",
+              "rcp-ndcg-vllm/pyproject.toml",
+              "rcp-ndcg-test/pyproject.toml",
+          ):
+              manifest = Path(path)
+              if not manifest.is_file():
+                  raise SystemExit(f"{path} is not in this tree: the workspace has four members")
+              declared = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]["version"]
+              if declared != version:
+                  raise SystemExit(f"{path} declares {declared!r}, and the tag is {version!r}")
+          print(f"all four workspace manifests carry {version}")
+          PY
       - name: the citation version is the tag's
         run: |
           # CITATION.cff carries the release's version and nothing checked it: a tag could ship a citation

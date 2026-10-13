@@ -2653,8 +2653,7 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   config unless a `Sender` is given), the sync bridge -- one rule: a non-transport sender must provide
   `run`, or the constructor raises `ConfigError` (no `asyncio.run` fallback) -- and the lifecycle:
   `close()` synchronous, `async aclose()` awaited, both context managers. `EmbeddingClient`,
-  `RerankClient`, `PoolingClient` and `JudgeClient` derive from it (the judge's adoption is this release's;
-  see Unreleased/Changed).
+  `RerankClient`, `PoolingClient` and `JudgeClient` derive from it (the judge's adoption is this release's).
 - **Auth in the transport**: every adapter profile declares `API_KEY_ENV`, `KEY_REQUIRED` and
   `AUTH_HEADER` (the rerank profiles gain them: `cohere` `CO_API_KEY`/`COHERE_API_KEY`, `voyage`
   `VOYAGE_API_KEY`; the served wires and pooling take none), and the transport resolves the key -- the
@@ -3909,8 +3908,10 @@ text it sends to the declared budget.
   appends a present per-query instruction (the empty string included) under the same predicate as
   `format_query`. `DocumentEstimate` and `EstimateFlags` -- the value `score_document` and `insert_document`
   return -- join the facade's `__all__` (an additive surface change, pinned in the snapshot). Docstrings and
-  the generated pages cover the record modules' public classes, properties and constructors, and the
-  `gs://bucket/` example is the `gs://YOUR-BUCKET/` placeholder.
+  the generated pages cover the record modules' public classes, properties and constructors; the
+  `Judgement` docstring and the exported `judgement.v1` description now state what the record checks -- a
+  non-empty criteria mapping with 0 or 1 per verdict, the exact `C1..C<num_criteria>` keys checked at fit
+  time -- and the `gs://bucket/` example is the `gs://YOUR-BUCKET/` placeholder.
 
 - **The recipe schema's exported JSON Schema follows the served image's own dtype literal** (the
   pre-0.0.1 fleet's vLLM findings): `ServeConfig.dtype`'s enum loses `float8` (which the pinned
