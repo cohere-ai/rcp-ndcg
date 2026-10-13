@@ -278,13 +278,17 @@ def verdicts(criteria: Mapping[str, int], num_criteria: int) -> list[int]:
 
     Raises:
         ValueError: the keys are not exactly ``C1..C<num_criteria>``: a verdict missing, or one for a criterion
-            the fit does not read. Nothing is defaulted: a missing verdict is not a fail.
+            the fit does not read. Nothing is defaulted: a missing verdict is not a fail. A verdict whose value
+            is not 0 or 1 is refused, not truncated.
     """
     labels = [f"C{k + 1}" for k in range(num_criteria)]
     if set(criteria) != set(labels):
         missing = sorted(set(labels) - set(criteria))
         unknown = sorted(set(criteria) - set(labels))
         raise ValueError(f"the verdicts do not match the criteria {labels}: missing {missing}, unknown {unknown}")
+    bad = {label: criteria[label] for label in labels if criteria[label] not in (0, 1)}
+    if bad:
+        raise ValueError(f"criterion verdicts must be 0 or 1, got {bad}")
     return [int(criteria[label]) for label in labels]
 
 
