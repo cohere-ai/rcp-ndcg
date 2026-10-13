@@ -395,7 +395,7 @@ def test_the_client_and_the_engine_video_pixel_budgets_must_agree(tmp_path: Path
         "engine_video_min_pixels": 4096,
         "engine_video_max_pixels": 7864320,
     }
-    pin = {"videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320}}
+    pin = {"videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320}, "fps": 2}
     loaded = load_recipe(video_recipe("matching", client_policy=pinned, serve_kwargs=pin))
     assert loaded.client["video_policy"]["engine_video_max_pixels"] == 7864320
 
@@ -637,7 +637,9 @@ def test_convert_must_match_the_roles_route(tmp_path: Path) -> None:
 
 
 def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_args: list[str]) -> Path:
-    """``fixture-vl-video`` copied with the client's video policy and serve's ``extra_args`` as given."""
+    """``fixture-vl-video`` copied with the client's video policy and the given pruning args added to
+    serve's ``extra_args`` (the fixture's own video sampling pin is kept: it is the client's declaration's
+    engine half)."""
     import shutil
 
     import yaml
@@ -651,9 +653,115 @@ def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_a
         data["client"].pop("video_policy", None)
     else:
         data["client"]["video_policy"] = client_policy
-    data["serve"]["extra_args"] = extra_args
+    data["serve"]["extra_args"] = [*data["serve"]["extra_args"], *extra_args]
     (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return copied
+
+
+def _video_sampling_recipe(
+    tmp_path: Path,
+    *,
+    client_policy: dict | None,
+    extra_args: list[str] | None = None,
+    mm_processor_kwargs: dict | None = None,
+) -> Path:
+    """``fixture-vl-video`` copied with the client's video policy and the engine's sampling pins as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-vl-video"
+    copied.mkdir(parents=True)
+    for name in ("family.yaml", "reference.py", "chat.jinja"):
+        shutil.copy(recipe_dirs_path() / "fixture-vl-video" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    if client_policy is None:
+        data["client"].pop("video_policy", None)
+    else:
+        data["client"]["video_policy"] = client_policy
+    if extra_args is not None:
+        data["serve"]["extra_args"] = extra_args
+    if mm_processor_kwargs is not None:
+        data["serve"]["mm_processor_kwargs"] = {**data["serve"]["mm_processor_kwargs"], **mm_processor_kwargs}
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+_VIDEO_URL_POLICY = {"num_frames": 4, "wire": "video_url", "engine_video_pinning": True}
+
+
+def test_a_serve_video_sampling_pin_must_match_the_client_policy(tmp_path: Path) -> None:
+    """The client counts the frames the ENGINE samples: a serve pin that differs from
+    ``client.video_policy`` would make the count describe a clip the engine never renders
+    (reviews/final-vllm-glm53.md D1)."""
+    with pytest.raises(RecipeError, match="fps"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "fps",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 4}}'],
+            )
+        )
+    with pytest.raises(RecipeError, match="num_frames"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "frames",
+                client_policy=_VIDEO_URL_POLICY,
+                extra_args=["--media-io-kwargs", '{"video": {"num_frames": 8}}'],
+            )
+        )
+
+
+def test_a_client_video_sampling_declaration_without_the_serve_pin_is_refused(tmp_path: Path) -> None:
+    """The engine's own default sampling would decide, so a ``video_url`` declaration the serve args do
+    not pin is refused rather than counted against a rule the engine does not run."""
+    with pytest.raises(RecipeError, match="num_frames"):
+        load_recipe(_video_sampling_recipe(tmp_path / "none", client_policy=_VIDEO_URL_POLICY, extra_args=[]))
+
+
+def test_a_serve_video_sampling_pin_without_the_client_declaration_is_refused(tmp_path: Path) -> None:
+    """A pin the client does not declare describes frames the client's count does not describe."""
+    with pytest.raises(RecipeError, match="video_policy"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "pin",
+                client_policy=None,
+                extra_args=["--media-io-kwargs", '{"video": {"num_frames": 4}}'],
+            )
+        )
+
+
+def test_the_flat_and_the_media_io_sampling_pins_are_one_rule(tmp_path: Path) -> None:
+    """The embeddinggemma-2 shape: the engine's decoder pin (``--media-io-kwargs``) and the processor pin
+    (``serve.mm_processor_kwargs``) carry the same numbers, and an fps pin beside ``max_frames`` realizes
+    the declared ``num_frames`` (the checkpoint's processor samples at fps and caps the count)."""
+    recipe = load_recipe(
+        _video_sampling_recipe(
+            tmp_path / "agree",
+            client_policy=_VIDEO_URL_POLICY,
+            extra_args=["--media-io-kwargs", '{"video": {"fps": 60, "max_frames": 4}}'],
+            mm_processor_kwargs={"fps": 60, "max_frames": 4},
+        )
+    )
+    assert recipe.client["video_policy"]["num_frames"] == 4
+    # The flat keys are the pin's other home on their own (the embeddinggemma-2 processor pin).
+    load_recipe(
+        _video_sampling_recipe(
+            tmp_path / "flat",
+            client_policy=_VIDEO_URL_POLICY,
+            extra_args=[],
+            mm_processor_kwargs={"fps": 60, "max_frames": 4},
+        )
+    )
+    with pytest.raises(RecipeError, match="twice"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "disagree",
+                client_policy=_VIDEO_URL_POLICY,
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 30, "max_frames": 4}}'],
+                mm_processor_kwargs={"fps": 60, "max_frames": 4},
+            )
+        )
 
 
 #: The fixture's video policy plus a declared pruning rate and method.
