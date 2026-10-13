@@ -3762,6 +3762,22 @@ text it sends to the declared budget.
   the runner to abandon it, then calls the restart) and pins the refusal; without the guard the body
   starts a second engine.
 
+- **The harness's own requests carry a `request_shape: token_ids` recipe its own render ids, not bare
+  texts** (the E2 round-10 r2 recording failure: pplx-embed-v2-context's corpus step still killed the
+  EngineCore): the corpus's standing probes and its plan's bare rows (the uncut ladder, the long content
+  kinds, the wire variants) built their role bodies from raw texts, which such a checkpoint's plugin
+  refuses by name -- the refusal kills the EngineCore -- while its client sends pre-tokenised ids.  One
+  helper (`rcp_ndcg_test.equivalence.fitting.sent_ids`: the product's template and tokenizer with the
+  declared split parses, the construction the pooling client's `_sent_ids` sends) now builds the ids for
+  the standing probes, the plan's bare rows and the smoke request (which had its own copy), the document
+  side under the declared `document_split_special_tokens` parse; the recorder's own error probes (the
+  over-length body and the unknown field) carry the same ids, so a `--record --record-corpus` wave no
+  longer kills the engine before the corpus step; and a token-ids model layer probes no `/tokenize` (its
+  input is an id list: there is no prompt text to tokenize, and the record carries the ids as sent).  A
+  CPU test pins the plan's bare rows against the product's construction, one pins the probes against the
+  client's own captured request for the same text, and the stub engine now serves vLLM's token-id prompts
+  so the ids are accepted end to end.
+
 ### Changed
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

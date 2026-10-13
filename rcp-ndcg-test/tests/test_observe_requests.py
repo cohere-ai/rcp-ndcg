@@ -34,7 +34,7 @@ from rcp_ndcg_test.observe.requests import (
 from rcp_ndcg_test.observe.sources import SourceCorpus, SourceDoc, SourceMedia, SourceQuery
 from rcp_ndcg_vllm.recipe import load_family, load_recipe, resolve_recipe
 
-from tests.conftest import RECIPES
+from tests.conftest import RECIPES, token_ids_recipe
 
 _CREDENTIAL = re.compile(
     r"(hf_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|ya29\.[0-9A-Za-z_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)",
@@ -526,6 +526,57 @@ def test_the_content_kinds_too_long_for_a_pairs_row_are_sent_both_ways() -> None
     assert "content:long_token_base64" in ids and "content:long_token_base64:uncut" in ids
     assert plan.strata["content:long_token_base64:uncut"]["present"] is True
     assert plan.strata["content:code:uncut"]["present"] is False  # its pairs row carries it
+
+
+def test_the_corpus_plan_sends_a_token_ids_recipe_the_document_render_ids(tmp_path: Path) -> None:
+    """A ``request_shape: token_ids`` recipe's bare rows carry the recipe's own render ids of the row's
+    document -- the document side under the declared split parse, the construction the recipe's client
+    sends -- never a bare text: such an engine's pooler refuses a prefix-less input by name, and the
+    refusal kills the EngineCore (the r2 wave's pplx-embed-v2-context corpus failure).  The probe test
+    in ``test_observe_corpus`` drives the same ids through a stub engine that speaks vLLM's token-id
+    prompts."""
+    from rcp_ndcg_test.equivalence import fitting
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    recipe = token_ids_recipe(tmp_path)
+    tokenizer = tokenizer_of(recipe)
+    template = fitting.client_template(recipe)
+    assert template is not None
+    plan = corpus_plan(recipe, tokenizer, [{"request_id": "row-0", "query": "a query", "documents": ["a document"]}])
+    bare = {row["request_id"]: row["body"] for row in plan.bare}
+    rows = {row["request_id"]: row for row in plan.rows}
+    flag = template.adds_special_tokens("document")
+
+    def expected(text: str) -> list[int]:
+        return list(
+            tokenizer.ids(
+                template.render("document", tokenizer, document=text),
+                add_special_tokens=flag,
+                split_special_tokens=True,
+            )
+        )
+
+    # The declared split parse is what ships: the spellings text's added tokens textify (the reference's
+    # parse), so the ids differ from the file's own parse of the same render.
+    spellings = synthetic_text("special_token_spellings", tokenizer)
+    assert bare["content:special_token_spellings:uncut"]["input"] == [expected(spellings)]
+    assert expected(spellings) != list(
+        tokenizer.ids(template.render("document", tokenizer, document=spellings), add_special_tokens=flag)
+    ), "the declared document split parse textifies an added token"
+    # The uncut ladder rung and a wire variant carry the same construction.
+    ladder = rows["ladder:over_by_1"]["documents"][0]
+    assert bare["ladder:over_by_1:uncut"]["input"] == [expected(ladder)]
+    assert bare["wire:encoding_format=float,embed_dtype=float16"]["input"] == [expected("a document")]
+
+
+def test_a_text_shaped_recipe_carries_its_bare_rows_as_text() -> None:
+    """A recipe without ``request_shape: token_ids`` is unchanged: its bare rows carry the text, the
+    construction the token-ids wire alone replaces with the recipe's own render ids."""
+    for recipe_id in ("fixture-embed", "fixture-multi-vector"):
+        _, _, plan = _corpus_plan(recipe_id)
+        bodies = [row["body"]["input"] for row in plan.bare if "input" in row["body"]]
+        assert bodies, recipe_id
+        assert all(isinstance(item, str) for body in bodies for item in body), recipe_id
 
 
 def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:

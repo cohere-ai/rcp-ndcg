@@ -1,8 +1,9 @@
 """A stub vLLM engine for CPU tests: stdlib ``http.server`` + numpy, deterministically.
 
-It serves ``/v1/models``, ``/v1/embeddings`` (float and base64), ``/pooling`` (float, base64 and raw-bytes) and
-``/rerank`` and ``/score`` from the same SHA-256-seeded numbers as the fixture references
-(``tests/fixtures/deterministic.py``), so a clean stub equals its recipe's reference exactly and stage 2 passes;
+It serves ``/v1/models``, ``/v1/embeddings`` (float and base64), ``/pooling`` (float, base64 and raw-bytes,
+and vLLM's token-id prompts: one vector per id) and ``/rerank`` and ``/score`` from the same SHA-256-seeded
+numbers as the fixture references (``tests/fixtures/deterministic.py``), so a clean stub equals its recipe's
+reference exactly and stage 2 passes;
 ``--noise`` adds seeded noise above the gates.  vLLM's own flags are accepted and ignored, so
 ``rcp_ndcg_test.jobs.run_wave --vllm-cmd`` can drive it with a recipe's real ``serve_argv``.
 
@@ -234,6 +235,19 @@ def _inputs(body: dict[str, Any]) -> list[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return value
     raise _BadRequest("the stub serves string inputs only")
+
+
+def _token_id_prompts(body: dict[str, Any]) -> list[list[int]] | None:
+    """The request's token-id prompts (vLLM's ``/pooling`` takes ``list[list[int]]`` prompts): the id lists
+    when the input is one, else ``None`` (a text, a chat body, a media part list)."""
+    value = body.get("input")
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(item, list) and all(isinstance(token, int) for token in item) for item in value)
+    ):
+        return [[int(token) for token in item] for item in value]
+    return None
 
 
 def _json_flag(value: str | None) -> dict[str, Any]:
@@ -544,8 +558,9 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_json(reply)
 
     def _pooling(self, body: dict[str, Any]) -> None:
-        """One vector per whitespace token per input text, in float, base64 (with shape) or raw bytes; a
-        chat-shaped request yields one vector per prompt token (its media tokens included) and its usage.
+        """One vector per prompt token per input, in float, base64 (with shape) or raw bytes; a chat-shaped
+        request yields one vector per prompt token (its media tokens included) and its usage, and a token-id
+        prompt one vector per id (vLLM's ``/pooling`` takes token-id prompts).
 
         The route refuses a per-request ``dimensions`` outright (vLLM v0.31.0), whatever the checkpoint
         declares: a client must cut client-side."""
@@ -553,6 +568,10 @@ class _Handler(BaseHTTPRequestHandler):
             raise _BadRequest("dimensions is currently not supported")
         if "messages" in body:
             self._pooling_chat(body)
+            return
+        prompts = _token_id_prompts(body)
+        if prompts is not None:
+            self._pooling_token_ids(prompts, body)
             return
         inputs = _inputs(body)
         self._check_length(inputs)
@@ -571,6 +590,44 @@ class _Handler(BaseHTTPRequestHandler):
         data = []
         for index, text in enumerate(inputs):
             matrix = token_vectors(text, "tok", noise=_ARGS.noise).astype(code)
+            if fmt == "base64":
+                data.append(
+                    {
+                        "index": index,
+                        "data": base64.b64encode(matrix.reshape(-1).tobytes()).decode("ascii"),
+                        "shape": list(matrix.shape),
+                    }
+                )
+            elif fmt == "float":
+                data.append({"index": index, "data": matrix.tolist()})
+            else:
+                raise _BadRequest(f"encoding_format {fmt!r} is not served by the stub")
+        self._send_json({"object": "list", "data": data})
+
+    def _pooling_token_ids(self, prompts: list[list[int]], body: dict[str, Any]) -> None:
+        """A token-id ``/pooling`` request: one vector per id, in the request's encoding; the engine's
+        over-length rule counts the ids (the prompt has no text to tokenize)."""
+        for ids in prompts:
+            if not ids:
+                raise _BadRequest("the prompt is empty")
+            if len(ids) > _ARGS.max_model_len:
+                raise _BadRequest(
+                    f"This model's maximum context length is {_ARGS.max_model_len} tokens, "
+                    f"however you requested {len(ids)} tokens"
+                )
+        fmt = body.get("encoding_format", "float")
+        dtype = body.get("embed_dtype", "float16")
+        code = {"float16": "<f2", "float32": "<f4"}.get(str(dtype))
+        if code is None:
+            raise _BadRequest(f"embed_dtype {dtype!r} is not served by the stub")
+        matrices = [
+            np.stack([vector(f"id:{token}", "tok", noise=_ARGS.noise) for token in ids]).astype(code) for ids in prompts
+        ]
+        if fmt == "bytes":
+            self._send_raw(b"".join(matrix.tobytes() for matrix in matrices))
+            return
+        data = []
+        for index, matrix in enumerate(matrices):
             if fmt == "base64":
                 data.append(
                     {
