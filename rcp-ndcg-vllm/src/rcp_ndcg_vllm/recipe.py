@@ -105,9 +105,10 @@ __all__ = [
     "serve_argv",
 ]
 
-_PINNED_VLLM_REF = "d0d6e5f3a"
-"""The upstream vLLM commit the PoolerConfig field list below was read at
-(the ``.refs/vllm`` checkout of the rcp-ndcg working copy; image ``vllm/vllm-openai:v0.31.0``)."""
+_PINNED_VLLM_REF = "v0.31.0"
+"""The upstream vLLM release the PoolerConfig field list below was read at (the shipped image's tag,
+``vllm/vllm-openai:v0.31.0``); a field that exists only past the tag is refused, because the engine's
+argparse/``TypeAdapter`` rejects it at CLI parse."""
 
 PINNED_POOLER_CONFIG_FIELDS = (
     "task",
@@ -115,7 +116,6 @@ PINNED_POOLER_CONFIG_FIELDS = (
     "seq_pooling_type",
     "tok_pooling_type",
     "use_activation",
-    "enable_flash_late_interaction",
     "dimensions",
     "enable_chunked_processing",
     "max_embed_len",
@@ -124,9 +124,10 @@ PINNED_POOLER_CONFIG_FIELDS = (
     "step_tag_id",
     "returned_token_ids",
 )
-"""Every field of vLLM's ``PoolerConfig`` at the pinned ref (read from
-``vllm/config/pooler.py`` at :data:`_PINNED_VLLM_REF`); ``serve.pooler_config`` keys are validated
-against this tuple, because the engine rejects unknown keys (r-vllm-drift risk 2)."""
+"""Every field of vLLM's ``PoolerConfig`` at the pinned release (``vllm/config/pooler.py`` at
+:data:`_PINNED_VLLM_REF`); ``serve.pooler_config`` keys are validated against this tuple, because the
+engine rejects unknown keys (r-vllm-drift risk 2).  ``enable_flash_late_interaction`` is deliberately
+absent: it exists at the tag's successor checkout, not at the shipped tag."""
 
 _ID_PATTERN = r"^[a-z0-9][a-z0-9.-]*$"
 _REVISION_PATTERN = r"^[0-9a-f]{40}$"
@@ -305,7 +306,7 @@ class ServeConfig(BaseModel):
     )
     trust_remote_code: bool = Field(default=False, description="vLLM --trust-remote-code flag")
     max_model_len: int = Field(gt=0, description="vLLM --max-model-len; at least every client budget")
-    dtype: Literal["auto", "float16", "bfloat16", "float32", "float8", "half"] = Field(description="vLLM --dtype")
+    dtype: Literal["auto", "half", "float16", "bfloat16", "float", "float32"] = Field(description="vLLM --dtype")
     plugin: str | None = Field(
         default=None, description="pip spec of a vllm.general_plugins package, installed before the engine starts"
     )
@@ -737,6 +738,17 @@ class Recipe(BaseModel):
             raise ValueError(
                 f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint; a judge speaks "
                 "the chat completions API through the generate runner"
+            )
+        if self.role == "embed" and self.serve.convert not in (None, "embed"):
+            raise ValueError(
+                f"serve.convert ({self.serve.convert}) serves a classify endpoint; an embed recipe's client "
+                "speaks the embeddings wire, so the served route would be one the client never calls -- "
+                "declare convert: embed, or drop it"
+            )
+        if self.role == "multi_vector" and self.serve.convert is not None:
+            raise ValueError(
+                f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint; a multi_vector "
+                "recipe's client speaks the pooling wire over the checkpoint as it is -- drop serve.convert"
             )
         if judge and self.serve.runner != "generate":
             raise ValueError(

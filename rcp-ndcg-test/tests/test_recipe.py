@@ -584,6 +584,58 @@ def test_an_engine_specific_field_in_the_client_block_is_refused(tmp_path: Path,
         load_recipe(copied)
 
 
+def _serve_field_recipe(tmp_path: Path, *, base: str = "fixture-embed", **serve: object) -> Path:
+    """A fixture recipe copied with the given ``serve`` fields set (the recipe schema's engine half)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / base
+    copied.mkdir(parents=True)
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / base / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["serve"].update(serve)
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+def test_the_engine_dtype_literal_is_vllms_model_dtype(tmp_path: Path) -> None:
+    """vLLM v0.31.0's ``ModelDType`` (what ``--dtype``'s argparse choices come from) is
+    ``auto``/``half``/``float16``/``bfloat16``/``float``/``float32``: the schema accepted ``float8`` (not a
+    ModelDType: the engine refuses it at CLI parse) and refused ``float`` (reviews/final-vllm-ds41.md D3)."""
+    for dtype in ("auto", "half", "float16", "bfloat16", "float", "float32"):
+        assert load_recipe(_serve_field_recipe(tmp_path / dtype, dtype=dtype)).serve.dtype == dtype
+    with pytest.raises(RecipeError, match="float8"):
+        load_recipe(_serve_field_recipe(tmp_path / "float8", dtype="float8"))
+
+
+def test_pooler_config_keys_are_the_served_images_own(tmp_path: Path) -> None:
+    """The shipped image is vLLM v0.31.0; ``enable_flash_late_interaction`` is a PoolerConfig field only at
+    the checkout 376 commits past that tag, so accepting it renders an argv the engine refuses at parse
+    (reviews/final-vllm-ds41.md D4)."""
+    with pytest.raises(RecipeError, match="enable_flash_late_interaction"):
+        load_recipe(_serve_field_recipe(tmp_path / "late", pooler_config={"enable_flash_late_interaction": True}))
+    recipe = load_recipe(_serve_field_recipe(tmp_path / "ok", pooler_config={"use_activation": False}))
+    assert recipe.serve.pooler_config == {"use_activation": False}
+
+
+def test_convert_must_match_the_roles_route(tmp_path: Path) -> None:
+    """``--convert`` selects the engine's pooling task: an embed recipe may only declare ``embed`` (a
+    classify conversion serves a route the embeddings client never calls), and a multi_vector recipe must
+    declare none -- its client speaks the pooling wire over the checkpoint as it is
+    (reviews/final-vllm-ds41.md D5)."""
+    assert load_recipe(_serve_field_recipe(tmp_path / "embed", convert="embed")).serve.convert == "embed"
+    with pytest.raises(RecipeError, match="classify"):
+        load_recipe(_serve_field_recipe(tmp_path / "embed-classify", convert="classify"))
+    for convert in ("embed", "classify"):
+        with pytest.raises(RecipeError, match="convert"):
+            load_recipe(
+                _serve_field_recipe(tmp_path / f"multi-{convert}", base="fixture-multi-vector", convert=convert)
+            )
+    assert load_recipe(_serve_field_recipe(tmp_path / "multi-none", base="fixture-multi-vector")).serve.convert is None
+
+
 def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_args: list[str]) -> Path:
     """``fixture-vl-video`` copied with the client's video policy and serve's ``extra_args`` as given."""
     import shutil

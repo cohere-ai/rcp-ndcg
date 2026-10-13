@@ -326,11 +326,11 @@
           "description": "vLLM --dtype",
           "enum": [
             "auto",
+            "half",
             "float16",
             "bfloat16",
-            "float32",
-            "float8",
-            "half"
+            "float",
+            "float32"
           ],
           "title": "Dtype",
           "type": "string"
