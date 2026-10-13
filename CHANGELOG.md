@@ -3918,6 +3918,19 @@ text it sends to the declared budget.
   `rcp-ndcg-vllm/schema/family.schema.json` are regenerated; the two shipped recipes that carried
   `float8` are unaffected (none did).
 
+- **The topk-embed-v1 per-token gate's failure is not the GDN prefill kernel** (lane topk-gdn, the
+  pinned image's own switch): the `vllm/vllm-openai:v0.31.0` tag vendors flash-linear-attention
+  (`vllm/third_party/flash_linear_attention/ops/chunk.py`) and its resolver runs it for the 18
+  GatedDeltaNet layers when `--gdn-prefill-backend triton` (or `cutedsl`) is set, so the earlier
+  "the engine cannot run the reference's algorithm" reading was wrong. The controlled probe
+  (`submit.sh --script topk-probe`, now with `RCP_TOPK_GDN_BACKEND`; its report records the ENGAGED
+  backend read from the loaded layers, never the requested flag) ran rows 17/18, row 12's query and
+  image rows 20-28 on the same RC under flashinfer, triton and cutedsl: every per-token minimum is
+  unchanged within the probe's run-to-run spread (text rows 0.7863 / 0.7125 flashinfer, 0.7814 /
+  0.7042 triton, 0.7643 / 0.7154 cutedsl; row 26 -0.1145 / -0.1140 / -0.1134) and the per-layer
+  cosines agree to 4 decimals across the three kernels. `topk-embed-v1`'s notes and the topkrun lane
+  report are rescoped accordingly; no recipe behaviour, gate, bound or dtype changed.
+
 ### Changed
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

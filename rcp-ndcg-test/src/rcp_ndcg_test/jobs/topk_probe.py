@@ -10,7 +10,8 @@ compared without the numbers being in the report.
 
     python3 topk_probe.py --out <dir> --model <checkpoint> --revision <rev> --pairs <pairs.jsonl> \
         --reference-python <state>/reference/topk-embed-v1/bin/python [--rows 20,26,27] \
-        [--text-rows 17,18] [--query-rows 12] [--dtype bfloat16] [--reference-dtype bfloat16]
+        [--text-rows 17,18] [--query-rows 12] [--dtype bfloat16] [--reference-dtype bfloat16] \
+        [--gdn-backend triton]
 
     # the reference side (called by the engine side, never by hand):
     <reference-python> topk_probe.py --side reference --image <file.png> --model <checkpoint> \
@@ -41,6 +42,15 @@ The experiments (the report's Part B.1 table):
       layer from ``layer_types`` at init, so the brief's window experiment cannot be run here (a
       post-init rewrite is a no-op and would only produce a false exclusion).  E7 compares the text
       model's per-layer hidden states instead; no config is mutated.
+
+The GDN prefill backend (``--gdn-backend``): the tag's own switch (``--gdn-prefill-backend`` ->
+``EngineArgs.additional_config["gdn_prefill_backend"]``) selects which kernel computes the 18
+GatedDeltaNet layers' prefill: ``flashinfer`` (the resolver's ``auto`` default on this image),
+``triton`` (the vendored flash-linear-attention chunked scan, the algorithm the checkpoint's reference
+runs) or ``cutedsl``.  The report records the ENGAGED backend read from the loaded layers
+(``QwenGatedDeltaNetAttention.gdn_prefill_backend``, assigned from the resolver's ``active_backend``)
+beside the resolver's own log lines: a request the platform refuses falls back to triton inside vLLM,
+and a cell labelled by the request alone would be read as a negative result for a backend that never ran.
 """
 
 from __future__ import annotations
@@ -51,6 +61,7 @@ import functools
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import subprocess
@@ -64,6 +75,12 @@ FIRST_DIVERGENCE = 1e-2
 
 CONTROL_ROW = 26
 """The row whose wave-recorded vectors the control compares against (the worst image row)."""
+
+GDN_BACKENDS = ("flashinfer", "triton", "cutedsl")
+"""The tag's ``--gdn-prefill-backend`` choices (``engine/arg_utils.py`` at v0.31.0)."""
+
+GDN_BACKEND_LOGGER = "vllm.model_executor.layers.mamba.gdn.qwen_gdn_linear_attn"
+"""The module logger that emits the resolver's own ``Using ... GDN prefill kernel`` decision line."""
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +473,74 @@ def engine_text_layers(model: Any) -> Any:
     )
 
 
+def engine_llm_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+    """The in-process ``LLM`` kwargs (the engine's own offline pooling configuration).
+
+    ``--gdn-backend`` rides the tag's own switch: ``EngineArgs`` writes ``--gdn-prefill-backend`` into
+    ``additional_config["gdn_prefill_backend"]`` and ``_resolve_gdn_prefill_backend`` reads it
+    (``engine/arg_utils.py``, ``model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py`` at v0.31.0).
+    Unset leaves ``additional_config`` out entirely, so vLLM's resolver default (``auto``) applies --
+    the configuration every earlier measurement ran.
+    """
+    kwargs: dict[str, Any] = {
+        "model": args.model,
+        "revision": args.revision,
+        "runner": "pooling",
+        "dtype": args.dtype,
+        "max_model_len": args.max_model_len,
+        "trust_remote_code": False,
+        "enforce_eager": True,
+        "gpu_memory_utilization": args.gpu_memory_fraction,
+        "limit_mm_per_prompt": {"image": 1},
+        "mm_processor_kwargs": {"images_kwargs": {"min_pixels": args.min_pixels, "max_pixels": args.max_pixels}},
+        "hf_overrides": {"document_keep_token_ids": [args.image_token_id]},
+    }
+    if args.gdn_backend:
+        kwargs["additional_config"] = {"gdn_prefill_backend": args.gdn_backend}
+    return kwargs
+
+
+def engaged_gdn_backends(model: Any) -> dict[str, Any]:
+    """The GDN prefill backend the loaded layers actually chose, read off the layers themselves.
+
+    ``ChunkGatedDeltaRule.__init__`` assigns ``self.gdn_prefill_backend = active_backend`` (the
+    resolver's choice, which can differ from the request: ``cutedsl`` needs SM10.x, ``head_k_dim`` 128
+    and cuda_runtime >= 13, and a refused request falls back to triton) and every GDN layer copies it,
+    so this is the engaged identity -- never the requested flag.  A model that exposes no such layer
+    fails loudly: a run that cannot name its backend must not read as a negative result.
+    """
+    layers = [module for module in model.modules() if getattr(module, "gdn_prefill_backend", None)]
+    if not layers:
+        raise RuntimeError(
+            "cannot read the engaged GDN prefill backend: no module under the loaded model carries "
+            "gdn_prefill_backend (v0.31.0's QwenGatedDeltaNetAttention.__init__ assigns it from "
+            "ChunkGatedDeltaRule.gdn_prefill_backend).  Re-read "
+            "vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py against the engine image."
+        )
+    return {"engaged": sorted({str(module.gdn_prefill_backend) for module in layers}), "layers": len(layers)}
+
+
+class GdnBackendLogCapture(logging.Handler):
+    """The GDN resolver's own decision lines, captured while the engine builds the model.
+
+    ``_log_gdn_backend_decision`` emits ``Using <chosen> GDN prefill kernel (requested=...,
+    head_k_dim=...)`` on the gdn module's logger (``logger.info_once``), and a refused request emits the
+    fallback warning there too.  The handler attaches to that module's logger, not to ``vllm``:
+    ``LLM.__init__`` configures vLLM's logging through ``dictConfig``, which resets the ``vllm``
+    logger's handlers, while the module logger keeps whatever is attached to it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.INFO)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Keep one resolver line; every other record is left to vLLM's own handlers."""
+        message = record.getMessage()
+        if "GDN prefill" in message:
+            self.lines.append(message)
+
+
 def engine_side(args: argparse.Namespace) -> int:
     """Load vLLM in process, run E0-E7 for the requested rows, write the report."""
     force_single_process_engine()  # before the vLLM import: the model must be reachable in this process
@@ -495,20 +580,32 @@ def engine_side(args: argparse.Namespace) -> int:
         "instead and no config is mutated",
     }
 
-    llm = LLM(
-        model=args.model,
-        revision=args.revision,
-        runner="pooling",
-        dtype=args.dtype,
-        max_model_len=args.max_model_len,
-        trust_remote_code=False,
-        enforce_eager=True,
-        gpu_memory_utilization=args.gpu_memory_fraction,
-        limit_mm_per_prompt={"image": 1},
-        mm_processor_kwargs={"images_kwargs": {"min_pixels": args.min_pixels, "max_pixels": args.max_pixels}},
-        hf_overrides={"document_keep_token_ids": [args.image_token_id]},
-    )
+    capture = GdnBackendLogCapture()
+    backend_logger = logging.getLogger(GDN_BACKEND_LOGGER)
+    backend_logger.addHandler(capture)
+    try:
+        llm = LLM(**engine_llm_kwargs(args))
+    finally:
+        backend_logger.removeHandler(capture)
     model = engine_model(llm)
+    engaged = engaged_gdn_backends(model)
+    report["gdn_prefill"] = {
+        "requested": args.gdn_backend or "auto",
+        "requested_source": (
+            "RCP_TOPK_GDN_BACKEND / --gdn-backend"
+            if args.gdn_backend
+            else "the engine's own default (no --gdn-backend)"
+        ),
+        **engaged,
+        "log_lines": capture.lines,
+        "match": None if not args.gdn_backend else engaged["engaged"] == [args.gdn_backend],
+    }
+    print(
+        "topk_probe: GDN prefill backend requested "
+        f"{report['gdn_prefill']['requested']!r}, engaged {report['gdn_prefill']['engaged']} on "
+        f"{report['gdn_prefill']['layers']} layers (match {report['gdn_prefill']['match']})"
+        + (f"; engine log: {report['gdn_prefill']['log_lines']}" if report["gdn_prefill"]["log_lines"] else "")
+    )
     visual = engine_visual(model)
     text_layers = engine_text_layers(model)
     report["experiments"]["E1_preprocessing"]["engine_visual"] = type(visual).__name__
@@ -963,12 +1060,20 @@ def _write_report(out_dir: Path, report: dict[str, Any]) -> None:
         else str(control.get("reason", ""))
     )
     missing = sorted({key for row in report["rows"] for key in (row.get("E3_missing_tensors") or [])})
+    gdn = report.get("gdn_prefill") or {}
+    gdn_note = (
+        f"- GDN prefill backend: requested `{gdn.get('requested')}` ({gdn.get('requested_source')}), "
+        f"**engaged `{','.join(gdn.get('engaged') or [])}` on {gdn.get('layers')} layers** "
+        f"(match {gdn.get('match')})"
+        + (f"; engine log: `{'; '.join(gdn.get('log_lines') or [])}`" if gdn.get("log_lines") else "")
+    )
     lines = [
         "# topk-embed-v1 GPU probe",
         "",
         f"- model: `{report['model']}` @ `{report['revision']}`",
         f"- engine image: `{report['engine_image']}`",
         f"- dtype: engine `{report.get('dtype')}`, reference `{report.get('reference_dtype')}`",
+        gdn_note,
         f"- control (probe vectors vs the wave's recorded vectors): `{control.get('status')}` {control_note}",
         "- engine-tower tensors recorded: "
         + (
@@ -1058,6 +1163,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--reference-dtype",
         default="bfloat16",
         help="the checkpoint's own load dtype on the reference side",
+    )
+    parser.add_argument(
+        "--gdn-backend",
+        choices=[""] + list(GDN_BACKENDS),
+        default="",
+        help="the GDN prefill backend to request (the tag's --gdn-prefill-backend); unset means the "
+        "engine's own resolver default (auto), and the report records the ENGAGED backend",
     )
     parser.add_argument("--gpu-memory-fraction", type=float, default=0.45)
     parser.add_argument("--control-vectors", default="")

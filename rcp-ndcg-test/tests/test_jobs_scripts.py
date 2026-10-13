@@ -2178,6 +2178,7 @@ def test_submit_topk_probe_forwards_the_operators_knobs(tmp_path: Path, monkeypa
             "RCP_TOPK_GPU_FRACTION": "0.3",
             "RCP_TOPK_DTYPE": "float32",
             "RCP_TOPK_REFERENCE_DTYPE": "float32",
+            "RCP_TOPK_GDN_BACKEND": "triton",
             "RCP_TOPK_CONTROL_VECTORS": "/etc/rcp/files/topkprobe/control-row26.json",
             "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
             "RCP_TOPK_REVISION": "0" * 40,
@@ -2193,6 +2194,7 @@ def test_submit_topk_probe_forwards_the_operators_knobs(tmp_path: Path, monkeypa
         ("RCP_TOPK_GPU_FRACTION", "0.3"),
         ("RCP_TOPK_DTYPE", "float32"),
         ("RCP_TOPK_REFERENCE_DTYPE", "float32"),
+        ("RCP_TOPK_GDN_BACKEND", "triton"),
         ("RCP_TOPK_CONTROL_VECTORS", "/etc/rcp/files/topkprobe/control-row26.json"),
         ("RCP_TOPK_MODEL", "topk-io/topk-embed-v1-small"),
         ("RCP_TOPK_REVISION", "0" * 40),
@@ -2216,6 +2218,7 @@ def test_the_topk_probe_dry_plan_names_the_probe_and_the_upload_prefix() -> None
             "TOPK_DRY": "1",
             "RCP_GCS_AUTH_FILE": "/nonexistent",
             "RCP_TOPK_ROWS": "26",
+            "RCP_TOPK_GDN_BACKEND": "triton",
         },
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
@@ -2226,6 +2229,7 @@ def test_the_topk_probe_dry_plan_names_the_probe_and_the_upload_prefix() -> None
     assert "/etc/rcp/files/topkprobe/wave-cosines-topk-small.json" in plan
     assert "--dtype bfloat16 --reference-dtype bfloat16" in plan
     assert "--rows 26" in plan
+    assert "--gdn-backend triton" in plan
     assert "gs://YOUR-BUCKET/waves/topk-probe/" in plan
 
 
@@ -2303,6 +2307,74 @@ def test_the_topk_probe_wrapper_forwards_the_dtypes(tmp_path: Path) -> None:
         )
 
 
+def test_the_topk_probe_wrapper_forwards_the_gdn_backend(tmp_path: Path) -> None:
+    """The GDN prefill backend knob reaches the probe's argv as ``--gdn-backend``, and the module's own
+    parser accepts it; unset means no flag, so the engine's own resolver default (``auto``) applies --
+    what every earlier measurement ran.  A requested backend the platform refuses falls back inside
+    vLLM, so the probe records the ENGAGED backend from the layers, never this flag."""
+    stage = tmp_path / "stage"
+    (stage / "recipes" / "topk-embed-v1").mkdir(parents=True)
+    (stage / "recipes" / "topk-embed-v1" / "family.yaml").write_text("id: topk-embed-v1\n", encoding="utf-8")
+    (stage / "pairs").mkdir()
+    (stage / "pairs" / "topk-embed-v1-small.jsonl").write_text("", encoding="utf-8")
+    calls = tmp_path / "calls.log"
+    probe_py = tmp_path / "topk_probe.py"
+    probe_py.write_text(
+        "import pathlib, sys\n"
+        f"open({str(calls)!r}, 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + chr(10))\n"
+        "if '--check-engine' not in sys.argv:\n"
+        "    out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1])\n"
+        "    out.mkdir(parents=True, exist_ok=True)\n"
+        "    (out / 'probe-report.md').write_text('stub', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'state=""\n'
+        'while (($#)); do [[ "$1" == "--state" ]] && { state="$2"; shift 2; continue; }; shift; done\n'
+        'mkdir -p "$state/reference/topk-embed-v1/bin"\n'
+        "printf '#!/bin/sh\\n' > \"$state/reference/topk-embed-v1/bin/python\"\n"
+        'chmod +x "$state/reference/topk-embed-v1/bin/python"\n',
+        encoding="utf-8",
+    )
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text("upload_tree() { :; }\n", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gcloud = bin_dir / "gcloud"
+    gcloud.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    gcloud.chmod(0o755)
+    base_env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "RCP_GCS_AUTH_FILE": "/nonexistent",
+        "RCP_BOOTSTRAP_SH": str(bootstrap),
+        "RCP_TOPK_PROBE_PY": str(probe_py),
+        "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
+        "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
+        "RCP_TOPK_REVISION": "0" * 40,
+        "RCP_GCS_HELPER_SH": str(gcs),
+    }
+    for extra in ({}, {"RCP_TOPK_GDN_BACKEND": "triton"}, {"RCP_TOPK_GDN_BACKEND": "cutedsl"}):
+        calls.unlink(missing_ok=True)
+        completed = subprocess.run(
+            ["bash", str(TOPK_PROBE_SH), str(stage), str(tmp_path / "out")],
+            capture_output=True,
+            text=True,
+            env=base_env | extra,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        lines = calls.read_text(encoding="utf-8").splitlines()
+        assert lines[0] == "--check-engine"
+        parsed = _probe_module().build_parser().parse_args(shlex.split(lines[1]))
+        assert parsed.gdn_backend == extra.get("RCP_TOPK_GDN_BACKEND", "")
+        if extra:
+            assert f"--gdn-backend {extra['RCP_TOPK_GDN_BACKEND']}" in lines[1], lines[1]
+        else:
+            assert "--gdn-backend" not in lines[1], lines[1]
+
+
 # --- topk_probe.py: the engine-side accessor and the image's API contract ---------------------------------
 
 
@@ -2370,6 +2442,36 @@ def test_the_probe_names_every_model_path_it_tried_when_the_api_moves() -> None:
     for path in probe.ENGINE_MODEL_PATHS:
         assert ".".join(path) in message
     assert "VLLM_ENABLE_V1_MULTIPROCESSING=0" in message
+
+
+def test_the_probe_passes_the_requested_gdn_backend_into_the_engines_own_config() -> None:
+    """The tag's own switch (``--gdn-prefill-backend`` -> ``EngineArgs.additional_config``
+    ["gdn_prefill_backend"], read by ``_resolve_gdn_prefill_backend``) is what the probe sets when
+    ``--gdn-backend`` is given; unset passes no ``additional_config`` at all, so the engine's own
+    resolver default (``auto``) applies -- the configuration every earlier measurement ran."""
+    probe = _probe_module()
+    requested = probe.build_parser().parse_args(["--gdn-backend", "triton"])
+    assert probe.engine_llm_kwargs(requested)["additional_config"] == {"gdn_prefill_backend": "triton"}
+    unset = probe.build_parser().parse_args([])
+    assert "additional_config" not in probe.engine_llm_kwargs(unset)
+
+
+def test_the_probe_reads_the_engaged_gdn_backend_from_the_layers_not_the_request() -> None:
+    """vLLM's resolver may fall back (``cutedsl`` needs SM10.x, ``head_k_dim`` 128 and cuda_runtime
+    >= 13; a refused request falls back to triton with a warning), so the report's engaged value is read
+    from the layers' own ``gdn_prefill_backend`` (assigned from the resolver's ``active_backend`` in
+    ``ChunkGatedDeltaRule.__init__``), never from the requested flag; a model that exposes none fails
+    loudly, because a run that cannot name its backend must not read as a negative result."""
+    probe = _probe_module()
+    model = torch.nn.Module()
+    for index, backend in enumerate(("triton", "triton", None)):
+        layer = torch.nn.Module()
+        if backend is not None:
+            layer.gdn_prefill_backend = backend
+        model.add_module(f"layer_{index}", layer)
+    assert probe.engaged_gdn_backends(model) == {"engaged": ["triton"], "layers": 2}
+    with pytest.raises(RuntimeError, match="gdn_prefill_backend"):
+        probe.engaged_gdn_backends(torch.nn.Module())
 
 
 def test_the_probe_engine_check_names_the_api_the_probe_depends_on(
