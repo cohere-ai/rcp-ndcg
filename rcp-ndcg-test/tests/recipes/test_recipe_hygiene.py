@@ -31,8 +31,10 @@ INTERNAL_LABELS = re.compile(
 
 #: The one legal ``gs://`` host in a shipped recipe file: the declared placeholder (AGENTS.md's
 #: public-names rule). A wave report lives in operator storage, so any other bucket host is a private name
-#: a reader of the wheel cannot resolve -- the placeholder is what a shipped file cites.
+#: a reader of the wheel cannot resolve -- the placeholder is what a shipped file cites. A bare scheme
+#: mention (``a ``gs://`` object``) carries no host and is not a bucket.
 PLACEHOLDER_BUCKET = "YOUR-BUCKET"
+_GS_HOST = re.compile(r"gs://([^/\s`\"')\\]+)")
 
 #: The internal design-document and lane-branch citations no shipped file may carry: the design document is
 #: operator scaffolding and a lane branch is unknown outside this workspace. Case-insensitive: a lowercased
@@ -123,7 +125,7 @@ def test_no_shipped_recipe_file_names_a_real_bucket() -> None:
         for path in sorted(root.rglob("*"))
         if path.is_file() and "__pycache__" not in path.parts
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
-        if "gs://" in line and f"gs://{PLACEHOLDER_BUCKET}/" not in line
+        if (match := _GS_HOST.search(line)) and match.group(1) != PLACEHOLDER_BUCKET
     ]
     assert not hits, "real buckets in shipped recipe files:\n" + "\n".join(hits)
 
