@@ -42,7 +42,7 @@ stage2: n_vectors 95, n_comparisons 475, passed False
 
 The brief's "10 of 475 vectors" is **20** in the artefact: four document rows (31, 32, 36, 37), five
 widths each. The *gate minima* are all row 36 document 0, exactly the four numbers the brief quotes.
-Every other comparison is ≥ 0.994; every query vector is ≥ 0.9997.
+Every comparison outside those four rows is ≥ 0.999; every query vector is ≥ 0.9997.
 
 | referent | cosines (full, 128, 256, 512, 768) | what the row is |
 |---|---|---|
@@ -359,7 +359,7 @@ the `judgecheck` branch:
 Then the one command (operator-side, from the checkout, exactly as the other scripts are submitted):
 
 ```
-RCP_SUBMIT_DIR=$PWD/shake/ops/submit-<rc>-topkprobe \
+RCP_SUBMIT_DIR=<a directory for the job CLI's output> \
 RCP_KJOBS_CONFIG=<the job CLI config> RCP_GCS_AUTH_FILE=<the mounted auth script> \
 RCP_HF_TOKEN_FILE=<the HF token file> \
 rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script topk-probe --priority dev-high \
@@ -375,9 +375,9 @@ report lands at `<OUT_PREFIX>/topk-probe/topk-probe/`.
 
 - The lane started on `rfc-0001`'s tip `c668c439` (the branch already contained it; nothing to merge,
   no merge commit).
-- **No code changed**: `git status` is clean except this report and the two harness files (which the
-  gate's ruff/format checks cover). No test was added because no fix landed; the CPU reproductions
-  above are the evidence, and the Part B harness is a plan artefact.
+- **No code changed**: the tree's only committed delta from `rfc-0001` is this report and the two
+  harness files (which the gate's ruff/format checks cover). No test was added because no fix landed;
+  the CPU reproductions above are the evidence, and the Part B harness is a plan artefact.
 - Checks run on the tree: `uv run --no-sync ruff check .` and `ruff format --check .` after the
   harness files were added; `shellcheck` on the wrapper; `bash -n` on the wrapper; `python
   topk_probe.py --help` and an offline exercise of its row selection and report writer.
@@ -389,7 +389,8 @@ report lands at `<OUT_PREFIX>/topk-probe/topk-probe/`.
   revision died at `test-pkg` with `exit=139` (SIGSEGV) at
   `test_record_and_wave.py::test_wave_packs_engines_so_reference_gpus_remain` under load average 79;
   that test passes in isolation (`1 passed in 14.78s`) and the retry passed, so the crash is
-  environmental (the known load flake), not a tree failure.
+  environmental (the known load flake), not a tree failure. The report's later commits are text-only
+  and follow the gated revision.
 
 ## 5. Open questions / what could not be proven
 
