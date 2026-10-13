@@ -26,7 +26,10 @@ README has the runnable commands; this page maps what lives where.
   reference venv>` runs the recipe's reference implementation over every pending case's inputs and writes
   its own outputs into the case YAML (`values`, `status: reproduced`, the fill recorded in the note). A
   media-bearing case's `media/` files enter the pairs row's `media` field, so the reference's own mode
-  reads them and the case fills like a text one; a case the reference refuses (a container it cannot
+  reads them and the case fills like a text one; a case's run-level `instruction` enters the pairs row
+  only when the recipe's client places it (a recipe declaring `instruction: none` drops it by
+  declaration, so the reference reads exactly the inputs the served request carries); a case the
+  reference refuses (a container it cannot
   sample at the recipe's pin) is retried on its own and recorded as an exception -- the reason in the
   report and in the case's note, the case left `pending_gpu` -- and a pending case the mode cannot fill
   (`kind: none`, or another stage's kind) is skipped per case with its reason recorded and its file

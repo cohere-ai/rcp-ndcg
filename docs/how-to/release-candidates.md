@@ -153,6 +153,8 @@ the edited YAMLs to `<OUT_PREFIX>/<wave>/cases/<recipe>/` and a `casefill-report
 operator reviews the diff and copies the YAMLs into the repository. A pending case the fill cannot
 produce is recorded skipped, its file untouched (a `kind: none` case carries no values by design); a
 media-bearing case's `media/` files enter the pairs row's `media` field, so it fills like a text one; a
+case's run-level `instruction` enters the pairs row only when the recipe's client places it (a recipe
+declaring `instruction: none` drops it by declaration); a
 case the reference refuses is a recorded exception (its reason in the report and in its note, the case
 left `pending_gpu`, the recipe's other cases still filling).
 - **The judge item of the release checklist** is its own job: `submit.sh --script judgecheck` (below).
