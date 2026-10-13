@@ -209,8 +209,7 @@ def test_stage2_vectors_report_every_text_the_client_changed(tmp_path: Path, cas
 def test_stage2_vectors_gate_an_over_cap_text_when_no_deviation_is_declared(tmp_path: Path, case: str) -> None:
     """Without the declared deviation the changed text STAYS in the gates: the reference renders the uncut
     input, so the served/reference divergence is a named gate failure, never a silent exclusion from the
-    verdict (the rerank path's equivalent is pinned; the vector path's was not --
-    reviews/final-harness-ds41.md D4)."""
+    verdict (the rerank path's equivalent is pinned; the vector path's was not)."""
     recipe, over = _case(case, tmp_path)
     pairs = write_pairs(tmp_path / "pairs.jsonl", [over, UNDER_CAP])
     engine = start_stub("--tokenizer", str(TOKENIZER))

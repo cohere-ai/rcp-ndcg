@@ -67,8 +67,7 @@ def test_register_keys_every_registration_package_it_runs() -> None:
     plugin engine, whatever the recipe's architecture; each package init (and the config hooks those
     calls import -- unconditionally, except the gemma hook, which the pinned image's missing registry
     entry makes unconditional there) must be keyed for every plugin recipe, or an edit there moves every
-    plugin engine's startup while every non-gemma recipe's fingerprint stays put
-    (reviews/final-vllm-ds41.md D2)."""
+    plugin engine's startup while every non-gemma recipe's fingerprint stays put."""
     for package in (
         "rcp_ndcg_vllm.models.embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.config",

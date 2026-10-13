@@ -80,8 +80,7 @@ def test_an_upload_that_does_not_land_is_a_failure(tmp_path: Path, monkeypatch: 
 
 def test_a_truncated_upload_is_a_failed_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A transfer that lands a truncated file is caught by the verification: the destination listing is
-    compared against every source file, so a silent partial copy is a failure, not a pass
-    (reviews/final-harness-ds41.md D3)."""
+    compared against every source file, so a silent partial copy is a failure, not a pass."""
     source = tmp_path / "source"
     source.mkdir()
     (source / "a.json").write_text('{"rows": [1, 2, 3]}\n', encoding="utf-8")
@@ -102,7 +101,7 @@ def test_a_truncated_upload_is_a_failed_attempt(tmp_path: Path, monkeypatch: pyt
 
 def test_a_same_size_corruption_is_a_failed_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The destination's bytes must hash to the source's: a same-size corruption is a failed attempt,
-    never a pass -- the size check alone accepted it (reviews/final-harness-ds41.md D3)."""
+    never a pass -- the size check alone accepted it."""
     source = tmp_path / "source"
     source.mkdir()
     payload = '{"rows": [1, 2, 3]}\n'

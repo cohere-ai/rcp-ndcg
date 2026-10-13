@@ -81,7 +81,7 @@ def test_a_tampered_entry_is_refused(tmp_path: Path) -> None:
 
 def test_an_entry_without_a_digest_is_refused(tmp_path: Path) -> None:
     """A manifest that omits ``output_sha256`` is a corrupt entry, never a pass: the digest is the
-    tamper check's only input, so a missing one must refuse (reviews/final-harness-glm53.md D2)."""
+    tamper check's only input, so a missing one must refuse."""
     key = reference_key(**BASE)
     directory = save_stored(tmp_path, key, {"rows": []}, family="fixture-embed")
     manifest_path = directory / "manifest.json"
@@ -185,7 +185,7 @@ def test_the_store_key_covers_the_client_render_block(tmp_path: Path, monkeypatc
     """The reference renders from the resolved recipe's client block (embeddinggemma-2's
     ``client.query_prompt``/``doc_prompt``, octen's ``client.template``): a client change must move the
     stored output's key, or stage 2 compares the served engine against a reference produced from the OLD
-    client rendering (reviews/final-harness-ds41.md D2)."""
+    client rendering."""
     from rcp_ndcg_test.equivalence import stages
     from rcp_ndcg_vllm import load_recipe
 

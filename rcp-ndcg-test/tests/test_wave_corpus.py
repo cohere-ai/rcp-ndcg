@@ -122,7 +122,7 @@ def test_a_failed_corpus_step_is_not_published_to_the_changed_since_index(
     """A wave whose observation-corpus step FAILED must not publish the recipe's behaviour fingerprint or
     its engine version into ``wave.json``: the document is the ``--changed-since`` index, and a key for a
     corpus that was never written makes the recovery wave skip the recipe as unchanged -- a recovery wave
-    can then report PASS with no corpus ever recorded (reviews/final-harness-ds41.md D1)."""
+    can then report PASS with no corpus ever recorded."""
     real_record_corpus = record_module.record_corpus
 
     def failing_record_corpus(*args: object, **kwargs: object) -> dict:

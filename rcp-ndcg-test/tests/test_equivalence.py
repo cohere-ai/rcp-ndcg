@@ -663,8 +663,7 @@ def _stage3_gates() -> ResolvedGates:
 
 def test_stage3_fails_when_the_mean_ndcg_delta_exceeds_the_gate(tmp_path: Path) -> None:
     """A served ranking that diverges from the reference moves the mean |delta nDCG@10| over the bound:
-    the gate row fails and the stage is red, so stage 3 is a check and not a report
-    (reviews/final-harness-glm53.md D4)."""
+    the gate row fails and the stage is red, so stage 3 is a check and not a report."""
     pytest.importorskip("rcp_ndcg")
     rankings = _stage3_rankings(
         tmp_path,
@@ -680,7 +679,7 @@ def test_stage3_fails_when_the_mean_ndcg_delta_exceeds_the_gate(tmp_path: Path) 
 @pytest.mark.parametrize("missing", ["reference", "dataset"])
 def test_stage3_refuses_a_missing_rankings_or_dataset_file(tmp_path: Path, missing: str) -> None:
     """A missing file is a typed error naming it, never a zero: the gate must not pass on an absent
-    measurement (reviews/final-harness-glm53.md D4)."""
+    measurement."""
     pytest.importorskip("rcp_ndcg")
     from rcp_ndcg_test.errors import HarnessError
 
@@ -692,7 +691,7 @@ def test_stage3_refuses_a_missing_rankings_or_dataset_file(tmp_path: Path, missi
 
 def test_stage3_refuses_a_summary_without_the_qrel_ndcg_row() -> None:
     """The product's summary without the qrel_ndcg@10 row is an error, not a zero: a missing measurement
-    must never pass the gate (reviews/final-harness-glm53.md D4)."""
+    must never pass the gate."""
     from rcp_ndcg_test.equivalence.metrics import _summary_value
     from rcp_ndcg_test.errors import HarnessError
 
@@ -1328,8 +1327,7 @@ def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> N
 def test_the_resolved_gates_carry_no_dead_transfer_precision() -> None:
     """The vector gate compares the decoded vectors as they arrive; the client's transfer precision is
     keyed by the fingerprint and is not re-applied here.  The stage applies no float16 cast, so the dead
-    ``embed_dtype`` field and the module docstring's cast claim must not stand
-    (reviews/final-harness-ds41.md D7)."""
+    ``embed_dtype`` field and the module docstring's cast claim must not stand."""
     from rcp_ndcg_test.equivalence import gates as gates_module
 
     assert "embed_dtype" not in ResolvedGates.model_fields
