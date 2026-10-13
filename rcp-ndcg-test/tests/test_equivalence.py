@@ -1104,6 +1104,74 @@ def test_stage1_messages_route_render_checks_the_checkpoints_own_chat_template(
     assert check["status"] == "unresolved" and check["passed"] is False, check
 
 
+_MEDIA_CHAT_TEMPLATE = (
+    "{%- for message in messages -%}{%- for part in message.content -%}"
+    "{%- if part.type == 'text' %}{{ part.text }}{% endif -%}"
+    "{%- endfor -%}{%- endfor -%}"
+)
+"""A served template that renders a message's text parts back to back (the media parts' placeholders are
+left to the engine's own expansion), the rule ``google/embeddinggemma-2``'s own chat_template.jinja uses."""
+
+
+def _media_messages_recipe(root: Path, chat_template: str) -> Any:
+    """``fixture-vl-embed`` on the messages route with a ``doc_prompt`` beside a content-only declared
+    template: the prompt prefix rides the conversation as its own text part (the product's
+    ``with_text_prefix``), so a media side's conversation is ``[prompt, media, body text]`` -- the shape
+    whose text parts the engine's ``openai`` content format hands the served template."""
+    directory = root / "recipes" / "vl-messages"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES / "fixture-vl-embed" / "reference.py", directory / "reference.py")
+    (directory / "chat.jinja").write_text(chat_template, encoding="utf-8")
+    manifest = (
+        (RECIPES / "fixture-vl-embed" / "family.yaml")
+        .read_text(encoding="utf-8")
+        .replace("id: fixture-vl-embed", "id: vl-messages")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {TOKENIZER}")
+        .replace(
+            '  template:\n    document:\n      - {fixed: "doc: "}\n      - {content: document}\n'
+            '      - {fixed: " [END]"}',
+            '  doc_prompt: "doc: "\n  template:\n    document:\n      - {content: document}',
+        )
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    return load_recipe(directory)
+
+
+def test_stage1_messages_media_frame_compares_the_parts_the_engine_reads(tmp_path: Path) -> None:
+    """A media side's conversation carries the side's prompt prefix as its own text part beside the media and
+    the body text.  The engine's ``openai`` content format hands the served template the parts, and the
+    checkpoint's own template renders a message's text parts back to back -- the client's ``TEXT_JOIN``
+    flattening is the *string* content format's join (vLLM's ``_get_full_multimodal_text_prompt``).  The
+    declared side is therefore the declared template's render of the conversation's parts as the engine reads
+    them: the frame check passes on the parts, and a served template that inserts a separator between them
+    still fails."""
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    pairs = write_pairs(
+        tmp_path / "pairs.jsonl",
+        [
+            {
+                "query": "the red page",
+                "documents": ["a caption under the page"],
+                "media": {"query": [], "documents": [[image_entry("red", 300, 200)]]},
+            }
+        ],
+    )
+    recipe = _media_messages_recipe(tmp_path / "joined", _MEDIA_CHAT_TEMPLATE)
+    check = stage1_prompts(recipe, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is True, check["failures"][:1]
+
+    separated = _media_messages_recipe(
+        tmp_path / "separated",
+        _MEDIA_CHAT_TEMPLATE.replace(
+            "{{ part.text }}", "{{ part.text }}{% if not loop.last %}<|SEP|>{% endif %}"
+        ),
+    )
+    check = stage1_prompts(separated, pairs, None, over_length_per_shape=1)["template_render_check"]
+    assert check["passed"] is False, check
+    assert "<|SEP|>" in check["failures"][0]["engine_head"], check["failures"][:1]
+
+
 def test_stage2_on_the_messages_route_through_the_stub(tmp_path: Path) -> None:
     """Stage 2 on the ``messages`` route: the client sends each item's content as one conversation, and the
     stub, like vLLM's chat path, frames it with the served chat template (the request's
