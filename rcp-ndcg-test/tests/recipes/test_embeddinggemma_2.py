@@ -65,7 +65,10 @@ SERVE = {
     # the plugin also registers the folded model (the transformers-side fold alone was not enough).
     "plugin_architectures": ["EmbeddingGemma2Config", "EmbeddingGemma2Model"],
     "io_processor_plugin": None,
-    "mm_processor_kwargs": {},
+    # E2 round 13: the pod's engine is vLLM v0.31.0 (no EmbeddingGemma2VideoBackend), so the
+    # --media-io-kwargs pin reaches only the generic decoder and the processor resamples at its own
+    # defaults; the same numbers ride the processor's own kwargs here (see the pin test below).
+    "mm_processor_kwargs": {"fps": 60, "max_frames": 32},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
     "extra_args": [
         "--media-io-kwargs",
@@ -159,6 +162,23 @@ def _reference_module() -> Any:
     finally:
         sys.dont_write_bytecode = bytecode
     return module
+
+
+def _processor_sampled_indices(
+    total: int, source_fps: float, duration: float, fps: float, max_frames: int
+) -> list[int]:
+    """The engine's video sampling rule, transcribed from transformers 5.19.0's
+    ``EmbeddingGemma2VideoProcessor.sample_frames`` (the class the checkpoint's processor_config.json
+    names; its fps-plus-``max_frames``/``overflow_strategy`` path is what the digest-pinned
+    ``EmbeddingGemma2VideoBackend.compute_frames_index_to_sample`` reproduces, and what the checkpoint's
+    processor runs on the pod's vLLM v0.31.0, where no EmbeddingGemma2VideoBackend exists)."""
+    import numpy as np
+
+    step = source_fps / fps
+    sampled = [min(total - 1, int(index * step)) for index in range(max(1, int(duration * fps)))]
+    if len(sampled) <= max_frames:
+        return sampled
+    return [sampled[index] for index in np.linspace(0, len(sampled) - 1, max_frames, dtype=int)]
 
 
 @pytest.fixture(scope="module")
@@ -266,8 +286,29 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
     assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 60, "max_frames": 32}}'
+    assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {"fps": 60, "max_frames": 32}
     assert argv[argv.index("--attention-backend") + 1] == "TORCH_SDPA"
     assert "--enforce-eager" in argv
+
+
+def test_the_video_pin_reaches_the_processor_that_samples_the_clip() -> None:
+    """E2 round 13 (the media stage's rows 36/37).  The pod's engine is vLLM v0.31.0, which has no
+    ``EmbeddingGemma2VideoBackend``: ``--media-io-kwargs`` pins only the generic decoder, which samples the
+    shipped 4.0 s / 8 fps / 32-frame clip whole and reports ``do_sample_frames=True``, and the checkpoint's
+    processor then resamples at its own defaults (fps 1, max_frames 32) -- 4 frames, the wave's
+    ``492 = 4 x 123`` against the client's ``3936 = 32 x 123``.  ``serve.mm_processor_kwargs`` carries the
+    same numbers into the engine's processor call, so the processor samples 32; the CPU-proven rule (the
+    checkpoint's own ``sample_frames``) is the test below, and the wave's media stage is the confirmation."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.serve.mm_processor_kwargs == {"fps": 60, "max_frames": 32}
+    assert recipe.client["video_policy"]["num_frames"] == 32
+    assert recipe.client["video_policy"]["engine_video_pinning"] is True
+    # the checkpoint's processor over the shipped clip (32 native frames at 8 fps, 4.0 s): the declared
+    # pin samples the whole clip, the processor's own default is the four frames the wave saw.
+    pinned = _processor_sampled_indices(32, 8.0, 4.0, 60.0, 32)
+    default = _processor_sampled_indices(32, 8.0, 4.0, 1.0, 32)
+    assert len(pinned) == 32 and len(set(pinned)) == 31, pinned
+    assert default == [0, 8, 16, 24], default
 
 
 def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
@@ -570,19 +611,8 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
 
     module = _reference_module()
 
-    def engine_indices(total: int, source_fps: float, duration: float, fps: float, max_frames: int) -> list[int]:
-        """The engine's rule, transcribed from transformers 5.19.0's
-        ``EmbeddingGemma2VideoProcessor.sample_frames`` (the class the checkpoint's processor_config.json
-        names; its fps-plus-``max_frames``/``overflow_strategy`` path is what the digest-pinned
-        ``EmbeddingGemma2VideoBackend.compute_frames_index_to_sample`` reproduces)."""
-        step = source_fps / fps
-        sampled = [min(total - 1, int(index * step)) for index in range(max(1, int(duration * fps)))]
-        if len(sampled) <= max_frames:
-            return sampled
-        return [sampled[index] for index in np.linspace(0, len(sampled) - 1, max_frames, dtype=int)]
-
     shipped = video_entry("icon", 64, 64, 32)  # the recipe's declared num_frames, at the media set's 8 fps
-    indices = engine_indices(32, 8.0, 4.0, 60.0, 32)
+    indices = _processor_sampled_indices(32, 8.0, 4.0, 60.0, 32)
     assert indices == [0, 0, *range(2, 32)], indices
     assert indices != uniform_frame_indices(32, 32), "the generic rule is a different instrument"
 

@@ -45,7 +45,7 @@ serve:
                              # the classes and whose registry carries the model; delete the SDPA patch
                              # and its pin when the image's own backends clear the model's head
                              # dimensions.
-  mm_processor_kwargs: {}       # no pin: the engine reads the checkpoint's own budgets (image 280 soft tokens, video 140 per frame)
+  mm_processor_kwargs: {fps: 60, max_frames: 32}   # THE video pin's second home, beside --media-io-kwargs: the pod's engine is vLLM v0.31.0, which has no EmbeddingGemma2VideoBackend, so --media-io-kwargs pins only the decoder and the generic loader reports do_sample_frames=True; the checkpoint's processor then samples with its own defaults (fps 1: the shipped 4.0 s clip becomes 4 frames, the wave's 492 = 4 x 123). The engine's model hands these numbers to the processor's call, which samples the same clip at 60 fps capped at 32 frames -- the client's 3936 = 32 x 123; see notes, "Media"
   limit_mm_per_prompt: {image: 1, video: 1}   # one media item per request (the client's max_images/max_videos carry the same numbers)
   extra_args:
     - "--media-io-kwargs"
@@ -54,7 +54,7 @@ serve:
     - TORCH_SDPA   # E2 round 10: the plugin's torch-sdpa-attention patch registers the encoder-only SDPA backend under this enum member (the engine's own error names register_backend(Backend.TORCH_SDPA, ...)); the model's heterogeneous head dims (sliding 256, full 512) leave no image backend -- the TRITON_ATTN prefill kernel needs 266240 B of shared memory against the 232448 B limit, FA4's kernel caps head_dim at 256, TORCH_SDPA's enum value is empty (ViT-only), and FLEX_ATTENTION dies in its own torch.compile/CUDAGraph interaction (rounds 9-10, still under --enforce-eager); see notes, "Engine flags"
     - "--enforce-eager"   # E2 round 9: FLEX_ATTENTION reached engine init and died there in a dynamo/CUDAGraph interaction -- the backend's compiled create_block_mask (mode "reduce-overhead", flex_attention.py:54-58 at the nightly) hands a block mask to the compiled flex attention after a later run of the block-mask graph overwrote its tensors (torch._dynamo InternalTorchDynamoError at torch/nn/attention/flex_attention.py:2369, `block_mask_q_len = block_mask.shape[-2]`), which --enforce-eager does not stop because the flex backend compiles independently of the engine's cudagraph mode (the round-10 wave still failed with it). The SDPA backend compiles nothing, so the flag is kept as the engine-eager safety pin: the engine's compilation and cudagraph modes stay NONE (vllm/config/vllm.py:1733-1745 at the nightly), and the wave's T0 model load is the confirmation.
 client:
-#   recipe: "the vLLM nightly 8cbd5d03: --runner pooling; EmbeddingGemma2Model (MEAN+ALL, PoolerNormalize); no served chat template (the checkpoint's own frames the messages route); the checkpoint's media budgets (image 280 soft tokens, video 140 per frame); one media item per request; video pinned to 60 fps capped at 32 frames by --media-io-kwargs; the plugin's registered TORCH_SDPA backend pinned by --attention-backend TORCH_SDPA (the plugin's torch-sdpa-attention patch registers an encoder-only SDPA backend under the enum member, the one path the image leaves) with --enforce-eager beside it (the round-9/10 FLEX_ATTENTION dynamo/CUDAGraph interaction at engine init); request_shape messages with add_special_tokens true; the card's SearchQuery/Document prompts ride the client's query_prompt/doc_prompt (a content-only template)"
+#   recipe: "the vLLM nightly 8cbd5d03: --runner pooling; EmbeddingGemma2Model (MEAN+ALL, PoolerNormalize); no served chat template (the checkpoint's own frames the messages route); the checkpoint's media budgets (image 280 soft tokens, video 140 per frame); one media item per request; video pinned to 60 fps capped at 32 frames by --media-io-kwargs and by --mm-processor-kwargs (the pod's vLLM v0.31.0 has no EmbeddingGemma2VideoBackend, so the decoder pin alone leaves the processor resampling at its own 1 fps); the plugin's registered TORCH_SDPA backend pinned by --attention-backend TORCH_SDPA (the plugin's torch-sdpa-attention patch registers an encoder-only SDPA backend under the enum member, the one path the image leaves) with --enforce-eager beside it (the round-9/10 FLEX_ATTENTION dynamo/CUDAGraph interaction at engine init); request_shape messages with add_special_tokens true; the card's SearchQuery/Document prompts ride the client's query_prompt/doc_prompt (a content-only template)"
   api: openai_embeddings
   request_shape: messages       # the chat-style /v1/embeddings input: each item one conversation carrying its content (the cut text, its image or video parts), framed once by the engine's chat template -- the only route that carries media
   max_tokens: 8192              # the card's 8K context: the frame's fixed tokens (the BOS/EOS post-processor pair) are reserved, only the content span is cut (on_overflow: cut); no query_max_tokens -- the card caps the WHOLE prompt
@@ -74,7 +74,7 @@ client:
   image_policy: {max_soft_tokens: 280}   # the checkpoint's own image budget (processor_config.json image_processor.max_soft_tokens 280); the client resizes and counts every image exactly as the processor does
   max_images: 1                 # the same number as serve.limit_mm_per_prompt
   max_videos: 1                 # ditto (the media capacity on both sides)
-  video_policy: {num_frames: 32, wire: video_url, engine_video_pinning: true}   # THE video policy: 32 frames per clip, the container sent as video_url and the engine pinned to sample them (serve.extra_args --media-io-kwargs); see notes, "Media"
+  video_policy: {num_frames: 32, wire: video_url, engine_video_pinning: true}   # THE video policy: 32 frames per clip, the container sent as video_url and the engine pinned to sample them (serve.extra_args --media-io-kwargs for the decoder and serve.mm_processor_kwargs for the processor that resamples on the pod's vLLM v0.31.0); see notes, "Media"
   on_overflow: cut
   empty_doc: send               # the card embeds an empty document as its bare "title: none | text: " prompt, which the empty string under the prompt is
   instruction: none             # the card's own instruction is baked into the fixed frame; a dataset task
@@ -231,9 +231,25 @@ notes: >-
   frames, so a normal clip passes above that). The card's default is 1 fps and declares the rate
   configurable; this recipe's declared instrument is the 32-frame cap. The prompt renders one
   boi + 140-or-fewer soft tokens + eoi block PER FRAME (no temporal patch), so the client counts
-  frames x (per-frame patches + 2). The media wave must confirm the engine's sampled count and token count
-  on a real clip; a clip whose frame rate exceeds 60 fps and whose duration is under 0.53 s can make the
-  engine sample fewer than 32 (the one declared open corner).
+  frames x (per-frame patches + 2).
+
+  The pin's second home, and why it is needed (E2 round 13, the media stage's rows 36/37). The pod's engine
+  is vLLM v0.31.0 (the job config's image; the wave records the pod's own version in its provenance, B5), and
+  v0.31.0 has no EmbeddingGemma2VideoBackend (PR #60254 landed after the tag): the --media-io-kwargs pin
+  reaches only the generic VideoBackend, which samples the 4.0 s / 8 fps / 32-frame clip whole and reports
+  do_sample_frames=True, and the checkpoint's processor then resamples those 32 decoded frames with its own
+  defaults (fps 1, max_frames 32) -- 4 frames, the engine's 492 = 4 x 123 against the client's 3936 = 32 x 123.
+  serve.mm_processor_kwargs carries the same fps/max_frames numbers into the engine's processor call
+  (vllm/model_executor/models/embedding_gemma2.py:707-721 hands the model's mm_processor_kwargs to the
+  processor), so the processor samples at 60 fps capped at 32 frames -- 32 -- in every engine the pod runs;
+  on the declared nightly (whose EmbeddingGemma2VideoBackend samples the pin itself and reports
+  do_sample_frames=False) the processor keeps the backend's frames and the numbers are inert. CPU-proven on
+  the pod's engine image + the staged plugin wheel with the shipped clip: without the pin the processor
+  returns 4 frames / 492 tokens, with it 32 / 3936; the reference passes the same numbers through
+  processing_kwargs (video_processing_kwargs), so both sides sample the clip the same way. The media wave
+  must confirm the engine's sampled count and token count on a real clip; a clip whose frame rate exceeds
+  60 fps and whose duration is under 0.53 s can make the engine sample fewer than 32 (the one declared open
+  corner).
 
   Budgets. client.max_tokens 8192 is the card's 8K context, counted as the engine sees the whole prompt
   (BOS + prefix + content + EOS, plus any media tokens reserved whole); the content span is cut
@@ -256,6 +272,25 @@ notes: >-
   would give [0, 1, 2, ...]), so the reference never samples with the generic rule -- and computes the
   card's vectors for media rows exactly as for text rows, so stage 2 gates them by the same cosine rule;
   the media stage still gates placement, geometry and tokens.
+
+  The two image rows' residual (E2 round 13, rows 31/32, cosines 0.9956 and 0.9941 full width, 0.994-0.998
+  at every declared k): NOT hidden and NOT bounded. The cause is measured on CPU against the checkpoint's own
+  processor (transformers 5.19.0, the pinned revision): the product prepares an image at
+  `rcp_ndcg.data.resolution.gemma4_fixed_point` -- the size the processor KEEPS, so the engine's own resize
+  is the identity -- while the card's processor resizes the RAW image in ONE step
+  (`get_aspect_ratio_preserving_size`), and for these two extreme-aspect images the two differ: the shipped
+  576x4096 receipt lands on 288x2160 (270 soft tokens, the fixed point) where the card's single resize gives
+  288x2112 (264), and the 3000x20 strip on 13344x48 (278) where the card's gives 48x1836 (204). The engine
+  sees the prepared bytes (270/278, the client's count -- the media stage's engine check passes on both
+  rows); the reference's embed mode runs the card's own pipeline on the raw image (264/204), so the two
+  sides' patch layouts differ and the pooled vectors move by exactly the observed amount. Every other image
+  row is at or beside its fixed point, which is why only these two are off. No per-variant bound is declared:
+  a `gates.vec_min_cosine` low enough for these rows (0.994) would hide the same-sized difference on every
+  row of the variant. The named fix (the next measurement, the wave's re-run re-measures these rows): the
+  reference's embed mode should see the same bytes the engine sees (the harness's stage-2 input alignment --
+  the client's prepared media handed to the reference), or the client should prepare at the card's single
+  resize with the engine's own image resize pinned off (`serve.mm_processor_kwargs.images_kwargs.do_resize:
+  false`), which needs its own wave. Both paths keep the card's processor the definition.
 
   MRL. The card's Matryoshka set {128, 256, 512, 768} is declared once, in the client's mrl_kind/mrl_dims
   and in serve.hf_overrides (the engine refuses a per-request dimensions without is_matryoshka, and the
