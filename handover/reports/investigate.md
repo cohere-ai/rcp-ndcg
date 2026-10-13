@@ -1,7 +1,9 @@
 # Lane investigate — embeddinggemma-2's row-specific gap (CPU diagnosis) and topk-embed-v1's controlled GPU plan
 
-**Lane:** `lane/investigate` (worktree outside the operator's checkout). **Base and merged tip:**
-`rfc-0001` at `c668c439` (the branch tip; no merge commit was needed — the lane started on it).
+**Lane:** `lane/investigate` (worktree outside the operator's checkout). **Base:** `rfc-0001` at
+`c668c439`; **merged:** `rfc-0001` at `973a5f36` (which is the orchestrator's merge of this lane's
+first state, so the merge brings in this lane's own earlier commits and no upstream drift). **Gated:**
+`37dcf799` (the merged tip).
 **Tree:** no product, harness or recipe code touched; this lane's committed artefacts are this report,
 the harness (`topk_probe.py` / `topk_probe.sh`) and the fixtures under
 `handover/reports/investigate/`. **No GPU, no node submission, nothing pushed, `rfc-0001` not merged
@@ -495,9 +497,16 @@ report lands at `<OUT_PREFIX>/topk-probe/topk-probe/`.
   harness rewrite; `shellcheck` and `bash -n` on the wrapper; `TOPK_DRY=1` plan; the probe's
   `--help` plus offline exercises of its row selection, report writer, `_first_divergent` (both
   feeds), control summary, bf16-safe `sha256`/`stats`/`bf16_floor` and wave-cosine lookup.
-- `bin/gate lane/investigate` on the revision carrying this revision of the report: **the gate line
-  is recorded below when it lands** (the first attempt on the previous revision passed after the
-  known load-flake retry).
+- `bin/gate lane/investigate` on `37dcf799` (the merged tip; `rfc-0001`'s new tip `973a5f36` merged
+  first): **GATE: PASS**, every step exit 0 — ruff-check/format, basedpyright 0 errors, root pytest
+  `4145 passed, 155 skipped`, contract-docs `413 passed, 107 skipped`, mkdocs built, test-pkg
+  `1193 passed, 229 skipped`, recipes clean, vllm-pkg `50 passed`, vllm-models `110 passed, 8 skipped`,
+  run_all (1022/987/35/0, 67/67, 82/82), public-names clean, clean. The first attempt on the same
+  revision died at `test-pkg` with `exit=139` (SIGSEGV) at
+  `test_wavegroups.py::test_the_real_catalog_has_exactly_two_engine_images` under load average 84;
+  that test passes in isolation (`1 passed in 4.59s`) and the retry passed, so the crash is
+  environmental (the known load flake), not a tree failure. The first report revision's gate
+  (`54d75bc2`) had the same flake at a different test.
 
 ## 5. Open questions / what could not be proven
 
