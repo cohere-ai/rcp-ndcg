@@ -62,12 +62,32 @@ def test_a_keyed_module_that_imports_vllm_or_torch_is_registry_lazy() -> None:
     assert "rcp_ndcg_vllm.models.keep_rule" in ARCHITECTURE_MODULES["Qwen3_5Model"]
 
 
+def test_register_keys_every_registration_package_it_runs() -> None:
+    """``register()`` imports each folded registration package and calls its ``register_*`` in every
+    plugin engine, whatever the recipe's architecture; each package init (and the config hooks those
+    calls import -- unconditionally, except the gemma hook, which the pinned image's missing registry
+    entry makes unconditional there) must be keyed for every plugin recipe, or an edit there moves every
+    plugin engine's startup while every non-gemma recipe's fingerprint stays put
+    (reviews/final-vllm-ds41.md D2)."""
+    for package in (
+        "rcp_ndcg_vllm.models.embedding_gemma2",
+        "rcp_ndcg_vllm.models.embedding_gemma2.config",
+        "rcp_ndcg_vllm.models.pplx",
+        "rcp_ndcg_vllm.models.pplx.config",
+        "rcp_ndcg_vllm.models.topk",
+        "rcp_ndcg_vllm.models.topk.config",
+    ):
+        assert package in PLUGIN_ENGINE_MODULES, package
+
+
 def test_the_shared_engine_modules_resolve_and_are_not_lazy() -> None:
     """The entry point, the guard, the registrations and the patch applier import clean (the no-torch scan
     imports them); they run for every plugin recipe."""
     assert PLUGIN_ENGINE_MODULES == (
         "rcp_ndcg_vllm.models",
         "rcp_ndcg_vllm.models.version_guard",
+        "rcp_ndcg_vllm.models.embedding_gemma2",
+        "rcp_ndcg_vllm.models.embedding_gemma2.config",
         "rcp_ndcg_vllm.models.pplx",
         "rcp_ndcg_vllm.models.pplx.config",
         "rcp_ndcg_vllm.models.pplx.hf_config",

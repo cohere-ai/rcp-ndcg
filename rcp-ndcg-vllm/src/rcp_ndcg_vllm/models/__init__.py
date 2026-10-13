@@ -49,6 +49,8 @@ harness scan may import it, and it is keyed by the fingerprint all the same."""
 PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models",
     "rcp_ndcg_vllm.models.version_guard",
+    "rcp_ndcg_vllm.models.embedding_gemma2",
+    "rcp_ndcg_vllm.models.embedding_gemma2.config",
     "rcp_ndcg_vllm.models.pplx",
     "rcp_ndcg_vllm.models.pplx.config",
     "rcp_ndcg_vllm.models.pplx.hf_config",
@@ -58,8 +60,11 @@ PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.patches",
 )
 """The engine-side modules every plugin recipe's engine imports at registration, whatever its architecture:
-:func:`register`'s entry-point callable, the one version guard, the package inits, the two config
-registrations and the patch applier.  A recipe that declares ``serve.plugin`` keys these beside its
+:func:`register`'s entry-point callable, the one version guard, the package inits, the three config
+registrations and the patch applier.  ``register`` imports the embeddinggemma-2 package and calls its
+registration for every plugin recipe, and on the pinned image (whose registry lacks the architecture)
+that call imports the config hook (``.config``); ``pplx.config``/``topk.config`` are registered by their
+``register_*`` calls the same way.  A recipe that declares ``serve.plugin`` keys these beside its
 architectures' modules (``rcp-fp/4``); a change to one of them moves every plugin recipe, because every
 plugin engine imports it.  The patch modules themselves are keyed per recipe, by its declared
 ``serve.patches``: a patch is imported unconditionally but applied only when opted in."""
