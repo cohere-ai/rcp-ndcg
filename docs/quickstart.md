@@ -128,8 +128,9 @@ rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge
 rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model
 ```
 
-Documents run whole up to the judge's text policy -- 32 768 tokens by default (documented policy, every cut
-recorded); `--set judge.tokenizer=...` makes the counts exact.
+Documents run whole -- the judge's default text policy is `keep`, so nothing is cut; a declared
+`truncate`/`fail` policy caps at 32 768 tokens by default, and every such cut is recorded in the
+census. `--set judge.tokenizer=...` makes the counts exact.
 
 [Calibrate your benchmark](how-to/calibrate-your-benchmark.md) walks through a run, and
 [primitives](concepts/primitives.md) shows how to re-judge only some documents, insert new ones, or add a second
