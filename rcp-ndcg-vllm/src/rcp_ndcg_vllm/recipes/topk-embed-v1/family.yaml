@@ -399,9 +399,17 @@ notes: |
     divergence at block_10, max-abs 6.84); engine fp16 / reference fp32 fails; fp32 both sides
     CLEARS the tower (merger cosines 0.99981-0.99998, engine-vs-checkpoint 1.19e-07) but the engine
     cannot encode fp32 end to end -- the GDN prefill kernel refuses the dtype ("ValueError:
-    Unsupported dtype torch.float32, expected bfloat16 or float16", flashinfer gdn_prefill). No
-    runnable engine configuration meets the per-token 0.999 gate. The gate, its bound and the serve
-    dtype are unchanged here; the disposition is an owner decision.
+    Unsupported dtype torch.float32, expected bfloat16 or float16", flashinfer gdn_prefill). The
+    gate fails on the default flashinfer backend, and the GDN prefill kernel is not the cause: the
+    tag's own --gdn-prefill-backend knob engaged the vendored flash-linear-attention prefill
+    ("triton", the algorithm the reference's chunked scan runs) and "cutedsl" on the same rows and
+    the same RC, and the per-token minima are unchanged within the probe's run-to-run spread
+    (gs://YOUR-BUCKET/rcp-ndcg-rfc/waves-rc0-202610130615-topkgdn/topk-gdn-{flashinfer,triton,
+    cutedsl}/topk-probe/): rows 17/18 at 0.7814 / 0.7042 (triton) and 0.7643 / 0.7154 (cutedsl)
+    against 0.7863 / 0.7125 (flashinfer), row 26 at -0.1140 / -0.1134 against -0.1145, and the
+    per-layer cosines agree to 4 decimals across the three kernels (text_layer_0 0.1835 / 0.1836 /
+    0.1838). The gate, its bound and the serve dtype are unchanged here; the disposition is an
+    owner decision.
   - One verified preprocessing divergence from the fix11 rounds: the reference's torchvision
     antialias BICUBIC + bf16 affine against the processor's PIL BICUBIC + fp32 affine (fix11topk,
     round 4).

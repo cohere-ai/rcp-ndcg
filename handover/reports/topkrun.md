@@ -22,7 +22,7 @@ the node runs forced, the dtype knobs for the precision experiment, the tests, t
 | 9 | the dtype knobs | `--dtype` / `--reference-dtype` on the probe (both sides), forwarded as `RCP_TOPK_DTYPE` / `RCP_TOPK_REFERENCE_DTYPE`; the wrapper's argv is parsed by the module's own parser in a test (a node run died on `unrecognized arguments`) and the reference subprocess gets its own dtype (the first fp32 run compared two precisions) |
 | 10 | the precision run (both sides fp32) | **the precision verdict** (section 6): every row's tower output clears 0.999 in fp32, and the engine's fp32 *serve* is refused by vLLM's GatedDeltaNet kernels — the dtype route is closed, the mechanism is proven |
 | 11 | the fp16 cells (both cells, image rows) | **fp16 fails the gate on every image row** (E6 minima 0.095-0.997), and it does not overflow: its tower is closer to the reference than bf16's, and the "later first-divergent block" is the wrong-dtype floor artefact |
-| 12 | the text-only cells (`--text-rows` / `--query-rows`) | **the text verdict** (section 7): the wave's majority failure is text-side, byte-identical inputs, dtype-independent from `text_layer_0` — the GDN kernel-algorithm difference; the 7-8k-token documents fail in both dtypes |
+| 12 | the text-only cells (`--text-rows` / `--query-rows`) | **the text verdict** (section 7): the wave's majority failure is text-side, byte-identical inputs, dtype-independent from `text_layer_0`; the 7-8k-token documents fail in both dtypes, and the divergence is unchanged with the vendored FLA (`triton`) or `cutedsl` prefill engaged (lane topk-gdn) |
 | 13 | the calibration fixture | `wave-cosines-topk-small.json`'s `_source` was wrong (its values are each row's minimum over all mrl widths, not the full-width minima): relabelled with the wave's own full-width numbers, which the top-level keys now hold |
 
 ## 2. The wiring (tests first)
@@ -249,8 +249,10 @@ the comparison, with the numbers above as its evidence:
 1. **A multi-vector score-level gate**: keep the existing cosine-scale bound on the *MaxSim* score
    (the score the family is actually used with) and report the per-token vectors as non-gating
    diagnostics — the `zerank` precedent. The evidence for it: the per-token statistic is dominated by
-   the text model's kernel-algorithm divergence (section 7), which no engine-side change can remove,
-   while the pooled/score-level signal is what the downstream product consumes.
+   the text-side divergence (section 7), which is present with the reference's own chunked-scan
+   algorithm engaged in the engine (lane topk-gdn: `--gdn-prefill-backend triton` and `cutedsl` leave
+   every minimum unchanged), while the pooled/score-level signal is what the downstream product
+   consumes.
 2. **A declared deviation** naming the per-token comparison unachievable at the engine's available
    precision (bf16 and fp16 both measured end to end, fp32 unrunnable), with the tables in sections 4-7
    as its evidence.
@@ -299,16 +301,22 @@ dump so both sides' kept positions match), with the same text-layer recording as
 - **The text model's hidden states diverge at its first layer, dtype-independently** (`text_layer_0`
   cosine 0.1836/0.1847 for the two documents in bf16, 0.1835/0.1845 in fp16 — the same number), and
   the layers stay uncorrelated to the last. With byte-identical inputs, no tower and no pixels in the
-  loop, this is the text model's own computation: the reference runs the checkpoint's `fla` chunked
-  scan and the engine runs vLLM's flashinfer sm100 kernel for the 18 GatedDeltaNet layers, and the
-  recurrent state accumulates the difference over 7-8k positions. The engine cannot match it from the
-  engine side (the image ships no `fla`, and the recipe's own canary asserts it must stay out); the
-  matched-kernel cell is the *reference* running flashinfer, which is a follow-up, not a fix here.
+  loop, this is the text model's own computation — but **not the GDN prefill kernel** (measured by
+  lane topk-gdn): the image vendors flash-linear-attention
+  (`vllm/third_party/flash_linear_attention/ops/chunk.py`) and the tag's own `--gdn-prefill-backend`
+  selects it, so the engine *can* run the reference's algorithm; with `triton` (the vendored FLA
+  chunked scan) and `cutedsl` engaged on the same RC and rows, every per-token minimum is unchanged
+  within the probe's run-to-run spread (rows 17/18 0.7814/0.7042 triton, 0.7643/0.7154 cutedsl,
+  against 0.7863/0.7125 flashinfer; row 26 -0.1140/-0.1134 against -0.1145), and the per-layer
+  cosines agree to 4 decimals across the three kernels (`text_layer_0` 0.1835/0.1836/0.1838). The
+  matched-kernel experiment is therefore done, not a follow-up — and it does not fix the gate.
 
 **So the dtype ladder is exhausted, measured end to end**: bf16 fails everywhere; fp16 (the only other
 dtype the GDN kernels accept) fails the documents in both the text and image paths; fp32 clears the
 *tower* (cos 0.99981-0.99998) and cannot be served. Nothing in the engine's plugin can turn the gate
-green, and the dominant residual is a kernel-algorithm difference on the text side, not rounding.
+green; the residual is not rounding (the text-side divergence is identical under all three GDN prefill
+kernels, so it is not the kernel algorithm either — lane topk-gdn), and its mechanism inside the text
+model is not localised.
 
 ## 8. Verification
 
@@ -369,11 +377,11 @@ green, and the dominant residual is a kernel-algorithm difference on the text si
 - **The dtype route is closed** (section 6): the engine cannot serve fp32 (vLLM's GatedDeltaNet kernels
   refuse it, the same blocker the `pplx-embed-v2-context` recipe documents), so a follow-up must not
   re-try `serve.dtype: float32`; the fp32 probe run is the evidence.
-- **The matched-kernel cell** (the only true test of the dominant residual): import flashinfer's
-  `chunk_gated_delta_rule` into the *reference* venv for the 18 GDN layers, or run the reference's `fla`
-  scan in the engine (impossible: the image ships no `fla` and the recipe's canary asserts it stays
-  out). If the text rows clear 0.999 with the reference on flashinfer, the divergence is the kernel
-  algorithm and the disposition can be narrowed to a kernel pin.
+- **The matched-kernel cell was run (lane topk-gdn) and is negative**: the engine's vendored
+  flash-linear-attention prefill (`--gdn-prefill-backend triton`) and `cutedsl` engage and leave every
+  per-token minimum unchanged, so the residual is not the GDN kernel algorithm and the disposition
+  cannot be narrowed to a kernel pin. The text model's own remaining difference (inputs, positions,
+  layer alignment, the 6 full-attention layers) is the next thing to localise.
 - **The `bf16_floor` fix**: the floor must be the engine's own dtype round trip (`--dtype`), else every
   non-bf16 run's "first divergent layer" is a threshold artefact (the fp16 and fp32 reports both are).
 - **E0 is still `not_run`** for this family: a recording pass over `topk-embed-v1-small` (the wave's own
