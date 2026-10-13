@@ -2054,9 +2054,17 @@ def _wave_document(
     # recording at that key, so publishing its fingerprint would make a later wave skip it as unchanged and
     # let a recovery wave report PASS with no corpus ever recorded (reviews D1).  The engine version map is
     # gated the same way: the version is the corpus key's other half, and a failed row's version in the
-    # index would stop protocol_due from naming a version the release never recorded.  Both values stay on
-    # the row for reporting; only the index maps are gated.
-    recorded = [row for row in rows if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"]
+    # index would stop protocol_due from naming a version the release never recorded.  A recipe whose
+    # per-recipe UPLOAD failed (B1) is not recorded either: its corpus exists only on this node, never at
+    # the destination the index's key names (the upload failure already fails the wave; the key must not
+    # survive it).  Rows without an upload record (no --upload) index as before.  All values stay on the
+    # row for reporting; only the index maps are gated.
+    recorded = [
+        row
+        for row in rows
+        if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"
+        and (row.get("upload") or {}).get("ok", True)
+    ]
     fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in recorded if row.get("behaviour_fingerprint")}
     engine_versions = {row["recipe"]: row["engine_version"] for row in recorded if row.get("engine_version")}
     verified = bool(rows) and all(row["state"] == "verified" for row in rows)

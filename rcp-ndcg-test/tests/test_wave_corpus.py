@@ -155,6 +155,44 @@ def test_a_failed_corpus_step_is_not_published_to_the_changed_since_index(
     assert second["recipes"] and second["recipes"][0]["state"] == "verified"
 
 
+def test_a_failed_recipe_upload_is_not_published_to_the_changed_since_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recipe whose corpus step passed but whose per-recipe UPLOAD failed has no corpus at the
+    destination: the index would name a key the destination never received, so a ``--changed-since``
+    recovery from that index skips the recipe as recorded and the recovery wave can report PASS over a
+    corpus that never left the wave's node (the upload failure already fails the wave -- B1 -- but the
+    index key stayed).  An upload failure disqualifies the row from the index like a failed corpus step."""
+    monkeypatch.setattr(run_wave_module, "_upload_cli", lambda *args: False)
+    monkeypatch.setattr(run_wave_module, "_upload_storage", lambda *args: "the object store is down")
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
+    first = _wave(
+        tmp_path,
+        record_corpus=True,
+        upload=str(tmp_path / "bucket"),
+        out_dir=tmp_path / "wave1",
+    )
+    row = first["recipes"][0]
+    # The corpus step itself passed; the failure is the transfer to the destination.
+    assert row["steps"]["observation_corpus"]["state"] == "passed"
+    assert first["upload_failures"]["fixture-embed"]["ok"] is False
+    assert first["verdict"] == "failed"
+    # The destination holds nothing, so the row is not recorded at its key.
+    assert first["fingerprints"] == {}
+    assert first["engine_versions"] == {}
+    # The recovery wave attempts the recipe again, never skips it as unchanged.
+    monkeypatch.undo()
+    second = _wave(
+        tmp_path,
+        record_corpus=True,
+        out_dir=tmp_path / "wave2",
+        changed_since_index=tmp_path / "wave1" / "wave.json",
+    )
+    assert second["skipped_unchanged"] == []
+    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint", "engine_version"]}
+    assert second["recipes"] and second["recipes"][0]["state"] == "verified"
+
+
 def test_changed_since_skips_the_unchanged_and_records_the_changed(tmp_path: Path) -> None:
     """--changed-since re-records only what moved (OBSERVATIONS-SPEC 7): an unchanged recipe is listed as
     skipped_unchanged and never served again; a changed fingerprint or a new engine version records again."""
@@ -202,15 +240,22 @@ def test_the_corpus_is_keyed_by_the_engine_version_the_pod_reports(
     monkeypatch.setattr(run_wave_module, "_pod_engine_version", lambda run, vllm_cmd: "0.31.0")
     document = _wave(tmp_path, record_corpus=True)
     row = document["recipes"][0]
-    assert document["engine_versions"] == {"fixture-embed": "0.31.0"}
+    # The pod's version keys the corpus and is the row's engine version.  The version MAP is the
+    # --changed-since index: only recorded corpora enter it, and this one is not recorded -- the stub
+    # refuses unknown fields with 400 where the measured 0.31.0 table expects 200 (checked below), so the
+    # corpus step fails and its key stays out of the index (the D1 gate).
+    assert row["engine_version"] == "0.31.0"
+    assert document["engine_versions"] == {}
     corpus = Path(row["steps"]["observation_corpus"]["corpus_dir"])
     assert corpus.parent.parent.parent.name == "vllm-0.31.0"
     manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["engine"]["version"] == "0.31.0"
     # The measured table is APPLIED (the stub is deliberately stricter than real vLLM on unknown fields,
-    # so it records mismatches rather than the vacuous pass an unmeasured version gets).
+    # so it records mismatches rather than the vacuous pass an unmeasured version gets), and the failed
+    # check fails the corpus step.
     statuses = _checks(row["steps"]["observation_corpus"])["statuses_as_expected"]
     assert statuses["mismatches"], statuses
+    assert row["steps"]["observation_corpus"]["state"] == "failed"
 
 
 def test_a_digest_pinned_recipe_records_the_pod_version_not_the_digest(
@@ -234,11 +279,15 @@ def test_a_digest_pinned_recipe_records_the_pod_version_not_the_digest(
     monkeypatch.setattr(run_wave_module, "_pod_engine_version", lambda run, vllm_cmd: "0.31.0")
     document = _wave(tmp_path, record_corpus=True, recipes_root=root)
     row = document["recipes"][0]
-    assert document["engine_versions"] == {"fixture-embed": "0.31.0"}
+    # The pod's version keys the corpus and is the row's engine version; the failed stub recording's key
+    # stays out of the --changed-since index (the D1 gate, the same shape as the pod-version test above).
+    assert row["engine_version"] == "0.31.0"
+    assert document["engine_versions"] == {}
     assert "vllm-0.31.0" in row["steps"]["observation_corpus"]["corpus_dir"]
     # The status expectations follow the POD's version (0.31.0's measured table), not the digest's
     # 64-hex "version" that made every expectation return None.
     assert _checks(row["steps"]["observation_corpus"])["statuses_as_expected"]["mismatches"]
+    assert row["steps"]["observation_corpus"]["state"] == "failed"
 
 
 def test_a_recipe_whose_engine_version_cannot_be_probed_is_not_verified(
