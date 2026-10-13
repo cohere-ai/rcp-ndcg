@@ -547,6 +547,58 @@ def test_a_kept_rule_reply_is_checked_against_the_declared_kept_count(tmp_path: 
     assert check["passed"] is True, check
 
 
+def _per_chunk_record(*, vectors: int, ids: list[int]) -> dict[str, Any]:
+    """One per-chunk ``/pooling`` exchange: the reply carries one row per chunk while ``usage.prompt_tokens``
+    reports the whole prompt, exactly the real engine's answer for the per-chunk head."""
+    width = 8
+    request = {
+        "model": "m",
+        "input": [list(ids)],
+        "task": "token_embed",
+        "encoding_format": "float",
+        "embed_dtype": "float16",
+    }
+    reply = {
+        "object": "list",
+        "data": [{"index": 0, "data": [[0.5] * width for _ in range(vectors)]}],
+        "usage": {"prompt_tokens": len(ids), "total_tokens": len(ids)},
+    }
+    return _exchange("/pooling", request, reply)
+
+
+def test_a_per_chunk_reply_is_checked_against_the_declared_chunk_count(tmp_path: Path) -> None:
+    """pplx-embed-v2-context's per-chunk head (the rc0-202610130615 recording failure: ``the /pooling
+    reply reports 9 prompt token(s) but its vectors decode to 1``): the served plugin pools one vector per
+    document chunk, so a one-chunk document legitimately answers one vector.  The check reads the recipe's
+    declared ``outputs: per_chunk`` and expects the product's own per-chunk count for each item (the
+    plugin's segmentation over the sent ids): a reply at the chunk count passes; one at the prompt-token
+    count (the engine ignored the per-chunk head) and one at a count that is neither fail, naming the
+    expected count."""
+    from rcp_ndcg_test.observe.provenance import recipe_facts
+    from rcp_ndcg_vllm.models.pplx.chunk_rule import BOUNDARY_TOKEN_ID, DOCUMENT_PREFIX_TOKEN_IDS
+
+    recipe = load_recipe(RECIPES / "fixture-multi-vector")
+    block = {**recipe_facts(recipe), "outputs": "per_chunk"}
+    # A two-chunk document: the prefix, the first chunk, the boundary marker, the second chunk.
+    ids = [*DOCUMENT_PREFIX_TOKEN_IDS, 11, BOUNDARY_TOKEN_ID, 12, 13]
+    chunks = _synthetic_corpus(tmp_path / "chunks", [_per_chunk_record(vectors=2, ids=ids)], recipe=block)
+    assert _checks(verify_corpus(chunks))["scores_finite_and_vector_widths"]["passed"] is True
+    full = _synthetic_corpus(tmp_path / "full", [_per_chunk_record(vectors=len(ids), ids=ids)], recipe=block)
+    check = _checks(verify_corpus(full))["scores_finite_and_vector_widths"]
+    assert check["passed"] is False, check
+    assert any("declared per-chunk count 2" in mismatch for mismatch in check["mismatches"]), check
+    neither = _synthetic_corpus(tmp_path / "neither", [_per_chunk_record(vectors=3, ids=ids)], recipe=block)
+    check = _checks(verify_corpus(neither))["scores_finite_and_vector_widths"]
+    assert check["passed"] is False, check
+    assert any("decodes to 3 vector(s)" in mismatch for mismatch in check["mismatches"]), check
+    # A token-per-position recipe is unchanged: the same reply at the prompt-token count passes when the
+    # recipe declares no per-chunk head.
+    tokenwise = _synthetic_corpus(
+        tmp_path / "tokenwise", [_per_chunk_record(vectors=len(ids), ids=ids)], recipe=recipe_facts(recipe)
+    )
+    assert _checks(verify_corpus(tokenwise))["scores_finite_and_vector_widths"]["passed"] is True
+
+
 def test_the_recorder_records_the_engine_ids_of_each_sent_render(tmp_path: Path) -> None:
     """The corpus carries the engine's own token ids of every sent render on the model-layer record
     (``inputs.sent_token_ids``), taken from the pass's ``/tokenize`` probes: the kept-count check needs them
