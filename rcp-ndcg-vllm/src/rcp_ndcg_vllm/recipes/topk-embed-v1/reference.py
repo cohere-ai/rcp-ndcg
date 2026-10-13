@@ -63,7 +63,9 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
   per-token matrices (n_kept, the variant's width: 2048 for -small, 1024 for -xsmall), one matrix per
   query text (the row's single query: a one-element list, the harness's positional contract) and one
   per document, exactly as the wrapper
-  returns them (keep-masked). A media row's ``media`` field is read (:func:`document_inputs`): a
+  returns them (keep-masked; every matrix is moved to the host -- ``detach().cpu()`` -- before the fp16
+  cast, so a GPU reference never hands numpy a CUDA tensor, the E2 round-10 crash). A media row's ``media``
+  field is read (:func:`document_inputs`): a
   document whose entry is one image and whose text is empty is the loaded PIL image, which the
   wrapper's own ``_image_row`` renders and keep-masks (only the image-patch positions, exactly the
   declared allowlist the plugin applies engine-side); the text and image documents of one row are
@@ -433,11 +435,29 @@ def embed_rows(model_obj: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"rows": out_rows}
 
 
+def _host_matrix(matrix: Any) -> Any:
+    """One encoder output on the host, ready for numpy (the E2 round-10 CUDA crash).
+
+    The wrapper's ``encode_query``/``encode_document`` return torch tensors, and on a GPU reference they
+    live on CUDA: ``np.asarray`` refuses a CUDA tensor with ``TypeError: can't convert cuda:0 device type
+    tensor to numpy`` (the wave's embed mode died there, before any comparison). A tensor is therefore
+    detached from its autograd graph and moved to CPU storage -- the ``detach().cpu()`` every other
+    reference's output path runs -- while a device-less array-like (a nested list, a numpy array, a CPU
+    tensor whose own ``detach``/``cpu`` are no-ops) passes through unchanged. The values are never
+    touched: the fp16 cast stays with :func:`_fp16_lists`.
+    """
+    if hasattr(matrix, "detach"):
+        matrix = matrix.detach()
+    if hasattr(matrix, "cpu"):
+        matrix = matrix.cpu()
+    return matrix
+
+
 def _fp16_lists(matrix: Any) -> list[list[float]]:
-    """One fp16 token-vector matrix as nested floats."""
+    """One fp16 token-vector matrix as nested floats, through :func:`_host_matrix` first."""
     import numpy as np
 
-    return [[float(value) for value in vector] for vector in np.asarray(matrix, dtype=np.float16)]
+    return [[float(value) for value in vector] for vector in np.asarray(_host_matrix(matrix), dtype=np.float16)]
 
 
 def card_resize(height: int, width: int, factor: int, min_pixels: int, max_pixels: int) -> tuple[int, int]:

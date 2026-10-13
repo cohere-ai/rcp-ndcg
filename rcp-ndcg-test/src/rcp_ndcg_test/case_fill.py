@@ -25,7 +25,10 @@ mode cannot fill is **skipped per case**, with the reason recorded in the report
 untouched: ``kind: none`` carries no values by design, and a ``expected.kind`` the mode does not produce
 is another stage's values.  A media-bearing case is fillable: the pairs row carries the case's ``media/``
 files in the ``media`` field (:func:`_plan_rows`, the media set's own entry shape), which the reference's
-mode reads exactly as stage 2's media rows are read.  A case the reference refuses (a container it cannot
+mode reads exactly as stage 2's media rows are read.  The case's run-level ``instruction`` enters the
+pairs row only when the recipe's client places it (:func:`_places_the_instruction`: the resolved
+endpoint config's own ``instruction`` mode -- ``none`` drops it by declaration, so the row must not
+carry it either), the same rule the served request follows.  A case the reference refuses (a container it cannot
 sample at the recipe's pin, a row it cannot express) is a **recorded exception**: the fill retries the
 cases one by one so the refusal cannot take the recipe's other cases down, records the reference's own
 reason in the case's note and in the report, and leaves the case ``pending_gpu``.  The reference python's
@@ -51,6 +54,7 @@ import yaml
 from rcp_ndcg_test.cases import Case, default_cases_root, load_cases, text_of
 from rcp_ndcg_test.equivalence.fitting import resolved_tokenizer_spec
 from rcp_ndcg_test.equivalence.reference import reference_entry, reference_of, run_reference
+from rcp_ndcg_test.equivalence.wire import recipe_config
 from rcp_ndcg_test.errors import CaseError, HarnessError, RecipeError
 from rcp_ndcg_test.observe.media_set import image_entry, video_entry
 from rcp_ndcg_test.stepwatch import StepWatch, watched
@@ -350,7 +354,7 @@ def _answers_per_case(
     and the recipe's other cases still fill.  A per-case failure is recorded with the reference's own
     reason; a failure that leaves no budget is the recipe's (its fill cannot continue) and is raised.
     """
-    rows, mapping = _plan_rows(fillable)
+    rows, mapping = _plan_rows(recipe, fillable)
     try:
         document = _run_reference(recipe, mode, rows, reference_python=reference_python, device=device)
         answers = _answers_by_case(document, rows, mapping)
@@ -360,7 +364,7 @@ def _answers_per_case(
             raise  # the budget is spent: a per-case retry would only re-record the same overrun
     per_case: dict[str, tuple[list[dict[str, Any]], str | None]] = {}
     for case in fillable:
-        case_rows, case_mapping = _plan_rows([case])
+        case_rows, case_mapping = _plan_rows(recipe, [case])
         try:
             document = _run_reference(recipe, mode, case_rows, reference_python=reference_python, device=device)
             per_case[case.id] = (_answers_by_case(document, case_rows, case_mapping)[case.id], None)
@@ -477,7 +481,7 @@ def _media_entry(case: Case, relative: str) -> dict[str, Any]:
     return image_entry(relative, width, height, payload=payload, mime=mime)
 
 
-def _plan_rows(cases: list[Case]) -> tuple[list[dict[str, Any]], list[tuple[Case, int]]]:
+def _plan_rows(recipe: Any, cases: list[Case]) -> tuple[list[dict[str, Any]], list[tuple[Case, int]]]:
     """The reference's pairs rows and, per row, the case and query index it carries.
 
     One row per query (the reference's own pairs format): the query's text, the case's documents in the
@@ -486,11 +490,13 @@ def _plan_rows(cases: list[Case]) -> tuple[list[dict[str, Any]], list[tuple[Case
     built from the case's ``media/`` files by :func:`_media_entry`).  A media-only document's text is the
     empty string (the reference reads the side's content from its media); a document with neither text
     nor media, or a query without text, is refused rather than silently sent as a missing part.  The
-    run's instruction travels per row when the case declares one.  Only fillable cases reach here (the
-    partition owns the refusals).
+    run's instruction travels per row only when the recipe's client places it (:func:`_places_the_instruction`)
+    -- the reference must read the same inputs the served engine does, never an instruction the client
+    drops by declaration.  Only fillable cases reach here (the partition owns the refusals).
     """
     rows: list[dict[str, Any]] = []
     mapping: list[tuple[Case, int]] = []
+    places_instruction = _places_the_instruction(recipe)
     for case in cases:
         documents: list[str] = []
         media_documents: list[list[dict[str, Any]]] = []
@@ -510,11 +516,25 @@ def _plan_rows(cases: list[Case]) -> tuple[list[dict[str, Any]], list[tuple[Case
             row: dict[str, Any] = {"query": text, "documents": documents}
             if any(media_documents):
                 row["media"] = {"query": [], "documents": media_documents}
-            if case.inputs.instruction is not None:
+            if case.inputs.instruction is not None and places_instruction:
                 row["instruction"] = case.inputs.instruction
             rows.append(row)
             mapping.append((case, index))
     return rows, mapping
+
+
+def _places_the_instruction(recipe: Any) -> bool:
+    """Whether the recipe's client places a case's instruction on the wire (the pairs row carries it only then).
+
+    One home with the client rule: the product's resolved endpoint config
+    (:func:`rcp_ndcg_test.equivalence.wire.recipe_config`, the same object the role clients are built
+    from) decides -- ``instruction: none`` sends none, so the pairs row must not carry the field either
+    (the model's own frame already holds its default instruction, and the reference refuses or ignores a
+    row that carries one), while ``fold`` (and the rerank role's own default) folds it into the query,
+    which the reference subprocess folds the same way.  Reading the resolved mode here rather than the
+    raw ``client`` key keeps the role default in the product's config, never a second copy.
+    """
+    return recipe_config(recipe, None).instruction != "none"
 
 
 def _run_reference(

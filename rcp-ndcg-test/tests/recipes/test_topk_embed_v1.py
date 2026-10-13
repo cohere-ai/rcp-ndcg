@@ -1253,6 +1253,99 @@ def test_the_reference_embeds_one_query_matrix_per_query_text() -> None:
     assert len(document["rows"][0]["document_vectors"]) == 1
 
 
+class _CudaLikeTensor:
+    """A torch-like CUDA tensor: numpy refuses it until the reference moves it to the host.
+
+    ``__array__`` raises the E2 round-10 wave's own error (``TypeError: can't convert cuda:0 device type
+    tensor to numpy``), so an unfixed conversion site fails exactly as the GPU reference did; ``detach``
+    and ``cpu`` record the calls, and ``cpu`` hands back the host values (what a real tensor's
+    ``detach().cpu()`` does).
+    """
+
+    def __init__(self, values: list[list[float]]) -> None:
+        self.values = values
+        self.calls: list[str] = []
+
+    def detach(self) -> _CudaLikeTensor:
+        self.calls.append("detach")
+        return self
+
+    def cpu(self) -> list[list[float]]:
+        self.calls.append("cpu")
+        return self.values
+
+    def __array__(self, dtype: Any = None) -> Any:
+        raise TypeError(
+            "can't convert cuda:0 device type tensor to numpy. Use Tensor.cpu() to copy the tensor to "
+            "host memory first."
+        )
+
+
+class _CpuLikeTensor:
+    """A torch-like CPU tensor: ``detach``/``cpu`` are the tensor's own no-ops (already on the host)."""
+
+    def __init__(self, values: list[list[float]]) -> None:
+        self.values = values
+
+    def detach(self) -> _CpuLikeTensor:
+        return self
+
+    def cpu(self) -> _CpuLikeTensor:
+        return self
+
+    def __array__(self, dtype: Any = None) -> Any:
+        import numpy as np
+
+        return np.asarray(self.values, dtype=dtype)
+
+
+def test_the_reference_host_helper_moves_a_cuda_tensor_and_passes_a_device_less_one() -> None:
+    """The one conversion helper: a torch tensor (CUDA included) is detached from its graph and moved to
+    CPU storage -- the E2 round-10 wave died with ``TypeError: can't convert cuda:0 device type tensor to
+    numpy`` because ``np.asarray`` read the wrapper's CUDA output directly -- while a device-less matrix
+    (a nested list, a numpy array) and a CPU tensor (whose own ``detach``/``cpu`` are no-ops) pass through
+    unchanged. The helper never casts: the fp16 conversion stays with the caller."""
+    module = _reference_module()
+    cuda = _CudaLikeTensor([[1.0, 0.5], [0.0, -1.0]])
+    assert module._host_matrix(cuda) == [[1.0, 0.5], [0.0, -1.0]]
+    assert cuda.calls == ["detach", "cpu"], "a torch tensor is detached, then moved to the host"
+    device_less = [[0.25, 0.5]]
+    assert module._host_matrix(device_less) is device_less
+    cpu = _CpuLikeTensor([[0.5, 0.25]])
+    assert module._host_matrix(cpu) is cpu
+    assert module._fp16_lists(cpu) == [[0.5, 0.25]]
+
+
+def test_the_reference_embed_path_converts_every_matrix_through_the_host_helper() -> None:
+    """Both output paths -- the query matrix and every document matrix -- convert through the host helper:
+    the same CUDA-like tensor the wave's GPU run produced encodes a row without numpy ever reading a CUDA
+    tensor, and every conversion site is counted through the helper."""
+    module = _reference_module()
+
+    class FakeModel:
+        """The wrapper's encode surface: CUDA-like query and document matrices."""
+
+        def encode_query(self, texts: list[str]) -> list[Any]:
+            assert len(texts) == 1
+            return [_CudaLikeTensor([[1.0, 0.0], [0.0, 1.0]])]
+
+        def encode_document(self, items: list[Any]) -> list[Any]:
+            return [_CudaLikeTensor([[0.5, 0.5]])]
+
+    seen: list[Any] = []
+    original = module._host_matrix
+    module._host_matrix = lambda matrix: (seen.append(matrix), original(matrix))[1]
+    try:
+        document = module.embed_rows(FakeModel(), [{"query": "a query", "documents": ["a document"]}])
+    finally:
+        module._host_matrix = original
+    row = document["rows"][0]
+    assert row["query_vectors"] == [[[1.0, 0.0], [0.0, 1.0]]]
+    assert row["document_vectors"] == [[[0.5, 0.5]]]
+    assert len(seen) == 2, "the query path and the document path both convert through the helper"
+    assert all(isinstance(matrix, _CudaLikeTensor) for matrix in seen)
+
+
 def test_the_media_modes_refuse_the_retired_media_columns() -> None:
     """A row carrying the retired per-column media fields is refused loudly by the embed and media modes:
     the harness's media rows carry the ``media`` field, and a silently ignored column would encode a

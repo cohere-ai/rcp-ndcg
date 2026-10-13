@@ -18,6 +18,7 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -139,20 +140,25 @@ def _write_case(
     documents: list[dict],
     note: str = _PENDING_NOTE,
     role: str | None = None,
+    instruction: str | None = None,
 ) -> Path:
     """One pending generated case, written the way the cases lanes write them (values null, pending).
 
     ``kind: none`` carries no values and no tolerance by design (the case format refuses a tolerance on
-    one), so its ``expected`` block holds nulls where the other kinds hold the declared rule.
+    one), so its ``expected`` block holds nulls where the other kinds hold the declared rule.  A case
+    whose run-level instruction is not ``None`` carries it under ``inputs`` (the case format's field).
     """
     directory.mkdir(parents=True, exist_ok=True)
+    inputs: dict[str, Any] = {"queries": queries, "documents": documents}
+    if instruction is not None:
+        inputs["instruction"] = instruction
     case = {
         "id": f"{recipe_id}/{slug}",
         "recipe": recipe_id,
         "role": role or ("embed" if kind == "similarity_matrix" else "rerank"),
         "source": {"kind": "generated"},
         "strata": {"modality": "text", "length": length, "batch": batch},
-        "inputs": {"queries": queries, "documents": documents},
+        "inputs": inputs,
         "expected": {
             "kind": kind,
             "values": None,
@@ -317,7 +323,7 @@ def test_a_media_case_plans_the_case_files_into_the_pairs_media_field() -> None:
         load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "video-short-single.yaml"),
         load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "mixed-modality-batch.yaml"),
     ]
-    rows, mapping = _plan_rows(cases)
+    rows, mapping = _plan_rows(load_recipe("qwen3-vl-embedding-2b"), cases)
     assert [case.id for case, _ in mapping] == [
         "qwen3-vl-embedding-2b/image-short-single",
         "qwen3-vl-embedding-2b/video-short-single",
@@ -366,8 +372,41 @@ def test_a_media_case_plans_the_case_files_into_the_pairs_media_field() -> None:
     assert (documents[2][0]["width"], documents[2][0]["height"]) == (1700, 2200)
     assert documents[2][0]["sha256"] == hashlib.sha256(page).hexdigest()
 
-    text_only, _ = _plan_rows([load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "text-short-single.yaml")])
+    text_only, _ = _plan_rows(
+        load_recipe("qwen3-vl-embedding-2b"),
+        [load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "text-short-single.yaml")],
+    )
     assert "media" not in text_only[0]
+
+
+def test_a_case_instruction_is_planned_only_when_the_recipe_places_it(tmp_path: Path) -> None:
+    """The recipe's resolved instruction mode decides the pairs row, exactly as it decides the served
+    request (the client rule): a case carrying an instruction against a recipe whose client declares
+    ``instruction: none`` -- the card's default instruction is fixed frame text -- plans a row WITHOUT
+    the field, so the reference is never handed an instruction the served engine never sees (the wave's
+    nine qwen3-vl-embedding-2b exceptions); a recipe that folds the instruction carries it, and the
+    reference folds it the same way the client does."""
+    from rcp_ndcg_test.case_fill import _plan_rows
+
+    card_case = load_case(REAL_CASES / "qwen3-vl-embedding-2b" / "text-short-single.yaml")
+    assert card_case.inputs.instruction  # the shipped case carries the card's own default instruction
+    rows, _ = _plan_rows(load_recipe("qwen3-vl-embedding-2b"), [card_case])
+    assert "instruction" not in rows[0], "the served request carries none: the row must not either"
+
+    fold_recipe = load_recipe(RECIPES / "fixture-rerank-pointwise")
+    instruction = "Given a web search query, retrieve relevant passages that answer the query"
+    path = _write_case(
+        tmp_path / "cases" / "fixture-rerank-pointwise",
+        "fixture-rerank-pointwise",
+        "gen-instruction",
+        kind="scores",
+        length="short",
+        queries=[{"id": "q1", "text": "the short query"}],
+        documents=[{"id": "d1", "text": "the short document"}],
+        instruction=instruction,
+    )
+    folded, _ = _plan_rows(fold_recipe, [load_case(path)])
+    assert folded[0]["instruction"] == instruction
 
 
 def test_a_media_case_is_no_longer_skipped_and_a_kind_none_case_still_is(tmp_path: Path) -> None:
