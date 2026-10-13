@@ -151,6 +151,52 @@ jobs:
         run: python3 .github/scripts/check_constraints.py
       - name: twine check every file
         run: uvx twine check dist/*
+      # The tag pipeline installs what it built: twine checks metadata only, so a wheel with broken entry
+      # points or missing package data would otherwise publish unchecked (CI's wheel-smoke job does not run
+      # on tag pushes). Each published distribution installs from its built wheel -- never from the checkout
+      # -- into its own fresh venv and must import and work there. rcp-ndcg's wheel pins rcp-ndcg-core
+      # exactly, so the sibling wheel comes from --find-links dist, under the lock's constraints file.
+      - name: the core wheel installs alone and computes the metric
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-core" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/rcp_ndcg_core-*.whl
+          "$RUNNER_TEMP/wheel-core/bin/python" - <<'PY'
+          import sys
+
+          from rcp_ndcg_core import PROTOCOLS, gain, ndcg, score_query
+
+          items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
+          gains = {d: gain(t, items) for d, t in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}
+          scores = {"d1": 0.9, "d2": 0.7, "d3": 0.2}
+          assert abs(ndcg(scores, gains, k=10) - score_query(scores, gains, protocol=PROTOCOLS["plain"])) < 1e-12
+          assert "torch" not in sys.modules, "rcp_ndcg_core imported torch"
+          print("rcp_ndcg_core wheel alone:", ndcg(scores, gains, k=10))
+          PY
+      - name: the vllm wheel installs alone, serves and lists every recipe
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-vllm" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_ndcg_vllm-*.whl
+          "$RUNNER_TEMP/wheel-vllm/bin/python" - <<'PY'
+          from rcp_ndcg_vllm.recipe import iter_recipes
+
+          recipes = list(iter_recipes())
+          assert len(recipes) == 44, len(recipes)
+          print("rcp_ndcg_vllm wheel alone:", len(recipes), "recipes")
+          PY
+          "$RUNNER_TEMP/wheel-vllm/bin/rcp-ndcg-vllm" serve embeddinggemma-2 --dry-run
+      - name: the rcp-ndcg wheel installs (its core pin from dist/) and works
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-rcp" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel-rcp/bin/python" \
+            dist/rcp_ndcg-*.whl --find-links dist --constraints requirements-constraints.txt
+          "$RUNNER_TEMP/wheel-rcp/bin/rcp-ndcg" --version
+          "$RUNNER_TEMP/wheel-rcp/bin/python" - <<'PY'
+          from rcp_ndcg.judging.prompts import load_prompt
+
+          prompt = load_prompt("rubric")
+          assert prompt.text, "the shipped rubric prompt is empty"
+          print("rcp-ndcg wheel alone: rubric prompt", len(prompt.text), "chars")
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-rcp-ndcg-core
