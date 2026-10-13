@@ -59,12 +59,12 @@ def test_register_registers_the_architecture() -> None:
             "(GPU wave T0)"
         ),
     )
-    from rcp_ndcg_vllm.models.topk.plugin import MODEL_ARCHITECTURE, register
+    from rcp_ndcg_vllm.models.topk.plugin import MODEL_ARCHITECTURE, register_topk
     from vllm.model_executor.models import ModelRegistry
 
-    register()
+    register_topk()
     assert MODEL_ARCHITECTURE in ModelRegistry.get_supported_archs()
     # The loader may run the callable once per process; a second call must be
     # tolerated (vllm/plugins/__init__.py load_general_plugins).
-    register()
+    register_topk()
     assert MODEL_ARCHITECTURE in ModelRegistry.get_supported_archs()
