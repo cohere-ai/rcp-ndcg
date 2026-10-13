@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import sys
+import time
 from pathlib import Path
 
 import pytest
+import rcp_ndcg_test.record as record_module
 from rcp_ndcg_test.fingerprint import behaviour_fingerprint
 from rcp_ndcg_test.jobs import run_wave as run_wave_module
 from rcp_ndcg_test.jobs.run_wave import run_wave
@@ -60,6 +64,56 @@ def test_the_wave_records_an_observation_corpus_at_its_keyed_path(tmp_path: Path
     assert manifest["plan"]["strata"]["edge:while_loading"] == {"present": True}
     consistency = _checks(step)["equivalence_consistent"]
     assert consistency["passed"] is True and consistency["compared"] > 0, consistency
+
+
+def test_an_abandoned_corpus_body_cannot_restart_the_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The recording pass's ``the engine exited (code 0) while its steps ran`` (pplx-embed-v2-context): the
+    corpus step's body restarts the engine between the in-process passes and the after-restart pass.  A body
+    the step machinery abandoned (an engine death or a step-budget overrun) must not reach that restart: it
+    would stop and start an engine the wave no longer tracks (the recipe's GPUs are released, and the wave
+    may have handed them to another recipe).  This reproduces the interleaving: the body's engine dies (a
+    real death the runner detects), the body waits until the runner has abandoned it, then calls the restart
+    -- which must be refused.  Without the guard the restart runs (or dies on the closed wave, by timing),
+    so the assertion on the refusal is what pins the serialization."""
+    outcomes: list[str] = []
+
+    def fake_record_corpus(recipe, base_url, rows, out_dir, *, restart=None, **kwargs):
+        del base_url, rows, kwargs
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        with run_wave_module._LIVE_LOCK:
+            engine = next(engine for engine in run_wave_module._LIVE_ENGINES if engine.recipe.id == recipe.id)
+        os.killpg(engine.popen.pid, signal.SIGKILL)  # the engine's own death, never the runner's stop
+        # Wait until the runner has abandoned this step body (its teardown removes the engine from the
+        # wave's registry, which happens after the step token is cleared), then reach the restart.
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            with run_wave_module._LIVE_LOCK:
+                abandoned = engine not in run_wave_module._LIVE_ENGINES
+            if abandoned:
+                break
+            time.sleep(0.1)
+        else:  # pragma: no cover - the runner always abandons a body whose engine died
+            raise AssertionError("the runner never abandoned the corpus step")
+        if restart is not None:
+            try:
+                restart()
+            except Exception as error:  # noqa: BLE001 - the refusal is what this test asserts
+                outcomes.append(f"{type(error).__name__}: {error}")
+            else:
+                outcomes.append("restarted")
+        return {"state": "failed", "error": "the engine died while this step ran"}
+
+    monkeypatch.setattr(record_module, "record_corpus", fake_record_corpus)
+    document = _wave(tmp_path, record_corpus=True)
+    row = document["recipes"][0]
+    assert row["state"] == "failed"
+    assert "exited (code -9) while its steps ran" in (row["steps"]["observation_corpus"].get("error") or "")
+    assert len(outcomes) == 1 and outcomes[0].startswith("HarnessError: "), outcomes
+    assert "no longer in flight" in outcomes[0]
+    starts = [line for line in capsys.readouterr().out.splitlines() if line == "run_wave: fixture-embed serve start"]
+    assert len(starts) == 1, "the abandoned body's restart must not start a fresh engine"
 
 
 def test_changed_since_skips_the_unchanged_and_records_the_changed(tmp_path: Path) -> None:
