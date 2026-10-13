@@ -1163,9 +1163,7 @@ def test_stage1_messages_media_frame_compares_the_parts_the_engine_reads(tmp_pat
 
     separated = _media_messages_recipe(
         tmp_path / "separated",
-        _MEDIA_CHAT_TEMPLATE.replace(
-            "{{ part.text }}", "{{ part.text }}{% if not loop.last %}<|SEP|>{% endif %}"
-        ),
+        _MEDIA_CHAT_TEMPLATE.replace("{{ part.text }}", "{{ part.text }}{% if not loop.last %}<|SEP|>{% endif %}"),
     )
     check = stage1_prompts(separated, pairs, None, over_length_per_shape=1)["template_render_check"]
     assert check["passed"] is False, check

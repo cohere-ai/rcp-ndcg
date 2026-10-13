@@ -227,9 +227,10 @@ def test_the_engine_check_reads_the_render_merge_the_placeholder_moves(tmp_path:
     finally:
         engine.stop()
     assert document is not None and document["engine_check"]["passed"] is False
-    assert document["engine_check"]["failures"][0]["engine_media_tokens"] > document["engine_check"]["failures"][0][
-        "client_media_tokens"
-    ]
+    assert (
+        document["engine_check"]["failures"][0]["engine_media_tokens"]
+        > document["engine_check"]["failures"][0]["client_media_tokens"]
+    )
 
 
 def test_the_harness_runs_the_media_stage_beside_stages_1_and_2(recipe: Any, tmp_path: Path) -> None:
