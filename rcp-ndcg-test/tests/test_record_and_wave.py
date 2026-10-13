@@ -17,7 +17,7 @@ from rcp_ndcg_test.jobs.run_wave import _ZMQ_IPC_SUFFIX_CHARS, _slot_tmp_dir, ru
 from rcp_ndcg_test.record import record
 from rcp_ndcg_vllm import load_recipe
 
-from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub
+from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub, token_ids_recipe
 
 REFERENCE_PYTHON = sys.executable
 VLLM_CMD = f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'}"
@@ -45,6 +45,27 @@ def test_record_writes_exchanges_per_route(tmp_path: Path) -> None:
         document = json.loads(path.read_text(encoding="utf-8"))
         assert "http://engine" in document["route"]
         assert "127.0.0.1" not in json.dumps(document)
+
+
+def test_the_recorder_error_probes_carry_a_token_ids_recipes_ids(tmp_path: Path) -> None:
+    """The recorder's error probes (the over-length body and the unknown field) carry a
+    ``request_shape: token_ids`` recipe's own render ids, the construction its client sends: a bare text is
+    a request the client never sends, and such an engine's pooler refuses it by name -- the refusal kills
+    the EngineCore before the corpus step of a ``--record --record-corpus`` wave (the submitted wave)."""
+    recipe = token_ids_recipe(tmp_path)
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        written = record(recipe, engine.base_url, tmp_path / "record")
+    finally:
+        engine.stop()
+    documents = [json.loads(path.read_text(encoding="utf-8")) for path in written]
+    pooling = [document for document in documents if document["route"] == "http://engine/pooling"]
+    assert len(pooling) == 3, "the client's own request and the two error probes"
+    for document in pooling:
+        body = document["request"]["body"]
+        assert isinstance(body["input"], list) and isinstance(body["input"][0], list), body
+    statuses = [document["status"] for document in pooling]
+    assert sorted(statuses) == [200, 400, 400], statuses
 
 
 def test_record_over_length_probe_crosses_the_engine_cap(tmp_path: Path) -> None:

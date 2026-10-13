@@ -272,6 +272,32 @@ def sample_pairs(documents: int = 4) -> list[dict]:
     ]
 
 
+def token_ids_recipe(tmp_path: Path, source_id: str = "fixture-multi-vector") -> Any:
+    """A copy of a fixture multi-vector recipe whose pooling wire carries the recipe's own render ids
+    (``client.request_shape: token_ids``, the pplx-embed-v2-context contract) under the declared split
+    parses; the copy's tokenizer path is absolute, because it lives outside the fixture tree.
+
+    Inputs: the directory the copy is written under (a test's ``tmp_path``) and the fixture recipe id.
+    Output: the loaded recipe.
+    """
+    import yaml
+    from rcp_ndcg_vllm.recipe import load_recipe
+
+    source = RECIPES / source_id
+    directory = tmp_path / "recipes" / f"{source_id}-token-ids"
+    shutil.copytree(source, directory)
+    data = yaml.safe_load((directory / "family.yaml").read_text(encoding="utf-8"))
+    data["id"] = f"{source_id}-token-ids"
+    data["variants"][0]["id"] = data["id"]
+    data["client"]["tokenizer"] = str(TOKENIZER)
+    data["client"]["request_shape"] = "token_ids"
+    data["client"]["template"]["query"] = [{"fixed": "Q: "}, {"content": "query"}]
+    data["client"]["document_split_special_tokens"] = True
+    data["client"]["query_split_special_tokens"] = True
+    (directory / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(directory)
+
+
 def hub_cache(
     root: Path,
     monkeypatch: pytest.MonkeyPatch,

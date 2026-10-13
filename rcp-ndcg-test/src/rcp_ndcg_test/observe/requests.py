@@ -686,6 +686,8 @@ class CorpusPlan:
         bare: The requests sent as they are, never through the client: the ladder and the long content kinds
             UNCUT (the engine's own refusal), the wire variants and the protocol edges.  Each is
             ``{"request_id", "stratum", "probe", "layer", "method", "path", "body"}`` (or ``"raw"`` bytes).
+            A ``request_shape: token_ids`` recipe's text rows carry the recipe's own render ids (the
+            construction its client sends, the document side under the declared split parse), not the text.
         strata: Every section-1 stratum of the corpus plan, present or absent with the reason.
     """
 
@@ -699,10 +701,29 @@ class CorpusPlan:
 
 
 def _bare_body(recipe: Any, query: str, documents: list[str], **fields: Any) -> dict[str, Any]:
-    """One request body on the recipe's role route, as the engine reads it uncut (no client render)."""
+    """One request body on the recipe's role route, as the engine reads it uncut (no client render).
+
+    A ``request_shape: token_ids`` recipe's input carries the recipe's own render ids of each text -- the
+    document side, or the query side when no document rides the row -- never a bare text: such an engine's
+    pooler refuses a prefix-less input by name, and the refusal kills the EngineCore (the r2 wave's
+    pplx-embed-v2-context corpus failure).  The ids are the construction the recipe's client sends
+    (:func:`~rcp_ndcg_test.equivalence.fitting.sent_ids`, R30); every other wire keeps the texts.
+    """
     if recipe.role == "rerank":
         return {"model": recipe.id, "query": query, "documents": documents, **fields}
-    body: dict[str, Any] = {"model": recipe.id, "input": documents or [query], "encoding_format": "float"}
+    texts = documents or [query]
+    body: dict[str, Any]
+    if recipe.client.get("request_shape") == "token_ids":
+        from ..equivalence import fitting
+
+        shape = "document" if documents else "query"
+        body = {
+            "model": recipe.id,
+            "input": [fitting.sent_ids(recipe, shape, text) for text in texts],
+            "encoding_format": "float",
+        }
+    else:
+        body = {"model": recipe.id, "input": list(texts), "encoding_format": "float"}
     if recipe.role == "multi_vector":
         body["task"] = "token_embed"
     return {**body, **fields}

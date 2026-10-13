@@ -6,7 +6,8 @@ validates when it resolves ``recipe: <id>``, and the product's role clients (:mo
 make every content decision -- the prompts, the text budget, the reranker's settle-once query -- through
 :func:`rcp_ndcg.data.preprocess.fit` with the budget the config declares.  This module keeps only what the
 harness itself needs: loading the recipe's tokenizer, reading the pairs file, naming the declared shapes and
-the shapes' ``add_special_tokens`` flags, and resolving the tokenizer spec the reference subprocess loads.
+the shapes' ``add_special_tokens`` flags, building the client's own token ids for the harness's requests
+(:func:`sent_ids`), and resolving the tokenizer spec the reference subprocess loads.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ __all__ = [
     "load_pairs",
     "query_split_special_tokens",
     "resolved_tokenizer_spec",
+    "sent_ids",
     "split_special_tokens",
     "tokenizer_of",
 ]
@@ -97,6 +99,43 @@ def declared_shapes(recipe: Recipe) -> list[str]:
     if template is not None:
         return [str(shape) for shape in template.shapes()]
     return [default_shape(recipe)]
+
+
+def sent_ids(recipe: Recipe, shape: str, text: str) -> list[int]:
+    """The token ids the recipe's client sends for the content text ``text`` rendered as ``shape``.
+
+    The one construction for every harness caller that puts the client's own ids on a ``token_ids`` wire --
+    the smoke request, the corpus's standing probes and its plan's bare rows -- and for every caller that
+    compares ids against the client's (R30).  The render is the recipe's template's
+    (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the same text the client's fit ships); the ids
+    are that render under the shape's declared parse, exactly the rule the pooling client's ``_sent_ids``
+    sends with: the query side through :meth:`~rcp_ndcg.data.templates.TemplateSpec.split_ids` when the
+    recipe declares ``query_split_special_tokens`` (the reference's prefix-plus-body construction), the
+    document side with ``split_special_tokens`` when it declares ``document_split_special_tokens``, the
+    file's own parse otherwise -- under the shape's declared ``add_special_tokens`` flag throughout.
+
+    Inputs: the recipe, the declared shape (``"query"`` or ``"document"``) and the content span's text.
+    Output: the ids, in order.  Raises :class:`HarnessError` for a ``token_ids`` recipe whose client
+    declares no template (the product's endpoint config requires one for that wire) and the product's
+    ``ConfigError`` for a shape the template does not declare.
+    """
+    template = client_template(recipe)
+    if template is None:
+        raise HarnessError(f"recipe {recipe.id}: request_shape token_ids needs the client template")
+    tokenizer = tokenizer_of(recipe)
+    request_shape = cast_shape(shape)
+    rendered = template.render(
+        request_shape,
+        tokenizer,
+        query=text if shape == "query" else "",
+        document=text if shape == "document" else "",
+    )
+    flag = bool(template.adds_special_tokens(request_shape))
+    if shape == "query" and query_split_special_tokens(recipe):
+        return list(template.split_ids("query", tokenizer, rendered, add_special_tokens=flag))
+    return list(
+        tokenizer.ids(rendered, add_special_tokens=flag, split_special_tokens=split_special_tokens(recipe, shape))
+    )
 
 
 def cast_shape(shape: str) -> RequestShape:

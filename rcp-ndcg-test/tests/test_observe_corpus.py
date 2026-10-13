@@ -27,7 +27,7 @@ from rcp_ndcg_test.observe.corpus import (
 from rcp_ndcg_test.record import record_corpus
 from rcp_ndcg_vllm.recipe import load_recipe
 
-from tests.conftest import RECIPES, TOKENIZER, start_stub
+from tests.conftest import RECIPES, TOKENIZER, start_stub, token_ids_recipe
 
 
 def _rows() -> list[dict[str, Any]]:
@@ -108,6 +108,75 @@ def test_engine_facts_records_the_version_the_pod_reported() -> None:
     )
     assert facts["version"] == "0.31.0"
     assert facts["image"].startswith("registry.example.com/engine:nightly-abc@")
+
+
+def test_the_standing_probes_carry_the_recipes_own_render_ids(tmp_path: Path) -> None:
+    """A ``request_shape: token_ids`` recipe's standing probes carry the document-side render ids of the
+    row's first document, and a stub engine that takes vLLM's token-id prompts accepts them.  The
+    recipe's client is the referent: the probes' ``input`` equals the ids the client put on the wire for
+    the same text (R30).  A bare text is a request the recipe's client never sends, and such an engine's
+    pooler refuses it by name, which kills the EngineCore (the r2 wave's pplx-embed-v2-context failure)."""
+    from rcp_ndcg_core.content import Content
+    from rcp_ndcg_test.equivalence import fitting
+    from rcp_ndcg_test.equivalence.wire import role_client
+    from rcp_ndcg_test.observe.adversarial import special_token_spellings
+    from rcp_ndcg_test.observe.requests import corpus_plan
+    from rcp_ndcg_test.record import _bare_probes, _Collector
+
+    from rcp_ndcg.inference.types import EncodeRole
+
+    recipe = token_ids_recipe(tmp_path)
+    tokenizer = fitting.tokenizer_of(recipe)
+    document = special_token_spellings(tokenizer)
+    rows = [{"request_id": "row-0", "query": "a query", "documents": [document]}]
+    plan = corpus_plan(recipe, tokenizer, rows)
+    collected = _Collector(recipe, tokenizer)
+    stub = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        _bare_probes(recipe, stub.base_url, plan.rows, plan.bare, collected, timeout_s=60.0)
+    finally:
+        stub.stop()
+    probes = {str(record["inputs"]["probe"]): record for record in collected.records}
+    # The client's own request for the same text, through the product's client (the referent).
+    client, capture = role_client(recipe, None)
+    client.encode([Content.from_text(document)], EncodeRole.DOCUMENT)
+    sent = capture.exchanges[-1]["request_body"]["input"]
+    assert isinstance(sent, list) and isinstance(sent[0], list), "the client's own wire carries ids"
+    for probe in ("unknown_field", "wrong_model"):
+        body = probes[probe]["request"]["body_parsed"]
+        assert body["input"] == sent, probe
+    empty = probes["empty_input"]["request"]["body_parsed"]["input"]
+    assert isinstance(empty, list) and isinstance(empty[0], list), "the empty probe carries the empty render's ids"
+    # The plan's bare wire row rides the same construction for the same text.
+    assert probes["wire:encoding_format=float,embed_dtype=float16"]["request"]["body_parsed"]["input"] == sent
+    # The stub (vLLM's token-id prompts) accepts the ids: the model answers instead of refusing the body.
+    assert probes["wrong_model"]["response"]["status"] == 200
+    assert probes["empty_input"]["response"]["status"] == 200
+    assert probes["wire:encoding_format=float,embed_dtype=float16"]["response"]["status"] == 200
+
+
+def test_a_token_ids_wires_model_layer_has_no_text_to_tokenize(tmp_path: Path) -> None:
+    """A ``request_shape: token_ids`` wire's model layer puts no text on the wire: the record carries the
+    ids as sent, and the corpus step probes no ``/tokenize`` prompt for them -- the probe's contract is the
+    engine's tokenization of exactly what the client sent (R29), and there is none here."""
+    from rcp_ndcg_test.equivalence import fitting
+    from rcp_ndcg_test.record import _Collector, _model_layer
+
+    recipe = token_ids_recipe(tmp_path)
+    tokenizer = fitting.tokenizer_of(recipe)
+    rows = [{"request_id": "row-0", "query": "a query", "documents": ["a document"]}]
+    collected = _Collector(recipe, tokenizer)
+    stub = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        sent = _model_layer(recipe, stub.base_url, rows, collected, (1,))
+    finally:
+        stub.stop()
+    assert sent == [], "a token-ids wire carries no text; the ids ride the record's body"
+    assert any(
+        isinstance(record["request"]["body_parsed"].get("input", [None])[0], list)
+        for record in collected.records
+        if record["request"]["path"] == "/pooling"
+    ), "the model layer sent the client's own ids"
 
 
 def test_an_absent_after_restart_pass_fails_the_corpus(tmp_path: Path) -> None:

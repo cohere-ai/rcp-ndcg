@@ -139,29 +139,35 @@ def _record_errors(http: httpx.Client, recipe: Recipe, exchanges: list[dict[str,
     The over-length input is measured against the engine's own cap, ``serve.max_model_len`` -- the number the
     engine enforces -- so the probe genuinely crosses it and records the engine's 400.  The probes go bare (a
     deliberate refusal shape): the product's clients cut before the engine would refuse, and these fixtures
-    document exactly what the adapters must map.
+    document exactly what the adapters must map.  A ``request_shape: token_ids`` recipe's bodies carry the
+    recipe's own render ids (:func:`_role_request`), the same construction the corpus's probes send: a bare
+    text is a request its client never sends, and the pooler's refusal of one kills the EngineCore.
     """
     over_length = "a " * (recipe.serve.max_model_len * 2)
-    route, over_length_body = _role_request(recipe.role, recipe.id, over_length)
+    route, over_length_body = _role_request(recipe, over_length)
     _record_one(http, exchanges, "POST", route, over_length_body)
-    _, in_budget_body = _role_request(recipe.role, recipe.id, _SNIPPET_TEXT)
+    _, in_budget_body = _role_request(recipe, _SNIPPET_TEXT)
     _record_one(http, exchanges, "POST", route, {**in_budget_body, "unknown_field": "map-the-error"})
 
 
-def _role_request(role: str, model: str, text: str) -> tuple[str, dict[str, Any]]:
-    """The role route and its request with ``text`` as the input (the route the role's adapter speaks)."""
-    routes: dict[str, tuple[str, dict[str, Any]]] = {
-        "embed": (
-            "/v1/embeddings",
-            {"model": model, "input": [text], "encoding_format": "float"},
-        ),
-        "multi_vector": (
-            "/pooling",
-            {"model": model, "input": [text], "task": "token_embed", "encoding_format": "float"},
-        ),
-        "rerank": ("/rerank", {"model": model, "query": text, "documents": _SNIPPET_DOCUMENTS}),
-    }
-    return routes[role]
+def _role_request(recipe: Recipe, text: str) -> tuple[str, dict[str, Any]]:
+    """The role route and its request with ``text`` as the input (the route the role's adapter speaks).
+
+    A ``request_shape: token_ids`` recipe's input is the document-side render ids of ``text`` -- the
+    construction its client sends (:func:`~rcp_ndcg_test.equivalence.fitting.sent_ids`, R30) -- never a bare
+    text the engine's pooler refuses by name.
+    """
+    if recipe.role == "rerank":
+        return "/rerank", {"model": recipe.id, "query": text, "documents": _SNIPPET_DOCUMENTS}
+    route = {"embed": "/v1/embeddings", "multi_vector": "/pooling"}[recipe.role]
+    body: dict[str, Any] = {"model": recipe.id, "encoding_format": "float"}
+    if recipe.client.get("request_shape") == "token_ids":
+        body["input"] = [fitting.sent_ids(recipe, "document", text)]
+    else:
+        body["input"] = [text]
+    if recipe.role == "multi_vector":
+        body["task"] = "token_embed"
+    return route, body
 
 
 def _exchange(url: str, method: str, request_body: Any, response: httpx.Response) -> dict[str, Any]:
@@ -559,7 +565,9 @@ def _model_layer(
 
     Returns the texts the client actually put on the wire for each input sent alone, as ``(row, item, shape,
     text)`` -- the rendered prompt for an embedder, the settled query span and the document spans for a
-    reranker -- for the engine's ``/tokenize`` of exactly what the client sends.  A row carrying inline media
+    reranker -- for the engine's ``/tokenize`` of exactly what the client sends.  A ``request_shape:
+    token_ids`` wire's input is its id list, which the record carries as sent: it put no text on the wire,
+    so no ``/tokenize`` prompt exists for it (R29, exactly what the client sent).  A row carrying inline media
     (the media request set) sends each media side alone, with its media
     (:func:`~rcp_ndcg_test.equivalence.media.side_contents`); a row the client's declared empty policy
     omits entirely (a reranker's every document blank under ``omit_zero_blank``) is recorded as its omission
@@ -678,7 +686,13 @@ def _model_layer(
                 captured_since(start, context, inputs)
                 if size == batch_sizes[0] and len(group) == 1:
                     for exchange in capture.exchanges[start:]:
-                        sent.extend((row, item, side, str(text)) for text in capture.texts(exchange)["input"])
+                        # A token-ids wire's item IS its id list: there is no text to tokenize, and the
+                        # record carries the ids as sent (the /tokenize probe covers the text wires).
+                        sent.extend(
+                            (row, item, side, text)
+                            for text in capture.texts(exchange)["input"]
+                            if isinstance(text, str)
+                        )
     return sent
 
 
@@ -693,6 +707,10 @@ def _bare_probes(
 ) -> None:
     """The bare requests of one pass: the collector's standing protocol probes (routes and error bodies) and
     the plan's bare rows (the uncut ladder and content kinds, the wire variants, the protocol edges).
+
+    A ``request_shape: token_ids`` recipe's role bodies carry the recipe's own render ids
+    (:func:`_role_body`), so the probes are requests the recipe's client would itself send -- a bare text
+    is not, and such an engine's pooler refuses it by name, which kills the EngineCore.
 
     An unknown request field is answered 200 by vLLM v0.31.0 on every role route (measured in the shakedown);
     the corpus records what the engine answered and the acceptance check's status table expects the
@@ -824,7 +842,13 @@ def _role_body(
     unknown_field: bool = False,
     empty: bool = False,
 ) -> dict[str, Any]:
-    """One bare request body on the recipe's role route (the wire shape the adapter speaks)."""
+    """One bare request body on the recipe's role route (the wire shape the adapter speaks).
+
+    A ``request_shape: token_ids`` recipe's input carries the recipe's own render ids of the row's first
+    document (the document side under the declared split parse, :func:`fitting.sent_ids`, the construction
+    its client sends), never a bare text: such an engine's pooler refuses a prefix-less input by name, and
+    the refusal kills the EngineCore (the r2 wave's pplx-embed-v2-context failure).
+    """
     body: dict[str, Any]
     if recipe.role == "rerank":
         body = {
@@ -832,6 +856,15 @@ def _role_body(
             "query": "" if empty else row["query"],
             "documents": [] if empty else list(row["documents"]),
         }
+    elif recipe.client.get("request_shape") == "token_ids":
+        text = "" if empty else str(row["documents"][0])
+        body = {
+            "model": model or recipe.id,
+            "input": [fitting.sent_ids(recipe, "document", text)],
+            "encoding_format": "float",
+        }
+        if recipe.role == "multi_vector":
+            body["task"] = "token_embed"
     elif recipe.role == "embed":
         body = {"model": model or recipe.id, "input": [""] if empty else [row["query"]], "encoding_format": "float"}
     else:
