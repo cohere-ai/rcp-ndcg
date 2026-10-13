@@ -143,6 +143,7 @@ def test_the_run_refuses_a_case_whose_recipe_disagrees() -> None:
     recipe = load_recipe(RECIPES / "fake-pool")
     case = load_case(PACKAGED / "fake-embed" / "short-single.yaml")
     assert case.recipe == "fake-embed"
+    assert run_case.__doc__, "the public function must carry its docstring, not a no-op expression after the raise"
     with pytest.raises(ConformanceError, match="belongs to recipe"):
         run_case(recipe, case, target="fake", fake_engine=FakePoolEngine())
 
