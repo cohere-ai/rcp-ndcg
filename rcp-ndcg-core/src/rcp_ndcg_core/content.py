@@ -14,7 +14,7 @@ Importing this module costs pydantic, nothing else, so it stays usable from the
 dependency-light public surface.
 
     >>> Content.from_text("a passage")
-    >>> page = Content.from_image("gs://bucket/doc/page_1.png", sha256="ab...")
+    >>> page = Content.from_image("gs://YOUR-BUCKET/doc/page_1.png", sha256="ab...")
     >>> page.has_media
     True
     >>> page.text
@@ -85,16 +85,21 @@ class MediaRef(BaseModel):
 
 
 class TextPart(BaseModel):
+    """A run of text in a ``Content``; ``text`` is the string, empty runs allowed."""
+
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["text"] = "text"
     text: str
 
     def media_refs(self) -> list[MediaRef]:
+        """The media references of a text part: none (media is carried by media parts)."""
         return []
 
 
 class ImagePart(BaseModel):
+    """One image reference in a ``Content``; ``page`` cites a rendered page's source page."""
+
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["image"] = "image"
@@ -104,6 +109,7 @@ class ImagePart(BaseModel):
     page: int | None = None
 
     def media_refs(self) -> list[MediaRef]:
+        """The part's own media references: the one image at ``ref``."""
         return [self.ref]
 
 
@@ -188,6 +194,7 @@ class Content(RootModel[list[Part]]):
     # -- construction ------------------------------------------------------
     @classmethod
     def from_text(cls, text: str) -> Content:
+        """One text part holding ``text``."""
         return cls(root=[TextPart(text=text)])
 
     @classmethod
@@ -197,11 +204,13 @@ class Content(RootModel[list[Part]]):
 
     @classmethod
     def from_parts(cls, parts: Sequence[Part]) -> Content:
+        """A content of ``parts`` in order: text and media keep their places."""
         return cls(root=list(parts))
 
     # -- views -------------------------------------------------------------
     @property
     def parts(self) -> list[Part]:
+        """The parts in order: the body as the model reads it."""
         return self.root
 
     @property
@@ -222,14 +231,17 @@ class Content(RootModel[list[Part]]):
 
     @property
     def has_media(self) -> bool:
+        """Whether any part is an image or video part: media is carried by parts, not by text."""
         return any(isinstance(part, ImagePart | VideoPart) for part in self.root)
 
     @property
     def has_text(self) -> bool:
+        """Whether any text part carries non-empty text (empty runs count as no text)."""
         return any(isinstance(part, TextPart) and part.text for part in self.root)
 
     @property
     def modality(self) -> Modality:
+        """The content's modality: ``TEXT``, ``IMAGE``, ``VIDEO``, or ``MULTIMODAL`` for text beside media."""
         has_image = any(isinstance(p, ImagePart) for p in self.root)
         has_video = any(isinstance(p, VideoPart) for p in self.root)
         if self.has_text and (has_image or has_video):
@@ -274,7 +286,9 @@ class Content(RootModel[list[Part]]):
         text parts staying in their places around the media), and the newlines joining
         text parts count: the result's :attr:`text` is a verbatim prefix of this one's
         (a cut that ends on a joining newline drops it). An empty text part keeps its
-        joining newline: the cut is a prefix of the joined text, empty parts included.
+        joining newline: the cut is a prefix of the joined text, empty parts included,
+        and content whose text parts are all empty is cut the same way (its text is the
+        joining newlines alone, and a cut to nothing drops them).
 
         Raises:
             ValueError: ``max_chars`` is negative (a caller bug; ``0`` legitimately cuts to nothing).
@@ -284,7 +298,7 @@ class Content(RootModel[list[Part]]):
                 f"max_chars must be 0 or a positive number of characters (None keeps the text), got {max_chars}"
             )
         full = self.text
-        if max_chars is None or not self.has_text or max_chars >= len(full):
+        if max_chars is None or max_chars >= len(full):
             return self
         text_parts = [part.text for part in self.root if isinstance(part, TextPart)]
         pieces = iter(split_text_across_parts(text_parts, full[:max_chars]))

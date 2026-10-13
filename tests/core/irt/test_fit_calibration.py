@@ -91,6 +91,16 @@ def test_a_missing_verdict_is_refused_not_read_as_a_fail(mode: str) -> None:
 
 
 @pytest.mark.parametrize("mode", ["tournament", "rubric_only"])
+def test_a_non_binary_verdict_is_refused_not_read_as_a_fail(mode: str) -> None:
+    """``int()`` read a fractional verdict as a fail (0.5 -> 0) and 1.9 as a pass of 1."""
+    bt_scores, verdicts = _observations(num_queries=2, num_docs=5, placements=1)
+    doc_id, criteria = verdicts["q000"][0]
+    verdicts["q000"][0] = (doc_id, {**criteria, "C3": 0.5})
+    with pytest.raises(ValueError, match=r"criterion verdicts must be 0 or 1, got \{'C3': 0\.5\}"):
+        fit_calibration(verdicts, mode=mode, bt_scores=bt_scores if mode == "tournament" else None)
+
+
+@pytest.mark.parametrize("mode", ["tournament", "rubric_only"])
 def test_a_malformed_row_length_is_refused_not_truncated(mode: str) -> None:
     """``_check_judges`` classified any row of length != 3 as untagged, so a malformed 4-tuple
     slipped past the tagged/untagged refusal and rubric-only mode silently ignored its tail."""

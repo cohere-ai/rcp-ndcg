@@ -63,6 +63,10 @@ def fit_bradley_terry(
 
     Returns:
         ``{doc_id: theta_BT}``.
+
+    Raises:
+        ValueError: ``l2`` is not finite and >= 0; a comparison's weight or soft label is out of range;
+            or a comparison names a document outside ``doc_ids`` or compares a document with itself.
     """
     from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 
@@ -94,7 +98,7 @@ def score_document(
         passes: Per criterion, in how many of them it passed (``0 <= passes_k <= placements``);
             with ``severity``, one row per judge.
         prior_mean: Mean of the ability prior (logits); the population the score joins.
-        prior_sd: Standard deviation of the ability prior (logits).
+        prior_sd: Standard deviation of the ability prior (logits); finite and > 0.
         se_target: The standard error (logits) the evidence should reach.
         severity: The judges' severities (logits) of a pooled calibration, aligned with
             ``placements`` and ``passes``: judge ``j`` answers criterion ``k`` with logit
@@ -107,7 +111,7 @@ def score_document(
 
     Raises:
         ValueError: a placement count is not a whole number, a pass count is outside ``[0, placements]``,
-            or the per-judge shapes disagree.
+            the per-judge shapes disagree, or ``prior_sd`` is not finite and > 0.
     """
     from rcp_ndcg_core.irt._criteria_2pl import Criteria2PL
 

@@ -290,6 +290,14 @@ class TestValidation:
         with pytest.raises(ValueError, match="whole number"):
             model.eap(np.array([2.0]), np.array([[1.5, 0, 0, 0, 0]]))
 
+    def test_rejects_a_nonsensical_prior_sd(self) -> None:
+        """The prior sd is squared in the prior's exponent and divides the grid: a negative one
+        is not a flat prior, it is the positive one; 0 and NaN produce NaN abilities."""
+        with pytest.raises(ValueError, match="prior_sd must be finite and > 0"):
+            Criteria2PL.fit(np.array([2.0, 2.0]), np.array([[1.0, 0.0], [0.0, 1.0]]), prior_sd=0.0)
+        with pytest.raises(ValueError, match="prior_sd must be finite and > 0"):
+            Criteria2PL(ORACLE_GAMMA, ORACLE_BETA, prior_sd=-1.0)
+
     def test_a_fit_with_exactly_two_criteria_is_accepted(self) -> None:
         """The identifiability floor is K >= 2: exactly two criteria sit on the accepted side of the
         boundary (one criterion cannot identify a 2PL; two can). The data is the module's own oracle

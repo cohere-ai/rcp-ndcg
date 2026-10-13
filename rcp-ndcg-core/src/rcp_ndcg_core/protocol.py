@@ -42,7 +42,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from rcp_ndcg_core.gain import qrel_gain
-from rcp_ndcg_core.metric import TieRule, _validate_k, _validate_scores, ndcg
+from rcp_ndcg_core.metric import TieRule, _validate_gains, _validate_k, _validate_scores, ndcg
 
 
 class Protocol(BaseModel):
@@ -172,7 +172,8 @@ def score_query(
         scores: ``{doc_id: score}`` of the system; higher is better; finite.
         gains: For ``"rcp_ndcg"`` and ``"count_ndcg"``, ``{doc_id: gain}`` over the query's judged pool (gains in
             ``[0, 1]``); the ideal DCG sorts all of them.  For ``"qrel_ndcg"``, ``{doc_id: grade}``: grades ``> 0``
-            are positives, mapped by the protocol's ``qrel_gain``; the ideal DCG sorts all positives.
+            are positives, mapped by the protocol's ``qrel_gain``; the ideal DCG sorts all positives.  A gain or
+            grade that is not finite is refused, never read as 0.
         protocol: A :class:`Protocol` or a :data:`PROTOCOLS` name.
         k: Cutoff.
         metric: Which nDCG ``gains`` belong to.  Only ``"qrel_ndcg"`` is rounded (``round_digits``).
@@ -183,6 +184,10 @@ def score_query(
     Returns:
         nDCG@k in ``[0, 1]``.  qrel-nDCG is NaN when the query has no positive grade, so it drops out of the means
         of :func:`aggregate`.
+
+    Raises:
+        ValueError: ``k`` is not positive, a score or a gain is not finite, or the protocol cannot score the
+            query (an unknown preset, a missing judged pool for a pool-order tie rule).
     """
     rules = resolve_protocol(protocol)
     _validate_k(k)
@@ -192,7 +197,9 @@ def score_query(
     ranked = {doc_id: scores[doc_id] for doc_id in entering}
 
     if metric == "qrel_ndcg":
-        positives = {doc_id: grade for doc_id, grade in gains.items() if grade > 0 and doc_id not in drop}
+        judged = {doc_id: grade for doc_id, grade in gains.items() if doc_id not in drop}
+        _validate_gains(judged.values())
+        positives = {doc_id: grade for doc_id, grade in judged.items() if grade > 0}
         if not positives:
             return math.nan
         value = ndcg(ranked, {d: qrel_gain(g, rules.qrel_gain) for d, g in positives.items()}, k=k, ties=rules.ties)

@@ -392,10 +392,12 @@ def judgement_record_id(
 class Judgement(BaseModel):
     """One judge call's parsed observation (schema ``rcp-ndcg.judgement.v1``).
 
-    A valid rubric judgement carries every family criterion, 0 or 1, on every
-    placement; a valid tournament judgement carries a score on every placement
-    (and the judge's stated ``ranking``). An answer that could not be parsed is recorded with
-    ``valid=False``, the reason and its category, never dropped and never read as a vote.
+    A valid rubric judgement carries a non-empty criteria mapping, 0 or 1 per verdict, on every placement;
+    that the keys are exactly the family's ``C1..C<num_criteria>`` is checked at fit time
+    (:func:`rcp_ndcg_core.irt.fit_calibration`, which refuses a missing or unknown criterion), not by this
+    record. A valid tournament judgement carries a score on every placement (and the judge's stated
+    ``ranking``). An answer that could not be parsed is recorded with ``valid=False``, the reason and its
+    category, never dropped and never read as a vote.
 
     Attributes:
         record_id: :func:`judgement_record_id` of the window.
@@ -564,8 +566,17 @@ def supersedes(new: Judgement, old: Judgement) -> bool:
 
 
 def items_from_mapping(params: Mapping[str, Sequence[float]]) -> ItemParams:
-    """:class:`ItemParams` from a ``{"gamma": [...], "beta": [...]}`` mapping (extra keys are ignored)."""
-    return ItemParams(gamma=tuple(float(g) for g in params["gamma"]), beta=tuple(float(b) for b in params["beta"]))
+    """:class:`ItemParams` from a ``{"gamma": [...], "beta": [...]}`` mapping (extra keys are ignored).
+
+    Raises:
+        ValueError: the mapping is missing ``"gamma"`` or ``"beta"`` (a missing value is an error with a hint,
+            never a default).
+    """
+    try:
+        gammas, betas = params["gamma"], params["beta"]
+    except KeyError as exc:
+        raise ValueError(f"item parameters are missing {exc.args[0]!r}") from exc
+    return ItemParams(gamma=tuple(float(g) for g in gammas), beta=tuple(float(b) for b in betas))
 
 
 __all__ = [

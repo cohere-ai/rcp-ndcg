@@ -99,18 +99,23 @@ class Text(Input):
 
     @property
     def media(self) -> list[MediaRef]:
+        """The media references of the body: empty for a text-only record."""
         return self.content.media if self.content is not None else []
 
     @property
     def has_media(self) -> bool:
+        """Whether the body carries media (media lives in the content's parts, never in its text)."""
         return self.content is not None and self.content.has_media
 
     @property
     def modality(self) -> Modality:
+        """The body's modality: ``TEXT`` when the record has no content."""
         return self.content.modality if self.content is not None else Modality.TEXT
 
 
 class Query(Text):
+    """One query: its body (``text`` or ``content``), its id, and its optional per-query ``instruction``."""
+
     # Defaults to empty so an image query -- ``content`` set, no text -- is
     # representable, as image-to-image retrieval requires.
     text: str = Field(default="", alias="query")
@@ -119,6 +124,7 @@ class Query(Text):
 
     @property
     def query_id(self) -> ID:
+        """The query's id (the ``query_id`` alias of :attr:`id`)."""
         return self.id
 
     def format_query(self, *, task_instruction: str | None = None) -> str:
@@ -147,7 +153,11 @@ class Query(Text):
 
         The encoder-facing counterpart: an image query keeps its image parts, gains the task instruction
         as a leading text part and the per-query instruction as a trailing one (a text query's two
-        instructions are the one string :meth:`format_query` builds).
+        instructions are the one string :meth:`format_query` builds). Both instructions follow the
+        string path's predicate -- the task instruction when it is non-blank, the per-query instruction
+        when it is present (``""`` included) -- so an empty per-query instruction appends an empty
+        trailing part, whose joining newline is the parts' separator where the string path has mteb's
+        space.
         """
         task = (task_instruction or "").strip()
         content = self.as_content
@@ -157,12 +167,14 @@ class Query(Text):
         if task:
             parts.append(TextPart(text=f"Task: {task}"))
         parts.extend(content.parts)
-        if self.instruction:
+        if self.instruction is not None:
             parts.append(TextPart(text=self.instruction))
         return Content.from_parts(parts)
 
 
 class Document(Text):
+    """One document: its body (``text`` or ``content``), its id, and its optional ``title``."""
+
     id: ID = Field(alias="doc_id", validation_alias=AliasChoices("doc_id", "docno"))
     title: str | None = None
 
@@ -221,6 +233,8 @@ class Document(Text):
 
 
 class RankingExample(Query):
+    """One query with its candidate documents: ids, bodies (``docs`` or ``contents``), qrels and scores."""
+
     # ``extra="allow"`` makes the line format lossless: dataset-specific fields we
     # have no schema for (e.g. the context-compression sets carry ``answer``,
     # ``evidence``, ``evidence_intersection``, ``query_types``) survive the
@@ -340,6 +354,7 @@ class RankingExample(Query):
 
     @property
     def doc_id2content(self) -> dict[ID, Content]:
+        """``{doc_id: content}`` of the hydrated bodies, in ``doc_ids`` order."""
         return dict(zip(self.doc_ids, self.doc_contents, strict=True))
 
     @property

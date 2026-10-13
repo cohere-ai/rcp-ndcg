@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime
 
 import pytest
@@ -15,6 +16,7 @@ from rcp_ndcg_core.schemas import (
     JudgementSet,
     Placement,
     QueryParams,
+    items_from_mapping,
     judgement_record_id,
 )
 
@@ -233,3 +235,36 @@ def test_judgement_set_refuses_unknown_families_and_merges_by_record_id() -> Non
     assert len(merged) == 2
     assert merged.query_ids("rubric") == [("d", "q")]
     assert len(merged.of_stage("tournament")) == 0
+
+
+def test_items_from_mapping_refuses_a_missing_parameter_with_a_hint() -> None:
+    """A bare ``KeyError('beta')`` carried no hint; the repo's rule is a missing value is an error with one."""
+    with pytest.raises(ValueError, match="missing 'beta'"):
+        items_from_mapping({"gamma": [1.0]})
+    with pytest.raises(ValueError, match="missing 'gamma'"):
+        items_from_mapping({"beta": [0.0]})
+
+
+def test_the_record_does_not_enforce_the_familys_full_criterion_set() -> None:
+    """``Judgement._check`` requires non-empty criteria with 0/1 values, not the family's exact C1..CK; the
+    fit refuses a partial set later (``irt.verdicts``). The docstring stated the record-level contract the
+    stronger way (every family criterion on every placement)."""
+    partial = (Placement(position=1, doc_id="a", criteria={"C1": 1}),)
+    assert _rubric(placements=partial).valid
+    doc = inspect.getdoc(Judgement) or ""
+    assert "fit time" in doc, "the docstring must say where the exact C1..CK match is enforced"
+
+
+def test_the_facade_exports_the_types_its_public_functions_return() -> None:
+    """``score_document``/``insert_document`` return :class:`DocumentEstimate` (flags included) and the
+    facade docstring names it, but the frozen surface exported neither, so a user could not import the
+    type of the value the public API hands back."""
+    import rcp_ndcg_core
+    from rcp_ndcg_core import DocumentEstimate, EstimateFlags
+    from rcp_ndcg_core.schemas import DocumentEstimate as SchemaEstimate
+    from rcp_ndcg_core.schemas import EstimateFlags as SchemaFlags
+
+    assert DocumentEstimate is SchemaEstimate
+    assert EstimateFlags is SchemaFlags
+    assert "DocumentEstimate" in rcp_ndcg_core.__all__
+    assert "EstimateFlags" in rcp_ndcg_core.__all__

@@ -17,7 +17,7 @@ class Content(pydantic.root_model.RootModel[list[Annotated[Union[TextPart, Image
 
 ## `Document`
 
-pydantic_model
+pydantic_model — One document: its body (``text`` or ``content``), its id, and its optional ``title``.
 
 ```text
 class Document(rcp_ndcg_core.records.Text)
@@ -30,6 +30,34 @@ class Document(rcp_ndcg_core.records.Text)
 - `text: str` = ''
 
 - `title: str | None` = None
+
+## `DocumentEstimate`
+
+pydantic_model — One document's estimated ability.
+
+```text
+class DocumentEstimate(pydantic.main.BaseModel)
+```
+
+- `flags: rcp_ndcg_core.schemas.EstimateFlags` = 'EstimateFlags(degenerate=None, low_information=False)'
+
+- `information: float`
+
+- `se: float`
+
+- `theta: float`
+
+## `EstimateFlags`
+
+pydantic_model — What to read before comparing a document's estimated ability with others'.
+
+```text
+class EstimateFlags(pydantic.main.BaseModel)
+```
+
+- `degenerate: Literal['all_fail', 'all_pass'] | None` = None
+
+- `low_information: bool` = False
 
 ## `Gains`
 
@@ -49,7 +77,7 @@ ID = str
 
 ## `ImagePart`
 
-pydantic_model
+pydantic_model — One image reference in a ``Content``; ``page`` cites a rendered page's source page.
 
 ```text
 class ImagePart(pydantic.main.BaseModel)
@@ -287,7 +315,7 @@ class Protocol(pydantic.main.BaseModel)
 
 ## `Query`
 
-pydantic_model
+pydantic_model — One query: its body (``text`` or ``content``), its id, and its optional per-query ``instruction``.
 
 ```text
 class Query(rcp_ndcg_core.records.Text)
@@ -315,7 +343,7 @@ class QueryParams(pydantic.main.BaseModel)
 
 ## `RankingExample`
 
-pydantic_model
+pydantic_model — One query with its candidate documents: ids, bodies (``docs`` or ``contents``), qrels and scores.
 
 ```text
 class RankingExample(rcp_ndcg_core.records.Query)
@@ -357,7 +385,7 @@ class Text(rcp_ndcg_core.records.Input)
 
 ## `TextPart`
 
-pydantic_model
+pydantic_model — A run of text in a ``Content``; ``text`` is the string, empty runs allowed.
 
 ```text
 class TextPart(pydantic.main.BaseModel)

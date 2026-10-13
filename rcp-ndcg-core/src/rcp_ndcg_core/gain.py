@@ -90,18 +90,31 @@ def sigmoid(x: float | NDArray[np.floating]) -> float | NDArray[np.float64]:
     return out
 
 
+def _validate_theta(theta: float | ArrayLike) -> None:
+    """Refuse a non-finite ability: a calibrated ability is finite, and ``sigmoid(nan)`` is NaN."""
+    values = np.asarray(theta, dtype=float)
+    if not np.isfinite(values).all():
+        bad = values[~np.isfinite(values)].ravel()
+        raise ValueError(f"theta must be finite; got {bad.size} non-finite value(s), first {bad[:5].tolist()}")
+
+
 def pass_probabilities(theta: float | ArrayLike, items: Any) -> NDArray[np.float64]:
     """Per-criterion pass probabilities at a calibrated ability.
 
     Args:
-        theta: Calibrated ability, in logits: a scalar, or an array of abilities.
+        theta: Calibrated ability, in logits: a scalar, or an array of abilities; finite.
         items: Item parameters with ``gamma`` (dimensionless) and ``beta`` (logits) sequences.
 
     Returns:
-        ``sigmoid(gamma_c * (theta - beta_c))`` for each criterion ``c``, each in ``(0, 1)``: shape ``(C,)`` for a
-        scalar ``theta``, ``theta.shape + (C,)`` for an array. Scalars compute in float64 whatever dtype the
-        inputs arrive in.
+        ``sigmoid(gamma_c * (theta - beta_c))`` for each criterion ``c``, each in ``[0, 1]``: the sigmoid
+        underflows to exactly 0 or 1 when ``gamma_c * (theta - beta_c)`` passes about 745 (the pinned
+        ``-800``/``800`` cases). Shape ``(C,)`` for a scalar ``theta``, ``theta.shape + (C,)`` for an array.
+        Scalars compute in float64 whatever dtype the inputs arrive in.
+
+    Raises:
+        ValueError: a ``theta`` value is not finite, or the item parameters are malformed.
     """
+    _validate_theta(theta)
     gammas, betas = item_arrays(items, weighted=False)
     if np.ndim(theta) == 0:
         scalar = float(np.asarray(theta))  # a 0-d theta: computed in float64, like the array path
@@ -128,13 +141,18 @@ def gain(theta: float | ArrayLike, items: Any) -> float | NDArray[np.float64]:
     """The RCP gain ``g(theta) = sum_c gamma_c * P(C_c | theta) / sum_c gamma_c``.
 
     Args:
-        theta: Calibrated ability, in logits: a scalar, or an array of abilities.
+        theta: Calibrated ability, in logits: a scalar, or an array of abilities; finite.
         items: Item parameters with ``gamma`` and ``beta`` sequences; ``sum(gamma) > 0``.
 
     Returns:
-        The gain in ``(0, 1)``: a float for a scalar ``theta``, an array of ``theta``'s shape otherwise.
+        The gain in ``[0, 1]`` (the discrimination-weighted mean of the pass probabilities; exactly 0 or 1
+        where they saturate): a float for a scalar ``theta``, an array of ``theta``'s shape otherwise.
         Scalars compute in float64 whatever dtype the inputs arrive in.
+
+    Raises:
+        ValueError: a ``theta`` value is not finite, or the item parameters are malformed.
     """
+    _validate_theta(theta)
     gammas, betas = item_arrays(items)
     if np.ndim(theta) == 0:
         scalar = float(np.asarray(theta))  # a 0-d theta: computed in float64, like the array path

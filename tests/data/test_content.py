@@ -29,6 +29,16 @@ class TestMediaRef:
 
 
 class TestContent:
+    def test_the_module_docstring_uses_the_placeholder_bucket(self):
+        """AGENTS.md prescribes ``gs://YOUR-BUCKET/...``: a tracked file never names a real bucket."""
+        import inspect
+
+        import rcp_ndcg_core.content as content_module
+
+        doc = inspect.getdoc(content_module) or ""
+        assert "gs://YOUR-BUCKET/" in doc
+        assert "gs://bucket/" not in doc
+
     def test_text_only(self):
         content = Content.from_text("a passage")
         assert content.text == "a passage"
@@ -140,6 +150,21 @@ class TestTruncated:
     def test_media_only_content_is_untouched(self):
         content = Content.from_image("gs://b/page.png")
         assert content.truncated(0) is content
+
+    def test_content_whose_text_parts_are_all_empty_still_cuts_to_nothing(self):
+        """The undocumented ``not self.has_text`` guard skipped the cut for content with no non-empty
+        text part: two empty parts join to ``"\\n"``, and ``truncated(0)`` returned ``"\\n"`` although
+        the docstring promises the first max_chars characters (0 cuts to nothing). The same guard left
+        the joining newline on media content whose fitted span is empty, which the clients'
+        ``_with_text`` documents as dropped."""
+        content = Content.from_parts([TextPart(text=""), TextPart(text="")])
+        assert content.text == "\n"
+        assert content.truncated(0).text == ""
+        assert content.truncated(1).text == content.text, "the whole text fits: nothing is cut"
+
+        media = Content.from_parts([TextPart(text=""), TextPart(text=""), ImagePart(ref=MediaRef(uri="u"))])
+        assert media.truncated(0).text == ""
+        assert len(media.truncated(0).media) == 1
 
 
 class TestDocumentAndQuery:

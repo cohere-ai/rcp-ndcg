@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from rcp_ndcg_core.irt import fit_bradley_terry
+from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 from rcp_ndcg_core.irt._rasch import RaschEstimator
 
 CHAIN = [("a", "b", 1.0, 1.0), ("b", "c", 1.0, 1.0), ("a", "c", 1.0, 1.0)]
@@ -52,6 +53,27 @@ def test_a_comparison_weight_and_soft_label_are_validated() -> None:
     for soft_label in (-0.1, 1.5, float("nan")):
         with pytest.raises(ValueError, match="soft_label"):
             fit_bradley_terry([("a", "b", 1.0, soft_label)], l2=1e-4)
+
+
+def test_an_l2_penalty_that_is_not_finite_and_non_negative_is_refused() -> None:
+    """A negative ridge made the fit return all-NaN abilities; nan/inf raised a bare torch
+    ``RuntimeError: value cannot be converted to type float without overflow``."""
+    for l2 in (-1.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="l2_reg must be finite and >= 0"):
+            fit_bradley_terry(CHAIN, l2=l2)
+    with pytest.raises(ValueError, match="l2_reg must be finite and >= 0"):
+        BradleyTerryEstimator(doc_ids=["a", "b"], l2_reg=float("nan"))
+
+
+def test_the_bare_estimator_default_is_the_documented_bt_ridge() -> None:
+    """The paper's Table 2 fixes the Stage A Bradley-Terry ridge at 1e-4 (``docs/concepts/calibration.md``
+    and ``docs/concepts/tournament.md`` say so; ``Priors.bt_l2`` is it), but the base class defaulted to
+    1e-5: a direct user of the public ``BradleyTerryEstimator`` fitted a 10x weaker ridge. Every product
+    call site passes an explicit value (``fit_bradley_terry`` requires one), so no shipped number moves."""
+    from rcp_ndcg_core.irt import Priors
+
+    assert BradleyTerryEstimator(doc_ids=["a"]).l2_reg == Priors().bt_l2 == 1e-4
+    assert RaschEstimator(doc_ids=["a"], num_criteria=2).l2_reg == 1e-4
 
 
 def test_rasch_criteria_of_an_unknown_document_are_refused_not_dropped() -> None:

@@ -134,6 +134,16 @@ def test_qrel_ndcg_is_nan_without_positives_and_rounds_like_beir() -> None:
     assert unrounded_rcp == 1 / LOG2_3
 
 
+def test_a_non_finite_qrel_grade_is_refused_not_read_as_absent() -> None:
+    """A NaN grade failed ``> 0`` and scored as grade 0 (0.6309297535714575, identical to
+    ``{"a": 0.0}``), silently dropping a positive from the ranking and the ideal."""
+    qrels = {"a": float("nan"), "b": 1.0}
+    with pytest.raises(ValueError, match="gains must be finite"):
+        score_query({"a": 2.0, "b": 1.0}, qrels, protocol="plain", metric="qrel_ndcg", k=2)
+    with pytest.raises(ValueError, match="gains must be finite"):
+        score_query({"a": 2.0, "b": 1.0}, {"a": float("inf"), "b": 1.0}, protocol="plain", metric="qrel_ndcg", k=2)
+
+
 def test_input_order_ties_follow_the_judged_pool_order() -> None:
     scores = {"b": 1.0, "a": 1.0}
     gains = {"a": 1.0}

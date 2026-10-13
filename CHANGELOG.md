@@ -88,9 +88,12 @@ that exports it.
   `PROTOCOLS`, `score_query` and `aggregate`, with `MetricName` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`). The public
   records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
   judge call's parsed observation), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
-  judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window) and
+  judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window),
   `JudgementFamily` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
-  `tokenizer.json`, part of `key` and left out of `rubric_key`). The content parts of a query or a document:
+  `tokenizer.json`, part of `key` and left out of `rubric_key`), `DocumentEstimate` (a document's estimated
+  ability: `theta`, `se`, `information` and `EstimateFlags`, the value `score_document` and `insert_document`
+  return) and `EstimateFlags` (the estimate's `degenerate` and `low_information` reads). The content parts of a
+  query or a document:
   `Content`, `TextPart`, `ImagePart`, `VideoPart`, their union `Part`, `MediaRef` and `Modality`.
 - `rcp_ndcg_core.metric`: `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`, `dcg`, `ideal_dcg` and
   `discount` (`1 / log2(rank + 1)`), with the tie rules `TieRule = "group_mean" | "doc_id_desc" | "input_order"`.
@@ -3873,6 +3876,28 @@ text it sends to the declared budget.
   measurement decodes per-chunk replies with the declared head too, so their vector drift is no longer
   silently dropped.  A CPU test pins the check (a reply at the chunk count passes; one at the prompt-token
   count and one that is neither fail, naming the expected count; a token-per-position recipe is unchanged).
+
+- **The Bradley-Terry ridge default is the paper's** (Table 2's Stage A "BT fit ridge 10^-4" row;
+  `Priors.bt_l2`; `docs/concepts/calibration.md` and `docs/concepts/tournament.md`): the bare
+  `BaseScoredModel`/`BradleyTerryEstimator` default was 1e-5, a 10x weaker ridge for a direct user of the
+  public class. Every product call site -- the calibration's projection, the live tournament fit, the
+  insertion -- passes an explicit penalty (`fit_bradley_terry` requires one), so no shipped number moves:
+  the Bradley-Terry anchor, the paper-label anchors and the protocol fixtures are unchanged.
+
+- **The core's validation refuses what it used to reinterpret** (the pre-0.0.1 fleet's core findings): a
+  criterion verdict outside 0/1 is refused by the calibration's `verdicts` instead of truncated by `int()`
+  (0.5 read as a fail, 1.9 as a pass); `fit_bradley_terry` refuses a non-finite or negative `l2` (a negative
+  ridge returned all-NaN abilities, NaN/inf a bare torch `RuntimeError`); `score_document`/`Criteria2PL`
+  refuse a non-positive or non-finite `prior_sd` (-1 silently fitted the +1 prior); qrel-nDCG refuses a
+  non-finite qrel grade instead of reading it as "not relevant" (a corrupted qrels row silently dropped a
+  positive); `dcg`, `ideal_dcg`, `discount` and the gain producers refuse non-finite gains and abilities;
+  `items_from_mapping` names the missing key; `Content.truncated` cuts content whose text parts are all
+  empty (`0` cuts to nothing, as documented) instead of leaving the joining newline; and `format_content`
+  appends a present per-query instruction (the empty string included) under the same predicate as
+  `format_query`. `DocumentEstimate` and `EstimateFlags` -- the value `score_document` and `insert_document`
+  return -- join the facade's `__all__` (an additive surface change, pinned in the snapshot). Docstrings and
+  the generated pages cover the record modules' public classes, properties and constructors, and the
+  `gs://bucket/` example is the `gs://YOUR-BUCKET/` placeholder.
 
 ### Changed
 
