@@ -2571,9 +2571,12 @@ def _compare_shape(
             rows = []
             for position, (served_vector, reference_vector) in enumerate(zip(served_cut, expected_cut, strict=True)):
                 if len(served_vector) != len(reference_vector):
-                    # A width mismatch is a named gate failure with both widths, never a crash: the declared
-                    # MRL dimension and the engine's own cut make this live (a served truncation against a
-                    # full-width reference, or the other way round).
+                    # A width mismatch that survives the head is a named gate failure with both widths,
+                    # never a silent skip; the declared MRL dimension and the engine's own cut make this
+                    # live (a served truncation against a full-width reference, or the other way round).
+                    # A declared k the served width cannot support is refused earlier: the product head
+                    # raises its ConfigError out of _head_matrix before any row is compared, because a
+                    # Matryoshka head can only narrow -- a wider k is a configuration error, not a gate row.
                     rows.append(
                         {
                             "referent": f"row {row_index} {role} {index} vector {position}",

@@ -123,6 +123,39 @@ def test_a_same_size_corruption_is_a_failed_attempt(tmp_path: Path, monkeypatch:
     assert "content mismatch: ['a.json']" in str(result["error"]), result
 
 
+def test_the_hash_read_back_covers_the_python_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The verification reads the destination back through the product's storage, not through the transfer
+    mechanism, so the same-size corruption test holds when the transfer is the PYTHON fallback
+    (``_upload_storage``, the path a node without the CLIs takes): a fallback transfer that lands wrong
+    bytes is a failed attempt, and a clean fallback upload verifies by reading those bytes back
+    (reviews/release-code-fixes-ds41.md, the upload-verification fallback item)."""
+    source = tmp_path / "source"
+    source.mkdir()
+    payload = '{"rows": [1, 2, 3]}\n'
+    (source / "a.json").write_text(payload, encoding="utf-8")
+    destination = tmp_path / "bucket"
+    real = run_wave_module._upload_storage
+
+    def corrupting_fallback(source: Path, uri: str) -> str | None:
+        error = real(source, uri)
+        corrupted = payload.replace("[1, 2, 3]", "[9, 2, 3]")
+        assert len(corrupted) == len(payload)
+        (destination / "a.json").write_text(corrupted, encoding="utf-8")
+        return error
+
+    monkeypatch.setattr(run_wave_module, "_upload_cli", lambda *args, **kwargs: False)  # no CLI: the fallback
+    monkeypatch.setattr(run_wave_module, "_upload_storage", corrupting_fallback)
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
+    result = run_wave_module._upload_verified(source, str(destination))
+    assert result["ok"] is False and result["attempts"] == run_wave_module._UPLOAD_ATTEMPTS
+    assert "content mismatch: ['a.json']" in str(result["error"]), result
+    # The same fallback transfer without the corruption verifies: the read-back is the fallback's check.
+    monkeypatch.setattr(run_wave_module, "_upload_storage", real)
+    shutil.rmtree(destination)
+    clean = run_wave_module._upload_verified(source, str(destination))
+    assert clean["ok"] is True and clean["error"] is None, clean
+
+
 def test_a_transient_upload_failure_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """One failed attempt is retried (with backoff) and the retry's success is recorded: the upload is
     no longer a single fire-and-forget copy."""

@@ -450,3 +450,23 @@ def test_every_client_field_role_agrees_with_the_identity_and_the_fingerprint() 
             assert roles[field] == {FieldRole.RUNTIME}, (field, roles[field])
         else:
             assert roles[field] == {FieldRole.CONTENT}, (field, roles[field])
+
+
+def test_the_media_caps_over_key_the_judge_role_deliberately() -> None:
+    """``JudgeConfig.IDENTITY_ROLES`` declares the media caps RUNTIME, but the fingerprint classifies them
+    ``request``: the over-keying is deliberate and conservative -- an extra input forces a needless
+    re-record, never a stale skip -- and a judge records no corpus, so the cost is a recompute, not a wrong
+    key (reviews/final-harness-ds41.md D10).  The classification comment must keep saying why it over-keys."""
+    from rcp_ndcg_test import fingerprint as fingerprint_module
+    from rcp_ndcg_test.fingerprint import CLIENT_FIELDS
+
+    from rcp_ndcg.judging import JudgeConfig
+    from rcp_ndcg.support.identity import FieldRole, declared_roles
+
+    for field in ("max_images", "max_videos"):
+        assert declared_roles(JudgeConfig)[field] == FieldRole.RUNTIME, field
+        assert CLIENT_FIELDS[field] == "request", field
+    module_source = Path(fingerprint_module.__file__).read_text(encoding="utf-8")
+    assert "JudgeConfig declares them RUNTIME" in module_source, (
+        "the classification comment must name the judge role's own declaration it over-keys"
+    )

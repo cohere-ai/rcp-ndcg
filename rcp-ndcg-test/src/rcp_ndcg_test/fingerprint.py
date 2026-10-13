@@ -113,6 +113,9 @@ CLIENT_FIELDS: dict[str, str] = {
     "image_policy": "request",
     "video_policy": "request",
     "media_sides": "request",
+    # The media caps over-key the judge role: JudgeConfig declares them RUNTIME (they shape no judge's
+    # request bytes), but the fingerprint keys them as request inputs -- deliberate and conservative, since
+    # an extra input forces a needless re-record, never a stale skip, and a judge records no corpus.
     "max_images": "request",  # how much media one request carries
     "max_videos": "request",
     "media_head_as_system": "request",  # the head rides the request as a system message
