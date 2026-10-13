@@ -36,7 +36,11 @@
 # (cuda:0; the engine),
 # RCP_TOPK_REFERENCE_DEVICE (cuda:1; the reference subprocess), RCP_TOPK_GPU_FRACTION (0.45; vLLM's
 # gpu_memory_utilization), RCP_TOPK_DTYPE / RCP_TOPK_REFERENCE_DTYPE (bfloat16; the engine's LLM dtype
-# and the checkpoint's own load dtype on the reference side), RCP_TOPK_CONTROL_VECTORS (unset: the
+# and the checkpoint's own load dtype on the reference side), RCP_TOPK_GDN_BACKEND (unset: the engine's
+# own resolver default, `auto` -> flashinfer on this image; `flashinfer` / `triton` / `cutedsl` request
+# the tag's --gdn-prefill-backend, and the report records the ENGAGED backend from the loaded layers --
+# a refused request falls back inside vLLM and must not be read as that backend's result),
+# RCP_TOPK_CONTROL_VECTORS (unset: the
 # control is `not_run` and the report says so), RCP_TOPK_MODEL / RCP_TOPK_REVISION (unset: read from the
 # staged family.yaml in the client environment, the recipe's own pin).
 # TOPK_DRY=1 prints the plan and runs nothing.  The transfer runs gcloud or gsutil when either is
@@ -70,6 +74,7 @@ REFERENCE_DEVICE="${RCP_TOPK_REFERENCE_DEVICE:-cuda:1}"
 GPU_FRACTION="${RCP_TOPK_GPU_FRACTION:-0.45}"
 DTYPE="${RCP_TOPK_DTYPE:-bfloat16}"
 REFERENCE_DTYPE="${RCP_TOPK_REFERENCE_DTYPE:-bfloat16}"
+GDN_BACKEND="${RCP_TOPK_GDN_BACKEND:-}"
 CONTROL_VECTORS="${RCP_TOPK_CONTROL_VECTORS:-}"
 RECIPE="topk-embed-v1-$VARIANT"
 
@@ -88,6 +93,7 @@ if [[ "${TOPK_DRY:-0}" == "1" ]]; then
   [[ -n "$ROWS" ]] && echo "                --rows $ROWS"
   [[ -n "$TEXT_ROWS" ]] && echo "                --text-rows $TEXT_ROWS"
   [[ -n "$QUERY_ROWS" ]] && echo "                --query-rows $QUERY_ROWS"
+  [[ -n "$GDN_BACKEND" ]] && echo "                --gdn-backend $GDN_BACKEND"
   [[ -n "$CONTROL_VECTORS" ]] && echo "                --control-vectors $CONTROL_VECTORS"
   echo "  4. upload     <state>/probe/* to ${OUT_URI%/}/topk-probe/ (a failed transfer fails the job)"
   exit 0
@@ -180,6 +186,7 @@ probe_args=(
 [[ -n "$ROWS" ]] && probe_args+=(--rows "$ROWS")
 [[ -n "$TEXT_ROWS" ]] && probe_args+=(--text-rows "$TEXT_ROWS")
 [[ -n "$QUERY_ROWS" ]] && probe_args+=(--query-rows "$QUERY_ROWS")
+[[ -n "$GDN_BACKEND" ]] && probe_args+=(--gdn-backend "$GDN_BACKEND")
 [[ -n "$CONTROL_VECTORS" ]] && probe_args+=(--control-vectors "$CONTROL_VECTORS")
 [[ -f "$WAVE_COSINES" ]] && probe_args+=(--wave-cosines "$WAVE_COSINES")
 set +e
