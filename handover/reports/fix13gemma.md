@@ -235,12 +235,12 @@ The fix's confirmation is the final RC's wave. From the gated worktree, operator
 
 ```bash
 # 1. the RC rebuild (stages the wheels, the recipes, the pairs, the wave lists and the T4 scenarios)
-bin/e2-run build /root/repos/rcp-ndcg-lanes/wt-fix13gemma rc0-<UTC stamp>
+bin/e2-run build <worktree> rc0-<UTC stamp>
 # 2. wave0 (the node test; its report must read passed: true)
-bin/e2-run wave0 /root/repos/rcp-ndcg-lanes/wt-fix13gemma rc0-<UTC stamp>
+bin/e2-run wave0 <worktree> rc0-<UTC stamp>
 # 3. the r1 wave: its nightly group is the embeddinggemma-2 job and lands under its own prefix
 #    waves-<rc>/r1/vllm-vllm-openai-nightly-8cbd5d03006c33185f40224-b25e8a046fdb/
-RCP_MAX_JOBS=8 bin/e2-run waves /root/repos/rcp-ndcg-lanes/wt-fix13gemma rc0-<UTC stamp> r1
+RCP_MAX_JOBS=8 bin/e2-run waves <worktree> rc0-<UTC stamp> r1
 # (a single-recipe confirmation: stage a wave list holding only `embeddinggemma-2` and submit it as its
 #  own wave name -- the grouping then submits exactly the nightly job with its own prefix)
 ```
