@@ -41,6 +41,8 @@ CHAT_TEMPLATE_SHA256 = "4b852efc0b9960283e735363331e6f325b33bc74bdbaa076f595bc4e
 OVER_LENGTH_PER_SHAPE = 5
 QUERY_PROMPT = "task: search result | query: "
 DOC_PROMPT = "title: none | text: "
+#: The checkpoint's image-placeholder spelling, built (never typed): the tokenizer's added token.
+IMAGE_SPELLING = chr(60) + "|image|" + chr(62)
 
 #: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every field of
 #: ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults included.
@@ -593,8 +595,21 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
     calls: list[dict[str, Any]] = []
     seen: dict[str, Any] = {}
 
+    class FakeTokenizer:
+        """The card's own tokenizer stand-in: the text path's features, recorded by the module call."""
+
+        def __call__(self, texts: list[str], **kwargs: Any) -> dict[str, Any]:
+            import torch
+
+            return {
+                "input_ids": torch.ones((len(texts), 3), dtype=torch.long),
+                "attention_mask": torch.ones((len(texts), 3), dtype=torch.long),
+            }
+
     class FakeSentenceTransformer:
-        prompts: dict[str, str] = {}
+        prompts: dict[str, str] = {"SearchQuery": QUERY_PROMPT, "Document": DOC_PROMPT}
+        device = "cpu"
+        tokenizer = FakeTokenizer()
 
         def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
             self.model = model
@@ -610,9 +625,17 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
                             seen["bytes"] = seen["path"].read_bytes()
             return np.ones((len(sides), 3), dtype=np.float32)
 
+        def __call__(self, features: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            import torch
+
+            return {"sentence_embedding": torch.ones((len(features["input_ids"]), 3))}
+
     fake = types.ModuleType("sentence_transformers")
     fake.SentenceTransformer = FakeSentenceTransformer
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+    util = types.ModuleType("sentence_transformers.util")
+    util.batch_to_device = lambda features, device: features  # the card's own device move, a no-op here
+    monkeypatch.setitem(sys.modules, "sentence_transformers.util", util)
 
     pairs = [{"query": "q", "documents": [""], "media": {"documents": [[shipped]]}}]
     module.mode_embed(recipe, pairs, "cpu")
@@ -624,5 +647,98 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
     assert seen["existed"], "the container path is on disk while the processor reads it"
     assert seen["path"].name == "document-0-0.avi"
     assert seen["bytes"] == base64.b64decode(str(shipped["uri"]).split(",", 1)[1])
-    text_calls = [call for call in calls if "processing_kwargs" not in call]
-    assert text_calls and all(call["prompt_name"] == "SearchQuery" for call in text_calls), calls
+    assert calls == media_calls, "the text-only query takes the tokenizer path, never the validating encode"
+
+
+def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A text-only row goes through the card's own tokenizer path, not ST's validating ``encode``.
+
+    ``SentenceTransformer.encode`` hands a text-only input to the checkpoint's multimodal processor (its
+    ``sentence_bert_config.json`` declares the ``message`` modality), whose ``validate_inputs`` counts the
+    checkpoint's placeholder spellings in the text and refuses a text-only row that carries one -- the
+    harness's spelling stratum, and the wave's reference failure (``Found 1 <...> tokens in the text but
+    no images were passed.``). The engine has no such check: its tokenizer matches the spelling as the
+    checkpoint's own added token and the model reads that token. The reference therefore tokenizes a
+    text-only side with the checkpoint's own tokenizer -- the call the processor's text path makes, over
+    the prompt-prefixed text -- and runs the card's own module stack; a media side keeps the card's
+    ``encode`` and its validation. No weights: a fake sentence-transformers mirrors the refusal and
+    records both paths."""
+    import types
+
+    import torch
+    from PIL import Image
+
+    module = _reference_module()
+    recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
+    spelling = "a caption carrying the placeholder " + IMAGE_SPELLING + " with no image"
+
+    calls: dict[str, list[dict[str, Any]]] = {"tokenize": [], "encode": [], "forward": []}
+
+    class FakeTokenizer:
+        def __call__(self, texts: list[str], **kwargs: Any) -> dict[str, Any]:
+            calls["tokenize"].append({"texts": list(texts), **kwargs})
+            return {
+                "input_ids": torch.ones((len(texts), 3), dtype=torch.long),
+                "attention_mask": torch.ones((len(texts), 3), dtype=torch.long),
+            }
+
+    class FakeSentenceTransformer:
+        prompts: dict[str, str] = {"SearchQuery": QUERY_PROMPT, "Document": DOC_PROMPT}
+        device = "cpu"
+
+        def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
+            self.tokenizer = FakeTokenizer()
+
+        def encode(self, sides: list[Any], **kwargs: Any) -> Any:
+            calls["encode"].append({"sides": sides, **kwargs})
+            for side in sides:
+                if isinstance(side, str) and IMAGE_SPELLING in side:
+                    raise ValueError(
+                        f"Found {side.count(IMAGE_SPELLING)} {IMAGE_SPELLING} tokens in the text but no "
+                        "images were passed."
+                    )
+            return torch.ones((len(sides), 4))
+
+        def __call__(self, features: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            calls["forward"].append(features)
+            return {"sentence_embedding": torch.ones((len(features["input_ids"]), 4))}
+
+    fake = types.ModuleType("sentence_transformers")
+    fake.SentenceTransformer = FakeSentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+    util = types.ModuleType("sentence_transformers.util")
+    util.batch_to_device = lambda features, device: features  # the card's own device move, a no-op here
+    monkeypatch.setitem(sys.modules, "sentence_transformers.util", util)
+
+    rows = module.mode_embed(recipe, [{"query": spelling, "documents": [spelling]}], "cpu")["rows"]
+    assert len(rows) == 1
+    assert calls["encode"] == [], "a text-only row never enters the processor's validating path"
+    assert [call["texts"][0] for call in calls["tokenize"]] == [
+        QUERY_PROMPT + spelling,
+        DOC_PROMPT + spelling,
+    ], "the checkpoint's tokenizer reads the prompt-prefixed text"
+    assert all(
+        call["padding"] is True and call["truncation"] == "longest_first" and call["return_tensors"] == "pt"
+        for call in calls["tokenize"]
+    ), "the processor's own text kwargs"
+    assert len(calls["forward"]) == 2, "the card's module stack runs per side"
+    # encode(normalize_embeddings=True) is the card's own normalisation: ones(4) -> 1/2 per component.
+    assert all(abs(value - 0.5) < 1e-6 for value in rows[0]["query_vectors"][0])
+    assert all(abs(value - 0.5) < 1e-6 for value in rows[0]["document_vectors"][0])
+
+    # A media row keeps the card's own path: a text's spelling beside an image is the card's manual
+    # placeholder rule, and the processor's validation is the one that reads it.
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
+    image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    module.mode_embed(
+        recipe,
+        [{"query": "q", "documents": [spelling], "media": {"documents": [[image]]}}],
+        "cpu",
+    )
+    media_calls = [call for call in calls["encode"] if "processing_kwargs" in call]
+    assert len(media_calls) == 1, calls["encode"]
+    assert media_calls[0]["prompt_name"] == "Document"
+    assert [part["type"] for part in media_calls[0]["sides"][0][0]["content"]] == ["image", "text"]
