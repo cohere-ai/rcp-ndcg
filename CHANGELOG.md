@@ -1461,6 +1461,24 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
 
+- **The embeddinggemma-2 reference takes the card's tokenizer path for a text-only row** (the E2 round-11
+  reference failure): `SentenceTransformer.encode` hands a text-only input to the checkpoint's multimodal
+  processor (its `sentence_bert_config.json` declares the `message` modality), and the processor's
+  `validate_inputs` counts the checkpoint's placeholder spellings in the text and refuses a text-only row
+  that carries one -- `ValueError: Found 1 ... tokens in the text but no images were passed.` at
+  transformers' `EmbeddingGemma2Processor.validate_inputs`, reached through `processing_utils.py`'s
+  `apply_chat_template` -- so the harness's spelling stratum killed the reference subprocess (embed) before
+  any comparison. The engine has no such check: its tokenizer matches the spelling as the checkpoint's own
+  added token (id 258880) and the model reads that token. A text-only side now goes through the card's own
+  tokenizer path (`reference.py::text_vectors`): the checkpoint's own tokenizer (`model.tokenizer`, the
+  processor's own instance) over the prompt-prefixed text, with the processor's text kwargs (padding,
+  longest-first truncation) and the tokenizer's post-processor, and then the card's own module stack
+  (`Transformer -> Pooling -> Normalize`) with ST's own device move and normalisation -- the file's own
+  parse, never a second spelling rule; a media side keeps the card's `encode` and its validation. CPU tests
+  pin the text path (a fake mirrors the processor's refusal, red on the unfixed code with the wave's exact
+  message), the module stack, the normalisation, and that a media row (a text with the spelling beside an
+  image) still goes through `encode`.
+
 - **The topk-embed-v1 reference converts every encoder matrix on the host** (the E2 round-10 CUDA
   crash): the family's `transformers==5.9.0` pin runs the checkpoint's own wrapper, whose
   `encode_query`/`encode_document` return CUDA tensors on a GPU reference, and the embed mode handed
