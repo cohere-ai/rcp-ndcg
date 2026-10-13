@@ -3676,6 +3676,41 @@ text it sends to the declared budget.
   with `IdentityError` naming `dataset.content` (or superseded with `force=True`), never pooled or reused.
   Remote sources are unchanged: a resolved commit is the content, and no download is paid for the digest.
 
+- **The observation corpus records a row the client's declared empty policy omits** (the E2 round-10 r2
+  recording failure: jina-reranker-v3's corpus failed `completeness` with `content:whitespace_only`
+  missing): the recipe declares `empty_doc: omit_zero_blank` -- the paper's own `if d.strip()` rule -- so a
+  whitespace-only document is omitted and scored 0.0 without a model call, and the plan's model-layer row
+  for that kind (whose pairs row the stage-1 render check pruned) produced no exchange while the bare
+  uncut row did.  The omission is now recorded like a client refusal (`omission_exchange`): no status, a
+  `client_omission` body naming the row and the declared policy, the request id accounted for, so
+  completeness holds and the stratum is recorded.  A CPU test records a fixture with the rule end to end
+  and pins one omission per pass beside the kept rows' own exchanges.
+
+- **The corpus check expects the kept-vector count for a recipe with a served engine-side document keep
+  rule** (the E2 round-10 r3 recording failure: `scores_finite_and_vector_widths` was False with "the
+  /pooling reply reports 165 prompt token(s) but its vectors decode to 152" for pplx-embed-v2-late
+  `-0.6b`/`-9b`): the plugin drops the rule's positions from the reply, so the vectors are the KEPT ones
+  while `usage.prompt_tokens` counts the whole prompt, and the corpus check decoded the reply without the
+  declared counts.  The manifest's recipe block now records the declared
+  `document_skip_engine_side`/`document_skip_token_ids`, each model-layer record carries the engine's own
+  `/tokenize` ids of the render it sent (`inputs.sent_token_ids`, so a repository subset stays checkable),
+  and the check derives each document item's kept count through the product's `kept_vector_count` and
+  hands it to the adapter: a reply at the kept count passes, one at the full count (the engine ignored
+  the rule) and one at a count that is neither fail.  The non-determinism measurement uses the same
+  resolver, so those recipes' vector drift is no longer silently dropped.  Two CPU tests pin the check
+  and the recorded ids.
+
+- **An abandoned observation-corpus step body can no longer restart the engine** (the E2 round-10 r2
+  recording failure: pplx-embed-v2-context's "the engine exited (code 0) while its steps ran"): the
+  corpus step's body stops the engine and starts a fresh one between the in-process passes and the
+  after-restart pass, and the step machinery abandons a body whose engine died (or whose budget ran out)
+  and ends the recipe -- its GPUs are released, and the wave may hand them to another recipe.  The
+  restart is now gated on the step still being the one in flight (the worker's step token): a late
+  restart from an abandoned body is refused with the reason instead of stopping or starting an engine the
+  wave no longer tracks.  A CPU test reproduces the interleaving (the body kills its engine, waits for
+  the runner to abandon it, then calls the restart) and pins the refusal; without the guard the body
+  starts a second engine.
+
 ### Changed
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
