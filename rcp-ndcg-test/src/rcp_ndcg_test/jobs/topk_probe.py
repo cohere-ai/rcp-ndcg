@@ -504,29 +504,7 @@ def engine_side(args: argparse.Namespace) -> int:
             engine_input_path = out_dir / f"row{row_index}-doc{document_index}-engine-input.pt"
             torch.save({"pixel_values": _tensor(engine_pixels), "grid_thw": engine_grid}, engine_input_path)
             dump_path = out_dir / f"row{row_index}-doc{document_index}-reference.pt"
-            subprocess.run(
-                [
-                    args.reference_python,
-                    str(Path(__file__).resolve()),
-                    "--side",
-                    "reference",
-                    "--image",
-                    str(image_path),
-                    "--engine-pixels",
-                    str(engine_input_path),
-                    "--model",
-                    args.model,
-                    "--revision",
-                    args.revision,
-                    "--recipe-dir",
-                    args.recipe_dir,
-                    "--device",
-                    args.reference_device,
-                    "--out",
-                    str(dump_path),
-                ],
-                check=True,
-            )
+            subprocess.run(_reference_command(args, image_path, engine_input_path, dump_path), check=True)
             reference = torch.load(dump_path, map_location="cpu", weights_only=False)
             row_report["reference_grid_thw"] = reference["grid_thw"].tolist()
             row_report["reference_target_hw"] = list(reference["target"])
@@ -695,6 +673,37 @@ def check_engine() -> int:
             print(f"  - {problem}", file=sys.stderr)
         return 1
     return 0
+
+
+def _reference_command(args: argparse.Namespace, image_path: Any, engine_input_path: Any, dump_path: Any) -> list[str]:
+    """The reference subprocess' argv: the same module, its own device and its own load dtype.
+
+    ``--reference-dtype`` must travel here: the reference side loads the checkpoint itself, so a
+    dtype experiment that moves only the engine compares two precisions (the first fp32 run did, and
+    its rows all read the engine's fp32 tower against the reference's bf16 one).
+    """
+    return [
+        args.reference_python,
+        str(Path(__file__).resolve()),
+        "--side",
+        "reference",
+        "--image",
+        str(image_path),
+        "--engine-pixels",
+        str(engine_input_path),
+        "--model",
+        args.model,
+        "--revision",
+        args.revision,
+        "--recipe-dir",
+        args.recipe_dir,
+        "--device",
+        args.reference_device,
+        "--reference-dtype",
+        args.reference_dtype,
+        "--out",
+        str(dump_path),
+    ]
 
 
 def _read_control(args: argparse.Namespace) -> dict[str, Any] | None:

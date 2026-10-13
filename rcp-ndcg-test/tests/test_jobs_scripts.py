@@ -2506,6 +2506,34 @@ def test_the_probe_compares_tensors_that_differ_only_by_a_singleton_dimension() 
     assert differing["note"] == "shapes differ: no elementwise comparison"
 
 
+def test_the_reference_subprocess_gets_its_own_dtype() -> None:
+    """The engine side spawns the reference side; a dtype experiment that moves only the engine compares
+    two precisions (the first fp32 run did: every row read the engine's fp32 tower against the
+    reference's bf16 one), so ``--reference-dtype`` must travel in the subprocess argv."""
+    probe = _probe_module()
+    args = probe.build_parser().parse_args(
+        [
+            "--out",
+            "/tmp/probe",
+            "--model",
+            "topk-io/topk-embed-v1-small",
+            "--revision",
+            "0" * 40,
+            "--pairs",
+            "/tmp/pairs.jsonl",
+            "--reference-python",
+            "/tmp/reference/bin/python",
+            "--reference-dtype",
+            "float32",
+        ]
+    )
+    command = probe._reference_command(args, "/tmp/i.png", "/tmp/e.pt", "/tmp/d.pt")
+    assert command[command.index("--side") + 1] == "reference"
+    assert command[command.index("--reference-dtype") + 1] == "float32"
+    assert command[command.index("--model") + 1] == "topk-io/topk-embed-v1-small"
+    assert command[command.index("--out") + 1] == "/tmp/d.pt"
+
+
 def test_the_probe_names_the_tensors_a_recording_missed() -> None:
     """A recording that missed modules says so (an absent tensor reads as "clean" in the tables)."""
     probe = _probe_module()
