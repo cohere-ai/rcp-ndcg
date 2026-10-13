@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import functools
 import importlib.util
+import inspect
 import sys
 from pathlib import Path
 from typing import Any
@@ -103,8 +104,40 @@ def prompt_strategy(recipe: Any, tokenizer: Any) -> Any:
     if recipe.role in ("embed", "multi_vector"):
         return RequestPrompts(StringsPrompts(slot=slot), chat)
     if recipe.client.get("listwise", False):
-        return EnginePrompts(builder=_listwise_builder(recipe))
-    return PairPrompts(template=fitting.client_template(recipe), tokenizer=tokenizer, media=media)
+        build, reads_instruction = _listwise_builder(recipe)
+        return EnginePrompts(
+            builder=lambda query, documents: build(query, documents),
+            instruction_builder=(lambda query, documents, instruction: build(query, documents, instruction))
+            if reads_instruction
+            else None,
+        )
+    return PairPrompts(
+        template=fitting.client_template(recipe),
+        tokenizer=tokenizer,
+        media=media,
+        instruction_render=instruction_render(recipe),
+    )
+
+
+def instruction_render(recipe: Any) -> Any:
+    """The engine's render of a pair prompt for a request that carries an ``instruction``: the recipe's
+    served chat template with the request's instruction (the engine passes it through
+    ``chat_template_kwargs``, overriding the template's declared default). ``None`` when the served
+    template is the checkpoint's own or reads no instruction -- the client template then renders the
+    prompt, which is what the engine renders when its template reads none."""
+    from rcp_ndcg_test.equivalence.stages import render_chat, served_chat_template
+
+    if recipe.serve.chat_template is None:
+        return None
+    _, text = served_chat_template(recipe)
+    if "instruction" not in text:
+        return None
+
+    def render(query: str, document: str, instruction: str) -> str:
+        conversation = [{"role": "query", "content": query}, {"role": "document", "content": document}]
+        return render_chat(text, conversation, add_generation_prompt=False, instruction=instruction)
+
+    return render
 
 
 def chat_render(recipe: Any) -> Any:
@@ -162,14 +195,19 @@ def media_model(recipe: Any, tokenizer: Any) -> Any:
     def media(part: dict[str, Any]) -> tuple[Any, int]:
         from rcp_ndcg_test.engines import MediaIdentity
         from rcp_ndcg_test.equivalence.media import sent_media_content
-        from rcp_ndcg_test.errors import EmulatorUnmodelledError, HarnessError
+        from rcp_ndcg_test.errors import EmulatorUnmodelledError, HarnessError, MediaRefusalError
 
         try:
             kind, content = sent_media_content(part)
             payload = _inline_bytes(part)
         except HarnessError as error:
-            # A part the harness cannot read (not inline, a header that states no geometry) is unmodelled:
-            # typed, so `from_corpus` skips and names the record instead of failing the whole corpus.
+            url = _part_url(part)
+            if url.startswith("data:"):
+                # An inline part the harness cannot read (no geometry, undecodable bytes) is what the
+                # engine's own input processor refuses: its recorded 400 message, verbatim.
+                raise MediaRefusalError(_CORRUPT_MEDIA_REFUSALS.get(str(part.get("type")), str(error))) from error
+            # A part the harness cannot read (not inline) is unmodelled: typed, so `from_corpus` skips and
+            # names the record instead of failing the whole corpus.
             raise EmulatorUnmodelledError(str(error)) from error
         tokens = content_media_tokens(
             content, image_policy or ImagePolicy.native(), video_policy, tokenizer=tokenizer
@@ -177,6 +215,22 @@ def media_model(recipe: Any, tokenizer: Any) -> Any:
         return MediaIdentity(kind=kind, sha256=hashlib.sha256(payload).hexdigest(), processing=processing), tokens
 
     return media
+
+
+def _part_url(part: dict[str, Any]) -> str:
+    """One sent media part's URL (an ``image_url`` or ``video_url`` payload)."""
+    payload = part.get("image_url") if part.get("type") in ("image_url", "image") else part.get("video_url")
+    return str((payload or {}).get("url") or "")
+
+
+_CORRUPT_MEDIA_REFUSALS = {
+    "image_url": "Failed to load image: cannot identify image file <_io.BytesIO object>",
+    "image": "Failed to load image: cannot identify image file <_io.BytesIO object>",
+    "video_url": "Could not open video stream",
+    "video": "Could not open video stream",
+}
+"""The engine's 400 message for a media part its processor cannot decode, verbatim (the recorded
+``edge:corrupt_image`` and ``edge:corrupt_video`` probes are the ground truth)."""
 
 
 def _inline_bytes(part: dict[str, Any]) -> bytes:
@@ -197,9 +251,11 @@ def _inline_bytes(part: dict[str, Any]) -> bytes:
     return default_resolver().bytes_of(MediaRef(uri=url))
 
 
-def _listwise_builder(recipe: Any):
+def _listwise_builder(recipe: Any) -> tuple[Any, bool]:
     """The listwise prompt builder the recipe itself declares (its ``reference.py``'s verbatim port of
-    the checkpoint's prompt function): one home for the prompt shape, the emulator reads it from there."""
+    the checkpoint's prompt function): one home for the prompt shape, the emulator reads it from there.
+    Output: the builder (``(query, documents, instruction=None)``) and whether the reference builder
+    reads an instruction."""
     directory = Path(str(recipe._dir)) if recipe._dir is not None else RECIPES_ROOT / recipe.id
     path = directory / (recipe.reference.entry or "reference.py")
     spec = importlib.util.spec_from_file_location(f"rcp_recipe_reference_{recipe.id.replace('-', '_')}", path)
@@ -209,11 +265,14 @@ def _listwise_builder(recipe: Any):
     builder = getattr(module, "format_docs_prompt", None)
     if builder is None:
         raise AssertionError(f"{path} declares no format_docs_prompt; a listwise recipe's reference does")
+    reads_instruction = "instruction" in inspect.signature(builder).parameters
 
-    def build(query: str, documents: list[str]) -> str:
+    def build(query: str, documents: list[str], instruction: str | None = None) -> str:
+        if instruction is not None and reads_instruction:
+            return builder(query, documents, instruction)
         return builder(query, documents)
 
-    return build
+    return build, reads_instruction
 
 
 @functools.cache
@@ -251,6 +310,7 @@ def emulator_over(recipe_id: str, corpus: Any) -> Any:
     # engine is served with).
     overrides = dict(recipe.serve.hf_overrides or {})
     declared_dims = tuple(int(dimension) for dimension in overrides.get("matryoshka_dimensions") or ())
+    media_limits = dict(recipe.serve.limit_mm_per_prompt or {})
     facts = EngineFacts(
         engine_name=str(corpus.manifest["engine"]["name"]),
         engine_version=str(corpus.manifest["engine"]["version"]),
@@ -259,6 +319,8 @@ def emulator_over(recipe_id: str, corpus: Any) -> Any:
         max_model_len=recipe.serve.max_model_len,
         is_matryoshka=bool(declared_dims or overrides.get("is_matryoshka")),
         matryoshka_dimensions=declared_dims or None,
+        max_images=media_limits.get("image"),
+        max_videos=media_limits.get("video"),
     )
     emulator = VllmEmulator.from_corpus(corpus, prompt_strategy(recipe, tokenizer), tokenizer, facts)
     registry.register(emulator)

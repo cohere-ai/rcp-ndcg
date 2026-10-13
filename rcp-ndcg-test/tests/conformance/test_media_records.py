@@ -341,9 +341,9 @@ def test_the_part_order_is_part_of_the_media_key() -> None:
 
 def test_a_media_part_the_wiring_cannot_read_is_skipped_and_named(tmp_path: Path) -> None:
     """A 2xx record whose media part the *wiring's* media model cannot read (undecodable bytes, a header that
-    states no geometry) is unmodelled, not a raised PIL/assert error: `from_corpus` skips and names it, the
-    corpus still builds, and a request for it answers the marked 400 (the contract the lane's tests pin for
-    the emulator's own refusals)."""
+    states no geometry) is unmodelled, not a raised PIL/assert error: `from_corpus` skips and names it and
+    the corpus still builds. A request for it answers the engine's own refusal -- the engine's processor
+    cannot decode the part either, and the recorded corrupt-media probes pin its 400 message."""
     from rcp_ndcg_test.equivalence.fitting import tokenizer_of
     from tests._engines import load_recipe, media_model
 
@@ -361,7 +361,8 @@ def test_a_media_part_the_wiring_cannot_read_is_skipped_and_named(tmp_path: Path
     )
     assert len(emulator.unmodelled_records) == 1 and "#0" in emulator.unmodelled_records[0]
     refused = emulator.answer("/v1/embeddings", "POST", body)
-    assert refused.status_code == 400 and refused.headers[SOURCE] == "refused-unmodelled"
+    assert refused.status_code == 400
+    assert refused.json()["error"]["message"].startswith("Failed to load image: cannot identify image file")
 
 
 def test_the_wiring_builds_a_media_model_for_a_media_recipe() -> None:

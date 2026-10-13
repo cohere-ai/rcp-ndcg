@@ -61,7 +61,7 @@ from rcp_ndcg_test.corpus import (
     normalise_body,
     normalise_raw,
 )
-from rcp_ndcg_test.errors import EmulatorUnmodelledError
+from rcp_ndcg_test.errors import EmulatorUnmodelledError, MediaRefusalError
 
 __all__ = [
     "CORPUS_INDEX_SCHEMA",
@@ -327,10 +327,53 @@ def compare_exchange(recorded: Exchange, replayed: httpx.Response, tolerance: tu
         return problems
     expected_body = normalise_body(recorded.response_json)
     actual = normalise_body(actual_body)
-    problems.extend(_diff_bodies(expected_body, actual, "", tolerance or (0.0, 0.0)))
+    if recorded.path.rstrip("/").endswith("/rerank"):
+        problems.extend(_diff_rerank_results(expected_body, actual, tolerance or (0.0, 0.0)))
+    else:
+        problems.extend(_diff_bodies(expected_body, actual, "", tolerance or (0.0, 0.0)))
     if recorded.response_raw is not None and not problems and tolerance is None:
         if normalise_raw(content) != normalise_raw(recorded.response_raw):
             problems.append("raw bytes differ from the recorded bytes (volatile values masked)")
+    return problems
+
+
+def _diff_rerank_results(expected: Any, actual: Any, tolerance: tuple[float, float]) -> list[str]:
+    """A rerank reply compared by **document identity**: the returned document set must match exactly (a
+    missing or extra document still refuses) and each document's entry is compared within the measured
+    tolerance, and each reply must be ranked by score.  The ORDER is not compared: the engine's ranking
+    follows the scores, and scores within the recorded non-determinism may flip near-ties (the
+    measurement is the corpus's own).
+    """
+    if not isinstance(expected, dict) or not isinstance(actual, dict):
+        return _diff_bodies(expected, actual, "", tolerance)
+    expected_results, actual_results = expected.get("results"), actual.get("results")
+    if not isinstance(expected_results, list) or not isinstance(actual_results, list):
+        return _diff_bodies(expected, actual, "", tolerance)
+    problems = _diff_bodies(
+        {key: value for key, value in expected.items() if key != "results"},
+        {key: value for key, value in actual.items() if key != "results"},
+        "",
+        tolerance,
+    )
+    by_index = {entry.get("index"): entry for entry in expected_results if isinstance(entry, dict)}
+    actual_by_index = {entry.get("index"): entry for entry in actual_results if isinstance(entry, dict)}
+    if set(by_index) != set(actual_by_index):
+        return problems + [
+            f".results: document indices {sorted(actual_by_index, key=str)} != recorded "
+            f"{sorted(by_index, key=str)}"
+        ]
+    for index in sorted(by_index, key=str):
+        problems.extend(_diff_bodies(by_index[index], actual_by_index[index], f".results[{index}]", tolerance))
+    for side, entries in (("recorded", expected_results), ("replayed", actual_results)):
+        scores = [entry.get("relevance_score") for entry in entries if isinstance(entry, dict)]
+        if all(isinstance(score, (int, float)) for score in scores):
+            for position, (left, right) in enumerate(zip(scores, scores[1:], strict=False)):
+                if float(right) > float(left):
+                    problems.append(
+                        f".results[{position}].index: the {side} reply is not ranked by score "
+                        f"({right} above {left})"
+                    )
+                    break
     return problems
 
 
@@ -439,8 +482,8 @@ FIELD_CLASSES: Mapping[str, str] = {
     "dimensions": "output",  # the engine's Matryoshka cut
     "task": "output",  # which pooling task runs
     "messages": "prompt",  # the chat-style request: its conversations carry the engine prompt(s)
+    "instruction": "prompt",  # the engine folds it into the rendered prompt where its template reads one
     # unmodelled: changes the prompt or its cut in ways the emulator does not render -> a marked 400
-    "instruction": "unmodelled",  # folded into chat_template_kwargs and rendered by the template
     "chat_template_kwargs": "unmodelled",
     "truncate_prompt_tokens": "unmodelled",  # the engine cuts instead of refusing
     "truncation_side": "unmodelled",
@@ -781,13 +824,27 @@ class PairPrompts(PromptStrategy):
     template: Any
     tokenizer: Any
     media: Callable[[Any], tuple[MediaIdentity, int]] | None = None
+    instruction_render: Callable[[str, str, str], str] | None = None
+    """The engine's render of a pair prompt for a request that carries an ``instruction``:
+    ``(query, document, instruction)`` -> the pair prompt.  The recipe's served template is the engine's
+    renderer (where its pair shape reads an instruction); ``None`` falls back to the client template,
+    which is byte-identical where the recipe's own template reads no instruction."""
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
+        instruction = body.get("instruction")
+        instruction = instruction if isinstance(instruction, str) and instruction else None
         query, query_media, query_tokens, query_placement = _side(body.get("query"), self.media)
         documents = [_side(document, self.media) for document in body.get("documents") or []]
         prompts: list[Prompt] = []
         for document, media, tokens, placement in documents:
-            rendered = self.template.render("pair", self.tokenizer, query=query, document=document)
+            if instruction is not None and self.instruction_render is not None:
+                rendered = self.instruction_render(query, document, instruction)
+            elif instruction is not None:
+                rendered = self.template.render(
+                    "pair", self.tokenizer, query=query, document=document, instruction=instruction
+                )
+            else:
+                rendered = self.template.render("pair", self.tokenizer, query=query, document=document)
             identities = (*query_media, *media)
             prompts.append(
                 MediaPrompt(rendered, identities, query_tokens + tokens, (*query_placement, *placement))
@@ -807,11 +864,21 @@ class EnginePrompts(PromptStrategy):
 
     builder: Callable[[str, Sequence[str]], str]
     add_special: bool = True
+    instruction_builder: Callable[[str, Sequence[str], str], str] | None = None
+    """The reference builder with the request's instruction, for a checkpoint whose N-passage builder
+    reads one (jina-reranker-v3's ``format_docs_prompt(query, docs, instruction)``); ``None`` keeps
+    ``builder``, which is the engine's render where the builder reads no instruction."""
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
         query = _text(body.get("query"))
         documents = [_text(document) for document in body.get("documents") or []]
-        return PromptSet((self.builder(query, documents),), (self.add_special,), "score_list", (0,))
+        instruction = body.get("instruction")
+        instruction = instruction if isinstance(instruction, str) and instruction else None
+        if instruction is not None and self.instruction_builder is not None:
+            prompt = self.instruction_builder(query, documents, instruction)
+        else:
+            prompt = self.builder(query, documents)
+        return PromptSet((prompt,), (self.add_special,), "score_list", (0,))
 
 
 def _conversations(body: Mapping[str, Any]) -> list[list[Any]]:
@@ -837,6 +904,45 @@ def _media_parts(conversation: Sequence[Any]) -> list[dict[str, Any]]:
             if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
                 parts.append(part)
     return parts
+
+
+def _media_counts(body: Mapping[str, Any]) -> tuple[int, int]:
+    """The request's largest per-prompt media counts: ``(images, videos)`` over its prompt units -- each
+    ``messages`` conversation, each ``input`` item and each rerank document (and its query) -- which is
+    how the engine's ``limit_mm_per_prompt`` counts."""
+    units: list[list[Any]] = []
+    messages = body.get("messages")
+    if isinstance(messages, list) and messages:
+        conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+        for conversation in conversations:
+            units.append(
+                [
+                    part
+                    for message in conversation
+                    if isinstance(message, dict)
+                    for part in (message.get("content") if isinstance(message.get("content"), list) else [])
+                ]
+            )
+    inputs = body.get("input")
+    if isinstance(inputs, list):
+        units.extend(
+            list(item["content"])
+            for item in inputs
+            if isinstance(item, dict) and isinstance(item.get("content"), list)
+        )
+    for key in ("query", "documents"):
+        value = body.get(key)
+        values = value if key == "documents" and isinstance(value, list) else [value]
+        units.extend(
+            list(item["content"])
+            for item in values
+            if isinstance(item, dict) and isinstance(item.get("content"), list)
+        )
+    images = videos = 0
+    for unit in units:
+        images = max(images, sum(1 for part in unit if isinstance(part, dict) and part.get("type") == "image_url"))
+        videos = max(videos, sum(1 for part in unit if isinstance(part, dict) and part.get("type") == "video_url"))
+    return images, videos
 
 
 def _side(
@@ -908,6 +1014,15 @@ def _document_text(value: Any) -> str:
     return _text(value)
 
 
+def _document_echo(document: Any) -> dict[str, Any]:
+    """One rerank document as the engine echoes it in its reply: a part-list document echoes its whole
+    ``content`` list as ``multi_modal`` with ``text`` null; a string document echoes the text with
+    ``multi_modal`` null -- exactly as the recorded media rows show."""
+    if isinstance(document, dict) and isinstance(document.get("content"), list):
+        return {"text": None, "multi_modal": list(document["content"]) or None}
+    return {"text": _document_text(document), "multi_modal": None}
+
+
 def _is_token_ids(item: Any) -> bool:
     return isinstance(item, list) and bool(item) and all(isinstance(v, int) and not isinstance(v, bool) for v in item)
 
@@ -973,6 +1088,9 @@ class EngineFacts:
             the gate admits every integer in range (a card's prose range).
         embedding_size: The checkpoint's full output width (vLLM's ``embedding_size``); ``None`` means the
             width the corpus observed (the emulator's ``dim``).
+        max_images: The per-prompt image cap the engine enforces (``limit_mm_per_prompt``); ``None``
+            enforces none.
+        max_videos: The per-prompt video cap the engine enforces; ``None`` enforces none.
     """
 
     engine_name: str
@@ -983,6 +1101,8 @@ class EngineFacts:
     is_matryoshka: bool = False
     matryoshka_dimensions: tuple[int, ...] | None = None
     embedding_size: int | None = None
+    max_images: int | None = None
+    max_videos: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1146,10 +1266,12 @@ class VllmEmulator:
                 continue
             try:
                 set_ = replace(strategy.prompts(body), context=_canonical_context(context))
-            except EmulatorUnmodelledError as error:
+            except (EmulatorUnmodelledError, MediaRefusalError) as error:
                 # A request the model layer has no derivation for (a chat body without a chat strategy, a
-                # media part without a media model) is skipped and NAMED: one unmodelled record never fails
-                # the whole corpus, and a replayed request for it answers the declared surrogate, marked.
+                # media part without a media model) -- or a 2xx record for a part the engine's processor
+                # refuses -- is skipped and NAMED: one such record never fails the whole corpus, and a
+                # replayed request for it answers the emulator's marked refusal, or the engine's own 400
+                # for a part the engine's processor refuses.
                 unmodelled_records.append(f"{where}: {error}")
                 continue
             for key, observation in _outputs_from_response(set_, exchange, truncated=truncated):
@@ -1237,6 +1359,8 @@ class VllmEmulator:
         try:
             raw = request.read()
             body = json.loads(raw) if raw else None
+        except json.JSONDecodeError as error:
+            return _malformed_json(error)
         except ValueError:
             body = None
             return _error(400, "invalid JSON body", param="body", kind="BadRequestError")
@@ -1271,7 +1395,9 @@ class VllmEmulator:
         if method == "GET" and path.rstrip("/").endswith("/models"):
             return self._models()
         if method == "GET" and path.rstrip("/").endswith("/health"):
-            return _json(200, {})
+            # The engine's readiness answer: an empty 200 body with the server header and no content type
+            # (the recorded probe).
+            return httpx.Response(200, headers={"server": "uvicorn"}, content=b"")
         if method != "POST":
             return _error(404, f"unrecognized route {method} {path}", kind="NotFoundError")
         if path.rstrip("/").endswith("/embeddings"):
@@ -1330,6 +1456,19 @@ class VllmEmulator:
                 f"The model `{body.get('model')}` does not exist.",
                 kind="NotFoundError",
             )
+        images, videos = _media_counts(body)
+        if self.facts.max_images is not None and images > self.facts.max_images:
+            return None, _error(
+                400,
+                f"At most {self.facts.max_images} image(s) may be provided in one prompt. (parameter=image)",
+                param="image",
+            )
+        if self.facts.max_videos is not None and videos > self.facts.max_videos:
+            return None, _error(
+                400,
+                f"At most {self.facts.max_videos} video(s) may be provided in one prompt. (parameter=video)",
+                param="video",
+            )
         context, unmodelled = request_context(route, body)
         if unmodelled:
             return None, self._unmodelled_refusal(
@@ -1342,9 +1481,15 @@ class VllmEmulator:
             set_ = replace(self.strategy.prompts(body), context=_canonical_context(context))
         except EmulatorUnmodelledError as error:
             return None, self._unmodelled_refusal(str(error), param="input")
+        except MediaRefusalError as error:
+            # The engine's input processor refused a media part (a corrupt image or video): its own 400
+            # message, verbatim.
+            return None, _error(400, str(error))
         except Exception as error:  # noqa: BLE001 - malformed requests are wire refusals
             return None, _error(400, f"invalid request: {error}", kind="BadRequestError")
         if not set_.prompts:
+            if route == "rerank":
+                return None, _error(400, "At least one text_pair element must be given")
             return None, _error(400, "invalid request: empty input", param="input", kind="BadRequestError")
         over = [
             index for index in range(len(set_.prompts)) if set_.count(index, self.tokenizer) > self.facts.max_model_len
@@ -1564,6 +1709,8 @@ class VllmEmulator:
             return error
         assert set_ is not None
         documents = body.get("documents") or []
+        if not documents:  # a listwise builder renders an empty set as one prompt; the engine still refuses
+            return _error(400, "At least one text_pair element must be given")
         sources: list[str] = []
         scored: list[dict[str, Any]] = []
         if set_.slot == "score_list":
@@ -1599,7 +1746,7 @@ class VllmEmulator:
         results = [
             {
                 "index": entry["index"],
-                "document": {"text": _document_text(documents[entry["index"]]), "multi_modal": None},
+                "document": _document_echo(documents[entry["index"]]),
                 "relevance_score": entry["relevance_score"],
             }
             for entry in scored
@@ -2099,6 +2246,30 @@ def _usage_body(usage: int, *, wide: bool) -> dict[str, Any]:
 def _error(status: int, message: str, *, param: str | None = None, kind: str = "BadRequestError") -> httpx.Response:
     """vLLM's ``ErrorResponse`` (``ErrorInfo``: message, type, param, code)."""
     return _json(status, {"error": {"message": message, "type": kind, "param": param, "code": status}})
+
+
+def _malformed_json(error: json.JSONDecodeError) -> httpx.Response:
+    """The engine's refusal of a body that is not JSON: FastAPI's ``json_invalid`` error (``loc``
+    ``body.<offset>``, the empty-dict input FastAPI passes, the decoder's message in ``ctx``) formatted
+    as vLLM formats its validation errors -- the recorded ``{not json`` probe is the ground truth."""
+    detail = {
+        "type": "json_invalid",
+        "loc": f"body.{error.pos}",
+        "msg": "JSON decode error",
+        "input": "<dict of 0 items>",
+        "ctx": {"error": error.msg},
+    }
+    return _json(
+        400,
+        {
+            "error": {
+                "message": f"1 validation error:\n  {detail!r}",
+                "type": "Bad Request",
+                "param": f"body.{error.pos}",
+                "code": 400,
+            }
+        },
+    )
 
 
 def _json(status: int, body: Any) -> httpx.Response:

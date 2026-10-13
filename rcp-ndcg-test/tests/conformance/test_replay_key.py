@@ -79,7 +79,7 @@ def test_the_add_special_tokens_field_changes_the_counted_prompt() -> None:
 @pytest.mark.parametrize(
     ("recipe_id", "field", "value"),
     [
-        ("zerank-2-reranker", "instruction", "Judge the passage."),  # folded into the template by the engine
+        ("zerank-2-reranker", "chat_template_kwargs", {"instruction": "Judge the passage."}),  # template kwargs
         ("zerank-2-reranker", "truncate_prompt_tokens", 16),  # the engine cuts instead of refusing
         ("zerank-2-reranker", "max_tokens_per_doc", 8),
         ("qwen3-embedding-0.6b", "truncate_prompt_tokens", 16),
@@ -217,6 +217,34 @@ def test_a_top_n_truncated_reply_that_is_not_the_stored_prefix_is_refused(tmp_pa
             dim=2,
         )
     assert "#0" in str(error.value) and "#1" in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "recipe_id",
+    ["jina-reranker-v3", "qwen3-reranker-0.6b", "qwen3-reranker-4b", "qwen3-reranker-8b", "qwen3-vl-reranker-2b"],
+)
+def test_an_instruction_bearing_request_replays_the_engines_own_render(recipe_id: str) -> None:
+    """The engine folds a request ``instruction`` into the rendered prompt where its template reads one
+    (the listwise reference builder, the served template's default override) and ignores it where it
+    reads none (the qwen3-reranker pair template): either way the recorded instruction-bearing exchange
+    replays, and the replayed usage is the engine's own count of that render."""
+    from rcp_ndcg_test.engines import compare_exchange, corpus_tolerance, exchanges_of
+    from tests._engines import corpus_of, emulator_for
+
+    corpus = corpus_of(load_recipe(recipe_id))
+    emulator = emulator_for(recipe_id)
+    exchange = next(
+        item
+        for item in exchanges_of(corpus)
+        if isinstance(item.request_body, dict)
+        and item.request_body.get("instruction")
+        and item.path.endswith("/rerank")
+        and item.status == 200
+    )
+    answer = emulator.answer(exchange.path, exchange.method, exchange.request_body)
+    assert compare_exchange(exchange, answer, corpus_tolerance(corpus)) == []
+    recorded = (exchange.response_json or {}).get("usage", {}).get("prompt_tokens")
+    assert answer.json()["usage"]["prompt_tokens"] == recorded, f"{recipe_id}: the instruction render moved"
 
 
 def test_every_declared_request_field_is_classified() -> None:
