@@ -174,8 +174,9 @@ def load_stored(root: str | Path, key: ReferenceKey) -> tuple[dict[str, Any] | N
     exactly ``key.inputs`` and ``output.json`` hashes to the manifest's ``output_sha256``; ``None``
     otherwise.  ``changed_inputs`` names the inputs that differ from the closest stored entry of the
     same recipe and mode (via :func:`~rcp_ndcg_test.fingerprint.fingerprint_changes`; ``[]`` when the
-    entry was loaded, or when nothing comparable is stored).  A corrupt entry (a hash mismatch) raises
-    :class:`HarnessError` -- a tampered store is never silently recomputed and compared.  Units: none.
+    entry was loaded, or when nothing comparable is stored).  A corrupt entry (a hash mismatch, or a
+    manifest without the ``output_sha256`` the check needs) raises :class:`HarnessError` -- a tampered
+    store is never silently recomputed and compared.  Units: none.
     """
     directory = store_path(root, key.fingerprint)
     manifest = _manifest_of(directory)
@@ -186,7 +187,12 @@ def load_stored(root: str | Path, key: ReferenceKey) -> tuple[dict[str, Any] | N
         except OSError as error:
             raise HarnessError(f"the stored reference output {output} cannot be read: {error}") from error
         expected = str(manifest.get("output_sha256") or "")
-        if expected and _sha256_bytes(data) != expected:
+        if not expected:
+            raise HarnessError(
+                f"the stored reference manifest {directory / _MANIFEST} has no output_sha256; the entry is "
+                "corrupt and cannot be checked against its output"
+            )
+        if _sha256_bytes(data) != expected:
             raise HarnessError(
                 f"the stored reference output {output} does not hash to its manifest ({expected}); "
                 "the store is corrupt or was hand-edited"

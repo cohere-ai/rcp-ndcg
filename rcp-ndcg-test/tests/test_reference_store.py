@@ -79,6 +79,19 @@ def test_a_tampered_entry_is_refused(tmp_path: Path) -> None:
         load_stored(tmp_path, key)
 
 
+def test_an_entry_without_a_digest_is_refused(tmp_path: Path) -> None:
+    """A manifest that omits ``output_sha256`` is a corrupt entry, never a pass: the digest is the
+    tamper check's only input, so a missing one must refuse (reviews/final-harness-glm53.md D2)."""
+    key = reference_key(**BASE)
+    directory = save_stored(tmp_path, key, {"rows": []}, family="fixture-embed")
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["output_sha256"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(HarnessError, match="output_sha256"):
+        load_stored(tmp_path, key)
+
+
 def test_stage2_reuses_an_unchanged_stored_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The wave's whole point: the second stage 2 over the same pairs/environment does not run the
     reference subprocess again.  The first call runs it for real; the second replaces
