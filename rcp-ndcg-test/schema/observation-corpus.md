@@ -68,7 +68,10 @@ behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VA
   own), `request` and `response` (method and path; the headers that matter -- content type, server, the
   version header and a `bytes` reply's `metadata` framing; the body as sent or received in `body_raw`, UTF-8
   text or `{"base64": ...}`, beside `body_parsed`; `latency_s`, never used for verification) and `inputs`
-  (request id, stratum labels, layer `model` or `protocol`, probe, source ids and commit, token counts, media).
+  (request id, stratum labels, layer `model` or `protocol`, probe, source ids and commit, token counts, media;
+  a client-sent model-layer record also carries `sent_token_ids`, the engine's own `/tokenize` ids of the
+  render it sent, and a row the client's declared empty policy omitted is recorded as its omission -- no
+  status, a `client_omission` body naming the reason -- so every planned request id is accounted for).
   Every request is sent twice in one engine process and once after an engine restart; an embedder's inputs
   alone and in batches of 2, 8 and 32 per side.
 - `nondeterminism.json` -- per request sent more than once (`exchange_id`): the repetitions and server runs it
@@ -96,7 +99,11 @@ behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VA
 measured vLLM v0.31.0 table: over-length `400`, an unknown field ignored with `200`, malformed JSON `400`),
 `scores_finite_and_vector_widths` (every number finite, every vector reply decoded at the width its request
 asked for -- a bare `dimensions=k` MRL probe, cut by the engine's own Matryoshka gate -- or the declared
-width; one width per route and requested dimensions),
+width; one width per route and requested dimensions; a recipe declaring an engine-side document keep rule
+(`document_skip_engine_side`) is checked against the KEPT count per document item -- the product's
+`kept_vector_count` over the sent render's ids and the declared `document_skip_token_ids` -- because the
+served plugin drops the rule's positions from the reply while `usage.prompt_tokens` counts the whole
+prompt),
 `nondeterminism_report`, `provenance_complete`, `no_credentials` (every byte, a subset's `.gz` decompressed),
 and, given the equivalence stage's exchanges of the same wave, `equivalence_consistent` (the same replies
 within the measured tolerance; no common request is a failure). A corpus failing any check is not used.
