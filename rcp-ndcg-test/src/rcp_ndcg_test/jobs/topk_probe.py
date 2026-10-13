@@ -9,7 +9,8 @@ its tensors' shapes, hashes and diffs to ``probe-report.json`` and ``probe-repor
 compared without the numbers being in the report.
 
     python3 topk_probe.py --out <dir> --model <checkpoint> --revision <rev> --pairs <pairs.jsonl> \
-        --reference-python <state>/reference/topk-embed-v1/bin/python [--rows 20,26,27]
+        --reference-python <state>/reference/topk-embed-v1/bin/python [--rows 20,26,27] \
+        [--dtype bfloat16] [--reference-dtype bfloat16]
 
     # the reference side (called by the engine side, never by hand):
     <reference-python> topk_probe.py --side reference --image <file.png> --model <checkpoint> \
@@ -228,7 +229,7 @@ def reference_side(args: argparse.Namespace) -> int:
         revision=args.revision,
         trust_remote_code=True,
         device=args.device,
-        model_kwargs={"dtype": "bfloat16"},
+        model_kwargs={"dtype": args.reference_dtype},
     )
     module = next(m for m in model.modules() if type(m).__name__ == "TopkEmbedTransformer")
     topk = next(m for m in module.modules() if type(m).__name__ == "TopkEmbedModel")
@@ -430,6 +431,8 @@ def engine_side(args: argparse.Namespace) -> int:
         "model": args.model,
         "revision": args.revision,
         "engine_image": os.environ.get("RCP_IMAGE", "unknown"),
+        "dtype": args.dtype,
+        "reference_dtype": args.reference_dtype,
         "device": args.device,
         "reference_device": args.reference_device,
         "experiments": {},
@@ -458,7 +461,7 @@ def engine_side(args: argparse.Namespace) -> int:
         model=args.model,
         revision=args.revision,
         runner="pooling",
-        dtype="bfloat16",
+        dtype=args.dtype,
         max_model_len=args.max_model_len,
         trust_remote_code=False,
         enforce_eager=True,
@@ -830,6 +833,7 @@ def _write_report(out_dir: Path, report: dict[str, Any]) -> None:
         "",
         f"- model: `{report['model']}` @ `{report['revision']}`",
         f"- engine image: `{report['engine_image']}`",
+        f"- dtype: engine `{report.get('dtype')}`, reference `{report.get('reference_dtype')}`",
         f"- control (probe vectors vs the wave's recorded vectors): `{control.get('status')}` {control_note}",
         "- engine-tower tensors recorded: "
         + (
