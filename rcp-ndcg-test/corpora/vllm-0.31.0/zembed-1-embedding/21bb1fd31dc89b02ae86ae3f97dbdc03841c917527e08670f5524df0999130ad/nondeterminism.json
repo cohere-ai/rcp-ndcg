@@ -1,0 +1,6232 @@
+{
+  "normalisation_version": 1,
+  "per_input": {
+    "00001a1be59b217d500c2d4ae1527876892c998dff658d2aa4b8ce977580dab7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0087bfc9dacb7913c5dbb95a3c0d5e68373eb638f6dccf4cef17bdf075ba5fc7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "00ccc296929fe1e424c3e58d532519cf8f1a0b8d45043ffec4884cd778cfdc26": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001280367374420166,
+      "max_rel_diff": 1.6904620443563367,
+      "min_cosine": 0.9999744706018111,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0234e95dd573869f297ca71bab5812e357e2710b8362620aeb169067cbae6d0e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/v1/models"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": true,
+      "bodies_differ": true
+    },
+    "02bbfab575f57681058e9f217eb566e6a31e5222666db7fc1dac4be77282016e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:5"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0018951743841171265,
+      "max_rel_diff": 1.9995939823984676,
+      "min_cosine": 0.9999314770433788,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "05244ff27521ab31f089d61d61a545a68ad75fcf044cc1c05f3d0005a0b221b2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014110356569290161,
+      "max_rel_diff": 1.7628862704180341,
+      "min_cosine": 0.999971249542051,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0828ae15a2dcf426459b48ee7db36862d97f886407592013256416e2161d2261": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "099579391cadb4dc382588646fbb3246ccc1cfb9bf6e6c3982aa1b236ed2c008": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "09edbb061325b24ebeff753a92bdc001bc46c941a53313b839048fbe3bcecc95": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0014881347306072712,
+      "max_rel_diff": 1.8359900400264906,
+      "min_cosine": 0.9999712766709986,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0b49d0a9795916473d11be3404dba7c84bc9906f59671df5e57061cdeb0486f6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:6",
+          "pairs:7"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0014802217483520508,
+      "max_rel_diff": 1.9474627059558693,
+      "min_cosine": 0.9999774537694796,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0b6668d1e87c1c5d8651520f8fe0fb5d52d7f1347316e56980481ebca04a2d5c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:wrong_model"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0df469e787f9c0f0d34008420eb9c97a5c983ff56e69e57d7371ff70a200c375": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0f36a39bc39d1b27f5f2fe1286d3c527844670796681016142aa12ff66828b90": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002000570297241211,
+      "max_rel_diff": 1.8289162410677153,
+      "min_cosine": 0.9999753321485726,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1030ed6a57763bade7b0aecf94ae01ecaab178508b3c0da0c5886da2499f0928": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013225078582763672,
+      "max_rel_diff": 1.9990474727160747,
+      "min_cosine": 0.999973810948867,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "110ca187edc14158160b8442af028f22a523873b6eb361226cbeb740bcaeaeeb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.002114593982696533,
+      "max_rel_diff": 1.9986157088115313,
+      "min_cosine": 0.9999655810747212,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "14c972603be841bd54c010e05dbb2ea02fcc2bfb68157ca1189981851068243a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.002735316753387451,
+      "max_rel_diff": 1.74765168841558,
+      "min_cosine": 0.9999367360901096,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "14cfb1242e58cb2098b3242923c2c6e20839298fe4eabdda82093595e460311e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002136141061782837,
+      "max_rel_diff": 1.9982869946223671,
+      "min_cosine": 0.9999629592768945,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "170f2c147f5d622ce6d7249688ba91d0bbbbe19e4ca5ebec331026eefc128f11": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002735316753387451,
+      "max_rel_diff": 1.74765168841558,
+      "min_cosine": 0.9999367360901096,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "17d0380bbe292726fcf6afb7239b2715685077fe034ed00b073cc91c42bad6f0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "192bae4fe24a4ccd27563bf5c92f821155bb6a63ef1aa4dfd184a688e9fadf66": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "19683220c5f2d58d348e527a0cdb7cb010f077a0273d2d219de005902554a7e6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1b6ea543f8f871fe07a62768ef07dcb87dd3a160cbe0d386bff272bed6861a27": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1c877215113cf0375b3ba12b73dfceae2bb053ae76a11df6877640cbaa7d001a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0022382140159606934,
+      "max_rel_diff": 1.6716862968170265,
+      "min_cosine": 0.9999626971773117,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1d9dcec8e158e917ccc42424bd73f807cd17c85ea10de8a7046e72130a50a597": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1f2db876e9efdb23f7b00212f2e58c448f0a22650991b0ebcc6492ca99cfce8a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:empty_input"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "22587a01889eb03fbef014a7eef6b4bd48e2caa803704cf78117c19481ea6eaf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "230115ac5457fe9f9e973448c843251b2e9079914d4179faebdc4cb59d2bb59b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014359420165419579,
+      "max_rel_diff": 1.90412639997112,
+      "min_cosine": 0.999972012683771,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "23fbce6b5204f31d3c83c5835ce2f78db0a72ad8a5a273185a4379e74d5401a2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0018397048115730286,
+      "max_rel_diff": 1.855318301055326,
+      "min_cosine": 0.9999640832524292,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "2456ae024853ae24f10c54df95a575b7c430685e1157c6aeaba210715bd5ad5f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0018951743841171265,
+      "max_rel_diff": 1.6000054948696611,
+      "min_cosine": 0.9999314770433788,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "2482261426d80126c91fc1d724221bbf4d2f10158c3c65283a30db9fa5ec31c3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:unknown_field"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002260550856590271,
+      "max_rel_diff": 1.9994161785051128,
+      "min_cosine": 0.9998557929592464,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "24c70bcc61617485464a83fee4b044b2e484298584058c9a91b07a125c466e75": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0009920597076416016,
+      "max_rel_diff": 1.999932961008279,
+      "min_cosine": 0.9999683101337403,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "24d461a4fcd204a09b29dd3cab0c98c4f7fd3eab733b2d55498f6e070245bded": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "292e8bb1724b7656d14e26c5a9ddeda393ec884142e992c653e67d569b013216": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2b91e77e1bbcd354717d360c6065c978a9688729559a1a0b515b39ebd803409a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2ca05c7398104b299a4a2f79f6bd11af293c1110b7182a44208f151ca8e8f71d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.001555427210405469,
+      "max_rel_diff": 1.999898335059273,
+      "min_cosine": 0.9999648690645286,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "2e75b02ccd24dfa249d79cdf57d30cdd05c6853becfc4416f1c75ec95362820b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2ed90131b69cd8f9f6aa9d7e1edfc4c4941a04b4ced320b868acdbac97652d3f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0023266971111297607,
+      "max_rel_diff": 1.993543181524072,
+      "min_cosine": 0.9999493510454684,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "322f32280072e241ac94bf19e591d0aee66cd4d5d3a689c96d7b8781d1c558e9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:23"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013136863708496094,
+      "max_rel_diff": 1.6677758588372493,
+      "min_cosine": 0.9999660381215437,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "345bfac9c8fd088c28ac2ac53e51a8c6259ff7c1ce878dfa83617be58811c840": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3495a281f6b80dbe47e50a47c838ebdec6213815d86ff18b86989a18bc7dba5c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0022317059338092804,
+      "max_rel_diff": 1.9408931998926564,
+      "min_cosine": 0.9999618129783485,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "35bd7b372d54e82aaa37604da75f921ba8394dfd70806d98452893cea906ffc3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3672876216a1d4f0c8cf22ebac78e25634382c2a9c9aee09ab7226a3a6bb9b5a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=40"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "36a0e665f56111e5f3bf3e8bd94d5aef72376861a095925664cdb5f286e22a32": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0028961598873138428,
+      "max_rel_diff": 1.9997982627365385,
+      "min_cosine": 0.9999666653079036,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "371c23b4efd530c48ea1cdf3e420754428d26ee0f8c7c0b48874623e6ef368c7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "37f883c18f8fd59678910e18789df2ee27bc0ca8a22525e0580d1324775f06ab": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0015791654586791992,
+      "max_rel_diff": 1.1538272307012862,
+      "min_cosine": 0.9999673029528802,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "38bd16813041201500502a99674d81cbc1333b67e282659e1ba24f702870765c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.002685040235519409,
+      "max_rel_diff": 1.9990457723335857,
+      "min_cosine": 0.9999707746853107,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "399d3179486915e12b1fcb35c56eb082eff8c6c74fbf494cea89659be1f95b42": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012776851654052734,
+      "max_rel_diff": 1.3336175306588314,
+      "min_cosine": 0.9999620934392679,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3a17eff23a2c757319d339d32b1b3bbf6fe60b3ab6aa363fbe8d53a2bba14cfa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.001364201307296753,
+      "max_rel_diff": 1.9188357206754207,
+      "min_cosine": 0.9999655779646484,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3b8c7845ec5411c27a6b5b534fe7de8406531fedcefb255ed019edf006c2c8ed": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=80"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3be04a9d2647a71a623c3bb10d3ce01a0fb809941ef134b6aaf703bc67082a07": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3cd45f9b58d81d758dd27b3091fcd9422a768ebc2e109c051542700f76e240e3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3eed39cb2bea58ac3500aaecd946d7ce08030cba0e4abf8e36b2bc6706c0ab54": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.001364201307296753,
+      "max_rel_diff": 1.9003561231635768,
+      "min_cosine": 0.9999699142019375,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "43ca022698b4377f4cafd804742d58aaebb2738fa6acf491589453ce91c69dc0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013029277324676514,
+      "max_rel_diff": 1.9993650346261282,
+      "min_cosine": 0.9999650982874462,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "43da658f87272499aeca1f367fcc6f86d25a443c9e461da584d1cd2c5a223437": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0021852850914001465,
+      "max_rel_diff": 1.891066238573791,
+      "min_cosine": 0.9999603232451123,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "44f4348130abca1162a81cf4df8e00df8ec3e669cce475e2bb36dafa16d5070e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002731800079345703,
+      "max_rel_diff": 1.8370409690926122,
+      "min_cosine": 0.9999617167655618,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "4727e76159eec90d6da8a7b92a143a28000d50acd261c5b9f4dee2438c9e5bdf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012877285480499268,
+      "max_rel_diff": 1.9994467740464026,
+      "min_cosine": 0.9999740016552263,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "4b654127c07d46ba1ea634e3c0b52a03849f985ccba996b1c7f607d104957b83": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010496266186237335,
+      "max_rel_diff": 1.5630683942641619,
+      "min_cosine": 0.9999705482837081,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "4b6d8e365680e335e0490a45e538e0a5b35b44f4c7168e5482b17856679b7c25": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4c590bb69dfdcb443ca95e0555d7e26e424a02e5670233e99f645d2e306defca": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0030975937843322754,
+      "max_rel_diff": 1.7283440009555593,
+      "min_cosine": 0.9999081360698752,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "4dc76ecf8df70f8b0db2f48084102865ffefbc96b792312740f79c62be9d5992": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001657634973526001,
+      "max_rel_diff": 1.5833893885783892,
+      "min_cosine": 0.9999415600380595,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "4e92da429568c9956f8551b0481980edf709235f8efcc6c729abf2fc5628c6b3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4e9ea274df3f51ad09127c21fe9ab2d9a305f6b773f4f8e92f4d5f329179336b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4eddcb73470b7cb0abc830a6e362c0249fe50dcbbb64a4742dd44253b9f9b72a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0023313164710998535,
+      "max_rel_diff": 1.998737144871367,
+      "min_cosine": 0.9999740813148636,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "4f5dd03912bc329b056e5fa7b05c7936f3128eba7062a2bc5ac4b641a8cdbd52": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:7",
+          "pairs:7"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0013544261455535889,
+      "max_rel_diff": 1.8564000825986797,
+      "min_cosine": 0.9999669631048339,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "5102297ad8216f19d752e1bb906cd8c61fdeffbd9203f4311ab632828eb10b53": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00256463885307312,
+      "max_rel_diff": 1.8778171158810228,
+      "min_cosine": 0.9999587548306117,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "511789f53da68d1b3f869bc8f3910eedd18de7c28fd44b06a1d5693195b162a5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012364387512207031,
+      "max_rel_diff": 1.8745807454853776,
+      "min_cosine": 0.9999677385851619,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "535fa4c6c79d81e6a1df968d8bee09b4747c8c3e4025cbc68ef8b8d5c6ccfa21": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 16,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      },
+      "max_abs_diff": 0.0027532577514648438,
+      "max_rel_diff": 1.9997730064064347,
+      "min_cosine": 0.9999552594324649,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "53f27f91f2be87fbfbf73b209e12cf998f872894639bb81287679fb45e282c22": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/health"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5648349563d4a4e3c532f08b4b57f7a9a9ae686f936ca1b6a7f43481ebc4ae9f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0037182867527008057,
+      "max_rel_diff": 1.9206105254094354,
+      "min_cosine": 0.9999642001988539,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "564ca119b710a1ca7600a70795ce84b91d69612ff5aefb1a04b542c1d769c83b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "56fa879ba338996db4bb1f608e61169a6501895b447a6d40c07c362051b42692": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0018263757228851318,
+      "max_rel_diff": 1.7499647430374736,
+      "min_cosine": 0.9999712508247469,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "57817d9d2e6b1c80b263011e697c8e9556fc76315a15ab8db5bb2f6d06a55787": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5861b35c4bf5e8f43aaa6a0299afa941cc64fbf6f7eaf4cd1c39475a714e1d18": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.004049450159072876,
+      "max_rel_diff": 1.8914643819959065,
+      "min_cosine": 0.9999616097871492,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "5b0a02f7fef197c8d770de77587e7cab5d5a9b140c608349162d414e5e2ed67f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 4,
+        "request_ids": [
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5b7520f21fc16b5376828dcb6fd5a995b6bd2b45a3c51d3b30c8fff31d279f15": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5b764a05f46b6bcc99edf6abe80dc130db63b9d05fcfea988cc53138afc7629f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5c09efa895e1682d534a2ff0707d0a3e20b7481de8e14ff1ff8f930e8f428038": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:encoding_format=base64"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0018817782402038574,
+      "max_rel_diff": 1.9994838390977354,
+      "min_cosine": 0.9999045230231153,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "5d97ac66ef44175d48736f5991636de214483a2b6acc2fc9d3edaabced7812a5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "62d044afefb8187655b97a631a377ff9fb8c1d4bf5eec4d854973432a7da8bd5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6366389dd83b3b56f68174989fe0f035c61356603bc12af53910f4a17ac7e825": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "63b813713618f25ab7a4b7595efca53047d104c011c190df567498014adc3895": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014068209566175938,
+      "max_rel_diff": 1.9984607869021906,
+      "min_cosine": 0.9999728461658841,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "64745f803b3f59da15bed5372d5b5427b9b4c8de03778e268f9c878aa1531f57": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "69ffe4ba3e6aae09062fd13af27b31c3211eeb6f784e083895fa76b5f7d9902f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6a37dcf38a34b9f250874f638a183e6975294343fb8ba078c054c6bd45ece930": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11",
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0022440850734710693,
+      "max_rel_diff": 1.997546472533274,
+      "min_cosine": 0.999959714772517,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "6c8002de96e2f8cf5ddddb5af9d23d32cdb15dc357ab0542b5b12e76d69524bc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0011680126190185547,
+      "max_rel_diff": 1.5034638197970671,
+      "min_cosine": 0.9999750583908261,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "6ddff098ca3cf697b95812f5dbe3a283a849f4acf3a265e5e21f67a2a3032cff": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6ecf95ebd2e41c1d49f780802d17d7681a1455f5a694ee6aaafd9d57fab43211": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6fd47d77107a9992fb1cf1c3c1c4eb1c331b857c725f25101989c6326ff4f634": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "70dba9372222650e636742479b18cffe0e4cdf64da3b2b35bc53fb5d47eb2ad5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "723c88695387effa26a75a08c34caeeb7e08185552afeaeac9d0328340fc5133": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7344d9e03d8727dfd0c34dd3a2bb74a8760551b636bc09ef27ac59dd9645d8f5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002758026123046875,
+      "max_rel_diff": 1.6015373461261018,
+      "min_cosine": 0.9999605287017235,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "764ebcf81e3ebab4d594abd1e2ee2bbd59acc762bc3f729beb07faa9d753ecfa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0022437572479248047,
+      "max_rel_diff": 1.769381174049169,
+      "min_cosine": 0.999959191068873,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "784e7a6f9d34fd9b118096ac1aed230ed0549e5f8066f51f62632c1035cf0506": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1",
+          "pairs:2",
+          "pairs:3",
+          "pairs:4",
+          "pairs:5",
+          "pairs:6",
+          "pairs:7"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "78d482f59f52ec3c05aa08b85984361ca8029230fe488f7de7e1224333f058b4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0017610788345336914,
+      "max_rel_diff": 1.9995706640998498,
+      "min_cosine": 0.999972720922289,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "78f1b202e6bfe4db8d0a0fa3a1befe4e4cb92299681a015c8bd0b044addd6343": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:24"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0019387006759643555,
+      "max_rel_diff": 1.6439348959570188,
+      "min_cosine": 0.9999547093616068,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "7a5a0d6d5c0adfb2330d6bd9df4e08dcb56a2e6c16b27b76bf725ba9078138f0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7b7e14ecba6407f6ad1ce02c02d967aabcf2f002c00e119d11ece69b94bf9448": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013638436794281006,
+      "max_rel_diff": 1.889158495596684,
+      "min_cosine": 0.9999684279067856,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "7f6de3663d77e4d61a9ecf066e34d6a91871f2f8cf4615ddac51749bb3d2bdd7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:23/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "81e31e75bd8466a7be5a9965560a8f11f2f5ccbb78a61287d5d69752b1dbd8bd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014031678438186646,
+      "max_rel_diff": 1.8343765993900256,
+      "min_cosine": 0.9999687021817002,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "81e6e16b71448f38b4ceeb9aa2a632043fd1231e27fd47751407f4779c34d8eb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8533246fdbd4df77b95d83c6b7af19c128dc6cd6a1d233515d8442ce9699a00c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "857d9e179a5e4e4f383ff0c18d742038182ef0300e167301eeb4f0adac2c4be8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=1280"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8661c2cde072b88beb24f96a43ec833ed51f007eef39fea381d31be72c63eb43": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0009282305836677551,
+      "max_rel_diff": 1.6244724642348112,
+      "min_cosine": 0.9999763984284182,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "87c7e79ef104dd73718f2021ab612374400a6b26a47827173c332dd476ba4741": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0011559613049030304,
+      "max_rel_diff": 1.9998824386341916,
+      "min_cosine": 0.9999483780964954,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "88faabd8b5ce6b98921e3ea28ede316ae0a252d3409b3d1bd2a17cb2a81b42d3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8b7d30ff4ca8e6ccf22717baff9f3bd939759dd582ca5b122d6e54172c398bf0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "938f89e863ccd9bc5449ce2ae6e54b269857c02bf870e3008556a0184703533d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "939b852b0e4d6ec83cdfae0bb362c92442e31b65921b12a00d6611e24cd08863": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012724176049232483,
+      "max_rel_diff": 1.9996984539170386,
+      "min_cosine": 0.9999351037608262,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "97aee72750d467e1411ec00d81cfad84148cdca2dcc8f8264e6f645995aa490e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013161301612854004,
+      "max_rel_diff": 1.4974956271929996,
+      "min_cosine": 0.9999740763296266,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "98e3b82ede573649ffb48cd05e7588f6116f13a54ac3272ff82ca3e5504afb82": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:3"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9bd9e18db98be242df62acfde4aec05e479e87622a692dc5b8f8bded85f83b0d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002201378345489502,
+      "max_rel_diff": 1.527078792070107,
+      "min_cosine": 0.9999755823754014,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "a0b2302902dfa6930e184d1ada5b96fdc6519e5d83b43f98ef9f625fd3327f65": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0017121657729148865,
+      "max_rel_diff": 1.7485995907757366,
+      "min_cosine": 0.999968758057489,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "a21dda249b4221de97cded2f04ab87a5e7e512abbfc501c9df69ce35e7d04240": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a3cb41e462f3f345c8e7275305b270a358546592f8b7ddf946375a81cb622e95": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:24",
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a4547e8b532c9bea60fcf48c9fd4b156e784a5cd1c309562c8de3ee6b5c1209f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a455b48758a6e227b2f3ba7ebc2217ba83f088d15078e88b7cfa7eb7c6e2861e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a4c14f84a94f0512f5372d05e0f62e14b2745c3db9e7511db833af05cb8bea18": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a5bd8bfcfcc6afb2b4f7c1105cfccfcc67d92c161c565ac048ef2057554e146f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0027865171432495117,
+      "max_rel_diff": 1.999724161079568,
+      "min_cosine": 0.9999701590844713,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "a7986568a26d3d1e9b469843023b286dd367caf95def5cdee6fd390e3faea322": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:24/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a7a6f94e78f7432c0557bca3a281551943f9e9587d909ee1f0a4ca03327ed570": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012265071272850037,
+      "max_rel_diff": 1.8741336483577187,
+      "min_cosine": 0.999975389407484,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "a7da0af61768db3ca60c0132a2b63bb1c59b5c2042d4a76a66eca94e7bdacf90": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_2x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a982a39e01b3bb2e7ec1d7a2800ea69fece2b3b403cce58c0a690ee9fd9beb4b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014389455318450928,
+      "max_rel_diff": 1.8770262716232808,
+      "min_cosine": 0.9999637252242721,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "aaba2a27f35cfd57d2aea5582891165b57c63a25192c431a5e94025ba4e627cc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0015281736850738525,
+      "max_rel_diff": 1.9801674992221587,
+      "min_cosine": 0.9999747176759083,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ab25b6d4a85fa3b5503b3514008113868ac6fda8a00c3c2c1b40e565553f2f38": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ab56ddab4dbf3868b30cca298d26a33dd36b2745a8565bce68ca3fb48e79570f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "abaa67d362acb3417f1072439a567024363abc2a598af1e48e6d770df0026991": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0008068308234214783,
+      "max_rel_diff": 1.5995122646546702,
+      "min_cosine": 0.9999744662212074,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ac0074a64ac35bdb2de40883071333ff94030a78a513220a961e2d10db4e889a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013622045516967773,
+      "max_rel_diff": 1.6685844745389997,
+      "min_cosine": 0.9999703779198599,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "acb94239dbb183d6c7fdeb00cf6626dca6574fd383fd8886e29513c7bd2c66b2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "adc44c2e4806cd44587a0776bfeacb77aaed9d53c6984c2c808f31497dd04d81": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "af14cbfcc019fb353a17a27f085418785e11d7187667cf6e6840224c298447cb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "af19c56a3fad07e2249f0f627f70079f29bc63b3a299171aa65ab8dd7fa89e88": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0028173327445983887,
+      "max_rel_diff": 1.9994542374824027,
+      "min_cosine": 0.9999717373798681,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b094c2cf32381852537822ff3627762ec7350c4f43b7dd16a4b46b34da6910f5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b14688acb2fc18c629d88c4beaddcf6a09d93086e5dc72079c0062cdb5520f03": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0036074817180633545,
+      "max_rel_diff": 1.887925409445821,
+      "min_cosine": 0.9999042814074945,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b49bfaa76880ba88d3ab0b9e0cadec9d95d92eda3f7fa7ce00ec1e2711fa6b05": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b51d994524c75e225a712ebe2fa4e55e7f72eeaaf79e9fdd8cacb223f1bb28b2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b58cb2140dd0bb9d0238c63bdb5e8c740e5da97099c36e3df5282c41d0f1c4c2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0006791464984416962,
+      "max_rel_diff": 1.99994355641387,
+      "min_cosine": 0.9999790183485798,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b5e8cdf172a4e1deecc7608ea59599e290dd56ee40a1e94007b4c52631bf0e3f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014812052249908447,
+      "max_rel_diff": 1.9997245875826732,
+      "min_cosine": 0.9999727550614101,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b670982c6b0c6d3f5e92fe811fd313af35e132a5f2c02dd6622035d71ca85a49": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.001765131950378418,
+      "max_rel_diff": 1.993997184872264,
+      "min_cosine": 0.9999681069076769,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b7e9a462333d9c35c4bc6071d2dfcf3ac0dbf707c1c1eea2e185808a26351069": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=640"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b891d9bc2d32679aeee747d4d8b490ba187fc0240f480d6d5d96beb1690281d9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:over_length"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "babfbe2da67c0232af06171755d8ce6203100cb471120f8eea2fa7a6596065d0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002276867628097534,
+      "max_rel_diff": 1.8313004665241948,
+      "min_cosine": 0.9999761212525742,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "bcfe985a943bef15c05539d2e59a6b88993d888883a2dc35af14856f255efbcb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0014620721340179443,
+      "max_rel_diff": 1.4999461217145325,
+      "min_cosine": 0.9999699892368986,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "bf1cdb978d59f495cbce7aaaadff0498f60a6e6d9a1fbb7ef23a8d5d438748b2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bfdd10f3aa6ef1f40ff321373270bbb3cb0494a4daf430a19b09780eef712032": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013765022158622742,
+      "max_rel_diff": 1.570015438200327,
+      "min_cosine": 0.9999553779590143,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c0151dde4457a66d2dd46d37d463a0651f875847a0f1f74c733270ec11f0e81c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c0f115262c26bdab0a117caabe77ebeccdf0f20cc5fcbbb89faf8e4f4a5892a8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0017921030521392822,
+      "max_rel_diff": 1.9696717098167953,
+      "min_cosine": 0.9999709968992115,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c273baf5e4d9b9f36f83d9085e9fef6ee358fa8ead4b87b47c86722525cb87c4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_10x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c2e369d26cb451c000172ab36c1d6a04e55e7a6913e907a2ea364f51cefafbea": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0016287518665194511,
+      "max_rel_diff": 1.5560469294587795,
+      "min_cosine": 0.9999485090489786,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c3825cb6baae23a3b5b01b78d0570059a6529ee47551cf2902b5b0d6d56bfb23": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c41bff0e1d580e14b9b136e44a1af87b23f3ac9c1a29fa87508970058a8c90b4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010270103812217712,
+      "max_rel_diff": 1.999740062521804,
+      "min_cosine": 0.9999702112371897,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c4c7ca78dbf6ed9c63af35a42b339e33535ec8ba89c1b4ee51d5fde76939e8fd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c634a828c21082add031dfda01dc077f71f247dedc71976d95509ff01fd90bce": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c6931a563bdbee47f50abc9b405f9bcf73cd0a09985cfa5dd7f83e1f0d8f2f37": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c6fa538c8982a8060c160d1218e80d8c3294c4c6c5f989d719b7e9ee225e9bff": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0021952390670776367,
+      "max_rel_diff": 1.6666289713134124,
+      "min_cosine": 0.9999733135756936,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c6fe38b542eada6e5727aedeb3b03f7ac5a89ae663289f3adcf3729aeb9cc7c3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c72991bd8a563a5a29f29d0e54d97a804d84af08c75b0d249bd0c4ee7d598e41": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0015884041786193848,
+      "max_rel_diff": 1.3994652001016805,
+      "min_cosine": 0.9999661700788959,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c8c871105c42a43f3ecc06649b1390ff08b0996457e2febef1f8b69aeee3687a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ca114958482f1ea5a5b2268388878e33699f98108545d27f096d3c5a0b06a571": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cb32c27609d3fed59c8ae057a6c53c11e3fbd1f3bfde80daa78044a52dadaedf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012097805738449097,
+      "max_rel_diff": 1.2730043209728612,
+      "min_cosine": 0.9999777700381215,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "cc007c56243b4103e94b0f9dc9b9850ce2ea60a65fbb5087dda28361d9ed02fb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cc41d5985b2ab4982f805c033b7fc984eed7a64d86fea1a21d3f852dadb7939c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.000813797116279602,
+      "max_rel_diff": 1.9206105254094354,
+      "min_cosine": 0.9999782654079853,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "cda0013b89a8b11d73ebdd53ca77a63d8281974ce4a7344a766c4fdfcc30bc56": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 32,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:6",
+          "pairs:6",
+          "pairs:7",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ]
+      },
+      "max_abs_diff": 0.002438843250274658,
+      "max_rel_diff": 1.988058555718415,
+      "min_cosine": 0.9999638738113004,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "cdda16be62c99ae2d147e457cf077ede2ef79ae13a49fb2109795c26ec696966": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0022794604301452637,
+      "max_rel_diff": 1.855008999910165,
+      "min_cosine": 0.9999732647495486,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "cedf95a30b0b667c67585ca42d2ec4ecc65b50414df522afcb6932a74832d5af": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d1649ccb11d99445a1bd282a2c405dfe77a75e70dd3e8e34b1f1cac8038dfdd3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d191ceb41cdcf61814f4bb5152b40a8df02dabef6f489253ca19e5959d19d152": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0011395886540412903,
+      "max_rel_diff": 1.499925522875263,
+      "min_cosine": 0.9999774297680932,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d3dc370bef7010a5ff5b95eb8bd814b2a69da7a72a95960ef3d7c18293264c4b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d3fe9b100bcddf3d989098311fc9c9492ce66999ff09a17a9e64103a53f962f0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00152646005153656,
+      "max_rel_diff": 1.9995939823984676,
+      "min_cosine": 0.9999544091061464,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d4476e3eabd86cd119eb68bccafb582c636e36f3728856f0c3d8f3bd8223e233": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:24",
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d44f4eb004a976ec7f962c5cff9f19c46a8e08173b70fe71f019b43914ea152e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d6144ef51d40c7089182da134460a8b913217077f4dfe8ed74b30c6c206ff8e0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d64e25677b5867ada7314e91cbef326061f07b043a81ba0451093aeafb66d768": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d680b00c35e48e51dd393de87a02b84cde920d52f4f902dfbc4769ae83f87e34": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "da6b038c3ac252a4b70dfef87a586f44e84aa1a1066e82f840ef7ce9e11e8e9d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:malformed_json"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "daffd0af8bd891603daf1c09c66e0cdc075b9b8c5ac28a96c20c40bf73f29b71": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dbd3473e0457bac8d48a488ddd2b6f807502696279d4c8faa3773af134f06e47": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014180901926010847,
+      "max_rel_diff": 1.798905694535606,
+      "min_cosine": 0.9999681300801471,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "dc99f2240ae01ef68595a640866a3d640a07bfbf7d8f05cb68c08b961c35b37e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dcc898675afdb15819062b8ae463e26e15939b0b3abb020750aa8c65a341b3c8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dfb8b76d1ed878bf2e79c453e32e64eda65162e13af147d1aac3b9ddb3ac4629": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002226639539003372,
+      "max_rel_diff": 1.9218783081002986,
+      "min_cosine": 0.9999661707268959,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "dfc83d263deefaf2606108c1f217975df74f49f1c1fc6f095cfc77e2e811edd5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e09d701c15e3c7ec59f8efcdf6a2b1d7763d6a8382f4d397eb1fe10526423cdc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:6",
+          "pairs:6",
+          "pairs:7",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0024295076727867126,
+      "max_rel_diff": 1.99989562512286,
+      "min_cosine": 0.9999679040993287,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "e3f7237434ceb3685b7abf0d10bcc2c2fecef923779b373ef5cc1c1443e78e23": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e688e55eb4a33fc74b5c9d1a189f58dd68e9dc14421b62f6aa94cebe6fac0d8a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:6",
+          "pairs:6"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e6dfb852ae5084224fb4f34a3b2e01df5237ecd7d65ea9cd3290be26ddd50e55": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e7b784b90f43c3b799d26dbce523851fa38db446d83f6f15537922c73688a9df": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e8e624686975041632ee99e6afd5f176e91200a1080227426896d491fafb6e6c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e9b16b8482cac6ba317ee9060e9ad260eb51c3d127560bf32cabddabbca189fa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0020155608654022217,
+      "max_rel_diff": 1.8464643659567086,
+      "min_cosine": 0.9999630048541913,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "eac10fa934fc8ce65bceb7bd4ce7c7263ea13f0fbcd4cf54f55e3e8dedc462b6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014361180365085602,
+      "max_rel_diff": 1.8585497108105262,
+      "min_cosine": 0.9999714518954198,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "eb927ebb755fa343d97f59df74c4478d6d89768883d9dd55ecfe3529f1f84c33": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ebd2d8bf0ce334a9702d41a5642e20303b8634bd2b21f07cf578fe82d0fc8789": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ecffd45a348dbfc3264b8b033af47a6ec846486cb3728682a7b7c383c2c6f8ce": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ed6baae1ec76817f1bbaf34e46c6b8cdae721ec5b4654666bc7c6f4a96586613": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.001299351453781128,
+      "max_rel_diff": 1.8331821430282178,
+      "min_cosine": 0.999969076686121,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "eda924dbbf27a81677af33136309ddd4aac4869b1590d0066c2eb0006fbaa800": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013677775859832764,
+      "max_rel_diff": 1.9996812466482063,
+      "min_cosine": 0.9999718514905662,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ef97c798d781926adf3e8fdd010e36c6b15f847b86cceb8a78691899d5c36921": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0017226003110408783,
+      "max_rel_diff": 1.7990611357115656,
+      "min_cosine": 0.9999636366659675,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "efadf49fb4343e2ad4d7178ce9fbebe6ba8fe52f491fb56461e5dd3d918eb487": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=320"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f0003cee48a2a5e25ff64a2b748c11d0cdf6e51e4e711132fa1c4cbbb190d498": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0007544271647930145,
+      "max_rel_diff": 1.9995021549228442,
+      "min_cosine": 0.9999679889232447,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "f153f121099977d0fa13eafb37bcdb02b6b987bad6d93cd79d56f0c5028e12bd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0024123191833496094,
+      "max_rel_diff": 1.751026040608848,
+      "min_cosine": 0.9999670860457499,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "f2c531eebd04c2cbe027ecc8f5e8ca700ac4a8500892c99212a443bd14eb20dd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f3c492995806d945830f0929fdd55cbdbb83d5c3db914ffc724dc70c095dede5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=160"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f448459c40248a41dbca2659d0fc5dd2314870cd2bafc49a62794c9fd7dfa3ed": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f464321e0b9d8024ca150ae2ab118d01513414774a385eba65afc97125e83dd8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f6050b41387eece7aa5902f3862b1f12a78fc691f2c915374cbef0639c45a7a0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00232812762260437,
+      "max_rel_diff": 1.999780766557359,
+      "min_cosine": 0.999960800680306,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "f70b0296938fe7e57dcd42b682fb708b18119e62500a330079d67cd10d71f1fd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f80997894e0689d978c40924c7756c71882bf11a35cc6ddbbc46756e172e71e5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0016255974769592285,
+      "max_rel_diff": 1.7487407409753544,
+      "min_cosine": 0.999967699375579,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "fa185b1f7edec94cc18c27d92349d9066a9dab03bcacb05f6d26465843904836": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "faf57c31c9508f725b2531499541939dc5197108fe999466c98fc2338a78b834": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.001454625278711319,
+      "max_rel_diff": 1.821098478805474,
+      "min_cosine": 0.9999707422053151,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "fb6e047496aa66c5e18fbc5f1efb395d8f51bb58b51c84dfa68b78f3af5cf053": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fb88fb6d5ed480db60d85d72e72b20a4705f19872bc0eae4da0325ae38ec1226": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010948404669761658,
+      "max_rel_diff": 1.887907460734292,
+      "min_cosine": 0.9999730905038984,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "fd77e705913c7fbd3b2af22010702875d64e1cc3e4253499996a2acd10bd4213": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ff0ae3c06f715cde5c5e70ff3ed699a3d4256adfa8665731a4e2e9d60b0ee48b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0012724176049232483,
+      "max_rel_diff": 1.9996984539170386,
+      "min_cosine": 0.9999167263612204,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ff2b1c258943956ddd39e118ae859a996e7d92033f0c2c5b05174df0f803ca28": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0024046003818511963,
+      "max_rel_diff": 1.9989966130921333,
+      "min_cosine": 0.9999691129186262,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ff417cf2a8969bf62198ef70ee38bc54969b4e36522ae62f1fc525d61c112600": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
+        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+      ],
+      "batch_context": {
+        "size": 28,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1",
+          "pairs:2",
+          "pairs:3",
+          "pairs:4",
+          "pairs:5",
+          "pairs:6",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11",
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27
+        ]
+      },
+      "max_abs_diff": 0.004092693328857422,
+      "max_rel_diff": 1.999863856199085,
+      "min_cosine": 0.9999202401410089,
+      "statuses_differ": false,
+      "bodies_differ": true
+    }
+  },
+  "summary": {
+    "max_abs_diff": 0.004092693328857422,
+    "max_rel_diff": 1.99994355641387,
+    "min_cosine": 0.9998557929592464
+  },
+  "derived": {
+    "rule": "verification tolerance = 3x the maximum difference measured between repeated sendings of the SAME request (exchange_id: twice in one engine process and once after a restart), with absolute floor 1e-9 and relative floor 1e-6; no repeated request measured means no tolerance (declared unmeasured, never invented)",
+    "measured": true,
+    "repeated_requests": 212,
+    "statuses_differ": true,
+    "bodies_differ": true,
+    "abs_tolerance": 0.012278079986572266,
+    "rel_tolerance": 5.99983066924161
+  }
+}

@@ -1,0 +1,6083 @@
+{
+  "normalisation_version": 1,
+  "per_input": {
+    "0234e95dd573869f297ca71bab5812e357e2710b8362620aeb169067cbae6d0e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/v1/models"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": true,
+      "bodies_differ": true
+    },
+    "02ec43aa75e6ad63fa6a6c64d4d09e333d08f48c23e9c813804cbe342afb5ee3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "02f0e184872d459cf53e19ce0ccac78293e3c55f6ac05b40c129e3f0defd137d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "034027622536375a058573e521b0554cab1f0a07ac3b83e9fbab01330148f933": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 32,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:6",
+          "pairs:6",
+          "pairs:7",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ]
+      },
+      "max_abs_diff": 0.0007435902953147888,
+      "max_rel_diff": 1.0,
+      "min_cosine": 0.9999917130838668,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "06728847eb984e4abfe3d9eefa240e515c8e396d93db213fee19b182fe1aa748": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "06ae9799d46d4041012ff781b19bc882de961cbc706bcd24b72e62b19a0f0ca4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "070e8b31aff6dd595696f116934633b3d3d3f87c3f7261a131dcf5aa3219916d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 3,
+        "request_ids": [
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "079160f06e858b0ec7fcf94cd37a9305330359ab9daa1000cca41d2d105e7a3a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_10x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0a878b6e4b407cae0556970f1ffe06d4c57f3ff0971bc6521672154ddba42a85": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0bd3d390efce45075a5709456361727514e2c96a8b6200b8c471bd7940ce8522": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0c6e3fa9a5391b6e06f7a1b115897ff82e7169ad35b8d0db1a151f8d0db04ad1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11",
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0eb7adc1b27e99f11dcffe6d83f1c535083b5b6bbd3d6e32e36e66ede62e200a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1043fe6682debcebb545444fa1bd15f64414d232ca68ed90f24ac20fcdd733c7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "10e3a7f6ad456c7780f65b3a11b8baea69593d36b91d321ae86c30fa28453f71": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1a5a6d7843b29b8935f38cb79fb539bc1f7e4d6ea63e1a240fc246bf2c588c0e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1b1edc5487501447b7bb739f2970947462947482b62613c18cb1a72fd6f13787": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1e77ed5cc644307d1f1a9adc2c125b5c17c8cae0490c813630a797657765c925": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1e99b00a3a4b61c297f903f2e146575b5a4f45be59f3037ad7525cde8ce67f59": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1f6ddb394ffcc337e80d952d58cc9c3c100243d043190b6b6acc0cbb710db009": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:7",
+          "pairs:7"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1f8c44f90f7fd447919140cb96873540f0359a0257d654f2e5d2438da6612216": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1fd9e8c4c96db641c00d96014eb75ee51f6b52ec322921c7611279763ead92cf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "22c95d0cb4017fa9bbc0619a2e33d9db9ac2aa1bffea8ae15763b1da593b5714": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "23a077f039aa7b3ddf5f8855e3daae30fbd77ff909eddc9481edf85cc73aa32b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "240993ea88b0802fc9cb681fa380ba985eb42b060aa6fa90b035b6902c1e89e3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2463dcf2546cee3b4abf09eaa8f0401298c604f48dfa5e0cf3da29b743909e8f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:6",
+          "pairs:6"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "24643a6146def18ac76d003f156e515cf9cf8e26a7d15f1a0d610cea969cd1f9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:3"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "24ade98643761b5ed60040aff2ebd06bf7b01fcaad0c4b0a102b64ed3d56a67b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2518f4834cd8d3aa5d6df1bde5c3c65c637582bd4b2115d5b6d91b0f0a866151": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "26e8bb1603aa2e8bf343d9b5cbe2cb86e140181fa940a468ec55d74a8c906d34": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "28632b37bc1ec0a760d778f0e82f54f5b4843a459d9b4d1b0e484378a12e5606": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "29f432309e16f3b46029f244187c23c3a8f6ae9b7a3d24c65f3c13151fa099aa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2ab76f033fac6e97303b44c7d7541d5fa927560341b781763e650c850e30459a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2d92bdffe4e1b626807f6dd901d53bf70300f4044e738c9d33720a27cc31313b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2e707e90cf39d4aba104fe1a70ec7a0be4f300091b327c44fe695b34f0feef39": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "325e35034dbdaa56a61b30e9633d7ced3f0a250e96800291461e71ad9a6ffda0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "338a6ec5ef3340a47ec4e063f6af3642ff7fe47236c520086cd6f2b4926561ac": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1",
+          "pairs:2",
+          "pairs:3",
+          "pairs:4",
+          "pairs:5",
+          "pairs:6",
+          "pairs:7"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3433f5a6b1e5b565c34e278a3173de70557e4c6ce2eaa875badbc4ffc7b476ee": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=512"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3449a61859639e2ab421f1d501351860cc9824d31f7d2081cc83c48da3f4a870": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "347df80a18ce1fbd503a4ff7e8a5efc20ee885067ac92b71198fa015aaa439ab": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "34d4a6fcc80c3453187616a47d9596579f3ca4edf4c99c17d7fb573b8499456c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_2x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "355915c76d45cb974a10a84e5ce599a78c77d1f1a5664168dda964aae410b4e4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "362c653b6e6cd434bb9bd768cdf435f98d7a8f04cac9f80c467bb2067e5dd346": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "36b90747dafb8264c4bce5837702c4cbf38dcdf00d20a9c5353d23f622e42eab": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "376e3ae04f01226790d1e989455826dcfb945a342f3b4ad108ac13c62af2ac7f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0007810741662979126,
+      "max_rel_diff": 1.0,
+      "min_cosine": 0.9999921757383262,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3886be381ebf81a9c0df0dee30c3554ce35d7c991515a03206595c3c02d65d1e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3b15091749f4f6b54ae5214a41afe62c90d1cbf6922e098b9a6589bc6e2fbad3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3b9020b42e36a0ae002c65e17e01207ecc48693c09bdd9e18f3153be802abb2c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3bb1bc3dc6e840e444ed011cdc67d8dbc967d7be62d5f4533e181426e4068a56": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3dac2cad610b182aac29ff9a6f79e16f8423c9481cdeebfb3bcfb7163751043c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3db328ad75d214368ba03b055bb86d8fadae1c01951748c81a665e4670578179": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3e845b299463ddd8b6f431022cd78fa0ebea8d83a65c6dbcacac179365be434e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:23/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3ec8a353d43396987154da71ab8c45d7d07fbe6d59f9b90ee2b43531f96054f2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "429688c94be1c023ca0389f84fa88003bf5c790d3900ecd3c5b5aab8eef63e9a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "45110c61d38f4a7f265e85de020b2bb4e73042228ff97814e2ab1d7e644f635a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4704b53c0637d17140a93f4e91390b947c8674fc20f1ba56220093f0127ca9be": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "49c0a6d4654d89b75e49433c607a513cb877836c8a36f78ed4c1545d6bc21486": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4b260fb00749c94468c0ecb0b7479e74fbdba6f0d47b128b793380bb837f5d75": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4ba67d423dd687fd24e14b6e6697c31c8c64c0a179965380d2b9233b08f00fdb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=768"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4c7b28a1042817f3d6f75332077ec982e8866f8298543a52c438b9b18f7c7d32": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4ccd0155fc32d34efa0f6fdad8e3569d67764669f17a129cd761a59859bf8e1f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 7,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4d6e341787dde1a1643dc3861554464794af44bf896ff15ef7ed01a19ffb9c1f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4ddf56fd79cc6962f1e9d169e961997a1b5cebcf9fed7b5430b8116a2435d489": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4df211ed5b30e6efe271957dafb0f7e1fb30b1e53b847a15e6f18b0c69a4d284": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4e1d8a56a91150159cc9b57e514e8f4f86eeaa64e6e58ccbcfd1c9c1b3c9b6be": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4f475c22ed4f2f64bbc46137ba4f2157ae3edcdf07f0353bb22e1ad5885c0134": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "50b7477a0c99ec3bad9e1a97401759944e9ef873d02662ebfb357e8d1ed8bd60": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "51665590f184f1dc826e6954fcaacdb06ad1a77475fa3a0a348091a026f9a998": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "51a6e701a609f83a19df7595b51a91b3b9365fd804a781a880831947acb0de54": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "51b2afdb795891f69f87cf33cb9d281f95f6a7f0fd80e5c1fff668c1cbd716bb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5300705cd97c6debbd6aa3dc6366a4593f4692a1c2e66d2782428eaef302e736": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53f27f91f2be87fbfbf73b209e12cf998f872894639bb81287679fb45e282c22": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/health"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "54202b3a6bd68876c4bb3f43771617152c0d9709d3053082a2bc3a9a0fa1027b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "54f2212669ce5097b44fa4e4f9a949f9c3666bcb4a7c311ec916ed4337d20de2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "57c505b154c17c2a153d9e113b2880946a80e9ae56e2691a76c28aefcf26376d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=256"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "580ef209aa2af16e54e52da9257a765beb87ac49b33c6c7d29b42ed3d1981f14": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "59b00fb5d51212f1d04bd0113e7a3426f9f2fbf7067b6f605ff835082628487c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5b1a357890dd80c3eaa5eb49422da7ca996adda95ef6ca63e207b0890ff6234b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5b51cc74b5950ed723357b9a80b170f9b5d798e5aec7b8dc471fc95ce119ad78": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5ba362c72a91bc26213eccb26d92b8d59bf4af2739c96f9921176a8a7c354c8b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 15,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5df2138ba8d65147988777aa65f0bdb54bb733643a5a27b7cd13a62b7a9601f2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "608439e18f515d5eabfbd9c9a8e09f839489a4fc02d6a765c17c78b3fc69a2b7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "60ee94ceecb4a5680af530cf84086c335b2459e803444ba847171a84a043af7d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "626237f96bd987ddd00d99cc5d3245e5c440285005c10af76ed59edfd10d0839": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "62e2bd282981dd068d1e0295ac1e207bf2c528cea9fe88d33a6815a766dac0a2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "644c256b94259d28ad46b5156338a97c8e70d672770a84d674ddc93f8990c36e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "65059c0ac42eba3073ed7d4a466b8c9fadea1876c0042ec9d6b2396e8595b3cc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:5"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "65dd1a80c11438e4ef9ed768fb24c12acd5271575380664f0ba73913d03509ba": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "67d1812a2f75b5e35f72ac4e90ea29b2ea4bf0ef3afdeed5acf12867017c6a5c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "695c6e9af27237ea1d6845d5b73e79c7552071b36cc9af1d076b12b604789ff8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6a1b3a2f18d0bbe29cbe595ecf7c21a993b4c652ca8056289070246fb0e45037": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6bd725cbe6b1b58df79c07957cac5f94a49b401d90e862accb247f5adb6a8ba7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6be301aa44e51b9402f6670e7a1d29da6010217630ab021ec58df190691490e6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6d4d6ae1ad692775854901b593e0d91c2014feb821d1655841fa9485cc9c566d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6ee71541ee3490b41e656a9255bbaebbdf9f75cd75bae24aa17b1f297ad51a25": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6ef8b37d2d5df35ddd7df710c090677c500e101d702bba5aa032bd6ff915ec94": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "ladder:over_by_1",
+          "ladder:over_2x"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6f0aa51d35c0216953edd9cf486ea09be65af1e420a63ea8ebcbf5df963be9d9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "70deb6acbb7839d96ed3a34dc0c2b8011c96648b23a461435e2ed30b04326d09": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "70eb7f69a24ca7beba23758586094b30f0f566a41ac0215670e5efc3ea3f2f30": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7321edce8ddace53685db0d6cc37b372404ec45d755e7d027033d46b19bcf413": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "75413373329eda9326da847e99cc2cac228bed5dc8fb0fdf3a0cf1e05e933740": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "759e56e780320016114c4cf9f899939f3457edf43cd33be2f8ca2c6c46f7ecbf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "77b94dd858b487e261b299c2da74961720495260a7e92e8156c95953ab3e619d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "78ea1c54d28c9d2a1f00593d6aedf2b27bec90dc43b94d75486632f60eef2108": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "79422f239bd9d7b77449f1dc5062cb4001605d980fb38e847d3782d03c957efa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7b3e044cd76e26b4665d090d3576780dd1b7374e97df464ea412ffab17f235ca": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7b4199ae63dcb19de8a4159a30740fee8614b3a459ea69720aa5b4d32ff006cd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7bbd36f99bc48dd1f0d123b46f4f93adf4c89a1ecc9bb914200802e6d9c345e4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7f1949859d3353df0b22d65eb952d44f7b88b46168621da4d20cbb095830f39d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "83ce852c975e153885a63a8a8971e2e29daf6a18f3c114bbe760631881ec8489": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "846971dc1afd37313c0eca787b04676402c979e40f95ea495fca609010b108f1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "855d5970e35bbed52e92e7f97937bb6631fb27f0075fa88463bfcd5850a55c5b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "85aaeea5e0bc27a98f10e3ce11fa2d8e54c8f38b40e64a7f2ef8b8983255507e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "87baccc7f57cc11e255baa489ed058aa9709099e135bef681a94ca48d2d3595a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "89414b6b91b3cd7a48841eb322842cf0bbdbd415f2672d2677c75dfc625a5d61": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "89b00f71878e0779e28fd1850b96d616fe610134875c24592906095c7bd90acb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "90b3e0897768ee2c786fb25a4c950d8b329b780f30f0d91bc1e124552589f110": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "93284496915bf3865ccbd8b0cfc36a17f1bf63da5ff9496a354c65a822fe81a8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "93ee44e5b6ad5cfc6c4390dd1f5bad38f20531223ad1512adaa87e96a3aebd14": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "96295618abaf92b1699e3e9b8851f279f18809d3f0f26b4d5f338d7a85b84dee": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "96af0e06b488f80f633ece11db6218cd37d05ace0fd79cec63ce26fa1818b39c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "972ce7506c1e45499605899c1d4839a530eb602fd08cd5257aa7027d9f11a79d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0007758140563964844,
+      "max_rel_diff": 0.8754952553458892,
+      "min_cosine": 0.9999882609180157,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "97c80ffef717a83b0cb1c1008e8eb3b61667b95f2bcc66fa584306e9bb7952f6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "98d5792ecf1ce0eb817f4b08c197491446483d40df7dd36a59d3ee0310debbb8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 27,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1",
+          "pairs:2",
+          "pairs:3",
+          "pairs:4",
+          "pairs:5",
+          "pairs:6",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11",
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ]
+      },
+      "max_abs_diff": 1.4901161193847656e-08,
+      "max_rel_diff": 1.924871125065999e-07,
+      "min_cosine": 0.9999999999999993,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9aedacc7781b546fa941a86e652692306837ea3ee52a54851d7fce1d2c1e8c41": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9c62e207630d0c05c60878fd9d56496d41a35cd07a7e61db39985520552f2699": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9cae869baae73978227d0b45a61e69af95cbdbb9be5ac4179b701348712035b2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9d9495f0752a6da3df42d631668924478d32dd408c5ce4a927ac8c40b581ce8f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9f190ddf6029aa5bc863e384cf2f7083a84924ffd4cc5b137f1db43b0248d815": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9ffa393a8b43f6c694afb4e7e187499255efbb3bb78ab2bf0a3fca58cd308676": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a05219fdf295bbf8aa60c234a84396a013be304abcad688d8e6b81d779a1fc44": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:6",
+          "pairs:6",
+          "pairs:7",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a18c5766942ec880630e4aac3fc7a1c5be3f3216215457683da2603d59d27e9a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a3346e30eadef6bfa5975ef901eeab201ec3438b25525c83df15a3a72e4fcc66": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a468dd428ba7e51c6d75fd9fcbc215c0cc640da1a50fd88fedc419a9ef824b86": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:23"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a4ecaf2bbbb554486f3b00f77ec5c16997786d117d7c4a8533f94bf74e964c18": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a56e407e1b0f97d0905993ad50bc3fcb0f84496db1d9672da4a8dba937fabfaa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a5b444d3835a1a89f7d99235a166d4c43b2e219199a478f575d4fe3170380b44": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:wrong_model"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a7913d6660addfcabd4201573490c985f8a4b8c8646addaa08b6bd8b28e1e5c9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a7988ef50db700d95f6f56ffcc9cc7e1a059d198fc200288bea97d541f973dc6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "aab015a96d65b714792d0f101f0ed964dc2deb393e373f66b3386c99d8271000": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ab7007f8a5246d47fd98fa87d5e92688daf7728fa5dd90162b49538d907bedb2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ab8c736a79a6d3784fbbce15c7fe7a8019bc5ebd692546cca9017922de6cbd0a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ac7ca7abbde8bbf47eebda0d326189d0a178a20111c8e56fa7bee7026e364200": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ae00aed312193bc9de9856578aefffea31a86288edb103bafed5fc91db3d6979": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "aed1ae7f5c7d5826eb245e280e212024d6ac37932b2485c74886d3952697526b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=64"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "aefb37efcd449ec91851f0b29c264c3b4dcaeea0e967c2f47e352bc1f7f7ab77": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "af79dde2bf5bd9699497a3a53bc6620865f94c2b6d30dc23452e2081c000ddde": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 1.4901161193847656e-08,
+      "max_rel_diff": 1.5760709559752948e-07,
+      "min_cosine": 0.9999999999999993,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b12a25a6988154d85615d64d7251d3d4769763a3c96fc18cfc87c74c1e335bdf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b1470275be4d16b0c119fc3ecae2564ae975d662f719f144f9b80e252a975c2c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b1deee42c3ca670c60654908ff7550b84bdddf80e94d3c0babd2705d44dbe5c8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:empty_input"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b40b71a521eaca1271066564e9899d5820fb71b2057245d7e58dc004276a319d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:6",
+          "pairs:7"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b40ff2d70ba12e5313c359c703610739bcf3c129162afccf100f5cde2a977780": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b41aefa3de7ebe2edcdb0ec11a79ac4f8bc591fbb2e072dc1609688af8ecc36a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b51c85c746407d90c8aa80e4f386830fed68c2ad33d2fa18ec3a9a9cfdfabd05": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b7b292c314036bd9a4e22e18ca2118456c8848d0711e9c2e3b44200107edcd02": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b8428d724d8b40e03c85acd6a6f89df443e37cd1c58da20d00129fd2ff9d2fbb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b8f314d645d6f469bf34ff8cfb290f4ddf7be67c6762cb8b8017b79f635b0c05": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ba1e86704ebc71f26432b78e733bf218d241b0574a887e9ef6c8dd5ebc603e94": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=32"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.002490013837814331,
+      "max_rel_diff": 0.2038115097901573,
+      "min_cosine": 0.999985292448606,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "bac9ded5904d00d19fa30e35bd8756ec612bcf9f3240449567743943478c2606": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bb68dc0875cff3ce4593b8d4e20006b3caeeffb0d19534570b83e17a9580995a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bc1b8cf6c2f259dfea737c2e9ab2780f47adfff30b553052596b5140451ff21c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bcdfb2d0b794aed8b2eb4dd1274c83c1ec76b983c2192abffc84be9b01e05bf4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "beb3b636499151ff768afa290ee1a0cfcf5bd4dbe6d8e61919612b30d222b4de": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bee51bb38958bb310c3d69cb55766d19515e26c63ccec2bf735465654f6669ad": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bfce3c927265d611e5da7cf2bda9655d0576c863e96857ba991bc222d72562f5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c1921a008cde2ba00ef431a723a66767da6fe2881717f787698dd76aefe653a2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=128"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c2024917e12e59a4d002a476627fac8dfe4db70ccff14cadc76b153cae623123": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c4c7202ad0311d18f426fb4f5f9139f7148d810831868caa58c1ff57af67058c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ca0823069391a253ec7d57c05098484a8ddb504f24dcd556bda0dfb20cc2e665": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ca9d043ff77eefececd3e4a2d7338f44643de2ac672f636b539c0fc84e97bcd8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cd26699567584c81201579bb7ecc7f442dd2937a75d80a370de48ada4631c231": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ce5274dbe4add1d0bd7c3b4b0220a023b1eefeb1c304d52e3286fbf7c59ab0c8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:encoding_format=base64"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d08c4d9b5cd229c69b26b4de32dbb9cf93ffdafb97c345ba192569a1a2553fce": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d1741b476535db60c36d9d2304bb9c742edee7f2ff6b6e09aaaadf73a76a40e0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d26b76b611ed8b368bc1accc82ab2c61dffb256f696c208280d74671e01e5861": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d31627bd6203de06d307023f428b203838bbe847a96bb709ef2b979a2e426939": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d6f16d03ece9dbe05470c5060dfc256ca83a5b1e3005352b187365ec2ec8c346": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d93c89d70fef722d0f187082b6faa8c4613b620fcadfc38b402ca7f229895608": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "da6b038c3ac252a4b70dfef87a586f44e84aa1a1066e82f840ef7ce9e11e8e9d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:malformed_json"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "db54ff642fd6d10a64f3601947b80d07021c1c5af06eea5e4a0e90e01a7ebe86": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dce6cf64c0eb8f4d52bc7b38015802a3113fe758dce9ffcaf7383fa798110c45": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "de16f0056e3076a035c7ac442a7bf2c61e13340c6648fc3e53de86f5012ed73a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "de68983566b895427f1a53601bfd0f0f074db6727dc33c432f055db767d16c55": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "df93cd3d83da3d1c7e9a258f1d864cb119498f210d530ed0e6a43b67222d2d64": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "mrl:dimensions=1024"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e01f7993077ac42b9543b736a3b82d00900e3e6340a8fb9896c18c7cabe1490f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e18c232c86fe8a03a4227ef96c80c4cdfd0f9429ddd64f7bc20c247aa5de55df": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e36cbb773dffdeea96dcceec8f7801f9c0da8fd42475b3e73f36c4bda266e409": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e4b108a0d59d17a2c955017534b94eb83a618bdd4f2587205ae02b7805679713": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e67d23c686c543a9a1b10906b3995ddf342237f962aacaf6655062c39e53c628": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e70ed40aaf71d1a8796ad6f5e61ca7e6b19c47ee1cbe21374d6470e99661fdb5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e7bc6413a49191aeedd851f86c1f3aec86d98c71b1b179b38bfd335711514034": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e7eafde041bfcd26245e6dd3f8179daec19b3a09c25c4bb8008bcc82c933fd5e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ea41374ee8f343eb2024099ac0a6817371b2a6b2892de2d5db008dd0b6b5cd9e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:unknown_field"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "eb543dfe8ee946642a66d3485c919ccde0fe54727ffeff64ba9df7ada60f78ec": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ee72fe6a61e3833a566364307c36caa3cf33db9d69f1ea47b092f1eb2c990fe0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ee94069bd18235bee3c427fd9b90f0a415222156a4cfc045cfa2c6ac8807daa6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "efb7589c535498561b59f70aaa1e45fa3f913d0b1b551805d7aeeff381d3c5b7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:over_length"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "efbb7964f16fd6cbcde7e1d3b30718d8bb6a7b35396d0522bf15f2aa6457cf79": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "efd2f97f918d490cf76be41d549defd285ecbccf02a6a282e92c53f2401d690b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f0332829dd7e3015e3cbe63222847ae7d4f128f9001357a61e937756a2df75a3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f050abfa7676fde1efc1d8d6ae0a3afcf6d79e54a1c6328b7b4998b952d9004e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f1b1f23af60a29e233ce124cffb48053c1395632647c739c5e4790becdef00bf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f3432c38780b51c63800df64d98fe452e9ec6dd7ef992b17c2fec83bfe3740ea": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f5616c1e7b31de3b6c308f2a58260e5c90983de20342cc959ddce46ccf1c7cec": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "ladder:over_by_1",
+          "ladder:over_2x"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f9c92ab46285d1e70b558c210c26d1fb77bddd87bccfa3b93a6b0e1d565b9a4f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fd9a4361cb843aac9b17d417bab0ce310114008b9d3a97a289cbccf6cef01d2b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ff0ab56ee377bccb9b9a32d71780d570d6a4d337da5a19d782ab3326bb760181": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ffca7543ee26a0a4a97e79ae99d0e9505f9adb1d1c3987c7d1c12b2421a244b3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
+        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    }
+  },
+  "summary": {
+    "max_abs_diff": 0.002490013837814331,
+    "max_rel_diff": 1.0,
+    "min_cosine": 0.999985292448606
+  },
+  "derived": {
+    "rule": "verification tolerance = 3x the maximum difference measured between repeated sendings of the SAME request (exchange_id: twice in one engine process and once after a restart), with absolute floor 1e-9 and relative floor 1e-6; no repeated request measured means no tolerance (declared unmeasured, never invented)",
+    "measured": true,
+    "repeated_requests": 207,
+    "statuses_differ": true,
+    "bodies_differ": true,
+    "abs_tolerance": 0.007470041513442993,
+    "rel_tolerance": 3.0
+  }
+}

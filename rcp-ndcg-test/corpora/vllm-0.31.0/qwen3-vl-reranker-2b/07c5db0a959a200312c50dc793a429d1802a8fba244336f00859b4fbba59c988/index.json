@@ -1,0 +1,60 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610132000-record/record-stale/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/qwen3-vl-reranker-2b",
+    "manifest_file_sha256": "56e5ae9805009aa84ba8ac6710c6ab863a89625c90a37165d4d18afc9a6b67ff",
+    "manifest_sha256": "e90021254aaedc21bbeeea17b81da9a16d522d148278bd3eba4c5a5d6ccabaca"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:corrupt_image",
+      "edge:too_many_images",
+      "edge:top_n_over_documents",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "media:image",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:instruction=on",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=false",
+      "wire:use_activation=true"
+    ],
+    "rows": 442,
+    "of_rows": 442
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "de7b781bcdb87efba2038b3142b77ae13943dcf5599b81007cde675793cd2a91",
+      "bytes": 85809
+    },
+    "records.jsonl.gz": {
+      "sha256": "2fbbfd1ae472a68f2206740debd1e0765f059b237488b6bf6122b307dac92750",
+      "bytes": 826997
+    }
+  }
+}

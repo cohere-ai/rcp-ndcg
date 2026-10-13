@@ -1,0 +1,57 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610132000-record/record-stale/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/qwen3-reranker-0.6b",
+    "manifest_file_sha256": "28839156ba520c483ab9951b1d1cecfb0b55668111ef1954d7242d6918265431",
+    "manifest_sha256": "779da771617fc2cb7219a1048df29b77a6bf7a2be4f3ae75368605fc3400e8e0"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:top_n_over_documents",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:instruction=on",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=false",
+      "wire:use_activation=true"
+    ],
+    "rows": 400,
+    "of_rows": 400
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "0be0d24e5b302d31671aa39c5880377f7acfad2fa83e1c27bc07b80735d2d4df",
+      "bytes": 76161
+    },
+    "records.jsonl.gz": {
+      "sha256": "ce485d8b39ad660e8709f6d1c9129f5bb1f58ef5d7d4c49a7e320faa6681f3d2",
+      "bytes": 913114
+    }
+  }
+}

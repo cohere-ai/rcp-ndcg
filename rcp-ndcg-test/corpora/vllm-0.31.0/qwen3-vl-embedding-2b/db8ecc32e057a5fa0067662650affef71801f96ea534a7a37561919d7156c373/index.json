@@ -1,0 +1,60 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610132000-record/record-stale/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/qwen3-vl-embedding-2b",
+    "manifest_file_sha256": "149a510e9e14fbf084ced2c121c1238f03d4f53cf7c756fc5c40490e0e9bb176",
+    "manifest_sha256": "14aa36478b34f85bca2858807d1721d0e2eb875148e55c47965ffa55f407a0a9"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:corrupt_image",
+      "edge:corrupt_video",
+      "edge:too_many_images",
+      "edge:too_many_videos",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "media:image",
+      "media:video",
+      "mrl:dimensions=2048",
+      "mrl:dimensions=64",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:encoding_format=base64"
+    ],
+    "rows": 67,
+    "of_rows": 652
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "7de0963062b6ca8f426b5d0c93df61a087582851e5b147627df29bb252962df8",
+      "bytes": 145939
+    },
+    "records.jsonl.gz": {
+      "sha256": "72ad815d0a70a02f79fdefa9c2ef22534db4372d311a6c3c1e22cfc1eeb86e6e",
+      "bytes": 2077982
+    }
+  }
+}

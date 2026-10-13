@@ -1,0 +1,2937 @@
+{
+  "normalisation_version": 1,
+  "per_input": {
+    "0234e95dd573869f297ca71bab5812e357e2710b8362620aeb169067cbae6d0e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/v1/models"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": true,
+      "bodies_differ": true
+    },
+    "0734990225fe3cae01ba0cec4ab92b660834e94284e4efc242ab4194e730416b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "07bebacc8f5d146ad50a84958e45a261f88f4a6e8c2b89340aed6f347b85c603": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0a9209e656e4b50c588ad1c1ecaf3f0050e7d12e578799d2b40c8a26cdde1838": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:23/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0af590ce707fbbd02085535ebb5775eb4d38cbfaee2f06aea45a8698a8018d29": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0b24ec84e3ec8882ab185216c213c689346c5430451bc93c642463cbe652f806": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0ce224145dcf6df02826ce6250dc392e58219c92f3226625af91a18637428946": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0d621cb41c40310d8372d9aa468d2ed1f6278e3d2aae065573b6dd20eb2efb91": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0f77b094deca608bfa571adde28c8a46448dd5e5456311a37cc0a02762344f7e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:use_activation=true"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "10b178f3a2706216fa5f914ddd1950ea220d9e0855d83c380dd144137f9c935b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "15b477534ac6cfac03a97f4b1a0992dc3fcbe3f6ea4cb9a8dece27a3791e14fa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "15e946e8fc85e79f3cc65ff7c1f30ac31175460f8a525a6aecd55339a94321de": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "content:whitespace_only"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "16e3e1e78f390556cf7787f7932f379f161433c7541ab0bdee1169f4d5f0c4b6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "170af84bde9abb47559dd4cf7f2857fb108b0f0dde7cf4bb1ce96434f26dde88": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "188a9fc2d5864eadce9d2125d86fd451d3d020d6450b5853d8f042be4bf632c9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1a48cb2b3a35fd75e0eff9a757103ec6e12c28d8e4993830c9467fc47626a176": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1d8293229c300447bf52575ec7c6ba12703bfa9fcb0b351b41d699f6d94064e0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1e532853b2ba2386f3e1719f0a9002cbe0ee2ebd843b9f649c515dd95443d125": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1f78329a6a4d5d01526b7bcf76b8ae2dba53a3a632b9b8d33e6c00e355701a94": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "224a82cc6cfb74b23df8e37634f3cfc6527b63252ba7c48ceb68cc4aacea3a3b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "24c93a1728195bbcae9e87132a908ec387bfb9b2eecdb2e325a96eb48aed1bd5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "294b436f4d63c66bd3dc62e1d08e88c6a29fb1bec0ea88c1af3ecb787b8198a8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "29b02a9605f940d84910eceaea4436a31d5a70f140b8dcbf1d13c8690226560b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2d1af80f378b0ee25e88d8d83c300b8f8b434b292bb220aa4a0bd474afb636ef": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2f4aa7d4c122cede8362c0044c94a399855c39500dbf2b324226ace113daa928": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "33b2f9cfde0998c65d1fbe7a413d763dc069a7b88ac683ef31f1f52fb7b74125": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:unknown_field"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "33dc0873a68b4b5b205506ebbb55306d7e26170f76cfd6699217d9177eb64bc9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "34e43e4821491552e5c578a6bbcaecda43af7f7edc0a19811d9f0f9ca4a5e2d1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3b6a6ecd8f167b2d333f31969ec7a56599b5e0f56de815f9ed8dac80fba59e04": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3c3434d7f5b1c7fba8226db9292f8a5baee2ff5ca653d49b5d9104a1f05126db": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3d3ad7dccef4aef350d20f3ddeed6ad49b7b9647ec977b01d89ed7e369f02a04": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3f97c270ee51cf3c1cbebfdac1f0ba5745ee002d9ee911aabd77ebe63bc3c3e1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "42e98ad58c9c536b79efadc918c83c15aea27e0d3ec37ada4438203e3948d087": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4630702d97c37be2ece82d975e1aceecd0274fa432e86f473e29ca806fc984af": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "512c888daf88d210466d51b11ea957755a6a4ce011d8fb5a4b628491a1c71d79": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53a72b4965fe865e0e1d2f91bdf63290effda908f1e5732a098d26ea94fc811a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53f27f91f2be87fbfbf73b209e12cf998f872894639bb81287679fb45e282c22": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/health"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5992bd1e234eb1393bb28895e5fd0ccd09e1802cd5c18771d40330c8772bfb47": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "59a66d099f6364585ee04de5cf4c9c8bbb76e8a5d9a474df864c5cc42e1ad07c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5ca1101b66bbb5d0118bcaac3a82920a43191ea3fb7c7a611873f3e9c271b186": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5db14e72d6803d5f80001576b98f99089a0be7b572bc5d7222765ddf9a65d576": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5e5ef7d1faf3d3f47ca668b2bf1f749354a5aceff57f4acd8f81c91dadba953a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "60a2b9be43472c93444fc9a766bb87b7c1707225a7dbdaa5b9998a29acc0e834": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "60be2191281c3c1a738f8855341940c3720736c81371077d8e01c8a56a205cd3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "629aa8f89c7607283554f7b5dcd65d5c16808dfb5759ebf3ad609305e1d9278c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "65adb62686ec759f31fac9c622faff37025fedff2efc84bc62cb2927ad607d52": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "699b79da2b95745baf597e5ca7661a239f71931dde1ed260034678b9deffc761": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6c409af413a7bbf7a41159a101b152a5673ed351e5ab0fddf3c4dc624c59af8b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6c538034095b869f3de10293cfd09c68089fa36dee5ab6e1773f68221b95feee": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:use_activation=false"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "71668a9bff3be7039c65ab883fbcf8c0ad8389a76b9ff75e3c5052c729e0a588": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7213719e69921e03c0cdd24ea04adf83af7a49501f4ba18abcc8fe527fbeee52": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "779934bead3fae2b5902bf2da63e5db1cc81a7bae8362201122b16c962461a5f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "792b5a35864070181ec767f21356d78c4de3e379bf0d00eae87a74e250db5cdf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7a236948540a0f9359c8501fda80844f4b2c09aa570715872efa7da377d72bf9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7f84abf495a04fc61165572ba9b9c08fcb702520d35fbaf51a25b1a6e128d358": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "841d559d4beb13aef600497719f80b9835be97cf2d47baa92a2bef5a3f8092a8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "86c36cb23d9aac540953a05d3c682be1ce4055c9e1d912ee2940225f71f9cd85": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "896e5fbbf6fc4432e5a90b68b16f154d83883559799c0438747a60e9c49adb20": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8a9fa3dabd585903f9a77a5d3f1117399c2f0fdaaa721d025ddd523316c276ad": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8b4733953c4ef3033c8379e790f2d8f643331257a144f7c43198263d286188f6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_10x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8d796c8ec8b2f752295017c172dd0ec5a8912c393baed278dbc8407c47258c4e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8f994b8abfd9da53192344b1aa758a38d1d1720d0bb7a2d279010fd9748ec41d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8fee2987bca0187bbb1d6b72210bcbb0af112fe433501a6e18e8dfcad2b21ec6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:23"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9488c8dce850d07d55715c6ebb8328f1c06681bba196f47b6e6c9ac2e7028aa4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9812f45fa0ec6a663946753cbc11cefbe7fd87412b030baf867336651022289c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9a6ae523de53fdcd568764bb633678cc366c897cdc92bf3a6da0e98c8b45c32d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:top_n=1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9b837972c893da7e8684107eda3f70893c5511c81fb62c91f1c0175a2a4e8ab9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9df5f95264b7727458303a55cc74f491bcd924de93f6c6353d34d2aaf1ede6e6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "content:whitespace_only:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a04c13ccedfbdcbbbb29bd807c18ade0214c2a094148ff10a4c7d05f1c4efb59": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a29a6956c6a517e95930c54697c5e99cf6925bb0115bb0b219920ef77e5e8c9c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:instruction=on"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a31c9dc561aa4de9b9da0446d1a040d1f5139af3fbdaf5169e4a4612d84d96d2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a3af847089716e576f946c167efcc614d8d976db6dc62a47d93759bb30e1583f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a84ae707289042e629917529ae72e248f5fddba396d7d6c61748b325de8d53a6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:malformed_json"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ac2a250fef5901be4a37467fad237a06c0dbe40a037e996985f2a695f5f8f01c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ac3f9cab934a37d873c9e36a887a6dda23c9bb3ccc1509af0d6a5c38ed715c02": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ae19bdc7cec8fd9b526e4181720d58dbeddf9f19e824e9bb07913c0464a46d93": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:empty_input"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b14a44ccb935f951ea138ace81f90c362b44b3e59ce5ba1dd20a1bff7bd22535": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b30157c602e2d8df390d0b4af0e744703fc454f9bb567b8e978ff3712ecabd8e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:top_n=all"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b4c60d43c6116377ed4f6a1dae21c462b6492ba91f4e22888dbbd7a6958a2a87": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b93225abf74af90ddf5815b3c99eb46f85dc82f44603b36c52966f1d57757c66": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ba5e0dd26cf222c75d1f9650afa251edd5228f2c4a6d5d6e26ce018d68f58e8f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bd8b54ac99ad866de305c1d61bd864e7e7fd6ac5f1260cf341d77693e0e492a0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "be3e41e09cb12e867a76d2734cf93c04bd860bee929072deea4eacce1762a0fc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bfcc60bfb2d90ef8bec3c4460c24386662b927d94f561ea9cc84b3dd6a7150b9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c1de566cc393fb4f4a6385d25590d2f4d1b858aea22caa172693051d5197aebc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c2d85055bce5f9d59ee3f92402a28ac1c368159cf6b2c8f2fb9496376dc2ce5e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_2x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c5fa19d1c4a22be5257f7ba71289f3fd1ca471db0f8474d1be854ac88f181cc7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ca892bdb49f9cbb0e8a65172a4dab98fdb4103c753192013d90da81e0eb61001": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cb40ea1b4167f354e6b2be04068bad78f8724297471d380633914486c3724ba4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:over_length"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cb6746798b8d530bffd7687ba824001c3ca8b013b08ae013cad8451e571f6f76": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cba35f9e22aa270d618f6729e3ca687f37bddf4592e0f6c7dcbaedbb4b4a4e37": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cbf89feaf96a86a6b33a7d2a0be78ce074f0bf07512e51cf3b01904330421fe9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d0ee3d617fdb59d19f5b0a7960bf7b992e9ee2a342f816baeb437ea5997ebe5b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d244f80b753a80fcbb09ad28fc24815f201dcea8dfc847c1f5084c8a8333d8ff": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "edge:top_n_over_documents"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d24c14e356d83b9c691d2ebcf71ea3b25550f90f9e1aabc3aecb3816e2599a4d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d2f69836754f4d7fba2703e6b23804c660e4e30b7f435e98b62ab0a06f7a8172": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d61a9f8ae118a1d23e3e5ffce25bfcd7f899e97e5843693102d5d8e3c5890a99": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d877c8eb44983a8349bd9e5522cfec1cbfad047c203c00c9c19a5f42e91e5ae6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dc429ba766ea881423a4de92d81fed62d907f7cb22bad2c4f8211494b98ca31b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dc5af023be0239b6fd79d7909a2999fb9f2b0727c05d83290fe8b586a7cb708f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dd0359fb04bf4542c13abc1dab1795833d245dce9291df69648b742e6d2138f6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ddfc8cbe877426544c47dd22ec8a05d256cf40a0253da4883799b9bc63203dda": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e1d0a4d9c8fb4a559434564c4a110e61a8e11c633b0d0fd84d5661e5c296e1d2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e357d51bf7eca04ae19c62a06e2168e65c962e2049a37f5d10b9ad7bae1ac413": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e3d21ff34552cc8ee6953fd067c2e93a62c448b4c98f72a7d94b9b1153450cc4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e6cdcb72a418e839c7a1bf87f8a6bb5d8dc2ed90c4c60ac22e05813e063ad3ea": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "eaebe62dd17137eeb591fb6e06e12befcad57a1e06c646b0356dfa281c4ec298": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ebc352f598f99b4b54d3fc21f22dccbf591788f70b5de2048b62cce6403275c2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ee29e83d03cf5af197f0a33042a6fea2bafb7fd5602468d0476cb32abddda8a2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f2cf69fa9ea515f691eb75e5bb19cf5ce68e94066a6f307b6c9cd698483dff7a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:wrong_model"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f4246528186151a5b40f26a2bba96bea3f12cd509eab18628a61ac6ec61db0c3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f4a18203ee9151594a813052407177eb13c99de34ae94bfd4eeb8190de8f7e38": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ffb9d7bb87f4a70602960f1c869145f67dd96ab41d1ac7488d7b0ee73db35413": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "jina-reranker-v3@2026-10-13T20:27:04+00:00",
+        "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    }
+  },
+  "summary": {
+    "max_abs_diff": 0.0,
+    "max_rel_diff": 0.0,
+    "min_cosine": null
+  },
+  "derived": {
+    "rule": "verification tolerance = 3x the maximum difference measured between repeated sendings of the SAME request (exchange_id: twice in one engine process and once after a restart), with absolute floor 1e-9 and relative floor 1e-6; no repeated request measured means no tolerance (declared unmeasured, never invented)",
+    "measured": true,
+    "repeated_requests": 113,
+    "statuses_differ": true,
+    "bodies_differ": true,
+    "abs_tolerance": 1e-09,
+    "rel_tolerance": 1e-06
+  }
+}

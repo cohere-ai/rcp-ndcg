@@ -1,0 +1,58 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610132000-record/record-stale/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/zembed-1-embedding",
+    "manifest_file_sha256": "bccf5ef3e187b52bc46a807861d16518583c153e4f40bd5cb2824d7b091f8b83",
+    "manifest_sha256": "c24b8123af00fe93faf47203057b4ef51fa9451af973f20c3142d1d168f3e45f"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "mrl:dimensions=1280",
+      "mrl:dimensions=160",
+      "mrl:dimensions=320",
+      "mrl:dimensions=40",
+      "mrl:dimensions=640",
+      "mrl:dimensions=80",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:encoding_format=base64"
+    ],
+    "rows": 55,
+    "of_rows": 649
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "d835aa9d5ad4773e7f10852cb72d715a922831374c33df26bb293e1e818372c4",
+      "bytes": 157727
+    },
+    "records.jsonl.gz": {
+      "sha256": "d915e250d5968d4ab7deccf0afd2bd68cb4153ae22c514b9852269fe16428b54",
+      "bytes": 2036938
+    }
+  }
+}

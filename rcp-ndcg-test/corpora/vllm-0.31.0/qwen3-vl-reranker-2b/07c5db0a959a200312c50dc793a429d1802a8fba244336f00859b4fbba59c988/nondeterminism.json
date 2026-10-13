@@ -1,0 +1,3279 @@
+{
+  "normalisation_version": 1,
+  "per_input": {
+    "0147559ccb84812d006522e6513a0358d85f5370329b811dd60c7fd273b1ea05": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "01b396564259982f6a35da6d2f77443e4401588d8e59a9d22b2d2d9e94478ecd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.013671875,
+      "max_rel_diff": 0.039647577092511016,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0234e95dd573869f297ca71bab5812e357e2710b8362620aeb169067cbae6d0e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/v1/models"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": true,
+      "bodies_differ": true
+    },
+    "04cc3e20f561c38368e71490b4072ae5a104c8d6366f5414d00f98c6af5a2b8a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "074310cdcd85d0e97788199e662f35b7e47dd4f39d4def69fd2fe0de0603f824": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.009765625,
+      "max_rel_diff": 0.030864197530864196,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "09b61985b1af85ac3ac80eaf6677064c6e3db0a5e8430a7bf233696aae956138": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "10cd1ceac9afbbf1aeb290245883a70bb8e49ff9057e3c0004fc13c5e4a882e7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:33"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.01953125,
+      "max_rel_diff": 0.029411764705882353,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "18f4c697ab07893418553b5765b7bff63d394f55af1fc50911629dc73c0845ac": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1bfed8a8de76592c2c35b5b3dcc46f8df435ae29921d4f928b04d5aba6f19a4b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.018292682926829267,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1c1e88a1639dd1b1a91c99377e09d9325f03bcdb3441e29ffaab105e64e075d8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:top_n=1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1ef9cd492d678e0da4bf1de32d6e56b53ec2898f191cca99093323e553e4efa2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:31"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.0392156862745098,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1fcd22a303d564c754ed7f1d4ec0587710bdade008b5c31bd762b663dd944a56": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:use_activation=false"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.03125,
+      "max_rel_diff": 0.028708133971291867,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "20cab10da2aecbcb25e33e364e3230af5d118d8897ccbac335cc518a720e7b3c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.015151515151515152,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "22be1b08536d7e23ffc82952da18f95b169c7b14c13bf114188e6b75937a0404": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:35"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "262290872e78e9e495983f32c353768a0f996bc7f685490387489b0374616dc3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "266c62cd207816d71105c491ce7839bbc30645c05aaf93aa18bf35c912c8ec76": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.025806451612903226,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "304183ca41e82cd49451db4e124eaacf427777bb9882e1344249d8447c0beeb2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "edge:corrupt_image"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "30ffff6bae85fd5333cdf739ae0c385196eb3addc4cbc2279a3e72042861df22": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:28"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.001953125,
+      "max_rel_diff": 0.0072992700729927005,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "31b77eac9e0bae4c0a3b4962e2129a21508e76f5f4c60e34c809b4d9bdbc0f9b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "321b32c259c943b2dd6facb449a2a704c5bca274042551832c2555a9de873377": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.011111111111111112,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "33df6b7a9db36e78f925a553ab121afc6c355f86d1daf84841f86df919e7b0ec": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.01,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "352d6cee406abf9cd842209f349164ab3ad6d4a9363fa8ac6a630841b68f9223": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.00390625,
+      "max_rel_diff": 0.005988023952095809,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "35dd2212769ac535c38e4689ff42264efdb9a6255e120f25e7354877f2706a0a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.009765625,
+      "max_rel_diff": 0.0199203187250996,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3c3778c363a22b2a470fea564271cf301f8425c18817f78a3bc010c9e936761c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3cbb03879c1aafe0a859531db26e95b57a2a7b127585244a769af78ffc4c5a96": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0126953125,
+      "max_rel_diff": 0.05327868852459016,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3e6bb142d5405d342e5fdf7e562e014dc96f4d6dc7f3c33b2dafc83c4fe03341": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3f754c21105c45bc6238e7f83be950188d8d2d85dfe9259ac37ce47b1fe584ae": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3f7df0d8673e1a0a193e41219bb25c498f2c75e514bce0f2b74879ae7ffdbabb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "44b74a1cd56d6ebc2f86de3044f1712740efbeb2b8323a29188a18e3e450e7e1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.00390625,
+      "max_rel_diff": 0.005952380952380952,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "45ff11dd48e0874416a6f34cb1f35f2f9510ab81221856d324758b2468d33acd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_10x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "479a030b8c2fad3157d66cee87a802d63178c1985c192b38300dadeb3f41d938": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4817d66a88c5e72fde32c46d6e10b204343cc1a1227890b00a7e6ac7a88d0e85": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4afdd02683df5d99b5478d77304818ff8910ba6b62a95a46e291b8c83d92c275": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4b21b13dd283948a40369c337513a8b488aacad27689cc15737ac421f202cc2d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "526592ca5a7b2b014f691f6ee911d421dd44a315719abf21690b721008f78e90": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:wrong_model"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53644992e8c8e42529b5668c42ff8652920f7a75796e032043a7a8bc930b3299": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53f27f91f2be87fbfbf73b209e12cf998f872894639bb81287679fb45e282c22": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/health"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "55c0d7ed511cae973076c72aa50e4a47f79e18d46517b9df951e10323221618d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:23/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "565d9617e01c3ecbb887211431763e458be99bfa69cecf5d22ae482aff1c77e0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "56d8f5aee6ef504f70788319174f7d6b5081ebfe70faedf4707405764b7b5faf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5a136b1f782fd295852b1401172084b2b09d87cedf881b2439c46a86507dac41": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:instruction=on"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.012711864406779662,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "5fa67a213cd367e2904daf13a93909dc1801a41948617da35bfe337736ff2786": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "615d0efd2ed169c452dc7a212d4c9d2339bf8b29bdd61d0780bf3f25321384ae": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.025806451612903226,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "62710f635fb5a2437efba697b2bb47a775968c9f17c6fb93d82394f93a594956": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "627ee4609dc1cd386c81c89837d61950843312c4f8ebbe625731062864b503c0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "63659579e7c04cd5ce935a89f00c6daa5cf88c7d140689f492793a59fe5abc80": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "648869f8329c7c731354733782dd449200afc1c8c687c8353719be150647815b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:23"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.00390625,
+      "max_rel_diff": 0.004975124378109453,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "66780613a59f14a58a6154a501ff605ec622ddfa8e3d8288248c2308223d7aaf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "670a87c61ea3f32c4962eac0b377b65e0bd0a4f007d5c38ed12eafebddb61786": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:25"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "671ffdb099b5970e645e74120fd0401083b52f204362a631eb5bff457d184ddb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.0106951871657754,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "67676c2c50c1ffa4dd2a8e79e6dcff92b4e8bc6592800e9fbf15c6264cb8e48a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6c470f585b842d62588815a8c6c7aee9dff78e685a77962ecb9af3bdf3def0b7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.00390625,
+      "max_rel_diff": 0.019138755980861243,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "6c839823962c59efb62b483800744d1ba3b05c41f60358848390c3204aede9c7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6dabdcc9feb125b1ad6849a167e2627a708132f9e069e18e25d8821a694ab377": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.01875,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "70b8177466bae062547d6a593f889d4f7715f11367e902a014be1f23e08c610f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "71ba6e6e0b63979cfed76f707e4c88cf48ec72fe650de86d7dbd10396fc6ab17": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "722472ac43bd6756ba1366f9baec8a38340427380e81ec79e9390334ed9ab54a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:top_n=all"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.011235955056179775,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "75924ff124a776011b6b80cdc8fd6e69d4bc15ab69cc564e25e005d33930b5c6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:30"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "76df4af8db8283d034e03653662b63bdc403756b843169d9229fc80bc3cb9d1a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7a647a1efac67d7ed65b9902ac57eef190dccd894c85e7ed62c49b4be2e43c0a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8220820fe1a1ab7b3acb2995c08eb1155ba8833f64b3c7b1a3bc6a62aeb63f46": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "87158866667fbc276d72ed7b55767b4002ced207f0651dfdc03bf4930457969d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0234375,
+      "max_rel_diff": 0.04411764705882353,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "8791745b40329a9755147fd8d9cac025b8dd473136921adc4cb0dd517d5eba35": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8aa9dbd77b4fc933948105380929f1f866c4922f12d5150b9da46d85ac189daf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.014184397163120567,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "8ae681aa63152e7ef58e87e3d292887e28ff7d07f7f6aa95c55bb411cda2955a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:29"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.001953125,
+      "max_rel_diff": 0.006666666666666667,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "8bc427eeda9a967f5daa85bcdcadea3d5e3c02dde9700ed8c38cd121a90bebf0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8bca74fa0de141a498316b35fcff4f5d67099dab8c6c6cd43918d3ae1511b412": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.013671875,
+      "max_rel_diff": 0.06666666666666667,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "8c140eeaad91d960c54010a42a857e4362563c1cb9a08c571008ab06ba5485b4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8dc1ee04da3785d888406beb0b5f4f57ef9a83d20b61aac8a6da01a0d7aa2180": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.015625,
+      "max_rel_diff": 0.02564102564102564,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "8f4b0d80e9f289919f0f1d461af2dd38afca5f6b34ca418ea67f6232ee718681": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8fddeb0287ab519ec6446fff210c4c9b81ba8de0b72e57e2534e740e86a3e14a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:32"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "91471ff99d531ac92f16af43d28c55d8d439b9376da9b7b6e3a1b42626ba5827": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9452cc502d12f82f7c3ef2635fb57b070d5005da369c58ca933e821fe2c43295": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "99b6808107300f40ec8541daed889a033e1c9428ada765b92a58f88c30c2af17": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:over_length"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9b6b4e57333f507ddc6e7759033161e9e2e80f31eedd33757de62c00a3d58af5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.005859375,
+      "max_rel_diff": 0.02926829268292683,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9cdf4f0a0427b0eb08045150d7cfbd9bcfc16b77b9fb9748000649eb88bdf650": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.016042780748663103,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9db4e1286bfa085486918b4af2bf444111ff296e4ad723be65a64f35df527086": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.01935483870967742,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9df73a45fdc70957780cb7091f3bba1e7e551a5f151568c69822e594ecfa79d5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:use_activation=true"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.011235955056179775,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9e94427629ed5a8ed317b460ff86d9b1fb62b3d491c1908b8ff0853b1c7b48b4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9fa8720c23007af64546aa446acecc1daa9c467b6f16a54a6b03ca4e18bd7b00": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "edge:top_n_over_documents"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.011235955056179775,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9faf8bd517b3a5291888d25314efc619f1e61904abf7a88286018fc7ee337e6c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:unknown_field"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.022388059701492536,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "a1a725975a62f786300d3d28faf26f8f07bef02e77b51b5c6e4d9b1317edebfb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a1f22279cd0dd63d51ff9460396d5baa77c0a2df73f03908384a1e2ef1d54b00": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a222b2d89ba0f9751817ff84da14896911786cd080f8e7473107b2dde6f35a08": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a45c446ae85007c63d0199eda5976e3218df619f7360972a7cff954c0664acce": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.011764705882352941,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "a84ae707289042e629917529ae72e248f5fddba396d7d6c61748b325de8d53a6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:malformed_json"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ac45f169d2dd85afa9d2aa97fa331db813308a4dae2697900215618593597fdb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_2x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ac6401642800ac74287135c0fba124a2fff975bc696624cc7df54fdd94f43321": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.015625,
+      "max_rel_diff": 0.03347280334728033,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "af64fe2a53f580bd678037a9cc0b256c7d40f3b7e95bcc46fcef23f5bb8f8887": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b277c6d99e8830be6c1b276b2445b783ef77db74a1ba3fdfa01dbd3b237b1bbf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b7839d605b620fbeb1fd61074670b28d7f6de347bfa9b34c5a53c813a3d1ad61": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b82dc92679df81e87dc9cf7dff6272163e140d71bbf54045c37c20c012e4626a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b916c36fc15de80c915fb751906dfcc225b24fd94289e8621d3ea16be76d8344": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b953490bb11b65d3e436d41dde59fce57f1ac1e93a05ad177c673c29b56d4e35": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.011235955056179775,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "bad8ff1a0d6b752befe5225ea8815863cbfb0b8af323d01d7542132ede12ce91": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.01875,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "bd472cc264d2d8da22dc55d4061694c145abef727c0aeb1351cb3c34da88c1d4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "edge:too_many_images"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bda3b047c1ab11248c00f9035c1987983f2edbc0e23446e8a558157c50c58625": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.012987012987012988,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "befbaf7d9be3072c120ae6fce587ae2839ffab2db6ac5308082dda7ab9c4535d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bf922db1814773b260fd109d804cc28b48a6d983010521bedb0ae2443fd1bc9f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.015625,
+      "max_rel_diff": 0.06477732793522267,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c176207cfbd63b7a0a9873caee0a9d3adac1ba689f253c5aa4063a19504be808": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:24/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c36a3852c02589d1554e11ef9d54129dab179eaa898abfdad43d1bab214fbc85": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.00390625,
+      "max_rel_diff": 0.005747126436781609,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ce513223dda0570260a9d6ec4b2bbace1873cd1b62ed68458a0d8f56519369bd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:24"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.00390625,
+      "max_rel_diff": 0.005263157894736842,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "cf696f4dfc34abad0f9dcd71930b8c264f58a2106296872122dfdcb39458579d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cfdc3aec2847a3a46eaa2320e44d598153ad15ce861f580363e711706713d342": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d0d9f0a8230f504a4105e940a6a571bc5a375e8838edd221fc99e0162a3e1c09": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:26"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d52ba8d6481a3a8590289be74f7849e0cefad0134687e61373d08b333a3037be": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d9aacc89999e6c6b78cc983b446854d6efb242526d59b5c1b2c2f6857a01639d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "daa7dae659745a4990467555bedcf49565724b74e57ed4e85df56c5703565bc8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "db7d4b6c1345d97e71665ea039f5f4b6e19fbeb95fc2e4ea7198b27609c5bb6e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dd9d0c1b5b4d0fccaaaeaef4468b06caba5373a6b2ee0a9a8a547dcc86e4eeae": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0078125,
+      "max_rel_diff": 0.013245033112582781,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "e24e75df0a8b7c52cc0962a4efaf0cff4a2bf6bab216d0c384c62cdbe5a724e6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e2ae021ce177451725326bddd16545b8346d7d8b7560febbf3ca87f9386c78ba": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.01639344262295082,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "e307abd3250564528dd204ba8fa938f976edbbfa7936844cb33e6541eb04cee5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:27"
+        ],
+        "positions": [
+          0
+        ],
+        "media": true
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e69bba92fdab16ff431be38abbe1ae6a02e3d0a0b9ab506dc4295ccae49e185b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:empty_input"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e71dc9ee2910009cc184571f5f8c603f7bd558185e3bcbeeecc6d4c9f574ad23": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.01953125,
+      "max_rel_diff": 0.028089887640449437,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "e9031a7d63690574f66e56aa1d3ebc772331513afbf3c99fd357fcd3fae4ded1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "eba103e1ce97eeba119d7102f90e2f2bcc558e51137de085981a011c0e9431cc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ec4c5dcd3ecaff03f33c0af36723a2b477eed6c2d8619fddfea42c426a3c3643": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.016042780748663103,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ec72aadede143e719148bb131c50be4c75b41740056b24a3ea21c7e6cfcf2706": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "edea837690bbe39bd3221798af87c5879e9c302505cec82c96cd228f38f9e47a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "efc32543428629f3a26fe70f720d34e6bb1d9152940f5531b408f7c00c058d46": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f006240208d034c7f1b45cfcdcb5655501cbbcacda6c2a83d4e5446c0718d1d4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.015625,
+      "max_rel_diff": 0.021164021164021163,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "f0eda7909a7658bdb2fce1940c6bb661e3230e4105bfa6a4e6ea546993f91de1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f2138551c5027a4248e616cc9cc17fd1b00f5ed15a5153808228e5ead42a2a57": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f4ef126edae3ce190b46ab803b6a478821978c3c566f49a96c4d3525eb51e017": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f8576ffa668a980d4bf21f716c66d8da96522cc2d697cdf22a687dd928d061c0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00",
+        "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    }
+  },
+  "summary": {
+    "max_abs_diff": 0.03125,
+    "max_rel_diff": 0.06666666666666667,
+    "min_cosine": null
+  },
+  "derived": {
+    "rule": "verification tolerance = 3x the maximum difference measured between repeated sendings of the SAME request (exchange_id: twice in one engine process and once after a restart), with absolute floor 1e-9 and relative floor 1e-6; no repeated request measured means no tolerance (declared unmeasured, never invented)",
+    "measured": true,
+    "repeated_requests": 126,
+    "statuses_differ": true,
+    "bodies_differ": true,
+    "abs_tolerance": 0.09375,
+    "rel_tolerance": 0.2
+  }
+}
