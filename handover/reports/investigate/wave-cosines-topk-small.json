@@ -1,0 +1,26 @@
+{
+ "_source": "topk-embed-v1-small on the final RC's wave (the engine image vllm/vllm-openai:v0.31.0): the per-referent minimum per-token cosine of each image document row, read from the wave's equivalence.json (stage2.per_vector, mrl_dim null). The nine image document rows (20-28) are the calibration numbers the probe's E1/E6 compare against; the row-28 entry is its image document (document 1).",
+ "_gate_minima": {
+  "full_2048": -0.11344692890060686,
+  "64": -0.35537964710105385,
+  "128": -0.2848102523636812,
+  "256": -0.1478045449199848,
+  "512": -0.14398048332058655,
+  "1024": -0.12270265446270309
+ },
+ "_sub_0_9": {
+  "total_token_vectors": 11296,
+  "of_comparisons": 209188,
+  "image_rows": 10880,
+  "rows_17_18_text": 416
+ },
+ "20": 0.909417,
+ "21": 0.547347,
+ "22": 0.00517,
+ "23": -0.35538,
+ "24": -0.151226,
+ "25": -0.093863,
+ "26": -0.326979,
+ "27": 0.033662,
+ "28": 0.547347
+}

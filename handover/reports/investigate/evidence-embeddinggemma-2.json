@@ -1,0 +1,237 @@
+{
+ "_source": "embeddinggemma-2 on the final RC's wave (the engine image vllm/vllm-openai:nightly pinned by digest; the plugin's TORCH_SDPA backend): the exact report blocks this lane's Part A cites, copied from the wave's equivalence.json (no host, bucket or base URL).",
+ "stage1": {
+  "pairs": 25,
+  "media_rows": 13,
+  "sampled": 65,
+  "checked": 110,
+  "template_render_check": {
+   "template": "google/embeddinggemma-2@914f7f89142e33e77833254d9c9b90c3cef7303b:chat_template.jinja",
+   "template_sha256": "4b852efc0b9960283e735363331e6f325b33bc74bdbaa076f595bc4e9b94d85e",
+   "checked": 112,
+   "passed": false,
+   "failures": [
+    {
+     "shape": "query",
+     "row": 65,
+     "engine_head": "task: search result | query: which page shows the quarterly chart",
+     "declared_head": "task: search result | query: \nwhich page shows the quarterly chart"
+    }
+   ]
+  },
+  "passed": false
+ },
+ "stage2": {
+  "n_vectors": 95,
+  "n_comparisons": 475,
+  "cosine_min": 0.9343192260626695,
+  "gates": [
+   {
+    "gate": "min_cosine",
+    "mrl_dim": null,
+    "value": 0.9343192260626695,
+    "bound": 0.999,
+    "passed": false
+   },
+   {
+    "gate": "min_cosine",
+    "mrl_dim": 128,
+    "value": 0.9593554811550121,
+    "bound": 0.999,
+    "passed": false
+   },
+   {
+    "gate": "min_cosine",
+    "mrl_dim": 256,
+    "value": 0.9463366672212329,
+    "bound": 0.999,
+    "passed": false
+   },
+   {
+    "gate": "min_cosine",
+    "mrl_dim": 512,
+    "value": 0.9355271114266014,
+    "bound": 0.999,
+    "passed": false
+   },
+   {
+    "gate": "min_cosine",
+    "mrl_dim": 768,
+    "value": 0.9343192260626695,
+    "bound": 0.999,
+    "passed": false
+   }
+  ],
+  "per_vector_below_bound": [
+   {
+    "referent": "row 31 document 0 vector 0",
+    "cosine": 0.9956044565831851,
+    "within": false,
+    "mrl_dim": null
+   },
+   {
+    "referent": "row 31 document 0 vector 0",
+    "cosine": 0.998020806985682,
+    "within": false,
+    "mrl_dim": 128
+   },
+   {
+    "referent": "row 31 document 0 vector 0",
+    "cosine": 0.9963695337873989,
+    "within": false,
+    "mrl_dim": 256
+   },
+   {
+    "referent": "row 31 document 0 vector 0",
+    "cosine": 0.9957222722634317,
+    "within": false,
+    "mrl_dim": 512
+   },
+   {
+    "referent": "row 31 document 0 vector 0",
+    "cosine": 0.9956044565831851,
+    "within": false,
+    "mrl_dim": 768
+   },
+   {
+    "referent": "row 32 document 0 vector 0",
+    "cosine": 0.9940651684118436,
+    "within": false,
+    "mrl_dim": null
+   },
+   {
+    "referent": "row 32 document 0 vector 0",
+    "cosine": 0.9962791559865938,
+    "within": false,
+    "mrl_dim": 128
+   },
+   {
+    "referent": "row 32 document 0 vector 0",
+    "cosine": 0.9947071302091757,
+    "within": false,
+    "mrl_dim": 256
+   },
+   {
+    "referent": "row 32 document 0 vector 0",
+    "cosine": 0.9940810510823528,
+    "within": false,
+    "mrl_dim": 512
+   },
+   {
+    "referent": "row 32 document 0 vector 0",
+    "cosine": 0.9940651684118436,
+    "within": false,
+    "mrl_dim": 768
+   },
+   {
+    "referent": "row 36 document 0 vector 0",
+    "cosine": 0.9343192260626695,
+    "within": false,
+    "mrl_dim": null
+   },
+   {
+    "referent": "row 36 document 0 vector 0",
+    "cosine": 0.9593554811550121,
+    "within": false,
+    "mrl_dim": 128
+   },
+   {
+    "referent": "row 36 document 0 vector 0",
+    "cosine": 0.9463366672212329,
+    "within": false,
+    "mrl_dim": 256
+   },
+   {
+    "referent": "row 36 document 0 vector 0",
+    "cosine": 0.9355271114266014,
+    "within": false,
+    "mrl_dim": 512
+   },
+   {
+    "referent": "row 36 document 0 vector 0",
+    "cosine": 0.9343192260626695,
+    "within": false,
+    "mrl_dim": 768
+   },
+   {
+    "referent": "row 37 document 0 vector 0",
+    "cosine": 0.9656241643405177,
+    "within": false,
+    "mrl_dim": null
+   },
+   {
+    "referent": "row 37 document 0 vector 0",
+    "cosine": 0.9755107299409221,
+    "within": false,
+    "mrl_dim": 128
+   },
+   {
+    "referent": "row 37 document 0 vector 0",
+    "cosine": 0.9690858175011434,
+    "within": false,
+    "mrl_dim": 256
+   },
+   {
+    "referent": "row 37 document 0 vector 0",
+    "cosine": 0.9662546936057888,
+    "within": false,
+    "mrl_dim": 512
+   },
+   {
+    "referent": "row 37 document 0 vector 0",
+    "cosine": 0.9656241643405177,
+    "within": false,
+    "mrl_dim": 768
+   }
+  ],
+  "passed": false
+ },
+ "media": {
+  "rows": 13,
+  "sides": 13,
+  "items": 13,
+  "failures": [],
+  "engine_check": {
+   "status": "run",
+   "checked": 13,
+   "passed": false,
+   "failures": [
+    {
+     "row": 33,
+     "sides": [
+      "document 0"
+     ],
+     "engine_media_tokens": 269,
+     "client_media_tokens": 268
+    },
+    {
+     "row": 35,
+     "sides": [
+      "query"
+     ],
+     "engine_media_tokens": 259,
+     "client_media_tokens": 258
+    },
+    {
+     "row": 36,
+     "sides": [
+      "document 0"
+     ],
+     "engine_media_tokens": 492,
+     "client_media_tokens": 3936
+    },
+    {
+     "row": 37,
+     "sides": [
+      "document 0"
+     ],
+     "engine_media_tokens": 493,
+     "client_media_tokens": 3936
+    }
+   ],
+   "referent": "per media request, the engine's usage.prompt_tokens minus the same request's without its media parts must equal the media tokens the client counted (an unpinned or re-resizing engine differs)"
+  },
+  "passed": false
+ },
+ "passed": false
+}

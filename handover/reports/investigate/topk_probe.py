@@ -9,22 +9,34 @@ its tensors' shapes, hashes and diffs to ``probe-report.json`` and ``probe-repor
 compared without the numbers being in the report.
 
     python3 topk_probe.py --out <dir> --model <checkpoint> --revision <rev> --pairs <pairs.jsonl> \
-        --reference-python <state>/reference/topk-embed-v1/bin/python [--rows 20,26,31,36]
+        --reference-python <state>/reference/topk-embed-v1/bin/python [--rows 20,26,27]
 
     # the reference side (called by the engine side, never by hand):
     <reference-python> topk_probe.py --side reference --image <file.png> --model <checkpoint> \
-        --revision <rev> --recipe-dir <recipe dir> --out <dump.pt>
+        --revision <rev> --recipe-dir <recipe dir> --engine-pixels <engine-input.pt> --out <dump.pt>
 
-The experiments (the report's Part B.1 table): E1 preprocessing isolation; E2 the same tensors into
-both vision towers; E3 layer-by-layer dumps; E4 the merged image-token embeddings; E5 cross-feed; E6
-the grid sweep; E7 the attention window.  A failed experiment is recorded with its traceback and the
-run continues: the probe is a measurement, not a gate.
+The experiments (the report's Part B.1 table):
+  E0  the control: the probe's engine vectors against the wave's recorded vectors for one row
+      (``--control-vectors``; ``not_run`` loudly when absent, never a silent pass).
+  E1  preprocessing isolation: the engine's pixels vs the checkpoint's, and every dtype/affine variant
+      against BOTH sides (``vs_engine`` is the decisive comparison).
+  E2  the same tensors into the engine tower (the engine's pixels and the reference's).
+  E3  layer-by-layer inside the vision tower, both feeds, with an in-run bf16 floor.
+  E4  the image-token embeddings (the merger output) on the ENGINE's own feed.
+  E5  cross-feed: the reference tower on the engine's pixels, and the engine tower on the reference's.
+  E6  the grid sweep: the end-to-end per-token cosine for every image document row.
+  E7  the text path, layer by layer.  This checkpoint has NO sliding window (``layer_types`` = 18
+      ``linear_attention`` + 6 ``full_attention``, ``is_causal: false``), and vLLM builds each decoder
+      layer from ``layer_types`` at init, so the brief's window experiment cannot be run here (a
+      post-init rewrite is a no-op and would only produce a false exclusion).  E7 compares the text
+      model's per-layer hidden states instead; no config is mutated.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import functools
 import hashlib
 import io
 import json
@@ -35,18 +47,40 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-DEFAULT_ROWS: list[int] = []
-"""Empty: every pairs row carrying an image document (the nine media rows of the shipped pairs file)."""
-
 FIRST_DIVERGENCE = 1e-2
-"""A tensor's max-abs-diff above this names the layer (the vision tower's bf16 floor is ~1e-3)."""
+"""A tensor's max-abs-diff above this (and above 10x the in-run bf16 floor) names the layer."""
+
+CONTROL_ROW = 26
+"""The row whose wave-recorded vectors the control compares against (the worst image row)."""
 
 
-def sha256(tensor: Any) -> str:
+# ---------------------------------------------------------------------------
+# tensor helpers
+# ---------------------------------------------------------------------------
+
+
+def _tensor(value: Any) -> Any:
+    """One tensor on the host, float32: detach, cast, move (bf16 has no numpy dtype)."""
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "float"):
+        value = value.float()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    return value
+
+
+def _numpy(value: Any) -> Any:
+    import numpy as np
+
+    return np.asarray(_tensor(value), dtype=np.float64)
+
+
+def sha256(value: Any) -> str:
     """The tensor's bytes' hash (dtype and shape included), so equal tensors hash equal."""
     import numpy as np
 
-    array = np.ascontiguousarray(np.asarray(tensor))
+    array = np.ascontiguousarray(_numpy(value))
     digest = hashlib.sha256()
     digest.update(str(array.dtype).encode())
     digest.update(str(array.shape).encode())
@@ -58,8 +92,8 @@ def stats(left: Any, right: Any) -> dict[str, Any]:
     """The comparison of two tensors: shapes, dtypes, hashes, max/mean abs diff and cosine."""
     import numpy as np
 
-    a = np.asarray(left, dtype=np.float64)
-    b = np.asarray(right, dtype=np.float64)
+    a = _numpy(left)
+    b = _numpy(right)
     out: dict[str, Any] = {
         "left_shape": list(a.shape),
         "right_shape": list(b.shape),
@@ -80,20 +114,20 @@ def stats(left: Any, right: Any) -> dict[str, Any]:
     return out
 
 
-def _tensor(tensor: Any) -> Any:
-    """One tensor on the host, detached, float32 (numpy conversion must never see CUDA)."""
-    if hasattr(tensor, "detach"):
-        tensor = tensor.detach()
-    if hasattr(tensor, "float"):
-        tensor = tensor.float()
-    if hasattr(tensor, "cpu"):
-        tensor = tensor.cpu()
-    return tensor
+def bf16_floor(value: Any) -> float:
+    """The in-run bf16 rounding floor of one tensor: its max-abs-diff against its own bf16 round trip."""
+    import torch
+
+    if value is None:
+        return 0.0
+    tensor = value.detach() if hasattr(value, "detach") else value
+    if not isinstance(tensor, torch.Tensor):
+        return 0.0
+    return float((tensor.float() - tensor.to(torch.bfloat16).float()).abs().max())
 
 
 def _hooks(module: Any, names: dict[str, Any], sink: dict[str, Any]) -> list[Any]:
     """Forward hooks over ``names`` (attribute path -> report key), recording each output in ``sink``."""
-    handles = []
 
     def make(key: str) -> Any:
         def record(_module: Any, _inputs: Any, output: Any) -> None:
@@ -103,12 +137,35 @@ def _hooks(module: Any, names: dict[str, Any], sink: dict[str, Any]) -> list[Any
 
         return record
 
+    handles = []
     for path, key in names.items():
         target = module
         for attribute in path.split("."):
             target = getattr(target, attribute)
         handles.append(target.register_forward_hook(make(key)))
     return handles
+
+
+def _vision_hook_names(visual: Any) -> dict[str, Any]:
+    return {"patch_embed": "patch_embed", "merger": "merger"} | {
+        f"blocks.{index}": f"block_{index}" for index in range(len(visual.blocks))
+    }
+
+
+def _run_with_hooks(call: Any, module: Any, names: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Run ``call()`` with hooks on ``module``, always removing them; output and per-layer sink."""
+    sink: dict[str, Any] = {}
+    handles = _hooks(module, names, sink)
+    try:
+        output = call()
+    finally:
+        for handle in handles:
+            handle.remove()
+    return output, sink
+
+
+def _text_layer_hook_names(layers: Any) -> dict[str, Any]:
+    return {str(index): f"text_layer_{index}" for index in range(len(layers))}
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +196,8 @@ def reference_side(args: argparse.Namespace) -> int:
     module = next(m for m in model.modules() if type(m).__name__ == "TopkEmbedTransformer")
     topk = next(m for m in module.modules() if type(m).__name__ == "TopkEmbedModel")
     visual = topk.model.visual
+    text_layers = _reference_text_layers(topk)
+    device = model.device
     image = Image.open(args.image).convert("RGB")
 
     # E1: the checkpoint's own row (torchvision antialias BICUBIC + bf16 affine) and its variants.
@@ -167,23 +226,42 @@ def reference_side(args: argparse.Namespace) -> int:
     vision_inputs = {
         key.removeprefix("vision_"): value for key, value in module._vision_inputs([row.image_grid_thw]).items()
     }
-    layers: dict[str, Any] = {}
-    handles = _hooks(
-        visual,
-        {"patch_embed": "patch_embed", "merger": "merger"}
-        | {f"blocks.{index}": f"block_{index}" for index in range(len(visual.blocks))},
-        layers,
-    )
-    try:
-        with torch.no_grad():
-            merged = visual(row.pixel_values, **vision_inputs)
-    finally:
-        for handle in handles:
-            handle.remove()
+    vision_inputs = _to_device(vision_inputs, device)
+    pixels = row.pixel_values.to(device=device, dtype=visual.patch_embed.proj.weight.dtype)
+    with torch.no_grad():
+        merged, layers = _run_with_hooks(
+            functools.partial(visual, pixels, **vision_inputs), visual, _vision_hook_names(visual)
+        )
     layers["merged"] = _tensor(merged)
 
+    # E5: the reference tower on the ENGINE's pixels (the cross-feed leg).
+    engine_layers: dict[str, Any] = {}
+    engine_meta: dict[str, Any] = {}
+    if args.engine_pixels and Path(args.engine_pixels).is_file():
+        engine_input = torch.load(args.engine_pixels, map_location="cpu", weights_only=False)
+        engine_pixels = engine_input["pixel_values"].to(device=device, dtype=visual.patch_embed.proj.weight.dtype)
+        engine_grid = engine_input["grid_thw"]
+        engine_vision_inputs = {
+            key.removeprefix("vision_"): value for key, value in module._vision_inputs([engine_grid]).items()
+        }
+        engine_vision_inputs = _to_device(engine_vision_inputs, device)
+        with torch.no_grad():
+            engine_merged, engine_layers = _run_with_hooks(
+                functools.partial(visual, engine_pixels, **engine_vision_inputs),
+                visual,
+                _vision_hook_names(visual),
+            )
+        engine_layers["merged"] = _tensor(engine_merged)
+        engine_meta = {"grid_thw": engine_grid, "shape": list(engine_pixels.shape)}
+
+    # E7: the text path's per-layer hidden states, captured during the card's own encode.
     with torch.no_grad():
-        document = model.encode_document([image])[0]
+        document, text_hooks = _run_with_hooks(
+            functools.partial(model.encode_document, [image]),
+            text_layers,
+            _text_layer_hook_names(text_layers),
+        )
+        document = document[0]
     torch.save(
         {
             "grid_thw": row.image_grid_thw,
@@ -191,11 +269,29 @@ def reference_side(args: argparse.Namespace) -> int:
             "layers": layers,
             "variants": {key: _tensor(value) for key, value in variants.items()},
             "document_vectors": _tensor(document),
+            "engine_pixels_layers": engine_layers,
+            "engine_pixels_meta": engine_meta,
+            "text_layers": text_hooks,
         },
         args.out,
     )
-    print(f"reference: {args.image} -> {args.out} ({len(layers)} tensors)")
+    print(f"reference: {args.image} -> {args.out} ({len(layers)} vision tensors, {len(text_hooks)} text layers)")
     return 0
+
+
+def _to_device(mapping: dict[str, Any], device: Any) -> dict[str, Any]:
+    """One vision-inputs mapping with every tensor on the model's device."""
+    import torch
+
+    return {key: value.to(device) if isinstance(value, torch.Tensor) else value for key, value in mapping.items()}
+
+
+def _reference_text_layers(topk: Any) -> Any:
+    """The checkpoint text model's decoder layers (the packed Qwen3.5 text model)."""
+    for name, module in topk.named_modules():
+        if name.endswith("language_model") and hasattr(module, "layers"):
+            return module.layers
+    raise RuntimeError("cannot reach the checkpoint's text layers")
 
 
 def _affine(module: Any, image: Any, *, dtype: Any) -> Any:
@@ -218,7 +314,6 @@ def engine_model(llm: Any) -> Any:
     candidates = [
         ("llm_engine", "model_executor", "driver_worker", "model_runner", "model"),
         ("llm_engine", "model_executor", "driver_worker", "worker", "model_runner", "model"),
-        ("llm_engine", "model_executor", "driver_worker", "model_runner", "model"),
     ]
     for path in candidates:
         target = llm
@@ -244,8 +339,16 @@ def engine_visual(model: Any) -> Any:
     return visual
 
 
+def engine_text_layers(model: Any) -> Any:
+    """The engine text model's decoder layers."""
+    for name, module in model.named_modules():
+        if "language_model" in name and hasattr(module, "layers"):
+            return module.layers
+    raise RuntimeError("cannot reach the engine's text layers")
+
+
 def engine_side(args: argparse.Namespace) -> int:
-    """Load vLLM in process, run E1-E7 for the requested rows, write the report."""
+    """Load vLLM in process, run E0-E7 for the requested rows, write the report."""
     import torch
     from transformers import AutoProcessor
     from vllm import LLM
@@ -257,6 +360,7 @@ def engine_side(args: argparse.Namespace) -> int:
         "revision": args.revision,
         "engine_image": os.environ.get("RCP_IMAGE", "unknown"),
         "device": args.device,
+        "reference_device": args.reference_device,
         "experiments": {},
         "rows": [],
     }
@@ -266,7 +370,17 @@ def engine_side(args: argparse.Namespace) -> int:
         "hypothesis": "the engine's PIL BICUBIC + fp32 affine pixels differ from the checkpoint's "
         "torchvision antialias BICUBIC + bf16 affine pixels",
         "engine_processor": type(image_processor).__name__,
+        "engine_call": "the HF image processor at the pinned budget: the same call vLLM's overlay makes "
+        "from the recipe's nested images_kwargs",
         "pin": {"min_pixels": args.min_pixels, "max_pixels": args.max_pixels},
+        "comparison": "each variant is compared against BOTH the engine's pixels (vs_engine, the decisive "
+        "one) and the checkpoint's (vs_checkpoint)",
+    }
+    report["experiments"]["E7_text_layers"] = {
+        "note": "this checkpoint has no sliding window (layer_types = 18 linear_attention + 6 "
+        "full_attention, is_causal false) and vLLM builds the decoder layers from layer_types at init, "
+        "so the brief's window experiment is invalid here; the text path's per-layer states are compared "
+        "instead and no config is mutated",
     }
 
     llm = LLM(
@@ -277,18 +391,24 @@ def engine_side(args: argparse.Namespace) -> int:
         max_model_len=args.max_model_len,
         trust_remote_code=False,
         enforce_eager=True,
+        gpu_memory_utilization=args.gpu_memory_fraction,
         limit_mm_per_prompt={"image": 1},
         mm_processor_kwargs={"images_kwargs": {"min_pixels": args.min_pixels, "max_pixels": args.max_pixels}},
         hf_overrides={"document_keep_token_ids": [args.image_token_id]},
     )
     model = engine_model(llm)
     visual = engine_visual(model)
+    text_layers = engine_text_layers(model)
     report["experiments"]["E1_preprocessing"]["engine_visual"] = type(visual).__name__
 
     rows = _pairs_rows(args)
-    reference_python = args.reference_python
-    for row_index, image in rows:
-        row_report: dict[str, Any] = {"pairs_index": row_index, "image": image["sha256"][:16]}
+    control = _read_control(args)
+    for row_index, document_index, image in rows:
+        row_report: dict[str, Any] = {
+            "pairs_index": row_index,
+            "document_index": document_index,
+            "image": str(image.get("sha256", ""))[:16],
+        }
         try:
             pil = _load_image(image)
             row_report["width"], row_report["height"] = pil.width, pil.height
@@ -304,18 +424,22 @@ def engine_side(args: argparse.Namespace) -> int:
                 "dtype": str(engine_pixels.dtype),
                 "sha256": sha256(engine_pixels),
             }
-            # the reference side, in its own venv.
-            image_path = out_dir / f"row{row_index}.png"
+            # the reference side, in its own venv (and on its own GPU).
+            image_path = out_dir / f"row{row_index}-doc{document_index}.png"
             pil.save(image_path)
-            dump_path = out_dir / f"row{row_index}-reference.pt"
+            engine_input_path = out_dir / f"row{row_index}-doc{document_index}-engine-input.pt"
+            torch.save({"pixel_values": _tensor(engine_pixels), "grid_thw": engine_grid}, engine_input_path)
+            dump_path = out_dir / f"row{row_index}-doc{document_index}-reference.pt"
             subprocess.run(
                 [
-                    reference_python,
+                    args.reference_python,
                     str(Path(__file__).resolve()),
                     "--side",
                     "reference",
                     "--image",
                     str(image_path),
+                    "--engine-pixels",
+                    str(engine_input_path),
                     "--model",
                     args.model,
                     "--revision",
@@ -323,7 +447,7 @@ def engine_side(args: argparse.Namespace) -> int:
                     "--recipe-dir",
                     args.recipe_dir,
                     "--device",
-                    args.device,
+                    args.reference_device,
                     "--out",
                     str(dump_path),
                 ],
@@ -332,58 +456,108 @@ def engine_side(args: argparse.Namespace) -> int:
             reference = torch.load(dump_path, map_location="cpu", weights_only=False)
             row_report["reference_grid_thw"] = reference["grid_thw"].tolist()
             row_report["reference_target_hw"] = list(reference["target"])
-            # E1: the pixel tensors.
+            row_report["grids_agree"] = reference["grid_thw"].tolist() == engine_grid.tolist()
+            # E1: the pixel tensors, every variant against BOTH sides.
             row_report["E1_pixel_values"] = stats(engine_pixels, reference["variants"]["pixel_values_checkpoint"])
             row_report["E1_variants"] = {
                 name: {
-                    "shape": list(value.shape),
+                    "shape": list(_numpy(value).shape),
                     "sha256": sha256(value),
+                    "vs_engine": stats(engine_pixels, value),
                     "vs_checkpoint": stats(value, reference["variants"]["pixel_values_checkpoint"]),
                 }
                 for name, value in reference["variants"].items()
             }
-            # E2/E3/E4: the towers, on the engine's own pixels and on the reference's.
-            for feed, pixels in (
-                ("engine_pixels", engine_pixels),
-                ("reference_pixels", reference["variants"]["pixel_values_checkpoint"]),
-            ):
-                dumps: dict[str, Any] = {}
-                handles = _hooks(
+            # E2/E3: the engine tower on both feeds, with the in-run bf16 floor.
+            engine_on_engine, dumps_engine = _run_with_hooks(
+                functools.partial(
                     visual,
-                    {"patch_embed": "patch_embed", "merger": "merger"}
-                    | {f"blocks.{index}": f"block_{index}" for index in range(len(visual.blocks))},
-                    dumps,
-                )
-                try:
-                    with torch.no_grad():
-                        merged = visual(
-                            pixels.to(device=args.device, dtype=visual.patch_embed.proj.weight.dtype),
-                            engine_grid.to(args.device),
-                        )
-                finally:
-                    for handle in handles:
-                        handle.remove()
-                dumps["merged"] = _tensor(merged)
-                row_report[f"E2_tower_on_{feed}"] = {
-                    key: stats(value, reference["layers"].get(key)) for key, value in dumps.items()
-                }
-            # E4: the image-token embeddings the text model receives (the merger output).
-            row_report["E4_image_token_embeddings"] = stats(_tensor(merged), reference["layers"]["merged"])
-            # the engine's end-to-end token vectors for the same image, and the reference's.
+                    engine_pixels.to(device=args.device, dtype=visual.patch_embed.proj.weight.dtype),
+                    engine_grid.to(args.device),
+                ),
+                visual,
+                _vision_hook_names(visual),
+            )
+            engine_on_reference, dumps_reference = _run_with_hooks(
+                functools.partial(
+                    visual,
+                    reference["variants"]["pixel_values_checkpoint"].to(
+                        device=args.device, dtype=visual.patch_embed.proj.weight.dtype
+                    ),
+                    torch.as_tensor(reference["grid_thw"]).to(args.device),
+                ),
+                visual,
+                _vision_hook_names(visual),
+            )
+            dumps_engine["merged"] = _tensor(engine_on_engine)
+            dumps_reference["merged"] = _tensor(engine_on_reference)
+            row_report["bf16_floor"] = max(
+                bf16_floor(engine_pixels),
+                bf16_floor(dumps_engine.get("patch_embed")),
+            )
+            row_report["E2_tower_on_engine_pixels"] = {
+                key: stats(value, reference["layers"].get(key)) for key, value in dumps_engine.items()
+            }
+            row_report["E2_tower_on_reference_pixels"] = {
+                key: stats(value, reference["layers"].get(key)) for key, value in dumps_reference.items()
+            }
+            # E4: the image-token embeddings on the ENGINE's own feed.
+            row_report["E4_image_token_embeddings"] = stats(dumps_engine["merged"], reference["layers"]["merged"])
+            # E5: the cross-feed, both directions.
+            row_report["E5_cross_feed"] = {
+                "engine_tower_on_reference_pixels_vs_own": stats(dumps_reference["merged"], dumps_engine["merged"]),
+                "reference_tower_on_engine_pixels_vs_own": stats(
+                    reference["engine_pixels_layers"].get("merged"), reference["layers"]["merged"]
+                ),
+                "reference_tower_on_engine_pixels_vs_engine_tower": stats(
+                    reference["engine_pixels_layers"].get("merged"), dumps_engine["merged"]
+                ),
+                "engine_pixels_shape": reference["engine_pixels_meta"].get("shape"),
+            }
+            # E6: the engine's end-to-end token vectors for the same image document, and the reference's.
             rendered = processor.apply_chat_template(
                 [{"role": "user", "content": [{"type": "image"}]}],
                 tokenize=False,
                 add_generation_prompt=False,
             )
-            engine_vectors = _engine_encode(llm, rendered, pil)
-            reference_vectors = reference["document_vectors"]
-            row_report["E6_end_to_end"] = {
-                "engine_tokens": int(len(engine_vectors)),
-                "reference_tokens": int(len(reference_vectors)),
-                "cosine_per_token": _per_token_cosine(engine_vectors, reference_vectors),
+            placeholders = rendered.count(processor.image_token)
+            row_report["render"] = {
+                "source": "the checkpoint's own image-only chat render (the recipe's image document render)",
+                "image_placeholders": placeholders,
             }
-            # E7: the attention window, on this row only (mutate the text config, re-encode).
-            row_report["E7_window"] = _window_experiment(llm, rendered, pil, reference_vectors)
+            engine_vectors = None
+            if placeholders != 1:
+                row_report["E6_end_to_end"] = {
+                    "note": "the row's image is not the document's only part: the image-only render does "
+                    "not apply (the recipe's reference refuses a mixed document)",
+                    "mismatch": True,
+                }
+            else:
+                engine_vectors, engine_text_hooks = _run_with_hooks(
+                    functools.partial(_engine_encode, llm, rendered, pil),
+                    text_layers,
+                    _text_layer_hook_names(text_layers),
+                )
+                reference_vectors = reference["document_vectors"]
+                cosine = _per_token_cosine(engine_vectors, reference_vectors)
+                cosine["wave_min_cosine"] = (args.wave_cosines or {}).get(str(row_index))
+                row_report["E6_end_to_end"] = {
+                    "engine_tokens": int(len(engine_vectors)),
+                    "reference_tokens": int(len(reference_vectors)),
+                    "cosine_per_token": cosine,
+                }
+                # E7: the text path, layer by layer (engine hooks vs the reference's dump).
+                row_report["E7_text_layers"] = {
+                    key: stats(value, reference["text_layers"].get(key)) for key, value in engine_text_hooks.items()
+                }
+            # E0: the control, when the wave's recorded vectors for the control row are provided.
+            if control is not None and row_index == control["row"] and engine_vectors is not None:
+                row_report["E0_control"] = {
+                    "row": control["row"],
+                    "wave_vectors": int(len(control["vectors"])),
+                    "probe_vectors": int(len(engine_vectors)),
+                    "cosine_per_token": _per_token_cosine(engine_vectors, control["vectors"]),
+                }
             row_report["passed"] = True
         except Exception as error:  # noqa: BLE001 - one failed row must not stop the sweep
             row_report["passed"] = False
@@ -392,21 +566,48 @@ def engine_side(args: argparse.Namespace) -> int:
         report["rows"].append(row_report)
         _write_report(out_dir, report)
 
-    report["first_divergent_layer"] = _first_divergent(report)
+    report["control"] = _control_summary(report, control)
+    report["first_divergent_layer"] = _first_divergent(report, "E2_tower_on_reference_pixels")
+    report["first_divergent_layer_engine_pixels"] = _first_divergent(report, "E2_tower_on_engine_pixels")
     _write_report(out_dir, report)
     return 0
 
 
+def _read_control(args: argparse.Namespace) -> dict[str, Any] | None:
+    """The wave-recorded vectors for the control row (``--control-vectors``), or None."""
+    if not args.control_vectors:
+        return None
+    path = Path(args.control_vectors)
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {"row": int(data.get("row", CONTROL_ROW)), "vectors": data["vectors"]}
+
+
+def _control_summary(report: dict[str, Any], control: dict[str, Any] | None) -> Any:
+    """The control's status: run with its numbers, or ``not_run`` with the reason (never a silent pass)."""
+    if control is None:
+        return {
+            "status": "not_run",
+            "reason": "no --control-vectors file: the probe's engine vectors are not tied to the wave's "
+            "recorded vectors, so every E-number is uncalibrated",
+            "how": 'dump one wave-recorded row\'s per-token vectors to {"row": <row>, "vectors": [[...]]} '
+            "and pass it (the observation corpus' response for request_id pairs:<row>)",
+        }
+    for row in report["rows"]:
+        if row.get("pairs_index") == control["row"] and "E0_control" in row:
+            return {"status": "run", **row["E0_control"]}
+    return {"status": "not_run", "reason": f"row {control['row']} was not probed with an end-to-end encode"}
+
+
 def _engine_encode(llm: Any, prompt: str, image: Any) -> Any:
     """One image document through the engine's own encode (the wave's signal, in process)."""
-    import numpy as np
-
     outputs = llm.encode(
         [{"prompt": prompt, "multi_modal_data": {"image": image}}],
         pooling_task="token_embed",
         use_tqdm=False,
     )
-    return np.asarray(outputs[0].outputs.data, dtype=np.float64)
+    return _numpy(outputs[0].outputs.data)
 
 
 def _per_token_cosine(engine_vectors: Any, reference_vectors: Any) -> dict[str, Any]:
@@ -415,9 +616,14 @@ def _per_token_cosine(engine_vectors: Any, reference_vectors: Any) -> dict[str, 
 
     engine = np.asarray(engine_vectors, dtype=np.float64)
     reference = np.asarray(reference_vectors, dtype=np.float64)
+    if engine.ndim == 1:
+        engine = engine.reshape(1, -1)
+    if reference.ndim == 1:
+        reference = reference.reshape(1, -1)
     if engine.shape != reference.shape:
         return {
-            "note": "token counts differ",
+            "mismatch": True,
+            "note": "token counts differ: no cosine",
             "engine_shape": list(engine.shape),
             "reference_shape": list(reference.shape),
         }
@@ -432,48 +638,16 @@ def _per_token_cosine(engine_vectors: Any, reference_vectors: Any) -> dict[str, 
     }
 
 
-def _window_experiment(llm: Any, prompt: str, image: Any, reference_vectors: Any) -> dict[str, Any]:
-    """E7: one row with the checkpoint's sliding window disabled in the engine's text config.
-
-    The window is the text config's; disabling it means replacing every layer type with full attention
-    and clearing ``sliding_window`` on the loaded config, then re-encoding the same image.  The
-    unpatched re-encode is measured too (the determinism floor).  The signal is whether the
-    divergence from the reference MOVES: if it does not, the window semantics are excluded.
-    """
-    before = _per_token_cosine(_engine_encode(llm, prompt, image), reference_vectors)
-    try:
-        config = llm.llm_engine.model_config.hf_config
-        text_config = getattr(config, "text_config", config)
-        layer_types = list(getattr(text_config, "layer_types", []) or [])
-        saved = {
-            "sliding_window": getattr(text_config, "sliding_window", None),
-            "layer_types": layer_types,
-        }
-        if layer_types:
-            text_config.layer_types = [
-                "full_attention" if str(kind) != "full_attention" else kind for kind in layer_types
-            ]
-        if hasattr(text_config, "sliding_window"):
-            text_config.sliding_window = None
-        after = _per_token_cosine(_engine_encode(llm, prompt, image), reference_vectors)
-        text_config.sliding_window = saved["sliding_window"]
-        if layer_types:
-            text_config.layer_types = saved["layer_types"]
-        return {"before": before, "with_window_disabled": after, "restored": saved}
-    except Exception as error:  # noqa: BLE001 - a config shape change must be recorded, not fatal
-        return {"before": before, "error": f"{type(error).__name__}: {error}"}
-
-
-def _pairs_rows(args: argparse.Namespace) -> list[tuple[int, dict[str, Any]]]:
-    """The pairs rows carrying an image document (or the ``--rows`` selection), with their entries."""
-    rows: list[tuple[int, dict[str, Any]]] = []
+def _pairs_rows(args: argparse.Namespace) -> list[tuple[int, int, dict[str, Any]]]:
+    """The pairs rows carrying an image document (or the ``--rows`` selection): (row, document, entry)."""
+    rows: list[tuple[int, int, dict[str, Any]]] = []
     for index, row in enumerate(_read_pairs(args.pairs)):
         if args.rows and index not in args.rows:
             continue
-        for entry in (row.get("media") or {}).get("documents") or []:
+        for position, entry in enumerate((row.get("media") or {}).get("documents") or []):
             for item in entry or []:
                 if str(item.get("kind", "image")) == "image":
-                    rows.append((index, item))
+                    rows.append((index, position, item))
                     break
     return rows
 
@@ -492,11 +666,11 @@ def _load_image(entry: dict[str, Any]) -> Any:
         return handle.convert("RGB")
 
 
-def _first_divergent(report: dict[str, Any]) -> Any:
-    """The first layer whose max-abs-diff crosses ``FIRST_DIVERGENCE`` on the engine's own pixels."""
+def _first_divergent(report: dict[str, Any], feed_key: str) -> Any:
+    """The first layer whose max-abs-diff crosses the threshold on one feed, with the in-run floor."""
     order: list[str] = []
     for row in report["rows"]:
-        table = row.get("E2_tower_on_engine_pixels")
+        table = row.get(feed_key)
         if not table:
             continue
         for key in table:
@@ -504,41 +678,79 @@ def _first_divergent(report: dict[str, Any]) -> Any:
                 order.append(key)
     for key in order:
         worst = 0.0
+        floor = 0.0
         for row in report["rows"]:
-            entry = (row.get("E2_tower_on_engine_pixels") or {}).get(key) or {}
+            entry = (row.get(feed_key) or {}).get(key) or {}
             worst = max(worst, float(entry.get("max_abs_diff") or 0.0))
-        if worst > FIRST_DIVERGENCE:
-            return {"layer": key, "max_abs_diff": worst}
-    return {"layer": None, "note": "no layer crossed the threshold on the engine's own pixels"}
+            floor = max(floor, float(row.get("bf16_floor") or 0.0))
+        if worst > max(FIRST_DIVERGENCE, 10 * floor):
+            return {"layer": key, "max_abs_diff": worst, "bf16_floor": floor, "feed": feed_key}
+    return {
+        "layer": None,
+        "feed": feed_key,
+        "note": "no layer crossed the threshold on this feed",
+        "bf16_floor": max((float(row.get("bf16_floor") or 0.0) for row in report["rows"]), default=0.0),
+    }
 
 
 def _write_report(out_dir: Path, report: dict[str, Any]) -> None:
     (out_dir / "probe-report.json").write_text(json.dumps(report, indent=1, default=str) + "\n", encoding="utf-8")
+    control = report.get("control") or {}
+    shared = report.get("first_divergent_layer") or {}
+    conflated = report.get("first_divergent_layer_engine_pixels") or {}
+    control_note = (
+        json.dumps({k: v for k, v in control.items() if k not in ("status", "reason", "how")})
+        if control.get("status") == "run"
+        else str(control.get("reason", ""))
+    )
     lines = [
         "# topk-embed-v1 GPU probe",
         "",
         f"- model: `{report['model']}` @ `{report['revision']}`",
         f"- engine image: `{report['engine_image']}`",
-        f"- first divergent layer (engine pixels): `{(report.get('first_divergent_layer') or {}).get('layer')}`",
+        f"- control (probe vectors vs the wave's recorded vectors): `{control.get('status')}` {control_note}",
+        f"- first divergent layer (shared-tensor feed): `{shared.get('layer')}` "
+        f"(max-abs-diff {shared.get('max_abs_diff')})",
+        f"- first divergent layer (engine-pixels feed, conflated): `{conflated.get('layer')}` "
+        f"(max-abs-diff {conflated.get('max_abs_diff')})",
         "",
-        "| pairs row | grid (engine) | E1 pixel max-abs-diff | first layer diff | E6 min cosine | E7 window |",
-        "|---|---|---|---|---|---|",
+        "| pairs row | doc | grid (engine) | E1 engine-vs-checkpoint | E1 best variant vs engine | "
+        "first layer (shared) | E6 min cosine | wave min | E7 first text layer |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for row in report["rows"]:
-        table = row.get("E2_tower_on_engine_pixels") or {}
+        table = row.get("E2_tower_on_reference_pixels") or {}
+        floor = float(row.get("bf16_floor") or 0.0)
         first = next(
-            (key for key in table if float((table[key] or {}).get("max_abs_diff") or 0.0) > FIRST_DIVERGENCE),
+            (
+                key
+                for key in table
+                if float((table[key] or {}).get("max_abs_diff") or 0.0) > max(FIRST_DIVERGENCE, 10 * floor)
+            ),
             "-",
         )
+        variants = row.get("E1_variants") or {}
+        best = None
+        for name, entry in variants.items():
+            value = (entry.get("vs_engine") or {}).get("max_abs_diff")
+            if value is not None and (best is None or value < best[1]):
+                best = (name, value)
         end = row.get("E6_end_to_end") or {}
-        cosine = (end.get("cosine_per_token") or {}).get("min")
-        window = row.get("E7_window") or {}
-        moved = None
-        if "before" in window and "with_window_disabled" in window:
-            moved = (window["before"].get("min"), window["with_window_disabled"].get("min"))
+        cosine = end.get("cosine_per_token") or {}
+        text_layers = row.get("E7_text_layers") or {}
+        first_text = next(
+            (
+                key
+                for key in text_layers
+                if float((text_layers[key] or {}).get("max_abs_diff") or 0.0) > max(FIRST_DIVERGENCE, 10 * floor)
+            ),
+            "-",
+        )
         lines.append(
-            f"| {row['pairs_index']} | {row.get('engine_grid_thw')} | "
-            f"{(row.get('E1_pixel_values') or {}).get('max_abs_diff')} | {first} | {cosine} | {moved} |"
+            f"| {row['pairs_index']} | {row.get('document_index')} | {row.get('engine_grid_thw')} | "
+            f"{(row.get('E1_pixel_values') or {}).get('max_abs_diff')} | "
+            f"{best[0] if best else '-'}: {best[1] if best else '-'} | {first} | "
+            f"{cosine.get('min')} | {cosine.get('wave_min_cosine')} | {first_text} |"
         )
     lines += ["", "## raw", "", "```json", json.dumps(report, indent=1, default=str), "```", ""]
     (out_dir / "probe-report.md").write_text("\n".join(lines), encoding="utf-8")
@@ -553,14 +765,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pairs", default="")
     parser.add_argument("--rows", default="")
     parser.add_argument("--image", default="")
+    parser.add_argument("--engine-pixels", default="")
     parser.add_argument("--recipe-dir", default=".")
     parser.add_argument("--reference-python", default="")
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--reference-device", default="cuda:1")
+    parser.add_argument("--gpu-memory-fraction", type=float, default=0.45)
+    parser.add_argument("--control-vectors", default="")
+    parser.add_argument("--wave-cosines", default="")
     parser.add_argument("--min-pixels", type=int, default=65536)
     parser.add_argument("--max-pixels", type=int, default=1310720)
     parser.add_argument("--image-token-id", type=int, default=248056)
     parser.add_argument("--max-model-len", type=int, default=8448)
     args = parser.parse_args(argv)
+    if args.wave_cosines:
+        path = Path(args.wave_cosines)
+        args.wave_cosines = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
     if args.side == "reference":
         return reference_side(args)
     if not args.pairs or not args.reference_python:
