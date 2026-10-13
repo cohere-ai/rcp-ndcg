@@ -2413,6 +2413,20 @@ def test_the_probe_records_a_forward_that_a_decorated_call_bypasses() -> None:
     assert module.forward.__self__ is module, "the module's own bound forward is back"
 
 
+def test_the_probe_compares_tensors_that_differ_only_by_a_singleton_dimension() -> None:
+    """vLLM's vision tower keeps a leading 1 on every block's output where the checkpoint's does not;
+    the comparison squeezes it and says so -- refusing to compare reads as "clean" (the trap the
+    missing tensors were).  A genuinely different shape still gets no elementwise comparison."""
+    probe = _probe_module()
+    squeezed = probe.stats(torch.ones(2, 1, 3), torch.ones(2, 3))
+    assert squeezed["max_abs_diff"] == 0.0 and squeezed["cosine"] == pytest.approx(1.0)
+    assert "singleton dimensions squeezed" in squeezed["note"]
+    assert squeezed["equal"] is False, "the raw tensors are not equal: only their data is"
+    differing = probe.stats(torch.ones(2, 3), torch.ones(2, 4))
+    assert differing.get("max_abs_diff") is None
+    assert differing["note"] == "shapes differ: no elementwise comparison"
+
+
 def test_the_probe_names_the_tensors_a_recording_missed() -> None:
     """A recording that missed modules says so (an absent tensor reads as "clean" in the tables)."""
     probe = _probe_module()

@@ -97,7 +97,14 @@ def sha256(value: Any) -> str:
 
 
 def stats(left: Any, right: Any) -> dict[str, Any]:
-    """The comparison of two tensors: shapes, dtypes, hashes, max/mean abs diff and cosine."""
+    """The comparison of two tensors: shapes, dtypes, hashes, max/mean abs diff and cosine.
+
+    A shape difference that is only singleton dimensions is squeezed for the elementwise comparison and
+    recorded in ``note``: vLLM's vision tower keeps a leading 1 on every block's output (its forward
+    does ``hidden_states.unsqueeze(1)`` before the blocks) where the checkpoint's returns the plain
+    ``[seq, hidden]``, and refusing to compare would read as "clean" -- the same trap the missing
+    tensors were.
+    """
     import numpy as np
 
     a = _numpy(left)
@@ -110,8 +117,13 @@ def stats(left: Any, right: Any) -> dict[str, Any]:
         "equal": bool(a.shape == b.shape and np.array_equal(a, b)),
     }
     if a.shape != b.shape:
-        out["note"] = "shapes differ: no elementwise comparison"
-        return out
+        squeezed_a = np.squeeze(a)
+        squeezed_b = np.squeeze(b)
+        if squeezed_a.shape != squeezed_b.shape:
+            out["note"] = "shapes differ: no elementwise comparison"
+            return out
+        out["note"] = "singleton dimensions squeezed for the comparison (vLLM keeps a leading 1)"
+        a, b = squeezed_a, squeezed_b
     diff = np.abs(a - b)
     out["max_abs_diff"] = float(diff.max()) if diff.size else 0.0
     out["mean_abs_diff"] = float(diff.mean()) if diff.size else 0.0
