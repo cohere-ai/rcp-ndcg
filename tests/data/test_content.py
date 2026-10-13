@@ -29,6 +29,16 @@ class TestMediaRef:
 
 
 class TestContent:
+    def test_the_module_docstring_uses_the_placeholder_bucket(self):
+        """AGENTS.md prescribes ``gs://YOUR-BUCKET/...``: a tracked file never names a real bucket."""
+        import inspect
+
+        import rcp_ndcg_core.content as content_module
+
+        doc = inspect.getdoc(content_module) or ""
+        assert "gs://YOUR-BUCKET/" in doc
+        assert "gs://bucket/" not in doc
+
     def test_text_only(self):
         content = Content.from_text("a passage")
         assert content.text == "a passage"

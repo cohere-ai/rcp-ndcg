@@ -14,7 +14,7 @@ Importing this module costs pydantic, nothing else, so it stays usable from the
 dependency-light public surface.
 
     >>> Content.from_text("a passage")
-    >>> page = Content.from_image("gs://bucket/doc/page_1.png", sha256="ab...")
+    >>> page = Content.from_image("gs://YOUR-BUCKET/doc/page_1.png", sha256="ab...")
     >>> page.has_media
     True
     >>> page.text
