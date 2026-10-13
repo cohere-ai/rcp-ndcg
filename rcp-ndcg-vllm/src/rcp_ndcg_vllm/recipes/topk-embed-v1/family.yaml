@@ -374,7 +374,7 @@ notes: |
 
   What the wave measured (the wave has run, eleven times: rc0-202610120045 .. rc0-202610131205-record;
   the per-token gate FAILED in every one of them -- status: failed above; the report is the wave's
-  EQUIVALENCE.md, and handover/reports/topkrun.md re-derives the numbers):
+  EQUIVALENCE.md, and the probe's own report re-derives the numbers):
   - Stage 1 PASSED (the render check, the engine /tokenize check and the engine prompt-tokens check:
     98 pairs / 20 sampled): the failing inputs are byte-identical on both sides, so the divergence
     has no input seed -- it is in the model's forward.
