@@ -156,10 +156,10 @@ def test_model_class_attributes_and_mapper() -> None:
 
 def test_registration_against_the_real_registry() -> None:
     import vllm
-    from rcp_ndcg_vllm.models.pplx import PLUGIN_ARCHITECTURE, register
+    from rcp_ndcg_vllm.models.pplx import PLUGIN_ARCHITECTURE, register_pplx
     from rcp_ndcg_vllm.models.version_guard import require_vllm_version
 
     version = require_vllm_version()
     assert version == (0, 31), f"the engine image pinned 0.31.x; found {vllm.__version__}"
-    register()
+    register_pplx()
     assert PLUGIN_ARCHITECTURE in vllm.ModelRegistry.get_supported_archs()

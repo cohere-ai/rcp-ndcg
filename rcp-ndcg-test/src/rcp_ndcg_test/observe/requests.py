@@ -88,7 +88,15 @@ the uncut content kinds, the wire variants, the MRL stratum and the protocol edg
 the MRL stratum: a declared head records one bare ``dimensions=k`` probe per declared ``k`` (the declared
 set, or a range's endpoints and the run's selection) instead of the hard-coded ``dimensions=32`` probe;
 version 3 adds the media set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``).  Two
-lanes bumped 2 for different plans; the merged plan is 3, so no two different plans share a version."""
+lanes bumped 2 for different plans; the merged plan is 3, so no two different plans share a version.
+
+The version is provenance, not a staleness key: it is recorded in the manifest and the record plan but
+never compared by a re-record selector, because the selectors key a corpus by the behaviour fingerprint,
+which deliberately excludes harness inputs (:mod:`rcp_ndcg_test.changes`, ``--changed-since``).  A plan
+change (a new probe stratum, a changed ladder) therefore neither moves a fingerprint nor invalidates a
+committed corpus: the release's re-record wave is what re-observes the new contexts.  That is a known
+limit, stated here rather than enforced, because enforcing it would fail every corpus recorded under an
+older plan before the wave replaces it."""
 
 SEED = "rcp-observe-v1"
 """The generator's human-facing seed string, part of :data:`GENERATOR_SEED`."""

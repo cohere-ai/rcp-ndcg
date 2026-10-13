@@ -614,10 +614,90 @@ def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> Non
         vec_min_cosine=0.999,
         tau_min=0.98,
         metrics_max_abs=2e-3,
-        embed_dtype="float16",
     )
     document = stage3_metrics(rankings_dir, gates)
     assert document["passed"] is True
+
+
+def _stage3_rankings(tmp_path: Path, *, served: dict[str, list[str]], reference: dict[str, list[str]]) -> Path:
+    """A rankings directory for stage 3: both systems' rankings and the dataset rows they were scored over."""
+    from rcp_ndcg.data import Rankings
+
+    rankings_dir = tmp_path / "rankings"
+    rankings_dir.mkdir()
+    Rankings.from_orders(served, system="served").save(rankings_dir / "toy.served.jsonl")
+    Rankings.from_orders(reference, system="reference").save(rankings_dir / "toy.reference.jsonl")
+    dataset = [
+        {
+            "query_id": "q1",
+            "query": "q1",
+            "doc_ids": ["a", "b", "c"],
+            "docs": ["A", "B", "C"],
+            "qrels": {"a": 1.0, "b": 0.5, "c": 0.1},
+        },
+        {
+            "query_id": "q2",
+            "query": "q2",
+            "doc_ids": ["a", "b", "c"],
+            "docs": ["A", "B", "C"],
+            "qrels": {"a": 0.2, "b": 0.9, "c": 0.0},
+        },
+    ]
+    (rankings_dir / "toy.dataset.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in dataset), encoding="utf-8"
+    )
+    return rankings_dir
+
+
+def _stage3_gates() -> ResolvedGates:
+    return ResolvedGates(
+        prob_p99_abs=0.02,
+        prob_max_abs=0.05,
+        logit_rel_abs=0.05,
+        cos_max_abs=0.01,
+        vec_min_cosine=0.999,
+        tau_min=0.98,
+        metrics_max_abs=2e-3,
+    )
+
+
+def test_stage3_fails_when_the_mean_ndcg_delta_exceeds_the_gate(tmp_path: Path) -> None:
+    """A served ranking that diverges from the reference moves the mean |delta nDCG@10| over the bound:
+    the gate row fails and the stage is red, so stage 3 is a check and not a report
+    (reviews/final-harness-glm53.md D4)."""
+    pytest.importorskip("rcp_ndcg")
+    rankings = _stage3_rankings(
+        tmp_path,
+        served={"q1": ["c", "b", "a"], "q2": ["c", "b", "a"]},
+        reference={"q1": ["a", "b", "c"], "q2": ["b", "a", "c"]},
+    )
+    document = stage3_metrics(rankings, _stage3_gates())
+    assert document["mean_abs_delta"] > 2e-3, document
+    assert document["passed"] is False
+    assert document["gates"][0]["passed"] is False and document["gates"][0]["bound"] == 2e-3
+
+
+@pytest.mark.parametrize("missing", ["reference", "dataset"])
+def test_stage3_refuses_a_missing_rankings_or_dataset_file(tmp_path: Path, missing: str) -> None:
+    """A missing file is a typed error naming it, never a zero: the gate must not pass on an absent
+    measurement (reviews/final-harness-glm53.md D4)."""
+    pytest.importorskip("rcp_ndcg")
+    from rcp_ndcg_test.errors import HarnessError
+
+    rankings = _stage3_rankings(tmp_path, served={"q1": ["a", "b", "c"]}, reference={"q1": ["a", "b", "c"]})
+    (rankings / f"toy.{missing}.jsonl").unlink()
+    with pytest.raises(HarnessError, match=f"toy.{missing}.jsonl"):
+        stage3_metrics(rankings, _stage3_gates())
+
+
+def test_stage3_refuses_a_summary_without_the_qrel_ndcg_row() -> None:
+    """The product's summary without the qrel_ndcg@10 row is an error, not a zero: a missing measurement
+    must never pass the gate (reviews/final-harness-glm53.md D4)."""
+    from rcp_ndcg_test.equivalence.metrics import _summary_value
+    from rcp_ndcg_test.errors import HarnessError
+
+    with pytest.raises(HarnessError, match="no qrel_ndcg@10 row"):
+        _summary_value([{"metric": "qrel_ndcg", "k": 5, "system": "served", "value": 0.5}], "toy", "served")
 
 
 class CountingWords:
@@ -1236,7 +1316,6 @@ def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> N
         "vec_min_cosine": 1.0 - 1e-3,
         "tau_min": 0.98,
         "metrics_max_abs": 2e-3,
-        "embed_dtype": "float16",
     }
     declared = recipe.model_copy(update={"gates": recipe.gates.model_copy(update={"tau_min": 0.5})})
     overridden = resolve_gates(declared)
@@ -1244,6 +1323,17 @@ def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> N
     assert overridden.model_dump(exclude={"tau_min"}) == gates.model_dump(exclude={"tau_min"}), (
         "one declared field overrides itself, not its neighbours"
     )
+
+
+def test_the_resolved_gates_carry_no_dead_transfer_precision() -> None:
+    """The vector gate compares the decoded vectors as they arrive; the client's transfer precision is
+    keyed by the fingerprint and is not re-applied here.  The stage applies no float16 cast, so the dead
+    ``embed_dtype`` field and the module docstring's cast claim must not stand
+    (reviews/final-harness-ds41.md D7)."""
+    from rcp_ndcg_test.equivalence import gates as gates_module
+
+    assert "embed_dtype" not in ResolvedGates.model_fields
+    assert "float16 cast" not in (gates_module.__doc__ or "")
 
 
 def test_a_zero_vector_pair_is_an_agreement_not_a_cosine_failure() -> None:

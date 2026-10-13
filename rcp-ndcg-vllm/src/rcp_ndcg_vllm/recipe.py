@@ -105,9 +105,10 @@ __all__ = [
     "serve_argv",
 ]
 
-_PINNED_VLLM_REF = "d0d6e5f3a"
-"""The upstream vLLM commit the PoolerConfig field list below was read at
-(the ``.refs/vllm`` checkout of the rcp-ndcg working copy; image ``vllm/vllm-openai:v0.31.0``)."""
+_PINNED_VLLM_REF = "v0.31.0"
+"""The upstream vLLM release the PoolerConfig field list below was read at (the shipped image's tag,
+``vllm/vllm-openai:v0.31.0``); a field that exists only past the tag is refused, because the engine's
+argparse/``TypeAdapter`` rejects it at CLI parse."""
 
 PINNED_POOLER_CONFIG_FIELDS = (
     "task",
@@ -115,7 +116,6 @@ PINNED_POOLER_CONFIG_FIELDS = (
     "seq_pooling_type",
     "tok_pooling_type",
     "use_activation",
-    "enable_flash_late_interaction",
     "dimensions",
     "enable_chunked_processing",
     "max_embed_len",
@@ -124,9 +124,10 @@ PINNED_POOLER_CONFIG_FIELDS = (
     "step_tag_id",
     "returned_token_ids",
 )
-"""Every field of vLLM's ``PoolerConfig`` at the pinned ref (read from
-``vllm/config/pooler.py`` at :data:`_PINNED_VLLM_REF`); ``serve.pooler_config`` keys are validated
-against this tuple, because the engine rejects unknown keys (r-vllm-drift risk 2)."""
+"""Every field of vLLM's ``PoolerConfig`` at the pinned release (``vllm/config/pooler.py`` at
+:data:`_PINNED_VLLM_REF`); ``serve.pooler_config`` keys are validated against this tuple, because the
+engine rejects unknown keys (r-vllm-drift risk 2).  ``enable_flash_late_interaction`` is deliberately
+absent: it exists at the tag's successor checkout, not at the shipped tag."""
 
 _ID_PATTERN = r"^[a-z0-9][a-z0-9.-]*$"
 _REVISION_PATTERN = r"^[0-9a-f]{40}$"
@@ -277,11 +278,12 @@ class ServeConfig(BaseModel):
     """Everything rendered into the ``vllm serve`` argv — nothing implicit.
 
     See :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``
-    and ``patches`` never reach the argv: the first two name packages that must be installed into the image
-    before the engine starts (a ``vllm.general_plugins`` package and the checkpoint's IO-processor plugin,
-    respectively; the node's bootstrap collects a wave's ``serve.plugin`` wheels with
+    and ``patches`` never reach the argv: ``plugin`` names the ``vllm.general_plugins`` pip package the
+    engine imports (the node's bootstrap collects a wave's ``serve.plugin`` wheels with
     ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff
-    guard); ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's
+    guard); ``io_processor_plugin`` names the checkpoint's IO-processor plugin, resolved through the
+    checkpoint's own config and recorded by the harness, never installed by name;
+    ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's
     engine runs (the behaviour fingerprint hashes exactly those modules), and ``patches`` names the engine
     patches this recipe opts into (``serve`` renders them into the engine's environment, and the fingerprint
     hashes every named module).
@@ -305,7 +307,7 @@ class ServeConfig(BaseModel):
     )
     trust_remote_code: bool = Field(default=False, description="vLLM --trust-remote-code flag")
     max_model_len: int = Field(gt=0, description="vLLM --max-model-len; at least every client budget")
-    dtype: Literal["auto", "float16", "bfloat16", "float32", "float8", "half"] = Field(description="vLLM --dtype")
+    dtype: Literal["auto", "half", "float16", "bfloat16", "float", "float32"] = Field(description="vLLM --dtype")
     plugin: str | None = Field(
         default=None, description="pip spec of a vllm.general_plugins package, installed before the engine starts"
     )
@@ -738,6 +740,17 @@ class Recipe(BaseModel):
                 f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint; a judge speaks "
                 "the chat completions API through the generate runner"
             )
+        if self.role == "embed" and self.serve.convert not in (None, "embed"):
+            raise ValueError(
+                f"serve.convert ({self.serve.convert}) serves a classify endpoint; an embed recipe's client "
+                "speaks the embeddings wire, so the served route would be one the client never calls -- "
+                "declare convert: embed, or drop it"
+            )
+        if self.role == "multi_vector" and self.serve.convert is not None:
+            raise ValueError(
+                f"serve.convert ({self.serve.convert}) serves an embed or classify endpoint; a multi_vector "
+                "recipe's client speaks the pooling wire over the checkpoint as it is -- drop serve.convert"
+            )
         if judge and self.serve.runner != "generate":
             raise ValueError(
                 f"a judge recipe serves the chat completions API, which needs runner: generate, got "
@@ -798,6 +811,7 @@ class Recipe(BaseModel):
             )
         _pixel_budgets_agree(self)
         _video_pixel_budgets_agree(self)
+        _video_sampling_agrees(self)
         _mrl_declarations_agree(self)
         _video_pruning_agrees(self)
         _document_skip_agrees(self)
@@ -871,6 +885,88 @@ def _video_pixel_budgets_agree(recipe: Recipe) -> None:
                 f"client's count describes a different clip (pin serve.mm_processor_kwargs: "
                 f"{{videos_kwargs: {{{serve_key}: {client_value}}}}})"
             )
+
+
+_VIDEO_SAMPLING_KEYS = ("num_frames", "fps", "max_frames")
+"""The engine-side video sampling keys: the ``--media-io-kwargs`` video scope's and the flat
+``serve.mm_processor_kwargs`` keys (``fps``/``max_frames`` are the embeddinggemma-2 processor's pin shape)."""
+
+
+def _video_sampling_pins(recipe: Recipe) -> dict[str, Any]:
+    """The engine's declared video sampling pins: ``--media-io-kwargs``'s video scope and the flat
+    ``serve.mm_processor_kwargs`` keys, refused when the two homes disagree.  Units: none."""
+    pins: dict[str, Any] = {
+        key: recipe.serve.mm_processor_kwargs[key]
+        for key in _VIDEO_SAMPLING_KEYS
+        if key in recipe.serve.mm_processor_kwargs
+    }
+    value = _flag_value(list(recipe.serve.extra_args), "--media-io-kwargs")
+    if value is not None:
+        try:
+            spec = json.loads(value)
+        except ValueError as error:
+            raise ValueError(f"serve.extra_args --media-io-kwargs {value!r} is not JSON: {error}") from error
+        video = spec.get("video") if isinstance(spec, dict) else None
+        if video is not None and not isinstance(video, dict):
+            raise ValueError(f"serve.extra_args --media-io-kwargs {value!r} must carry an object under 'video'")
+        for key in _VIDEO_SAMPLING_KEYS:
+            if not isinstance(video, dict) or key not in video:
+                continue
+            if key in pins and pins[key] != video[key]:
+                raise ValueError(
+                    f"serve pins video {key} twice with different values: --media-io-kwargs says "
+                    f"{video[key]!r}, serve.mm_processor_kwargs says {pins[key]!r}"
+                )
+            pins[key] = video[key]
+    return pins
+
+
+def _video_sampling_agrees(recipe: Recipe) -> None:
+    """The client's video sampling declaration and the engine's pin are the same rule.
+
+    A ``video_url`` policy counts the frames the ENGINE samples: ``client.video_policy.num_frames`` for a
+    pinned count, ``.fps`` for the engine's own rate.  The engine half is ``--media-io-kwargs``'s video
+    scope and/or the flat ``serve.mm_processor_kwargs`` keys ``num_frames``/``fps``/``max_frames`` (the
+    shipped embeddinggemma-2 shape pins ``fps`` beside ``max_frames`` to realize the declared
+    ``num_frames``).  Both directions are refused: a client declaration the serve pin does not carry, and
+    a serve pin the client does not declare.
+
+    Raises:
+        ValueError: a sampling pin in one half only, or a rule that differs between the halves.
+    """
+    policy = recipe.client.get("video_policy")
+    policy = policy if isinstance(policy, dict) else {}
+    pins = _video_sampling_pins(recipe)
+    pinned = ", ".join(f"{key} {value!r}" for key, value in sorted(pins.items()))
+    on_the_wire = policy.get("wire") == "video_url"
+    declared_frames = policy.get("num_frames") if on_the_wire else None
+    declared_fps = policy.get("fps") if on_the_wire else None
+    if declared_fps is not None:
+        if pins.get("fps") != declared_fps:
+            raise ValueError(
+                f"client.video_policy declares fps {declared_fps!r}, but serve pins "
+                f"{pinned or 'no video sampling'}: the engine's own sampling would decide, and the "
+                f"client's count describes a different clip (pin --media-io-kwargs "
+                f'\'{{"video": {{"fps": {declared_fps}}}}}\', or drop the declaration)'
+            )
+        return
+    if declared_frames is not None:
+        realizes = pins.get("num_frames") == declared_frames or (
+            pins.get("max_frames") == declared_frames and pins.get("fps") is not None
+        )
+        if not realizes:
+            raise ValueError(
+                f"client.video_policy declares num_frames {declared_frames!r}, but serve pins "
+                f"{pinned or 'no video sampling'}: the engine would sample a different frame set (pin "
+                f'--media-io-kwargs \'{{"video": {{"num_frames": {declared_frames}}}}}\' or the '
+                "fps+max_frames pair that realizes it, or drop the declaration)"
+            )
+        return
+    if pins:
+        raise ValueError(
+            f"serve pins video sampling ({pinned}), but client.video_policy declares none: the engine would "
+            "sample frames the client's count does not describe (declare the same rule, or drop the serve pin)"
+        )
 
 
 def _video_pruning_agrees(recipe: Recipe) -> None:

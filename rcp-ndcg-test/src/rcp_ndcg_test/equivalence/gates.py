@@ -3,9 +3,10 @@
 The defaults are the published tolerances for checking a served engine against the reference subprocess:
 probability-scale scores allow |delta| of 0.02 for 99% of documents and 0.05 for all, raw-logit scores allow
 |delta| of 0.05 * (1 + |reference score|), cosine-scale rerank scores allow |delta| of 0.01, vectors must agree
-with a cosine of at least 1 - 1e-3 per vector (per token for a late-interaction model, after the same float16
-cast), and the median per-query Kendall tau between served and reference scores must be at least 0.98.  A recipe's
-``gates`` section overrides any of them.
+with a cosine of at least 1 - 1e-3 per vector (per token for a late-interaction model; both sides are compared
+as decoded, and the client's transfer precision is part of the behaviour fingerprint), and the median per-query
+Kendall tau between served and reference scores must be at least 0.98.  A recipe's ``gates`` section overrides
+any of them.
 """
 
 from __future__ import annotations
@@ -36,7 +37,6 @@ class ResolvedGates(BaseModel):
         vec_min_cosine: Vectors: the cosine floor per vector (per token for a late-interaction model).
         tau_min: The median per-query Kendall tau floor between served and reference scores.
         metrics_max_abs: Stage 3: the mean |delta nDCG@10| over subsets.
-        embed_dtype: The transfer precision the vectors were compared in.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -48,7 +48,6 @@ class ResolvedGates(BaseModel):
     vec_min_cosine: float
     tau_min: float
     metrics_max_abs: float
-    embed_dtype: str
 
 
 def resolve_gates(recipe: Recipe) -> ResolvedGates:
@@ -62,7 +61,6 @@ def resolve_gates(recipe: Recipe) -> ResolvedGates:
         vec_min_cosine=overrides.vec_min_cosine if overrides.vec_min_cosine is not None else _VECTOR_MIN_COSINE,
         tau_min=overrides.tau_min if overrides.tau_min is not None else _TAU_MIN,
         metrics_max_abs=overrides.metrics_max_abs if overrides.metrics_max_abs is not None else _METRICS_MAX_ABS,
-        embed_dtype=str(recipe.client.get("embed_dtype", "float16")),
     )
 
 

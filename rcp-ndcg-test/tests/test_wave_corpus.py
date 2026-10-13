@@ -116,6 +116,39 @@ def test_an_abandoned_corpus_body_cannot_restart_the_engine(
     assert len(starts) == 1, "the abandoned body's restart must not start a fresh engine"
 
 
+def test_a_failed_corpus_step_is_not_published_to_the_changed_since_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wave whose observation-corpus step FAILED must not publish the recipe's behaviour fingerprint or
+    its engine version into ``wave.json``: the document is the ``--changed-since`` index, and a key for a
+    corpus that was never written makes the recovery wave skip the recipe as unchanged -- a recovery wave
+    can then report PASS with no corpus ever recorded (reviews/final-harness-ds41.md D1)."""
+    real_record_corpus = record_module.record_corpus
+
+    def failing_record_corpus(*args: object, **kwargs: object) -> dict:
+        raise RuntimeError("injected corpus failure")
+
+    monkeypatch.setattr(record_module, "record_corpus", failing_record_corpus)
+    first = _wave(tmp_path, record_corpus=True, out_dir=tmp_path / "wave1")
+    row = first["recipes"][0]
+    assert row["state"] == "failed"
+    assert "injected corpus failure" in (row["steps"]["observation_corpus"].get("error") or "")
+    # The fingerprint stays on the row for reporting, but the index map is for recorded corpora only.
+    assert row["behaviour_fingerprint"] == behaviour_fingerprint(load_recipe(RECIPES / "fixture-embed"))
+    assert first["fingerprints"] == {}
+    # The recovery wave must attempt the recipe again, never skip it as unchanged.
+    monkeypatch.setattr(record_module, "record_corpus", real_record_corpus)
+    second = _wave(
+        tmp_path,
+        record_corpus=True,
+        out_dir=tmp_path / "wave2",
+        changed_since_index=tmp_path / "wave1" / "wave.json",
+    )
+    assert second["skipped_unchanged"] == []
+    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint"]}
+    assert second["recipes"] and second["recipes"][0]["state"] == "verified"
+
+
 def test_changed_since_skips_the_unchanged_and_records_the_changed(tmp_path: Path) -> None:
     """--changed-since re-records only what moved (OBSERVATIONS-SPEC 7): an unchanged recipe is listed as
     skipped_unchanged and never served again; a changed fingerprint or a new engine version records again."""

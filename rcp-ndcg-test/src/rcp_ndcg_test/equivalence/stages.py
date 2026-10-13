@@ -2045,10 +2045,10 @@ def _reference_outputs(
     """The reference subprocess's outputs for the rows, written to a temporary file and parsed.
 
     With a ``store`` (owner decision 35 item 3) the output is content-addressed: an unchanged entry
-    (same family reference hash, variant revision, pairs hash, environment lock hash, device and dtype)
-    is reused, and a computed output is stored; the returned state records ``reused``/``computed``, the
-    fingerprint and the inputs that moved against the closest stored entry.  Without a store every call
-    runs the reference (``state: computed``, no fingerprint).
+    (same family reference hash, variant revision, pairs hash, environment lock hash, device, dtype and
+    client render block) is reused, and a computed output is stored; the returned state records
+    ``reused``/``computed``, the fingerprint and the inputs that moved against the closest stored entry.
+    Without a store every call runs the reference (``state: computed``, no fingerprint).
     """
     if reference_python == "":
         raise HarnessError("stage 2 needs --reference-python: the reference runs in its own environment")
@@ -2076,6 +2076,7 @@ def _reference_outputs(
                 model=recipe.model,
                 mode=mode,
                 reference=reference_of(recipe).model_dump(mode="json"),
+                client=recipe.client,
             )
             stored, changed = load_stored(store, key)
             if stored is not None:

@@ -294,6 +294,22 @@ def test_volatile_fields_never_count_as_nondeterminism() -> None:
     assert summary["derived"]["bodies_differ"] is False
 
 
+def test_a_one_sided_zero_vector_is_not_perfect_agreement() -> None:
+    """A vector that is zero in one sending and non-zero in another is a real nondeterministic emission:
+    the corpus's cosine must score it 0.0, the rule stage 2's ``_cosine`` applies to the identical
+    degenerate input (reviews/final-harness-glm53.md D3).  Both sides zero stays 1.0 (a contextual
+    model's empty-chunk branch pools the zero vector on both sides)."""
+    request = {"model": "m", "input": ["x"], "encoding_format": "float"}
+
+    def record(vector: list[float], rep: str) -> dict[str, Any]:
+        return _exchange("/v1/embeddings", request, {"data": [{"index": 0, "embedding": vector}]}, rep=rep)
+
+    one_sided = summarise_nondeterminism([record([0.0, 0.0], "same_process_1"), record([1.0, 0.0], "same_process_2")])
+    assert one_sided["summary"]["min_cosine"] == 0.0
+    both_zero = summarise_nondeterminism([record([0.0, 0.0], "same_process_1"), record([0.0, 0.0], "same_process_2")])
+    assert both_zero["summary"]["min_cosine"] == 1.0
+
+
 def test_no_repeated_request_means_no_tolerance() -> None:
     """Without a single request sent twice nothing was measured: the tolerance is declared unmeasured, not
     invented from the floors."""

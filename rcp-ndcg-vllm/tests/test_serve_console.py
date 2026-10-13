@@ -551,6 +551,19 @@ def test_the_plugin_declaration_is_mandatory_and_checked() -> None:
     assert declared.patches == ("pooling-full-context",)
 
 
+def test_an_io_processor_plugin_is_config_resolved_not_installed_by_name(tmp_path: Path) -> None:
+    """``serve.io_processor_plugin`` names the checkpoint's IO-processor plugin, resolved through the
+    checkpoint's own config and recorded by the harness (``jobs.plugins``), never an installed pip
+    distribution: the console must not refuse it with a pip install line
+    (reviews/final-vllm-ds41.md D6)."""
+    directory = _write_family(
+        tmp_path,
+        family="io-processor",
+        serve_extra="  io_processor_plugin: checkpoint-io-plugin",
+    )
+    assert run_console(["serve", str(directory), "--dry-run"]) == 0
+
+
 def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

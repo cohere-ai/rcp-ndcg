@@ -205,6 +205,28 @@ def test_stage2_vectors_report_every_text_the_client_changed(tmp_path: Path, cas
     assert document["passed"] is True, document["per_vector"][:2]
 
 
+@pytest.mark.parametrize("case", ["embed-frame-only", "embed-query-share"])
+def test_stage2_vectors_gate_an_over_cap_text_when_no_deviation_is_declared(tmp_path: Path, case: str) -> None:
+    """Without the declared deviation the changed text STAYS in the gates: the reference renders the uncut
+    input, so the served/reference divergence is a named gate failure, never a silent exclusion from the
+    verdict (the rerank path's equivalent is pinned; the vector path's was not --
+    reviews/final-harness-ds41.md D4)."""
+    recipe, over = _case(case, tmp_path)
+    pairs = write_pairs(tmp_path / "pairs.jsonl", [over, UNDER_CAP])
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        document = stage2_scores(_deviating(recipe, None), pairs, REFERENCE_PYTHON, base_url=engine.base_url)
+    finally:
+        engine.stop()
+    shape = "query" if case == "embed-query-share" else "document"
+    reported = {entry["referent"] for entry in document["over_cap"]["pairs"]}
+    assert reported == {f"row 0 {shape} 0"}, reported
+    assert document["over_cap"]["known_deviation"] is False
+    failed = [entry for entry in document["per_vector"] if entry.get("over_cap") and not entry["within"]]
+    assert failed, document["per_vector"][:4]
+    assert document["passed"] is False
+
+
 def test_the_rerank_audit_holds_every_document_span_to_its_declared_cap(tmp_path: Path) -> None:
     """H3 on the wire: the over-length samples (padded in the document span) ship within the declared cap, and
     a captured document span over it fails the audit, as a query span over its share does."""

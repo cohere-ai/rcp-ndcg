@@ -9,6 +9,8 @@
       "engine.min_version",
       "fingerprint_schema",
       "plugin_sha256.rcp_ndcg_vllm.models",
+      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2",
+      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx.config",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config",
@@ -22,8 +24,8 @@
       "serve.plugin",
       "serve.plugin_architectures"
     ],
-    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the template's anchor moved (first -> last_content): an over-cap cut keeps another edge; the rcp-fp/4 fingerprint rule adds engine.image, engine.min_version and the serve plugin/patches fields (metadata-only on their own; added 2026-10-09)",
-    "decided": "2026-10-07",
+    "reason": "the families' recipe changes (M2) moved behaviour-shaping inputs: the template's anchor moved (first -> last_content): an over-cap cut keeps another edge; the rcp-fp/4 fingerprint rule adds engine.image, engine.min_version and the serve plugin/patches fields (metadata-only on their own; added 2026-10-09); the plugin-code keying fix keys the embeddinggemma-2 package and config hook for every plugin recipe (PLUGIN_ENGINE_MODULES), which also moves plugin_sha256.rcp_ndcg_vllm.models (added 2026-10-13)",
+    "decided": "2026-10-13",
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
   },
   {
@@ -135,6 +137,8 @@
     "changed_inputs": [
       "client.instruction",
       "plugin_sha256.rcp_ndcg_vllm.models",
+      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2",
+      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx.config",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config",
@@ -147,8 +151,8 @@
       "serve.patches",
       "serve.plugin"
     ],
-    "reason": "the recipe-fix lane's declared changes (attention/head dtype, tokenizer sidecars, instruction, reference device, media/blank-document policies, patch opt-in) moved behaviour-shaping inputs under rcp-fp/4; re-record on the RC0 wave",
-    "decided": "2026-10-09",
+    "reason": "the recipe-fix lane's declared changes (attention/head dtype, tokenizer sidecars, instruction, reference device, media/blank-document policies, patch opt-in) moved behaviour-shaping inputs under rcp-fp/4; re-record on the RC0 wave; the plugin-code keying fix keys the embeddinggemma-2 package and config hook for every plugin recipe (PLUGIN_ENGINE_MODULES), which also moves plugin_sha256.rcp_ndcg_vllm.models (added 2026-10-13)",
+    "decided": "2026-10-13",
     "action": "re-record on the RC0 wave (python -m rcp_ndcg_test.changes changed lists it)"
   }
 ]
