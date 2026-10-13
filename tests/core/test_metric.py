@@ -169,6 +169,17 @@ def test_the_gain_producers_refuse_a_non_finite_theta() -> None:
         pass_probabilities(np.array([math.inf]), ITEMS)
 
 
+def test_the_docstrings_state_the_closed_interval_the_code_pins() -> None:
+    """The sigmoid saturates in float: ``pass_probabilities(-800)`` and ``(800)`` are exactly 0.0
+    and 1.0 (pinned below), so the docstrings' open ``(0, 1)`` claim was false."""
+    import inspect
+
+    for fn in (pass_probabilities, gain):
+        doc = inspect.getdoc(fn) or ""
+        assert "(0, 1)" not in doc, f"{fn.__name__} claims an open interval the sigmoid does not keep"
+        assert "[0, 1]" in doc, f"{fn.__name__} does not state the closed interval"
+
+
 def test_gain_increases_with_theta() -> None:
     thetas = np.linspace(-6, 6, 25)
     assert np.all(np.diff(gain(thetas, ITEMS)) > 0)

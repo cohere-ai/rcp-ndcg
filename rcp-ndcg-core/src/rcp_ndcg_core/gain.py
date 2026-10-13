@@ -106,9 +106,10 @@ def pass_probabilities(theta: float | ArrayLike, items: Any) -> NDArray[np.float
         items: Item parameters with ``gamma`` (dimensionless) and ``beta`` (logits) sequences.
 
     Returns:
-        ``sigmoid(gamma_c * (theta - beta_c))`` for each criterion ``c``, each in ``(0, 1)``: shape ``(C,)`` for a
-        scalar ``theta``, ``theta.shape + (C,)`` for an array. Scalars compute in float64 whatever dtype the
-        inputs arrive in.
+        ``sigmoid(gamma_c * (theta - beta_c))`` for each criterion ``c``, each in ``[0, 1]``: the sigmoid
+        underflows to exactly 0 or 1 when ``gamma_c * (theta - beta_c)`` passes about 745 (the pinned
+        ``-800``/``800`` cases). Shape ``(C,)`` for a scalar ``theta``, ``theta.shape + (C,)`` for an array.
+        Scalars compute in float64 whatever dtype the inputs arrive in.
 
     Raises:
         ValueError: a ``theta`` value is not finite, or the item parameters are malformed.
@@ -144,7 +145,8 @@ def gain(theta: float | ArrayLike, items: Any) -> float | NDArray[np.float64]:
         items: Item parameters with ``gamma`` and ``beta`` sequences; ``sum(gamma) > 0``.
 
     Returns:
-        The gain in ``(0, 1)``: a float for a scalar ``theta``, an array of ``theta``'s shape otherwise.
+        The gain in ``[0, 1]`` (the discrimination-weighted mean of the pass probabilities; exactly 0 or 1
+        where they saturate): a float for a scalar ``theta``, an array of ``theta``'s shape otherwise.
         Scalars compute in float64 whatever dtype the inputs arrive in.
 
     Raises:
