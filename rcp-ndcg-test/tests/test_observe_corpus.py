@@ -427,6 +427,22 @@ def _kept_rule_record(*, vectors: int, skip: list[int], ids: list[int]) -> dict[
     return record
 
 
+def _equivalence_exchange(record: dict[str, Any]) -> dict[str, Any]:
+    """One corpus record as the equivalence stage's captured exchange of the same request (the same bytes,
+    so the check pairs them by ``exchange_id``)."""
+    request, response = record["request"], record["response"]
+    return {
+        "url": "http://engine" + request["path"],
+        "method": request["method"],
+        "request_bytes": base64.b64encode(json.dumps(request["body_parsed"]).encode("utf-8")).decode("ascii"),
+        "request_body": request["body_parsed"],
+        "status": response["status"],
+        "headers": dict(response["headers"]),
+        "response_bytes": base64.b64encode(json.dumps(response["body_parsed"]).encode("utf-8")).decode("ascii"),
+        "response_json": response["body_parsed"],
+    }
+
+
 def test_a_kept_rule_reply_is_checked_against_the_declared_kept_count(tmp_path: Path) -> None:
     """pplx-embed-v2-late's engine-side document skip rule (E2 round-10: ``the /pooling reply reports 165
     prompt token(s) but its vectors decode to 152``): the served plugin drops the rule's positions, so the
@@ -451,6 +467,15 @@ def test_a_kept_rule_reply_is_checked_against_the_declared_kept_count(tmp_path: 
     neither = _synthetic_corpus(tmp_path / "neither", [_kept_rule_record(vectors=5, skip=skip, ids=ids)], recipe=block)
     check = _checks(verify_corpus(neither))["scores_finite_and_vector_widths"]
     assert check["passed"] is False and any("carries 5 token vector(s)" in m for m in check["mismatches"]), check
+    # The equivalence stage's own exchange of the same request stays consistent: its candidate record carries
+    # no /tokenize ids of its own, so the stored record's declared counts must decode BOTH sides (a candidate
+    # decoded without them would lose its vectors and read as a mismatch).
+    record = _kept_rule_record(vectors=4, skip=skip, ids=ids)
+    consistent = _synthetic_corpus(tmp_path / "consistent", [record], recipe=block)
+    check = _checks(verify_corpus(consistent, equivalence_exchanges=[_equivalence_exchange(record)]))[
+        "equivalence_consistent"
+    ]
+    assert check["passed"] is True, check
 
 
 def test_the_recorder_records_the_engine_ids_of_each_sent_render(tmp_path: Path) -> None:

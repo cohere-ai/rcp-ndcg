@@ -705,7 +705,6 @@ def _consistency(
     tolerance = derived.get("abs_tolerance") if derived.get("measured") else 0.0
     recipe_block = corpus.manifest.get("recipe") or {}
     dim = recipe_block.get("declared_dim")
-    kept_of = lambda record: declared_kept_counts(record, recipe_block)  # noqa: E731 - one home, per record
     by_id: dict[str, dict[str, Any]] = {}
     for row in corpus.records:
         by_id.setdefault(str(row.get("exchange_id")), row)
@@ -731,6 +730,12 @@ def _consistency(
                 f"{candidate['exchange_id']}: status {response.get('status')} vs {stored['response'].get('status')}"
             )
             continue
+        # The kept counts belong to the REQUEST (the same exchange_id), and the equivalence exchange carries
+        # no /tokenize ids of its own: the stored record's declared counts are the candidate's too, so both
+        # sides decode the served rule the same way (a candidate decoded without them would silently lose its
+        # vectors and read as a mismatch).
+        kept = declared_kept_counts(stored, recipe_block)
+        kept_of = (lambda _record, counts=kept: counts) if kept is not None else None  # noqa: E731 - one declaration
         ours, theirs = _comparable(stored, dim, kept_of), _comparable(candidate, dim, kept_of)
         worst = max((abs(ours[key] - theirs[key]) for key in set(ours) & set(theirs)), default=0.0)
         if set(ours) != set(theirs) or worst > float(tolerance or 0.0):
