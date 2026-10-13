@@ -399,9 +399,10 @@ def text_vectors(model: Any, texts: list[str], *, prompt: str) -> Any:
 
 
 def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str) -> dict[str, Any]:
-    """Stage 2's reference side: the card's own sentence-transformers path -- ``encode`` with
-    ``prompt_name="SearchQuery"`` / ``"Document"``, one L2-normalised 768-d vector per side (media rows
-    included: :func:`side_input`). A media batch carries the declared video pin
+    """Stage 2's reference side: the card's own paths -- the checkpoint's own tokenizer for a text-only
+    side (:func:`text_vectors`) and ``encode`` with ``prompt_name="SearchQuery"`` / ``"Document"`` for a
+    media conversation -- one L2-normalised 768-d vector per side (media rows included:
+    :func:`side_input`). A media batch carries the declared video pin
     (:func:`video_processing_kwargs`), so the checkpoint's processor samples a container exactly as the
     engine does."""
     _refuse_old_media_columns(pairs)
