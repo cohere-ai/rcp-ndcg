@@ -274,7 +274,9 @@ class Content(RootModel[list[Part]]):
         text parts staying in their places around the media), and the newlines joining
         text parts count: the result's :attr:`text` is a verbatim prefix of this one's
         (a cut that ends on a joining newline drops it). An empty text part keeps its
-        joining newline: the cut is a prefix of the joined text, empty parts included.
+        joining newline: the cut is a prefix of the joined text, empty parts included,
+        and content whose text parts are all empty is cut the same way (its text is the
+        joining newlines alone, and a cut to nothing drops them).
 
         Raises:
             ValueError: ``max_chars`` is negative (a caller bug; ``0`` legitimately cuts to nothing).
@@ -284,7 +286,7 @@ class Content(RootModel[list[Part]]):
                 f"max_chars must be 0 or a positive number of characters (None keeps the text), got {max_chars}"
             )
         full = self.text
-        if max_chars is None or not self.has_text or max_chars >= len(full):
+        if max_chars is None or max_chars >= len(full):
             return self
         text_parts = [part.text for part in self.root if isinstance(part, TextPart)]
         pieces = iter(split_text_across_parts(text_parts, full[:max_chars]))
