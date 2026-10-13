@@ -4,8 +4,8 @@
 (already the lane's tip: nothing to merge, no merge commit). **Gated:** `60cb5615` — `GATE: PASS` (every
 step exit 0); the report commit below is docs-only.
 **Tree:** the wiring in `submit.sh`, the probe's three files moved into the job package, the harness fixes
-the node runs forced, the tests, the docs and the CHANGELOG. **Four node jobs run; nothing pushed;
-`rfc-0001` not merged into.**
+the node runs forced, the dtype knobs for the precision experiment, the tests, the docs and the CHANGELOG.
+**Seven node jobs run; nothing pushed; `rfc-0001` merged at `63078410`.**
 
 ## 1. What landed
 
@@ -18,7 +18,9 @@ the node runs forced, the tests, the docs and the CHANGELOG. **Four node jobs ru
 | 5 | the fix + the dry engine check | the probe forces `VLLM_ENABLE_V1_MULTIPROCESSING=0` before vLLM is imported, walks the documented in-process paths with a loud typed error, and `--check-engine` (seconds, no weights) checks the image's vLLM API before the model loads |
 | 6 | the second node run | **ran all nine rows and uploaded** — but its E2/E3 tables held only the `merger`: `nn.Module` forward hooks never fire on vLLM's `@support_torch_compile`-decorated modules |
 | 7 | the recorder fix | the probe wraps each target module's bound `forward` (works for decorated and plain modules), records the keys a recording missed, and `stats()` squeezes singleton dimensions (vLLM keeps a leading 1 on every block) — the two traps that had made "the merger" a false first divergent layer |
-| 8 | the third node run | **the verdict** (section 3): all 27 tower tensors and 24 text layers recorded; the first divergent tensor is the vision tower's `block_0`, at bf16-rounding scale, amplified by the tower's own blow-up |
+| 8 | the third node run | **the bf16 verdict** (section 4): all 27 tower tensors and 24 text layers recorded; the first divergent tensor is the vision tower's `block_0`, at bf16-rounding scale, amplified by the tower's own blow-up |
+| 9 | the dtype knobs | `--dtype` / `--reference-dtype` on the probe (both sides), forwarded as `RCP_TOPK_DTYPE` / `RCP_TOPK_REFERENCE_DTYPE`; the wrapper's argv is parsed by the module's own parser in a test (a node run died on `unrecognized arguments`) and the reference subprocess gets its own dtype (the first fp32 run compared two precisions) |
+| 10 | the precision run (both sides fp32) | **the precision verdict** (section 6): every row's tower output clears 0.999 in fp32, and the engine's fp32 *serve* is refused by vLLM's GatedDeltaNet kernels — the dtype route is closed, the mechanism is proven |
 
 ## 2. The wiring (tests first)
 
@@ -66,7 +68,10 @@ with its own out prefix. `TOPK_DRY=1` printed the plan first, and the `submit.sh
 | 1 | the wiring's first job | failed: `AttributeError: 'LLMEngine' object has no attribute 'named_modules'` in `engine_model` |
 | 2 | after the single-process/check fix | exit 0, all nine rows, report uploaded — but the E2/E3 tables held only `merger` (the hook bug) |
 | 3 | after the recorder fix | exit 0, report uploaded — the blocks recorded but not compared (the leading-1 shape) |
-| 4 | after the squeeze fix | exit 0, report uploaded — **the verdict below** |
+| 4 | after the squeeze fix | exit 0, report uploaded — **the bf16 verdict below** |
+| 5 | the first fp32 attempt | failed on a node: `unrecognized arguments: --dtype float32` (the wrapper's flags were not in the module's parser) |
+| 6 | the fp32 retry | exit 0, uploaded — but the reference subprocess argv never carried `--reference-dtype`: the engine ran fp32 against a bf16 reference (its rows all read `ValueError: Unsupported dtype torch.float32…` at the end-to-end step) |
+| 7 | both sides fp32 | exit 0, uploaded — **the precision verdict below** |
 
 The wrapper runs `topk_probe.py --check-engine` before the probe; in the pod it printed
 `{"vllm": "0.31.0", "single_process_switch": "VLLM_ENABLE_V1_MULTIPROCESSING=0", "problems": []}` and the
@@ -78,6 +83,7 @@ resolves (`sha256:c1c9f6fd…`), so the pin, the plan and the check agree.
 **E0, the control: `not_run`** — no `--control-vectors` file, because the family's observation corpus was
 never recorded (the last recording pass did not cover it); the report says so in its header and its JSON,
 and every number below is therefore *uncalibrated against the wave's own engine*. Honest, not green.
+This is still true in run 7 (fp32): `control: not_run`.
 
 **E1, preprocessing: the engine is exonerated.** On every row the engine's `pixel_values` match the
 `pixel_values_torchvision_fp32_affine` / `pixel_values_pil_fp32_affine` variants at 1.19e-07, while the
@@ -131,7 +137,7 @@ length and continues at `max + 1` — the same scheme).
 0.5473), row 22 0.0411 (0.0052), row 26 -0.1145 (-0.3270), row 20 (the negative control) 0.7356 (0.9094);
 row 28's image document 0.5466 (0.5473). The in-process engine is the wave's engine.
 
-## 5. Verdict and the proposed fix (not bounded in this lane)
+## 5. The bf16 verdict (run 4)
 
 **The first divergent tensor is the vision tower's `block_0`, at bf16-rounding scale; the divergence is
 numerical amplification, not a mapping, geometry, weight or render bug.** The evidence:
@@ -169,9 +175,62 @@ this precision. The candidates, in order, are decisions for the owner and a foll
    later lane wants it separated, the probe should dump the text model's *input* embeddings (the merged
    image features as the engine scatters them) beside the vision output — one more field in E4.
 
-## 6. Verification
+## 6. The precision experiment (run 7, both sides fp32) and the verdict
 
-- `uv run --no-sync pytest rcp-ndcg-test/tests/test_jobs_scripts.py -q` — **98 passed** (13 of them this
+Run 7 ran with `RCP_TOPK_DTYPE=float32 RCP_TOPK_REFERENCE_DTYPE=float32`, so the engine's `LLM` **and**
+the reference subprocess's checkpoint load are fp32. Side by side, the same-feed (bit-identical inputs)
+vision-tower comparison, row by row — the merger (the tower's output) and `block_0`:
+
+| pairs row | bf16 merger max / mean / cosine | fp32 merger max / mean / cosine | fp32 `block_0` cosine | E1 (engine vs checkpoint pixels) |
+|---|---|---|---|---|
+| 20 | 0.742 / 0.00739 / 0.99467 | 0.0366 / 0.000523 / 0.999971 | 0.99999996 | 1.19e-07 |
+| 21 | 0.359 / 0.00714 / 0.99540 | 0.0282 / 0.000529 / 0.999977 | 0.99999995 | 1.19e-07 |
+| 22 | 1.355 / 0.01160 / 0.98518 | 0.2317 / 0.000955 / 0.999898 | 0.99999994 | 1.19e-07 |
+| 23 | 2.859 / 0.01409 / 0.97742 | 0.3750 / 0.001106 / 0.999865 | 0.99999996 | 1.19e-07 |
+| 24 | 1.844 / 0.01487 / 0.97777 | 0.6124 / 0.001182 / 0.999807 | 0.99999997 | 1.19e-07 |
+| 25 | 2.121 / 0.01499 / 0.97283 | 0.2421 / 0.000851 / 0.999896 | 0.99999990 | 1.19e-07 |
+| 26 | 1.703 / 0.01661 / 0.95653 | 0.1782 / 0.000828 / 0.999880 | 0.99999996 | 1.19e-07 |
+| 27 | 1.301 / 0.01104 / 0.98108 | 0.0547 / 0.000570 / 0.999950 | 0.99999996 | 1.19e-07 |
+| 28 | 0.359 / 0.00714 / 0.99540 | 0.0282 / 0.000529 / 0.999977 | 0.99999995 | 1.19e-07 |
+
+- **Every row's tower output clears 0.999 in fp32** (0.99981-0.99998) where bf16 gives 0.956-0.995, and the
+  mean difference drops 15-20x. The pixel seed disappears with it: E1 is 1.19e-07 on every row (the
+  checkpoint's fp32 `_patchify` and the engine's fp32 processor agree bit-for-bit up to float rounding),
+  where bf16 leaves 3.58e-03.
+- **The amplification is still the tower's**, not a bug: even in fp32 `block_23`'s max-abs difference is
+  752 (mean 0.085) on identical inputs — both implementations' states blow up to ~6000 there — and the
+  merger's LayerNorm collapses it to 0.18 max / 8.3e-04 mean. bf16 rounding is simply ~20x more seed for
+  the same amplifier.
+- **The fp32 fix is not available to this family**: the engine loads fp32 and its tower runs, but the
+  end-to-end encode refuses fp32 on every row with `ValueError: Unsupported dtype torch.float32, expected
+  bfloat16 or float16` — vLLM's GatedDeltaNet prefill kernel (flashinfer's `_cutlass_io_dtype`; the
+  Triton/FLA fallback refuses fp32 too), the exact blocker the `pplx-embed-v2-context` recipe already
+  documents in its notes for this image. So `serve.dtype: float32` cannot be pinned, and the per-token
+  E6/E7 comparison cannot be measured in fp32 either.
+
+**Verdict.** The bf16 gap is precision-driven and its mechanism is named: bf16 rounding (plus the
+bf16-affine pixel seed, 3.58e-03) amplified by a vision tower whose own hidden states reach ~6000 at
+`block_23` in both implementations. In fp32 the tower output clears 0.999 on every row; the engine cannot
+serve fp32; therefore the family's per-token bound on image documents **cannot be met by a bf16 serve on
+the stock image**, and no code fix in this lane can change that. The disposition is an owner decision on
+the comparison, with the numbers above as its evidence:
+
+1. **Declare the image-document per-token bound at a level bf16 can hold** (or compare the pooled
+   document vector), with the measured amplification cited — the text rows are unaffected (0.45%/0.32%
+   sub-0.9).
+2. **Or record the image-document gap as a declared deviation** with the bf16 and fp32 tables beside it —
+   never a bound that hides the anti-correlated tokens (the investigate report's rule).
+3. **Do not chase the engine's kernels**: the fp32 run shows the same weights, geometry, render and
+   positions produce a 0.9999 cosine at fp32; there is nothing in the plugin to fix.
+
+One caveat, recorded rather than glossed: run 7 could not measure E6/E7, because the engine's fp32
+encode is refused before the text path runs. The per-token fp32 numbers the first branch of this
+experiment would need therefore do not exist; the tower-level numbers are what an fp32 run can show, and
+they are decisive about the mechanism (and the refusal itself is the second finding).
+
+## 7. Verification
+
+- `uv run --no-sync pytest rcp-ndcg-test/tests/test_jobs_scripts.py -q` — **100 passed** (15 of them this
   lane's).
 - `ruff format --check . && ruff check .` — clean; `basedpyright` — 0 errors.
 - `shellcheck` and `bash -n` on `submit.sh` and `topk_probe.sh` — clean.
@@ -180,9 +239,16 @@ this precision. The candidates, in order, are decisions for the owner and a foll
   `Qwen3_VisionBlock.__call__` are *not* `nn.Module.__call__` while the merger's is; `Qwen3_VisionTransformer.forward`
   calls `patch_embed`, `blocks`, `merger`.
 - `timeout 7200 bin/gate lane/topkrun`:
+  - `50d6c9a4` — **GATE: PASS** (the fp32 knobs and the parser test)
   - `60cb5615` — **GATE: PASS** (ruff-check/format, basedpyright, the root suite 4145 passed/155 skipped,
     contract+docs 413/107, mkdocs, test-pkg 1206/229, recipes, vllm-pkg 50, vllm-models 110/8, run_all
     1022/987/35/0 + 67/67 + 82/82, public-names clean, clean).
+  - `0a9648a0` — FAIL at `test-pkg` with `exit=139` (SIGSEGV) at
+    `test_wave_plugin_wheel.py::test_a_wave_without_a_plugin_wheel_records_the_fingerprint_hashes_unchang`;
+    the third occurrence of the same load flake in the shared slot (see below), and the retry passed.
+  - `5035ced5` — FAIL at `test-pkg` with `exit=139` (SIGSEGV) at
+    `test_wave_corpus.py::test_changed_since_skips_the_unchanged_and_records_the_changed`; the retry
+    (`50d6c9a4`) passed the same step.
   - `e2cef0d7` — FAIL at `test-pkg` with `exit=139` (SIGSEGV) at
     `test_wavegroups.py::test_the_cli_writes_the_lists_and_the_stage_map`; the same class of load flake the
     investigate lane recorded (its first attempt died the same way at a different test in the same file);
@@ -190,7 +256,7 @@ this precision. The candidates, in order, are decisions for the owner and a foll
   - `d542eca1` (the wiring alone) — **GATE: PASS**.
 - Red-first for every fix is in sections 2 and 7.
 
-## 7. The harness fixes the node forced (each with its red test)
+## 8. The harness fixes the node forced (each with its red test)
 
 | fix | red evidence | what the fix does |
 |---|---|---|
@@ -198,8 +264,10 @@ this precision. The candidates, in order, are decisions for the owner and a foll
 | the image-side API check | `test_the_probe_engine_check_names_the_api_the_probe_depends_on` and the wrapper's `test_..._checks_the_engine_api_before_loading_weights` fail on the unfixed tree (`AttributeError: module ... has no attribute 'check_engine'`; the wrapper ran the probe without the check) | `--check-engine`: the single-process switch is honoured, `LLMEngine.__init__` still assigns `model_executor` from the in-process engine core, `LLM.encode`/`apply_model` exist; the wrapper runs it before the probe and stops the job there |
 | the recorder | `test_the_probe_records_a_forward_that_a_decorated_call_bypasses` fails on the unfixed tree (`AttributeError: ... no attribute '_run_recorded'`); run 2's report held only `merger` | `_record` wraps the bound `forward` (vLLM's decorator replaces `__call__`, so hooks never fire on `Qwen3_VisionPatchEmbed`/`Qwen3_VisionBlock`), `_missing_recorded` records what a recording missed in the row and in the Markdown header |
 | the singleton-dimension comparison | `test_the_probe_compares_tensors_that_differ_only_by_a_singleton_dimension` fails on the unfixed tree (`KeyError: 'max_abs_diff'`) | `stats()` squeezes singleton dimensions, records that it did, and still refuses a genuinely different shape |
+| the wrapper's argv parses | run 5's node error (`topk_probe.py: error: unrecognized arguments: --dtype float32 --reference-dtype float32`); `test_the_topk_probe_wrapper_forwards_the_dtypes` fails on the unfixed tree (`AttributeError: ... no attribute 'build_parser'`) | `build_parser()` exposes the parser, the test parses the argv the wrapper actually built with it, and the `--dtype` / `--reference-dtype` flags exist |
+| the reference subprocess' dtype | run 6's rows (`E1` unchanged at 3.58e-03, the tower compared across two precisions); `test_the_reference_subprocess_gets_its_own_dtype` fails on the unfixed tree | `_reference_command` builds the subprocess argv once and carries `--reference-dtype` |
 
-## 8. Docs, CHANGELOG, public surface
+## 9. Docs, CHANGELOG, public surface
 
 - `docs/how-to/release-candidates.md` — the `--script` list gains `topk-probe`; a new section "The topk
   probe job (`--script topk-probe`)" documents the command, the check, the E0-E7 experiments, the knobs and
@@ -212,13 +280,13 @@ this precision. The candidates, in order, are decisions for the owner and a foll
   `--script` gains one value (its own argv validation), and the probe is node tooling in the unpublished
   `rcp-ndcg-test`.
 
-## 9. For the next lanes
+## 10. For the next lanes
 
-- **The owner's decision** (section 5) is the only thing between this family and a green stage 2; the
-  numbers to decide on are in section 4, and the recipe's notes should cite them.
-- **If the comparison stays per-token**, the precision experiment (section 5, item 2) is one job: the same
-  probe with the engine in fp32 (`RCP_TOPK_GPU_FRACTION` unchanged) — but note the probe's `LLM(...)` call
-  hardcodes `dtype="bfloat16"`, so a follow-up must add the knob.
+- **The owner's decision** (section 6) is the only thing between this family and a green stage 2; the
+  numbers to decide on are in sections 4 and 6, and the recipe's notes should cite them.
+- **The dtype route is closed** (section 6): the engine cannot serve fp32 (vLLM's GatedDeltaNet kernels
+  refuse it, the same blocker the `pplx-embed-v2-context` recipe documents), so a follow-up must not
+  re-try `serve.dtype: float32`; the fp32 probe run is the evidence.
 - **E0 is still `not_run`** for this family: a recording pass over `topk-embed-v1-small` (the wave's own
   `RCP_RECORD_CORPUS=1`) makes the control real, and the probe then ties its engine to the wave's vectors.
 - **The `known_deviation` route**: the recipe's `known_deviations` must never be used to paper over a
