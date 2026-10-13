@@ -31,11 +31,15 @@ inputs:
       sha256: d5dbaf44564c60922cf9db255613253cd230acb9f3af7d7d3779e7c3b4e97f21
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.470146874050664
+    - 0.5285906916481227
+  - - 0.5133608404713758
+    - 0.5469573954979416
   tolerance:
     abs: 0.02
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'Documents over max_tokens 8192, distinct slices of the generator stream at the same target token
   count: the client cuts each document''s content and re-attaches the anchor, so every row keeps 8192
   rendered ids. Generated long/medium inputs were built once by a seeded generator (never generated at
@@ -54,4 +58,4 @@ notes: 'Documents over max_tokens 8192, distinct slices of the generator stream 
   content into one token (e.g. '':M''), so every rendered count below is measured, never derived; the
   rendered document shape is content + anchor. Measured: q1 = 30 rendered ids, q2 = 30 rendered ids, d1
   = 9000 rendered ids, 8192 after the cut, 109.9% of the 8192 budget, d2 = 9001 rendered ids, 8192 after
-  the cut, 109.9% of the 8192 budget.'
+  the cut, 109.9% of the 8192 budget. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'

@@ -67,11 +67,19 @@ inputs:
       sha256: 7e83e4740bd4ad9a984c0274f6931f3c292851a8026b8256ed0e0830bbd60cd8
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.7606553676857475
+    - 0.10336703691522246
+    - 0.15111651968281103
+    - 0.1631234337236831
+  - - 0.07774432969941954
+    - 0.046199037338356494
+    - 0.05229779609029221
+    - 0.07635553925545902
   tolerance:
     abs: 0.02
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: 'One batch mixing short, medium and over-budget lengths (8 to 9000 rendered ids): only the over-budget
   row is cut, per row. Generated long/medium inputs were built once by a seeded generator (never generated
   at test time; the exact texts are embedded verbatim in this file): Python random.Random(20251006) (Mersenne
@@ -89,4 +97,4 @@ notes: 'One batch mixing short, medium and over-budget lengths (8 to 9000 render
   content into one token (e.g. '':M''), so every rendered count below is measured, never derived; the
   rendered document shape is content + anchor. Measured: q1 = 27 rendered ids, q2 = 29 rendered ids, d1
   = 8 rendered ids, d2 = 299 rendered ids, d3 = 499 rendered ids, d4 = 9000 rendered ids, 8192 after the
-  cut, 109.9% of the 8192 budget.'
+  cut, 109.9% of the 8192 budget. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'

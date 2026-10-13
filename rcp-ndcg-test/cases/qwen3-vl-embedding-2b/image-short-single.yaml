@@ -17,10 +17,11 @@ inputs:
       image: media/stand_in.png
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.33125733553549214
   tolerance: {abs: 0.002}
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: >-
   Generated image/short cell: one text query, one image document (media/stand_in.png, 934x612,
   synthetic via media/make_media.py - no third-party material). At the recipe's pixel budget
@@ -29,4 +30,4 @@ notes: >-
   override - image-text-long-over does, with media/page.png. One image per prompt (limit_mm_per_prompt).
   Wave: send the image through the chat-messages shape (image_url part; research report section 3) and
   run the R20 probe-image prompt-token check; tokenizer revision
-  9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared bf16 margin.
+  9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared bf16 margin. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).

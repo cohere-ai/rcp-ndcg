@@ -25,10 +25,18 @@ inputs:
     text: Photosynthesis draws carbon dioxide from the atmosphere.
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.7634153810968649
+    - 0.711250517234392
+    - 0.07436311953363295
+    - 0.10537164871797566
+  - - 0.07875077260558572
+    - 0.06510983771265569
+    - 0.6911720275384037
+    - 0.5682925326987619
   tolerance:
     abs: 0.02
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: |-
-  Two queries of near-equal length, four documents of near-equal length: a uniform short batch. Inputs are embedded verbatim in this file (never generated at test time). Rendered lengths measured with the recipe's tokenizer (client.tokenizer: Qwen/Qwen3-Embedding-0.6B @ 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3); the rendered query shape is the 19-id frame (Instruct: ... Query:) + the query content + the post-processor anchor (id 151643), except that the frame's trailing colon fuses with a capital first letter of the content into one token (e.g. ':M'), so every rendered count below is measured, never derived; the rendered document shape is content + anchor. Measured: q1 = 27 rendered ids, q2 = 29 rendered ids, d1 = 8 rendered ids, d2 = 10 rendered ids, d3 = 10 rendered ids, d4 = 10 rendered ids.
+  Two queries of near-equal length, four documents of near-equal length: a uniform short batch. Inputs are embedded verbatim in this file (never generated at test time). Rendered lengths measured with the recipe's tokenizer (client.tokenizer: Qwen/Qwen3-Embedding-0.6B @ 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3); the rendered query shape is the 19-id frame (Instruct: ... Query:) + the query content + the post-processor anchor (id 151643), except that the frame's trailing colon fuses with a capital first letter of the content into one token (e.g. ':M'), so every rendered count below is measured, never derived; the rendered document shape is content + anchor. Measured: q1 = 27 rendered ids, q2 = 29 rendered ids, d1 = 8 rendered ids, d2 = 10 rendered ids, d3 = 10 rendered ids, d4 = 10 rendered ids. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).

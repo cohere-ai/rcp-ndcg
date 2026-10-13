@@ -24,10 +24,16 @@ inputs:
       image: media/page.png
 expected:
   kind: similarity_matrix
-  values: null
+  values:
+  - - 0.4577924149179854
+    - 0.1885028599903724
+    - 0.41876319420668184
+  - - 0.21085406233756013
+    - 0.24526477209870337
+    - 0.2803081072943451
   tolerance: {abs: 0.002}
   origin: reference
-  status: pending_gpu
+  status: reproduced
 notes: >-
   Generated mixed/mixed_modality cell: one batch holding a text document, an image document and a
   text+image document (d3 pairs the 1700x2200 synthetic page with the same text as d1, so the wave
@@ -35,4 +41,4 @@ notes: >-
   image=1); d3 renders ~1776 image-pad tokens at the recipe's pixel budget (research-measured).
   Wave: media goes through the chat-messages shape (image_url part; research report section 3);
   tokenizer revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared
-  bf16 margin.
+  bf16 margin. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).
