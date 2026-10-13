@@ -135,8 +135,20 @@ made: the recipe stays `failed` and no `known_deviations` entry was added.
 
 ## 6. Process and verification
 
-- Merged the current `rfc-0001` tip (`9224b700`, the cuda reference-case fills) into this lane before gating.
-- `timeout 7200 bin/gate lane/fix11topk` on the merged revision: see the gate summary for this lane's sha.
+- Merged the current `rfc-0001` tip (`9224b700`, the cuda reference-case fills; a fast-forward from this lane's
+  base `74aa544e`) before gating.
+- `timeout 7200 bin/gate lane/fix11topk` on `dd18018d` (the merged tip plus this report): **GATE: FAIL**, and
+  the failure is **inherited from the merged tip, not from this lane**. Every step passes except `test-pkg`:
+  `3 failed, 1184 passed, 229 skipped`, all three in `rcp-ndcg-test/tests/test_case_fill.py`:
+  `test_a_media_case_is_no_longer_skipped_and_a_kind_none_case_still_is`,
+  `test_an_embed_media_case_fills_and_carries_its_own_tolerance` (asserts `pending_before == 9`, the shipped
+  `qwen3-vl-embedding-2b` cases now leave 1) and
+  `test_the_retirement_vocabulary_covers_every_shipped_generated_note` (the video case's note legitimately
+  keeps `pending_gpu`: the fill could not reproduce its geometry). The merge commit `9224b700` filled the case
+  YAMLs but did not touch that test module (its last change is `675ca316`, before the merge); re-running the
+  same three tests with the pre-merge case files restored passes them (`3 passed, 10 deselected`), which pins
+  the failure to the merge. This lane changed no code, so it did not repair another lane's test expectations;
+  the red merged tip is reported to the orchestrator (see the lane's handover).
 - No test was added: every fixable layer this lane could reach on CPU (the head mapping, the keep-rule, the
   pooling math) is already pinned by `rcp-ndcg-vllm/tests/models/topk/`, and the divergence is only
   reproducible with the engine's own forward pass (GPU). Adding a CPU test that re-states the two position
