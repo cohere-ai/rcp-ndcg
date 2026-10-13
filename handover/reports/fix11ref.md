@@ -2,21 +2,28 @@
 
 ## 1. Status
 
-**DONE, pending the gate.** The E2 round-11 failure was the reference subprocess (embed) dying with
+**DONE.** The E2 round-11 failure was the reference subprocess (embed) dying with
 `ValueError: Found 1 <image-placeholder> tokens in the text but no images were passed.` on the corpus plan's
 spelling stratum: a text-only row carrying the checkpoint's image-placeholder spelling. The reference now
 processes a text-only side through the card's own tokenizer path (one home: the checkpoint's own tokenizer),
 and a media side keeps the card's `encode` and its validation. Test-first on CPU; the fix, the tests, the
-CHANGELOG entry and the pitfall-catalogue row are committed.
+CHANGELOG entry and the pitfall-catalogue row are committed. Lane HEAD: **`6569ad24`** (the report commit
+follows). No push, no merge into `rfc-0001`.
 
 | Item | Disposition |
 |---|---|
 | The spelling row kills the reference | **fixed**: `text_vectors` — the checkpoint's tokenizer over the prompt-prefixed text, then the card's own module stack; the file's own parse, no second spelling rule |
 | Media rows | **unchanged**: still through the card's `encode` (the processor's validating path, manual-placeholder rule included) |
 
-**Gate.** `<pending>` — `timeout 7200 bin/gate lane/fix11ref`; the merged `rfc-0001` tip is named in
-section 2. The lane held its gate for `lane/fix11ctx`'s case-fill test fix (see section 5) because
-`rfc-0001`'s tip `9224b700` left three `test_case_fill.py` tests red on the merged tree.
+**Gate.** `timeout 7200 bin/gate lane/fix11ref` **PASS** on `6569ad24` (the merged tree): ruff,
+ruff-format, basedpyright, root `pytest 4145 passed, 155 skipped`, `contract-docs 413 passed, 107 skipped`,
+`mkdocs --strict`, `test-pkg 1193 passed, 229 skipped`, `recipes` (0 baseline failures remain),
+`vllm-pkg 50 passed`, `vllm-models 110 passed, 8 skipped`, `run_all` (1022/987/35/0, 67/67, 82/82),
+`public-names` clean, `clean` clean; the SUMMARY is in `gates/6569ad24/SUMMARY`. The first attempt (same
+revision, same slot) died at the `test-pkg` step with `exit=139` (SIGSEGV) at
+`test_reference_env.py::test_family_rows_groups_variants_and_reports_load_failures` under a machine load
+average of 82 (eight gate slots busy); that test passes in isolation (`9 passed in 20.71s`) and the quiet-window
+retry passed, so the crash is environmental (the known load flake), not a tree failure.
 
 ## 2. Commits
 
@@ -24,10 +31,12 @@ section 2. The lane held its gate for `lane/fix11ctx`'s case-fill test fix (see 
 |---|---|
 | `0e20a044` | The embeddinggemma-2 reference takes the card's tokenizer path for a text-only row |
 | `12b46544` | The CHANGELOG and the pitfall catalogue record the embeddinggemma-2 text-only tokenizer path |
-| `<merge>` | Merge branch `rfc-0001` into `lane/fix11ref` |
+| `01794f85` | The embed mode's docstring names both card paths |
+| `864aebaa` | Merge branch `rfc-0001` into `lane/fix11ref` (tip `9224b700`) |
+| `6569ad24` | Merge branch `rfc-0001` into `lane/fix11ref` (tip `d512dde4`, the `fix11ctx` merge) |
 | (this report) | The lane report |
 
-Merged `rfc-0001` commit: **`9224b700`** (the cuda reference-case fill). `<updated at the gate>`.
+Merged `rfc-0001` commit: **`d512dde4`** (the `fix11ctx` merge; the branch's first merge was `9224b700`).
 
 ## 3. What changed
 
@@ -141,7 +150,11 @@ $ bin/public-names-step                   public-names: clean (0 baselined hits 
 
 ### The gate
 
-`<pending>` — `timeout 7200 bin/gate lane/fix11ref` on the merged tree.
+`timeout 7200 bin/gate lane/fix11ref` — **PASS** on `6569ad24`; the full SUMMARY is in
+`gates/6569ad24/SUMMARY` and quoted in section 1. The first attempt on the same revision failed only at
+`test-pkg` (`exit=139`, SIGSEGV at `test_reference_env.py::test_family_rows_groups_variants_and_reports_load_failures`
+under load average 82); the test passes in isolation and the quiet-window retry passed (environmental, the
+known load flake).
 
 ## 5. The merged tip and the case-fill failures (integration, not this lane's change)
 
@@ -155,7 +168,9 @@ Merging `rfc-0001`'s tip `9224b700` (the cuda reference-case fill) left **three 
 
 The fix is `lane/fix11ctx`'s `3bd22c08` ("The cuda-filled cases' tests and notes read the filled state"), which
 its own report lists under **Files outside scope**. Per the supervisor's decision this lane held its gate for
-that commit to land on `rfc-0001`, re-merged, and gated; nothing of `3bd22c08` was taken into this branch.
+that commit to land on `rfc-0001` (it did, in the merge `d512dde4`), re-merged, and gated; nothing of
+`3bd22c08` was taken into this branch, and the three tests are green on the merged tree
+(`test_case_fill.py` + the embeddinggemma module: `29 passed, 4 skipped`).
 
 ## 6. Open questions
 
