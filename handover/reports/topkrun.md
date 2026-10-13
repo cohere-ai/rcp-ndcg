@@ -5,7 +5,7 @@
 step exit 0); the report commit below is docs-only.
 **Tree:** the wiring in `submit.sh`, the probe's three files moved into the job package, the harness fixes
 the node runs forced, the dtype knobs for the precision experiment, the tests, the docs and the CHANGELOG.
-**Seven node jobs run; nothing pushed; `rfc-0001` merged at `63078410`.**
+**Eleven node jobs run; nothing pushed; `rfc-0001` merged at `63078410`.**
 
 ## 1. What landed
 
@@ -21,6 +21,9 @@ the node runs forced, the dtype knobs for the precision experiment, the tests, t
 | 8 | the third node run | **the bf16 verdict** (section 4): all 27 tower tensors and 24 text layers recorded; the first divergent tensor is the vision tower's `block_0`, at bf16-rounding scale, amplified by the tower's own blow-up |
 | 9 | the dtype knobs | `--dtype` / `--reference-dtype` on the probe (both sides), forwarded as `RCP_TOPK_DTYPE` / `RCP_TOPK_REFERENCE_DTYPE`; the wrapper's argv is parsed by the module's own parser in a test (a node run died on `unrecognized arguments`) and the reference subprocess gets its own dtype (the first fp32 run compared two precisions) |
 | 10 | the precision run (both sides fp32) | **the precision verdict** (section 6): every row's tower output clears 0.999 in fp32, and the engine's fp32 *serve* is refused by vLLM's GatedDeltaNet kernels — the dtype route is closed, the mechanism is proven |
+| 11 | the fp16 cells (both cells, image rows) | **fp16 fails the gate on every image row** (E6 minima 0.095-0.997), and it does not overflow: its tower is closer to the reference than bf16's, and the "later first-divergent block" is the wrong-dtype floor artefact |
+| 12 | the text-only cells (`--text-rows` / `--query-rows`) | **the text verdict** (section 7): the wave's majority failure is text-side, byte-identical inputs, dtype-independent from `text_layer_0` — the GDN kernel-algorithm difference; the 7-8k-token documents fail in both dtypes |
+| 13 | the calibration fixture | `wave-cosines-topk-small.json`'s `_source` was wrong (its values are each row's minimum over all mrl widths, not the full-width minima): relabelled with the wave's own full-width numbers, which the top-level keys now hold |
 
 ## 2. The wiring (tests first)
 
@@ -72,6 +75,10 @@ with its own out prefix. `TOPK_DRY=1` printed the plan first, and the `submit.sh
 | 5 | the first fp32 attempt | failed on a node: `unrecognized arguments: --dtype float32` (the wrapper's flags were not in the module's parser) |
 | 6 | the fp32 retry | exit 0, uploaded — but the reference subprocess argv never carried `--reference-dtype`: the engine ran fp32 against a bf16 reference (its rows all read `ValueError: Unsupported dtype torch.float32…` at the end-to-end step) |
 | 7 | both sides fp32 | exit 0, uploaded — **the precision verdict below** |
+| 8 | fp16 / fp16 (image rows) | exit 0, uploaded — E6 minima 0.095-0.997: **fp16 fails the gate on every image row** |
+| 9 | fp16 / fp32 (image rows) | exit 0, uploaded — E6 minima -0.054-0.997: the mixed cell fails too |
+| 10 | the text-only rows (bf16 / bf16) | exit 0, uploaded — **the text verdict below**: rows 17/18 at 0.8017 / 0.7041, the probe reproducing the wave's own text-row failure |
+| 11 | the text-only rows (fp16 / fp16) | exit 0, uploaded — 0.8739 / 0.8771, still under the bound; the 466-token query clears at 0.99927 |
 
 The wrapper runs `topk_probe.py --check-engine` before the probe; in the pod it printed
 `{"vllm": "0.31.0", "single_process_switch": "VLLM_ENABLE_V1_MULTIPROCESSING=0", "problems": []}` and the
@@ -133,9 +140,22 @@ document's), and the position scheme (the checkpoint's `_position_ids` gives the
 `Qwen3VLForConditionalGeneration._get_mrope_input_positions` builds `np.indices((1, h, w))` plus the text
 length and continues at `max + 1` — the same scheme).
 
-**E6, end to end.** The per-row minima reproduce the wave's pattern and its magnitude: row 21 0.5466 (wave
-0.5473), row 22 0.0411 (0.0052), row 26 -0.1145 (-0.3270), row 20 (the negative control) 0.7356 (0.9094);
-row 28's image document 0.5466 (0.5473). The in-process engine is the wave's engine.
+**E6, end to end (run 4).** Against the wave's *full-width* minima, re-derived from the wave's own
+`equivalence.json` (`stage2.per_vector`, `mrl_dim null`): row 20 0.7356 vs 0.9111, row 21 0.5491 vs
+0.5514, row 22 0.0389 vs 0.0390, row 23 -0.0697 vs -0.0682, row 24 -0.0830 vs -0.0808, row 25 -0.0496
+vs -0.0348, row 26 -0.1155 vs -0.1134, row 27 0.0579 vs 0.0577, row 28 0.5491 vs 0.5514 — agreement to
+0.002-0.015 on every row **except row 20 (Δ 0.175)**. Two review findings are folded in here, both
+re-derived from the wave's artefact and both true: (a) the fixture `wave-cosines-topk-small.json`
+carried each row's minimum over *all* mrl widths, not the full-width minimum its `_source` claimed (row
+23's -0.35538 is the k=64 minimum; the full-width one is -0.068241) — lane topkrun relabelled the
+fixture: the top-level keys now hold the full-width minima the probe's E6 computes and
+`_minima_over_all_widths` keeps the old values; (b) the probe's E6 is **not** the gate's statistic: it
+lacks the gate's two-sided fp16 cast (client `embed_dtype: float16` and the reference's `_fp16_lists`;
+the induced cosine error is ~1e-5, which cannot explain the minima but can move tokens sitting near the
+bound), its engine is `enforce_eager` and single-process where the wave's serve is not, and row 20's
+Δ 0.175 is **unexplained** — the control that would settle it (E0) is `not_run`, because the family's
+corpus was never recorded. Every number in this report is therefore a *proxy* for the gate's, read for
+its mechanism and ordering, never as the gate's own value.
 
 ## 5. The bf16 verdict (run 4)
 
@@ -208,6 +228,17 @@ vision-tower comparison, row by row — the merger (the tower's output) and `blo
   documents in its notes for this image. So `serve.dtype: float32` cannot be pinned, and the per-token
   E6/E7 comparison cannot be measured in fp32 either.
 
+**The fp16 cells (runs 8 and 9).** fp16 is the other dtype the GDN kernels accept, and it is a serve
+dtype the recipe could pin. `engine fp16 / reference fp16` (run 8) and `engine fp16 / reference fp32`
+(run 9) both ran end to end; the image rows' E6 minima are 0.095-0.997 (run 8) and -0.054-0.997 (run 9)
+— **fp16 fails the gate on every image row**, and its tower is nonetheless *closer* to the reference
+than bf16's (row 26's merger cosine 0.99853 in fp16 vs 0.95653 in bf16; `block_0` max-abs 0.0098 vs
+0.094; no inf/nan anywhere in the report, so nothing overflows — the tower's states stay well inside
+fp16's range). The "first divergent layer: block_10" a reader will see in the fp16 reports is a
+**threshold artefact, not a location**: the probe computes `bf16_floor` whatever `--dtype` says, so the
+fp16 run's cutoff is 10 x 0.015625 = 0.156 and `block_9`'s 0.152 sits just under it (the same artefact
+hides `block_0`/`block_1` in the fp32 runs). The floor must follow the engine's dtype in a follow-up.
+
 **Verdict.** The bf16 gap is precision-driven and its mechanism is named: bf16 rounding (plus the
 bf16-affine pixel seed, 3.58e-03) amplified by a vision tower whose own hidden states reach ~6000 at
 `block_23` in both implementations. In fp32 the tower output clears 0.999 on every row; the engine cannot
@@ -215,20 +246,71 @@ serve fp32; therefore the family's per-token bound on image documents **cannot b
 the stock image**, and no code fix in this lane can change that. The disposition is an owner decision on
 the comparison, with the numbers above as its evidence:
 
-1. **Declare the image-document per-token bound at a level bf16 can hold** (or compare the pooled
-   document vector), with the measured amplification cited — the text rows are unaffected (0.45%/0.32%
-   sub-0.9).
-2. **Or record the image-document gap as a declared deviation** with the bf16 and fp32 tables beside it —
-   never a bound that hides the anti-correlated tokens (the investigate report's rule).
-3. **Do not chase the engine's kernels**: the fp32 run shows the same weights, geometry, render and
-   positions produce a 0.9999 cosine at fp32; there is nothing in the plugin to fix.
+1. **A multi-vector score-level gate**: keep the existing cosine-scale bound on the *MaxSim* score
+   (the score the family is actually used with) and report the per-token vectors as non-gating
+   diagnostics — the `zerank` precedent. The evidence for it: the per-token statistic is dominated by
+   the text model's kernel-algorithm divergence (section 7), which no engine-side change can remove,
+   while the pooled/score-level signal is what the downstream product consumes.
+2. **A declared deviation** naming the per-token comparison unachievable at the engine's available
+   precision (bf16 and fp16 both measured end to end, fp32 unrunnable), with the tables in sections 4-7
+   as its evidence.
+
+**Never a lowered `vec_min_cosine`**: the minima are negative (row 26 -0.1134 in the wave, -0.1145 in
+the probe) and lowering the bound over anti-correlated vectors would ship a false green. The decision
+between the two options is the **owner's**, not this lane's; no recipe or bound was changed here (the
+only recipe-adjacent change is the fixture's `_source`, a factual relabel with the wave's own numbers
+cited).
 
 One caveat, recorded rather than glossed: run 7 could not measure E6/E7, because the engine's fp32
 encode is refused before the text path runs. The per-token fp32 numbers the first branch of this
 experiment would need therefore do not exist; the tower-level numbers are what an fp32 run can show, and
 they are decisive about the mechanism (and the refusal itself is the second finding).
 
-## 7. Verification
+## 7. The text-only cells (C-T1): the majority of the failing comparisons
+
+The wave's own record (re-derived here from its `equivalence.json`, full width, `mrl_dim null`): the
+**text rows 0-19 carry 6,481 of the 10,819 sub-0.999 comparisons (54.8%)** and the image rows 20-28
+carry 5,338 (49.4% of their own 5,841 — every image document row fails, while all nine of their queries
+pass at min 0.999847). Rows 17 and 18 are text-only documents (7,366 / 8,186 tokens) at min 0.7534 /
+0.7830 with 2,667 / 3,158 below the bound; row 12's query is 0.9339 with 208 of 466 below. Stage 1
+passes, so those inputs are **byte-identical on both sides**: the text-side divergence has no input
+seed, no vision tower and no pixel-affine question, and the image sweep could not see it
+(`_pairs_rows` selects image-carrying rows). The probe now measures it: `--text-rows` / `--query-rows`
+render the checkpoint's own `format_document` / `format_query`, encode it in process, and compare
+per-token against the reference's own `encode_document` / `encode_query` (its keep mask travels in the
+dump so both sides' kept positions match), with the same text-layer recording as E7.
+
+| row | cell | tokens | min cosine | mean | below 0.9 | `text_layer_0` cosine | `text_layer_23` cosine |
+|---|---|---|---|---|---|---|---|
+| 17 document | bf16 / bf16 | 7,366 | 0.8017 | 0.99618 | 37 | 0.1836 | -0.1571 |
+| 17 document | fp16 / fp16 | 7,366 | 0.8739 | 0.99936 | 3 | 0.1835 | -0.1567 |
+| 18 document | bf16 / bf16 | 8,186 | 0.7041 | 0.99573 | 36 | 0.1847 | -0.1545 |
+| 18 document | fp16 / fp16 | 8,186 | 0.8771 | 0.99931 | 1 | 0.1845 | -0.1558 |
+| 12 query | bf16 / bf16 | 466 | 0.9472 | 0.99785 | 0 | 0.2547 | 0.0272 |
+| 12 query | fp16 / fp16 | 466 | 0.99927 | 0.99996 | 0 | 0.2553 | 0.0279 |
+| 26 image document | bf16 / bf16 | 1,235 | -0.1145 | 0.81529 | 481 | 0.3349 | -0.1445 |
+| 26 image document | fp16 / fp16 | 1,235 | 0.1528 | 0.97845 | 58 | 0.3530 | -0.1118 |
+
+- **The text rows fail the gate in bf16 and the probe reproduces the wave's own text-row failure**
+  (probe 0.8017 / 0.7041 against the wave's full-width 0.7534 / 0.7830 — the closest calibration the
+  probe has, and the only one on rows whose inputs are identical).
+- **fp16 improves them and still does not clear 0.999** (0.874 / 0.877 on the 7-8k-token documents;
+  the 466-token query clears at 0.99927). The sequence-length ordering is the mechanism's signature.
+- **The text model's hidden states diverge at its first layer, dtype-independently** (`text_layer_0`
+  cosine 0.1836/0.1847 for the two documents in bf16, 0.1835/0.1845 in fp16 — the same number), and
+  the layers stay uncorrelated to the last. With byte-identical inputs, no tower and no pixels in the
+  loop, this is the text model's own computation: the reference runs the checkpoint's `fla` chunked
+  scan and the engine runs vLLM's flashinfer sm100 kernel for the 18 GatedDeltaNet layers, and the
+  recurrent state accumulates the difference over 7-8k positions. The engine cannot match it from the
+  engine side (the image ships no `fla`, and the recipe's own canary asserts it must stay out); the
+  matched-kernel cell is the *reference* running flashinfer, which is a follow-up, not a fix here.
+
+**So the dtype ladder is exhausted, measured end to end**: bf16 fails everywhere; fp16 (the only other
+dtype the GDN kernels accept) fails the documents in both the text and image paths; fp32 clears the
+*tower* (cos 0.99981-0.99998) and cannot be served. Nothing in the engine's plugin can turn the gate
+green, and the dominant residual is a kernel-algorithm difference on the text side, not rounding.
+
+## 8. Verification
 
 - `uv run --no-sync pytest rcp-ndcg-test/tests/test_jobs_scripts.py -q` — **100 passed** (15 of them this
   lane's).
@@ -256,7 +338,7 @@ they are decisive about the mechanism (and the refusal itself is the second find
   - `d542eca1` (the wiring alone) — **GATE: PASS**.
 - Red-first for every fix is in sections 2 and 7.
 
-## 8. The harness fixes the node forced (each with its red test)
+## 9. The harness fixes the node forced (each with its red test)
 
 | fix | red evidence | what the fix does |
 |---|---|---|
@@ -267,7 +349,7 @@ they are decisive about the mechanism (and the refusal itself is the second find
 | the wrapper's argv parses | run 5's node error (`topk_probe.py: error: unrecognized arguments: --dtype float32 --reference-dtype float32`); `test_the_topk_probe_wrapper_forwards_the_dtypes` fails on the unfixed tree (`AttributeError: ... no attribute 'build_parser'`) | `build_parser()` exposes the parser, the test parses the argv the wrapper actually built with it, and the `--dtype` / `--reference-dtype` flags exist |
 | the reference subprocess' dtype | run 6's rows (`E1` unchanged at 3.58e-03, the tower compared across two precisions); `test_the_reference_subprocess_gets_its_own_dtype` fails on the unfixed tree | `_reference_command` builds the subprocess argv once and carries `--reference-dtype` |
 
-## 9. Docs, CHANGELOG, public surface
+## 10. Docs, CHANGELOG, public surface
 
 - `docs/how-to/release-candidates.md` — the `--script` list gains `topk-probe`; a new section "The topk
   probe job (`--script topk-probe`)" documents the command, the check, the E0-E7 experiments, the knobs and
@@ -280,13 +362,20 @@ they are decisive about the mechanism (and the refusal itself is the second find
   `--script` gains one value (its own argv validation), and the probe is node tooling in the unpublished
   `rcp-ndcg-test`.
 
-## 10. For the next lanes
+## 11. For the next lanes
 
 - **The owner's decision** (section 6) is the only thing between this family and a green stage 2; the
   numbers to decide on are in sections 4 and 6, and the recipe's notes should cite them.
 - **The dtype route is closed** (section 6): the engine cannot serve fp32 (vLLM's GatedDeltaNet kernels
   refuse it, the same blocker the `pplx-embed-v2-context` recipe documents), so a follow-up must not
   re-try `serve.dtype: float32`; the fp32 probe run is the evidence.
+- **The matched-kernel cell** (the only true test of the dominant residual): import flashinfer's
+  `chunk_gated_delta_rule` into the *reference* venv for the 18 GDN layers, or run the reference's `fla`
+  scan in the engine (impossible: the image ships no `fla` and the recipe's canary asserts it stays
+  out). If the text rows clear 0.999 with the reference on flashinfer, the divergence is the kernel
+  algorithm and the disposition can be narrowed to a kernel pin.
+- **The `bf16_floor` fix**: the floor must be the engine's own dtype round trip (`--dtype`), else every
+  non-bf16 run's "first divergent layer" is a threshold artefact (the fp16 and fp32 reports both are).
 - **E0 is still `not_run`** for this family: a recording pass over `topk-embed-v1-small` (the wave's own
   `RCP_RECORD_CORPUS=1`) makes the control real, and the probe then ties its engine to the wave's vectors.
 - **The `known_deviation` route**: the recipe's `known_deviations` must never be used to paper over a
