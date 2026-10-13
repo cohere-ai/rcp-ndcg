@@ -2295,6 +2295,12 @@ def test_the_topk_probe_wrapper_forwards_the_dtypes(tmp_path: Path) -> None:
         lines = calls.read_text(encoding="utf-8").splitlines()
         assert lines[0] == "--check-engine"
         assert expected in lines[1], lines[1]
+        # the wrapper builds the probe's argv by hand: the module's own parser must accept every flag
+        parsed = _probe_module().build_parser().parse_args(shlex.split(lines[1]))
+        assert (parsed.dtype, parsed.reference_dtype) == (
+            extra.get("RCP_TOPK_DTYPE", "bfloat16"),
+            extra.get("RCP_TOPK_REFERENCE_DTYPE", "bfloat16"),
+        )
 
 
 # --- topk_probe.py: the engine-side accessor and the image's API contract ---------------------------------

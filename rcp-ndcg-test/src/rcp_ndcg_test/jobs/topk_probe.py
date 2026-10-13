@@ -888,7 +888,8 @@ def _write_report(out_dir: Path, report: dict[str, Any]) -> None:
     (out_dir / "probe-report.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The probe's own parser: the wrapper builds its argv by hand, so the flags must match here."""
     parser = argparse.ArgumentParser(description="topk-embed-v1's controlled GPU probe")
     parser.add_argument("--side", choices=["engine", "reference"], default="engine")
     parser.add_argument(
@@ -907,6 +908,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reference-python", default="")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--reference-device", default="cuda:1")
+    parser.add_argument(
+        "--dtype",
+        default="bfloat16",
+        help="the engine's LLM dtype (the serve's dtype); the reference side has its own",
+    )
+    parser.add_argument(
+        "--reference-dtype",
+        default="bfloat16",
+        help="the checkpoint's own load dtype on the reference side",
+    )
     parser.add_argument("--gpu-memory-fraction", type=float, default=0.45)
     parser.add_argument("--control-vectors", default="")
     parser.add_argument("--wave-cosines", default="")
@@ -914,6 +925,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-pixels", type=int, default=1310720)
     parser.add_argument("--image-token-id", type=int, default=248056)
     parser.add_argument("--max-model-len", type=int, default=8448)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.check_engine:
         return check_engine()
