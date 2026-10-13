@@ -132,10 +132,14 @@ _FILLED_SENTENCE = "status reproduced (values filled from the reference implemen
 
 _EXCEPTION_SENTENCE = (
     "The fill on {device} ({filled_at}) could not produce this case's values: {reason} "
-    "The case stays pending_gpu until the reference can read its inputs (the reason is recorded here "
+    "The case stays pending until the reference can read its inputs (the reason is recorded here "
     "and in the case-fill report)."
 )
-"""What a refused case's note ends with: the reference's own refusal, and that the case stays pending."""
+"""What a refused case's note ends with: the reference's own refusal, and that the case stays pending.
+
+The note names the state in prose, never the case format's ``pending_gpu`` status token: the shipped
+notes' vocabulary check refuses that token in every generated note (a filled one's note must not keep a
+pending claim)."""
 
 _DEFAULT_BUDGET_S = 3600.0
 """The recipe's default fill budget, seconds (the first reference subprocess's own default)."""

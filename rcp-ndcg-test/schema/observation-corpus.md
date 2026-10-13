@@ -44,9 +44,13 @@ refusal); the wire variants of the role's route (`encoding_format` x `embed_dtyp
 `dimensions=k` probe per declared Matryoshka `k`, read from the recipe's client declaration -- every `mrl_dims`
 member, or a `mrl_range`'s endpoints and the run's selection; a recipe with no declared head records the stratum
 absent with the reason and keeps one undeclared-cut probe); and the protocol
-edges (an invalid `embed_dtype`, `top_n` over the documents). The collector adds its standing probes
+edges (an invalid `embed_dtype`, `top_n` over the documents). A recipe whose client declares
+`request_shape: token_ids` carries its own render ids in the bare rows and the standing probes (the document
+side under the declared split parse, the construction its client sends: a bare text is a request that client
+never sends, and such an engine's pooler refuses it by name). The collector adds its standing probes
 (`/v1/models`, `/health`, an unknown field, malformed JSON, a wrong model name, an empty input, over-length),
-the engine's `/tokenize` of the exact prompt the client sent for each input, and -- from the wave's restart --
+the engine's `/tokenize` of the exact prompt the client sent for each input (a `token_ids` wire's input is its
+id list, which the record carries as sent: it probes no `/tokenize`), and -- from the wave's restart --
 one request while the engine loads. Every stratum is recorded present or absent with the reason in the
 manifest's `plan.strata`. The media request set (`rcp_ndcg_test.observe.media_set`, `MEDIA_SET_VERSION`) is
 the pairs rows themselves for every media recipe -- an image per size bucket, a captioned page, a mixed batch,
