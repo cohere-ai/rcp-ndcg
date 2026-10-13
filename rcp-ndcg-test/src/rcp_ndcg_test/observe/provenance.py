@@ -220,10 +220,11 @@ def recipe_facts(recipe: Recipe) -> dict[str, Any]:
 
     The fingerprint is :func:`rcp_ndcg_test.fingerprint.behaviour_fingerprint` (the one key of the model layer)
     with :func:`~rcp_ndcg_test.fingerprint.fingerprint_inputs`, so a staleness failure names what changed;
-    ``declared_dim`` is the client's token-vector width (the acceptance check decodes vectors at it), and
-    ``document_skip_token_ids``/``document_skip_engine_side`` are the client's declared document-side keep
-    rule, when it has one (the acceptance check derives the kept-vector count a served plugin leaves from
-    them and the engine's own ids).
+    ``declared_dim`` is the client's token-vector width (the acceptance check decodes vectors at it),
+    ``outputs`` is the client's declared per-chunk/per-token head (the acceptance check expects the declared
+    per-chunk count of a per-chunk reply), and ``document_skip_token_ids``/``document_skip_engine_side`` are
+    the client's declared document-side keep rule, when it has one (the acceptance check derives the
+    kept-vector count a served plugin leaves from them and the engine's own ids).
     ``shipped`` is ``False`` for a recipe loaded from a path of the operator's own (never a shipped one): its
     ``status`` is then ``unverified`` by the loader and its client identity is a content hash, so a reader can
     tell a recording of a file apart from a recording of the catalog.
@@ -241,6 +242,7 @@ def recipe_facts(recipe: Recipe) -> dict[str, Any]:
         "fingerprint_inputs": fingerprint_inputs(recipe),
         "status": recipe.status.model_dump(mode="json"),
         "declared_dim": recipe.client.get("dim"),
+        "outputs": str(recipe.client.get("outputs") or "per_token"),
         "document_skip_engine_side": bool(recipe.client.get("document_skip_engine_side")),
         "document_skip_token_ids": [int(value) for value in (recipe.client.get("document_skip_token_ids") or ())],
     }

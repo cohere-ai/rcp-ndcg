@@ -90,7 +90,7 @@ behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VA
   start time, readiness wait), `model` (id, revision, weight file hashes from the Hub cache, tokenizer and
   template hashes, plugin with its wheel hash, `hf_overrides`, pooler config, `mm_processor_kwargs`, dtype),
   `recipe` (id, the recipe file's hash, the behaviour fingerprint and its named inputs, status, the declared
-  vector width), `collector` (package version and commit, `GENERATOR_VERSION`, `GENERATOR_SEED`,
+  vector width, the declared `outputs` head), `collector` (package version and commit, `GENERATOR_VERSION`, `GENERATOR_SEED`,
   `CORPUS_PLAN_VERSION`, `RECORD_SCHEMA`, seed, dataset commits, wave and job ids, times, the hostname's
   SHA-256, the passes), the
   `plan` (request ids and strata) and `integrity` (every file's SHA-256 and size, the record count and the
@@ -107,7 +107,10 @@ width; one width per route and requested dimensions; a recipe declaring an engin
 (`document_skip_engine_side`) is checked against the KEPT count per document item -- the product's
 `kept_vector_count` over the sent render's ids and the declared `document_skip_token_ids` -- because the
 served plugin drops the rule's positions from the reply while `usage.prompt_tokens` counts the whole
-prompt),
+prompt; a recipe declaring a per-chunk head (`outputs: per_chunk`) is checked against the DECLARED chunk
+count per item -- the served plugin's own segmentation (`rcp_ndcg_vllm.models.pplx.chunk_rule.chunk_count`)
+over the sent ids, one vector per document chunk and one for a query -- because the reply carries several
+vectors per input and `usage.prompt_tokens` describes none of them),
 `nondeterminism_report`, `provenance_complete`, `no_credentials` (every byte, a subset's `.gz` decompressed),
 and, given the equivalence stage's exchanges of the same wave, `equivalence_consistent` (the same replies
 within the measured tolerance; no common request is a failure). A corpus failing any check is not used.

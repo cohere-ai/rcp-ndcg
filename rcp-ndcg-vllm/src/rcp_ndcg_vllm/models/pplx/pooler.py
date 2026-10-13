@@ -3,7 +3,7 @@
 vLLM's own ``TokenPooler`` runs two stages: a *pooling method* over the batch's hidden
 states (``TokenPoolingFn``), then a *head* (projector, Matryoshka cut, optional
 activation). The plugin replaces the first stage with ``PplxChunkPool`` — the per-chunk
-segmentation of :mod:`rcp_ndcg_vllm.models.pplx.pooling_core` — and builds the second through the plugin's
+segmentation of :mod:`rcp_ndcg_vllm.models.pplx.chunk_rule` — and builds the second through the plugin's
 one head construction (:func:`~rcp_ndcg_vllm.models.token_pooler.token_embed_pooler`, shared with the
 keep pooler), so the request-level knobs (``dimensions``, the L2 normalisation behind ``use_activation``)
 behave exactly as they do for the in-tree token poolers, with the plugin's int8 projection as the head's

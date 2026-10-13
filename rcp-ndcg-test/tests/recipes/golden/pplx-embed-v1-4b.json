@@ -30,7 +30,7 @@
   "tokenizer": "perplexity-ai/pplx-embed-v1-4b@06456497a00540a582918fe8dcd3a5eabb207772"
  },
  "fingerprint": {
-  "fingerprint": "f0fbde13761bf1af99d889d3079ccc5c49b036bcda86f965eeb67df217d5cfdc",
+  "fingerprint": "0899cf0f6077337a5895ea186db7b464ad9c305da95574a1411794969bd2411a",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -49,7 +49,7 @@
    "engine.min_version": "0.31.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "perplexity-ai/pplx-embed-v1-4b",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:17c5768652d31611c975a1f04e972d04be9a957661bdfc8beb2405d89527946f",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:ca27f66092cf04c28fb503a913358ac72ae1772d4671b502c30e4a46d6953547",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",

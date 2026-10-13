@@ -221,12 +221,17 @@ Perplexity pplx-embed-v2-context-9b-preview
   https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview
   By Perplexity AI. Licence: MIT (the checkpoint repository's model card
   metadata; the repository ships no LICENSE file).
-  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/pooling_core.py:
-    re-implements, for vLLM's token-id pooling, the query and per-chunk span
-    pooling and the int8 head (`round(tanh(x) * 127).clamp(-128, 127)`) of the
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/chunk_rule.py:
+    re-implements, for vLLM's token-id pooling, the role prefixes, the chunk
+    boundary id and the query and per-chunk span segmentation of the
     checkpoint's remote modeling_pplx_contextual.py (`_pool`, `encode`) at
     revision b667039ee8b438a6350fbc91bbcecd86f9d363ba (upstream SHA-256
     090f68c9907f2b055b3f41bd0dfc94ef8250e8a98e390e6d308b8fa34702bd45).
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/pooling_core.py:
+    re-implements, for vLLM's token-id pooling, the span-mean pooling and the
+    int8 head (`round(tanh(x) * 127).clamp(-128, 127)`) of the checkpoint's
+    remote modeling_pplx_contextual.py (`_pool`, `encode`) at the same
+    revision.
   - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/hf_config.py:
     `PplxContextualConfig` restates `PplxContextualConfig` of the checkpoint's
     remote configuration_pplx_contextual.py (lines 6-27) at the same revision

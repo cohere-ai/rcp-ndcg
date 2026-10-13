@@ -1,31 +1,13 @@
 """The pooling contract of pplx-embed-v2-context-9b-preview, in pure torch.
 
-Everything in this module runs without vLLM: the segmentation, the span pooling and the
-int8 head are the parts of the served model that stock vLLM v0.31.0 cannot express, and
-they are where fidelity to the reference implementation lives. The vLLM-side wiring lives
-in :mod:`rcp_ndcg_vllm.models.pplx.pooler` and :mod:`rcp_ndcg_vllm.models.pplx.model`.
+Everything in this module runs without vLLM: the span pooling and the int8 head are the
+parts of the served model that stock vLLM v0.31.0 cannot express, and they are where
+fidelity to the reference implementation lives. The id-level contract and the per-chunk
+segmentation they read live in :mod:`rcp_ndcg_vllm.models.pplx.chunk_rule` (pure Python,
+so the observation corpus's acceptance check shares the one home); the vLLM-side wiring
+lives in :mod:`rcp_ndcg_vllm.models.pplx.pooler` and
+:mod:`rcp_ndcg_vllm.models.pplx.model`.
 
-Semantics (measured against the pinned revision
-``b667039ee8b438a6350fbc91bbcecd86f9d363ba`` of the checkpoint and its remote code):
-
-- A **query** is ``[248077] + tokenized text``; the pool is the mean over the whole
-  sequence, the ``[Q] `` prefix token included (the reference's masked-mean pool; serving
-  has no padding, so the mask is all ones).
-- A **document** is one request holding all of its chunks: ``tokenize("[D] " + chunk0 +
-  "<|chunk_sep|>" + chunk1 + ..., split_special_tokens=True)``. The ``[D] `` prefix
-  renders as the two literal tokens ``[62724, 60]`` and each ``<|chunk_sep|>`` as the one
-  added id ``248079``. The pool is one **span mean per chunk**, the prefix tokens and the
-  boundary markers excluded from every span. A one-chunk document has no marker and is a
-  single span; a query is told apart from it by the leading ``248077`` — the leading token
-  id is the role disambiguation rule (the one-chunk case).
-- An **empty chunk** (two consecutive markers, or a trailing marker) yields a zero vector
-  for that chunk, which is the reference's own behaviour for a chunk with no tokens.
-- A chunk's text containing the literal ``<|chunk_sep|>`` cannot be distinguished, on the
-  id wire, from a boundary marker (the marker is an added token, not a special one, so it
-  renders as ``BOUNDARY_TOKEN_ID`` in both paths): the plugin segments there — one extra
-  row, the token excluded — where the reference's char-span pooling keeps it inside the
-  chunk. Declared contract, not a fallback: the recipe's chunker must not emit the marker
-  string as chunk content.
 - The head is ``Linear(4096→2048, bias=False)`` kept in fp32 (the checkpoint keeps the
   projection out of the quantised path via ``_keep_in_fp32_modules``) followed by
   ``round(tanh(x)·127).clamp(-128, 127)`` — the model card's "unnormalized int8-quantized
@@ -46,63 +28,15 @@ __all__ = [
 
 import torch
 
-#: The ``[Q] `` query prefix, one added token of the checkpoint's tokenizer, prepended by
-#: the reference implementation as a single id before the query's own tokens.
-QUERY_PREFIX_TOKEN_ID = 248077
-
-#: The ``[D] `` document prefix, rendered by the reference tokenization (``truncation=False``,
-#: ``split_special_tokens=True``) as the two literal tokens ``'[D', ']'`` — measured, not
-#: assumed; this is why the client must send token ids rather than text.
-DOCUMENT_PREFIX_TOKEN_IDS = (62724, 60)
-
-#: The ``[D] `` prefix's trailing space as its own token, measured at the pinned tokenizer: the
-#: render is ``"[D] " + content`` and the space stands alone exactly when the content's first token
-#: is an added token that cannot carry it (or when the content is empty); a content-initial space
-#: merges into the next token (ids 256/262/...), so a leading 220 in the body is always the
-#: prefix's. The reference's char spans start at char 4 and never pool it.
-PREFIX_SPACE_TOKEN_ID = 220
-
-#: The ``<|chunk_sep|>`` boundary marker, one added token in both the reference and a
-#: server-side tokenization of the joined text.
-BOUNDARY_TOKEN_ID = 248079
-
-
-def _is_engine_dummy(token_ids: list[int]) -> bool:
-    """Whether a token-id row is one of vLLM's engine-side dummy inputs (no role prefix, leading id 0).
-
-    At the pinned engine (v0.31.0) two dummy paths reach the pooler, and both open with token id 0:
-
-    - the kernel warmup builds its dummy requests' ids as ``list(range(prompt_len))`` with
-      ``prompt_len = decode_query_len + 1`` (``vllm/v1/worker/gpu/warmup.py:256-257``, sent as a real
-      scheduler prefill at ``:330-345``); a pooling model has ``decode_query_len == 1``, so the row is the
-      measured ``[0, 1]``;
-    - the pooler sizing grid is all zeros (``vllm/v1/worker/gpu/pool/pooling_runner.py:178-183``; the v1
-      runner's ``_dummy_pooler_run_task`` builds the same zero grid at
-      ``vllm/v1/worker/gpu_model_runner.py:6339-6352``).
-
-    A real request always opens with a role prefix (``[Q] `` = 248077 or ``[D] `` = ``(62724, 60)``), so a
-    leading 0 can only be an engine dummy: the warmup output is discarded, and the row pools as one span so
-    the engine can size the pooler. An empty row is the zero-length case of the same grid.
-    """
-    return not token_ids or token_ids[0] == 0
-
-
-def _document_spans(body: list[int]) -> list[tuple[int, int]]:
-    """Half-open token spans of the chunks in the prefix-stripped document ids.
-
-    The spans run between boundary markers; everything the tokenizer rendered from the
-    ``[D] `` prefix was already stripped by the caller. Consecutive markers (an empty
-    chunk) or a trailing marker give an empty span, which pools to the zero vector the
-    reference produces for a chunk with no tokens.
-    """
-    spans: list[tuple[int, int]] = []
-    start = 0
-    for index, token_id in enumerate(body):
-        if token_id == BOUNDARY_TOKEN_ID:
-            spans.append((start, index))
-            start = index + 1
-    spans.append((start, len(body)))
-    return spans
+from rcp_ndcg_vllm.models.pplx.chunk_rule import (
+    BOUNDARY_TOKEN_ID,
+    DOCUMENT_PREFIX_TOKEN_IDS,
+    PREFIX_SPACE_TOKEN_ID,
+    QUERY_PREFIX_TOKEN_ID,
+    document_body,
+    document_spans,
+    is_engine_dummy,
+)
 
 
 def pool_sequence(hidden_states: torch.Tensor, token_ids_cpu: torch.Tensor) -> torch.Tensor:
@@ -131,7 +65,7 @@ def pool_sequence(hidden_states: torch.Tensor, token_ids_cpu: torch.Tensor) -> t
     token_ids = [int(t) for t in token_ids_cpu.tolist()]
     hidden = hidden_states.to(torch.float32)
 
-    if _is_engine_dummy(token_ids):
+    if is_engine_dummy(token_ids):
         # The engine's dummy inputs: the pooler sizing grid (all zeros) and the kernel warmup
         # (list(range(prompt_len)) = [0, 1] for a pooling model). Pool as one span so the engine can size
         # the pooler; the result is thrown away by vLLM.
@@ -145,19 +79,15 @@ def pool_sequence(hidden_states: torch.Tensor, token_ids_cpu: torch.Tensor) -> t
     if tuple(token_ids[: len(DOCUMENT_PREFIX_TOKEN_IDS)]) == DOCUMENT_PREFIX_TOKEN_IDS:
         # Reference document pool: span mean per chunk, prefix and boundary markers
         # excluded from every span. Computed as a single index_add so the device work is
-        # one scatter, with the segment map built from the CPU ids (no d2h sync).
-        prefix_len = len(DOCUMENT_PREFIX_TOKEN_IDS)
-        body = token_ids[prefix_len:]
-        body_hidden = hidden[prefix_len:]
-        if body[:1] == [PREFIX_SPACE_TOKEN_ID]:
-            # The prefix's trailing space as its own token (see PREFIX_SPACE_TOKEN_ID): the
-            # reference's char spans start after it, so it belongs to no chunk. Without this the
-            # empty document pools the space token -- a nonzero vector where the reference pools
-            # the zero vector -- and every document starting with an added token gains one token
-            # in its first chunk's mean.
-            body = body[1:]
-            body_hidden = body_hidden[1:]
-        spans = _document_spans(body)
+        # one scatter, with the segment map built from the CPU ids (no d2h sync). The
+        # prefix's trailing space (chunk_rule.PREFIX_SPACE_TOKEN_ID), when it stands as its
+        # own token, belongs to no chunk: the reference's char spans start after it, and
+        # without this the empty document pools the space token -- a nonzero vector where
+        # the reference pools the zero vector -- and every document starting with an added
+        # token gains one token in its first chunk's mean.
+        body = document_body(token_ids)
+        body_hidden = hidden[len(token_ids) - len(body) :]
+        spans = document_spans(body)
         n_chunks = len(spans)
         # -1 marks the boundary markers themselves: they are excluded from every span
         # (the reference pools only the chunk tokens' char spans), unlike the prefix
