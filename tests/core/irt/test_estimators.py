@@ -65,6 +65,17 @@ def test_an_l2_penalty_that_is_not_finite_and_non_negative_is_refused() -> None:
         BradleyTerryEstimator(doc_ids=["a", "b"], l2_reg=float("nan"))
 
 
+def test_the_bare_estimator_default_is_the_documented_bt_ridge() -> None:
+    """The paper's Table 2 fixes the Stage A Bradley-Terry ridge at 1e-4 (``docs/concepts/calibration.md``
+    and ``docs/concepts/tournament.md`` say so; ``Priors.bt_l2`` is it), but the base class defaulted to
+    1e-5: a direct user of the public ``BradleyTerryEstimator`` fitted a 10x weaker ridge. Every product
+    call site passes an explicit value (``fit_bradley_terry`` requires one), so no shipped number moves."""
+    from rcp_ndcg_core.irt import Priors
+
+    assert BradleyTerryEstimator(doc_ids=["a"]).l2_reg == Priors().bt_l2 == 1e-4
+    assert RaschEstimator(doc_ids=["a"], num_criteria=2).l2_reg == 1e-4
+
+
 def test_rasch_criteria_of_an_unknown_document_are_refused_not_dropped() -> None:
     """One policy for both estimators: an observation that cannot be attached is evidence the model would
     silently lose (a chunk id where a document id belongs fits a weaker stratification)."""

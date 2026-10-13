@@ -13,11 +13,14 @@ import torch.optim as optim
 class BaseScoredModel(nn.Module):
     """An ability ``theta`` per document (zero-mean), an L2 penalty, and an L-BFGS fit.
 
+    ``l2_reg`` defaults to the paper's Stage A Bradley-Terry ridge (1e-4, ``Priors.bt_l2``); a caller
+    with a fitted calibration's own penalty passes it explicitly.
+
     Subclasses define :meth:`model_loss` and may override the ability
     parameterisation and :meth:`_compute_standard_errors`.
     """
 
-    def __init__(self, doc_ids: list[str], l2_reg: float = 1e-5):
+    def __init__(self, doc_ids: list[str], l2_reg: float = 1e-4):
         super().__init__()
         if not math.isfinite(l2_reg) or l2_reg < 0:
             raise ValueError(f"l2_reg must be finite and >= 0, got {l2_reg!r}")
