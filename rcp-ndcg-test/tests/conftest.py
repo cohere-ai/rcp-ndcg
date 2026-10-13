@@ -30,9 +30,13 @@ _CHECKOUT_BASELINE: pytest.StashKey[set[str] | None] = pytest.StashKey()
 
 
 def _snapshot_exempt(config: pytest.Config) -> bool:
-    """A ``--update-snapshots`` run writes the generated files into the tree on purpose."""
-    return bool(config.getoption("--update-snapshots", default=False)) or bool(
-        os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS")
+    """A run that writes into the tree on purpose: ``--update-snapshots`` (the generated files) and the
+    declared verification-append pass (``RCP_APPEND_VERIFICATION=1``, which writes the corpora's
+    ``verification.jsonl`` records -- a new corpus's first one is a new file)."""
+    return (
+        bool(config.getoption("--update-snapshots", default=False))
+        or bool(os.environ.get("RCP_NDCG_UPDATE_SNAPSHOTS"))
+        or bool(os.environ.get("RCP_APPEND_VERIFICATION"))
     )
 
 
