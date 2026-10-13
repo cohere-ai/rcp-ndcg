@@ -8,7 +8,7 @@ setuptools leaves an ``*.egg-info`` directory in the tree it builds from and tes
 The recipes are package data: the wheel must ship every family (fourteen, one variant table each) and
 every variant resolves through the loader, and a fresh venv listing them through
 ``importlib.resources`` sees them (the listing runs against the unpacked wheel itself with the repo's
-interpreter; the full fresh-venv install is the release gate's step).
+interpreter; the full fresh-venv install of the published wheels is CI's ``wheel-smoke`` job).
 """
 
 from __future__ import annotations

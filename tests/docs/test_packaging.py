@@ -495,13 +495,46 @@ def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
     )
 
 
-def test_every_ci_install_of_the_serving_recipes_package_is_editable() -> None:
-    """Every CI job that installs ``rcp-ndcg-vllm`` installs it editable (``-e``).
+def _index_installed_spec(command: str) -> str | None:
+    """The ``rcp-ndcg-vllm`` spec one install command would resolve from an index, or ``None``.
 
-    The recipes live beside the package in the checkout (the layout move will make them package data): a
-    non-editable install leaves ``iter_recipes()`` without a recipe root, and the recipe-backed case
-    validation then fails the gated job (CI run 37822235213).
+    A spec is index-resolved exactly when it is the bare package name (optionally with extras) and the
+    command is not editable: ``rcp-ndcg-vllm``. A path (``./rcp-ndcg-vllm``) or a built wheel
+    (``dist/rcp_ndcg_vllm-0.0.1-py3-none-any.whl``) carries a separator or suffix and installs this
+    checkout's bytes; ``-e`` makes even the bare name an editable install of the checkout.
     """
+    tokens = command.split()
+    if "-e" in tokens or "--editable" in tokens:
+        return None
+    for token in tokens:
+        spec = token.strip("'\"")
+        if spec.startswith(("rcp-ndcg-vllm", "rcp_ndcg_vllm")) and "/" not in spec and not spec.endswith(".whl"):
+            return spec
+    return None
+
+
+def test_every_ci_install_of_the_serving_recipes_package_is_local() -> None:
+    """Every CI job that installs ``rcp-ndcg-vllm`` installs THIS checkout's package, never an index
+    release: editable (``-e``), a local path (``./rcp-ndcg-vllm``) or the wheel built in the same run
+    (the ``wheel-smoke`` job's ``dist/rcp_ndcg_vllm-*.whl``).
+
+    The recipes live beside the package in the checkout (the layout move made them package data), so
+    the non-editable path install is the deliberate form there (a non-editable install without the
+    package data left ``iter_recipes()`` without a recipe root, and the recipe-backed case validation
+    failed the gated job, CI run 37822235213). An index install would test a published version instead
+    of the tree. The synthetic cases below keep the check honest: it must be able to fail (the previous
+    form of this test filtered on the package name and then asserted the package name was present, so
+    it passed for ``uv pip install rcp-ndcg-vllm``).
+    """
+    # The check can fail: a bare name without -e is an index install, whatever the workflow.
+    assert _index_installed_spec("uv pip install rcp-ndcg-vllm") == "rcp-ndcg-vllm"
+    assert _index_installed_spec("uv pip install 'rcp-ndcg-vllm[test]'") == "rcp-ndcg-vllm[test]"
+    # ...and the local forms it must accept really are accepted.
+    assert _index_installed_spec("uv pip install -e rcp-ndcg-core -e rcp-ndcg -e 'rcp-ndcg-vllm[test]'") is None
+    assert _index_installed_spec("uv pip install mcp ./rcp-ndcg-vllm") is None
+    wheel_install = "uv pip install --python v/bin/python dist/rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    assert _index_installed_spec(wheel_install) is None
+
     workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
     installs = [
         command.strip()
@@ -509,11 +542,11 @@ def test_every_ci_install_of_the_serving_recipes_package_is_editable() -> None:
         for step in job.get("steps", [])
         # a shell line continuation folds the next line into the same install command
         for command in re.findall(r"pip install[^\n]*", str(step.get("run", "")).replace("\\\n", " "))
-        if "rcp-ndcg-vllm" in command
+        if "rcp-ndcg-vllm" in command or "rcp_ndcg_vllm" in command
     ]
     assert installs, "no CI job installs rcp-ndcg-vllm"
-    for command in installs:
-        assert "rcp-ndcg-vllm" in command, command
+    offenders = [(command, spec) for command in installs if (spec := _index_installed_spec(command)) is not None]
+    assert offenders == [], f"CI installs rcp-ndcg-vllm from an index, not this checkout: {offenders}"
 
 
 def test_the_folded_models_test_suites_run_in_ci() -> None:
