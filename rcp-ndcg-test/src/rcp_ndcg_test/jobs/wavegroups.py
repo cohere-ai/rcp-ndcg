@@ -14,6 +14,7 @@ The grouping uses the product's own loader (one home per concept): a recipe id r
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -34,7 +35,9 @@ def slug_of(image: str) -> str:
 
     Inputs: the image string (``repository:tag`` or ``repository:tag@sha256:...``).  Output: a slug that
     is stable for the image and short enough for a file name (a digest pin keeps its first 12 hex digits,
-    so two digests of one tag never collide).  Units: none.
+    so two digests of one tag never collide; a slug clipped at 48 characters carries a short digest of the
+    full image string, so two long tag-only images whose slugs agree in their first 48 characters never
+    share one list file).  Units: none.
     """
     digest = ""
     match = re.search(r"@sha256:([0-9a-f]{12,})", image)
@@ -42,7 +45,9 @@ def slug_of(image: str) -> str:
         digest = "-" + match.group(1)[:12]
         image = image[: match.start()]
     slug = re.sub(r"[^a-z0-9]+", "-", image.lower()).strip("-")
-    return (slug[:48] + digest) or "image"
+    if len(slug) > 48:
+        slug = slug[:48] + "-" + hashlib.sha256(image.encode("utf-8")).hexdigest()[:8]
+    return (slug + digest) or "image"
 
 
 def group_ids(recipe_ids: list[str], recipes_root: str | Path | None = None) -> dict[str, list[str]]:
