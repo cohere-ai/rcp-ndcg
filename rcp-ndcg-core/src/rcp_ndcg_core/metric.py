@@ -58,21 +58,40 @@ def _validate_gains(values: Iterable[float]) -> None:
 
 
 def discount(rank: int) -> float:
-    """The nDCG position discount ``1 / log2(rank + 1)``; ``rank`` counts from 1."""
+    """The nDCG position discount ``1 / log2(rank + 1)``; ``rank`` counts from 1.
+
+    Raises:
+        ValueError: ``rank`` is not finite, or is below 1.
+    """
+    if not math.isfinite(rank):
+        raise ValueError(f"rank must be finite, got {rank!r}")
     if rank < 1:
         raise ValueError(f"rank counts from 1, got {rank}")
     return 1.0 / math.log2(rank + 1)
 
 
 def dcg(gains_in_rank_order: Sequence[float], k: int) -> float:
-    """``DCG@k = sum_{r=1..k} gain(r) / log2(r + 1)`` of gains already in rank order (best first)."""
+    """``DCG@k = sum_{r=1..k} gain(r) / log2(r + 1)`` of gains already in rank order (best first).
+
+    Raises:
+        ValueError: ``k`` is not positive, or a gain entering the sum is not finite.
+    """
     _validate_k(k)
-    return sum(gain / math.log2(rank + 1) for rank, gain in enumerate(gains_in_rank_order[:k], start=1))
+    entering = list(gains_in_rank_order[:k])
+    _validate_gains(entering)
+    return sum(gain / math.log2(rank + 1) for rank, gain in enumerate(entering, start=1))
 
 
 def ideal_dcg(gains: Iterable[float], k: int) -> float:
-    """The DCG@k of ``gains`` sorted best first: the normaliser of :func:`ndcg`."""
-    return dcg(sorted(gains, reverse=True)[:k], k)
+    """The DCG@k of ``gains`` sorted best first: the normaliser of :func:`ndcg`.
+
+    Raises:
+        ValueError: ``k`` is not positive, or a gain is not finite (checked before the sort:
+            a NaN has no sort position).
+    """
+    values = list(gains)
+    _validate_gains(values)
+    return dcg(sorted(values, reverse=True)[:k], k)
 
 
 def rank_by_score(

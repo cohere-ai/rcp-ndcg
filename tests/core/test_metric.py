@@ -79,6 +79,18 @@ def test_the_discount_counts_ranks_from_one() -> None:
         discount(-2)
 
 
+def test_the_metric_parts_refuse_non_finite_inputs() -> None:
+    """``ndcg`` refuses a non-finite gain, but its parts did not: ``dcg([nan], 1)`` and
+    ``ideal_dcg([1.0, nan], 1)`` returned NaN and ``discount(nan)`` returned NaN with no error."""
+    for bad in (math.nan, math.inf, -math.inf):
+        with pytest.raises(ValueError, match="finite"):
+            dcg([bad], k=1)
+        with pytest.raises(ValueError, match="finite"):
+            ideal_dcg([1.0, bad], k=1)
+        with pytest.raises(ValueError, match="finite"):
+            discount(bad)
+
+
 class TestTieRules:
     """``ndcg`` of a score mapping under each tie rule."""
 
@@ -141,6 +153,20 @@ def test_pass_probabilities_are_stable_far_from_the_difficulties() -> None:
     assert pass_probabilities(-800.0, items)[0] == 0.0
     assert pass_probabilities(800.0, items)[0] == 1.0
     assert pass_probabilities(np.array([-800.0, 800.0]), items).ravel().tolist() == [0.0, 1.0]
+
+
+def test_the_gain_producers_refuse_a_non_finite_theta() -> None:
+    """``pass_probabilities(nan, items)`` returned ``[nan]`` and ``gain(nan, items)`` returned NaN,
+    although a calibrated ability in logits is finite and the gain is a probability."""
+    for bad in (math.nan, math.inf, -math.inf):
+        with pytest.raises(ValueError, match="theta must be finite"):
+            pass_probabilities(bad, ITEMS)
+        with pytest.raises(ValueError, match="theta must be finite"):
+            gain(bad, ITEMS)
+    with pytest.raises(ValueError, match="theta must be finite"):
+        gain(np.array([0.0, math.nan]), ITEMS)
+    with pytest.raises(ValueError, match="theta must be finite"):
+        pass_probabilities(np.array([math.inf]), ITEMS)
 
 
 def test_gain_increases_with_theta() -> None:
