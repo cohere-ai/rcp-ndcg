@@ -63,6 +63,10 @@ def fit_bradley_terry(
 
     Returns:
         ``{doc_id: theta_BT}``.
+
+    Raises:
+        ValueError: ``l2`` is not finite and >= 0; a comparison's weight or soft label is out of range;
+            or a comparison names a document outside ``doc_ids`` or compares a document with itself.
     """
     from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 

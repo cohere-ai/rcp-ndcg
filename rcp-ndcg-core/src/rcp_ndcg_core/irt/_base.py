@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import torch
@@ -18,6 +19,8 @@ class BaseScoredModel(nn.Module):
 
     def __init__(self, doc_ids: list[str], l2_reg: float = 1e-5):
         super().__init__()
+        if not math.isfinite(l2_reg) or l2_reg < 0:
+            raise ValueError(f"l2_reg must be finite and >= 0, got {l2_reg!r}")
         self.doc_ids = list(doc_ids)
         self.n_docs = len(self.doc_ids)
         self.doc_to_idx = {d: i for i, d in enumerate(self.doc_ids)}

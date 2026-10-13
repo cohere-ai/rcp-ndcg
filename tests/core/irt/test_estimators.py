@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from rcp_ndcg_core.irt import fit_bradley_terry
+from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 from rcp_ndcg_core.irt._rasch import RaschEstimator
 
 CHAIN = [("a", "b", 1.0, 1.0), ("b", "c", 1.0, 1.0), ("a", "c", 1.0, 1.0)]
@@ -52,6 +53,16 @@ def test_a_comparison_weight_and_soft_label_are_validated() -> None:
     for soft_label in (-0.1, 1.5, float("nan")):
         with pytest.raises(ValueError, match="soft_label"):
             fit_bradley_terry([("a", "b", 1.0, soft_label)], l2=1e-4)
+
+
+def test_an_l2_penalty_that_is_not_finite_and_non_negative_is_refused() -> None:
+    """A negative ridge made the fit return all-NaN abilities; nan/inf raised a bare torch
+    ``RuntimeError: value cannot be converted to type float without overflow``."""
+    for l2 in (-1.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="l2_reg must be finite and >= 0"):
+            fit_bradley_terry(CHAIN, l2=l2)
+    with pytest.raises(ValueError, match="l2_reg must be finite and >= 0"):
+        BradleyTerryEstimator(doc_ids=["a", "b"], l2_reg=float("nan"))
 
 
 def test_rasch_criteria_of_an_unknown_document_are_refused_not_dropped() -> None:
