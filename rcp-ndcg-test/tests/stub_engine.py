@@ -395,26 +395,36 @@ def _chat_prompts(body: dict[str, Any]) -> list[tuple[str, int, str, int]]:
     """vLLM's chat path over a ``messages`` body: per conversation, the rendered prompt (the template sees each
     media part as its modality), the prompt tokens (text plus media), the model input key the numbers are
     drawn from (the prompt, then every media part's resized geometry in order) and the media tokens alone."""
-    from rcp_ndcg_test.equivalence.stages import engine_conversation
+    from rcp_ndcg_test.equivalence.stages import engine_conversation, engine_render_merge
 
     messages = body.get("messages")
     if not isinstance(messages, list) or not messages:
         raise _BadRequest("messages must be a non-empty list")
     conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
     path = _ARGS.chat_template or _ARGS.model_chat_template
+    template_text = Path(path).read_text(encoding="utf-8") if path else None
     out = []
     for conversation in conversations:
         parts = [part for message in conversation for part in _parts(message.get("content"))]
         media_tokens, shapes = _media(parts)
-        if path:
+        # The count vLLM reports: the text rendered without the media parts, plus each image's whole vision
+        # block (its merged patches and the two markers) expanded in place of the template's placeholder, plus
+        # the merge the placeholder's presence moves at the text boundaries (one home for the rule:
+        # stages.engine_render_merge; the fixtures' templates render no placeholder, so it is 0 there).
+        merge = 0
+        if template_text is not None and media_tokens:
+            product_tokenizer = _product_tokenizer()
+            if product_tokenizer is not None:
+                merge = engine_render_merge(
+                    template_text,
+                    conversation,
+                    product_tokenizer,
+                    add_generation_prompt=bool(body.get("add_generation_prompt", False)),
+                )
+        if template_text is not None:
             from jinja2.sandbox import ImmutableSandboxedEnvironment
 
-            template = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True).from_string(
-                Path(path).read_text(encoding="utf-8")
-            )
-            # The text is rendered without the media parts and each image adds its whole vision block (its
-            # merged patches and the two markers): the count vLLM reports once the template's one placeholder
-            # per image (``<|vision_start|><|image_pad|><|vision_end|>`` for the Qwen-VL families) is expanded.
+            template = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True).from_string(template_text)
             text_only = [
                 {**message, "content": [part for part in _parts(message.get("content")) if part.get("type") == "text"]}
                 if isinstance(message.get("content"), list)
@@ -430,7 +440,7 @@ def _chat_prompts(body: dict[str, Any]) -> list[tuple[str, int, str, int]]:
             prompt = "\n".join(str(part.get("text", "")) for part in parts if part.get("type") == "text")
         flag = bool(body.get("add_special_tokens", False))
         key = prompt + "".join(f"\x00{shape}" for shape in shapes)
-        out.append((prompt, _count(prompt, add_special_tokens=flag) + media_tokens, key, media_tokens))
+        out.append((prompt, _count(prompt, add_special_tokens=flag) + media_tokens + merge, key, media_tokens))
     return out
 
 

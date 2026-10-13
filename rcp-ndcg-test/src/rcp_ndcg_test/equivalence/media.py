@@ -298,9 +298,10 @@ def _offline_reply_probe(recipe: Recipe) -> Recipe:
 
 def _client_facts(
     recipe: Recipe, rows: list[tuple[int, dict[str, Any]]], base_url: str | None
-) -> tuple[dict[tuple[int, str], dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[dict[tuple[int, str], dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], Any]:
     """Send every media side through the role client; return the sent facts per ``(row, side)``, the
-    refusals, and the captured media requests (each with the ``(row, side)`` keys it carries)."""
+    refusals, the captured media requests (each with the ``(row, side)`` keys it carries) and the recipe's
+    loaded tokenizer (``None`` when it cannot be loaded: the engine check then reads no render merge)."""
     from rcp_ndcg.errors import RcpNdcgError
     from rcp_ndcg.inference.types import EncodeRole
 
@@ -360,7 +361,7 @@ def _client_facts(
                     facts[(index, side)] = side_facts
                     counted += sum(int(item["tokens"] or 0) for item in side_facts["media"])
                 requests.append({"row": index, "sides": keys, "exchange": exchange, "counted": counted})
-    return facts, refusals, requests
+    return facts, refusals, requests, tokenizer
 
 
 # ---------------------------------------------------------------------------
@@ -396,9 +397,40 @@ def _without_media(body: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[str, Any]:
+def _engine_render_merge(recipe: Recipe, body: dict[str, Any], tokenizer: Any) -> int:
+    """The engine's own render's boundary merge for one captured request, in tokens
+    (:func:`~rcp_ndcg_test.equivalence.stages.engine_render_merge`).
+
+    The engine's prompt is its render (the served template over the conversation's parts, each media part a
+    placeholder) with every placeholder replaced by the media's expansion; the client's render drops the
+    media.  The two renders differ by the placeholders and by the boundary tokens their presence moves, and
+    the client's count covers only the expansion: this merge is what the engine's media count may exceed the
+    client's by.  Zero for a body with no conversation (a rerank pair's own wire) and for a recipe whose
+    tokenizer cannot be loaded: the check then compares the counts directly, as it always did.
+    """
+    messages = body.get("messages")
+    if tokenizer is None or not isinstance(messages, list) or not messages:
+        return 0
+    from .stages import engine_render_merge, served_chat_template
+
+    try:
+        _, template_text = served_chat_template(recipe)
+    except HarnessError:
+        return 0
+    conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+    flag = bool(body.get("add_generation_prompt", False))
+    return sum(
+        engine_render_merge(template_text, conversation, tokenizer, add_generation_prompt=flag)
+        for conversation in conversations
+    )
+
+
+def _engine_check(
+    recipe: Recipe, requests: list[dict[str, Any]], base_url: str | None, tokenizer: Any
+) -> dict[str, Any]:
     """Per captured media request: the engine's media count (the prompt-token difference to the same request
-    without its media) against the client's count; ``not_run`` without an engine, never passed."""
+    without its media, less the engine's own render merge) against the client's count; ``not_run`` without an
+    engine, never passed."""
     if base_url is None:
         return {"status": "not_run", "passed": None, "reason": "no engine URL: the engine's media count is the wave's"}
     import httpx
@@ -409,6 +441,7 @@ def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[
         for request in requests:
             exchange = request["exchange"]
             with_media = prompt_tokens(exchange)
+            merge = _engine_render_merge(recipe, exchange.get("request_body") or {}, tokenizer)
             reply = http.post(exchange["url"], json=_without_media(exchange.get("request_body") or {}))
             try:
                 without = prompt_tokens({"response_json": reply.json()})
@@ -420,13 +453,14 @@ def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[
                     {"row": request["row"], "sides": request["sides"], "note": "the engine reported no prompt tokens"}
                 )
                 continue
-            if with_media - without != request["counted"]:
+            if with_media - without != request["counted"] + merge:
                 failures.append(
                     {
                         "row": request["row"],
                         "sides": request["sides"],
                         "engine_media_tokens": with_media - without,
                         "client_media_tokens": request["counted"],
+                        "render_merge": merge,
                     }
                 )
     return {
@@ -435,7 +469,9 @@ def _engine_check(requests: list[dict[str, Any]], base_url: str | None) -> dict[
         "passed": bool(checked) and not failures,
         "failures": failures,
         "referent": "per media request, the engine's usage.prompt_tokens minus the same request's without its "
-        "media parts must equal the media tokens the client counted (an unpinned or re-resizing engine differs)",
+        "media parts, less the engine's own render merge (the served template's placeholders aside, how many "
+        "tokens their presence moves at the text boundaries), must equal the media tokens the client counted "
+        "(an unpinned or re-resizing engine differs)",
     }
 
 
@@ -555,7 +591,7 @@ def stage_media(
             "scope_note": MEDIA_GATE_SCOPE_NOTE,
             "reason": "no --reference-python: the reference's media facts",
         }
-    client, refusals, requests = _client_facts(recipe, rows, base_url)
+    client, refusals, requests, tokenizer = _client_facts(recipe, rows, base_url)
     reference = _reference_facts(recipe, reference_python, rows)
     failures: list[dict[str, Any]] = []
     for key in sorted(set(client) | set(reference)):
@@ -573,7 +609,7 @@ def stage_media(
             failures.append({"row": key[0], "side": key[1], "check": "client", "note": "the client sent no such side"})
         else:
             failures.extend(_compare(key, client[key], reference[key]))
-    engine = _engine_check(requests, base_url)
+    engine = _engine_check(recipe, requests, base_url, tokenizer)
     items = sum(len(facts["media"]) for facts in client.values())
     return {
         "status": "run",

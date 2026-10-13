@@ -319,8 +319,9 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   the rendered prompt's edge for the embed roles, and for a reranker the settle-once query (one settled span
   per row, identical across the row's pointwise requests, within its declared `query_max_tokens`, every
   document span within its declared `document_max_tokens`, and no cut on an in-budget pair). Every wire shape is read: a `token_ids` body is audited on the ids it sends, a
-  `messages` body as the declared frame around its conversation's text parts (joined with `"\n"`, as the
-  engine joins them; its media parts are listed as placeholders beside them): the client sends the content
+  `messages` body as the declared frame around its conversation's text parts (flattened with `"\n"`, vLLM's
+  *string* content format's join, vllm/entrypoints/chat_utils.py's `_get_full_multimodal_text_prompt`; its
+  media parts are listed as placeholders beside them): the client sends the content
   and the engine's chat template frames it. An audit that read no input fails. An `anchor: first` head is asserted as the engine reads it: where the head
   meets the content a byte-level BPE re-tokenizes across the join (`"doc: "` then reads `Ġdocument`; under a
   Qwen-style pre-tokenizer `"Query:"` reads `:Paris`), so the edge is the post-processor's prefix and the
@@ -352,7 +353,10 @@ sends — the harness re-derives no render, no cut and no settlement. Each decla
   carried, and must equal the declared frame around that content, once; for a media conversation the
   comparison is on the conversation's text (the media placeholder is the engine's own expansion, counted by
   the media stage) and the render WITH the media must still open and close with the declared frame's fixed
-  edges. Without `serve.chat_template` the engine renders the checkpoint's own chat template, and the check
+  edges. A media side's text is read as the engine's `openai` content format hands it to the template: the
+  parts in order, back to back (the served template is the one home of the join between them; the client's
+  `TEXT_JOIN` flattening is the string content format's), so a template that inserts a separator between a
+  message's text parts fails the check rather than passing on the flattened string. Without `serve.chat_template` the engine renders the checkpoint's own chat template, and the check
   reads it at the pinned revision (`chat_template.jinja`, else `chat_template.json`, else
   `tokenizer_config.json`, from the Hub cache or the Hub) and renders that; a template it cannot read fails
   the check (`unresolved`), never passes.
@@ -379,9 +383,12 @@ python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.
 ```
 
 A recipe with image or video input also runs the **media stage** beside stages 1 and 2. Stage 2 now
-compares the media rows too — the reference reads their `media` field (an inline image as a loaded image, a
-container at the recipe's declared video pin, the parts in order) and computes the card's own vectors or
-scores for them, so the same gates apply; a recipe whose card's own pipeline cannot run an input declares
+compares the media rows too — the reference reads their `media` field (an inline image as a loaded image
+prepared as the served path sends it: the card's own resize under the declared budget, at the size the
+engine's processor keeps, so the two sides see the same pixels — an image the engine would resize again is a
+different input, and the media rows' cosines move by exactly that much; a container at the recipe's declared
+video pin, the parts in order) and computes the card's own vectors or scores for them, so the same gates
+apply; a recipe whose card's own pipeline cannot run an input declares
 `reference.known_deviations: [media_approximation]`, which reports its media rows non-gating with the reason
 in its notes.
 **The media stage itself is an INPUT gate**: it compares what the client *sends* -- and, with an engine,
@@ -395,9 +402,15 @@ where they stand); a side's content is its entries in order, then its text. The 
 through the role client and reads what crossed the wire — the parts in order, each image's prepared size
 decoded from the sent bytes, the tokens the client counted — against the reference's `--mode media`; with an
 engine, it sends each media request again without its media parts, and the difference of the two
-`usage.prompt_tokens` is the engine's own media count, which must equal the client's (an engine whose pixel
+`usage.prompt_tokens`, less the engine's own render merge, is the engine's own media count, which must equal
+the client's (an engine whose pixel
 pin is missing re-resizes a prepared image and fails it; an engine not pinned to the declared video sampling
-decodes other frames and fails it the same way). On CPU the test stub engine resizes with the product's own
+decodes other frames and fails it the same way). The render merge is the boundary token a media placeholder
+moves when it stands between a message's text parts: the engine's prompt is its render (the served template
+with the placeholder) minus the placeholder plus the expansion, and a tokenizer is not additive, so the word
+after the placeholder can lose the token that carried the space. It is read from the served template's own
+render (`rcp_ndcg_test.equivalence.stages.engine_render_merge`), never guessed, so a genuine engine
+difference still fails. On CPU the test stub engine resizes with the product's own
 `smart_resize` and counts a container through the product's own `content_media_tokens`, so there the engine
 count catches a pin that is missing or different, never a bug in the product's resize or video accounting
 itself: on CPU only the comparison with the reference's card resize can catch

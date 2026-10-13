@@ -16,9 +16,11 @@ import hashlib
 import importlib.util
 import io
 import json
+import math
 import re
 import shutil
 import sys
+import types
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -65,7 +67,10 @@ SERVE = {
     # the plugin also registers the folded model (the transformers-side fold alone was not enough).
     "plugin_architectures": ["EmbeddingGemma2Config", "EmbeddingGemma2Model"],
     "io_processor_plugin": None,
-    "mm_processor_kwargs": {},
+    # E2 round 13: the pod's engine is vLLM v0.31.0 (no EmbeddingGemma2VideoBackend), so the
+    # --media-io-kwargs pin reaches only the generic decoder and the processor resamples at its own
+    # defaults; the same numbers ride the processor's own kwargs here (see the pin test below).
+    "mm_processor_kwargs": {"fps": 60, "max_frames": 32},
     "limit_mm_per_prompt": {"image": 1, "video": 1},
     "extra_args": [
         "--media-io-kwargs",
@@ -159,6 +164,76 @@ def _reference_module() -> Any:
     finally:
         sys.dont_write_bytecode = bytecode
     return module
+
+
+def _card_aspect_ratio_preserving_size(
+    height: int, width: int, patch_size: int, max_patches: int, pooling_kernel_size: int
+) -> tuple[int, int]:
+    """transformers 5.19.0's ``get_aspect_ratio_preserving_size`` (``models/gemma4/
+    image_processing_gemma4.py`` and its PIL sibling, the function the checkpoint's Gemma 4 image processor
+    resizes with): the card's own rule, transcribed the way :func:`_processor_sampled_indices` transcribes
+    the video processor's ``sample_frames``."""
+    target_px = max_patches * (patch_size**2)
+    factor = math.sqrt(target_px / (height * width))
+    side_mult = pooling_kernel_size * patch_size
+    target_height = int(math.floor(factor * height / side_mult)) * side_mult
+    target_width = int(math.floor(factor * width / side_mult)) * side_mult
+    if target_height == 0 and target_width == 0:
+        raise ValueError(f"a {height}x{width} image resizes to 0x0")
+    max_side = (max_patches // pooling_kernel_size**2) * side_mult
+    if target_height == 0:
+        target_height = side_mult
+        target_width = min(int(math.floor(width / height)) * side_mult, max_side)
+    elif target_width == 0:
+        target_width = side_mult
+        target_height = min(int(math.floor(height / width)) * side_mult, max_side)
+    if target_height * target_width > target_px:
+        raise ValueError(f"{height}x{width} -> {target_height}x{target_width} exceeds {max_patches} patches")
+    return target_height, target_width
+
+
+def _card_image_processor(monkeypatch: pytest.MonkeyPatch, rule: Any = None) -> Any:
+    """A stand-in for the checkpoint's Gemma 4 image processor (transformers 5.19.0's
+    ``Gemma4ImageProcessorPil``/``Gemma4ImageProcessor``): its geometry attributes and, in its own module,
+    the card's resize rule the reference reads there.
+
+    The reference takes the rule from the loaded image processor's own module (the card defines
+    ``get_aspect_ratio_preserving_size`` beside the class), so the stand-in carries a module holding it; the
+    real processor is the wave's confirmation, this is the CPU stand-in (``rule`` overrides it, for the test
+    that shows the reference follows the loaded processor's rule)."""
+    from PIL import Image
+
+    module = types.ModuleType("gemma4_image_processing_stand_in")
+    module.get_aspect_ratio_preserving_size = rule or _card_aspect_ratio_preserving_size
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    return type(
+        "Gemma4ImageProcessorPil",
+        (),
+        {
+            "__module__": module.__name__,
+            "patch_size": 16,
+            "pooling_kernel_size": 3,
+            "max_soft_tokens": 280,
+            "resample": Image.Resampling.BICUBIC,
+        },
+    )()
+
+
+def _processor_sampled_indices(
+    total: int, source_fps: float, duration: float, fps: float, max_frames: int
+) -> list[int]:
+    """The engine's video sampling rule, transcribed from transformers 5.19.0's
+    ``EmbeddingGemma2VideoProcessor.sample_frames`` (the class the checkpoint's processor_config.json
+    names; its fps-plus-``max_frames``/``overflow_strategy`` path is what the digest-pinned
+    ``EmbeddingGemma2VideoBackend.compute_frames_index_to_sample`` reproduces, and what the checkpoint's
+    processor runs on the pod's vLLM v0.31.0, where no EmbeddingGemma2VideoBackend exists)."""
+    import numpy as np
+
+    step = source_fps / fps
+    sampled = [min(total - 1, int(index * step)) for index in range(max(1, int(duration * fps)))]
+    if len(sampled) <= max_frames:
+        return sampled
+    return [sampled[index] for index in np.linspace(0, len(sampled) - 1, max_frames, dtype=int)]
 
 
 @pytest.fixture(scope="module")
@@ -266,8 +341,29 @@ def test_serve_argv_carries_the_pinned_flags() -> None:
     assert argv[argv.index("--dtype") + 1] == "bfloat16"
     assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
     assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 60, "max_frames": 32}}'
+    assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {"fps": 60, "max_frames": 32}
     assert argv[argv.index("--attention-backend") + 1] == "TORCH_SDPA"
     assert "--enforce-eager" in argv
+
+
+def test_the_video_pin_reaches_the_processor_that_samples_the_clip() -> None:
+    """E2 round 13 (the media stage's rows 36/37).  The pod's engine is vLLM v0.31.0, which has no
+    ``EmbeddingGemma2VideoBackend``: ``--media-io-kwargs`` pins only the generic decoder, which samples the
+    shipped 4.0 s / 8 fps / 32-frame clip whole and reports ``do_sample_frames=True``, and the checkpoint's
+    processor then resamples at its own defaults (fps 1, max_frames 32) -- 4 frames, the wave's
+    ``492 = 4 x 123`` against the client's ``3936 = 32 x 123``.  ``serve.mm_processor_kwargs`` carries the
+    same numbers into the engine's processor call, so the processor samples 32; the CPU-proven rule (the
+    checkpoint's own ``sample_frames``) is the test below, and the wave's media stage is the confirmation."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.serve.mm_processor_kwargs == {"fps": 60, "max_frames": 32}
+    assert recipe.client["video_policy"]["num_frames"] == 32
+    assert recipe.client["video_policy"]["engine_video_pinning"] is True
+    # the checkpoint's processor over the shipped clip (32 native frames at 8 fps, 4.0 s): the declared
+    # pin samples the whole clip, the processor's own default is the four frames the wave saw.
+    pinned = _processor_sampled_indices(32, 8.0, 4.0, 60.0, 32)
+    default = _processor_sampled_indices(32, 8.0, 4.0, 1.0, 32)
+    assert len(pinned) == 32 and len(set(pinned)) == 31, pinned
+    assert default == [0, 8, 16, 24], default
 
 
 def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
@@ -372,6 +468,75 @@ def test_the_reference_geometry_matches_the_product_over_a_size_grid() -> None:
             assert module.gemma4_fixed_point(height, width, max_soft_tokens=280) == gemma4_fixed_point(
                 height, width, max_soft_tokens=280
             ), f"fixed point diverged at {height}x{width}"
+
+
+def test_the_reference_embed_input_is_the_image_the_client_sends(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The reference's embed mode hands the card's processor the pixels the served path sends.
+
+    The engine's processor runs on the client's prepared bytes: the product prepares the Gemma 4 resize's
+    fixed point (Pillow BICUBIC, ``rcp_ndcg.data.prepare.prepare_image``) and the processor's own resize is
+    then the identity on it. The reference used to hand the processor the RAW image, whose single pass lands
+    on a different grid for the two extreme-aspect rows -- 576x4096 -> 2112x288 (266 tokens) against the
+    client's 2160x288 (272), and 3000x20 -> 48x9792 (206) against 48x13344 (280) -- which is the wave's
+    0.9941-0.9963 cosine. The reference prepares the fixed point now, with the rule read from the loaded
+    processor's own module, so its input is pixel-identical to the client's prepared image; a small image
+    still scales up per the card (a 16x16 icon to 768x768, 258 tokens)."""
+    from PIL import Image, ImageChops
+    from rcp_ndcg_core.content import MediaRef
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    from rcp_ndcg.data.prepare import prepare_image
+    from rcp_ndcg.data.resolution import ImagePolicy
+
+    module = _reference_module()
+    processor = _card_image_processor(monkeypatch)
+    policy = ImagePolicy(processor="gemma4", max_soft_tokens=280)
+    for name, width, height, tokens in (
+        ("tall_receipt", 576, 4096, 272),
+        ("extreme_aspect", 3000, 20, 280),
+        ("tiny", 16, 16, 258),
+    ):
+        entry = image_entry(name, width, height)
+        side = module.side_input(
+            "",
+            [entry],
+            work=tmp_path,
+            clip_name=f"document-0-{name}",
+            image_processor=processor,
+            image_budget=280,
+        )
+        prepared = side[0]["content"][0]["image"]
+        client = prepare_image(
+            MediaRef(uri=entry["uri"], sha256=entry["sha256"], mime=entry["mime"], width=width, height=height),
+            policy,
+        )
+        client_image = Image.open(io.BytesIO(base64.b64decode(client.sent.uri.split(",", 1)[1]))).convert("RGB")
+        assert prepared.size == client_image.size, (
+            f"{name}: the reference sends {prepared.size}, the client {client_image.size}"
+        )
+        assert ImageChops.difference(prepared, client_image).getbbox() is None, (
+            f"{name}: the reference's pixels differ from the client's prepared image"
+        )
+        assert policy.image_tokens(prepared.height, prepared.width) + 2 == tokens, name
+
+
+def test_the_reference_takes_the_image_rule_from_the_loaded_processor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The resize rule is the loaded processor's own, never a port of it: a stand-in whose rule keeps the
+    image unchanged leaves the reference's embed input at the raw size (the reference's own
+    ``gemma4_fixed_point`` port is not consulted)."""
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    module = _reference_module()
+    processor = _card_image_processor(monkeypatch, rule=lambda **kwargs: (kwargs["height"], kwargs["width"]))
+    entry = image_entry("tall_receipt", 576, 4096)
+    side = module.side_input(
+        "", [entry], work=tmp_path, clip_name="document-0-0", image_processor=processor, image_budget=280
+    )
+    assert side[0]["content"][0]["image"].size == (576, 4096)
 
 
 def test_the_tokenizer_is_the_pinned_revision_bytes() -> None:
@@ -501,12 +666,22 @@ def test_the_family_yaml_is_the_only_recipe_file() -> None:
     assert names == ["family.yaml", "reference.in", "reference.lock", "reference.py"]
 
 
-def test_the_reference_reads_media_rows_into_the_cards_own_inputs(tmp_path: Path) -> None:
+def _fake_model_module(processor: Any) -> Any:
+    """The one module of a fake ``SentenceTransformer`` that carries the checkpoint's processor: the input
+    module of the card's Transformer -> Pooling -> Normalize pipeline, where the reference reads the image
+    processor from (``SentenceTransformer`` is the module sequence its ``encode`` walks)."""
+    return types.SimpleNamespace(processor=types.SimpleNamespace(image_processor=processor))
+
+
+def test_the_reference_reads_media_rows_into_the_cards_own_inputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The reference's media path reads the harness's ``media`` entries into the card's own ST inputs: a
     text-only side is its text (the card prepends the declared prompt), a media side is a one-user-turn
     conversation with the parts in order (the prompt rides the card's own system message), an inline image
-    is a loaded PIL image, and a container is written to a scratch file the checkpoint's processor reads at
-    the recipe's declared video pin. No model weights: the row reading and the pin are the plumbing."""
+    is a loaded PIL image PREPARED at the card's fixed point (a 16x16 icon scales up to the card's 768x768),
+    and a container is written to a scratch file the checkpoint's processor reads at the recipe's declared
+    video pin. No model weights: the row reading, the preparation and the pin are the plumbing."""
     import base64
     import io
 
@@ -514,21 +689,23 @@ def test_the_reference_reads_media_rows_into_the_cards_own_inputs(tmp_path: Path
     from rcp_ndcg_test.observe.media_set import video_entry
 
     module = _reference_module()
+    processor = _card_image_processor(monkeypatch)
     buffer = io.BytesIO()
     Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
     image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
     clip = video_entry("icon", 64, 64, 64)
-    assert module.side_input("the body", [], work=tmp_path, clip_name="query-0") == "the body"
-    conversation = module.side_input("the body", [image], work=tmp_path, clip_name="query-1")
+    sides = {"image_processor": processor, "image_budget": 280}
+    assert module.side_input("the body", [], work=tmp_path, clip_name="query-0", **sides) == "the body"
+    conversation = module.side_input("the body", [image], work=tmp_path, clip_name="query-1", **sides)
     assert conversation[0]["role"] == "user"
     assert conversation[0]["content"][0]["type"] == "image"
-    assert conversation[0]["content"][0]["image"].size == (16, 16)
+    assert conversation[0]["content"][0]["image"].size == (768, 768), "the card's fixed point of a 16x16 icon"
     assert conversation[0]["content"][1] == {"type": "text", "text": "the body"}
     interleaved = module.side_input(
-        "", [{"kind": "text", "text": "lead "}, image], work=tmp_path, clip_name="document-0-0"
+        "", [{"kind": "text", "text": "lead "}, image], work=tmp_path, clip_name="document-0-0", **sides
     )
     assert [part["type"] for part in interleaved[0]["content"]] == ["text", "image"]
-    video = module.side_input("", [clip], work=tmp_path, clip_name="document-0-1")
+    video = module.side_input("", [clip], work=tmp_path, clip_name="document-0-1", **sides)
     video_path = Path(video[0]["content"][0]["video"])
     assert video_path.is_file()
     assert video_path.read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
@@ -570,19 +747,8 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
 
     module = _reference_module()
 
-    def engine_indices(total: int, source_fps: float, duration: float, fps: float, max_frames: int) -> list[int]:
-        """The engine's rule, transcribed from transformers 5.19.0's
-        ``EmbeddingGemma2VideoProcessor.sample_frames`` (the class the checkpoint's processor_config.json
-        names; its fps-plus-``max_frames``/``overflow_strategy`` path is what the digest-pinned
-        ``EmbeddingGemma2VideoBackend.compute_frames_index_to_sample`` reproduces)."""
-        step = source_fps / fps
-        sampled = [min(total - 1, int(index * step)) for index in range(max(1, int(duration * fps)))]
-        if len(sampled) <= max_frames:
-            return sampled
-        return [sampled[index] for index in np.linspace(0, len(sampled) - 1, max_frames, dtype=int)]
-
     shipped = video_entry("icon", 64, 64, 32)  # the recipe's declared num_frames, at the media set's 8 fps
-    indices = engine_indices(32, 8.0, 4.0, 60.0, 32)
+    indices = _processor_sampled_indices(32, 8.0, 4.0, 60.0, 32)
     assert indices == [0, 0, *range(2, 32)], indices
     assert indices != uniform_frame_indices(32, 32), "the generic rule is a different instrument"
 
@@ -592,6 +758,7 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
         "video": {"fps": 60.0, "max_frames": 32, "overflow_strategy": "uniform"}
     }
 
+    processor = _card_image_processor(monkeypatch)
     calls: list[dict[str, Any]] = []
     seen: dict[str, Any] = {}
 
@@ -613,6 +780,10 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
 
         def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
             self.model = model
+
+        def __iter__(self) -> Any:
+            """The card's module sequence: its input module carries the checkpoint's processor."""
+            return iter([_fake_model_module(processor)])
 
         def encode(self, sides: list[Any], **kwargs: Any) -> Any:
             calls.append({"sides": sides, **kwargs})
@@ -673,6 +844,7 @@ def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
     module = _reference_module()
     recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
     spelling = "a caption carrying the placeholder " + IMAGE_SPELLING + " with no image"
+    processor = _card_image_processor(monkeypatch)
 
     calls: dict[str, list[dict[str, Any]]] = {"tokenize": [], "encode": [], "forward": []}
 
@@ -690,6 +862,10 @@ def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
 
         def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
             self.tokenizer = FakeTokenizer()
+
+        def __iter__(self) -> Any:
+            """The card's module sequence: its input module carries the checkpoint's processor."""
+            return iter([_fake_model_module(processor)])
 
         def encode(self, sides: list[Any], **kwargs: Any) -> Any:
             calls["encode"].append({"sides": sides, **kwargs})
@@ -742,3 +918,6 @@ def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
     assert len(media_calls) == 1, calls["encode"]
     assert media_calls[0]["prompt_name"] == "Document"
     assert [part["type"] for part in media_calls[0]["sides"][0][0]["content"]] == ["image", "text"]
+    assert media_calls[0]["sides"][0][0]["content"][0]["image"].size == (768, 768), (
+        "the embed mode hands the processor the prepared image, never the raw bytes"
+    )
