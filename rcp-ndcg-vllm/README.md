@@ -72,7 +72,7 @@ variant the waves have not verified yet; the tag ships none unverified.
 | `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-1b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b | rerank | text | — | — | paper | unverified |
 | `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-2b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b | rerank | text | — | — | paper | unverified |
 | `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-6b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b | rerank | text | — | — | paper | unverified |
-| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | truncation 128/256/512/768 | the rcp-ndcg-vllm plugin (the embeddinggemma2-transformers-fold and torch-sdpa-attention patch carrier) | card | unverified |
+| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | truncation 128/256/512/768 | the rcp-ndcg-vllm plugin (the embeddinggemma2-transformers-fold and torch-sdpa-attention patch carrier) | card | verified |
 | `gemma-4-12b` | `gemma-4-12b-it` | google/gemma-4-12B-it | judge | text, image | — | — | — | unverified |
 | `gemma-4-26b-a4b` | `gemma-4-26b-a4b-it` | google/gemma-4-26B-A4B-it | judge | text, image | — | — | — | unverified |
 | `gemma-4-26b-a4b` | `gemma-4-26b-a4b-nvfp4` | nvidia/Gemma-4-26B-A4B-NVFP4 | judge | text, image | — | — | — | unverified |
@@ -107,8 +107,8 @@ variant the waves have not verified yet; the tag ships none unverified.
 | `qwen3.8-27b` | `qwen3.8-27b-fp8` | Qwen/Qwen3.8-27B-FP8 | judge | text, image | — | — | — | unverified |
 | `qwen3.8-flash-next` | `qwen3.8-flash-next-nvfp4` | nvidia/Qwen3.8-Flash-Next-NVFP4 | judge | text, image | — | — | — | unverified |
 | `qwen3.8-flash-next` | `qwen3.8-flash-next-fp8` | Qwen/Qwen3.8-Flash-Next-FP8 | judge | text, image | — | — | — | unverified |
-| `topk-embed-v1` | `topk-embed-v1-xsmall` | topk-io/topk-embed-v1-xsmall | multi_vector | text, image | truncation 64/128/256/512/1024 | the topk model plugin | card | unverified |
-| `topk-embed-v1` | `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | truncation 64/128/256/512/1024/2048 | the topk model plugin | card | unverified |
+| `topk-embed-v1` | `topk-embed-v1-xsmall` | topk-io/topk-embed-v1-xsmall | multi_vector | text, image | truncation 64/128/256/512/1024 | the topk model plugin | card | failed |
+| `topk-embed-v1` | `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | truncation 64/128/256/512/1024/2048 | the topk model plugin | card | failed |
 | `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | projection 1280/640/320/160/80/40 | the rcp-ndcg-vllm plugin (the pooling-full-context patch carrier) | card | unverified |
 | `zerank` | `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | — | paper | unverified |
 | `zerank` | `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | — | paper | unverified |

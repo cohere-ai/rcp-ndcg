@@ -172,7 +172,15 @@ reference:
                                  # text, but an id cut inside a multi-token character reads one id no
                                  # text carries (see notes, "Budget")
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+# The wave ran and the per-token gate FAILED (stage 1 passed; stage 2 failed on text and image
+# rows; every run rc0-202610120045..rc0-202610131205-record failed the same gate). The state is the
+# schema's `failed` -- "a gate failed; the report says which" -- not `unverified`: the measurement
+# exists. The gate itself, its dtype and the disposition stay untouched (owner decision).
+status:
+  state: failed
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-13"
+  report: "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610130615/r4/vllm-vllm-openai-v0-31-0/"
 sources:
   # The checkpoint, every file byte-verified at the pinned revision (tokenizer.json via its
   # Git-LFS oid e56427d66f44..., sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7).

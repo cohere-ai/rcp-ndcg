@@ -356,10 +356,10 @@
    "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-13",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610130615/r4/vllm-vllm-openai-v0-31-0/",
+   "state": "failed"
   }
  },
  "serve_argv": [
