@@ -25,7 +25,9 @@ into.
 | `a9b8edce` | Format the two new harness tests |
 | `902e35ed` | The image rows' residual is stated in the client's token counts (cause 4) |
 | `fea73119` | Merge branch `rfc-0001` into `lane/fix13gemma` (tip `ec4fffbc`) |
-| (this report) | The lane report |
+| `ae948061` | The fix13gemma report records the three fixes, the measured image-row cause and the re-run command |
+| `2b1da7f3` | The fix13gemma report names the worktree as a placeholder, never a local path |
+| `49c5e021` | The wire capture names the string content format's join as its own (the docs sweep) |
 
 Merged `rfc-0001` commit: **`ec4fffbc`**. No co-author lines, no attribution, nothing pushed.
 
@@ -228,6 +230,16 @@ pins the argv, the contract and the rule.
 | `uv run --no-sync mkdocs build --strict` | built (strict) |
 | the recipe suites (family goldens + embeddinggemma-2) | 66 passed, 4 skipped |
 | the CPU probes of §3.1/§3.4 (the pinned image, the staged plugin wheel, the checkpoint's processor) | quoted above |
+
+**The gate.** `timeout 7200 bin/gate lane/fix13gemma` on `49c5e021` (slot 2) — **GATE: PASS**, every step
+exit 0: ruff-check, ruff-format (632 files), basedpyright (0 errors), `pytest 4145 passed, 155 skipped`,
+`contract-docs 413 passed, 107 skipped`, mkdocs strict, `test-pkg 1197 passed, 229 skipped`, recipes (0
+baseline failures), `vllm-pkg 50 passed`, `vllm-models 110 passed, 8 skipped`, `run_all` (1022/987/35/0,
+67/67, 82/82), public-names clean, clean. Two earlier attempts on the same tree failed on environment, not
+the tree: the first hit the known `test-pkg` SIGSEGV flake (`exit=139` at
+`test_record_and_wave.py::test_wave_packs_engines_so_reference_gpus_remain` under load average 84; the test
+passes in isolation in 13.7 s), the second the `public-names` step on this report's own local path in the
+re-run command (fixed to a `<worktree>` placeholder).
 
 ## 6. The verification experiment (the exact re-run command)
 
