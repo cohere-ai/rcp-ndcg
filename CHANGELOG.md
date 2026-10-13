@@ -36,7 +36,8 @@ It ships three published distributions and one unpublished one:
 - **`rcp-ndcg`** -- the pipeline and the `rcp-ndcg` command built on it: datasets and rankings, retrieval,
   judging, calibration, evaluation, runs and their runners. It pins `rcp-ndcg-core` to its own version.
 - **`rcp-ndcg-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every variant
-  must pass its end-to-end GPU validation against its reference implementation before the tag) as
+  must pass its end-to-end GPU validation against its reference implementation before the tag, or carry an
+  explicit, recorded disposition in the recipe ledger) as
   package data, the `rcp-ndcg-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
   the stock `vllm/vllm-openai` image, the model plugins and the engine patches. Its dependencies are pydantic
   and PyYAML, it never imports `rcp-ndcg`, torch or vLLM at import time, and it pins no sibling.
@@ -54,8 +55,8 @@ It ships three published distributions and one unpublished one:
 - **The recipes.** 24 families and 44 variants (16 retrieval families, 8 judge families) as package data,
   read by `recipe: <id>` in a role config or a run's `serve:` block and served by `rcp-ndcg-vllm serve <id>`;
   every variant must pass its end-to-end GPU validation against its reference implementation before the tag,
-  and each family's `family.yaml` records its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm`
-  README).
+  or carry an explicit, recorded disposition in the recipe ledger, and each family's `family.yaml` records
+  its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm` README).
 - **One preparation pipeline for every role.** Explicit budgets (a tokenizer and `max_tokens` per role),
   anchor-preserving client-side cuts, recorded in the census and in a per-row `ProcessingRecord`, chunk
   pooling by maximum, media counted in tokens -- never money, never engine-side.
@@ -3908,6 +3909,14 @@ text it sends to the declared budget.
   return -- join the facade's `__all__` (an additive surface change, pinned in the snapshot). Docstrings and
   the generated pages cover the record modules' public classes, properties and constructors, and the
   `gs://bucket/` example is the `gs://YOUR-BUCKET/` placeholder.
+
+- **The recipe schema's exported JSON Schema follows the served image's own dtype literal** (the
+  pre-0.0.1 fleet's vLLM findings): `ServeConfig.dtype`'s enum loses `float8` (which the pinned
+  `vllm/vllm-openai:v0.31.0` rejects) and gains `half` (which it accepts), the `pooler_config` keys
+  are validated against the shipped tag's own `PoolerConfig` rather than a commit 376 past it, and
+  `serve.convert` is checked against the role's route. `rcp-ndcg-vllm/schema/recipe.schema.json` and
+  `rcp-ndcg-vllm/schema/family.schema.json` are regenerated; the two shipped recipes that carried
+  `float8` are unaffected (none did).
 
 ### Changed
 

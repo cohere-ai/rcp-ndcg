@@ -316,11 +316,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      # A pull request that changes the pinned public surface (tests/contract/snapshots/ or schemas/) must say so in
-      # CHANGELOG.md.
+      # A pull request that changes the pinned public surface (tests/contract/snapshots/, schemas/ or the
+      # serving package's exported recipe/family schemas) must say so in CHANGELOG.md.
       - run: |
           changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
-          if grep -qE '^(tests/contract/snapshots/|schemas/)' <<<"$changed" && ! grep -qx 'CHANGELOG.md' <<<"$changed"; then
-            echo "The public surface changed (tests/contract/snapshots/ or schemas/) but CHANGELOG.md did not."
+          if grep -qE '^(tests/contract/snapshots/|schemas/|rcp-ndcg-vllm/schema/)' <<<"$changed" && ! grep -qx 'CHANGELOG.md' <<<"$changed"; then
+            echo "The public surface changed (tests/contract/snapshots/, schemas/ or rcp-ndcg-vllm/schema/) but CHANGELOG.md did not."
             exit 1
           fi

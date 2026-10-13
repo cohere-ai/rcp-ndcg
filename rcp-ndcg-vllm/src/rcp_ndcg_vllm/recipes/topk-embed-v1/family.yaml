@@ -184,7 +184,7 @@ status:
   state: failed
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-13"
-  report: "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610130615/r4/vllm-vllm-openai-v0-31-0/"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves-rc0-202610130615/r4/vllm-vllm-openai-v0-31-0/"
 sources:
   # The checkpoint, every file byte-verified at the pinned revision (tokenizer.json via its
   # Git-LFS oid e56427d66f44..., sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7).
@@ -407,7 +407,8 @@ notes: |
     round 4).
 
   What every wave re-checks (PASS so far):
-  - The nested mm-processor-kwargs on the live v0.31.0 image; one probe image's
+  - The nested mm-processor-kwargs on the live v0.31.0 image; one probe image's usage.prompt_tokens
+    <= 4 + 1280 + 3 is the served count (the wave's T0 probe measures it).
   - /tokenize equality on prompts over 1024 tokens (queries past 1024, documents past the old
     1024-token counting ceiling up to 8192+): PASS now that the product resets the file's embedded
     truncation at load; the engine-side and counting-side ids must stay identical.
