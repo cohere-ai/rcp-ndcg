@@ -1449,6 +1449,16 @@ owner pushes, with the move to a Hugging Face organisation).
   listwise prompt path; a conformance test replays the corpus's recorded exchanges (its `/rerank` probes
   included) against the current recipe's emulator, which they reproduce exactly, and skips once the
   re-recording removes the declaration.
+- **A recipe family's controlled GPU probe is a submittable job** (the unpublished `rcp-ndcg-test`): a new
+  `submit.sh --script topk-probe` job mounts `topk_probe.sh`, its `topk_probe.py` module and the wave's
+  per-row cosine fixture beside `bootstrap.sh`, builds the node's client environment and the family's
+  reference venv through `bootstrap.sh envs`, and runs the probe, which isolates the engine-vs-reference
+  divergence experiment by experiment (E0 the control against the wave's recorded vectors -- `not_run`
+  loudly when none is passed, E1 the preprocessing variants, E2/E3 the vision tower's first divergent
+  tensor with an in-run bf16 floor, E4 the image-token embeddings, E5 the cross-feed, E6 the grid sweep,
+  E7 the text layers) and uploads `probe-report.json`, `probe-report.md` and the per-row dumps.  The
+  operator's `RCP_TOPK_*` knobs (variant, rows, devices, memory fraction, control vectors, checkpoint pin)
+  are forwarded into the job only when set; unset means the wrapper's own defaults.
 
 ### Fixed
 

@@ -7,7 +7,8 @@ first state, so the merge brings in this lane's own earlier commits and no upstr
 **Tree:** no product, harness or recipe code touched; this lane's committed artefacts are this report,
 the harness (`topk_probe.py` / `topk_probe.sh`) and the fixtures under
 `handover/reports/investigate/`. **No GPU, no node submission, nothing pushed, `rfc-0001` not merged
-into.**
+into.** (Lane topkrun later moved the three probe files into
+`rcp-ndcg-test/src/rcp_ndcg_test/jobs/` and wired the `--script topk-probe` job: §3.3, §3.4.)
 
 **Revision note.** Two adversarial reviews (GLM, DeepSeek) landed after the first report and found real
 flaws; this revision applies every correction they named: E1 now compares each preprocessing variant
@@ -394,13 +395,15 @@ with a shared-tensor feed is the layer to fix; the checkpoint's own code is the 
 
 | file | what it is |
 |---|---|
-| `handover/reports/investigate/topk_probe.py` | the probe. Engine side: the engine's HF processor, vLLM's own model loaded in process (`gpu_memory_utilization` pinned), forward hooks on the vision and text towers, `llm.encode`; reference side: the same file re-executed under the family's reference venv on its own GPU, loading the card's `MultiVectorEncoder`, moving every tensor to the model's device, and dumping its tensors (own pixels, variants, vision layers, the cross-feed on the engine's pixels, text layers, document vectors) to a `.pt`. Writes `probe-report.json` + `probe-report.md`. A failed row records its traceback and the sweep continues |
-| `handover/reports/investigate/topk_probe.sh` | the node wrapper (the `judgecheck.sh` pattern): `bootstrap.sh envs` builds the engine's plugin wheel + the family's reference venv from the staged RC, reads the checkpoint pin from the staged `family.yaml` **with the variant named** (`recipe.model` / `recipe.revision`, the HF repo id), runs the probe, and uploads the report — a failed upload fails the job |
-| `handover/reports/investigate/wave-cosines-topk-small.json` | the wave's per-row minimum per-token cosines (the calibration numbers of §3.1) |
+| `rcp-ndcg-test/src/rcp_ndcg_test/jobs/topk_probe.py` (moved there by lane topkrun) | the probe. Engine side: the engine's HF processor, vLLM's own model loaded in process (`gpu_memory_utilization` pinned), forward hooks on the vision and text towers, `llm.encode`; reference side: the same file re-executed under the family's reference venv on its own GPU, loading the card's `MultiVectorEncoder`, moving every tensor to the model's device, and dumping its tensors (own pixels, variants, vision layers, the cross-feed on the engine's pixels, text layers, document vectors) to a `.pt`. Writes `probe-report.json` + `probe-report.md`. A failed row records its traceback and the sweep continues |
+| `rcp-ndcg-test/src/rcp_ndcg_test/jobs/topk_probe.sh` (moved there by lane topkrun) | the node wrapper (the `judgecheck.sh` pattern): `bootstrap.sh envs` builds the engine's plugin wheel + the family's reference venv from the staged RC, reads the checkpoint pin from the staged `family.yaml` **with the variant named** (`recipe.model` / `recipe.revision`, the HF repo id), runs the probe, and uploads the report — a failed upload fails the job |
+| `rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave-cosines-topk-small.json` (moved there by lane topkrun) | the wave's per-row minimum per-token cosines (the calibration numbers of §3.1) |
 | `handover/reports/investigate/evidence-embeddinggemma-2.json` | Part A's cited report blocks, verbatim and host-free |
 
-Both scripts are inert for the product (no import, no test reads them); `ruff check`,
-`ruff format --check`, `shellcheck`, `bash -n` and the dry run are clean.
+The probe is inert for the product (no product import); `ruff check`, `ruff format --check`, `shellcheck`,
+`bash -n` and the dry run are clean. Lane topkrun moved the three probe files beside `submit.sh` (the
+probe module joins `report.py` and `reference_deps.py` in the type-checked scope's exclusion list: a node
+script, never imported by the suite) and wired the job (§3.4).
 
 The **control fixture** (E0) is extracted from the wave's observation corpus (the recording pass must
 cover the family; the final RC's recording pass did not, so the control is `not_run` until a wave
@@ -434,13 +437,14 @@ python3 /etc/rcp/files/topkprobe/topk_probe.py --out /tmp/topk-probe \
 Smoke-test the first row with `--rows 26` (the worst row, 3,309 sub-0.9 of 8,645 — the fastest strong
 signal; row 21 would be the cheap weak-signal row and is not the first choice).
 
-### 3.4 The exact node job command (one command, once the wiring lands)
+### 3.4 The exact node job command (the wiring landed in lane topkrun)
 
-`submit.sh`'s `--script` set is closed and asserted by tests, so the plan includes the one-time
+`submit.sh`'s `--script` set is closed and asserted by tests, so the plan included the one-time
 wiring, modelled exactly on the `judgecheck` branch:
 
-1. Move `topk_probe.py`, `topk_probe.sh`, `wave-cosines-topk-small.json` and
-   `evidence-embeddinggemma-2.json` into `rcp-ndcg-test/src/rcp_ndcg_test/jobs/`.
+1. Move `topk_probe.py`, `topk_probe.sh` and `wave-cosines-topk-small.json` into
+   `rcp-ndcg-test/src/rcp_ndcg_test/jobs/` (lane topkrun did; `evidence-embeddinggemma-2.json` stayed in
+   this report's directory — it is Part A's evidence, not a probe input).
 2. In `submit.sh`: add `topk-probe` to the `--script` validation and usage; resolve
    `TOPK_PROBE_SH="$HERE/topk_probe.sh"` and `TOPK_PROBE_PY="$HERE/topk_probe.py"` beside the
    `JUDGECHECK_*` lines; add the existence check; add the branch (which also forwards the operator's
@@ -541,6 +545,6 @@ report lands at `<OUT_PREFIX>/topk-probe/topk-probe/`.
   first-divergent layer (or E7's text layers) decides the rest. The recipe must not gain a
   `known_deviations` entry for anti-correlated vectors. The fix's confirmation is the wave's media
   stage + stage 2; E6's in-process min cosine is the cheap pre-wave proxy.
-- **The harness's home**: if a later lane wants the probe as a first-class job, move the four files
-  into `jobs/` and apply the `submit.sh` + test wiring of §3.4; until then they are the plan's
-  runnable copy.
+- **The harness's home**: lane topkrun moved the probe's three files into
+  `rcp-ndcg-test/src/rcp_ndcg_test/jobs/` and applied the `submit.sh` + test wiring of §3.4, so
+  `--script topk-probe` is a first-class job.

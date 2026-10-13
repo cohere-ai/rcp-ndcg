@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# topk-embed-v1's controlled GPU probe: the node wrapper for jobs/investigate/topk_probe.py.
+# topk-embed-v1's controlled GPU probe: the node wrapper for the probe module
+# rcp_ndcg_test/jobs/topk_probe.py (mounted beside this script by submit.sh).
 #
 #   topk_probe.sh <RC_STAGE_URI> <OUT_URI>
 #

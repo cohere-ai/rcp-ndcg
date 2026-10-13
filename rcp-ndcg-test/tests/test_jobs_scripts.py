@@ -30,9 +30,12 @@ E2E_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" 
 CASEFILL_SH = JOBS / "casefill.sh"
 JUDGECHECK_SH = JOBS / "judgecheck.sh"
 JUDGECHECK_PROBE = JOBS / "judgecheck_probe.py"
+TOPK_PROBE_SH = JOBS / "topk_probe.sh"
+TOPK_PROBE_PY = JOBS / "topk_probe.py"
+TOPK_PROBE_COSINES = JOBS / "wave-cosines-topk-small.json"
 WAVE0_HOST = JOBS / "wave0_host.py"
 
-SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH)
+SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH)
 
 needs_shellcheck = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 
@@ -1172,7 +1175,7 @@ def test_submit_refuses_an_unknown_script(tmp_path: Path, monkeypatch: pytest.Mo
         tmp_path, monkeypatch, "--script", "deploy", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a"
     )
     assert completed.returncode == 2
-    assert "bootstrap, wave0, e2e, casefill or judgecheck" in completed.stderr
+    assert "bootstrap, wave0, e2e, casefill, judgecheck or topk-probe" in completed.stderr
 
 
 def test_submit_forwards_record_corpus_only_when_the_operator_set_it(
@@ -2118,6 +2121,103 @@ def test_submit_judgecheck_mounts_the_judgecheck_script(tmp_path: Path, monkeypa
     assert any(word.startswith("files.bootstrap.from_file=") for word in words)
     for stream in (completed.stdout, completed.stderr):
         assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_submit_topk_probe_mounts_the_probe_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The topk probe job: topk_probe.sh mounted beside its module and the wave-cosines fixture, with
+    bootstrap.sh (whose envs mode builds the client environment and the family's reference venv), run with
+    the stage and the probe's own output prefix; no token value in the plan and no knob line when the
+    operator set none (the wrapper's own defaults apply)."""
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "--script",
+        "topk-probe",
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "topk-probe",
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    command = next(word for word in words if word.startswith("worker.command="))
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/topkprobe/topk_probe.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/topk-probe"
+    )
+    assert any(word.startswith("files.topkprobe.from_file=") and word.endswith("topk_probe.sh") for word in words)
+    assert any(word.startswith("files.topkprobepy.from_file=") and word.endswith("topk_probe.py") for word in words)
+    assert any(
+        word.startswith("files.topkprobecosines.from_file=") and word.endswith("wave-cosines-topk-small.json")
+        for word in words
+    )
+    assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    assert not any(word.startswith("env.RCP_TOPK_") for word in words)
+    for stream in (completed.stdout, completed.stderr):
+        assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_submit_topk_probe_forwards_the_operators_knobs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every ``RCP_TOPK_*`` knob the wrapper documents reaches the pod as ``env.RCP_TOPK_*``; the mounted
+    helper paths are the node's own and are never forwarded from the operator's environment."""
+    completed = _submit(
+        tmp_path,
+        monkeypatch,
+        "--script",
+        "topk-probe",
+        "gs://YOUR-BUCKET/rc0",
+        "gs://YOUR-BUCKET/waves",
+        "topk-probe",
+        env_overrides={
+            "RCP_TOPK_VARIANT": "small",
+            "RCP_TOPK_ROWS": "26",
+            "RCP_TOPK_DEVICE": "cuda:1",
+            "RCP_TOPK_REFERENCE_DEVICE": "cuda:2",
+            "RCP_TOPK_GPU_FRACTION": "0.3",
+            "RCP_TOPK_CONTROL_VECTORS": "/etc/rcp/files/topkprobe/control-row26.json",
+            "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
+            "RCP_TOPK_REVISION": "0" * 40,
+        },
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    for knob, value in (
+        ("RCP_TOPK_VARIANT", "small"),
+        ("RCP_TOPK_ROWS", "26"),
+        ("RCP_TOPK_DEVICE", "cuda:1"),
+        ("RCP_TOPK_REFERENCE_DEVICE", "cuda:2"),
+        ("RCP_TOPK_GPU_FRACTION", "0.3"),
+        ("RCP_TOPK_CONTROL_VECTORS", "/etc/rcp/files/topkprobe/control-row26.json"),
+        ("RCP_TOPK_MODEL", "topk-io/topk-embed-v1-small"),
+        ("RCP_TOPK_REVISION", "0" * 40),
+    ):
+        assert f"env.{knob}={value}" in words, (knob, words)
+    # the mounted helpers' own node paths are the wrapper's defaults, never the operator's environment
+    assert not any(word.startswith("env.RCP_TOPK_PROBE_PY") for word in words)
+    assert not any(word.startswith("env.RCP_TOPK_WAVE_COSINES") for word in words)
+
+
+def test_the_topk_probe_dry_plan_names_the_probe_and_the_upload_prefix() -> None:
+    """``TOPK_DRY=1`` prints what the node would run (the operator's plan) and runs nothing: the
+    environments step, the probe argv with the mounted module and the wave-cosines fixture, the selected
+    rows, and the upload prefix."""
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves/topk-probe"],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "TOPK_DRY": "1",
+            "RCP_GCS_AUTH_FILE": "/nonexistent",
+            "RCP_TOPK_ROWS": "26",
+        },
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    plan = completed.stdout
+    assert "bootstrap.sh envs" in plan
+    assert "/etc/rcp/files/topkprobe/topk_probe.py" in plan
+    assert "/etc/rcp/files/topkprobe/wave-cosines-topk-small.json" in plan
+    assert "--rows 26" in plan
+    assert "gs://YOUR-BUCKET/waves/topk-probe/" in plan
 
 
 def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes() -> None:
