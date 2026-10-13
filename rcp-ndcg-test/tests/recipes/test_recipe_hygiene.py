@@ -29,6 +29,11 @@ INTERNAL_LABELS = re.compile(
 )
 """The internal-label and private-path pattern every shipped recipe file is scanned with."""
 
+#: The one legal ``gs://`` host in a shipped recipe file: the declared placeholder (AGENTS.md's
+#: public-names rule). A wave report lives in operator storage, so any other bucket host is a private name
+#: a reader of the wheel cannot resolve -- the placeholder is what a shipped file cites.
+PLACEHOLDER_BUCKET = "YOUR-BUCKET"
+
 #: The internal design-document and lane-branch citations no shipped file may carry: the design document is
 #: operator scaffolding and a lane branch is unknown outside this workspace. Case-insensitive: a lowercased
 #: citation of the same design id is the same id. The scan skips :data:`SCAFFOLDING` (see the module docstring).
@@ -96,6 +101,25 @@ def test_every_reference_refuses_the_same_retired_media_columns() -> None:
     assert found, "no family's reference refuses the retired media columns"
     assert len(set(found.values())) == 1, f"the retired-column copies disagree: {found}"
     assert set(next(iter(found.values()))) == set(RETIRED_MEDIA_COLUMNS), found
+
+
+def test_no_shipped_recipe_file_names_a_real_bucket() -> None:
+    """Every ``gs://`` a shipped recipe file carries is the ``gs://YOUR-BUCKET/`` placeholder.
+
+    The wave reports are operator storage; a real bucket or an operator prefix is not a source a reader of
+    the wheel can resolve, and the repo's public-names rule declares the placeholder the public form. The
+    scan covers the same shipped-file set as the internal-label scan below, so the placeholder cannot
+    regress into a private bucket unnoticed.
+    """
+    root = default_recipes_root()
+    hits = [
+        f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
+        if "gs://" in line and f"gs://{PLACEHOLDER_BUCKET}/" not in line
+    ]
+    assert not hits, "real buckets in shipped recipe files:\n" + "\n".join(hits)
 
 
 def test_every_shipped_recipe_file_reads_as_a_public_statement() -> None:
