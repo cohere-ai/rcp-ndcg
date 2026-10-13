@@ -603,7 +603,7 @@ def _serve_field_recipe(tmp_path: Path, *, base: str = "fixture-embed", **serve:
 def test_the_engine_dtype_literal_is_vllms_model_dtype(tmp_path: Path) -> None:
     """vLLM v0.31.0's ``ModelDType`` (what ``--dtype``'s argparse choices come from) is
     ``auto``/``half``/``float16``/``bfloat16``/``float``/``float32``: the schema accepted ``float8`` (not a
-    ModelDType: the engine refuses it at CLI parse) and refused ``float`` (reviews/final-vllm-ds41.md D3)."""
+    ModelDType: the engine refuses it at CLI parse) and refused ``float``."""
     for dtype in ("auto", "half", "float16", "bfloat16", "float", "float32"):
         assert load_recipe(_serve_field_recipe(tmp_path / dtype, dtype=dtype)).serve.dtype == dtype
     with pytest.raises(RecipeError, match="float8"):
@@ -612,8 +612,7 @@ def test_the_engine_dtype_literal_is_vllms_model_dtype(tmp_path: Path) -> None:
 
 def test_pooler_config_keys_are_the_served_images_own(tmp_path: Path) -> None:
     """The shipped image is vLLM v0.31.0; ``enable_flash_late_interaction`` is a PoolerConfig field only at
-    the checkout 376 commits past that tag, so accepting it renders an argv the engine refuses at parse
-    (reviews/final-vllm-ds41.md D4)."""
+    the checkout 376 commits past that tag, so accepting it renders an argv the engine refuses at parse."""
     with pytest.raises(RecipeError, match="enable_flash_late_interaction"):
         load_recipe(_serve_field_recipe(tmp_path / "late", pooler_config={"enable_flash_late_interaction": True}))
     recipe = load_recipe(_serve_field_recipe(tmp_path / "ok", pooler_config={"use_activation": False}))
@@ -623,8 +622,7 @@ def test_pooler_config_keys_are_the_served_images_own(tmp_path: Path) -> None:
 def test_convert_must_match_the_roles_route(tmp_path: Path) -> None:
     """``--convert`` selects the engine's pooling task: an embed recipe may only declare ``embed`` (a
     classify conversion serves a route the embeddings client never calls), and a multi_vector recipe must
-    declare none -- its client speaks the pooling wire over the checkpoint as it is
-    (reviews/final-vllm-ds41.md D5)."""
+    declare none -- its client speaks the pooling wire over the checkpoint as it is."""
     assert load_recipe(_serve_field_recipe(tmp_path / "embed", convert="embed")).serve.convert == "embed"
     with pytest.raises(RecipeError, match="classify"):
         load_recipe(_serve_field_recipe(tmp_path / "embed-classify", convert="classify"))
@@ -692,8 +690,7 @@ _VIDEO_URL_POLICY = {"num_frames": 4, "wire": "video_url", "engine_video_pinning
 
 def test_a_serve_video_sampling_pin_must_match_the_client_policy(tmp_path: Path) -> None:
     """The client counts the frames the ENGINE samples: a serve pin that differs from
-    ``client.video_policy`` would make the count describe a clip the engine never renders
-    (reviews/final-vllm-glm53.md D1)."""
+    ``client.video_policy`` would make the count describe a clip the engine never renders."""
     with pytest.raises(RecipeError, match="fps"):
         load_recipe(
             _video_sampling_recipe(

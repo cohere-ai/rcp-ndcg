@@ -2,7 +2,7 @@
 ``rcp-ndcg``.
 
 The shipped recipes are package data (``rcp_ndcg_vllm/recipes/<family>/``), read through
-:mod:`importlib.resources`. A **family directory** carries (decision 34: one family, many sizes,
+:mod:`importlib.resources`. A **family directory** carries (one family, many sizes,
 every size its own tested recipe id):
 
 - ``family.yaml`` — the family: the shared blocks (role, engine, serve, client, reference, gates,
@@ -12,7 +12,7 @@ every size its own tested recipe id):
   when the model needs one;
 - ``reference.py`` — the ONE reference implementation for the family, parameterised by the variant
   (the harness passes the resolved recipe through ``--recipe``; see ``reference.entry``);
-- ``reference.in``/``reference.lock`` — the family's reference environment (owner decision 35).
+- ``reference.in``/``reference.lock`` — the family's reference environment.
 
 Every variant resolves to a full :class:`Recipe` — exactly what a standalone recipe described before
 the families (the resolved recipe's JSON Schema is unchanged) — and every consumer (``serve``,
@@ -135,7 +135,7 @@ _REVISION_PATTERN = r"^[0-9a-f]{40}$"
 Role = Literal["embed", "multi_vector", "rerank", "judge"]
 ScoreScale = Literal["probability", "logit", "cosine"]
 
-#: The per-variant ``serve`` fields a family may override (decision 34: only per-size facts): the engine's
+#: The per-variant ``serve`` fields a family may override (only the per-size facts): the engine's
 #: context limit, the served dtype (the ctxl 1b/2b's float32 pair: the bf16 attention-kernel stacks exceed
 #: the logit gate on their small logits while the 6b passes at bfloat16, E2 round 4), the score-head
 #: construction (a family whose sizes build their head from different base
@@ -177,7 +177,7 @@ PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
 _ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rerank": "rerank", "judge": "chat"}
 """The wire each role speaks (the product refuses a config whose role and wire disagree).
 
-A judge recipe declares ``client.api: chat`` (decision 15), the recipe-facing name of the judge role's
+A judge recipe declares ``client.api: chat``, the recipe-facing name of the judge role's
 ``openai_chat`` wire (:data:`rcp_ndcg.inference.adapters.base._ALIASES`)."""
 
 _ENGINE_SPECIFIC_CLIENT_KEYS = frozenset(
@@ -204,7 +204,7 @@ _ENGINE_SPECIFIC_CLIENT_KEYS = frozenset(
         "gpus",
     }
 )
-"""The keys that name engine-side knobs (decision 19): the engine-neutral ``client`` block refuses them.
+"""The keys that name engine-side knobs: the engine-neutral ``client`` block refuses them.
 The product's endpoint config has no field of any of these names (its media ``max_images``/``max_videos``
 and its ``image_policy`` are the client's own gate and budget), so a key from this set in a client block is
 always a misplaced engine setting -- silently ignored by the product's endpoint model, worse mis-read by
@@ -597,13 +597,13 @@ class Recipe(BaseModel):
         id: The recipe identifier, ``^[a-z0-9][a-z0-9.-]*$``, equal to the directory name; also the
             ``--served-model-name`` the engine serves and the client config's ``model``.
         schema_version: The recipe file format's version; the versioned contract between this
-            package and rcp-ndcg (decision 18).
+            package and rcp-ndcg.
         model: The Hugging Face repo id to serve.
         revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.
         role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token),
             ``rerank`` (query-document scores) or ``judge`` (the chat-completions judging stages; its client
             block is rcp-ndcg's judge config, its ``serve`` block carries the reasoning parser, and it has no
-            ``reference`` -- decision 15).
+            ``reference``).
         input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.
         scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole
             candidate set in one prompt; the product endpoint's ``listwise`` flag).
@@ -615,7 +615,7 @@ class Recipe(BaseModel):
             are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the
             product's endpoint class when it resolves the recipe.
         reference: The subprocess reference the harness compares against; **``None`` for ``role: judge``**
-            (decision 15: a judge recipe has no reference -- its conformance is the judge probe and the T4
+            (a judge recipe has no reference -- its conformance is the judge probe and the T4
             scenarios), and required for every other role.
         gates: Overrides of the stage-2 gate defaults.
         status: Where the recipe stands in the verification workflow.
@@ -631,7 +631,7 @@ class Recipe(BaseModel):
     id: str = Field(pattern=_ID_PATTERN)
     schema_version: str = Field(
         pattern=r"^\d+$",
-        description="the recipe file format's version (decision 18: the file format is the versioned contract "
+        description="the recipe file format's version (the file format is the versioned contract "
         "between rcp-ndcg and rcp-ndcg-vllm; the reader checks the versions it understands, so the two "
         "packages need no lockstep version pin)",
     )
@@ -707,21 +707,21 @@ class Recipe(BaseModel):
             raise ValueError(f"scoring is only valid for role=rerank, not role={self.role}")
         if judge and self.reference is not None:
             raise ValueError(
-                "a judge recipe has no reference (decision 15): the equivalence harness compares a served "
+                "a judge recipe has no reference: the equivalence harness compares a served "
                 "model against a reference implementation, and a judge has none -- its conformance is the judge "
                 "probe (`rcp-ndcg judge check`) and the T4 scenarios. Drop the reference block"
             )
         if not judge and self.reference is None:
             raise ValueError(
                 f"a role={self.role} recipe needs a reference: the equivalence harness compares the served "
-                "model against it (only role=judge has none, decision 15)"
+                "model against it (only role=judge has none)"
             )
         client = self.client
         misplaced = sorted(set(client) & _ENGINE_SPECIFIC_CLIENT_KEYS)
         if misplaced:
             raise ValueError(
                 f"client carries the engine-specific key(s) {misplaced}: they belong in serve/engine/resources "
-                "(decision 19: the engine-neutral client block stays strictly apart from the engine-specific "
+                "(the engine-neutral client block stays strictly apart from the engine-specific "
                 "blocks, so a config the product reads can never carry a knob the product silently ignores)"
             )
         api = client.get("api")
@@ -1194,7 +1194,7 @@ def _pixel_budgets_agree(recipe: Recipe) -> None:
 
 
 def _mrl_declarations_agree(recipe: Recipe) -> None:
-    """The serve-side Matryoshka gate and the client-side declaration are one rule (owner decision 39).
+    """The serve-side Matryoshka gate and the client-side declaration are one rule.
 
     vLLM accepts a per-request ``dimensions`` only when the checkpoint's HF config carries a truthy
     ``matryoshka_dimensions`` or ``is_matryoshka`` (``vllm/pooling_params.py`` at the pinned engine), and no
@@ -1473,7 +1473,7 @@ def _render(values: Mapping[str, Any], position: str) -> list[str]:
 class VariantOverrides(BaseModel):
     """The per-variant overrides one variant applies to the family's shared blocks.
 
-    Only the declared per-size fields (decision 34) may be overridden: :data:`PER_VARIANT_SERVE_FIELDS` under
+    Only the declared per-size fields may be overridden: :data:`PER_VARIANT_SERVE_FIELDS` under
     ``serve``, :data:`PER_VARIANT_CLIENT_FIELDS` under ``client``, the whole ``resources`` block (the GPU
     count) and the stage-2 ``gates`` block (each size's measured bound). A key outside the whitelist is
     refused with :class:`RecipeError` naming the field — nothing about a size's behaviour may differ
@@ -1541,7 +1541,7 @@ class RecipeFamily(BaseModel):
 
     Attributes:
         id: The family's identifier, equal to the directory name; never a served id.
-        schema_version: The family file format's version (the recipe contract's version, decision 18:
+        schema_version: The family file format's version (the recipe contract's version:
             every resolved recipe carries the family's value).
         licence: Shared across the family (the ``Recipe`` schema's meaning); a variant's ``licence``
             replaces it when the family's checkpoints are licensed differently.
@@ -1552,7 +1552,7 @@ class RecipeFamily(BaseModel):
             injected per variant and refused here. A variant's ``overrides.client`` replaces whitelisted keys.
         reference: The ONE subprocess reference the family's variants share (the harness passes the
             resolved recipe to it through ``--recipe``); ``None`` for a judge family (a judge recipe has
-            no reference, decision 15).
+            no reference).
         gates: Shared stage-2 gate overrides; a variant's ``overrides.gates`` overrides individual fields
             (the per-size measured bounds).
         status: The default status; a variant's ``status`` replaces it.
@@ -1566,7 +1566,7 @@ class RecipeFamily(BaseModel):
     id: str = Field(pattern=_ID_PATTERN)
     schema_version: str = Field(
         pattern=r"^\d+$",
-        description="the family/recipe file format's version (decision 18); every resolved recipe carries it",
+        description="the family/recipe file format's version; every resolved recipe carries it",
     )
     role: Role
     input: list[Literal["text", "image", "video"]] = Field(min_length=1)
@@ -1838,7 +1838,7 @@ def load_recipe(source: str | Path, *, root: str | Path | None = None, variant: 
         yaml_path = candidate / "family.yaml" if candidate.is_dir() else candidate
         if yaml_path.name == "recipe.yaml":
             raise RecipeError(
-                f"{yaml_path}: the standalone recipe.yaml path is gone (decision 34: one family, many sizes): "
+                f"{yaml_path}: the standalone recipe.yaml path is gone (one family, many sizes): "
                 "wrap the recipe in a family.yaml with one variant"
             )
         family = load_family(candidate)
@@ -1904,7 +1904,7 @@ def iter_families(root: str | Path | None = None) -> list[RecipeFamily]:
 
     Inputs: a root directory whose direct children are family directories (``family.yaml``).  Outputs: the
     families, sorted by id.  Raises :class:`RecipeError` naming the directory when any family fails to load —
-    a broken family among thirteen must not pass silently.
+    a broken family must not pass silently.
     """
     root = Path(root) if root is not None else default_recipes_root()
     if not root.is_dir():
@@ -1945,7 +1945,7 @@ def _check_referenced_files(recipe: Recipe, directory: Path) -> None:
             f"{directory / 'family.yaml'}: serve.chat_template {recipe.serve.chat_template!r} does not exist in "
             f"{directory}"
         )
-    if recipe.reference is None:  # a judge recipe: no reference, nothing to check (decision 15)
+    if recipe.reference is None:  # a judge recipe: no reference, nothing to check
         return
     needs_reference = recipe.reference.kind != "stored_scores"
     if needs_reference and not (directory / recipe.reference.entry).is_file():

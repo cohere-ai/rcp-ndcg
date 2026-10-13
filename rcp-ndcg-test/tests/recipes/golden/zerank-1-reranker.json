@@ -39,7 +39,7 @@
   "use_activation": true
  },
  "fingerprint": {
-  "fingerprint": "0c045efc80512a572d58d99e566b561a40a6e7c8200f2b1f9e74f1aac72db0b2",
+  "fingerprint": "f4ca536b33ae99928cb8c2266ae34f4e613b45f675e78ad52f7aa72039389f31",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -75,7 +75,7 @@
    "serve.pooler_config": "{\"logit_sigma\":5,\"use_activation\":true}",
    "serve.runner": "pooling",
    "serve.trust_remote_code": "false",
-   "template_file": "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008",
+   "template_file": "sha256:9ea5a7bf0b1dda6fb4dbdc068320c797134d9de1b6046466f2cb4ca7ffed4320",
    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
   },
   "schema": "rcp-fp/4"

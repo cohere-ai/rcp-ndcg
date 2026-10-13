@@ -12,7 +12,7 @@ builds a :class:`peft.PeftMixedModel` over the checkpoint's backbone (``Qwen3Mod
 token, slices ``truncate_dim`` and L2-normalises (``:100-112``). This reference therefore passes raw
 texts plus ``prompt_name`` and takes the card's defaults for everything else (no
 ``_attn_implementation`` override: the card marks flash-attention "Recommended but optional", and
-its GPU kwargs are unmeasured). One file serves every variant of the family (decision 34): the
+its GPU kwargs are unmeasured). One file serves every variant of the family: the
 variant travels with the invocation, in the resolved recipe the harness passes as ``--recipe``;
 :data:`HF_REPO` and :data:`HF_REVISION` name the family's -small checkpoint as the standalone
 defaults, and the CLI reads the variant's own ``model``/``revision`` from the recipe.

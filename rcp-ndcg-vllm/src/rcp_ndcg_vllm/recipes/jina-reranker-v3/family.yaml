@@ -7,7 +7,7 @@
 # is typed literally.  The listwise N-passage prompt is the engine's own builder too; the pair shape
 # is the per-pair frame the product's text budget reserves and cuts against.
 id: jina-reranker-v3
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: rerank
 input: [text]
 scoring: listwise

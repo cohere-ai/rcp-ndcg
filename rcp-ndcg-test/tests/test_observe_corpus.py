@@ -297,7 +297,7 @@ def test_volatile_fields_never_count_as_nondeterminism() -> None:
 def test_a_one_sided_zero_vector_is_not_perfect_agreement() -> None:
     """A vector that is zero in one sending and non-zero in another is a real nondeterministic emission:
     the corpus's cosine must score it 0.0, the rule stage 2's ``_cosine`` applies to the identical
-    degenerate input (reviews/final-harness-glm53.md D3).  Both sides zero stays 1.0 (a contextual
+    degenerate input.  Both sides zero stays 1.0 (a contextual
     model's empty-chunk branch pools the zero vector on both sides)."""
     request = {"model": "m", "input": ["x"], "encoding_format": "float"}
 

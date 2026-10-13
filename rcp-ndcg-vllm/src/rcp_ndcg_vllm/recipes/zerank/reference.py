@@ -16,7 +16,7 @@ padding. Where the model card and the paper code disagree, the paper code wins:
 * padding side: right (set explicitly; also the tokenizer default).
 * trust_remote_code: not needed.
 
-One file for all three sizes (decision 34): the checkpoint (``model``, ``revision``) comes from the
+One file for all three sizes: the checkpoint (``model``, ``revision``) comes from the
 resolved recipe the harness passes as ``--recipe``; the reference imports nothing of the product.
 
 Subprocess contract (the harness invokes)::

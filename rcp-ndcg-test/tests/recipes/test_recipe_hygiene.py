@@ -29,10 +29,23 @@ INTERNAL_LABELS = re.compile(
 )
 """The internal-label and private-path pattern every shipped recipe file is scanned with."""
 
+#: The one legal ``gs://`` host in a shipped recipe file: the declared placeholder (AGENTS.md's
+#: public-names rule). A wave report lives in operator storage, so any other bucket host is a private name
+#: a reader of the wheel cannot resolve -- the placeholder is what a shipped file cites. A bare scheme
+#: mention (``a ``gs://`` object``) carries no host and is not a bucket.
+PLACEHOLDER_BUCKET = "YOUR-BUCKET"
+_GS_HOST = re.compile(r"gs://([^/\s`\"')\\]+)")
+
 #: The internal design-document and lane-branch citations no shipped file may carry: the design document is
 #: operator scaffolding and a lane branch is unknown outside this workspace. Case-insensitive: a lowercased
 #: citation of the same design id is the same id. The scan skips :data:`SCAFFOLDING` (see the module docstring).
 DESIGN_AND_LANE_IDS = re.compile(r"\bRFC[- ]?\d{3,4}\b|\blane/", re.IGNORECASE)
+
+#: The internal design-id shorthand the docs wording guard forbids in Markdown, in the non-Markdown homes
+#: the release publishes: the shipped recipe files (package data of ``rcp-ndcg-vllm``) and the generated
+#: schemas (``rcp-ndcg-vllm/schema/`` and the root ``schemas/``). ``tests/docs/test_wording.py`` owns the
+#: Markdown half; this is the same rule for the data files it cannot read.
+DESIGN_IDS = re.compile(r"owner decisions? \d+|\bdecision \d+|\blane L\d+|\blayout-move item \d+", re.IGNORECASE)
 
 #: The scaffolding directories the shipped-tree scan skips: working notes and paper reproduction, deleted at
 #: release.
@@ -98,14 +111,58 @@ def test_every_reference_refuses_the_same_retired_media_columns() -> None:
     assert set(next(iter(found.values()))) == set(RETIRED_MEDIA_COLUMNS), found
 
 
-def test_every_shipped_recipe_file_reads_as_a_public_statement() -> None:
-    """Every shipped recipe file and template reads as a public statement, judge families included."""
+def test_no_shipped_recipe_file_names_a_real_bucket() -> None:
+    """Every ``gs://`` a shipped recipe file carries is the ``gs://YOUR-BUCKET/`` placeholder.
+
+    The wave reports are operator storage; a real bucket or an operator prefix is not a source a reader of
+    the wheel can resolve, and the repo's public-names rule declares the placeholder the public form. The
+    scan covers the same shipped-file set as the internal-label scan below, so the placeholder cannot
+    regress into a private bucket unnoticed.
+    """
     root = default_recipes_root()
     hits = [
         f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
         for path in sorted(root.rglob("*"))
         if path.is_file() and "__pycache__" not in path.parts
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
+        if (match := _GS_HOST.search(line)) and match.group(1) != PLACEHOLDER_BUCKET
+    ]
+    assert not hits, "real buckets in shipped recipe files:\n" + "\n".join(hits)
+
+
+def test_every_shipped_recipe_file_reads_as_a_public_statement() -> None:
+    """Every shipped recipe file and template reads as a public statement, judge families included.
+
+    The scan covers the internal labels and private paths (:data:`INTERNAL_LABELS`) and the design-id
+    shorthand (:data:`DESIGN_IDS`) the Markdown wording guard forbids -- the recipe files are package data
+    of the published wheel, so a design id there is the same leak as one in a page.
+    """
+    root = default_recipes_root()
+    hits = [
+        f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
+        if INTERNAL_LABELS.search(line) or DESIGN_IDS.search(line)
     ]
     assert not hits, "internal labels in shipped recipe files:\n" + "\n".join(hits)
+
+
+def test_every_generated_schema_reads_as_a_public_statement() -> None:
+    """The generated schemas carry no internal design ids either.
+
+    ``rcp-ndcg-vllm/schema/*.schema.json`` is exported public surface of the vllm distribution (grafted
+    into its sdist) and the root ``schemas/`` is the product's exported surface; both are generated from
+    docstrings, so a design id in a docstring ships in a JSON file the wording guard cannot read.
+    """
+    root = _repository_root()
+    schema_files = sorted((root / "schemas").glob("*.json")) + sorted(
+        (root / "rcp-ndcg-vllm" / "schema").glob("*.json")
+    )
+    hits = [
+        f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
+        for path in schema_files
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if DESIGN_IDS.search(line)
+    ]
+    assert not hits, "internal design ids in generated schemas:\n" + "\n".join(hits)

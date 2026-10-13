@@ -65,14 +65,16 @@ validation against its reference implementation before the tag (equivalence, qua
 each variant's model revision and `sources`, and `status.state` (`unverified`, `verified`, `failed`) records the
 outcome beside the engine `image`, the `date` and the report. The `status` column below is copied from each
 variant's own `status.state` (the family's until a variant declares its own), so it reads `unverified` for every
-variant the waves have not verified yet; the tag ships none unverified.
+variant the waves have not verified yet; the tag ships no `unverified` recipe, and a variant whose gate failed
+ships only when the owner's explicit disposition list names it (for 0.0.1, exactly the two `topk-embed-v1`
+variants).
 
 | family | id | model | role | input | MRL | plugin | reference | status |
 |---|---|---|---|---|---|---|---|---|
 | `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-1b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b | rerank | text | — | — | paper | unverified |
 | `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-2b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b | rerank | text | — | — | paper | unverified |
 | `ctxl-rerank-v2-instruct-multilingual` | `ctxl-rerank-v2-instruct-multilingual-6b` | ContextualAI/ctxl-rerank-v2-instruct-multilingual-6b | rerank | text | — | — | paper | unverified |
-| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | truncation 128/256/512/768 | the rcp-ndcg-vllm plugin (the embeddinggemma2-transformers-fold and torch-sdpa-attention patch carrier) | card | verified |
+| `embeddinggemma-2` | `embeddinggemma-2` | google/embeddinggemma-2 | embed | text, image, video | truncation 128/256/512/768 | the rcp-ndcg-vllm plugin (the embeddinggemma2-transformers-fold and torch-sdpa-attention patch carrier) | card | unverified |
 | `gemma-4-12b` | `gemma-4-12b-it` | google/gemma-4-12B-it | judge | text, image | — | — | — | unverified |
 | `gemma-4-26b-a4b` | `gemma-4-26b-a4b-it` | google/gemma-4-26B-A4B-it | judge | text, image | — | — | — | unverified |
 | `gemma-4-26b-a4b` | `gemma-4-26b-a4b-nvfp4` | nvidia/Gemma-4-26B-A4B-NVFP4 | judge | text, image | — | — | — | unverified |

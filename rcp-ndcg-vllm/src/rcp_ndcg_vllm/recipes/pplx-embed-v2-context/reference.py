@@ -161,7 +161,7 @@ def render(pairs: list[dict]) -> dict:
 
 
 def _resolved_recipe() -> dict:
-    """The resolved recipe JSON (decision 34: one family reference runs every variant)."""
+    """The resolved recipe JSON (one family reference runs every variant)."""
     import json
     import sys
 

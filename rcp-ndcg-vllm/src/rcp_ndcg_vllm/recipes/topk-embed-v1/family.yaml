@@ -9,7 +9,7 @@
 # the serving package's own folded models (rcp_ndcg_vllm.models) and installed with --no-deps;
 # nothing else enters the image.
 id: topk-embed-v1
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: multi_vector
 input: [text, image]
 licence: apache-2.0
@@ -57,7 +57,7 @@ serve:
                                  # divergence is not a head-matmul rounding (see notes, 'What the
                                  # wave measured') and no serve dtype meets the per-token gate; the
                                  # value stays the checkpoint's own
-  plugin: rcp-ndcg-vllm          # the model plugins fold into this wheel (layout-move item 3): one
+  plugin: rcp-ndcg-vllm          # the model plugins fold into this wheel: one
                                  # vllm.general_plugins entry point, installed with --no-deps; registers
                                  # TopkEmbedModel, a ColQwen3_5Model subclass mapping head. ->
                                  # custom_text_proj. and marking the bias-less head's zero bias loaded;
@@ -153,7 +153,7 @@ client:
   embed_dtype: float16           # the owner's transfer precision (Q11); MaxSim accumulates in float32
   dim: 2048                      # config.json:100 dim / :101 output_dim; rebuilds the flat base64
                                  # frame of /pooling and is cross-checked against usage.prompt_tokens
-  # The card's MRL declaration (owner decision 39): "For smaller Matryoshka (MRL) embeddings, pass
+  # The card's MRL declaration: "For smaller Matryoshka (MRL) embeddings, pass
   # config_kwargs={'output_dim': 256}" (README.md:146-147) with the evaluation tables' prefix
   # dimensions 64, 128, 256, 512, 1024, 2048 (README.md:152; 1024 is the full width of the xsmall).
   # Truncation after the head projection: the served head is projector -> slice -> L2 (the plugin's
@@ -179,7 +179,11 @@ gates: {}
 # The wave ran and the per-token gate FAILED (stage 1 passed; stage 2 failed on text and image
 # rows; every run rc0-202610120045..rc0-202610131205-record failed the same gate). The state is the
 # schema's `failed` -- "a gate failed; the report says which" -- not `unverified`: the measurement
-# exists. The gate itself, its dtype and the disposition stay untouched (owner decision).
+# exists. NOTE: the harness's plugin-module keying (b2621274, 2026-10-13) moved this recipe's
+# behaviour fingerprint after that wave (1fdf2847 -> 1ac72016 for -small), so the failed evidence is
+# at a superseded fingerprint too; the release plan's A1b re-verification re-runs the gate on the
+# final RC at the current one. The gate itself, its dtype and the disposition stay untouched (the
+# disposition is the owner's).
 status:
   state: failed
   image: "vllm/vllm-openai:v0.31.0"
@@ -340,7 +344,7 @@ notes: |
   apart -- so delegating the call to the 5.17 name would silently change packed-document numerics,
   and a shim was refused for that reason. The earlier `>=5.10.4,<5.18.0` range was written to run
   the reference on "the image's transformers stack"; that rationale does not hold for this family
-  (own-torch: the venv reads nothing from the image, and decision 35's design is exactly "a
+  (own-torch: the venv reads nothing from the image, and the one-reference-environment design is exactly "a
   checkpoint's remote code needing an older release"), so the family declares the checkpoint's own
   pin and the earlier rounds' divergences stop applying. The divergences below remain the history
   of the earlier waves, and reference.py's declared shims are inert under 5.9.0:

@@ -216,8 +216,9 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
         assert len(published) == 1 and published[0]["with"]["packages-dir"] == directory
     assert jobs["publish-core"]["needs"] == "build"
     assert jobs["publish-rcp-ndcg"]["needs"] == "publish-core"  # it pins the core exactly: the core goes first
-    # rcp-ndcg-vllm pins rcp-ndcg==<version> exactly (and the core through it): an install must resolve at every
-    # instant of the rollout, so rcp-ndcg-vllm publishes only after both siblings are on PyPI.
+    # rcp-ndcg-vllm names no sibling pin (the lean package pins nothing), but every moment of the rollout
+    # must install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a
+    # published rcp-ndcg-vllm whose siblings failed would be uninstallable forever).
     assert set(jobs["publish-vllm"]["needs"]) == {"build", "publish-core", "publish-rcp-ndcg"}
     assert set(jobs["github-release"]["needs"]) == set(RELEASE_PUBLISH_JOBS)
     tokenised = {name for name, job in jobs.items() if (job.get("permissions") or {}).get("id-token") == "write"}
@@ -338,6 +339,40 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
         result = check(f'[project]\ndependencies = ["{wrong}"]\n')
         assert result.returncode == 1, f"{wrong} must be refused"
         assert "==0.0.1" in result.stderr
+
+
+def test_the_release_workflow_checks_every_workspace_manifests_version(tmp_path) -> None:
+    """The tag's version is that of all four workspace manifests, not only the three the release builds.
+
+    The check runs the workflow's own step against a tree of four manifests in ``tmp_path``: the
+    unpublished ``rcp-ndcg-test`` included, because a stale version there leaves the lock and the stated
+    release rule disagreeing.
+    """
+    workflow, _ = _release_workflow()
+    steps = workflow["jobs"]["build"]["steps"]
+    step = next(step for step in steps if "workspace manifest" in str(step.get("name", "")))
+    body = str(step["run"]).split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    packages = ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test")
+
+    def check(versions: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        tree = tmp_path / f"check-{check.calls:03d}"
+        check.calls += 1
+        for package, version in versions.items():
+            directory = tree / package
+            directory.mkdir(parents=True)
+            (directory / "pyproject.toml").write_text(
+                f'[project]\nname = "{package}"\nversion = "{version}"\n', encoding="utf-8"
+            )
+        return subprocess.run([sys.executable, "-", "0.0.1"], input=body, capture_output=True, text=True, cwd=tree)
+
+    check.calls = 0
+    at_tag = dict.fromkeys(packages, "0.0.1")
+    assert check(at_tag).returncode == 0, "four manifests at the tag's version must pass"
+    stale = dict(at_tag, **{"rcp-ndcg-test": "0.0.2"})
+    result = check(stale)
+    assert result.returncode == 1 and "rcp-ndcg-test" in result.stderr, "a stale fourth manifest must fail"
+    missing = {package: "0.0.1" for package in packages[:-1]}
+    assert check(missing).returncode == 1, "a missing workspace manifest must fail"
 
 
 def test_the_release_workflow_check_fails_when_two_environments_are_swapped() -> None:

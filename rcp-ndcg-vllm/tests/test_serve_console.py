@@ -554,8 +554,7 @@ def test_the_plugin_declaration_is_mandatory_and_checked() -> None:
 def test_an_io_processor_plugin_is_config_resolved_not_installed_by_name(tmp_path: Path) -> None:
     """``serve.io_processor_plugin`` names the checkpoint's IO-processor plugin, resolved through the
     checkpoint's own config and recorded by the harness (``jobs.plugins``), never an installed pip
-    distribution: the console must not refuse it with a pip install line
-    (reviews/final-vllm-ds41.md D6)."""
+    distribution: the console must not refuse it with a pip install line."""
     directory = _write_family(
         tmp_path,
         family="io-processor",

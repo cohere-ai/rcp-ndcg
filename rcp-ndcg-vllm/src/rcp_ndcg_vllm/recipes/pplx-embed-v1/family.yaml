@@ -10,7 +10,7 @@
 # bidirectional_pplx_qwen3 -> rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config, registered by
 # the folded pplx plugin). Sources are revision-pinned.
 id: pplx-embed-v1
-schema_version: "1"   # the recipe file format version (decision 18)
+schema_version: "1"   # the recipe file format version
 role: embed  # one mean-pooled vector per text, compared by cosine
 input: [text]
 licence: MIT  # the model card metadata; the repositories ship no LICENSE file
@@ -57,7 +57,7 @@ serve:
                    # card's SentenceTransformer passes no dtype override), so the
                    # served-vs-reference cast is a declared deviation quantified by stage
                    # 2's vector gate and the wave's retrieval numbers
-  plugin: rcp-ndcg-vllm  # the model plugins fold into this wheel (layout-move item 3; pure
+  plugin: rcp-ndcg-vllm  # the model plugins fold into this wheel (pure
                          # Python, installed with --no-deps before the engine starts); it
                          # registers the family's config class and the two other pplx
                          # architectures, and nothing of it reaches the argv
@@ -116,7 +116,7 @@ client:
                     # matryoshka_dimensions, so a per-request `dimensions` would be refused
                     # by the engine; a sub-dimension serving is its own recipe with its own
                     # gates (the qwen3-embedding precedent)
-  # No MRL head (owner decision 39): the card's table says "MRL: Yes" but the card gives no set and
+  # No MRL head: the card's table says "MRL: Yes" but the card gives no set and
   # no method, and config.json declares neither is_matryoshka nor matryoshka_dimensions; the card's
   # claim is not a supported set (nothing is cut or defaulted silently), so the declaration is `none`
   # until a set is named.

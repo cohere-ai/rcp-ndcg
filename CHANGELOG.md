@@ -36,8 +36,9 @@ It ships three published distributions and one unpublished one:
 - **`rcp-ndcg`** -- the pipeline and the `rcp-ndcg` command built on it: datasets and rankings, retrieval,
   judging, calibration, evaluation, runs and their runners. It pins `rcp-ndcg-core` to its own version.
 - **`rcp-ndcg-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every variant
-  must pass its end-to-end GPU validation against its reference implementation before the tag, or carry an
-  explicit, recorded disposition in the recipe ledger) as
+  must pass its end-to-end GPU validation against its reference implementation before the tag, and the tag
+  ships no `unverified` recipe -- a variant whose gate failed ships only under the owner's explicit
+  disposition list, exactly the two `topk-embed-v1` variants for 0.0.1) as
   package data, the `rcp-ndcg-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
   the stock `vllm/vllm-openai` image, the model plugins and the engine patches. Its dependencies are pydantic
   and PyYAML, it never imports `rcp-ndcg`, torch or vLLM at import time, and it pins no sibling.
@@ -54,9 +55,10 @@ It ships three published distributions and one unpublished one:
   SLURM or Kubernetes job, and for the shipped recipes the engine command is `rcp-ndcg-vllm serve <id>`.
 - **The recipes.** 24 families and 44 variants (16 retrieval families, 8 judge families) as package data,
   read by `recipe: <id>` in a role config or a run's `serve:` block and served by `rcp-ndcg-vllm serve <id>`;
-  every variant must pass its end-to-end GPU validation against its reference implementation before the tag,
-  or carry an explicit, recorded disposition in the recipe ledger, and each family's `family.yaml` records
-  its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm` README).
+  every variant must pass its end-to-end GPU validation against its reference implementation before the tag
+  (the tag ships no `unverified` recipe; a variant whose gate failed ships only under the owner's explicit
+  disposition list, exactly the two `topk-embed-v1` variants for 0.0.1), and each family's `family.yaml`
+  records its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm` README).
 - **One preparation pipeline for every role.** Explicit budgets (a tokenizer and `max_tokens` per role),
   anchor-preserving client-side cuts, recorded in the census and in a per-row `ProcessingRecord`, chunk
   pooling by maximum, media counted in tokens -- never money, never engine-side.
@@ -2651,8 +2653,7 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   config unless a `Sender` is given), the sync bridge -- one rule: a non-transport sender must provide
   `run`, or the constructor raises `ConfigError` (no `asyncio.run` fallback) -- and the lifecycle:
   `close()` synchronous, `async aclose()` awaited, both context managers. `EmbeddingClient`,
-  `RerankClient`, `PoolingClient` and `JudgeClient` derive from it (the judge's adoption is this release's;
-  see Unreleased/Changed).
+  `RerankClient`, `PoolingClient` and `JudgeClient` derive from it (the judge's adoption is this release's).
 - **Auth in the transport**: every adapter profile declares `API_KEY_ENV`, `KEY_REQUIRED` and
   `AUTH_HEADER` (the rerank profiles gain them: `cohere` `CO_API_KEY`/`COHERE_API_KEY`, `voyage`
   `VOYAGE_API_KEY`; the served wires and pooling take none), and the transport resolves the key -- the
@@ -3907,8 +3908,10 @@ text it sends to the declared budget.
   appends a present per-query instruction (the empty string included) under the same predicate as
   `format_query`. `DocumentEstimate` and `EstimateFlags` -- the value `score_document` and `insert_document`
   return -- join the facade's `__all__` (an additive surface change, pinned in the snapshot). Docstrings and
-  the generated pages cover the record modules' public classes, properties and constructors, and the
-  `gs://bucket/` example is the `gs://YOUR-BUCKET/` placeholder.
+  the generated pages cover the record modules' public classes, properties and constructors; the
+  `Judgement` docstring and the exported `judgement.v1` description now state what the record checks -- a
+  non-empty criteria mapping with 0 or 1 per verdict, the exact `C1..C<num_criteria>` keys checked at fit
+  time -- and the `gs://bucket/` example is the `gs://YOUR-BUCKET/` placeholder.
 
 - **The recipe schema's exported JSON Schema follows the served image's own dtype literal** (the
   pre-0.0.1 fleet's vLLM findings): `ServeConfig.dtype`'s enum loses `float8` (which the pinned

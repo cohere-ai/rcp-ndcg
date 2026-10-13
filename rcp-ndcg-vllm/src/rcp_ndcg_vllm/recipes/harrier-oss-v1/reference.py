@@ -1,4 +1,4 @@
-"""The harrier-oss-v1 family's one reference (decision 34): the model card's own
+"""The harrier-oss-v1 family's one reference: the model card's own
 sentence-transformers usage, faithful, parameterised by the variant.
 
 The card's usage (identical for all three variants except the model name)::

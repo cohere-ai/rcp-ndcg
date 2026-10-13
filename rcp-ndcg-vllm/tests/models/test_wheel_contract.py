@@ -5,7 +5,7 @@ image -- which already ships the only two declared dependencies (pydantic, PyYAM
 then differ by exactly this one wheel. The check is simulated here against whatever interpreter runs the tests,
 in ``tmp_path`` only: the package tree is COPIED into ``tmp_path`` and the wheel is built there, because
 setuptools leaves an ``*.egg-info`` directory in the tree it builds from and tests write only to ``tmp_path``.
-The recipes are package data: the wheel must ship every family (fourteen, one variant table each) and
+The recipes are package data: the wheel must ship every family (24, one variant table each) and
 every variant resolves through the loader, and a fresh venv listing them through
 ``importlib.resources`` sees them (the listing runs against the unpacked wheel itself with the repo's
 interpreter; the full fresh-venv install of the published wheels is CI's ``wheel-smoke`` job).

@@ -1,4 +1,4 @@
-# The ctxl-rerank-v2-instruct-multilingual family (decision 34): one serving contract, three
+# The ctxl-rerank-v2-instruct-multilingual family: one serving contract, three
 # sizes, every size its own tested recipe id. The shared blocks below are the sizes' common
 # contract, read off the three standalone recipes this family replaces; the variants table carries
 # only the per-size facts: the checkpoint (id, model, revision), the engine's context limit, the
@@ -10,7 +10,7 @@
 # instruction: none in all three) and the paper budgets MAX_SEQ_LENGTH = 8192 and
 # MAX_QUERY_LENGTH = 4096 (the pre-unified-inference retrieval/cross_encoder.py constants).
 id: ctxl-rerank-v2-instruct-multilingual
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: rerank
 input: [text]
 scoring: pointwise
@@ -82,7 +82,7 @@ client:
   on_overflow: cut
   empty_doc: send            # the paper sends an empty document as the empty string
   empty_query: send          # the paper's scorer formats any query (no refusal): an empty query is
-                             # sent and scored, matching the reference (owner decision 25's rule)
+                             # sent and scored, matching the reference (the reference's own rule)
 reference:
   kind: transformers
   score_scale: logit         # the raw logit at vocabulary position 0, final position

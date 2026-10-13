@@ -1,4 +1,4 @@
-# google/embeddinggemma-2 served with the vLLM nightly pinned by digest (decision 38): the released
+# google/embeddinggemma-2 served with the vLLM nightly pinned by digest: the released
 # vllm/vllm-openai:v0.31.0 image lacks the architecture (EmbeddingGemma2Model) and its transformers
 # (5.17.0) lacks the checkpoint's config and processor; the nightly below carries vLLM commit
 # 02b83919aa2e (PR #60254). The recipe carries the plugin's fold patch and registration anyway: the
@@ -7,7 +7,7 @@
 # probes return early, and an engine image that lacks them is covered by the fold.
 # See notes, "Engine".
 id: embeddinggemma-2
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
 input: [text, image, video]     # the checkpoint's modalities (card); audio is out of scope for 0.0.1
 licence: apache-2.0
@@ -80,7 +80,7 @@ client:
   instruction: none             # the card's own instruction is baked into the fixed frame; a dataset task
                                 # instruction is refused, never silently folded
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
-  # The card's MRL declaration (owner decision 39): "Native support for truncated embeddings across
+  # The card's MRL declaration: "Native support for truncated embeddings across
   # 128d, 256d, 512d, and 768d" (README.md:44; section 3, lines 168-180: keep the leading dimensions
   # and re-normalise). Truncation kind: the 768-wide vector is the model's own projected output
   # (language_model.embedding_projection.weight), and the smaller sizes are its leading dimensions, so
@@ -93,13 +93,14 @@ reference:
   entry: reference.py
   known_deviations: [over_cap_cut_differs]   # the card's ST encode truncates the assembled prompt right at max_seq_length; the client cuts the content at the 8192 budget. The reference keeps the anchors (there is no anchor token; the frame is a prefix) but cuts differently over-cap, so those rows ride the non-gating table
 gates: {}
-# Verified by the rc0-202610131335 nightly wave (r1, the digest-pinned nightly image above), after the
-# fix14gemma fix. NOTE: the harness's plugin-module keying (b2621274, 2026-10-13) moved this recipe's
-# behaviour fingerprint after that wave, so the wave's fingerprint no longer matches this recipe's
-# golden; re-verification on the final RC is the release plan's A1b step, and this status is only
-# honest again once that wave is green at the current fingerprint.
+# The rc0-202610131335 nightly wave (r1, the digest-pinned nightly image above) passed every gate after
+# the fix14gemma fix, and the wave's serve argv equals this recipe's golden. NOTE: the harness's
+# plugin-module keying (b2621274, 2026-10-13) moved this recipe's behaviour fingerprint after that wave
+# (7b81c893 -> d0e1e968), so the wave's evidence is at a superseded fingerprint. The state stays
+# `unverified` until the release plan's A1b re-verification runs on the final RC at the current
+# fingerprint; the wave record below is kept as history.
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21"
   date: "2026-10-13"
   report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves-rc0-202610131335/r1/vllm-vllm-openai-nightly-8cbd5d03006c33185f40224-b25e8a046fdb/"
@@ -122,7 +123,7 @@ notes: >-
   EmbeddingGemma2Model in its registry, its requirements pin transformers <5.18.0 and the image carries
   5.17.0, which has no embedding_gemma2 config or processor; and vLLM v0.31.0 has no Gemma video backend.
   The architecture landed in vLLM commit 02b83919aa2e (PR #60254, 2026-10-06) and the checkpoint's classes in
-  transformers 5.19.0 (released 2026-10-06). Decision 38: this recipe pins the nightly by digest. E2 r1 (the
+  transformers 5.19.0 (released 2026-10-06). E2 r1 (the
   first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
   does not carry the embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's
   embedding_gemma2 model module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`

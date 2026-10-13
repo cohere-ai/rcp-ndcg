@@ -126,4 +126,5 @@ contributor package (`rcp_ndcg_test`) and run per its README.
 
 Before the tag: build the wheelhouse and constraints of the candidate (the release-candidates page), run the
 fixed waves, fix what fails, re-run on GPU only what a fix changed, and repeat until every recipe's `status:`
-reads `verified`. The tag ships none unverified.
+reads `verified`. The tag ships no `unverified` recipe; a variant whose gate failed ships only when the
+owner's explicit disposition list names it (for 0.0.1, exactly the two `topk-embed-v1` variants).

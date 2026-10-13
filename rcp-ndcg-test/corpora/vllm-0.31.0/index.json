@@ -50,14 +50,14 @@
       "manifest_sha256": "e35336e9dea6d2781759c4d197a7e231c57e9ee776e9060393096b4922ce7105",
       "recipe_revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     },
-    "zerank-1-small-reranker/6c3fce2480aa687b2a572246f1b07cc1ff3290e502d369dc4c309932fd962a62": {
-      "behaviour_fingerprint": "6c3fce2480aa687b2a572246f1b07cc1ff3290e502d369dc4c309932fd962a62",
-      "manifest_sha256": "c9e4f4ad812d0209a17206aed16f1811bb9ac09de58afaf87b657de50c4342fa",
+    "zerank-1-small-reranker/e13348f43de3dab2969834ee41b24287aa2340be51178d31e5436c78a45f3b98": {
+      "behaviour_fingerprint": "e13348f43de3dab2969834ee41b24287aa2340be51178d31e5436c78a45f3b98",
+      "manifest_sha256": "5bac884b85ff353dc1c69cc21f21777ad8d86635b1ad59389dacf171bca45ada",
       "recipe_revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d"
     },
-    "zerank-2-reranker/b3a914de4c88b5afde101936cc6682e1c9a1b6a3c06b02f930e3cba5268321e6": {
-      "behaviour_fingerprint": "b3a914de4c88b5afde101936cc6682e1c9a1b6a3c06b02f930e3cba5268321e6",
-      "manifest_sha256": "01d1163464b7a6c20d50099a32b1d71ac243d4137421bdd6d8a6086dd287995e",
+    "zerank-2-reranker/460fbc15e39340a015320a010b5c38b54a462da2f0c667fae08c51d931996e8b": {
+      "behaviour_fingerprint": "460fbc15e39340a015320a010b5c38b54a462da2f0c667fae08c51d931996e8b",
+      "manifest_sha256": "2be72cac86f8d3e795a9084a5362d2ee05639270aacb05cf8ccb0d8588a587bd",
       "recipe_revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c"
     }
   },

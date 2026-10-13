@@ -2,7 +2,7 @@
 # The pixel pin rides ONE shape across the media recipes -- nested images_kwargs, decided from the
 # v0.31.0 tag source (cited in sources) -- and the video sampling is one declared rule on every side.
 id: qwen3-vl-embedding
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
 input: [text, image, video]     # the model's capability (card); text, images and video ride the messages route -- see notes, "Media"
 licence: apache-2.0
@@ -53,7 +53,7 @@ client:
                                 # instruction is refused, never silently folded
   empty_doc_text: "NULL"        # the card's empty-input rule: format_model_input renders the text "NULL" when text, image and video are all empty
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
-  # The card's MRL declaration (owner decision 39): "supports user-defined output dimensions ranging
+  # The card's MRL declaration: "supports user-defined output dimensions ranging
   # from 64 to 2048" (README.md:44; the table's MRL Support: Yes). Truncation kind, a prose range --
   # the card gives no discrete table -- so a run selects any k in [64, 2048] and the client enforces
   # the floor the engine does not (its gate accepts 1..width). The recipe ships the full width.

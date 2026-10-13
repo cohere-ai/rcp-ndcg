@@ -3,7 +3,7 @@
 # rcp-ndcg-vllm (rcp_ndcg_vllm.models). Sources are
 # revision-pinned.
 id: pplx-embed-v2-context
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: multi_vector  # one 2048-d int8-valued vector per document chunk; the query is one vector
 input: [text]  # the checkpoint ships a vision tower, but the embedding code is text-only
 licence: MIT
@@ -36,7 +36,7 @@ serve:
                    # engine; bfloat16 rather than float16 keeps fp32's exponent range for the
                    # cast. A declared served-vs-reference deviation, quantified by stage 2's
                    # tolerance gate and the wave's retrieval numbers
-  plugin: rcp-ndcg-vllm  # the models fold into this wheel (layout-move item 3); --no-deps install
+  plugin: rcp-ndcg-vllm  # the models fold into this wheel; --no-deps install
   plugin_architectures: [PplxContextualModel]  # the architecture this recipe's engine registers; the behaviour fingerprint keys its modules
   extra_args: []
   # The pooling hang at exactly max_model_len: a full-budget request is exactly the prompt the
@@ -93,7 +93,7 @@ client:
   normalize: true
   embed_dtype: float16  # the owner's Q11 decision; int8-valued vectors survive the cast exactly
   dim: 2048
-  # The card's MRL declaration (owner decision 39): "trained with Matryoshka losses at 1024 and 2048
+  # The card's MRL declaration: "trained with Matryoshka losses at 1024 and 2048
   # dimensions. To use 1024-dimensional embeddings, take the first 1024 values of each unnormalized
   # embedding and normalize afterwards" (README.md:80-88, code sample e[:, :1024] then e / norm).
   # Truncation of the projected output: the served head is span-mean -> contextual_projection -> slice
@@ -290,7 +290,7 @@ notes: |-
   tokens' names carry a significant trailing space. The render check against
   the reference's constants pins the resolved spelling.
 
-  MRL {1024, 2048} IS declared (mrl_kind: truncation, mrl_dims [1024, 2048]; owner decision 39):
+  MRL {1024, 2048} IS declared (mrl_kind: truncation, mrl_dims [1024, 2048]):
   the card's cut takes the first 1024 of the UNNORMALISED values and renormalises, which the
   product's client-side mrl_dim implements exactly (the served head is span-mean ->
   contextual_projection -> slice -> L2, and /pooling refuses a per-request dimensions, so the client

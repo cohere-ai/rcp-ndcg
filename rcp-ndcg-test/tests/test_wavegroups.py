@@ -44,7 +44,7 @@ def test_group_ids_keeps_the_wave_order_and_first_appearance(tmp_path: Path) -> 
 def test_two_clipped_slugs_never_share_a_list_file(tmp_path: Path) -> None:
     """Two tag-only images whose slugs agree in their first 48 characters must not map to one list file:
     the second write overwrote the first, so ``submit.sh`` submitted two jobs against the second image's
-    list and the first image's recipes were never run (reviews/final-harness-ds41.md D5)."""
+    list and the first image's recipes were never run."""
     alpha = "registry.example.com/a/very/long/path/to/an/engine-image-alpha:1"
     beta = "registry.example.com/a/very/long/path/to/an/engine-image-beta:2"
     assert wg.slug_of(alpha) != wg.slug_of(beta)

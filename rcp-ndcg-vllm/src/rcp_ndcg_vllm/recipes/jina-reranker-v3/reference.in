@@ -1,5 +1,5 @@
 # reference.in: this family's reference requirements, resolved to the exact, hashed reference.lock
-# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (owner decision 35). The tool
+# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (the family's one reference environment). The tool
 # constrains torch and the CUDA stack to the engine image's freeze; every other pin installs into
 # the family's reference venv and takes precedence over the image's copy. Never edit the lock by hand.
 # The reference environment for recipes/jina-reranker-v3/reference.py, in ITS OWN python
@@ -20,7 +20,7 @@
 # out at); the pin records the release version the wave environment must match.
 
 rcp-ndcg==0.0.1
-torch>=2.9  # the paper pinned 2.9.1; the reference needs no flash-attn (sdpa) and runs on the image's torch (decision 35)
+torch>=2.9  # the paper pinned 2.9.1; the reference needs no flash-attn (sdpa) and runs on the image's own torch
 transformers==4.57.6
 tokenizers>=0.22,<=0.23.0  # transformers 4.57.6 requires <=0.23.0 (the image ships 0.23.2)
 numpy>=1.26
