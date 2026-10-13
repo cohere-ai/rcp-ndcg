@@ -255,7 +255,7 @@ class VllmPooling(AdapterBase):
             ConfigError: A base64 frame arrived with no ``dim`` declared on the request, or the request
                 names an ``embed_dtype`` the adapter cannot decode.
             NotImplementedError: A ``bytes_only`` reply arrived: it sends no framing and cannot be split
-                (lane L7 pins the framing).
+                (the wire framing pins the split).
         """
         if not request.contents:
             return Embeddings.empty(0, multi_vector=True, dtype=request.embed_dtype)
@@ -479,13 +479,13 @@ class VllmPooling(AdapterBase):
         """A ``bytes`` reply: per-item frames split by the ``metadata`` header's ``start``/``end``/``shape``.
 
         The framing (``vllm/entrypoints/pooling/utils.py::encode_pooling_bytes``) is recorded here; the
-        ``bytes_only`` variant sends no metadata and is refused, naming the lane that will pin it.
+        ``bytes_only`` variant sends no metadata and is refused, naming the work that will pin it.
         """
         metadata_header = reply.headers.get("metadata")
         if metadata_header is None:
             raise NotImplementedError(
                 "the /pooling 'bytes_only' encoding sends no per-item framing (start, end, shape) and cannot be "
-                "split; wire framing over the transport is pinned with the schemas and transport work (lane L7)"
+                "split; wire framing over the transport is pinned with the schemas and transport work"
             )
         try:
             metadata = json.loads(metadata_header)

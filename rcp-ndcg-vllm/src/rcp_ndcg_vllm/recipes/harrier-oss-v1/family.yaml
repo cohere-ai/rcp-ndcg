@@ -1,5 +1,5 @@
 # Serving recipe family: microsoft/harrier-oss-v1 (270m, 0.6b, 27b) on stock vLLM (image
-# vllm/vllm-openai:v0.31.0). One family, three sizes (owner decision 34): every fact below is measured
+# vllm/vllm-openai:v0.31.0). One family, three sizes: every fact below is measured
 # at each variant's pinned revision (the variant rows carry their own file citations), and the shared
 # blocks are shared because the checkpoints agree byte for byte where it matters -- modules.json is
 # byte-identical at all three revisions (sha256 84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf:
@@ -26,7 +26,7 @@
 # causal). dtype bfloat16 is the checkpoints' own dtype, and v0.31.0 refuses float16 for gemma3_text
 # outright (vllm/config/model.py:2330-2335).
 id: harrier-oss-v1
-schema_version: "1" # the recipe file format's version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1" # the recipe file format's version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
 input: [text]
 licence: mit
@@ -100,7 +100,7 @@ client:
     # idempotent
   # No MRL head: the three cards contain no Matryoshka/MRL/projection sentence and each config.json
   # declares neither is_matryoshka nor matryoshka_dimensions -- declared explicitly so a run never
-  # guesses a width (owner decision 39).
+  # guesses a width.
   mrl_kind: none
 reference:
   kind: sentence_transformers
@@ -126,7 +126,7 @@ sources:
   - "modules.json, byte-identical at all three pinned revisions (sha256 84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf): Transformer -> Pooling -> Normalize -- the family's shared pipeline"
   - "1_Pooling/config.json at each pinned revision: pooling_mode_lasttoken true, every other mode false; the only differing key is word_embedding_dimension (640/1024/5376)"
   - "config_sentence_transformers.json, byte-identical at all three pinned revisions (sha256 ad2096929147368b5d0ba5322ea394d50911be4d348091c9f3b0ad06c3763d91): prompts.web_search_query is the query frame above, similarity_fn_name cosine"
-  - "mteb_v2_eval_prompts.json, byte-identical at all three pinned revisions (sha256 08aaf10dc3d61ac54af15027d3a491ea06b2ed3edcb06dc05584539f5555fe51): 131 per-task instructions, the model-owned MTEB v2 prompts (decision 33's task-instruction field)"
+  - "mteb_v2_eval_prompts.json, byte-identical at all three pinned revisions (sha256 08aaf10dc3d61ac54af15027d3a491ea06b2ed3edcb06dc05584539f5555fe51): 131 per-task instructions, the model-owned MTEB v2 prompts (the task-instruction field)"
   - "vllm tag v0.31.0 vllm/model_executor/models/registry.py:228 (Gemma3TextModel -> gemma3.Gemma3Model, _EMBEDDING_MODELS) and :201 (Qwen3ForCausalLM; the Qwen3Model architecture normalizes to it at :1287-1313, called at :1348/:1402)"
   - "the three card READMEs at the pinned revisions (31de22b6.../f9b9dc8d.../0c0fc62f...) contain no Matryoshka/MRL/projection sentence, and each config.json declares neither is_matryoshka nor matryoshka_dimensions: mrl_kind: none is the declaration"
   - "vllm tag v0.31.0 vllm/config/model.py:2288 (the *Model suffix default -> pooling/embed; try_match_architecture_defaults :2296-2311) and :1310-1311 (the fallback for a *ForCausalLM checkpoint)"
@@ -140,7 +140,7 @@ sources:
   - "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/reference.in (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)"
 notes: >
-  One family, three sizes (decision 34), the evidence for one: the pipeline files agree byte for byte
+  One family, three sizes, the evidence for one: the pipeline files agree byte for byte
   (modules.json, config_sentence_transformers.json, mteb_v2_eval_prompts.json identical at all three
   pinned revisions; 1_Pooling/config.json differs only in word_embedding_dimension), the cards are the
   same text with the same usage for all three sizes, and the served path is identical: --runner
@@ -157,12 +157,12 @@ notes: >
   and the card's get_detailed_instruct f-string writes "Query: {query}" the same way; the other
   preconfigured prompts (sts_query, bitext_query) are other tasks' frames -- specialising the task
   means a new recipe whose frame is that prompt (a new content identity), never a per-run field.
-  Instructions (decision 33): the checkpoint's mteb_v2_eval_prompts.json holds the model's 131 per-task
-  instructions; decision 33 assigns them to Dataset.task_instruction (model-owned, per task) and this
+  Instructions: the checkpoint's mteb_v2_eval_prompts.json holds the model's 131 per-task
+  instructions; the task-instruction rule assigns them to Dataset.task_instruction (model-owned, per task) and this
   family's target placement is the card's own fold: "Instruct: <instruction>\nQuery: <text>" -- this
   recipe's frame is exactly that fold with the retrieval default baked in, so a task-specialised recipe
   replaces the Instruct text and keeps the frame (the card's own usage wins over the generic Task:
-  prefix, decision 9). The field's product-side plumbing ships with the embed role's title and
+  prefix rule). The field's product-side plumbing ships with the embed role's title and
   instruction handling (the data-layer work behind those fields), so a task-specialised serving recipe is
   a new content identity. A per-query instruction
   (Query.instruction) no template slot exists for on the embed roles: the generic appended default

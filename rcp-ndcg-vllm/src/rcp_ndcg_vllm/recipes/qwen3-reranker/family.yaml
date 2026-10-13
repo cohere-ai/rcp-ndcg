@@ -1,4 +1,4 @@
-# The Qwen3-Reranker family (decision 34): one serving contract, three sizes, every size its own
+# The Qwen3-Reranker family: one serving contract, three sizes, every size its own
 # tested recipe id. The shared blocks below are the sizes' common contract, read off the three
 # standalone recipes this family replaces: they resolved byte-identically apart from id, model,
 # revision and the derived tokenizer, so the variants table carries only the per-size facts (id,
@@ -13,7 +13,7 @@
 # The served prompt is the model card's chat frame; every claim below was measured on the tokenizer
 # files alone.
 id: qwen3-reranker
-schema_version: "1"   # the family/recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the family/recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: rerank
 input: [text]
 scoring: pointwise

@@ -5,7 +5,7 @@ Derived with unchanged behaviour from the paper-exact module
 Qwen3-Reranker model-card recipe, Apache-2.0) — the paper's numbers rest on it. The harness's
 subprocess interface is added, and the constructor arguments the paper's factory passed are fixed
 here (max_seq_len 8192 = ``MAX_SEQ_LENGTH``, batch_size per variant from the paper configs, bfloat16
-= the paper pipeline's ``DTYPE``). One file serves every variant of the family (decision 34): the
+= the paper pipeline's ``DTYPE``). One file serves every variant of the family: the
 variant travels with the invocation, in the resolved recipe the harness passes.
 
 Run as the harness's reference subprocess (never imported by the harness, which holds no torch)::

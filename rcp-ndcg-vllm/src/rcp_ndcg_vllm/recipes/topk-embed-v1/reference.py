@@ -4,7 +4,7 @@ The model is a multimodal late-interaction (multi-vector) retriever on a Qwen3.5
 L2-normalized ``dim``-wide vector per kept token (2048 for -small, 1024 for -xsmall), retrieval
 score = fp32 MaxSim. This script is the runnable ground truth the equivalence harness compares the
 served engine against; it runs as a subprocess in its own environment (never inside the harness,
-which holds no torch). One file serves every variant of the family (decision 34): the variant
+which holds no torch). One file serves every variant of the family: the variant
 travels with the invocation, in the resolved recipe the harness passes as ``--recipe``;
 :data:`MODEL` and :data:`REVISION` name the family's -small checkpoint as the standalone defaults,
 and the CLI reads the variant's own ``model``/``revision``/``client.dim`` from the recipe.

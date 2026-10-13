@@ -3,7 +3,7 @@
 # the paper's document prefix "- " and the 8192-token budget are the client's, declared below as
 # the product's endpoint config. Every load-bearing line is in sources; the full story is in notes.
 id: octen-embedding
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
 input: [text]
 licence: apache-2.0
@@ -42,7 +42,7 @@ client:
   normalize: true            # the engine's embed pooler already L2-normalises; the client's is idempotent
   # No MRL head: the three cards contain no Matryoshka/MRL/projection sentence, and each config.json
   # declares neither is_matryoshka nor matryoshka_dimensions -- declared explicitly so a run never
-  # guesses a width (owner decision 39).
+  # guesses a width.
   mrl_kind: none
 reference:
   kind: transformers

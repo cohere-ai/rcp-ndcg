@@ -1,7 +1,7 @@
 """Reference implementation for the ``qwen3-embedding`` family, run as a subprocess in its own
 environment (never imported by the harness).
 
-ONE reference for every size (decision 34): the harness passes the resolved recipe the variant
+ONE reference for every size: the harness passes the resolved recipe the variant
 resolves to (``--recipe``, ``Recipe.model_dump(mode="json")``), and the model and revision this
 file loads come from it -- never from a module constant. The tokenizer spec the harness passes
 must name that same checkpoint at that same revision; anything else is refused loudly.
@@ -13,7 +13,7 @@ Published code path, per mode:
   ``truncation=True, max_length=8192``, the card's ``last_token_pool`` over the attention mask, then
   ``F.normalize(p=2)``; bf16 tensors cast ``.float()`` before ``.numpy()``). Needs torch and
   transformers (>=4.51 for the Qwen3 architecture; the card's floor) — the per-recipe
-  ``reference.in``/``reference.lock`` next to this file (the family pins, decision 35).
+  ``reference.in``/``reference.lock`` next to this file (the family pins).
 - ``--mode render`` — the card's prompt format as text (``get_detailed_instruct``); the tokenizer
   spec is resolved and its pin checked (``huggingface_hub`` only -- no weights, no torch). It emits
   the prompt TEXT the served client must render -- the harness compares the texts byte-exactly and

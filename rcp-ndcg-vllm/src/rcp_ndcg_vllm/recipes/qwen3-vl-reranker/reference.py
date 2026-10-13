@@ -1,5 +1,5 @@
 """Reference implementation for the ``qwen3-vl-reranker`` family (the ``--tokenizer`` spec the harness
-resolves from the variant's recipe names the checkpoint; ONE reference serves every size, decision 34).
+resolves from the variant's recipe names the checkpoint; ONE reference serves every size).
 
 The serving referent is the model card's own script, ``scripts/qwen3_vl_reranker.py``, byte-identical at
 every variant's pinned revision (2b:

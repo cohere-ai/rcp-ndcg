@@ -11,7 +11,7 @@
 # model class (PplxLateMultiVectorModel, a ColQwen3_5Model subclass) carries both gaps.
 # Sources are revision-pinned.
 id: pplx-embed-v2-late
-schema_version: "1"   # the recipe file format version (decision 18)
+schema_version: "1"   # the recipe file format version
 role: multi_vector  # one L2-normalized 128-dim vector per kept token; MaxSim client-side
 input: [text, image]  # the card's usage: text and image DOCUMENTS, text queries
 licence: MIT  # the model card metadata; the repository ships no LICENSE file
@@ -76,7 +76,7 @@ serve:
                    # range for the cast. A declared served-vs-reference
                    # deviation, quantified by stage 2's tolerance gate and the
                    # wave's retrieval numbers
-  plugin: rcp-ndcg-vllm  # the model plugins fold into this wheel (layout-move item 3; pure Python,
+  plugin: rcp-ndcg-vllm  # the model plugins fold into this wheel (pure Python,
                               # installed with --no-deps before the engine
                               # starts); it now registers BOTH pplx
                               # architectures -- the contextual chunk model and
@@ -161,7 +161,7 @@ client:
   # No MRL head: the card contains no Matryoshka/MRL/projection sentence, the
   # fixed 128-dim Dense output is the embedding, and the checkpoint declares
   # neither is_matryoshka nor matryoshka_dimensions -- declared explicitly so
-  # a run never guesses a width (owner decision 39).
+  # a run never guesses a width.
   mrl_kind: none
   document_skip_token_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 25, 26, 27, 28, 29, 30, 31, 58, 59, 60, 61, 62, 63, 90, 91, 92, 93]
             # 2_MultiVectorMask/config.json skiplist_words (the 32 ASCII

@@ -3,7 +3,7 @@
 # Every fact below was measured at the pinned revision; the anchor policy is the recipe rule of
 # docs/how-to/add-a-model.md ("Anchors").
 id: zembed-1
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
 input: [text]
 licence: apache-2.0
@@ -54,7 +54,7 @@ client:
   instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
                      # instruction is refused, never silently folded
   normalize: true
-  # The card's MRL declaration (owner decision 39): "The model supports flexible dimension projections
+  # The card's MRL declaration: "The model supports flexible dimension projections
   # (2560, 1280, 640, 320, 160, 80, 40)" (README.md:33). Projection kind: the smaller sizes are the
   # checkpoint's own learned matrices, not truncation slices, so the client head applies the chain of
   # projections.safetensors tensors (named by their target widths) and renormalises. The declared
@@ -130,7 +130,7 @@ notes: |
      by the declared client cut. The reference's over-cap cut therefore differs from the client's
      AND drops the anchor, so the recipe declares reference.known_deviations: [anchor_drop_over_cap]:
      over-cap pairs ride the non-gating table and stage 2 gates only the under-cap rows.
-  6. Dimensions: 2560 only, and MRL is declared (owner decision 39). The card's smaller sizes
+  6. Dimensions: 2560 only, and MRL is declared. The card's smaller sizes
      (1280..40) come from projections.safetensors - six chained learned F32 matrices
      (4,368,000 params; params x 4 B + 456 B header = 17,472,456 B exactly) - not Matryoshka
      slices, so the client head is mrl_kind: projection with mrl_projection.source

@@ -5,7 +5,7 @@ Runs in its own reference environment, never inside the harness process:
     <reference-python> reference.py --mode render|embed|media --pairs <file> --out <file> \
         --tokenizer <repo>@<revision>|<path/to/tokenizer.json> [--device cpu|cuda:0] --recipe <resolved-recipe.json>
 
-ONE reference for every size (decision 34): the embed mode loads the model and revision the resolved
+ONE reference for every size: the embed mode loads the model and revision the resolved
 recipe names (``--recipe``), and the tokenizer spec the harness passes is that variant's own. Both
 modes follow the model card's own code path, ``scripts/qwen3_vl_embedding.py`` (``Qwen3VLEmbedder``,
 transformers), vendored VERBATIM beside this file as ``qwen3_vl_embedding.py``; the file is

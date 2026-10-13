@@ -60,7 +60,7 @@ Run as the harness's reference subprocess (never imported by the harness, which 
     reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <spec> \
         --recipe <resolved-recipe.json> [--device <d>]
 
-``--recipe`` is the resolved recipe the harness loaded (decision 34: one family reference runs
+``--recipe`` is the resolved recipe the harness loaded (one family reference runs
 every variant): the variant's ``id`` selects its paper batch size (:data:`BATCH_SIZES` — a variant
 outside the table is refused, never defaulted) and its ``model``/``revision`` pin the checkpoint
 the score mode loads.  ``render`` writes ``{"rows": [{"index", "shape", "query", "documents"}]}``;

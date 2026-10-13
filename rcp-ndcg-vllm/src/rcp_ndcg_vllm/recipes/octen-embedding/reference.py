@@ -1,8 +1,8 @@
 """The Octen-Embedding family's one reference -- the paper's in-process path, unchanged.
 
 This is an exact port of the rcp-ndcg paper's encoder path -- not of the model card. Line numbers
-grep-verified against the repository 2026-10-06. One file serves every variant of the family
-(decision 34): the variant travels with the invocation, in the resolved recipe the harness passes
+grep-verified against the repository 2026-10-06. One file serves every variant of the family.
+The variant travels with the invocation, in the resolved recipe the harness passes
 as ``--recipe``; :data:`MODEL` and :data:`REVISION` name the paper's 8B checkpoint as the
 standalone defaults, and the CLI reads the variant's own ``model``/``revision`` from the recipe.
 
@@ -90,7 +90,7 @@ def load(device: str = "cpu", *, model: str = MODEL, revision: str | None = REVI
 
     Returns ``(model, tokenizer, device)``: the checkpoint in bfloat16, eval mode, on ``device``;
     the tokenizer with left padding. Downloads ~15 GB of weights on first use.  ``model``/``revision``
-    are the resolved recipe's (decision 34: one family reference runs every variant); the defaults are
+    are the resolved recipe's (one family reference runs every variant); the defaults are
     the shipped variant's constants.
     """
     import torch
@@ -224,7 +224,7 @@ def score(query: str, docs: list[str], instruction: str | None = None) -> list[f
 def _declared_shapes(recipe_file: str) -> list[str]:
     """The resolved recipe's declared template shapes, in the file's order (the harness fits those).
 
-    The resolved recipe travels with the invocation (``--recipe``, decision 34: one family reference
+    The resolved recipe travels with the invocation (``--recipe``, one family reference
     runs every variant); the shapes are the family's shared client template."""
     import json
 
@@ -245,7 +245,7 @@ def _recipe_file() -> str:
 
 
 def _resolved_recipe() -> dict[str, Any]:
-    """The resolved recipe JSON (decision 34: one family reference runs every variant)."""
+    """The resolved recipe JSON (one family reference runs every variant)."""
     import json
 
     return json.loads(Path(_recipe_file()).read_text(encoding="utf-8"))

@@ -39,6 +39,12 @@ PLACEHOLDER_BUCKET = "YOUR-BUCKET"
 #: citation of the same design id is the same id. The scan skips :data:`SCAFFOLDING` (see the module docstring).
 DESIGN_AND_LANE_IDS = re.compile(r"\bRFC[- ]?\d{3,4}\b|\blane/", re.IGNORECASE)
 
+#: The internal design-id shorthand the docs wording guard forbids in Markdown, in the non-Markdown homes
+#: the release publishes: the shipped recipe files (package data of ``rcp-ndcg-vllm``) and the generated
+#: schemas (``rcp-ndcg-vllm/schema/`` and the root ``schemas/``). ``tests/docs/test_wording.py`` owns the
+#: Markdown half; this is the same rule for the data files it cannot read.
+DESIGN_IDS = re.compile(r"owner decisions? \d+|\bdecision \d+|\blane L\d+|\blayout-move item \d+", re.IGNORECASE)
+
 #: The scaffolding directories the shipped-tree scan skips: working notes and paper reproduction, deleted at
 #: release.
 SCAFFOLDING = ("handover", "experiments")
@@ -123,13 +129,38 @@ def test_no_shipped_recipe_file_names_a_real_bucket() -> None:
 
 
 def test_every_shipped_recipe_file_reads_as_a_public_statement() -> None:
-    """Every shipped recipe file and template reads as a public statement, judge families included."""
+    """Every shipped recipe file and template reads as a public statement, judge families included.
+
+    The scan covers the internal labels and private paths (:data:`INTERNAL_LABELS`) and the design-id
+    shorthand (:data:`DESIGN_IDS`) the Markdown wording guard forbids -- the recipe files are package data
+    of the published wheel, so a design id there is the same leak as one in a page.
+    """
     root = default_recipes_root()
     hits = [
         f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
         for path in sorted(root.rglob("*"))
         if path.is_file() and "__pycache__" not in path.parts
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
-        if INTERNAL_LABELS.search(line)
+        if INTERNAL_LABELS.search(line) or DESIGN_IDS.search(line)
     ]
     assert not hits, "internal labels in shipped recipe files:\n" + "\n".join(hits)
+
+
+def test_every_generated_schema_reads_as_a_public_statement() -> None:
+    """The generated schemas carry no internal design ids either.
+
+    ``rcp-ndcg-vllm/schema/*.schema.json`` is exported public surface of the vllm distribution (grafted
+    into its sdist) and the root ``schemas/`` is the product's exported surface; both are generated from
+    docstrings, so a design id in a docstring ships in a JSON file the wording guard cannot read.
+    """
+    root = _repository_root()
+    schema_files = sorted((root / "schemas").glob("*.json")) + sorted(
+        (root / "rcp-ndcg-vllm" / "schema").glob("*.json")
+    )
+    hits = [
+        f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
+        for path in schema_files
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if DESIGN_IDS.search(line)
+    ]
+    assert not hits, "internal design ids in generated schemas:\n" + "\n".join(hits)

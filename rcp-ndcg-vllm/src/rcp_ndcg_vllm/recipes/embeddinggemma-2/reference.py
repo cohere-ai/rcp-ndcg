@@ -72,7 +72,7 @@ SHAPES = ("query", "document")
 
 #: The pairs-file media columns a text-only mode refuses (the media stage is its own mode).
 _MEDIA_COLUMNS = (
-    "media",  # the harness's media field (owner decision 35): a text-only mode must never swallow it
+    "media",  # the harness's media field (the media-equivalence rule): a text-only mode must never swallow it
     "image",
     "images",
     "video",

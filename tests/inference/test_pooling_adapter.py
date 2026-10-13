@@ -610,10 +610,10 @@ class TestBytesFraming:
         embeddings = adapter.interpret(request([Content.from_text("a")]), [self._bytes_reply(vectors, dtype="float32")])
         np.testing.assert_array_equal(embeddings.vectors, vectors)
 
-    def test_bytes_only_has_no_framing_and_is_refused_naming_lane_l7(self) -> None:
+    def test_bytes_only_has_no_framing_and_is_refused(self) -> None:
         adapter = VllmPooling()
         reply = Reply(200, np.ones((2, 2), dtype="<f2").tobytes(), {})
-        with pytest.raises(NotImplementedError, match="lane L7"):
+        with pytest.raises(NotImplementedError, match="bytes_only"):
             adapter.interpret(request([Content.from_text("a")]), [reply])
 
     def test_a_bytes_frame_s_width_must_match_the_declared_dim(self) -> None:
