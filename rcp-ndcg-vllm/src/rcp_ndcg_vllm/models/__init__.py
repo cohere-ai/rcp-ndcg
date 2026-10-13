@@ -66,9 +66,12 @@ plugin engine imports it.  The patch modules themselves are keyed per recipe, by
 
 ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     # The contextual chunk model (pplx-embed-v2-context-9b-preview): the model class imports its pooler
-    # and the pooling core (the config registration is shared, in PLUGIN_ENGINE_MODULES), and the pooler
-    # uses the plugin's one token-embed head construction.
+    # and the pooling core (the config registration is shared, in PLUGIN_ENGINE_MODULES), the pooler
+    # uses the plugin's one token-embed head construction, and the id-level contract and the per-chunk
+    # segmentation live in the pure-Python chunk rule (the pooling core and the observation corpus's
+    # acceptance check both read it).
     "PplxContextualModel": (
+        "rcp_ndcg_vllm.models.pplx.chunk_rule",
         "rcp_ndcg_vllm.models.pplx.model",
         "rcp_ndcg_vllm.models.pplx.pooler",
         "rcp_ndcg_vllm.models.pplx.pooling_core",

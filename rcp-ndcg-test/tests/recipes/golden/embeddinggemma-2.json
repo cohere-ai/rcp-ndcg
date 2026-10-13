@@ -48,7 +48,7 @@
   }
  },
  "fingerprint": {
-  "fingerprint": "03f88867d165ee9353a737570b81de957925c75eb94b93b5f4f7290e46e5005e",
+  "fingerprint": "b18a0c5b65acc33c2143cd59b9d448b27de54d07b20c9135959f35d6ce1ce181",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -70,7 +70,7 @@
    "engine.min_version": "0.31.1.dev0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "google/embeddinggemma-2",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:17c5768652d31611c975a1f04e972d04be9a957661bdfc8beb2405d89527946f",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:ca27f66092cf04c28fb503a913358ac72ae1772d4671b502c30e4a46d6953547",
    "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:46213ea54e56222971038b7e595e83dfc9bcbe55cbc31f65762ce15cb0e5be39",
    "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.attention": "sha256:f18d83a6ee0f60470ecb87041e0f55bf744904dd324917ec8b1d13ad4e14dd9f",
    "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:a4e1804063afd79065b65520c2b753b099042e297679b8e91e3af78f4cbf592a",
