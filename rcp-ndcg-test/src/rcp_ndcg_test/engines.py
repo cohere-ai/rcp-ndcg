@@ -359,8 +359,7 @@ def _diff_rerank_results(expected: Any, actual: Any, tolerance: tuple[float, flo
     actual_by_index = {entry.get("index"): entry for entry in actual_results if isinstance(entry, dict)}
     if set(by_index) != set(actual_by_index):
         return problems + [
-            f".results: document indices {sorted(actual_by_index, key=str)} != recorded "
-            f"{sorted(by_index, key=str)}"
+            f".results: document indices {sorted(actual_by_index, key=str)} != recorded {sorted(by_index, key=str)}"
         ]
     for index in sorted(by_index, key=str):
         problems.extend(_diff_bodies(by_index[index], actual_by_index[index], f".results[{index}]", tolerance))
@@ -370,8 +369,7 @@ def _diff_rerank_results(expected: Any, actual: Any, tolerance: tuple[float, flo
             for position, (left, right) in enumerate(zip(scores, scores[1:], strict=False)):
                 if float(right) > float(left):
                     problems.append(
-                        f".results[{position}].index: the {side} reply is not ranked by score "
-                        f"({right} above {left})"
+                        f".results[{position}].index: the {side} reply is not ranked by score ({right} above {left})"
                     )
                     break
     return problems
@@ -926,17 +924,13 @@ def _media_counts(body: Mapping[str, Any]) -> tuple[int, int]:
     inputs = body.get("input")
     if isinstance(inputs, list):
         units.extend(
-            list(item["content"])
-            for item in inputs
-            if isinstance(item, dict) and isinstance(item.get("content"), list)
+            list(item["content"]) for item in inputs if isinstance(item, dict) and isinstance(item.get("content"), list)
         )
     for key in ("query", "documents"):
         value = body.get(key)
         values = value if key == "documents" and isinstance(value, list) else [value]
         units.extend(
-            list(item["content"])
-            for item in values
-            if isinstance(item, dict) and isinstance(item.get("content"), list)
+            list(item["content"]) for item in values if isinstance(item, dict) and isinstance(item.get("content"), list)
         )
     images = videos = 0
     for unit in units:
