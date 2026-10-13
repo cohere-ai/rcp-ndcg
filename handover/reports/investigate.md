@@ -381,8 +381,15 @@ report lands at `<OUT_PREFIX>/topk-probe/topk-probe/`.
 - Checks run on the tree: `uv run --no-sync ruff check .` and `ruff format --check .` after the
   harness files were added; `shellcheck` on the wrapper; `bash -n` on the wrapper; `python
   topk_probe.py --help` and an offline exercise of its row selection and report writer.
-- `bin/gate lane/investigate`: see the gate result recorded at the end of this lane's run; the tree's
-  only delta from the gated tip is this report plus the two inert harness files.
+- `bin/gate lane/investigate` on `54d75bc2` (the report + harness commit; `rfc-0001` was already its
+  tip): **GATE: PASS**, every step exit 0 — ruff-check/format, basedpyright 0 errors, root pytest
+  `4145 passed, 155 skipped`, contract-docs `413 passed, 107 skipped`, mkdocs built, test-pkg
+  `1193 passed, 229 skipped`, recipes clean, vllm-pkg `50 passed`, vllm-models `110 passed, 8 skipped`,
+  run_all (1022/987/35/0, 67/67, 82/82), public-names clean, clean. The first attempt on the same
+  revision died at `test-pkg` with `exit=139` (SIGSEGV) at
+  `test_record_and_wave.py::test_wave_packs_engines_so_reference_gpus_remain` under load average 79;
+  that test passes in isolation (`1 passed in 14.78s`) and the retry passed, so the crash is
+  environmental (the known load flake), not a tree failure.
 
 ## 5. Open questions / what could not be proven
 
