@@ -84,6 +84,21 @@ class TestQuery:
         q = Query(query="find docs", query_id="q1", instruction="")
         assert q.format_query() == "find docs "
 
+    def test_an_empty_per_query_instruction_is_appended_to_a_media_query_too(self):
+        """One predicate for both paths: the field being present appends it. The text path is
+        mteb's ``query + " " + instruction``, '' included; the media path appended the
+        instruction only when it was truthy, so the same query read differently with media."""
+        query = Query(
+            query_id="q1",
+            content=Content.from_parts([TextPart(text="find docs"), ImagePart(ref=MediaRef(uri="u"))]),
+            instruction="",
+        )
+        content = query.format_content()
+        assert content.parts[-1] == TextPart(text="")
+        assert content.text == "find docs\n", "the appended part joins with the text parts' newline"
+        absent = query.model_copy(update={"instruction": None})
+        assert [type(part) for part in absent.format_content().parts] == [TextPart, ImagePart]
+
     def test_the_task_instruction_is_prefixed(self):
         q = Query(query="find docs", query_id="q1")
         assert q.format_query(task_instruction="Given a claim, find documents that refute the claim") == (

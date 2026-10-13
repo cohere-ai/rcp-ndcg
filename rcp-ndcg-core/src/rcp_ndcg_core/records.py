@@ -147,7 +147,11 @@ class Query(Text):
 
         The encoder-facing counterpart: an image query keeps its image parts, gains the task instruction
         as a leading text part and the per-query instruction as a trailing one (a text query's two
-        instructions are the one string :meth:`format_query` builds).
+        instructions are the one string :meth:`format_query` builds). Both instructions follow the
+        string path's predicate -- the task instruction when it is non-blank, the per-query instruction
+        when it is present (``""`` included) -- so an empty per-query instruction appends an empty
+        trailing part, whose joining newline is the parts' separator where the string path has mteb's
+        space.
         """
         task = (task_instruction or "").strip()
         content = self.as_content
@@ -157,7 +161,7 @@ class Query(Text):
         if task:
             parts.append(TextPart(text=f"Task: {task}"))
         parts.extend(content.parts)
-        if self.instruction:
+        if self.instruction is not None:
             parts.append(TextPart(text=self.instruction))
         return Content.from_parts(parts)
 
