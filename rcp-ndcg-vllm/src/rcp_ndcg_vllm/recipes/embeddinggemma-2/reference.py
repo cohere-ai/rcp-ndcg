@@ -19,15 +19,19 @@ prompt strings changed is a loud error, never a silent drift.
   ``max_seq_length``; the recipe declares ``over_cap_cut_differs`` so over-cap rows are reported, not gated,
   and this mode never ports the client's content-boundary cut.
 - ``--mode embed`` (stage 2's reference side): ``{"rows": [{"index", "query_vectors", "document_vectors"}]}``
-  -- one 768-d L2-normalised vector per side through the card's ``encode`` (one query per row, one vector per
-  document). A media row's ``media`` field is read (:func:`side_input`): a text-only side is its text (the
-  card prepends the declared prompt to it), a media side is a one-user-turn conversation with the parts in
-  order (the prompt rides the card's own system message, which the checkpoint's template renders first); an
-  image entry is a loaded PIL image and a video entry is written to a scratch file and handed to the
-  checkpoint's own video processor with the recipe's declared pin
+  -- one 768-d L2-normalised vector per side through the card's own path (one query per row, one vector per
+  document). A media row's ``media`` field is read (:func:`side_input`): a media side is a one-user-turn
+  conversation with the parts in order (the prompt rides the card's own system message, which the
+  checkpoint's template renders first) through the card's ``encode``; an image entry is a loaded PIL image
+  and a video entry is written to a scratch file and handed to the checkpoint's own video processor with the
+  recipe's declared pin
   (:func:`video_processing_kwargs`: the engine's fps and frame cap plus the checkpoint's uniform overflow
-  strategy), whose ``sample_frames`` reproduces the engine's indices exactly (W2 re-verification). The
-  retired per-column media fields are refused loudly.
+  strategy), whose ``sample_frames`` reproduces the engine's indices exactly (W2 re-verification). A
+  text-only side is its text (the card prepends the declared prompt to it) through the checkpoint's own
+  tokenizer path (:func:`text_vectors`): ST's ``encode`` would hand a text-only row to the multimodal
+  processor's validating path, which refuses a text carrying the checkpoint's placeholder spellings with no
+  media -- the harness's spelling stratum -- where the engine's tokenizer matches the spelling as the
+  checkpoint's added token. The retired per-column media fields are refused loudly.
 - ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
   the card's model consumes: the client's parts in order (the task prompt text, the media, the body text),
   each image's size after the checkpoint's
@@ -362,10 +366,43 @@ def side_input(text: str, entries: list[dict[str, Any]], *, work: Path, clip_nam
     return [{"role": "user", "content": parts}]
 
 
+def text_vectors(model: Any, texts: list[str], *, prompt: str) -> Any:
+    """One L2-normalised vector per text-only side, through the card's own tokenizer path.
+
+    ``SentenceTransformer.encode`` hands a text-only input to the checkpoint's multimodal processor (the
+    checkpoint's ``sentence_bert_config.json`` declares the ``message`` modality), and the processor's
+    ``validate_inputs`` counts the checkpoint's placeholder spellings in the text and refuses a text-only
+    row that carries one -- the wave's reference failure (``Found 1 ... tokens in the text but no images
+    were passed.``), which is exactly the harness's spelling stratum. The engine has no such check: its
+    tokenizer matches the spelling as the checkpoint's own added token and the model reads that token.
+
+    The reference therefore takes the text path the processor's own text call uses: the checkpoint's own
+    tokenizer (``model.tokenizer``, the processor's own instance) over the prompt-prefixed text, with the
+    processor's text kwargs (padding, longest-first truncation at the card's cap) and the tokenizer's
+    post-processor, and then the card's own module stack (``Transformer -> Pooling -> Normalize``) with
+    ST's own device move and normalisation. A text-only side's ids and vectors are therefore exactly the
+    card's own; a media side keeps the card's ``encode`` and its validation (:func:`mode_embed`).
+    """
+    import torch
+    from sentence_transformers.util import batch_to_device
+
+    features = model.tokenizer(
+        [prompt + text for text in texts],
+        padding=True,
+        truncation="longest_first",
+        return_tensors="pt",
+    )
+    out = model(batch_to_device(features, model.device))
+    # The card's own ``encode(normalize_embeddings=True)``: the call ST applies after the modules (the
+    # checkpoint's Normalize module already did it, so a second pass is the identity).
+    return torch.nn.functional.normalize(out["sentence_embedding"], p=2, dim=1)
+
+
 def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str) -> dict[str, Any]:
-    """Stage 2's reference side: the card's own sentence-transformers path -- ``encode`` with
-    ``prompt_name="SearchQuery"`` / ``"Document"``, one L2-normalised 768-d vector per side (media rows
-    included: :func:`side_input`). A media batch carries the declared video pin
+    """Stage 2's reference side: the card's own paths -- the checkpoint's own tokenizer for a text-only
+    side (:func:`text_vectors`) and ``encode`` with ``prompt_name="SearchQuery"`` / ``"Document"`` for a
+    media conversation -- one L2-normalised 768-d vector per side (media rows included:
+    :func:`side_input`). A media batch carries the declared video pin
     (:func:`video_processing_kwargs`), so the checkpoint's processor samples a container exactly as the
     engine does."""
     _refuse_old_media_columns(pairs)
@@ -389,8 +426,9 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
     video_fps, video_max_frames = _video_pin(recipe)
 
     def vectors(sides: list[Any], prompt_name: str) -> list[list[float]]:
-        """One vector per side: the card's own encode, text sides and media conversations in their own
-        batches (a mixed batch is not a form the card's input formatter defines)."""
+        """One vector per side: a text-only side through the card's own tokenizer path
+        (:func:`text_vectors`), a media conversation through the card's own ``encode`` with the declared
+        video pin (a mixed batch is not a form the card's input formatter defines)."""
         out: list[list[float] | None] = [None] * len(sides)
         text_positions = [position for position, side in enumerate(sides) if isinstance(side, str)]
         media_positions = [position for position, side in enumerate(sides) if not isinstance(side, str)]
@@ -400,12 +438,18 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
         ):
             if not positions:
                 continue
-            matrix = model.encode(
-                [sides[position] for position in positions],
-                prompt_name=prompt_name,
-                normalize_embeddings=True,
-                **({"processing_kwargs": processing} if processing is not None else {}),
-            )
+            batch = [sides[position] for position in positions]
+            if processing is None:
+                # The checkpoint's own prompt table, the entry ST's encode resolves for the media sides
+                # (cross-checked against the declared prompts above).
+                matrix = text_vectors(model, batch, prompt=prompts[prompt_name])
+            else:
+                matrix = model.encode(
+                    batch,
+                    prompt_name=prompt_name,
+                    normalize_embeddings=True,
+                    processing_kwargs=processing,
+                )
             for position, vector in zip(positions, matrix, strict=True):
                 out[position] = [float(value) for value in vector]
         if any(vector is None for vector in out):  # pragma: no cover - every side is text or a conversation
