@@ -133,10 +133,15 @@ def test_a_failed_corpus_step_is_not_published_to_the_changed_since_index(
     row = first["recipes"][0]
     assert row["state"] == "failed"
     assert "injected corpus failure" in (row["steps"]["observation_corpus"].get("error") or "")
-    # The fingerprint stays on the row for reporting, but the index map is for recorded corpora only.
+    # The fingerprint stays on the row for reporting, but the index maps are for recorded corpora
+    # only: the version is the other half of the corpus key, and a failed row's version must not
+    # enter the index either -- protocol_due would otherwise stop naming the engine version the
+    # release never recorded (the D1 fix gated fingerprints; the version map is the sibling hole).
     assert row["behaviour_fingerprint"] == behaviour_fingerprint(load_recipe(RECIPES / "fixture-embed"))
     assert first["fingerprints"] == {}
-    # The recovery wave must attempt the recipe again, never skip it as unchanged.
+    assert first["engine_versions"] == {}
+    # The recovery wave must attempt the recipe again, never skip it as unchanged, and the failed
+    # recording's engine version stays protocol-due.
     monkeypatch.setattr(record_module, "record_corpus", real_record_corpus)
     second = _wave(
         tmp_path,
@@ -145,7 +150,8 @@ def test_a_failed_corpus_step_is_not_published_to_the_changed_since_index(
         changed_since_index=tmp_path / "wave1" / "wave.json",
     )
     assert second["skipped_unchanged"] == []
-    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint"]}
+    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint", "engine_version"]}
+    assert second["protocol_due"] == ["test-stub"]
     assert second["recipes"] and second["recipes"][0]["state"] == "verified"
 
 
