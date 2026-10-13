@@ -16,6 +16,7 @@ The topk and pplx distributions folded into this one wheel (layout-move item 3):
 from __future__ import annotations
 
 LAZY_MODEL_MODULES: tuple[str, ...] = (
+    "rcp_ndcg_vllm.models.embedding_gemma2.attention",
     "rcp_ndcg_vllm.models.embedding_gemma2.config",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold",
     "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
@@ -115,7 +116,9 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     ),
     # The folded vLLM model itself (the architecture the image's registry lacks): the model module,
     # upstream's config hook and the fold package with the folded files the model's transformers imports
-    # resolve through.
+    # resolve through. The encoder-only SDPA backend the recipe's ``torch-sdpa-attention`` patch
+    # registers is keyed here too (the recipe that declares this architecture is the one that opts the
+    # backend in), so a change to it moves that recipe's fingerprint.
     "EmbeddingGemma2Model": (
         "rcp_ndcg_vllm.models.embedding_gemma2.config",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold",
@@ -124,6 +127,7 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
         "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
+        "rcp_ndcg_vllm.models.embedding_gemma2.attention",
     ),
 }
 """Every architecture (and config-only registration) this wheel registers, mapped to the engine-side
