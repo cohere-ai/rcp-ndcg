@@ -279,10 +279,12 @@ notes: >-
   `rcp_ndcg.data.resolution.gemma4_fixed_point` -- the size the processor KEEPS, so the engine's own resize
   is the identity -- while the card's processor resizes the RAW image in ONE step
   (`get_aspect_ratio_preserving_size`), and for these two extreme-aspect images the two differ: the shipped
-  576x4096 receipt lands on 288x2160 (270 soft tokens, the fixed point) where the card's single resize gives
-  288x2112 (264), and the 3000x20 strip on 13344x48 (278) where the card's gives 48x1836 (204). The engine
-  sees the prepared bytes (270/278, the client's count -- the media stage's engine check passes on both
-  rows); the reference's embed mode runs the card's own pipeline on the raw image (264/204), so the two
+  576x4096 receipt lands on 288x2160 (2,430 patches = 270 soft + the 2 markers = the 272 tokens the client
+  counts and the engine's usage delta reports) where the card's single resize gives 288x2112 (2,376 patches =
+  264 + 2 = 266), and the 3000x20 strip on 13344x48 (2,502 patches = 278 + 2 = 280, the engine's 280) where
+  the card's gives 9792x48 (1,836 patches = 204 + 2 = 206). The engine
+  sees the prepared bytes (272/280, the client's count -- the media stage's engine check passes on both
+  rows); the reference's embed mode runs the card's own pipeline on the raw image (266/206), so the two
   sides' patch layouts differ and the pooled vectors move by exactly the observed amount. Every other image
   row is at or beside its fixed point, which is why only these two are off. No per-variant bound is declared:
   a `gates.vec_min_cosine` low enough for these rows (0.994) would hide the same-sized difference on every
