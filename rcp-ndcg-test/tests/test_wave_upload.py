@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -75,6 +76,51 @@ def test_an_upload_that_does_not_land_is_a_failure(tmp_path: Path, monkeypatch: 
     markdown = (tmp_path / "wave" / "WAVE.md").read_text(encoding="utf-8")
     assert "UPLOAD FAILED" in markdown
     assert "Verdict: **FAILED**" in markdown
+
+
+def test_a_truncated_upload_is_a_failed_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transfer that lands a truncated file is caught by the verification: the destination listing is
+    compared against every source file, so a silent partial copy is a failure, not a pass
+    (reviews/final-harness-ds41.md D3)."""
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "a.json").write_text('{"rows": [1, 2, 3]}\n', encoding="utf-8")
+    (source / "b.json").write_text('{"rows": []}\n', encoding="utf-8")
+    destination = tmp_path / "bucket"
+
+    def truncating(*_args: object) -> bool:
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+        (destination / "a.json").write_text('{"rows": [1', encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(run_wave_module, "_upload_cli", truncating)
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
+    result = run_wave_module._upload_verified(source, str(destination))
+    assert result["ok"] is False and result["attempts"] == run_wave_module._UPLOAD_ATTEMPTS
+    assert "size mismatch: ['a.json']" in str(result["error"]), result
+
+
+def test_a_same_size_corruption_is_a_failed_attempt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The destination's bytes must hash to the source's: a same-size corruption is a failed attempt,
+    never a pass -- the size check alone accepted it (reviews/final-harness-ds41.md D3)."""
+    source = tmp_path / "source"
+    source.mkdir()
+    payload = '{"rows": [1, 2, 3]}\n'
+    (source / "a.json").write_text(payload, encoding="utf-8")
+    destination = tmp_path / "bucket"
+
+    def corrupting(*_args: object) -> bool:
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+        corrupted = payload.replace("[1, 2, 3]", "[9, 2, 3]")
+        assert len(corrupted) == len(payload)
+        (destination / "a.json").write_text(corrupted, encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(run_wave_module, "_upload_cli", corrupting)
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
+    result = run_wave_module._upload_verified(source, str(destination))
+    assert result["ok"] is False
+    assert "content mismatch: ['a.json']" in str(result["error"]), result
 
 
 def test_a_transient_upload_failure_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

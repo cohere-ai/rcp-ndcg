@@ -62,6 +62,7 @@ Run it on the node with ``python -m rcp_ndcg_test.jobs.run_wave`` (the node boot
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -1894,7 +1895,8 @@ def _upload(out: Path, uri: str) -> dict[str, Any]:
     gsutil, then the product's own storage (the stock engine image ships neither CLI, and the client
     environment carries the product's gcsfs, so the third path is the node's usual one); after a
     transfer reports success the destination is listed and every source file must be there at the same
-    size, so a silent partial copy is a failure, not a pass.
+    bytes (size and SHA-256), so a silent partial copy or a same-size corruption is a failure, not a
+    pass.
     """
     if not any(out.iterdir()):
         return {"ok": True, "attempts": 0, "files": 0, "error": None}
@@ -1915,8 +1917,8 @@ def _upload_verified(source: Path, uri: str) -> dict[str, Any]:
 
     Output: ``{"ok": bool, "attempts": int, "files": int, "error": str | None}`` -- the last error is
     kept when every attempt failed.  A transfer that reports success but leaves the destination without
-    the source files (or with different sizes) is a failed attempt: the retry is the answer to a
-    transient 5xx, the verification to a silent partial copy.
+    the source files (or with different bytes) is a failed attempt: the retry is the answer to a
+    transient 5xx, the verification to a silent partial copy or a same-size corruption.
     """
     files = sum(1 for path in source.rglob("*") if path.is_file())
     result: dict[str, Any] = {"ok": False, "attempts": 0, "files": files, "error": None}
@@ -1944,11 +1946,14 @@ def _upload_attempt(source: Path, uri: str) -> str | None:
 
 
 def _verify_upload(source: Path, uri: str) -> str | None:
-    """``None`` when every local file under ``source`` is at ``uri`` with the same size; else the
-    mismatch.  The listing goes through the product's storage (the one home for a URI), so the check
-    works for a local directory and a ``gs://``/``s3://`` destination alike."""
+    """``None`` when every local file under ``source`` is at ``uri`` with the same bytes; else the
+    mismatch.  The destination is listed and read back through the product's storage (the one home for a
+    URI), and each entry's bytes are hashed against the source's, so the check works for a local directory
+    and a ``gs://``/``s3://`` destination alike and a same-size corruption is never a pass."""
     expected = {
-        str(path.relative_to(source)): path.stat().st_size for path in sorted(source.rglob("*")) if path.is_file()
+        str(path.relative_to(source)): (path.stat().st_size, hashlib.sha256(path.read_bytes()).hexdigest())
+        for path in sorted(source.rglob("*"))
+        if path.is_file()
     }
     if not expected:
         return None
@@ -1961,17 +1966,21 @@ def _verify_upload(source: Path, uri: str) -> str | None:
     except Exception as error:  # noqa: BLE001 - any listing failure is a failed verification
         return f"the destination {uri} could not be listed ({type(error).__name__}: {error})"
     seen: dict[str, int | None] = {}
+    digests: dict[str, str] = {}
     for entry in listed:
         try:
-            seen[storage.relative(entry, uri)] = storage.info(entry).get("size")
+            name = storage.relative(entry, uri)
+            seen[name] = storage.info(entry).get("size")
+            digests[name] = hashlib.sha256(storage.read_bytes(entry)).hexdigest()
         except Exception as error:  # noqa: BLE001 - a broken entry is a failed verification
             return f"the destination entry {entry} could not be read ({type(error).__name__}: {error})"
     missing = sorted(set(expected) - set(seen))
-    wrong_size = sorted(name for name, size in expected.items() if name in seen and seen[name] != size)
-    if missing or wrong_size:
+    wrong_size = sorted(name for name, (size, _) in expected.items() if name in seen and seen[name] != size)
+    wrong_bytes = sorted(name for name, (_, digest) in expected.items() if name in digests and digests[name] != digest)
+    if missing or wrong_size or wrong_bytes:
         return (
             f"the destination {uri} does not hold the source files "
-            f"(missing: {missing[:5]}, size mismatch: {wrong_size[:5]})"
+            f"(missing: {missing[:5]}, size mismatch: {wrong_size[:5]}, content mismatch: {wrong_bytes[:5]})"
         )
     return None
 
