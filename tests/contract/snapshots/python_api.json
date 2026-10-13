@@ -23415,6 +23415,70 @@
           }
         }
       },
+      "DocumentEstimate": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_core.schemas",
+        "extra": "forbid",
+        "fields": {
+          "flags": {
+            "alias": null,
+            "default": "EstimateFlags(degenerate=None, low_information=False)",
+            "frozen": false,
+            "required": false,
+            "type": "rcp_ndcg_core.schemas.EstimateFlags"
+          },
+          "information": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "float"
+          },
+          "se": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "float"
+          },
+          "theta": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "float"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "EstimateFlags": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp_ndcg_core.schemas",
+        "extra": "forbid",
+        "fields": {
+          "degenerate": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "Literal['all_fail', 'all_pass'] | None"
+          },
+          "low_information": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
       "Gains": {
         "kind": "type_alias",
         "type": "collections.abc.Mapping[str, collections.abc.Mapping[str, float]]"

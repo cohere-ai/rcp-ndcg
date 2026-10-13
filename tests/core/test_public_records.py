@@ -233,3 +233,18 @@ def test_judgement_set_refuses_unknown_families_and_merges_by_record_id() -> Non
     assert len(merged) == 2
     assert merged.query_ids("rubric") == [("d", "q")]
     assert len(merged.of_stage("tournament")) == 0
+
+
+def test_the_facade_exports_the_types_its_public_functions_return() -> None:
+    """``score_document``/``insert_document`` return :class:`DocumentEstimate` (flags included) and the
+    facade docstring names it, but the frozen surface exported neither, so a user could not import the
+    type of the value the public API hands back."""
+    import rcp_ndcg_core
+    from rcp_ndcg_core import DocumentEstimate, EstimateFlags
+    from rcp_ndcg_core.schemas import DocumentEstimate as SchemaEstimate
+    from rcp_ndcg_core.schemas import EstimateFlags as SchemaFlags
+
+    assert DocumentEstimate is SchemaEstimate
+    assert EstimateFlags is SchemaFlags
+    assert "DocumentEstimate" in rcp_ndcg_core.__all__
+    assert "EstimateFlags" in rcp_ndcg_core.__all__

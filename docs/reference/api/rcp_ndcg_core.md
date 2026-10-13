@@ -31,6 +31,34 @@ class Document(rcp_ndcg_core.records.Text)
 
 - `title: str | None` = None
 
+## `DocumentEstimate`
+
+pydantic_model — One document's estimated ability.
+
+```text
+class DocumentEstimate(pydantic.main.BaseModel)
+```
+
+- `flags: rcp_ndcg_core.schemas.EstimateFlags` = 'EstimateFlags(degenerate=None, low_information=False)'
+
+- `information: float`
+
+- `se: float`
+
+- `theta: float`
+
+## `EstimateFlags`
+
+pydantic_model — What to read before comparing a document's estimated ability with others'.
+
+```text
+class EstimateFlags(pydantic.main.BaseModel)
+```
+
+- `degenerate: Literal['all_fail', 'all_pass'] | None` = None
+
+- `low_information: bool` = False
+
 ## `Gains`
 
 type_alias

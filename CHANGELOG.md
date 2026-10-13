@@ -88,9 +88,12 @@ that exports it.
   `PROTOCOLS`, `score_query` and `aggregate`, with `MetricName` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`). The public
   records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
   judge call's parsed observation), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
-  judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window) and
+  judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window),
   `JudgementFamily` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
-  `tokenizer.json`, part of `key` and left out of `rubric_key`). The content parts of a query or a document:
+  `tokenizer.json`, part of `key` and left out of `rubric_key`), `DocumentEstimate` (a document's estimated
+  ability: `theta`, `se`, `information` and `EstimateFlags`, the value `score_document` and `insert_document`
+  return) and `EstimateFlags` (the estimate's `degenerate` and `low_information` reads). The content parts of a
+  query or a document:
   `Content`, `TextPart`, `ImagePart`, `VideoPart`, their union `Part`, `MediaRef` and `Modality`.
 - `rcp_ndcg_core.metric`: `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`, `dcg`, `ideal_dcg` and
   `discount` (`1 / log2(rank + 1)`), with the tie rules `TieRule = "group_mean" | "doc_id_desc" | "input_order"`.
