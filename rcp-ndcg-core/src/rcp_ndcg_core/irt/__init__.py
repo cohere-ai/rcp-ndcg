@@ -99,7 +99,7 @@ def score_document(
             with ``severity``, one row per judge.
         prior_mean: Mean of the ability prior (logits); the population the score joins.
         prior_sd: Standard deviation of the ability prior (logits); finite and > 0.
-        se_target: The standard error (logits) the evidence should reach.
+        se_target: The standard error (logits) the evidence should reach; finite and > 0.
         severity: The judges' severities (logits) of a pooled calibration, aligned with
             ``placements`` and ``passes``: judge ``j`` answers criterion ``k`` with logit
             ``gamma_k * (theta - beta_k) - severity_j``. ``None``: one judge, no severity.
@@ -111,7 +111,8 @@ def score_document(
 
     Raises:
         ValueError: a placement count is not a whole number, a pass count is outside ``[0, placements]``,
-            the per-judge shapes disagree, or ``prior_sd`` is not finite and > 0.
+            the per-judge shapes disagree, ``prior_sd`` is not finite and > 0, or ``se_target`` is not
+            finite and > 0.
     """
     from rcp_ndcg_core.irt._criteria_2pl import Criteria2PL
 
