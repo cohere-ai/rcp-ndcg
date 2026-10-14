@@ -101,7 +101,11 @@ reference:
   # ports the client's cut, so over-cap rows ride the non-gating table; under-cap rows gate exactly.
   known_deviations: [over_cap_cut_differs]
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B (card: prompt format, padding, Matryoshka, 32k, TEI curl example)"
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/config.json (architectures, torch_dtype, max_position_embeddings)"

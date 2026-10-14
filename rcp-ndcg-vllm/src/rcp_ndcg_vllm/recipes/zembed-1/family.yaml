@@ -75,7 +75,11 @@ reference:
   # over-cap behaviour drops the anchor: declared, and over-cap pairs are non-gating.
   known_deviations: ["anchor_drop_over_cap"]
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-14"
+  report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/tree/cf13c81f3274394053d166740294f7eea4586f7a"
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config.json"

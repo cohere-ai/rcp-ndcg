@@ -118,7 +118,11 @@ reference:
   # under-cap rows gate exactly.
   known_deviations: [over_cap_cut_differs]
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-14"
+  report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/microsoft/harrier-oss-v1-270m (card: the family description, the table's Max Tokens 32,768, the sentence-transformers and transformers usage, the FAQ's instruction requirement)"
   - "https://huggingface.co/microsoft/harrier-oss-v1-0.6b (card: the same usage; the card text is identical across the three variants except the model name)"

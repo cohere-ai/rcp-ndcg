@@ -115,7 +115,11 @@ reference:
   entry: reference.py
   known_deviations: ["over_cap_cut_differs"]
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-14"
+  report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/jinaai/jina-embeddings-v5-text-small @ dd76d535f5447ca3897a9c893fb1e612ead98192 (re-checked 2026-10-05): config.json:2-8 (auto_map remote code, architectures [JinaEmbeddingsV5Model]), :19 (max_position_embeddings 32768), :21 (model_type jina_embeddings_v5), :30 (torch_dtype bfloat16); config_sentence_transformers.json:7-9 (prompts 'Query: ' / 'Document: '), :11 (default_prompt_name document); modeling_jina_embeddings_v5.py:79-80 (the prefixes, applied to raw texts), :85-91 (encode truncates right at max_position_embeddings), :95 (set_adapter([task])), :100-108 (mask-based last-real-token pooling), :110-112 (Matryoshka slice, then L2); adapters/retrieval/adapter_config.json:16,18,23,35 (alpha 32, dropout 0.1, r 32, FEATURE_EXTRACTION; scale alpha/r = 1.0, so the merge is exact); tokenizer_config.json:2,229,237 (add_bos_token false, bos_token null, tokenizer_class Qwen2Tokenizer); tokenizer.json sha256 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4; README.md:148-178 (the transformers snippet the reference follows), :300-310 (the vendor vLLM note)"
   - "https://huggingface.co/jinaai/jina-embeddings-v5-text-small-retrieval @ 6856e76bb72982e58de0620458a4e8b3614da340 (the vendor-merged retrieval variant: same prompts, same tokenizer file; the alternative serve, and the source of the card example cosines the reference cross-checks)"

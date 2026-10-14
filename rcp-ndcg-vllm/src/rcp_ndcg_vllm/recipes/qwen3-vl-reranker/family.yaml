@@ -120,7 +120,11 @@ reference:
                                             # "\n<Document>:" text. reference.py renders the
                                             # card's cut
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-13"
+  report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B @ 4bd860ac4f15ad1897a214615cccc700f8f71818
      (README.md, config.json, preprocessor_config.json, chat_template.jinja,

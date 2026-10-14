@@ -190,10 +190,10 @@
    "the family's own measurements, on the pinned tokenizer files and the paper configs: the prefix is 39 tokens and the suffix 9, the patched template renders identically on all three probe pairs, and a 11026-token probe keeps the suffix"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-12",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

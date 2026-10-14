@@ -94,7 +94,11 @@ sources:
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:419-421; reasoning/__init__.py:55-58 and parser/gemma4.py (the gemma4 parser, channel tokens, wait_for_reasoning); model_executor/models/gemma4_mm.py:102-121,200-217,271-323 (soft-token budgets, BOS suppression, image placeholder arithmetic); v1/structured_output/__init__.py:235-262 and config/structured_outputs.py:41 (the grammar starts when reasoning ends); docs/design/attention_backends.md:60-104 (Hopper FA4, Blackwell TRITON_FLASHINFER for head 512)"
   - "https://huggingface.co/google/gemma-4-12B-it (the model card: the standardized sampling configuration, the recommended engine settings and the media notes the serve block above translates)"
   - "transformers 5.17.0 (the runtime range of vLLM v0.31.0 is >= 5.10.4, < 5.18.0): models/gemma4/image_processing_gemma4.py:33-84 and models/gemma4_unified/image_processing_gemma4_unified.py:54-105 (the aspect-ratio-preserving resize the product's gemma4 geometry reproduces), models/gemma4/processing_gemma4.py:179-188 (the per-frame mm:ss timestamp line)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: gemma-4-12b-it
     model: google/gemma-4-12B-it

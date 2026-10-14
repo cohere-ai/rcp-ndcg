@@ -89,7 +89,11 @@ sources:
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:596; layers/quantization/fp8.py:92,138-139 (fp8 auto-detected)"
   - "https://huggingface.co/Qwen/Qwen3.6-27B-FP8 (the model card: the checkpoint facts and the recommended engine settings the blocks above translate; the paper's own engine settings for this judge are not recorded beyond its served name and parser)"
   - "experiments/paper/README.md:40-42 at this tree's HEAD (the served name and reasoning parser the paper recorded; the paper's judges ran on SGLang and this release serves the same checkpoint on vLLM v0.31.0)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: qwen3.6-27b-fp8
     model: Qwen/Qwen3.6-27B-FP8

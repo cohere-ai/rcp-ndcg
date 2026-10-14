@@ -176,10 +176,10 @@
    "https://huggingface.co/Octen/Octen-Embedding-4B/tree/fea468fae3f0caffbae8a12ba792d1c394b6277d (the Hub tree API: model-00001-of-00002.safetensors 4,965,826,464 B + model-00002-of-00002.safetensors 3,077,765,624 B) and the Hub model API (BF16 parameter census 4,021,774,336)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-13",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

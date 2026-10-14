@@ -193,10 +193,10 @@
    "rcp-ndcg: experiments/paper/rerankers/reference/zerank.py (the paper-exact reference: strip + chat template :78-87, the whole-prompt 8192 cap :47, yes-logit/5 :103, expit :132-134); experiments/paper/rerankers/zerank_2.yaml (the served-path config: budgets and instruction: none); the family's CPU check (10 PASS, mutation-tested template)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

@@ -229,10 +229,10 @@
    "https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B/raw/b212dc8c91a8164aef1ea2de9c1a867611e75c04/model.safetensors.index.json (metadata.total_size 17,534,247,392 B, 4 shards)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-13",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

@@ -232,10 +232,10 @@
    "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: the frame, the anchors), rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget and fit: the content-only, anchor-reserving cut), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: this client block)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

@@ -200,10 +200,10 @@
    "vllm d0d6e5f3a: vllm/entrypoints/pooling/scoring/io_processor.py:460-476 (the missing-template warning fires only for is_original_qwen3_reranker - silent for this converted architecture)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

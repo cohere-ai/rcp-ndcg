@@ -90,7 +90,11 @@ sources:
   - "nvidia/Gemma-4-26B-A4B-NVFP4 config.json quantization_config (quant_algo NVFP4, 4-bit float weights and activations group 16, kv_cache_scheme 8-bit float, ignore = dense mlp/router/self_attn + lm_head + embed_vision* + vision_tower*, producer modelopt 0.43.0rc2.dev91+gc79ebc014) and hf_quant_config.json (the same, legacy schema)"
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951, :952, :1093, :1334, :1432; model_executor/models/registry.py:418; layers/quantization/modelopt.py:745-746,756-761,775-791; fused_moe/oracle/nvfp4.py:182-203,228-233 (the MoE backend oracle and its log line); utils/torch_utils.py:67-70,503-521 (kv_cache_scheme -> fp8_e4m3)"
   - "https://huggingface.co/google/gemma-4-26B-A4B-it and https://huggingface.co/nvidia/Gemma-4-26B-A4B-NVFP4 (the model cards: the recommended engine settings, the sampling configuration and the quantisation notes the blocks above translate)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: gemma-4-26b-a4b-it
     model: google/gemma-4-26B-A4B-it

@@ -174,10 +174,10 @@
    "the checkpoint's tokenizer at the pinned revision: pad is the endoftext token 151643, eos is the chat end-of-turn marker 151645; the card's 40,960-token context claim is README.md:99"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-13",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

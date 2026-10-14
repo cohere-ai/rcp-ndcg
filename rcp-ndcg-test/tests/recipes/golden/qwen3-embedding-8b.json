@@ -197,10 +197,10 @@
    "https://huggingface.co/Qwen/Qwen3-Embedding-8B/raw/1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/model.safetensors.index.json (metadata.total_size 15,134,590,976 B, 4 shards) and README.md (the Model Overview table's 32K context and 4096 dimensions, get_detailed_instruct, max_length 8192); LICENSE (apache-2.0)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-12",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

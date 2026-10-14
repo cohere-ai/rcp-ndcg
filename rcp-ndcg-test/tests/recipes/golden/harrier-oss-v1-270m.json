@@ -201,10 +201,10 @@
    "https://huggingface.co/microsoft/harrier-oss-v1-270m/raw/31de22b673913c7d658c0f03f792d77c2dcf8ebd/1_Pooling/config.json (lasttoken pooling, dim 640)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

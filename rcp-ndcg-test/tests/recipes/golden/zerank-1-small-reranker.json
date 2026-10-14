@@ -195,10 +195,10 @@
    "the family's own measurements: the prompt-equivalence guard measured 21/21 token-id-equal renders on the pinned tokenizer, the config match is 25/26 shared keys (the card's 'Qwen3-4B' row is wrong), auto_map also differs, and the serve-time revision is rendered by the harness's serve_argv (--revision)."
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

@@ -189,10 +189,10 @@
    "experiments/paper/rerankers/ctxl_rerank_6b.yaml (the paper's original in-process form set batch_size 8; the current served-path form carries max_tokens 8192, query_max_tokens 4096, instruction none, tokenizer pinned at the revision above)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-13",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

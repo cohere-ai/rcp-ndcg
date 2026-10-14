@@ -83,7 +83,11 @@ sources:
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser); reasoning/__init__.py:71-73 (openai_gptoss -> gptoss_reasoning_parser); model_executor/models/registry.py:123; model_executor/models/config.py:414-421 (mxfp4 -> gpt_oss_mxfp4)"
   - "https://huggingface.co/openai/gpt-oss-120b (the model card: the recommended engine settings and the parser the serve block above translates)"
   - "experiments/paper/README.md at this tree's HEAD (the paper's judges ran on SGLang; this release serves the same checkpoints on vLLM v0.31.0)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: gpt-oss-120b
     model: openai/gpt-oss-120b

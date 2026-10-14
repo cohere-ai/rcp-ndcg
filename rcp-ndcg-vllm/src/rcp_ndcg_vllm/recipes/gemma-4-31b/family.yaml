@@ -78,7 +78,11 @@ sources:
   - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4/raw/4135a98a9b728a548947683219633b25682223ac/config.json (Gemma4ForConditionalGeneration; text 60 layers = 50 sliding + 10 full, hidden 5376, intermediate 21 504, 32 query / 16 KV heads, head 256 / global head 512, global KV 4, sliding window 1024, vocab 262 144, mpe 262 144; quantization_config present), hf_quant_config.json, chat_template.jinja (NVIDIA re-export 16934 B, sha256 prefix 94899c0f917d93f6), model.safetensors.index.json (32 633 255 032 B, 4 shards)"
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951, :952, :1093, :1334, :1432; model_executor/models/registry.py:418; layers/quantization/modelopt.py:745-746,756-761,775-791; utils/torch_utils.py:67-70,503-521"
   - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4 (the model card: the recommended engine settings, the licence terms and the quantisation notes the blocks above translate)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: gemma-4-31b-it-nvfp4
     model: nvidia/Gemma-4-31B-IT-NVFP4

@@ -103,7 +103,11 @@ reference:
   # flash-attn is dropped -- the reference declares sdpa above; the 1B's weights are a ~3.28 GB
   # download, so score() runs on the GPU wave).
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-13"
+  report: "docs/reference/gpu-validation.md"
 
 variants:
   - id: ctxl-rerank-v2-instruct-multilingual-1b

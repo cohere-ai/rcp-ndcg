@@ -187,10 +187,10 @@
    "experiments/paper/rerankers/reference/contextual.py (the paper's original retrieval/external_rerankers.py:275-389, moved beside the paper configs when the inference layer was unified) \u2014 the paper-exact ContextualRerank this reference.py derives from (behaviour byte-identical)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-13",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

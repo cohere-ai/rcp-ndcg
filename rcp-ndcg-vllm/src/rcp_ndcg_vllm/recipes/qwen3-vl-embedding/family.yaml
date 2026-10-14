@@ -68,7 +68,11 @@ reference:
   device: cuda
   known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Which over-cap rows the harness reports rather than gates today: see notes, "Budgets"
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-13"
+  report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README, revision 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda: lines 105-151 the sentence-transformers usage -- queries and documents alike under the default 'Represent the user's input.' system prompt; lines 155-205 the transformers usage, queries without an instruction)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B (card README: the model table's 'MRL Support: Yes' and the details bullet 'Embedding Dimension: Up to 2048, supports user-defined output dimensions ranging from 64 to 2048', the range the client's mrl_range declares)"

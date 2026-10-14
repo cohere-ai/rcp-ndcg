@@ -191,10 +191,10 @@
    "the family's adversarial over-cap/NFC battery: within-share over-cap rows byte-identical in all three qwen3-reranker recipes, over-share rows byte-unequal, NFD input NFC-mapped by decode-based renders"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-12",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

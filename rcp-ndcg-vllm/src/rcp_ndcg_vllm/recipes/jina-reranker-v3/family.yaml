@@ -69,7 +69,11 @@ reference:
   # cuts -- over-cap rows are the declared non-gating table.
   known_deviations: ["over_cap_cut_differs"]
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-13"
+  report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/jinaai/jina-reranker-v3 (repo; sha d7d7e73b6ea138ced340b83865931b5dfb6c97aa re-checked against https://huggingface.co/api/models/jinaai/jina-reranker-v3)"
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/config.json (architectures JinaForRanking; max_position_embeddings 131072; torch_dtype bfloat16)"

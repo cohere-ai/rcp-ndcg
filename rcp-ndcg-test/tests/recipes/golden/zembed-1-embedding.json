@@ -235,10 +235,10 @@
    "vllm/entrypoints/pooling/embed/io_processor.py:530-536 - /v2/embed with input_type renders chat messages through the checkpoint's chat template; this recipe never routes there (verified at both revisions)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

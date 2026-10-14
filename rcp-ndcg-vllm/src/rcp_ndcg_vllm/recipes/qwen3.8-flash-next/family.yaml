@@ -84,7 +84,11 @@ sources:
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :952 (--quantization), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:601-604; layers/quantization/modelopt.py:715,746 and layers/quantization/fp8.py:92,138-139"
   - "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4 and https://huggingface.co/Qwen/Qwen3.8-Flash-Next-FP8 (the model cards: the checkpoint facts and the recommended engine settings the blocks above translate)"
   - "rcp-ndcg-test/scenarios/{text-four-phases,vidore}.yaml at this tree's HEAD (the candidate and fallback commands this family moves into recipes)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: qwen3.8-flash-next-nvfp4
     model: nvidia/Qwen3.8-Flash-Next-NVFP4

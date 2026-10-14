@@ -92,7 +92,11 @@ sources:
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:952 (--quantization), :1334 (--kv-cache-dtype), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:597-600; layers/quantization/modelopt.py:715,746 (ModelOptNvFp4Config name modelopt_fp4) and :138 (hf_quant_config NVFP4 mapping); docs/features/quantization/modelopt.md:24-40 (SM100 native FP4, Marlin W4A16 fallback)"
   - "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4 (the model card: the recommended engine settings, the quantisation notes and the media geometry the blocks above translate)"
   - "experiments/paper/README.md at this tree's HEAD (the paper's judges ran on SGLang; this release serves the same checkpoints on vLLM v0.31.0)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: qwen3.5-397b-a17b-nvfp4
     model: nvidia/Qwen3.5-397B-A17B-NVFP4

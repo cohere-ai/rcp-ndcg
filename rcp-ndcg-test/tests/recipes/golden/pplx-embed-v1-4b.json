@@ -193,10 +193,10 @@
    "https://huggingface.co/perplexity-ai/pplx-embed-v1-4b @ 06456497a00540a582918fe8dcd3a5eabb207772 (the card at the pinned revision; config.json; 1_Pooling/config.json; model.safetensors header; the byte-identical sibling files)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

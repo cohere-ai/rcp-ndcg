@@ -192,10 +192,10 @@
    "vLLM v0.31.0 (verified at the tag): model_executor/models/adapters.py:307 as_seq_cls_model, :593 load_weights_no_post_processing, :637 the score head from the lm_head row, :659 SEQ_CLS_LOAD_METHODS; entrypoints/pooling/scoring/io_processor.py:605 get_score_prompt (chat-template render, :693-705), :677-678 the un-templated fallback when no template is passed; entrypoints/pooling/scoring/protocol.py:56-65 the instruction field folded into chat_template_kwargs, :72 add_special_tokens=True; pooling_params.py:111 _merge_default_parameters (pooler_config fills unset request fields); layers/pooler/activations.py (sigmoid for num_labels < 2); renderers/params.py (truncate right = slice(0, N))"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-13",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

@@ -69,7 +69,11 @@ sources:
   - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951 (--max-model-len), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:596; layers/quantization/fp8.py:92,138-139"
   - "https://huggingface.co/Qwen/Qwen3.8-27B-FP8 (the model card: the checkpoint facts and the recommended engine settings the blocks above translate)"
   - "rcp-ndcg-test/scenarios/{identity,outage,text-four-phases}.yaml at this tree's HEAD (the scenario serve command and client block this family moves into a recipe)"
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 variants:
   - id: qwen3.8-27b-fp8
     model: Qwen/Qwen3.8-27B-FP8

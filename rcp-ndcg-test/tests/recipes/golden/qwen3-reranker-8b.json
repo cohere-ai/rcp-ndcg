@@ -195,10 +195,10 @@
    "vLLM at the v0.31.0 tag (the image's source): vllm/config/model.py:2279 (the ForSequenceClassification suffix -> runner pooling, convert classify); vllm/model_executor/models/registry.py:1287-1310 (_normalize_arch) and vllm/model_executor/model_loader/utils.py:278-280 (as_seq_cls_model over Qwen3ForCausalLM); vllm/model_executor/models/config.py:793-812,1057 (is_original_qwen3_reranker -> method from_2_way_softmax); vllm/model_executor/models/adapters.py:416-441 (num_labels 1) and :516-583 (score weight = lm_head[yes] - lm_head[no] in float32; this checkpoint's lm_head is untied, tie_word_embeddings false); vllm/model_executor/layers/pooler/activations.py:139-140 (1 label -> sigmoid); vllm/pooling_params.py:111-125,195-197 (pooler_config defaults merge, classify use_activation default true); vllm/entrypoints/pooling/scoring/io_processor.py:431-447 (the missing-template warning), :677-705 (the --chat-template is applied to the query/document messages; without one, plain concatenation); vllm/entrypoints/pooling/scoring/protocol.py:38-66 (a request instruction routes into chat_template_kwargs; this template reads none) and :69-74 (add_special_tokens=True)"
   ],
   "status": {
-   "date": null,
-   "image": null,
-   "report": null,
-   "state": "unverified"
+   "date": "2026-10-12",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
   }
  },
  "serve_argv": [

@@ -96,7 +96,11 @@ reference:
   # head_dtype: model above.
   attn_implementation: sdpa
 gates: {}
-status: {state: unverified, image: null, date: null, report: null}
+status:
+  state: verified
+  image: "vllm/vllm-openai:v0.31.0"
+  date: "2026-10-12"
+  report: "docs/reference/gpu-validation.md"
 
 variants:
   - id: qwen3-reranker-0.6b
