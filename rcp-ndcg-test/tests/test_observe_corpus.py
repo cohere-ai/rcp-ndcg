@@ -91,6 +91,39 @@ def test_the_engine_facts_record_the_patch_opt_in() -> None:
     assert "VLLM_API_KEY_SECRET" not in facts["env"]  # the secret filter still applies
 
 
+def test_the_engine_environment_drops_the_pods_service_discovery_variables() -> None:
+    """The pod's Kubernetes Service links ride under the same ``VLLM_`` prefix the engine's own knobs use
+    (the Services are named ``vllm-service-...``), so the block keeps the engine's knobs and the patch opt-in
+    and drops every variable a Service link injected -- the internal addresses and the internal or unreleased
+    Service names never enter a manifest. The names and the address below are the shapes' synthetic stand-ins
+    (a documentation-range address), never a real Service."""
+    from rcp_ndcg_test.observe.provenance import engine_facts
+    from rcp_ndcg_vllm.patches import PATCHES_ENV
+
+    facts = engine_facts(
+        image="registry.example.com/stub-engine:test",
+        serve_argv=["stub_engine.py"],
+        engine_python=None,
+        environ={
+            PATCHES_ENV: "",
+            "VLLM_PORT": "9101",
+            "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+            "VLLM_SERVICE_EXAMPLE_EMBED_SERVICE_HOST": "198.51.100.7",
+            "VLLM_SERVICE_EXAMPLE_EMBED_SERVICE_PORT": "80",
+            "VLLM_SERVICE_EXAMPLE_EMBED_SERVICE_PORT_HTTP": "80",
+            "VLLM_SERVICE_EXAMPLE_EMBED_PORT": "tcp://198.51.100.7:80",
+            "VLLM_SERVICE_EXAMPLE_EMBED_PORT_80_TCP": "tcp://198.51.100.7:80",
+            "VLLM_SERVICE_EXAMPLE_EMBED_PORT_80_TCP_ADDR": "198.51.100.7",
+            "VLLM_SERVICE_EXAMPLE_EMBED_PORT_80_TCP_PORT": "80",
+            "VLLM_SERVICE_EXAMPLE_EMBED_PORT_80_TCP_PROTO": "tcp",
+        },
+        started=None,
+        ready_wait_s=None,
+        runner=_no_gpu_runner,
+    )
+    assert facts["env"] == {PATCHES_ENV: "", "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0", "VLLM_PORT": "9101"}
+
+
 def test_engine_facts_records_the_version_the_pod_reported() -> None:
     """B5: the provenance block's ``version`` is the running pod's version when the wave probed it, never
     the declared image's tag (a digest-pinned image used to record 64 hex characters as the version)."""
