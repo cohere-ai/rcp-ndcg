@@ -282,17 +282,51 @@ def test_the_wait_for_an_engine_ends_when_the_engine_exits(tmp_path: Path, judge
 
 
 def _staged_run(tmp_path: Path) -> Path:
-    """A staged run directory of the identity scenario (CPU: the configs load, nothing runs).
+    """A staged run directory of a synthetic four-phase scenario (CPU: the configs load, nothing runs).
 
     What :func:`~rcp_ndcg_test.e2e.stage_run_dir` leaves behind is what a resume reopens: the product's
-    ``run.yaml`` and the manifest in status ``submitted``.
+    ``run.yaml`` and the manifest in status ``submitted``.  The dataset is a local ``jsonl:`` file: the
+    resume's rendering needs a staged run directory, not the Hub -- a shipped scenario's ``suite:`` dataset
+    would make this test depend on a warm Hub cache (staging records the dataset's name).
     """
-    from rcp_ndcg_test.e2e import build_run_config, default_scenarios_root, load_scenario, stage_run_dir
+    from rcp_ndcg_test.e2e import Scenario, build_run_config, stage_run_dir
     from rcp_ndcg_vllm.recipe import default_recipes_root
 
     from rcp_ndcg.runs.run import prepare
 
-    scenario = load_scenario(default_scenarios_root() / "identity.yaml")
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(
+        json.dumps(
+            {
+                "query_id": "q1",
+                "query": "what is the capital of france",
+                "doc_ids": ["d1", "d2"],
+                "docs": ["paris", "lyon"],
+                "qrels": {"d1": 1, "d2": 0},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    scenario = Scenario.model_validate(
+        {
+            "id": "resume-fixture",
+            "description": "the resume test's staged run (a local dataset, the shipped recipes)",
+            "dataset": {"uri": f"jsonl:{rows}"},
+            "steps": ["retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate"],
+            "encoder_recipe": "qwen3-embedding-0.6b",
+            "rerank_recipe": "qwen3-reranker-0.6b",
+            "judge": {
+                "recipe": "gpt-oss-120b",
+                "config": {"wait_on_outage_s": 300},
+                "slot": {"port": 8120, "vllm_port": 9120, "cuda_visible_devices": "0"},
+            },
+            "slots": {
+                "encoder": {"port": 8100, "vllm_port": 9100, "cuda_visible_devices": "0"},
+                "reranker": {"port": 8110, "vllm_port": 9110, "cuda_visible_devices": "0"},
+            },
+        }
+    )
     config = build_run_config(scenario, recipes_root=[default_recipes_root()])
     pipeline = prepare(config, runs_dir=str(tmp_path / "runs"), label=scenario.id)
     stage_run_dir(pipeline)
