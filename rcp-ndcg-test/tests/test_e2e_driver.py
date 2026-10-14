@@ -263,6 +263,123 @@ def test_the_t0_smoke_fails_a_judge_that_never_answers(judge_port: int, tmp_path
     assert report["state"] == "failed" and "no" in report["error"]
 
 
+def test_the_wait_for_an_engine_ends_when_the_engine_exits(tmp_path: Path, judge_port: int) -> None:
+    """A dead engine answers nothing: the wait for it ends when the process exits, not after the whole
+    ``startup_timeout_s``.
+
+    The T4's second run was cancelled on a driver that looked hung: an engine that died while it was
+    waited for left the driver polling for the full 3600 s of the scenario's timeout, silently.  The
+    engine's death is the failure; it must be reported in seconds, with the engine's own log beside it.
+    """
+    stub = tmp_path / "dies.sh"
+    stub.write_text("#!/usr/bin/env bash\nsleep 0.5\nexit 7\n", encoding="utf-8")
+    stub.chmod(0o755)
+    engine = ManagedEngine([str(stub)], env={"TMPDIR": str(tmp_path / "tmp")}, log_path=tmp_path / "engine.log")
+    engine.start()
+    started = time.monotonic()
+    assert engine.wait_ready(f"http://127.0.0.1:{judge_port}/v1/models", 30) is False
+    assert time.monotonic() - started < 10  # not the 30 s the caller asked for: the engine had exited
+
+
+def _staged_run(tmp_path: Path) -> Path:
+    """A staged run directory of a synthetic four-phase scenario (CPU: the configs load, nothing runs).
+
+    What :func:`~rcp_ndcg_test.e2e.stage_run_dir` leaves behind is what a resume reopens: the product's
+    ``run.yaml`` and the manifest in status ``submitted``.  The dataset is a local ``jsonl:`` file: the
+    resume's rendering needs a staged run directory, not the Hub -- a shipped scenario's ``suite:`` dataset
+    would make this test depend on a warm Hub cache (staging records the dataset's name).
+    """
+    from rcp_ndcg_test.e2e import Scenario, build_run_config, stage_run_dir
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    from rcp_ndcg.runs.run import prepare
+
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(
+        json.dumps(
+            {
+                "query_id": "q1",
+                "query": "what is the capital of france",
+                "doc_ids": ["d1", "d2"],
+                "docs": ["paris", "lyon"],
+                "qrels": {"d1": 1, "d2": 0},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    scenario = Scenario.model_validate(
+        {
+            "id": "resume-fixture",
+            "description": "the resume test's staged run (a local dataset, the shipped recipes)",
+            "dataset": {"uri": f"jsonl:{rows}"},
+            "steps": ["retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate"],
+            "encoder_recipe": "qwen3-embedding-0.6b",
+            "rerank_recipe": "qwen3-reranker-0.6b",
+            "judge": {
+                "recipe": "gpt-oss-120b",
+                "config": {"wait_on_outage_s": 300},
+                "slot": {"port": 8120, "vllm_port": 9120, "cuda_visible_devices": "0"},
+            },
+            "slots": {
+                "encoder": {"port": 8100, "vllm_port": 9100, "cuda_visible_devices": "0"},
+                "reranker": {"port": 8110, "vllm_port": 9110, "cuda_visible_devices": "0"},
+            },
+        }
+    )
+    config = build_run_config(scenario, recipes_root=[default_recipes_root()])
+    pipeline = prepare(config, runs_dir=str(tmp_path / "runs"), label=scenario.id)
+    stage_run_dir(pipeline)
+    return Path(pipeline.layout.root)
+
+
+def _stub_engines(stubs: Path) -> None:
+    """The stubs' engine announces the port its command binds (the recipes render ``--port``, not ``$PORT``)."""
+    (stubs / "bin" / "vllm").write_text(
+        "#!/usr/bin/env bash\n"
+        'args=("$@")\n'
+        'for ((i=0; i<${#args[@]}; i++)); do [[ "${args[i]}" == --port ]] && port="${args[i+1]}"; done\n'
+        'echo $$ > "$STUBS/ready-${port:-8000}"\n'
+        "exec sleep 60\n",
+        encoding="utf-8",
+    )
+
+
+def test_the_resume_is_the_runs_phased_script_with_its_engines(
+    stubs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resume is what a submitted job would run: the run's own phased script, each phase's engines
+    started and their URLs handed to the coordinator (``reopen`` -> the product's renderer).
+
+    The direct ``rcp-ndcg run resume`` this replaced carried no engines overlay, so a resume that had to
+    re-run a served step refused it with "the served encoder has no base_url" -- the outage scenario's
+    resume, whose earlier phases the killed judge's device had starved, ended that way in the T4's second
+    run instead of finishing the run.
+    """
+    from rcp_ndcg_test.e2e import resume_run
+
+    run_dir = _staged_run(tmp_path)
+    _stub_engines(stubs)
+    monkeypatch.setenv("PATH", f"{stubs}/bin:/usr/bin:/bin")
+    monkeypatch.setenv("STUBS", str(stubs))
+    monkeypatch.setenv("HOME", str(stubs))
+    monkeypatch.setenv("COORDINATOR_MODE", "done")
+
+    out = tmp_path / "out"
+    status = resume_run(run_dir, wheelhouse="/stage/wheelhouse", constraints=None, version="0.0.1", out=out)
+    log = (out / "job.log").read_text(encoding="utf-8")
+    assert status == 0, log
+    order = (stubs / "order").read_text(encoding="utf-8").splitlines()
+    coordinators = [json.loads(line.removeprefix("coord ")) for line in order if line.startswith("coord ")]
+    assert [sorted(row) for row in coordinators] == [["encoder"], ["reranker"], ["judge"], []]
+    assert coordinators[0]["encoder"]["urls"] == ["http://127.0.0.1:8100/v1"]  # the resume reaches its engine
+    assert coordinators[2]["judge"]["urls"] == ["http://127.0.0.1:8120/v1"]
+    script = (out / "job.sh").read_text(encoding="utf-8")
+    assert f"rcp-ndcg run resume --run {run_dir}" in script  # the run's own directory, the run's own phases
+    assert "--find-links /stage/wheelhouse" in script and "--no-index" in script
+    assert "PYTHONPATH=" in script and "client-probe.jsonl" in script  # the probe rides the phases
+
+
 def test_a_managed_engine_is_killed_and_restarted(tmp_path: Path) -> None:
     """The outage scenario's run-scoped judge (the product's model: replicas that live elsewhere are
     "restarted by whatever runs them"): ``kill`` takes the process group, ``restart`` brings a new pid."""
@@ -305,38 +422,28 @@ def test_a_managed_engine_never_sees_the_probe_on_pythonpath(tmp_path: Path, mon
 
 
 def test_the_resume_keeps_the_drivers_pythonpath_out_and_rides_the_probe(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    stubs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The driven resume gets the same hygiene as every other driven job: the driver's ``PYTHONPATH``
-    out (a checkout's sources must not shadow the staged wheels) and the probe in (the resumed
-    coordinator records like the script's ones)."""
-    monkeypatch.setenv("PYTHONPATH", "/leak/from/driver-env")
-
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    uvx = bin_dir / "uvx"
-    uvx.write_text(
-        "#!/usr/bin/env bash\n"
-        'echo "UVX-PYTHONPATH=[${PYTHONPATH:-}]\nUVX-PROBE=[${RCP_E2E_PROBE_JSONL:-}]" "$@" > "$RESUME_STATE"\n',
-        encoding="utf-8",
-    )
-    uvx.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
-    monkeypatch.setenv("RESUME_STATE", str(tmp_path / "resume.state"))
-
+    out (a checkout's sources must not shadow the staged wheels) and the probe in, on the phases'
+    workers (the resumed coordinators record like the script's ones)."""
     from rcp_ndcg_test.e2e import resume_run
 
-    resume_run(
-        Path("/e2e/runs/the-run"),
-        wheelhouse="/stage/wheelhouse",
-        constraints=None,
-        version="0.0.1",
-        out=tmp_path / "out",
-    )
-    state = (tmp_path / "resume.state").read_text(encoding="utf-8")
-    assert "/leak/from/driver-env" not in state
-    assert "UVX-PYTHONPATH=[" in state  # the probe site replace the driver's entry
-    assert "UVX-PROBE=[" in state and "client-probe.jsonl" in state
+    run_dir = _staged_run(tmp_path)
+    _stub_engines(stubs)
+    monkeypatch.setenv("PYTHONPATH", "/leak/from/driver-env")
+    monkeypatch.setenv("PATH", f"{stubs}/bin:/usr/bin:/bin")
+    monkeypatch.setenv("STUBS", str(stubs))
+    monkeypatch.setenv("HOME", str(stubs))
+    monkeypatch.setenv("COORDINATOR_MODE", "done")
+
+    out = tmp_path / "out"
+    assert resume_run(run_dir, wheelhouse="/stage/wheelhouse", constraints=None, version="0.0.1", out=out) == 0
+    script = (out / "job.sh").read_text(encoding="utf-8")
+    assert "/leak/from/driver-env" not in script  # the driver's entry is not the phases' PYTHONPATH
+    assert f"export PYTHONPATH={out}/probe-site" in script  # the probe replaces it
+    assert f"export RCP_E2E_PROBE_JSONL={out}/client-probe.jsonl" in script
+    assert (out / "probe-site" / "sitecustomize.py").is_file()  # written before the phases start
 
 
 def test_the_outage_launcher_puts_the_srun_shim_on_the_path(stubs: Path, tmp_path: Path) -> None:
