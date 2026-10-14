@@ -39,7 +39,8 @@ Scenarios (``scenarios/``):
   engine the driver owns (the product's model: engines the supervision script started end the job when
   they exit; engines that live elsewhere are "restarted by whatever runs them, and the judge bounds the
   outage instead"), which the driver restarts: one sub-run parks and recovers and finishes, a second
-  outlives ``wait_on_outage_s`` and fails with ``BackendUnavailableError``, then a resume finishes it;
+  outlives ``wait_on_outage_s`` and fails with ``BackendUnavailableError``, then a resume finishes it
+  (the run's own phased script again, engines and all -- see :func:`resume_run`);
 * ``identity`` -- rerun scenario 1's run with different engine ports; nothing recomputes (``base_url``
   and ``wait_on_outage_s`` are runtime fields and never reach an identity);
 * ``vidore`` -- one ViDoRe v3 subset through a served VL encoder and a served VL judge, media budgets on.
@@ -169,6 +170,17 @@ if _record:
 POLL_S = 1.0
 
 
+def _say(scenario_id: str, message: str) -> None:
+    """One driver progress line, timestamped and flushed.
+
+    The pod's log is the operator's only view while a scenario runs, and a driver that prints nothing for
+    an hour is indistinguishable from one that hung (the T4's second run was cancelled that way).  Every
+    wait the driver can be in -- an engine's readiness, a job script, an outage -- is announced before it
+    starts and its outcome printed after it ends.
+    """
+    print(f"{time.strftime('%H:%M:%S', time.gmtime())} e2e[{scenario_id}]: {message}", flush=True)
+
+
 def _no_extra() -> ConfigDict:
     """The common model config: frozen, unknown fields refused."""
     return ConfigDict(extra="forbid", frozen=True)
@@ -182,8 +194,11 @@ class EngineSlot(BaseModel):
         vllm_port: The engine's internal ``VLLM_PORT`` (a second internal port vLLM opens), distinct per
             engine when several share a node.
         cuda_visible_devices: The device slice the engine process sees, as its ``CUDA_VISIBLE_DEVICES``.
-            A phase runs one engine at a time (the phases reuse the GPUs), so the slices may overlap; they
-            may not be left unset -- a node grants every device to a process that sees them all.
+            A phase runs one engine at a time (the phases reuse the GPUs), so the phase engines' slices may
+            overlap -- but the ``outage`` mode's judge is the driver's run-scoped engine and stays up while
+            the phases run, so its slice must not overlap theirs (checked by
+            :meth:`Scenario._the_run_scoped_judge_keeps_its_devices`).  They may not be left unset -- a
+            node grants every device to a process that sees them all.
         gpus: The GPUs the engine occupies.  For a recipe engine it equals the recipe's own
             ``resources.gpus`` (the recipe renders its ``--tensor-parallel-size``; the slot sizes the
             driver's ``--gres`` and the device slice around it, checked in :func:`build_serve`); for a
@@ -417,6 +432,38 @@ class Scenario(BaseModel):
             seen_ports[slot.port] = role
             seen_internal[slot.vllm_port] = role
         return self
+
+    @model_validator(mode="after")
+    def _the_run_scoped_judge_keeps_its_devices(self) -> Scenario:
+        """In ``outage`` mode the judge is the driver's run-scoped engine: it must not share a device.
+
+        The judge stays up while the phases run (that is what the outage scenario kills and restarts), while
+        a phase's engines only borrow the phases' devices; a judge that shares a device with the encoder or
+        the reranker starves its engine -- the judge's vLLM pre-allocates the device it sees, and the phase
+        engine dies with ``CUDA out of memory`` after the readiness wait had already passed for the judge.
+        Refused by name at load: the node's version of this is an hour-long run and a CUDA OOM in a log.
+        """
+        if self.mode != "outage":
+            return self
+        for slot, label in ((self.judge.slot, "slot"), (self.judge.fallback_slot, "fallback_slot")):
+            if slot is None:
+                continue
+            judge_devices = _devices(slot.cuda_visible_devices)
+            for role, phase_slot in sorted(self.slots.items()):
+                shared = sorted(judge_devices & _devices(phase_slot.cuda_visible_devices))
+                if shared:
+                    raise ValueError(
+                        f"judge.{label} shares device(s) {','.join(shared)} with the {role} slot: in outage mode "
+                        "the judge is the driver's run-scoped engine and stays up while the phase engines run, "
+                        "so it needs its own device slice (a phase's engines reuse the phases' devices, the "
+                        "judge's is not a phase engine)"
+                    )
+        return self
+
+
+def _devices(value: str) -> set[str]:
+    """The device ids a slot's ``cuda_visible_devices`` names (comma-separated, whitespace allowed)."""
+    return {device.strip() for device in value.split(",") if device.strip()}
 
 
 class ScenarioResult(BaseModel):
@@ -782,28 +829,56 @@ def run_job_script(script: str, *, out: Path, env: Mapping[str, str] | None = No
     return process.wait(), out / "job.log"
 
 
-def resume_run(run_dir: Path, *, wheelhouse: str, constraints: str | None, version: str | None, out: Path) -> int:
-    """Resume a run directory through the client mechanism (what a submitted job would run): the
-    product's ``run resume`` wrapped with :func:`~rcp_ndcg.runners.script.install_argv`, with the
-    launcher's hygiene (:func:`job_env`: the driver's ``PYTHONPATH`` out) and the probe in (the resumed
-    coordinator records like the script's ones)."""
-    site, probe_jsonl = write_probe(out)
-    env = job_env(out)
-    env["PYTHONPATH"] = str(site)  # the probe replaces every inherited entry (job_env dropped them)
-    env["RCP_E2E_PROBE_JSONL"] = str(probe_jsonl)
-    command = install_argv(
-        ("rcp-ndcg", "run", "resume", "--run", str(run_dir)),
-        version=version,
+def resume_run(
+    run_dir: Path,
+    *,
+    wheelhouse: str,
+    constraints: str | None,
+    version: str | None,
+    out: Path,
+) -> int:
+    """Resume a run directory the way a submitted job would: the run's own phased script again, engines and all.
+
+    A submitted ``rcp-ndcg run resume --run <dir> --runner slurm`` reopens the run's *recorded* config and
+    renders its phased script (``reopen`` then the product's renderer): every phase starts its engines,
+    hands their URLs to its coordinator in ``RCP_NDCG_ENGINES``, and skips the steps still current.  The
+    driver runs exactly that script in this pod (:func:`run_job_script`: the ``srun`` shim, the probe), so
+    a resume that has to re-run a served step has an engine to talk to.  A bare ``rcp-ndcg run resume``
+    carries no engines overlay: a step it must re-run refuses with "the served encoder has no base_url"
+    (the T4's second run: the outage scenario's earlier phases had failed before the judge went down, and
+    the resume could not finish the run it was there to finish).
+
+    Inputs: the run directory, the install source the phases' coordinators install the release from, and
+    the output directory (the rendered ``job.sh``, its ``job.log`` and the probe's files land there).
+    Output: the script's exit status.
+    """
+    from rcp_ndcg.runs.run import reopen
+
+    pipeline = reopen(run_dir, engines={})  # the recorded config; the driver's own env carries no overlay
+    write_probe(out)  # the phases' workers put it on PYTHONPATH (:func:`render_options`): without the file,
+    # the probe records nothing
+    script = render_phased_script(
+        pipeline,
+        options=render_options(out, Path(run_dir), pipeline=pipeline),
         wheelhouse=wheelhouse,
         constraints=constraints,
+        version=version,
     )
-    return subprocess.call(list(command), env=env)
+    status, _ = run_job_script(script, out=out)
+    return status
 
 
-def _wait_http(url: str, timeout_s: float) -> bool:
-    """Whether ``url`` answers 2xx within ``timeout_s`` seconds (the standard library only)."""
+def _wait_http(url: str, timeout_s: float, *, process: subprocess.Popen[bytes] | None = None) -> bool:
+    """Whether ``url`` answers 2xx within ``timeout_s`` seconds (the standard library only).
+
+    ``process`` is the engine the URL belongs to, when the driver started it: the wait ends as soon as it
+    has exited.  A dead engine answers nothing, and waiting out ``startup_timeout_s`` (an hour in the
+    shipped scenarios) for it hides the failure that just happened.
+    """
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
+        if process is not None and process.poll() is not None:
+            return False
         try:
             with urllib.request.urlopen(url, timeout=5) as reply:  # noqa: S310 - the run's own engine
                 if 200 <= reply.status < 300:
@@ -865,10 +940,11 @@ class ManagedEngine:
         self.start()
 
     def wait_ready(self, url: str, timeout_s: float) -> bool:
-        """Wait until the engine's readiness URL answers 2xx (``False`` at the timeout)."""
+        """Wait until the engine's readiness URL answers 2xx (``False`` at the timeout, or at once when the
+        engine has exited -- a dead engine answers nothing, see :func:`_wait_http`)."""
         if self.process is not None and self.process.poll() is not None:
             return False
-        return _wait_http(url, timeout_s)
+        return _wait_http(url, timeout_s, process=self.process)
 
     def stop(self) -> None:
         """SIGTERM the engine's session and reap it."""
@@ -1229,12 +1305,14 @@ def run_scenario(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     builder = ScenarioResultBuilder(scenario)
+    _say(scenario.id, f"starting (mode {scenario.mode})")
     judge_engine, judge_choice, judge_report = _pick_judge(
         scenario, roots=roots, out=out, wheelhouse=wheelhouse, constraints=constraints, version=version
     )
     builder.judge = judge_report
     if judge_choice is None:
         builder.error = f"no judge candidate booted: {judge_report.get('error')}"
+        _say(scenario.id, f"no judge candidate booted: {judge_report.get('error')}")
         return builder.build()
     install = {"wheelhouse": wheelhouse, "constraints": constraints, "version": version}
     try:
@@ -1254,7 +1332,9 @@ def run_scenario(
     finally:
         if judge_engine is not None:
             judge_engine.stop()
-    return builder.build()
+    result = builder.build()
+    _say(scenario.id, result.status + (f": {result.error}" if result.error else ""))
+    return result
 
 
 def _pick_judge(
@@ -1291,6 +1371,11 @@ def _pick_judge(
             env=slot.env(scratch),
             log_path=out / f"judge-t0-{candidate.model.model.rsplit('/', 1)[-1]}.log",
         )
+        _say(
+            scenario.id,
+            f"T0 smoke: booting {candidate.model.model} on device(s) {slot.cuda_visible_devices} "
+            f"(up to {slot.startup_timeout_s} s; log {engine.log_path.name})",
+        )
         report = t0_smoke(
             engine,
             url=f"http://127.0.0.1:{slot.port}/v1",
@@ -1303,9 +1388,11 @@ def _pick_judge(
         report["recipe"] = candidate.recipe
         report["command"] = rendered
         attempts.append(report)
+        _say(scenario.id, f"T0 smoke of {candidate.model.model}: {report['state']} ({report.get('error', 'ok')})")
         if report["state"] == "verified":
             if scenario.mode == "outage":  # the T0 smoke stopped its engine; the run gets a fresh one
                 engine.start()
+                _say(scenario.id, f"the run-scoped judge is up on device(s) {slot.cuda_visible_devices}")
             summary: dict[str, Any] = {"state": "verified", "attempts": attempts}
             for key in ("judge_model", "judge_revision", "recipe", "models", "max_model_len", "dtype"):
                 if key in report:
@@ -1410,7 +1497,9 @@ def _run_text(
         )  # fmt: skip
         phases = _phase_facts(pipeline)
         builder.runs.append(str(run_dir))
+        _say(scenario.id, f"run {name}: the phased job script is running ({run_dir}; log {run_out / 'job.log'})")
         status, log_path = run_job_script(script, out=run_out)
+        _say(scenario.id, f"run {name}: the job script exited {status}")
         builder.add(_check(f"{name}: the job script exits 0", status == 0, f"exit {status} ({log_path})"))
         builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
         builder.add(_check_phase_engines(run_dir, phases))
@@ -1452,7 +1541,9 @@ def _run_identity(
     )  # fmt: skip
     builder.runs.append(str(run_dir))
     phases = _phase_facts(pipeline)
+    _say(scenario.id, f"first run: the phased job script is running ({run_dir}; log {out / 'job.log'})")
     status, log_path = run_job_script(script, out=out)
+    _say(scenario.id, f"first run: the job script exited {status}")
     builder.add(_check("first run: the job script exits 0", status == 0, f"exit {status} ({log_path})"))
     builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
     builder.add(_check_phase_engines(run_dir, phases))
@@ -1467,7 +1558,9 @@ def _run_identity(
         port_offset=scenario.identity_port_offset, install=install, judge_choice=judge_choice,
         run_dir=run_dir, stage=False,  # the same run directory, on the rerun's (new) ports
     )  # fmt: skip
+    _say(scenario.id, f"the rerun (ports +{scenario.identity_port_offset}): the job script is running")
     status, log_path = run_job_script(rerun_script, out=rerun_out)
+    _say(scenario.id, f"the rerun: the job script exited {status}")
     builder.add(_check("the rerun (new ports) exits 0", status == 0, f"exit {status} ({log_path})"))
     builder.add(_boundary_check(rerun_out, install, "rerun"))
     after = full_facts(run_dir)
@@ -1522,6 +1615,7 @@ def _run_outage(
     )  # fmt: skip
     builder.runs.append(str(run_dir))
     phases = _phase_facts(pipeline)
+    _say(scenario.id, f"outage-recovers: the phased job script is running ({run_dir})")
     status, parked = _outage_pass(
         scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge, slot=judge_choice.slot,
         outage_s=min(20.0, max(5.0, wait_s / 6)), restart=True,
@@ -1545,6 +1639,7 @@ def _run_outage(
         install=install, judge_choice=judge_choice,
     )  # fmt: skip
     builder.runs.append(str(run_dir))
+    _say(scenario.id, f"outage-expires: the phased job script is running ({run_dir})")
     status, parked = _outage_pass(
         scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge, slot=judge_choice.slot,
         outage_s=wait_s + 30.0, restart=False,
@@ -1560,11 +1655,22 @@ def _run_outage(
 
     # and the resume finishes it (the T4 criterion "resume after a killed engine parks and recovers")
     judge.restart()
+    _say(scenario.id, f"restarting the judge engine (up to {judge_choice.slot.startup_timeout_s} s)")
     judge.wait_ready(f"http://127.0.0.1:{judge_choice.slot.port}/v1/models", judge_choice.slot.startup_timeout_s)
-    resumed = resume_run(run_dir, out=run_out, **install)  # type: ignore[arg-type]
-    builder.add(_check("resume after the killed engine finishes the run", resumed == 0, f"run resume exited {resumed}"))
+    resume_out = out / "resume"
+    resume_out.mkdir(parents=True, exist_ok=True)
+    _say(scenario.id, "the judge is back; resuming the run (the run's own phased script again)")
+    resumed = resume_run(run_dir, out=resume_out, **install)  # type: ignore[arg-type]
+    _say(scenario.id, f"the resume's job script exited {resumed}")
+    builder.add(
+        _check(
+            "resume after the killed engine finishes the run",
+            resumed == 0,
+            f"the resume's job script exited {resumed} ({resume_out / 'job.log'})",
+        )
+    )
     builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
-    builder.add(_boundary_check(run_out, install, "the resume"))
+    builder.add(_boundary_check(resume_out, install, "the resume"))
 
 
 def _outage_pass(
@@ -1588,19 +1694,23 @@ def _outage_pass(
         judge.wait_ready(f"{url}/models", slot.startup_timeout_s)
     process = launch_job_script(script, out=run_out)  # the driver's launcher: the srun shim, no probe
     store = run_dir / "judgements" / "tournament.jsonl"
+    _say(scenario.id, "waiting for the tournament's first window before killing the judge")
     deadline = time.monotonic() + slot.startup_timeout_s + 1800
     while time.monotonic() < deadline and process.poll() is None:
         if store.is_file() and sum(1 for _ in store.open(encoding="utf-8")) >= 1:
             break
         time.sleep(POLL_S)
     judge.kill()  # the judge engine is killed mid-tournament
+    _say(scenario.id, f"the judge is killed; it stays down {outage_s:g} s (restart: {restart})")
     killed_at = time.monotonic()
     time.sleep(outage_s)
     parked = process.poll() is None  # the run is still going: it parked through the outage
     if restart:
         judge.start()
         judge.wait_ready(f"{url}/models", slot.startup_timeout_s)
+        _say(scenario.id, "the judge is back up")
     status = process.wait()
+    _say(scenario.id, f"the sub-run's job script exited {status} (parked: {parked})")
     record = {
         "killed_at": killed_at,
         "outage_s": outage_s,

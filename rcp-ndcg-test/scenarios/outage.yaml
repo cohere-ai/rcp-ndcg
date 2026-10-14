@@ -10,7 +10,12 @@
 #       BackendUnavailableError, and a `run resume` after the engine returns finishes it.
 #
 # Judge (owner, GPU-VALIDATION.md, "Judges for T4"): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
-# commit (https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8), checked 2026-10-07.
+# commit (https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8), checked 2026-10-07.  The judge is the
+# driver's run-scoped engine and stays up while the phases run, so it gets its own device slice -- device
+# 1 -- while the encoder and reranker phases reuse device 0.  A judge on the phases' device starves them
+# (its vLLM pre-allocates the device it sees): the T4's second run's encoder phase died with CUDA out of
+# memory and the resume that followed had no encoder to talk to.  The Scenario schema refuses the overlap
+# in outage mode.
 id: outage
 description: >
   The text run with the judge engine killed mid-tournament: one sub-run parks through the outage and
@@ -33,7 +38,7 @@ judge:
     concurrency: 64
     # The outage clock: the recover sub-run's outage lasts ~15 s, the expiry sub-run's outlives this.
     wait_on_outage_s: 90
-  slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0", gpus: 1,
+  slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "1", gpus: 1,
          startup_timeout_s: 3600, outage_timeout_s: 90}
 slots:
   encoder: {port: 8100, vllm_port: 9100, cuda_visible_devices: "0", gpus: 1,

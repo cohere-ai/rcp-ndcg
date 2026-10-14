@@ -20,7 +20,7 @@ cd /e2e/runs/rcp-text-four-phases
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only retrieve
+exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only retrieve
 RCP_NDCG_WORKER_1
 read -r -d '' ENGINE_ENCODER <<'RCP_NDCG_ENGINE_ENCODER' || true
 export CUDA_VISIBLE_DEVICES=0
@@ -146,7 +146,7 @@ cd /e2e/runs/rcp-text-four-phases
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only rerank
+exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only rerank
 RCP_NDCG_WORKER_2
 read -r -d '' ENGINE_RERANKER <<'RCP_NDCG_ENGINE_RERANKER' || true
 export CUDA_VISIBLE_DEVICES=0
@@ -272,7 +272,7 @@ cd /e2e/runs/rcp-text-four-phases
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only tournament --only rubric
+exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only tournament --only rubric
 RCP_NDCG_WORKER_3
 read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true
 export CUDA_VISIBLE_DEVICES=0
@@ -399,6 +399,6 @@ export RCP_NDCG_ENGINES='{}'
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only calibrate --only evaluate
+exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only calibrate --only evaluate
 RCP_NDCG_WORKER_4
 srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_4"

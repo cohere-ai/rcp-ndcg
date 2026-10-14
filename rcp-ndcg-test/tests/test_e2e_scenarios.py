@@ -264,6 +264,34 @@ def test_the_scenario_schema_is_exported_and_current() -> None:
     assert schema == scenario_json_schema()
 
 
+def test_the_outage_judge_keeps_its_devices_to_itself() -> None:
+    """The outage scenario's judge is the driver's run-scoped engine: it stays up while the phases run, so
+    its device slice must not overlap the encoder's or the reranker's (the judge's vLLM pre-allocates the
+    device it sees).
+
+    The T4's second run found this as the encoder phase's ``CUDA out of memory`` (the driver's 27B judge
+    held GPU 0 when the phase's engine tried to allocate there), and the resume that followed could not
+    finish the run.  The shipped scenario obeys the rule, and a scenario that does not is refused by name.
+    """
+    scenario = load_scenario(SCENARIOS / "outage.yaml")
+    judge_devices = _devices(scenario.judge.slot.cuda_visible_devices)
+    for role, slot in scenario.slots.items():
+        assert not judge_devices & _devices(slot.cuda_visible_devices), role
+    data = _valid()
+    data["mode"] = "outage"
+    data["steps"] = ["retrieve", "tournament"]
+    data["encoder_recipe"] = "some-encoder"
+    data["slots"] = {"encoder": {"port": 8100, "vllm_port": 9100, "cuda_visible_devices": "0"}}
+    data["judge"] = {**data["judge"], "slot": {"port": 8120, "vllm_port": 9120, "cuda_visible_devices": "0,1"}}
+    with pytest.raises(ValueError, match="shares device"):
+        Scenario.model_validate(data)
+
+
+def _devices(value: str) -> set[str]:
+    """The device ids a slot's ``cuda_visible_devices`` names."""
+    return {device.strip() for device in value.split(",") if device.strip()}
+
+
 def test_slot_ports_never_collide_across_roles() -> None:
     """One engine per phase, but the roles share a node: every ``port`` and every ``vllm_port`` is
     unique (an unset ``vllm_port`` defaults to 8100 and would collide loudly here)."""
