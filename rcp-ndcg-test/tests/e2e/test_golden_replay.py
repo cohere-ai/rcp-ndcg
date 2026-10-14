@@ -303,19 +303,29 @@ def test_the_retrieval_golden_ranks_by_the_vectors(tmp_path: Path) -> None:
 
 def test_the_vidore_retrieval_view_waiver_holds() -> None:
     """The documented waiver, as a tripwire on the corpus (never on recipe semantics): the ViDoRe
-    retrieval view needs page-image embeddings, and no committed corpus of the VL embedder observes an
-    image input. When one does, this fails and names the work."""
+    retrieval view needs ViDoRe page-image embeddings, and no committed corpus of the VL embedder
+    observes one. The tripwire keys on the waiver's ACTUAL condition -- a ViDoRe-sourced image input --
+    not on images in general: the observation plan's synthetic media buckets do observe images, but
+    their qrels and documents are not ViDoRe's, so they cannot feed the ViDoRe retrieval-view golden.
+    When a ViDoRe-sourced image is observed, this fails and names the work."""
     from rcp_ndcg_test.corpus import load_corpus
-    from rcp_ndcg_test.engines import exchanges_of, find_corpora
+    from rcp_ndcg_test.engines import find_corpora
 
     corpora = find_corpora(ENGINES_ROOT, recipe_id="qwen3-vl-embedding-2b")
     assert corpora, "the VL embedder has no committed corpus"
     for directory in corpora:
-        text = json.dumps([exchange.request_body for exchange in exchanges_of(load_corpus(directory))])
-        assert "image" not in text and "data:" not in text, (
-            f"{directory} observes an image input: build the ViDoRe retrieval-view golden "
-            "(tests/e2e/test_golden_replay.py, RCP_UPDATE_GOLDENS=1) and drop this waiver"
-        )
+        for record in load_corpus(directory).records:
+            source = (record.get("inputs") or {}).get("source") or {}
+            if not isinstance(source, dict):
+                continue
+            names = " ".join(str(source.get(field) or "") for field in ("suite", "subset", "file")).lower()
+            if "vidore" not in names:
+                continue
+            body = json.dumps(record.get("request") or {})
+            assert "image" not in body and "data:" not in body, (
+                f"{directory} observes a ViDoRe-sourced image input: build the ViDoRe retrieval-view "
+                "golden (tests/e2e/test_golden_replay.py, RCP_UPDATE_GOLDENS=1) and drop this waiver"
+            )
 
 
 def test_the_golden_replay_goes_red_when_a_rerank_score_is_perturbed(tmp_path: Path) -> None:
