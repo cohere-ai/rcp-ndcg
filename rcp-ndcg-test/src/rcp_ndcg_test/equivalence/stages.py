@@ -1523,7 +1523,7 @@ def checkpoint_chat_template(recipe: Recipe) -> tuple[str, str]:
     value (the ``default`` entry of a named list).  Raises :class:`HarnessError` naming every file tried when
     none resolves, or the file whose read failed.
     """
-    from .checkpoint import checkpoint_file
+    from .checkpoint import checkpoint_file, checkpoint_text
 
     tried: list[str] = []
     for name in CHECKPOINT_TEMPLATE_FILES:
@@ -1531,7 +1531,7 @@ def checkpoint_chat_template(recipe: Recipe) -> tuple[str, str]:
         if path is None:
             tried.append(f"{name}: absent")
             continue
-        text = path.read_text(encoding="utf-8")
+        text = checkpoint_text(path)
         if name.endswith(".json"):
             value = json.loads(text).get("chat_template")
             if isinstance(value, list):
