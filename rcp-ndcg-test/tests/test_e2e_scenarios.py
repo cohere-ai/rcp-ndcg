@@ -264,7 +264,8 @@ def test_the_outage_scenario_window_covers_the_restart_boot() -> None:
 
 def test_the_two_identical_runs_comparison_states_what_it_compares() -> None:
     """The comparison's contract (judgements may differ at temperature > 0): what is compared is
-    identities, the deterministic steps' outputs byte for byte, and the windows' counts and families."""
+    identities, the deterministic steps' ranking tables (their scores within the served engine's numeric
+    noise), and the windows' counts and families."""
     from rcp_ndcg_test.e2e import run_facts
 
     facts = {"families": ["f"], "windows": {"tournament": 2, "rubric": 3}, "steps": [{"name": "retrieve"}]}
@@ -272,8 +273,88 @@ def test_the_two_identical_runs_comparison_states_what_it_compares() -> None:
     changed = {**facts, "steps": [{"name": "retrieve", "identity_hash": "x"}]}
     assert not compare_runs(facts, changed)["ok"]
     documented = run_facts.__doc__
-    for phrase in ("temperature", "compared", "byte for byte"):
+    for phrase in ("temperature", "compared", "numeric noise"):
         assert documented is not None and phrase in documented
+
+
+def _ranking_run(root: Path, table: dict[str, dict[str, float]]) -> Path:
+    """A run directory whose retrieve and rerank steps recorded ``table`` as their rankings artifacts."""
+    from rcp_ndcg.data import Rankings
+    from rcp_ndcg.runs.layout import RunLayout
+    from rcp_ndcg.runs.manifest import RunManifest, RunStatus, StepRecord, StepStatus
+    from rcp_ndcg.storage.artifacts import artifact_ref
+
+    root.mkdir()
+    layout = RunLayout.at(root)
+    first = Path(layout.path("work", "first_stage.parquet"))
+    first.parent.mkdir(parents=True)
+    rankings = Rankings.from_scores(table, system="candidates")
+    rankings.save(first, format="parquet")
+    rankings.save(layout.candidates, format="parquet")
+    judgements = Path(layout.path("judgements", "tournament.jsonl"))
+    judgements.parent.mkdir(parents=True)
+    judgements.write_text("window 1\nwindow 2\n", encoding="utf-8")
+    manifest = RunManifest.new(root.name, config={})
+    manifest.status = RunStatus.COMPLETED
+    manifest.steps = [
+        StepRecord(
+            name="retrieve",
+            status=StepStatus.COMPLETED,
+            identity={"step": "retrieve"},
+            identity_hash="r",
+            outputs=[artifact_ref(first, layout=layout)],
+        ),
+        StepRecord(
+            name="rerank",
+            status=StepStatus.COMPLETED,
+            identity={"step": "rerank"},
+            identity_hash="k",
+            inputs=[artifact_ref(first, layout=layout)],
+            outputs=[artifact_ref(layout.candidates, layout=layout)],
+        ),
+        StepRecord(
+            name="tournament",
+            status=StepStatus.COMPLETED,
+            identity={"step": "tournament"},
+            identity_hash="t",
+            outputs=[artifact_ref(judgements, layout=layout)],
+        ),
+    ]
+    manifest.save(layout)
+    return root
+
+
+def test_the_pair_comparison_reads_the_ranking_tables_not_their_bytes(tmp_path: Path) -> None:
+    """Two identical runs whose retrieve table differs only by the engine's numeric noise compare equal.
+
+    A served engine is not bit-deterministic: the rc0 pair's ``work/first_stage.parquet`` held 3 of 1500
+    scores moved by at most 3e-8 absolute / 9.5e-8 relative (the engine's reduction order moves within
+    its batching strata), so the parquet's bytes differ between two identical runs while the table does
+    not.  The comparison reads the table -- keys exact, scores within the noise bound -- and still fails
+    a table whose scores really moved.
+    """
+    from rcp_ndcg_test.e2e import run_facts
+
+    table = {"PLAIN-1": {"MED-1": 0.9, "MED-2": 0.5}, "PLAIN-2": {"MED-1": 0.25, "MED-2": 0.75}}
+    noisy = {
+        "PLAIN-1": {"MED-1": 0.9 + 3e-8, "MED-2": 0.5},
+        "PLAIN-2": {"MED-1": 0.25, "MED-2": 0.75 - 3e-8},
+    }
+    left = _ranking_run(tmp_path / "left", table)
+    right = _ranking_run(tmp_path / "right", noisy)
+    # The premise of the check: the two runs' artifacts are not byte-identical ...
+    assert (left / "work" / "first_stage.parquet").read_bytes() != (right / "work" / "first_stage.parquet").read_bytes()
+    # ... while the tables are equal within the engine's numeric noise.
+    check = compare_runs(run_facts(left), run_facts(right))
+    assert check["ok"], check["detail"]
+
+    moved = _ranking_run(
+        tmp_path / "moved",
+        {"PLAIN-1": {"MED-1": 0.9, "MED-2": 0.5}, "PLAIN-2": {"MED-1": 0.25, "MED-2": 0.7}},
+    )
+    check = compare_runs(run_facts(left), run_facts(moved))
+    assert not check["ok"]
+    assert "retrieve" in check["detail"] and "noise" in check["detail"]
 
 
 def test_the_scenario_schema_is_exported_and_current() -> None:

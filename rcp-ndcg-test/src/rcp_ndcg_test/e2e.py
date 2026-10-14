@@ -33,8 +33,9 @@ Scenarios (``scenarios/``):
 
 * ``text-four-phases`` -- NanoBEIR one subset, served encoder -> served reranker -> served judge
   (tournament + rubric) -> calibrate + evaluate: the four phases of one run.  Run twice into two run
-  directories and compared (:func:`compare_runs`: identical identities and outputs; judgement values are
-  counts and families only), judgements may differ at temperature > 0 -- see :func:`run_facts`);
+  directories and compared (:func:`compare_runs`: identical identities and ranking tables, their scores
+  within the served engine's numeric noise; judgement values are counts and families only), judgements
+  may differ at temperature > 0 -- see :func:`run_facts`);
 * ``outage`` -- the same text run with the judge engine killed mid-tournament.  The judge is a run-scoped
   engine the driver owns (the product's model: engines the supervision script started end the job when
   they exit; engines that live elsewhere are "restarted by whatever runs them, and the judge bounds the
@@ -89,6 +90,7 @@ from rcp_ndcg.runs.execution import job_for, stage_run
 from rcp_ndcg.runs.layout import RunLayout
 from rcp_ndcg.runs.manifest import RunManifest, StepStatus
 from rcp_ndcg.runs.run import prepare
+from rcp_ndcg.storage.artifacts import ArtifactRef
 from rcp_ndcg.support.resources import Resources
 from rcp_ndcg.support.serve import ServeByRole, ServeConfig
 
@@ -173,6 +175,15 @@ POLL_S = 1.0
 #: The margin (seconds) the recovers outage keeps between the judge's whole down span -- the outage sleep
 #: plus the restarted engine's boot -- and the run's ``wait_on_outage_s`` (see :func:`recovers_outage_s`).
 RECOVERY_MARGIN_S = 30.0
+
+#: The served engines' numeric noise, as the pair comparison allows it: two sendings of one request move a
+#: score by at most this absolute amount, or this fraction of the larger score.  The rc0 node's two
+#: identical runs moved 3 of 1500 retrieve scores, by at most 3e-8 absolute / 9.5e-8 relative (the
+#: engine's reduction order moves within its batching strata, OBSERVATIONS-SPEC section 1); a real
+#: difference -- another model, prompt or document set -- moves scores by 1e-3 and more, so the bound
+#: separates the engine's noise from a behaviour change.
+SCORE_NOISE_ABS = 1e-6
+SCORE_NOISE_REL = 1e-5
 
 
 def _say(scenario_id: str, message: str) -> None:
@@ -1091,18 +1102,50 @@ def engine_python_facts() -> dict[str, Any]:
     return json.loads(completed.stdout)
 
 
+def _ranking_facts(layout: RunLayout, ref: ArtifactRef) -> dict[str, Any]:
+    """One ranking artifact's content, as two identical runs are compared on it.
+
+    The retrieve and rerank steps' artifacts are rankings tables (``Rankings.save``'s parquet: the
+    product's own write and read for these steps), and a served engine is not bit-deterministic -- the
+    same request sent twice moves a score within the engine's reduction order (measured on the rc0 node:
+    3 of 1500 scores, by at most 3e-8).  The artifact's bytes therefore differ between two identical runs
+    while the table does not, so the fact is the table itself: a digest over its canonically ordered
+    ``(system, dataset, query_id, doc_id)`` rows and their scores, compared within :data:`SCORE_NOISE_ABS`
+    and :data:`SCORE_NOISE_REL`.
+
+    Inputs: the run's layout and the recorded artifact reference.  Output: a fact dict (``path``,
+    ``rows``, ``keys_sha256``, ``scores``).  Raises the product's ``DataError``/``MissingInputError``
+    when the recorded artifact is not a rankings file (the product's contract for these steps).
+    """
+    from rcp_ndcg.data import load_rankings
+
+    frame = load_rankings(layout.resolve(ref.path)).to_pandas()
+    scores = {
+        (str(system), str(dataset), str(query_id), str(doc_id)): float(score)
+        for system, dataset, query_id, doc_id, score in zip(
+            frame["system"], frame["dataset"], frame["query_id"], frame["doc_id"], frame["score"], strict=True
+        )
+    }
+    keys = sorted(scores)
+    digest = hashlib.sha256("\n".join("\t".join(key) for key in keys).encode("utf-8")).hexdigest()
+    return {"path": ref.path, "rows": len(keys), "keys_sha256": digest, "scores": [scores[key] for key in keys]}
+
+
 def run_facts(run_dir: Path) -> dict[str, Any]:
     """What two runs are compared on (and what a rerun must leave alone).
 
     One fact block per step: its identity (the payload's fields and its ``identity_hash``), and its
-    artifacts by ``(path, sha256)``.  **What is compared** (the brief's "judgements may differ at
-    temperature > 0: state what is compared"): ids and identities for every step; outputs **byte for byte**
-    for the input-deterministic steps (``retrieve``, ``rerank``); and, for the judge-derived steps, the
-    stored window count and the judgement families' keys -- both determined by the schedule and the judge
-    identity -- never the judged values themselves (a judge sampling at temperature > 0 may answer
-    differently in two identical runs, and the report says so).
+    artifacts.  **What is compared** (the brief's "judgements may differ at temperature > 0: state what
+    is compared"): ids and identities for every step; for the engine-derived steps (``retrieve``,
+    ``rerank``) the ranking tables their artifacts hold -- every ``(query, document)`` row and its score,
+    the scores within the served engine's numeric noise (:func:`_ranking_facts`: a served engine is not
+    bit-deterministic, so the parquet's bytes are not what two identical runs can be compared on); and,
+    for the judge-derived steps, the stored window count and the judgement families' keys -- both
+    determined by the schedule and the judge identity -- never the judged values themselves (a judge
+    sampling at temperature > 0 may answer differently in two identical runs, and the report says so).
     """
-    manifest = RunManifest.load(RunLayout.at(run_dir))
+    layout = RunLayout.at(run_dir)
+    manifest = RunManifest.load(layout)
     facts: dict[str, Any] = {"steps": [], "windows": {}, "families": sorted(manifest.families)}
     for record in manifest.steps:
         steps_facts: dict[str, Any] = {
@@ -1112,8 +1155,12 @@ def run_facts(run_dir: Path) -> dict[str, Any]:
             "identity": record.identity,
         }
         if record.name in ("retrieve", "rerank"):
-            steps_facts["outputs"] = sorted((ref.path, ref.sha256) for ref in record.outputs)
-            steps_facts["inputs"] = sorted((ref.path, ref.sha256) for ref in record.inputs)
+            steps_facts["outputs"] = sorted(
+                (_ranking_facts(layout, ref) for ref in record.outputs), key=lambda fact: fact["path"]
+            )
+            steps_facts["inputs"] = sorted(
+                (_ranking_facts(layout, ref) for ref in record.inputs), key=lambda fact: fact["path"]
+            )
         else:
             steps_facts["outputs"] = sorted(ref.path for ref in record.outputs)
         facts["steps"].append(steps_facts)
@@ -1152,7 +1199,7 @@ def full_facts(run_dir: Path) -> dict[str, Any]:
 
 
 def _sha256(path: Path) -> str:
-    """The SHA-256 of a file's bytes (what two identical runs' outputs are compared on)."""
+    """The SHA-256 of a file's bytes (what the identity rerun's artifacts are compared on)."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(1 << 20):
@@ -1167,19 +1214,91 @@ def compare_runs(a: Mapping[str, Any], b: Mapping[str, Any]) -> dict[str, Any]:
     difference when not.
     """
     mismatches: list[str] = []
-    for key in ("families", "windows", "steps"):
+    for key in ("families", "windows"):
         if a.get(key) != b.get(key):
             mismatches.append(f"{key} differ")
-    for left_row, right_row in zip(a.get("steps", ()), b.get("steps", ()), strict=False):
-        if left_row != right_row:
-            mismatches.append(f"step {left_row.get('name')!r} differs")
+    left_steps = list(a.get("steps", ()))
+    right_steps = list(b.get("steps", ()))
+    step_problems = [
+        (left_row.get("name"), _step_mismatches(left_row, right_row))
+        for left_row, right_row in zip(left_steps, right_steps, strict=False)
+    ]
+    if len(left_steps) != len(right_steps):
+        mismatches.append(f"steps differ: {len(left_steps)} step(s) against {len(right_steps)}")
+    elif any(problems for _, problems in step_problems):
+        mismatches.append("steps differ")
+    for name, problems in step_problems:
+        if problems:
+            mismatches.append(f"step {name!r} differs: {'; '.join(problems)}")
     return {
         "name": "two identical runs give identical identities and outputs",
         "ok": not mismatches,
         "detail": "; ".join(sorted(set(mismatches)))
-        or "identities, the deterministic steps' outputs and the judgement windows' counts and families match "
-        "(judged values are never compared: judgements may differ at temperature > 0)",
+        or "identities, the engine-derived steps' ranking tables (their scores within the served engine's "
+        "numeric noise) and the judgement windows' counts and families match (judged values are never "
+        "compared: judgements may differ at temperature > 0)",
     }
+
+
+def _step_mismatches(left: Mapping[str, Any], right: Mapping[str, Any]) -> list[str]:
+    """What differs between two step fact blocks (:func:`_artifact_mismatches` compares the artifacts)."""
+    problems: list[str] = []
+    for key in sorted(set(left) | set(right)):
+        if key in ("inputs", "outputs"):
+            problems.extend(_artifact_mismatches(left.get(key) or [], right.get(key) or []))
+        elif left.get(key) != right.get(key):
+            problems.append(f"{key} differs")
+    return problems
+
+
+def _artifact_mismatches(left: Sequence[Any], right: Sequence[Any]) -> list[str]:
+    """What differs between two artifact fact lists.
+
+    The judge-derived steps record their outputs as paths; the engine-derived steps record fact dicts -- a
+    ranking fact (:func:`_ranking_facts`) compared as a table (its key digest exactly, its scores within
+    the engine's numeric noise), a byte fact by its ``sha256`` exactly.
+    """
+    if len(left) != len(right):
+        return [f"{len(left)} artifact(s) against {len(right)}"]
+    problems: list[str] = []
+    for one, other in zip(left, right, strict=True):
+        if isinstance(one, str) and isinstance(other, str):
+            if one != other:
+                problems.append(f"{one!r} against {other!r}")
+            continue
+        if not isinstance(one, Mapping) or not isinstance(other, Mapping):
+            problems.append(f"{one!r} against {other!r}")
+            continue
+        if one.get("path") != other.get("path"):
+            problems.append(f"{one.get('path')!r} against {other.get('path')!r}")
+        elif "keys_sha256" in one or "keys_sha256" in other:
+            problems.extend(_ranking_mismatches(one, other))
+        elif one.get("sha256") != other.get("sha256"):
+            problems.append(f"{one.get('path')} differs")
+    return problems
+
+
+def _ranking_mismatches(left: Mapping[str, Any], right: Mapping[str, Any]) -> list[str]:
+    """What differs between two ranking facts: the rows exactly, the scores within the engine's noise."""
+    path = left.get("path")
+    if left.get("rows") != right.get("rows") or left.get("keys_sha256") != right.get("keys_sha256"):
+        return [f"{path}: the tables hold different (query, document) rows"]
+    left_scores, right_scores = list(left.get("scores") or []), list(right.get("scores") or [])
+    if len(left_scores) != len(right_scores):
+        return [f"{path}: {len(left_scores)} score(s) against {len(right_scores)}"]
+    worst = max(
+        (
+            (abs(one - other) - (SCORE_NOISE_ABS + SCORE_NOISE_REL * max(abs(one), abs(other))), abs(one - other))
+            for one, other in zip(left_scores, right_scores, strict=True)
+        ),
+        default=(0.0, 0.0),
+    )
+    if worst[0] > 0:
+        return [
+            f"{path}: scores move by {worst[1]:.3g}, beyond the engine's numeric noise "
+            f"({SCORE_NOISE_ABS:g} abs / {SCORE_NOISE_REL:g} rel)"
+        ]
+    return []
 
 
 def _check(name: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -1824,9 +1943,10 @@ def write_report(out: Path, results: Sequence[ScenarioResult]) -> Path:
             lines.append(f"- error: {row.error}")
         lines += ["", f"Runs: {', '.join(row.runs) or '(none)'}", ""]
     lines.append(
-        "What two identical runs are compared on: every step's identity and its deterministic outputs, and the "
-        "judgement windows' counts and families (judged values are never compared: judgements may differ at "
-        "temperature > 0)."
+        "What two identical runs are compared on: every step's identity, the engine-derived steps' ranking "
+        "tables (their scores within the served engine's numeric noise: a served engine is not "
+        "bit-deterministic) and the judgement windows' counts and families (judged values are never "
+        "compared: judgements may differ at temperature > 0)."
     )
     (out / "E2E.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return out / "E2E.md"
