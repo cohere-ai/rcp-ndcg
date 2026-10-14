@@ -178,20 +178,26 @@ class EmbeddingClient(RoleClient):
 
         token_ids = self._token_ids_of(prepared.items, role)
         add_special_tokens = self._messages_special_tokens(role)
-        requests = [
-            EmbedRequest(
-                contents=tuple(prepared.items[offset : offset + size]),
-                role=role,
-                dimensions=self.config.dimensions,
-                request_shape=self.config.request_shape,
-                token_ids=token_ids[offset : offset + size],
-                add_special_tokens=add_special_tokens,
-                add_generation_prompt=(
-                    self.config.add_generation_prompt if self.config.request_shape == "messages" else None
-                ),
+        # The requests one call sends: ``size`` items each, and for media-bearing items at most the
+        # endpoint's declared per-request media caps (a VL encoder's ``max_images: 1`` sends one image per
+        # request rather than packing a media batch past its own declaration).
+        requests: list[EmbedRequest] = []
+        offset = 0
+        for group in self._request_groups(prepared.items, size):
+            requests.append(
+                EmbedRequest(
+                    contents=tuple(group),
+                    role=role,
+                    dimensions=self.config.dimensions,
+                    request_shape=self.config.request_shape,
+                    token_ids=token_ids[offset : offset + len(group)],
+                    add_special_tokens=add_special_tokens,
+                    add_generation_prompt=(
+                        self.config.add_generation_prompt if self.config.request_shape == "messages" else None
+                    ),
+                )
             )
-            for offset in range(0, len(prepared.items), size)
-        ]
+            offset += len(group)
         calls = [list(self._adapter.calls(request, model=self.config.model)) for request in requests]
         for batch_calls in calls:
             self._gate_media_calls(batch_calls)

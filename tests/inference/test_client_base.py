@@ -361,6 +361,23 @@ class TestEngineAdapterRoles:
 
         check_engine_api(None, engine_role="judge", where="serve.judge")
 
+    def test_a_recipe_facing_alias_resolves_in_the_engine_check(self) -> None:
+        """The judge recipe's ``api: chat`` is the alias ``get_adapter`` resolves and ``known_adapters``
+        lists, so the overlay check accepts it too.
+
+        The T4's end-to-end runs died at every judging phase with "the judge engine overlay: the config's
+        api 'chat' names an adapter outside the judge engine's roles": ``check_engine_api`` looked the name
+        up in the registry only, ignoring the module's own ``_ALIASES`` table ("A judge recipe declares
+        client.api: chat", decision 15).
+        """
+        from rcp_ndcg.inference.adapters.base import check_engine_api, get_adapter, known_adapters
+
+        assert "chat" in known_adapters("judge")
+        assert get_adapter("chat", role="judge").name == "openai_chat"
+        check_engine_api("chat", engine_role="judge", where="the judge engine overlay")
+        with pytest.raises(ConfigError, match="encoder"):  # the alias is the judge role's, not every role's
+            check_engine_api("chat", engine_role="encoder", where="serve.encoder")
+
     def test_an_unknown_api_names_where_the_name_does_live(self) -> None:
         from rcp_ndcg.inference.adapters.base import check_engine_api
 

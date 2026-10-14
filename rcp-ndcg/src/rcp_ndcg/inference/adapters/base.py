@@ -486,7 +486,11 @@ def check_engine_api(api: str | None, *, engine_role: EngineRole, where: str) ->
         return
     roles = adapter_roles_of(engine_role)
     for role in sorted(roles):
-        if (role, api) in _BUILTINS or (role, api) in _load_plugins():
+        # The registry's own alias table counts: a judge recipe declares ``api: chat`` and the judge role's
+        # registry holds that wire as ``openai_chat`` (decision 15), so the overlay check must honour the
+        # same spelling ``get_adapter`` and ``known_adapters`` resolve.
+        key = _ALIASES.get((role, api), (role, api))
+        if key in _BUILTINS or key in _load_plugins():
             return
     registered = (*_BUILTINS, *_load_plugins())
     elsewhere = sorted({registered_role for registered_role, name in registered if name == api})

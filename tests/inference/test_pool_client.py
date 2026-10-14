@@ -104,6 +104,21 @@ class TestEncode:
 
         assert len(sender.sent) == 1
 
+    def test_a_media_batch_splits_at_the_endpoints_media_caps(self, tmp_path: Any) -> None:
+        """The media caps bind the pooling wire too (one rule, the clients' shared splitter): two page
+        images with ``max_images: 1`` leave as two requests, one image each."""
+        images = []
+        for index in range(2):
+            path = tmp_path / f"page-{index}.png"
+            path.write_bytes(_png_bytes())
+            images.append(Content.from_image(path.as_uri()))
+        sender = RecordingSender(_pooling_reply(rows=1, usage=1))
+        client = _client(sender, max_images=1)
+
+        asyncio.run(client.aencode(images, EncodeRole.DOCUMENT))
+
+        assert len(sender.requests) == 2  # one image per request: the declared cap
+
     def test_prompts_apply_per_role(self) -> None:
         sender = _GatedSender(PoolingServer({}, default=np.ones((1, 2), dtype=np.float16)))
         client = _client(sender, query_prompt="Query: ", doc_prompt="Document: ")

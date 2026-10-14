@@ -193,9 +193,18 @@ class PoolingClient(RoleClient):
                 dtype=self.config.embed_dtype,
             )
         size = self._request_size(batch_size)
-        batches = [prepared.items[start : start + size] for start in range(0, len(prepared.items), size)]
-        id_batches = [prepared.token_ids[start : start + size] for start in range(0, len(prepared.items), size)]
-        position_batches = [prepared.positions[start : start + size] for start in range(0, len(prepared.items), size)]
+        # The requests one call sends: ``size`` items each, and for media-bearing items at most the
+        # endpoint's declared per-request media caps (a VL encoder's ``max_images: 1`` sends one image per
+        # request rather than packing a media batch past its own declaration).
+        batches: list[list[Content]] = []
+        id_batches: list[tuple[tuple[int, ...], ...]] = []
+        position_batches: list[tuple[int, ...]] = []
+        offset = 0
+        for group in self._request_groups(prepared.items, size):
+            batches.append(group)
+            id_batches.append(prepared.token_ids[offset : offset + len(group)])
+            position_batches.append(prepared.positions[offset : offset + len(group)])
+            offset += len(group)
         gate = asyncio.Semaphore(self.config.concurrency)
 
         async def one(

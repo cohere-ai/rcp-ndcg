@@ -182,7 +182,9 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
   the role's `image_policy`/`image_processor` would -- with the tokens counted and reserved whole (never
   cut), the budget's fit applied per wire request (a vision block is atomic -- shrink to the policy minimum,
   drop whole items with `dropped=True` in `client.media_census`, or refuse under `fail`/`chunk`), and the
-  `max_images`/`max_videos` gates over what one wire request carries. Which SIDES may carry media is the
+  `max_images`/`max_videos` gates over what one wire request carries, and the client that packs a batch
+  splits a media-bearing one at them (one image per request where the endpoint declares `max_images: 1`;
+  a text-only batch packs by `batch_size` as before). Which SIDES may carry media is the
   config's `media_sides` (both by default): media on a side it does not name is refused before preparation,
   with the error naming the field (the topk reference rejects image queries -- media is documents-only
   there). The pool and rerank clients' startup `probe()` runs `check_engine_media()` when the role declares

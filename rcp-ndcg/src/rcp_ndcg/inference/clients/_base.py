@@ -1271,6 +1271,36 @@ class RoleClient[C: Endpoint]:
         _check_batch_size(self._adapter_cls, size, noun=self.BATCH_NOUN)
         return size
 
+    def _request_groups(self, items: Sequence[Content], size: int) -> list[list[Content]]:
+        """``items`` grouped into the requests one call sends: at most ``size`` items each, and -- when an
+        item carries media -- at most the config's ``max_images`` images and ``max_videos`` videos per
+        request.
+
+        The caps are what ONE wire request carries (:meth:`_gate_media_calls`), so the client that packs the
+        requests splits at them: a VL encoder whose endpoint accepts one image per request sends one image
+        per request rather than packing a media batch past its own declaration. A text-only batch is grouped
+        by ``size`` alone -- the packing is unchanged where no media is involved.
+        """
+        max_images = getattr(self.config, "max_images", 0)
+        max_videos = getattr(self.config, "max_videos", 0)
+        groups: list[list[Content]] = []
+        current: list[Content] = []
+        images = videos = 0
+        for item in items:
+            item_images = sum(1 for part in item.parts if isinstance(part, ImagePart))
+            item_videos = sum(1 for part in item.parts if isinstance(part, VideoPart))
+            if current and (
+                len(current) >= size or images + item_images > max_images or videos + item_videos > max_videos
+            ):
+                groups.append(current)
+                current, images, videos = [], 0, 0
+            current.append(item)
+            images += item_images
+            videos += item_videos
+        if current:
+            groups.append(current)
+        return groups
+
     # -- usage (the judge's per-reply rule) ------------------------------------
     @property
     def usage(self) -> Usage:

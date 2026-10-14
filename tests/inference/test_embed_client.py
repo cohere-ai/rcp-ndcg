@@ -46,11 +46,19 @@ def input_texts(api: str, call: Call) -> list[str]:
     """The texts one call carries, per profile (a token-ids item by its ids, stringified)."""
     body = call.json
     if api in ("openai_embeddings", "voyage"):
-        items = (
-            body["input"]
-            if "input" in body
-            else [" ".join(part["text"] for part in m["content"] if part["type"] == "text") for m in body["messages"]]
-        )
+        if "input" in body:
+            items = body["input"]
+        else:
+            # The chat-embed shape sends ONE conversation for a single item and a list of conversations for
+            # a batch (``messages``, adapters/embeddings.py): both nestings are read.
+            messages = body["messages"]
+            conversations = messages if messages and isinstance(messages[0], list) else [messages]
+            items = [
+                " ".join(
+                    part["text"] for message in conversation for part in message["content"] if part["type"] == "text"
+                )
+                for conversation in conversations
+            ]
         return [text if isinstance(text, str) else " ".join(str(i) for i in text) for text in items]
     if api == "cohere":
         return list(body["texts"])
@@ -215,6 +223,37 @@ class TestBatching:
             EmbeddingClient(
                 endpoint("cohere", max_tokens=1024, batch_size=129), sender=FakeSender(handler("cohere", {}))
             )
+
+    def test_a_media_batch_splits_at_the_endpoints_media_caps(self, tmp_path: Any) -> None:
+        """``max_images``/``max_videos`` cap what ONE wire request carries, so the client that packs the
+        requests splits a media-bearing batch at them: three page images with ``max_images: 1`` leave as
+        three requests, one image each.
+
+        The T4's vidore run is the red evidence: its VL encoder declares ``max_images: 1`` (the served
+        engine's ``limit_mm_per_prompt``) and the client packed 32 page images into one request, refused
+        with "this request carries 32 images and the endpoint accepts 1 per request".
+        """
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = TestRequestShapes._messages_client(sender, max_images=1)
+        pages = [TestRequestShapes._png(tmp_path, f"page-{index}.png") for index in range(3)]
+
+        vectors = client.encode(pages, EncodeRole.DOCUMENT)
+
+        assert vectors.num_items == 3
+        assert len(sender.calls) == 3  # one image per request: the declared cap
+        for call in sender.calls:
+            parts = call.json["messages"][0]["content"]
+            assert sum(part["type"] == "image_url" for part in parts) == 1
+
+    def test_a_text_only_batch_keeps_its_plain_packing(self) -> None:
+        """The caps bind media, not items: a text-only batch keeps the ``batch_size`` packing (the same
+        requests today's runs send), so the split costs nothing where there is no media."""
+        sender = FakeSender(handler("openai_embeddings", {name: 1.0 for name in "abcde"}))
+        client = TestRequestShapes._messages_client(sender, max_images=1, batch_size=8)
+
+        client.encode(texts(*"abcde"), EncodeRole.DOCUMENT)
+
+        assert [len(call.json["messages"]) for call in sender.calls] == [5]  # one request: no media, no split
 
 
 class TestConcurrency:

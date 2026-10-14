@@ -3928,6 +3928,21 @@ text it sends to the declared budget.
   `--with rcp-ndcg-vllm==<version>` (a separate distribution; it depends on pydantic and PyYAML only), in
   both the index and the wheelhouse forms.
 
+- **The engine overlay accepts the recipe-facing adapter aliases** (the T4's judging phases found it):
+  `check_engine_api` looked an `api` name up in the registry only and ignored the module's own
+  `_ALIASES` table, so a judge recipe's `client.api: chat` (the alias of `openai_chat`, the spelling
+  `get_adapter` resolves and `known_adapters` lists) was refused with "the judge engine overlay: the
+  config's api 'chat' names an adapter outside the judge engine's roles". The check now resolves the
+  alias first, so every judging phase of a run reaches its engine.
+
+- **A media-bearing batch splits at the endpoint's declared media caps** (the T4's vidore run found it):
+  `max_images`/`max_videos` are what ONE wire request carries, but the embed and pool clients packed
+  `batch_size` items into a request regardless, so a VL encoder declaring `max_images: 1` (the served
+  engine's `limit_mm_per_prompt`) refused its own corpus with "this request carries 32 images and the
+  endpoint accepts 1 per request". The packing now splits a media-bearing batch at the caps -- one image
+  per request where the declaration says one -- and leaves a text-only batch grouped by `batch_size` as
+  before (the recordings already sent media one item per request, so no recorded exchange moves).
+
 - **The `pyjwt` pin moves to 2.15.1** (`pip-audit` against the release's constraints found 2.14.0 carrying
   two advisories, PYSEC-2026-4141 / CVE-2026-101918 and PYSEC-2026-4183 / CVE-2026-102275, both fixed in
   2.15.0). It is reached only through the optional `[azure]` extra (`adlfs` -> `azure-identity` ->
