@@ -1,0 +1,301 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    creationTimestamp: "2026-10-14T07:28:06Z"
+    generateName: rcp-20261014-072801-k8s-one-container-49e823-
+    generation: 1
+    labels:
+      app.kubernetes.io/name: rcp-ndcg
+      batch.kubernetes.io/controller-uid: 9e8e72a8-d9e4-47be-8f7c-d0f474d0a32c
+      batch.kubernetes.io/job-name: rcp-20261014-072801-k8s-one-container-49e823
+      controller-uid: 9e8e72a8-d9e4-47be-8f7c-d0f474d0a32c
+      job-name: rcp-20261014-072801-k8s-one-container-49e823
+      rcp-ndcg/job: rcp-20261014-072801-k8s-one-container-49e823
+      topology.kubernetes.io/region: us-central1
+      topology.kubernetes.io/zone: us-central1-b
+    name: rcp-20261014-072801-k8s-one-container-49e823-z52k2
+    namespace: default
+    ownerReferences:
+    - apiVersion: batch/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Job
+      name: rcp-20261014-072801-k8s-one-container-49e823
+      uid: 9e8e72a8-d9e4-47be-8f7c-d0f474d0a32c
+    resourceVersion: "1791962982927199006"
+    uid: 1dcd4e1c-364d-4e21-a209-9e8705b57869
+  spec:
+    automountServiceAccountToken: false
+    containers:
+    - command:
+      - bash
+      - -c
+      - |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true
+        #!/usr/bin/env bash
+        set -euo pipefail
+        export UV_CACHE_DIR=/scratch/uv-cache
+        export UV_LINK_MODE=copy
+        export HF_HOME=/scratch/hf
+        export TMPDIR=/scratch/tmp/coordinator
+        export CUDA_VISIBLE_DEVICES=''
+        export PIP_TRUSTED_HOST=rcp-ndcg-k8srun-wheels
+        mkdir -p "$TMPDIR"
+        if ! command -v uvx >/dev/null; then
+          python3 -m pip install --quiet --no-index --find-links http://rcp-ndcg-k8srun-wheels:8080 --target "${TMPDIR:-/tmp}/rcp-ndcg-uv" uv
+          export PATH="${TMPDIR:-/tmp}/rcp-ndcg-uv/bin:$PATH"
+        fi
+        exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --constraints http://rcp-ndcg-k8srun-wheels:8080/requirements-constraints.txt --find-links http://rcp-ndcg-k8srun-wheels:8080 --no-index rcp-ndcg run resume --run /scratch/runs/20261014-072801-k8s-one-container-49e823 --mirror gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/one-container --only retrieve
+        RCP_NDCG_WORKER_1
+        read -r -d '' ENGINE_ENCODER <<'RCP_NDCG_ENGINE_ENCODER' || true
+        export HF_HOME=/scratch/hf
+        export TMPDIR=/scratch/tmp/encoder
+        export CUDA_VISIBLE_DEVICES=0
+        mkdir -p /scratch/tmp/encoder
+        exec bash -lc 'python3 -m pip install --quiet --no-index --trusted-host rcp-ndcg-k8srun-wheels --find-links http://rcp-ndcg-k8srun-wheels:8080 uv && python3 -m pip install --quiet --no-deps --no-index --trusted-host rcp-ndcg-k8srun-wheels --find-links http://rcp-ndcg-k8srun-wheels:8080 rcp-ndcg-vllm==0.0.1 && exec rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000'
+        RCP_NDCG_ENGINE_ENCODER
+        if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
+          echo "rcp-ndcg: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
+          exit 1
+        fi
+        if ! command -v python3 >/dev/null; then
+          echo "rcp-ndcg: this job needs python3 on PATH (the engine readiness probe uses its standard library), and there is none; use an image or node that has python3" >&2
+          exit 1
+        fi
+        if ! command -v uvx >/dev/null && ! python3 -m pip --version >/dev/null 2>&1; then
+          echo "rcp-ndcg: this job runs the coordinator with uvx, which is not on PATH, and python3 has no pip to install uv with; use an engine image that has uv, or python3 with pip" >&2
+          exit 1
+        fi
+        rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period, and reap them
+          local pid waited=0
+          local -a left
+          for pid in "$@"; do kill -TERM "$pid" 2>/dev/null || true; done
+          while true; do
+            left=()
+            for pid in "$@"; do if kill -0 "$pid" 2>/dev/null; then left+=("$pid"); fi; done
+            if ((${#left[@]} == 0)); then break; fi
+            if ((waited >= 200)); then  # tenths of a second
+              kill -KILL "${left[@]}" 2>/dev/null || true
+              break
+            fi
+            sleep 0.1
+            waited=$((waited + 1))
+          done
+          for pid in "$@"; do  # reap what this script started, so the next phase's wait -n cannot see it
+            wait "$pid" 2>/dev/null || true
+          done
+        }
+        rcp_ndcg_cleanup() {
+          trap '' TERM INT
+          local -a pids=()
+          if [[ -n "${RCP_NDCG_COORDINATOR_PID:-}" ]]; then pids+=("$RCP_NDCG_COORDINATOR_PID"); fi
+          if [[ -n "${RCP_NDCG_ENGINE_PID:-}" ]]; then pids+=("${RCP_NDCG_ENGINE_PID}"); fi
+          if ((${#pids[@]})); then rcp_ndcg_stop "${pids[@]}"; fi
+        }
+        trap rcp_ndcg_cleanup EXIT
+        trap 'exit 143' TERM
+        trap 'exit 130' INT
+        rcp_ndcg_any_ready() {  # PORT PATH HOST...
+          local port="$1" path="$2"; shift 2
+          for host in "$@"; do
+            python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5)' "http://$host:$port$path" >/dev/null 2>&1 && return 0
+          done
+          return 1
+        }
+        rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
+          local pid_var="$1" timeout="$2" port="$3" path="$4"; shift 4
+          local deadline=$((SECONDS + timeout)) status
+          echo "rcp-ndcg: waiting up to $timeout s for an engine replica to answer $path" >&2
+          until rcp_ndcg_any_ready "$port" "$path" "$@"; do
+            if [[ -n "${!pid_var:-}" ]] && ! kill -0 "${!pid_var}" 2>/dev/null; then
+              status=0
+              wait "${!pid_var}" || status=$?
+              printf -v "$pid_var" ''
+              echo "rcp-ndcg: the engine exited with status $status before it answered $path; its output is above" >&2
+              exit 1
+            fi
+            if ((SECONDS >= deadline)); then
+              echo "rcp-ndcg: no engine replica answered $path within $timeout s (serve.startup_timeout_s); stopping the job" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+        }
+        rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...
+          local timeout="$1" port="$2" path="$3"; shift 3
+          local deadline=$((SECONDS + timeout))
+          while rcp_ndcg_any_ready "$port" "$path" "$@"; do
+            if ((SECONDS >= deadline)); then
+              echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
+              return 1
+            fi
+            sleep 10
+          done
+        }
+        if rcp_ndcg_any_ready 8000 /v1/models 127.0.0.1; then
+          echo "rcp-ndcg: port 8000 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
+          exit 1
+        fi
+        bash -c "$ENGINE_ENCODER" &
+        RCP_NDCG_ENGINE_PID=$!
+        rcp_ndcg_wait_ready RCP_NDCG_ENGINE_PID 1800 8000 /v1/models 127.0.0.1
+        export RCP_NDCG_ENGINES='{"encoder": {"urls": ["http://127.0.0.1:8000/v1"], "wait_on_outage_s": 300}}'
+        bash -c "$WORKER_1" &
+        RCP_NDCG_COORDINATOR_PID=$!
+        status=0
+        wait -n || status=$?
+        if kill -0 "$RCP_NDCG_COORDINATOR_PID" 2>/dev/null; then
+          echo "rcp-ndcg: the encoder engine exited with status $status while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+          exit 1
+        fi
+        failed=0
+        for pid in ${RCP_NDCG_ENGINE_PID}; do
+          if ! kill -0 "$pid" 2>/dev/null; then
+            es=0
+            wait "$pid" 2>/dev/null || es=$?
+            if [ "$es" -ne 0 ] && [ "$es" -ne 127 ]; then failed=$es; fi
+          fi
+        done
+        if [ "$failed" -ne 0 ]; then
+          echo "rcp-ndcg: the encoder engine exited with status $failed while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+          exit 1
+        fi
+        if [ "$status" -ne 0 ]; then
+          exit "$status"
+        fi
+        rcp_ndcg_stop "$RCP_NDCG_ENGINE_PID"
+        if ! rcp_ndcg_wait_gone 20 8000 /v1/models 127.0.0.1; then
+          exit 1
+        fi
+      image: vllm/vllm-openai:v0.31.0
+      imagePullPolicy: IfNotPresent
+      name: phase-1
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+        requests:
+          nvidia.com/gpu: "1"
+      securityContext:
+        allowPrivilegeEscalation: false
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /scratch
+        name: scratch
+      - mountPath: /dev/shm
+        name: dshm
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    nodeName: gke-gke-us-central1-prod-b200-9-59689f0d-0qs9
+    nodeSelector:
+      cohere.com/mode: gpu
+      nvidia.com/gpu.product: NVIDIA-B200
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Never
+    schedulerName: default-scheduler
+    securityContext:
+      runAsNonRoot: false
+      seccompProfile:
+        type: RuntimeDefault
+    serviceAccount: svc-modeling
+    serviceAccountName: svc-modeling
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoSchedule
+      key: nvidia.com/gpu
+      operator: Equal
+      value: present
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: nvidia.com/gpu
+      operator: Exists
+    volumes:
+    - emptyDir: {}
+      name: scratch
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+      name: dshm
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2026-10-14T07:29:42Z"
+      status: "False"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2026-10-14T07:28:06Z"
+      reason: PodCompleted
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2026-10-14T07:29:40Z"
+      reason: PodCompleted
+      status: "False"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2026-10-14T07:29:40Z"
+      reason: PodCompleted
+      status: "False"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2026-10-14T07:28:06Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - allocatedResources:
+        nvidia.com/gpu: "1"
+      containerID: containerd://9df7badf853eaf0906f5f6c7edb2997b9207f44aa6dc2269193cfdcb17fc60e9
+      image: docker.io/vllm/vllm-openai:v0.31.0
+      imageID: docker.io/vllm/vllm-openai@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+      lastState: {}
+      name: phase-1
+      ready: false
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+        requests:
+          nvidia.com/gpu: "1"
+      restartCount: 0
+      started: false
+      state:
+        terminated:
+          containerID: containerd://9df7badf853eaf0906f5f6c7edb2997b9207f44aa6dc2269193cfdcb17fc60e9
+          exitCode: 0
+          finishedAt: "2026-10-14T07:29:40Z"
+          reason: Completed
+          startedAt: "2026-10-14T07:28:07Z"
+      user:
+        linux:
+          gid: 0
+          supplementalGroups:
+          - 0
+          uid: 0
+      volumeMounts:
+      - mountPath: /scratch
+        name: scratch
+      - mountPath: /dev/shm
+        name: dshm
+    hostIP: 10.151.240.181
+    hostIPs:
+    - ip: 10.151.240.181
+    phase: Succeeded
+    podIP: 10.152.81.237
+    podIPs:
+    - ip: 10.152.81.237
+    qosClass: BestEffort
+    startTime: "2026-10-14T07:28:06Z"
+kind: List
+metadata:
+  resourceVersion: ""

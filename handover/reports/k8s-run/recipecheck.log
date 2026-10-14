@@ -1,0 +1,32 @@
+Downloading cryptography (4.5MiB)
+Downloading hf-xet (4.3MiB)
+Downloading aiohttp (1.7MiB)
+Downloading torch (187.2MiB)
+Downloading grpcio (6.8MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading sympy (6.0MiB)
+Downloading scipy (33.7MiB)
+Downloading pyarrow (47.8MiB)
+ Downloaded aiohttp
+ Downloaded hf-xet
+ Downloaded cryptography
+ Downloaded pydantic-core
+ Downloaded grpcio
+Downloading pillow (6.6MiB)
+ Downloaded pillow
+ Downloaded sympy
+ Downloaded scipy
+ Downloaded pyarrow
+Downloading botocore (14.9MiB)
+Downloading networkx (2.0MiB)
+Downloading tokenizers (3.2MiB)
+ Downloaded tokenizers
+ Downloaded networkx
+Downloading pandas (10.3MiB)
+Downloading numpy (15.9MiB)
+ Downloaded botocore
+ Downloaded pandas
+ Downloaded numpy
+ Downloaded torch
+Installed 88 packages in 324ms
+PRODUCT ERROR: ConfigError - recipe: ... needs the serving recipes of rcp-ndcg-vllm (No module named 'rcp_ndcg_vllm')

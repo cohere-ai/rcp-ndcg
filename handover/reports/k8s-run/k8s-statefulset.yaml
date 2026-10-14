@@ -1,0 +1,55 @@
+# k8s-run lane, shape (b): the StatefulSet shape.
+#
+# The judge runs as several replicas of one engine role: the runner renders a run-scoped StatefulSet plus a
+# headless Service per role with several replicas, owned by the Job. The client block is recipe
+# gemma-4-26b-a4b-nvfp4's own (the smallest judge recipe by bytes: NVFP4, 1 GPU per replica), inlined for
+# the same reason as shape (a); the engine command serves the shipped recipe id.
+label: k8s-statefulset
+dataset:
+  uri: jsonl:gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/dataset
+candidates:
+  from: dataset
+  depth: 5
+judge:
+  # The job's engine supplies the real replica URLs at runtime; the served-judge check accepts the engine's
+  # own loopback URL as the declared placeholder (a served judge that names another endpoint is refused).
+  base_url: http://127.0.0.1:8000/v1
+  api: chat
+  temperature: 1.0
+  extra_body: {top_p: 0.95, top_k: 64}
+  max_output_tokens: 16384
+  context_tokens: 131072
+  concurrency: 256
+  decoding: json_schema
+  image_processor: gemma4
+  max_images: 10
+  max_videos: 0
+  model: gemma-4-26b-a4b-nvfp4
+  revision: a19cfe00be84568a6867111c9a68c9c44fdcffe6
+  tokenizer: nvidia/Gemma-4-26B-A4B-NVFP4@a19cfe00be84568a6867111c9a68c9c44fdcffe6
+steps: [tournament]
+limit: 3
+serve:
+  judge:
+    image: vllm/vllm-openai:v0.31.0
+    command: ["bash", "-lc", "python3 -m pip install --quiet --no-index --trusted-host rcp-ndcg-k8srun-wheels --find-links http://rcp-ndcg-k8srun-wheels:8080 uv && python3 -m pip install --quiet --no-deps --no-index --trusted-host rcp-ndcg-k8srun-wheels --find-links http://rcp-ndcg-k8srun-wheels:8080 rcp-ndcg-vllm==0.0.1 && exec rcp-ndcg-vllm serve gemma-4-26b-a4b-nvfp4 --port 8000"]
+    resources: {gpus: 1}
+    replicas: 2
+    startup_timeout_s: 3600
+    outage_timeout_s: 300
+runner:
+  name: kubernetes
+  options:
+    context: gke-us-central1-prod
+    namespace: default
+    service_account: svc-modeling
+    node_selector: {cohere.com/mode: gpu, nvidia.com/gpu.product: NVIDIA-B200}
+    tolerations:
+    - {key: nvidia.com/gpu, operator: Equal, value: present, effect: NoSchedule}
+    wheelhouse: http://rcp-ndcg-k8srun-wheels:8080
+    constraints: http://rcp-ndcg-k8srun-wheels:8080/requirements-constraints.txt
+    resources: {cpus: 8, memory_gb: 32, time_limit_s: 3600}
+    env: {PIP_TRUSTED_HOST: rcp-ndcg-k8srun-wheels}
+    backoff_limit: 0
+    ttl_seconds_after_finished: 900
+mirror: gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/statefulset

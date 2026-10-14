@@ -1,0 +1,60 @@
+# The wheel server of the k8s-run lane: a Job that downloads the staged RC wheelhouse (the tip's rc0
+# stage) plus one extra uv wheel from GCS and serves the directory over HTTP, and a Service the run's
+# pods reach it at. The product's `wheelhouse` runner option takes an http(s):// URL of a wheelhouse,
+# so this is the documented option, served from inside the cluster (the stage bucket is not public).
+# Our own objects: prefix rcp-ndcg-k8srun-; deleted after the runs are recorded.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rcp-ndcg-k8srun-wheels
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: svc-modeling
+      containers:
+      - name: wheels
+        image: ghcr.io/astral-sh/uv:python3.12-trixie-slim
+        command:
+        - bash
+        - -c
+        - |
+          set -euo pipefail
+          mkdir -p /srv/wheelhouse
+          uvx --quiet --with gcsfs python - <<'PY'
+          import gcsfs
+          fs = gcsfs.GCSFileSystem()
+          fs.get(
+              "cohere-dev-central-2/fabian/rcp-ndcg-rfc/rc0-202610140620/wheelhouse/*",
+              "/srv/wheelhouse/", recursive=True,
+          )
+          fs.get(
+              "cohere-dev-central-2/fabian/rcp-ndcg-rfc/rc0-202610140620/requirements-constraints.txt",
+              "/srv/wheelhouse/requirements-constraints.txt",
+          )
+          fs.get(
+              "cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/wheels-extra/*",
+              "/srv/wheelhouse/", recursive=True,
+          )
+          print("wheelhouse staged")
+          PY
+          cd /srv/wheelhouse
+          exec python3 -m http.server 8080
+        resources:
+          requests: {cpu: "2", memory: 4Gi}
+          limits: {cpu: "4", memory: 8Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rcp-ndcg-k8srun-wheels
+  namespace: default
+spec:
+  selector:
+    job-name: rcp-ndcg-k8srun-wheels
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
