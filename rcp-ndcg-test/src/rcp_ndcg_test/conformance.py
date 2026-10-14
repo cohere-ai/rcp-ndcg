@@ -413,7 +413,7 @@ def _document_contents(case: Case) -> list[Any]:
     """
     from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
 
-    from .cases import text_of
+    from .cases import media_ref, text_of
 
     contents: list[Any] = []
     for document in case.inputs.documents:
@@ -422,58 +422,11 @@ def _document_contents(case: Case) -> list[Any]:
         if text is not None:
             parts.append(TextPart(text=text))
         if document.image is not None:
-            parts.append(ImagePart(ref=_media_ref(case, document.image)))
+            parts.append(ImagePart(ref=media_ref(case, document.image)))
         if document.video is not None:
-            parts.append(VideoPart(ref=_media_ref(case, document.video)))
+            parts.append(VideoPart(ref=media_ref(case, document.video)))
         contents.append(Content.from_parts(parts) if parts else Content.from_text(""))
     return contents
-
-
-def _media_ref(case: Case, relative: str) -> Any:
-    """The media reference of one case asset, resolved against the recipe's case directory.
-
-    Type and dimensions come from the product's one home (``rcp_ndcg.data.media``: its suffix->MIME
-    table and probe; a clip's header through ``probe_video_header``). A file whose type or
-    dimensions the product cannot read is refused at this seam: a bare ``MediaRef`` (no mime, no
-    dims) would silently inflate the media token count at the policy's pixel ceiling -- a silent
-    default this package forbids.
-    """
-    from pathlib import Path
-
-    from rcp_ndcg_core.content import MediaRef
-
-    from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, _probe_dimensions, probe_video_header
-
-    directory = getattr(case, "_dir", None)
-    if directory is None:  # pragma: no cover - load_case always pins it
-        raise ConformanceError(f"case {case.id}: no recipe directory pinned; the media {relative!r} cannot resolve")
-    path = Path(directory) / relative
-    payload = path.read_bytes()
-    suffix = path.suffix.lower()
-    ref_kwargs: dict[str, Any] = {"uri": str(path), "num_bytes": len(payload)}
-    if suffix == ".mp4" or suffix == ".mov":
-        header = probe_video_header(payload)
-        if header is None:
-            raise ConformanceError(
-                f"case {case.id}: the media {relative!r} is not a readable video container "
-                "(the product's probe_video_header knows none of its header)"
-            )
-        ref_kwargs.update({"width": header.width, "height": header.height, "num_frames": header.num_frames})
-        return MediaRef(**ref_kwargs)
-    mime = IMAGE_MIME_BY_SUFFIX.get(suffix)
-    if mime is None:
-        raise ConformanceError(
-            f"case {case.id}: unknown image type {suffix!r} for {relative!r}; "
-            f"the product's media table knows {sorted(IMAGE_MIME_BY_SUFFIX)}"
-        )
-    width, height = _probe_dimensions(payload)
-    if width is None or height is None:
-        raise ConformanceError(
-            f"case {case.id}: the image {relative!r} has no readable dimensions; the product's probe "
-            "cannot size it (its media token count would silently land at the policy's pixel ceiling)"
-        )
-    ref_kwargs.update({"width": width, "height": height, "mime": mime})
-    return MediaRef(**ref_kwargs)
 
 
 def _matrix(answer: Any) -> Any:

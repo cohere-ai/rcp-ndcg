@@ -293,6 +293,40 @@ jobs:
           git status --porcelain --untracked-files=all
           test -z "$(git status --porcelain --untracked-files=all)"
 
+  case-lengths:
+    name: the case grid's measured length strata (public Hub)
+    runs-on: ubuntu-latest
+    # The tokenizers the length strata measure with (the recipes' client.tokenizer Hub specs at their pinned
+    # revisions): cached between runs, the same layout the recipe tests use. The key follows the recipes, so a
+    # repinned tokenizer makes a new cache instead of a stale one.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/rcp-ndcg-vllm-tokenizers
+          key: case-length-tokenizers-${{ runner.os }}-${{ hashFiles('rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/**') }}
+          restore-keys: case-length-tokenizers-${{ runner.os }}-
+      - run: .github/scripts/cpu-env.sh dev
+      # The case grid's length strata are MEASURED (the product's fit over the recipe's tokenizer and media
+      # policy): tests/test_cases_package.py::test_every_long_input_measures_its_stratum is network-marked
+      # because a recipe's tokenizer is a public-Hub spec, and no other job sets the variable for tests/, so
+      # the check was dead in CI (reviews/final2-harness-glm53.md defect 2). It runs here on every push and
+      # pull request: a long_over cell the budget does not cut, a long_under cell far under it, a mixed batch
+      # that does not mix, or a media input nobody can count fails the job.
+      - name: the measured length strata
+        run: |
+          export RCP_NDCG_NETWORK_TESTS=1
+          export HF_HUB_CACHE="$HOME/.cache/rcp-ndcg-vllm-tokenizers/hub"
+          uv run --no-sync pytest tests/test_cases_package.py -q -p no:cacheprovider
+      - name: the tests left the checkout clean
+        run: |
+          git status --porcelain --untracked-files=all
+          test -z "$(git status --porcelain --untracked-files=all)"
+
   mteb:
     name: mteb tasks (non-blocking)
     runs-on: ubuntu-latest

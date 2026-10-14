@@ -40,7 +40,8 @@ QUERY_PREFIX = "Query: "
 DOCUMENT_PREFIX = "Document: "
 
 MAX_TOKENS = 8192  # the recipe's document-side budget (the whole rendered prompt)
-QUERY_CAP = 1024  # the model's own query cap (sentence_bert_config.json; recipe gap G2)
+# the model's own query cap (sentence_bert_config.json query_length = the recipe's client.query_max_tokens)
+QUERY_CAP = 1024
 
 RECIPE = "topk-embed-v1-small"
 TOLERANCE = {"abs": 0.02}
@@ -378,11 +379,11 @@ PUNCT_NOTE = (
 )
 QUERY_CAP_NOTE = (
     f"The query renders to more tokens than the model's own query cap ({QUERY_CAP}, "
-    "sentence_bert_config.json) while staying far under the 8192 budget: the reference "
-    "right-truncates the query at 1024, but the recipe schema has no query-cap field (recipe "
-    "gap G2), so the served query is uncut. expected.kind none: the case observes the G2 "
-    "divergence (query vector counts served vs reference) and is not a score comparison. The "
-    "wave must confirm the divergence and that a query of this length does not 400."
+    "sentence_bert_config.json query_length), which the recipe declares as its query shape's whole "
+    "budget (client.query_max_tokens: 1024, topk-embed-v1/family.yaml): the product's fit cuts the "
+    "query at that cap, exactly as the reference right-truncates it at 1024, so this is a long_over "
+    "render -- the budget cuts it. expected.kind none: the case observes the at-cap query's behaviour "
+    "(that it renders, is cut at the declared cap and does not 400), not a score comparison."
 )
 IMAGE_RENDER_NOTE = (
     "Image documents travel as an image-only user message through the checkpoint's chat "

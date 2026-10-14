@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -51,6 +52,7 @@ __all__ = [
     "default_cases_root",
     "load_case",
     "load_cases",
+    "media_ref",
     "text_of",
 ]
 
@@ -582,6 +584,65 @@ def _check_media(case: Case, recipe_cases_dir: Path) -> None:
                 )
 
 
+def media_ref(case: Case, relative: str) -> Any:
+    """The media reference of one case asset, resolved against the recipe's case directory.
+
+    Type, dimensions and -- for a clip -- its own frame count and rate come from the product's one home
+    (``rcp_ndcg.data.media``: its suffix->MIME table and the header probes). The conformance send lowers
+    this reference onto the wire, and the length strata count the media with it, so both sides measure the
+    same item. A file whose type, dimensions or frame rate the product cannot read is refused here: a bare
+    :class:`~rcp_ndcg_core.content.MediaRef` (no mime, no dims, no rate) would silently inflate the media
+    token count at the policy's pixel ceiling, or -- under an fps video policy -- make the engine's own
+    sampled frame count uncountable, a silent default this package forbids.
+
+    Raises:
+        CaseError: the media is not a readable image or container, or the case carries no recipe directory
+            to resolve it against.
+    """
+    from rcp_ndcg_core.content import MediaRef
+
+    from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, _probe_dimensions, probe_video_header
+
+    directory = getattr(case, "_dir", None)
+    if directory is None:  # pragma: no cover - load_case always pins it
+        raise CaseError(f"case {case.id}: no recipe directory pinned; the media {relative!r} cannot resolve")
+    path = Path(directory) / relative
+    payload = path.read_bytes()
+    suffix = path.suffix.lower()
+    ref_kwargs: dict[str, Any] = {"uri": str(path), "num_bytes": len(payload)}
+    if suffix in (".mp4", ".mov"):
+        header = probe_video_header(payload)
+        if header is None:
+            raise CaseError(
+                f"case {case.id}: the media {relative!r} is not a readable video container "
+                "(the product's probe_video_header knows none of its header)"
+            )
+        ref_kwargs.update(
+            {
+                "width": header.width,
+                "height": header.height,
+                "num_frames": header.num_frames,
+                "duration_s": header.duration_s,
+                "fps": header.fps,
+            }
+        )
+        return MediaRef(**ref_kwargs)
+    mime = IMAGE_MIME_BY_SUFFIX.get(suffix)
+    if mime is None:
+        raise CaseError(
+            f"case {case.id}: unknown image type {suffix!r} for {relative!r}; "
+            f"the product's media table knows {sorted(IMAGE_MIME_BY_SUFFIX)}"
+        )
+    width, height = _probe_dimensions(payload)
+    if width is None or height is None:
+        raise CaseError(
+            f"case {case.id}: the image {relative!r} has no readable dimensions; the product's probe "
+            "cannot size it (its media token count would silently land at the policy's pixel ceiling)"
+        )
+    ref_kwargs.update({"width": width, "height": height, "mime": mime})
+    return MediaRef(**ref_kwargs)
+
+
 def load_cases(
     root: str | Path | None = None,
     recipe: Recipe | str | None = None,
@@ -811,17 +872,22 @@ def _check_template_shapes(recipe: Recipe, case: Case) -> None:
         )
 
 
-def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
-    """The recipe's (tokenizer, budget) pair, the one bridge to the product's budget mechanism.
+def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any, Any, Any]:
+    """The recipe's (tokenizer, budget, image policy, video policy), the one bridge to the product's budget
+    and media mechanisms.
 
     The tokenizer comes from the recipe's ``client.tokenizer`` through the harness's loader, the
-    :class:`~rcp_ndcg.data.preprocess.TextBudget` from its ``client`` block. Cached per recipe *content*
-    (the client block's canonical JSON), never by id alone: a caller may pass two different configs under
-    one recipe id, and a budget shared between them would silently fit with the wrong template.
+    :class:`~rcp_ndcg.data.preprocess.TextBudget` from its ``client`` block, and the effective media
+    policies from the client's ``image_processor``/``image_policy``/``video_policy`` through the product's
+    own rule (:func:`rcp_ndcg.data.prepare.media_policies_for`), so the length strata count the media the
+    same way the served clients do. Cached per recipe *content* (the client block's canonical JSON), never
+    by id alone: a caller may pass two different configs under one recipe id, and a budget shared between
+    them would silently fit with the wrong template.
 
     Raises:
         CaseError: the tokenizer cannot be loaded (a Hub spec needs the cache or a network run;
-            ``load_cases(..., check_lengths=False)`` records the length checks as skipped instead).
+            ``load_cases(..., check_lengths=False)`` records the length checks as skipped instead), or the
+            client declares no ``max_tokens``.
     """
 
     # The key carries the recipe directory: a relative tokenizer spec resolves against it, so two
@@ -830,6 +896,7 @@ def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
     digest = hashlib.sha256(payload.encode()).hexdigest()
     cached = _FITTER_CACHE.get(digest)
     if cached is None:
+        from rcp_ndcg.data.prepare import media_policies_for
         from rcp_ndcg_test.equivalence.fitting import tokenizer_of
         from rcp_ndcg_test.equivalence.wire import role_client
 
@@ -843,15 +910,16 @@ def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any]:
                 "check_lengths=False) records the check as skipped instead)"
             ) from error
         budget = client.text_budget
+        image, video = media_policies_for(client.config)
         client.close()
         if budget is None:
             raise CaseError(f"recipe {recipe.id}: its client declares no max_tokens, so no length stratum applies")
-        cached = (tokenizer, budget.model_copy(update={"tokenizer": tokenizer.name}))
+        cached = (tokenizer, budget.model_copy(update={"tokenizer": tokenizer.name}), image, video)
         _FITTER_CACHE[digest] = cached
     return cached
 
 
-_FITTER_CACHE: dict[str, tuple[Any, Any]] = {}
+_FITTER_CACHE: dict[str, tuple[Any, Any, Any, Any]] = {}
 
 
 def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str:
@@ -868,20 +936,26 @@ def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str
 def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
     """One case through the product's ``fit``, exactly as the conformance send fits it.
 
-    Returns the number of cuts the fit recorded and every rendered input's token count (with the
-    tokenizer's post-processor specials, as the engine sees the render). The budget bounds the rendered
-    input -- the recipe's template, its specials and the content together -- so this is what the length
-    strata measure.
+    Returns the number of cuts the fit recorded and every rendered input's prompt token count (with the
+    tokenizer's post-processor specials and the input's media, as the engine sees the render: a rendered
+    input is its text render plus the media the engine adds for it). The budget bounds the rendered input
+    -- the recipe's template, its specials, the content and the media together -- so this is what the
+    length strata measure.
     """
     from rcp_ndcg.data.preprocess import fit
+    from rcp_ndcg.data.templates import RequestShape
 
-    tokenizer, budget = _recipe_fitter(recipe)
+    tokenizer, budget, _, _ = _recipe_fitter(recipe)
+    query_media, document_media = _media_tokens_of(recipe, case)
     cuts, renders = 0, []
     if recipe.role == "rerank":
         instruction = case.inputs.instruction
-        for query in case.inputs.queries:  # the send fits one pair set per query; measure every one
+        for index, query in enumerate(case.inputs.queries):  # the send fits one pair set per query
             folded = _pair_fold_query(recipe, text_of(query) or "", instruction)
             inputs = [(folded, text_of(document) or "") for document in case.inputs.documents]
+            # One count per pair: the query's media ride every pair of its set (the rerank client's own
+            # ``query_media + pair_media``), reserved whole out of the budget.
+            media = [query_media[index] + document_media[position] for position in range(len(case.inputs.documents))]
             result = fit(
                 inputs,
                 "pair",
@@ -889,18 +963,72 @@ def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
                 tokenizer,
                 ids=[f"{query.id}/{document.id}" for document in case.inputs.documents],
                 instruction=instruction,
+                media_tokens=media,
             )
             cuts += len(result.cuts)
-            renders.extend(tokenizer.count(text, add_special_tokens=True) for text in result.texts)
+            renders.extend(
+                tokenizer.count(text, add_special_tokens=True) + media[position]
+                for position, text in enumerate(result.texts)
+            )
         return cuts, renders
-    for shape, texts in (
-        ("query", [text_of(query) or "" for query in case.inputs.queries]),
-        ("document", [text_of(document) or "" for document in case.inputs.documents]),
-    ):
-        fitted = fit(texts, shape, budget, tokenizer, ids=[str(index) for index in range(len(texts))])  # type: ignore[arg-type]  # the literal shapes are RequestShape values
+    batches: list[tuple[RequestShape, Sequence[Any], Sequence[int]]] = [
+        ("query", case.inputs.queries, query_media),
+        ("document", case.inputs.documents, document_media),
+    ]
+    for shape, items, media in batches:
+        texts = [text_of(item) or "" for item in items]
+        fitted = fit(
+            texts,
+            shape,
+            budget,
+            tokenizer,
+            ids=[str(index) for index in range(len(texts))],
+            media_tokens=media,
+        )
         cuts += len(fitted.cuts)
-        renders.extend(tokenizer.count(text, add_special_tokens=True) for text in fitted.texts)
+        renders.extend(
+            tokenizer.count(text, add_special_tokens=True) + media[index] for index, text in enumerate(fitted.texts)
+        )
     return cuts, renders
+
+
+def _media_tokens_of(recipe: Recipe, case: Case) -> tuple[list[int], list[int]]:
+    """Each case input's media token count, as the engine adds it to the prompt.
+
+    The product's :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the recipe client's
+    effective policies -- the same instrument the served clients, the conformance send and the media stage
+    count with -- over the case's own media files (``media/<file>``, sized from their probed dimensions
+    and, for a container, its own frame count and rate). Returns the counts in the queries' and the
+    documents' order; a query is text-only in the case format, so its counts are zeros.
+
+    Raises:
+        CaseError: the media cannot be counted (the recipe declares no policy that can: a native image
+            policy, or a container without a video policy). A length label is never measured over media
+            nobody can count -- silently ignoring it is the mislabel this check exists to catch.
+    """
+    from rcp_ndcg_core.content import Content, ImagePart, VideoPart
+
+    from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
+
+    tokenizer, _, image, video = _recipe_fitter(recipe)
+
+    def count(document: CaseDocument) -> int:
+        parts: list[Any] = []
+        if document.image is not None:
+            parts.append(ImagePart(ref=media_ref(case, document.image)))
+        if document.video is not None:
+            parts.append(VideoPart(ref=media_ref(case, document.video)))
+        try:
+            content = Content.from_parts(parts)
+            return content_media_tokens(content, image or ImagePolicy.native(), video, tokenizer=tokenizer).tokens
+        except Exception as error:  # noqa: BLE001 - reported as the case's own refusal, never swallowed
+            raise CaseError(
+                f"case {case.id!r}: the media of {document.id!r} cannot be counted for the length strata "
+                f"({type(error).__name__}: {error}); a media case's length label needs a countable policy "
+                "(an image_processor with a bounded image_policy, and a video_policy for a container)"
+            ) from error
+
+    return [0] * len(case.inputs.queries), [count(document) for document in case.inputs.documents]
 
 
 def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
@@ -909,44 +1037,49 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
     A ``long_under`` case is rendered whole (the fit records no cut) and at least one of its rendered
     inputs measures within 5% under ``client.max_tokens`` -- the stratum is only real near the budget. A
     ``long_over`` case is cut by the fit (at least one render over the budget). A ``short`` case is sent
-    whole. Media carry no text and are not measured (their token counts are the engine's, not the
-    tokenizer's)."""
+    whole. Media are counted, never ignored: every input's media tokens (the product's
+    :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the recipe client's policies -- what the
+    engine adds to the prompt) are reserved whole out of the budget in the fit and added to that input's
+    measured prompt length, so a case whose image alone pushes it over the budget is not ``short``, a
+    ``long_over`` whose overflow comes from the image is cut like any other, and an image batch whose
+    patch counts differ is a ``mixed`` batch."""
     if recipe.client.get("max_tokens") is None:
         return  # recorded as skipped by the caller: a hosted profile declares no client-side budget
     max_tokens = int(recipe.client["max_tokens"])
-    tokenizer = _tokenizer_of(recipe)
+    tokenizer, _, _, _ = _recipe_fitter(recipe)
     for case in cases:
+        query_media, document_media = _media_tokens_of(recipe, case)
         if case.strata.length == "mixed" or case.strata.batch == "mixed_length":
             # length 'mixed' / batch 'mixed_length' promise that ONE SENT BATCH mixes lengths
             # (round-2 F2): the queries and the documents leave as separate batches (and a rerank
             # request sends its document batch per query), so the mix must occur within one of those
             # -- a mix spread across the pools exercises no mixed batch on the wire -- and only
-            # text-bearing inputs are measured (a media-only document is not a 0-length text).
+            # inputs that carry text or media are measured (an empty input is not a 0-length text, but
+            # a media-only document costs its media's tokens).
             mixing_claim = "length mixed" if case.strata.length == "mixed" else "batch mixed_length"
-            query_texts = [text_of(query) or "" for query in case.inputs.queries]
-            doc_texts = [text_of(document) or "" for document in case.inputs.documents]
-            batches: list[tuple[str, list[str]]] = [("document", doc_texts)]
-            if case.role != "rerank":
-                batches.insert(0, ("query", query_texts))
-            mixing = [
-                label for label, texts in batches if len({tokenizer.count(text) for text in texts if text.strip()}) >= 2
+            batches: list[tuple[str, list[int]]] = [
+                ("document", _sent_lengths(tokenizer, case.inputs.documents, document_media))
             ]
+            if case.role != "rerank":
+                batches.insert(0, ("query", _sent_lengths(tokenizer, case.inputs.queries, query_media)))
+            mixing = [label for label, lengths in batches if len(set(lengths)) >= 2]
             if not mixing:
-                counts = {
-                    label: sorted({tokenizer.count(text) for text in texts if text.strip()}) for label, texts in batches
-                }
+                counts = {label: sorted(set(lengths)) for label, lengths in batches}
                 raise CaseError(
                     f"case {case.id!r}: {mixing_claim}, but no sent batch mixes lengths "
-                    f"(measured text tokens per batch: {counts}); the batch holds no mixed lengths"
+                    f"(measured prompt tokens per batch: {counts}); the batch holds no mixed lengths"
                 )
         if case.strata.length not in ("long_under", "long_over", "short"):
             continue
-        measured = [
-            (label, item.id, tokenizer.count(text))
-            for label, items in (("query", case.inputs.queries), ("document", case.inputs.documents))
-            for item in items
-            if (text := text_of(item)) is not None
-        ]
+        measured: list[tuple[str, str, int]] = []
+        for label, items, media in (
+            ("query", case.inputs.queries, query_media),
+            ("document", case.inputs.documents, document_media),
+        ):
+            for index, item in enumerate(items):
+                text = text_of(item) or ""
+                if text.strip() or media[index]:
+                    measured.append((label, item.id, tokenizer.count(text) + media[index]))
         counts = [count for _, _, count in measured]
         if case.strata.length == "short":
             if any(count > max_tokens for count in counts):
@@ -986,18 +1119,16 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
             )
 
 
-def _tokenizer_of(recipe: Recipe) -> Any:
-    """The product tokenizer the recipe's client block names (the harness's own loader)."""
-    from rcp_ndcg_test.equivalence.fitting import tokenizer_of as harness_tokenizer_of
-
-    try:
-        return harness_tokenizer_of(recipe)
-    except Exception as error:
-        raise CaseError(
-            f"recipe {recipe.id}: loading its tokenizer ({recipe.client.get('tokenizer')!r}) failed: {error}; a recipe "
-            "whose tokenizer lives on the Hub needs it cached or a network run (load_cases(..., "
-            "check_lengths=False) records the check as skipped instead)"
-        ) from error
+def _sent_lengths(tokenizer: Any, items: Sequence[Any], media: Sequence[int]) -> list[int]:
+    """Every input that carries text or media, as the prompt tokens it costs: the tokenizer's own count of
+    its text plus the media the engine adds for it. An input with neither (an empty text and no media) is
+    not a length at all and is left out."""
+    lengths: list[int] = []
+    for index, item in enumerate(items):
+        text = text_of(item) or ""
+        if text.strip() or media[index]:
+            lengths.append(tokenizer.count(text) + media[index])
+    return lengths
 
 
 def _check_coverage(recipe: Recipe, cases: list[Case]) -> None:

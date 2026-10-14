@@ -2072,9 +2072,7 @@ def _wave_document(
     # ``<out>/<recipe_id>`` and says nothing about the corpus).  Rows without an upload record (no
     # ``--upload``) index as before: a local wave.json names no destination.  All values stay on the row for
     # reporting; only the index maps are gated.
-    recorded = [
-        row for row in rows if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"
-    ]
+    recorded = [row for row in rows if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"]
     fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in recorded if row.get("behaviour_fingerprint")}
     engine_versions = {row["recipe"]: row["engine_version"] for row in recorded if row.get("engine_version")}
     verified = bool(rows) and all(row["state"] == "verified" for row in rows)
