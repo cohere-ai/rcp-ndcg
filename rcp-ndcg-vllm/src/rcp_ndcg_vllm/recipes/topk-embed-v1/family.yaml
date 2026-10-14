@@ -180,15 +180,19 @@ gates: {}
 # rows; every run rc0-202610120045..rc0-202610131205-record failed the same gate). The state is the
 # schema's `failed` -- "a gate failed; the report says which" -- not `unverified`: the measurement
 # exists. NOTE: the harness's plugin-module keying (b2621274, 2026-10-13) moved this recipe's
-# behaviour fingerprint after that wave (1fdf2847 -> 1ac72016 for -small), so the failed evidence is
-# at a superseded fingerprint too; the release plan's A1b re-verification re-runs the gate on the
-# final RC at the current one. The gate itself, its dtype and the disposition stay untouched (the
-# disposition is the owner's).
+# behaviour fingerprint after that wave (1fdf2847 -> 1ac72016 for -small), so that failed evidence is
+# at a superseded fingerprint too; the re-verification on the final candidate
+# (waves-rc0-202610140620/plugin-carriers-vllm, 2026-10-14) ran the gate at the current fingerprint
+# and failed again with the same dtype-independent signature -- stage 1 passes, stage 2 fails the
+# per-token cosine floor (min cosine -0.11455 full width, -0.36072 at k=64, -0.28597 at k=128, -small,
+# against the 0.999 bound) -- and it is the report the status block below points at. No re-verification
+# is deferred past the tag: the gate, its dtype and the disposition stay untouched (the disposition is
+# the owner's).
 status:
   state: failed
   image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-13"
-  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves-rc0-202610130615/r4/vllm-vllm-openai-v0-31-0/"
+  date: "2026-10-14"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves-rc0-202610140620/plugin-carriers-vllm/vllm-vllm-openai-v0-31-0/"
 sources:
   # The checkpoint, every file byte-verified at the pinned revision (tokenizer.json via its
   # Git-LFS oid e56427d66f44..., sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7).
@@ -289,12 +293,13 @@ notes: |
   cuts ids, not text: when its last kept id lands inside a character spanning several byte-level
   tokens (an emoji), the card's model reads that character's leading bytes, which no text carries --
   one more id than the client sends. Hence over_cap_cut_differs (the anchor kept, the kept content
-  differing by that id; a stage-2 difference, the render texts are equal). What the harness does today: stage 1 treats a row as over cap
-  only when a cut's content tokens exceed client.max_tokens (8192), so a document row whose content
-  alone exceeds 8192 tokens is reported, not gated, while a document that overflows only with the
-  head and every query cut at its 1024 share are gated. Stage 1 passes on them (equal texts); stage 2
-  would gate a split-character row's vectors. The wave's pairs files must keep queries within 1024
-  tokens and documents within 8192.
+  differing by that id; a stage-2 difference, the render texts are equal). What the harness does today:
+  the client's own processing records decide, not a re-derived token count -- stage 1 marks a row over
+  cap when the fit recorded a cut for it (its content exceeded the shape's budget), and stage 2 reports
+  every client-changed input in the non-gating table and gates every other input exactly, so a cut row
+  never fails a gate. The wave's pairs files keep queries within 1024 tokens and documents within 8192
+  all the same: that is the declared conservatism the recorded runs obeyed, so the failed evidence
+  stands on in-budget rows.
 
   Empty documents: the reference renders an empty document as "Document:" -- exactly one kept token
   (the colon is a skip id), so the wrapper's `or eos or "."` fallback is dead code for this
