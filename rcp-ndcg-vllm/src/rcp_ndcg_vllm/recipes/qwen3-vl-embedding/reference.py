@@ -37,21 +37,23 @@ read from the vendored script's source, never restated.
   The checkpoint is resolved with ``huggingface_hub.snapshot_download`` at the
   revision the resolved recipe names, so model and processor load the same pinned snapshot. A pairs row's
   ``media`` field is read (:func:`card_inputs`): an image entry becomes a loaded PIL image, a video entry is
-  written to a scratch file and handed to the card's own loader at the recipe's declared fps
-  (``client.video_policy.fps``) capped at the engine's realised frame count (:func:`realised_video_frames`),
-  the text parts join the side's text, and the card's order (video, image, text) is the only order it can
-  express -- an interleaved part sequence, several images/videos or an image before its video is refused
-  loudly by :func:`side_parts`, never silently reordered.
+  written to a scratch file and handed to the checkpoint's own ``Qwen3VLVideoProcessor`` at the recipe's
+  declared fps (``client.video_policy.fps``) and whole-clip pixel pin (:func:`video_processor_kwargs`) -- the
+  engine's own sampling and resize, not the card script's ``qwen_vl_utils`` route -- the text parts join the
+  side's text, and the card's order (video, image, text) is the only order it can express -- an interleaved
+  part sequence, several images/videos or an image before its video is refused loudly by :func:`side_parts`,
+  never silently reordered.
 
 - ``--mode media`` (the media stage's reference side): for every pairs row carrying ``media``, per side, what
   the card's model consumes -- the user turn's parts in the card's order (video, image, text; an interleaved
   text part where it stands), each image's size after the card's ``fetch_image`` resize (qwen-vl-utils'
   ``smart_resize`` under the card's MIN/MAX_PIXELS, read from the vendored script) and its tokens (merged
-  patches plus the two vision markers). Needs PIL only. The render mode compares text rows (a media column
+  patches plus the two vision markers), each container as the checkpoint's own ``Qwen3VLVideoProcessor``
+  realises it (:func:`video_realisation`: the frames it sampled, the per-frame size it resized to and the
+  patch tokens it produced). The image rows need PIL only; a video row loads the checkpoint's processor
+  (transformers and the checkpoint's own video decoder). The render mode compares text rows (a media column
   there is refused loudly, :func:`_refuse_media_rows`). The recipe's ONE video sampling policy is the engine's
-  fps rule (fps 2, the checkpoint video processor's rate): the card reads the container through its own
-  loader with ``fps``/``max_frames``, and the media mode reports the realised frame count from each pairs
-  entry's own frame count and rate.
+  fps rule (fps 2, the checkpoint video processor's rate), applied by the processor itself.
 
 Which over-cap rows the harness reports rather than gates is the recipe's notes' ("Budgets").
 
@@ -314,42 +316,28 @@ def _image_size(entry: dict[str, Any]) -> tuple[int, int]:
         return handle.size
 
 
-def realised_video_frames(entry: dict[str, Any], declared_fps: float | None, constants: dict[str, int]) -> int:
-    """The frames the served engine shows for one pairs video entry.
+def declared_video_rate(fps: float | None) -> float:
+    """The recipe's declared engine rate (``client.video_policy.fps``), refused loudly when absent.
 
-    vLLM v0.31.0's ``Qwen3VLVideoBackend.compute_frames_index_to_sample`` (multimodal/video.py:360-400)
-    samples ``int(total_frames / original_fps * fps)`` frames, clamped to ``[min_frames=4, max_frames=768,
-    total_frames]``; the Qwen3-VL backend IGNORES ``num_frames``. The recipe declares the engine's rate
-    (``client.video_policy.fps``), and the pairs entry records the clip's own frame count and rate, so the
-    realised count is computable here. A missing declared rate or missing clip facts is refused loudly:
-    the card's own fallback would sample at its own rate, a different instrument.
+    The Qwen3-VL backend samples a container by fps and IGNORES a pinned ``num_frames``, so the recipe's
+    fps is the ONE rate every side applies; without it the checkpoint's processor would sample at its own
+    default rate, a different instrument.
     """
-    if declared_fps is None:
+    if fps is None:
         raise SystemExit(
             "the recipe declares no video rate (client.video_policy.fps): the reference cannot know the "
-            "frames the engine shows, and the card's own fallback would sample at its own rate"
+            "frames the engine shows, and the checkpoint's processor would sample at its own rate"
         )
-    total = entry.get("num_frames")
-    original = entry.get("fps")
-    if not total or not original:
-        raise SystemExit(f"the video {entry.get('uri')!r} records no frame count or rate; cannot sample")
-    target = min(float(declared_fps), 30.0)
-    frames = int(int(total) / float(original) * target)
-    return min(max(frames, 4), 768, int(total))
-
-
-#: qwen-vl-utils 0.0.14's per-frame video ceiling (``VIDEO_MAX_TOKEN_NUM`` 768 x the 32-px patch
-#: square): the card's loader cannot resize a frame above it, so a per-frame share above it cannot express
-#: the recipe's whole-clip pin.
-_CARD_FRAME_MAX_PIXELS = 768 * 32 * 32
+    return float(fps)
 
 
 def video_pixel_pin(recipe: dict[str, Any]) -> tuple[int, int]:
     """The recipe's whole-clip video pixel pin, ``serve.mm_processor_kwargs.videos_kwargs``.
 
-    The engine's HF Qwen3-VL video processor resizes a container's frames under these numbers, with the
-    ceiling constraining the whole clip together; the reference's card route must reproduce them, so a
-    recipe that declares no pin is refused loudly (never silently resized by the loader's own defaults).
+    The checkpoint's Qwen3-VL video processor resizes a container's frames under these numbers, with the
+    ceiling constraining the whole clip together; the reference hands them to the processor itself
+    (:func:`video_processor_kwargs`), so a recipe that declares no pin is refused loudly (never silently
+    resized by the processor's own defaults).
     """
     mm_processor_kwargs = (recipe.get("serve") or {}).get("mm_processor_kwargs") or {}
     videos = mm_processor_kwargs.get("videos_kwargs") or {}
@@ -361,42 +349,101 @@ def video_pixel_pin(recipe: dict[str, Any]) -> tuple[int, int]:
     return int(videos["min_pixels"]), int(videos["max_pixels"])
 
 
-def frame_bounds(frames: int, pin: tuple[int, int]) -> tuple[int, int]:
-    """The per-frame pixel bounds that make the card's loader apply the recipe's whole-clip video pin.
+def video_processor_kwargs(declared_fps: float, pin: tuple[int, int]) -> dict[str, Any]:
+    """The kwargs the checkpoint's own ``Qwen3VLVideoProcessor`` gets for one container.
 
-    The engine constrains the whole clip together (``t_bar x h_bar x w_bar`` against the pin), the card's
-    loader constrains each frame; a clip's per-frame share of the whole-clip budget is the same rule for
-    an even frame count (the loader floors a container's frames to an even count) and a share within the
-    loader's per-frame ceiling. The media set's shipped clips (64 frames at 8 fps, 16 at the declared 2)
-    are both.
+    The engine's sampling and the recipe's pin, in the processor's own vocabulary:
+
+    * ``do_sample_frames`` true with ``fps`` the declared rate: the processor decodes the container and
+      samples ``int(total_frames / original_fps * fps)`` frames, clamped to its own 4..768 bounds and
+      total, at ``np.linspace`` indices -- the rule vLLM v0.31.0's ``Qwen3VLVideoBackend``
+      (``compute_frames_index_to_sample``) implements, which the engine reports as already sampled.
+    * ``size`` the recipe's whole-clip pin: the video processor's clip-level budget, which is what
+      ``serve.mm_processor_kwargs.videos_kwargs``'s ``min_pixels``/``max_pixels`` name (vLLM's own
+      ``_get_vision_info`` folds them into ``size["shortest_edge"]``/``size["longest_edge"]``).
+    * ``cap_pixels_per_frame`` false: the uncapped resize the engine's own transformers (5.17) applies;
+      transformers 5.19 keeps that default and warns until v5.22, so the reference pins it explicitly.
+    * ``return_metadata`` true: the processor reports the frames it sampled, which the media mode reads
+      back (:func:`realised_video`).
     """
-    if frames < 2 or frames % 2:
-        raise SystemExit(f"a video's realised frame count must be an even number, got {frames}")
-    min_pixels, max_pixels = pin[0] // frames, pin[1] // frames
-    if max_pixels > _CARD_FRAME_MAX_PIXELS:
-        raise SystemExit(
-            f"the pin's per-frame share {max_pixels} exceeds the card loader's per-frame ceiling "
-            f"{_CARD_FRAME_MAX_PIXELS}: the reference cannot reproduce the engine's geometry for "
-            f"{frames} frames"
-        )
-    return min_pixels, max_pixels
+    return {
+        "do_sample_frames": True,
+        "fps": float(declared_fps),
+        "size": {"shortest_edge": pin[0], "longest_edge": pin[1]},
+        "cap_pixels_per_frame": False,
+        "return_metadata": True,
+    }
 
 
-def pin_video_item(conversation: list[dict[str, Any]], pin: tuple[int, int]) -> None:
-    """Add the recipe's whole-clip video pin to a conversation's video item, as the card's loader reads it.
+def load_video_processor(recipe: dict[str, Any]) -> Any:
+    """The checkpoint's own ``Qwen3VLVideoProcessor`` at the recipe's pinned revision.
 
-    qwen-vl-utils resizes a container's frames under the item's own ``min_pixels``/``max_pixels`` (the
-    same keys the card passes for an image); the per-frame shares of the pin (:func:`frame_bounds`) are
-    what reproduce the engine's geometry. A video item without its realised ``max_frames`` is refused.
+    Loaded from the pinned snapshot (``snapshot_download`` at the recipe's revision), so the reference
+    runs the same processor class and the same ``video_preprocessor_config.json`` the engine does; a
+    recipe that names no model is refused loudly.
     """
-    for message in conversation:
-        for item in message.get("content") or []:
-            if item.get("type") != "video":
-                continue
-            frames = int(item.get("max_frames") or 0)
-            if not frames:
-                raise SystemExit("the video item carries no max_frames: the reference's frames are undeclared")
-            item["min_pixels"], item["max_pixels"] = frame_bounds(frames, pin)
+    from huggingface_hub import snapshot_download
+    from transformers import Qwen3VLVideoProcessor
+
+    model = str(recipe.get("model") or "")
+    if not model:
+        raise SystemExit("the resolved recipe names no model: the checkpoint's video processor cannot be loaded")
+    path = snapshot_download(model, revision=str(recipe.get("revision")) or None)
+    return Qwen3VLVideoProcessor.from_pretrained(path)
+
+
+def realised_video(outputs: dict[str, Any], processor: Any) -> dict[str, Any]:
+    """What the checkpoint's own video processor realised for one container, read from its own outputs.
+
+    ``video_grid_thw`` is the patch grid the processor patchified the container into (temporal, height,
+    width, each in patches) and ``video_metadata`` carries the frames it sampled (``frames_indices``).
+
+    Returns:
+        ``{"frames", "frame_width", "frame_height", "tokens"}``: the sampled frames, the per-frame size
+        in pixels (the grid's patch multiples) and the container's merged patch tokens
+        (``grid_t x grid_h x grid_w / merge_size**2``). Nothing is re-derived from the pairs entry: the
+        processor's own outputs are the report. (``frame_width``/``frame_height``, not ``width``/
+        ``height``: the media stage's per-item comparison reads ``width``/``height`` as the image's
+        prepared size, which a container side never carries.)
+    """
+    grid = outputs["video_grid_thw"][0]
+    grid_t, grid_h, grid_w = (int(value) for value in grid)
+    patch = int(processor.patch_size)
+    merge = int(processor.merge_size)
+    metadata = outputs["video_metadata"][0]
+    return {
+        "frames": len(metadata.frames_indices),
+        "frame_width": grid_w * patch,
+        "frame_height": grid_h * patch,
+        "tokens": grid_t * grid_h * grid_w // merge**2,
+    }
+
+
+def _video_suffix(payload: bytes) -> str:
+    """The scratch file's suffix, from the container's own magic (RIFF AVI or ISOBMFF), never the URI's name."""
+    if payload[:4] == b"RIFF":
+        return ".avi"
+    if payload[4:8] == b"ftyp":
+        return ".mp4"
+    raise SystemExit("the video bytes state neither a RIFF nor an ISOBMFF container; the decoder needs a container")
+
+
+def _write_container(entry: dict[str, Any], *, work: Path, clip_name: str) -> Path:
+    """One pairs video entry's inline bytes on disk, at a path the checkpoint's own decoder reads."""
+    payload = _entry_bytes(entry)
+    path = work / f"{clip_name}{_video_suffix(payload)}"
+    path.write_bytes(payload)
+    return path
+
+
+def video_realisation(
+    processor: Any, entry: dict[str, Any], *, work: Path, clip_name: str, declared_fps: float, pin: tuple[int, int]
+) -> dict[str, Any]:
+    """One container as the checkpoint's own video processor realises it: write it, call the processor, read
+    the processor's own outputs back (:func:`realised_video`)."""
+    path = _write_container(entry, work=work, clip_name=clip_name)
+    outputs = processor(videos=[str(path)], **video_processor_kwargs(declared_fps, pin))
+    return realised_video(outputs, processor)
 
 
 def side_parts(text: str, entries: list[dict[str, Any]]) -> tuple[list[str], str]:
@@ -462,13 +509,13 @@ def card_inputs(
     work: Path,
     clip_name: str,
     declared_fps: float | None,
-    constants: dict[str, int],
 ) -> dict[str, Any]:
     """One side as the card's own ``Qwen3VLEmbedder.process`` input (its ``format_model_input`` keys).
 
-    An image entry becomes a loaded PIL image; a video entry is written to ``work/<clip_name>.avi`` and the
-    card's container loader samples it at ``declared_fps`` (the recipe's engine pin) capped at the engine's
-    realised frame count. The card renders video, then image, then text (:func:`side_parts` refuses the
+    An image entry becomes a loaded PIL image; a video entry is written to a scratch file and its item
+    names the recipe's declared rate (``fps``) -- the checkpoint's own video processor samples and resizes
+    it (:func:`video_processor_kwargs`, applied by the reference's embedder), never the card script's
+    ``qwen_vl_utils`` route. The card renders video, then image, then text (:func:`side_parts` refuses the
     forms it cannot express); an empty side is the card's own "NULL" rule (no key at all, which the card
     renders as NULL only when the side carries nothing).
     """
@@ -477,19 +524,8 @@ def card_inputs(
     for entry in entries:
         kind = str(entry.get("kind", "image"))
         if kind == "video":
-            path = work / f"{clip_name}.avi"
-            path.write_bytes(_entry_bytes(entry))
-            frames = realised_video_frames(entry, declared_fps, constants)
-            if frames % 2:
-                raise SystemExit(
-                    f"the engine's realised frame count for {clip_name} is {frames}, an odd number: the "
-                    "card's loader floors a container's frames to an even count, so the reference cannot "
-                    "show the engine's frames"
-                )
-            payload["video"] = str(path)
-            payload["max_frames"] = frames
-            if declared_fps is not None:
-                payload["fps"] = float(declared_fps)
+            payload["video"] = str(_write_container(entry, work=work, clip_name=clip_name))
+            payload["fps"] = declared_video_rate(declared_fps)
         elif kind == "image":
             payload["image"] = _decode_image(entry)
     if body:
@@ -497,15 +533,35 @@ def card_inputs(
     return payload
 
 
+def _carries_video(pairs: list[dict[str, Any]]) -> bool:
+    """Whether any pairs row carries a video entry (the media mode's container route is needed then)."""
+    for row in pairs:
+        media = row.get("media") or {}
+        # the media field's shapes: ``query`` is a list of entries, ``documents`` a list of those lists
+        for entries in [media.get("query") or [], *(media.get("documents") or [])]:
+            if any(str(entry.get("kind", "image")) == "video" for entry in entries or []):
+                return True
+    return False
+
+
 def media_side(
-    text: str, entries: list[dict[str, Any]], constants: dict[str, int], declared_fps: float | None = None
+    text: str,
+    entries: list[dict[str, Any]],
+    constants: dict[str, int],
+    *,
+    processor: Any = None,
+    pin: tuple[int, int] | None = None,
+    declared_fps: float | None = None,
+    work: Path | None = None,
+    clip_name: str = "clip",
 ) -> dict[str, Any]:
-    """One side as the card's model consumes it: ``format_model_input`` builds the user turn video first, then
-    the image, then the text (one image and one video per input); each image is resized by ``fetch_image``
-    under the card's MIN/MAX_PIXELS and costs its merged patches ((h/32) x (w/32) image pads, the
-    processor's do_resize being off) plus its vision start and end markers; a video is the engine's own
-    fps sample (:func:`realised_video_frames`; the card's container route samples it the same way) -- its
-    tokens are the processor's and are not counted here. An interleaved text part stands where it stands.
+    """One side as the card's model consumes it: ``format_model_input`` builds the user turn video first,
+    then the image, then the text (one image and one video per input); each image is resized by
+    ``fetch_image`` under the card's MIN/MAX_PIXELS and costs its merged patches ((h/32) x (w/32) image
+    pads, the processor's do_resize being off) plus its vision start and end markers; each container is the
+    checkpoint's own ``Qwen3VLVideoProcessor``'s realisation (:func:`video_realisation`): the frames it
+    sampled, the per-frame size it resized to and its patch tokens. An interleaved text part stands where
+    it stands.
     """
     side_parts(text, entries)
     factor = constants["IMAGE_FACTOR"]
@@ -517,9 +573,25 @@ def media_side(
             if str(entry.get("text", "")):
                 placement.append("text")
         elif kind == "video":
+            if processor is None or pin is None or declared_fps is None or work is None:
+                raise SystemExit(
+                    "a video row needs the checkpoint's own video processor, the recipe's declared fps and "
+                    "whole-clip pin, and a scratch file: the media mode's container route reports the "
+                    "processor's own realisation, never a re-derived one"
+                )
             placement.append("video")
             media.append(
-                {"kind": "video", "frames": realised_video_frames(entry, declared_fps, constants), "tokens": None}
+                {
+                    "kind": "video",
+                    **video_realisation(
+                        processor,
+                        entry,
+                        work=work,
+                        clip_name=clip_name,
+                        declared_fps=declared_fps,
+                        pin=pin,
+                    ),
+                }
             )
         else:
             width, height = _image_size(entry)
@@ -534,27 +606,52 @@ def media_side(
 
 def mode_media(pairs: list[dict[str, Any]], recipe: dict[str, Any] | None = None) -> dict[str, Any]:
     """The media stage's reference side: per row and side that carries media, what the card's model consumes
-    (:func:`media_side`), with a video's realised frame count following the engine's declared fps rule
-    (:func:`realised_video_frames`)."""
+    (:func:`media_side`). A container's facts are the checkpoint's own ``Qwen3VLVideoProcessor``'s
+    (:func:`video_realisation`), loaded from the recipe's pinned snapshot only when a row carries one."""
     _refuse_old_media_columns(pairs)
     constants = card_media_constants()
-    policy = (recipe or {}).get("client", {}).get("video_policy") or {}
-    declared_fps = policy.get("fps")
+    has_video = _carries_video(pairs)
+    policy = ((recipe or {}).get("client") or {}).get("video_policy") or {}
+    pin = video_pixel_pin(recipe or {}) if has_video else None
+    declared_fps = declared_video_rate(policy.get("fps")) if has_video else None
+    processor = load_video_processor(recipe or {}) if has_video else None
     rows: list[dict[str, Any]] = []
-    for index, row in enumerate(pairs):
-        media = row.get("media") or {}
-        if media.get("query"):
-            rows.append(
-                {
-                    "index": index,
-                    "side": "query",
-                    **media_side(str(row["query"]), media["query"], constants, declared_fps),
-                }
-            )
-        for position, entries in enumerate(media.get("documents") or []):
-            if entries:
-                side = media_side(str(row["documents"][position]), entries, constants, declared_fps)
-                rows.append({"index": index, "side": f"document {position}", **side})
+    # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's scan;
+    # a scratch cleanup race must never fail a reference run (the harness's own tempdirs say the same).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        root = Path(work)
+        for index, row in enumerate(pairs):
+            media = row.get("media") or {}
+            if media.get("query"):
+                rows.append(
+                    {
+                        "index": index,
+                        "side": "query",
+                        **media_side(
+                            str(row["query"]),
+                            media["query"],
+                            constants,
+                            processor=processor,
+                            pin=pin,
+                            declared_fps=declared_fps,
+                            work=root,
+                            clip_name=f"query-{index}",
+                        ),
+                    }
+                )
+            for position, entries in enumerate(media.get("documents") or []):
+                if entries:
+                    side = media_side(
+                        str(row["documents"][position]),
+                        entries,
+                        constants,
+                        processor=processor,
+                        pin=pin,
+                        declared_fps=declared_fps,
+                        work=root,
+                        clip_name=f"document-{index}-{position}",
+                    )
+                    rows.append({"index": index, "side": f"document {position}", **side})
     return {"rows": rows}
 
 
@@ -568,6 +665,66 @@ def _load_recipe() -> dict[str, Any]:
     return json.loads(Path(recipe_file).read_text(encoding="utf-8"))
 
 
+def _conversation_video(conversation: list[dict[str, Any]]) -> str | None:
+    """A conversation's container path (the card's ``file://`` form stripped), or ``None`` without a video."""
+    for message in conversation:
+        for item in message.get("content") or []:
+            if item.get("type") != "video":
+                continue
+            video = item.get("video")
+            if not isinstance(video, str):
+                raise SystemExit("the reference's container route needs the container's path, not a frame list")
+            return video.removeprefix("file://")
+    return None
+
+
+def _without_video(conversation: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A conversation with its video items dropped, for the card's own image route."""
+    return [
+        {**message, "content": [item for item in message.get("content") or [] if item.get("type") != "video"]}
+        for message in conversation
+    ]
+
+
+def video_processor_inputs(
+    processor: Any,
+    conversations: list[list[dict[str, Any]]],
+    paths: list[str],
+    *,
+    declared_fps: float,
+    pin: tuple[int, int],
+    max_length: int,
+) -> dict[str, Any]:
+    """The checkpoint processor's call for conversations that carry a container.
+
+    The card's text render and its image route stay exactly as the card's ``_preprocess_inputs`` has them:
+    ``apply_chat_template`` with the generation prompt, and ``process_vision_info`` under the card's pixel
+    bounds, whose images reach the processor with ``do_resize`` off. The containers go to the checkpoint's
+    own video processor instead (:func:`video_processor_kwargs`), which decodes, samples at the recipe's
+    declared rate and resizes under the recipe's whole-clip pin -- the engine's own realisation.
+    """
+    from qwen_vl_utils.vision_process import process_vision_info
+
+    text = processor.apply_chat_template(conversations, add_generation_prompt=True, tokenize=False)
+    images, _ = process_vision_info(
+        [_without_video(conversation) for conversation in conversations], image_patch_size=16
+    )
+    return processor(
+        text=text,
+        images=images,
+        videos=paths,
+        images_kwargs={"do_resize": False},  # the card's images are already resized by qwen-vl-utils
+        videos_kwargs={
+            **video_processor_kwargs(declared_fps, pin),
+            "do_resize": True,  # the checkpoint's processor resizes the container under the pin
+        },
+        truncation=True,
+        max_length=max_length,
+        padding=True,
+        return_tensors="pt",
+    )
+
+
 def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str) -> dict[str, Any]:
     """Stage 2's reference side: the card's own embeddings — chat template + processor, last-token
     pooling, L2 — one vector per side, queries and documents alike (the card encodes both sides alike).
@@ -578,9 +735,10 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
     per-input calls answer the same vectors.
 
     A media row's ``media`` field rides the card's own input keys (:func:`card_inputs`): the inline image
-    bytes as a PIL image, a container through the card's loader at the recipe's declared fps, resized
-    under the recipe's whole-clip pixel pin (:func:`video_pixel_pin`/ :func:`frame_bounds`). The card
-    renders video, image, text; a side it cannot express is refused loudly.
+    bytes as a PIL image, a container as the file the checkpoint's own ``Qwen3VLVideoProcessor`` reads at
+    the recipe's declared fps and under its whole-clip pixel pin (:func:`video_processor_kwargs`) -- the
+    engine's own sampling and resize. The card renders video, image, text; a side it cannot express is
+    refused loudly.
     """
     _refuse_old_media_columns(pairs)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -588,28 +746,43 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
     from qwen3_vl_embedding import Qwen3VLEmbedder
 
     pin = video_pixel_pin(recipe)
+    policy = (recipe.get("client") or {}).get("video_policy") or {}
+    declared_fps = policy.get("fps")
 
-    class _PinnedVideoEmbedder(Qwen3VLEmbedder):
-        """The card's embedder with the recipe's whole-clip video pin expressed to the card's loader.
+    class _ProcessorVideoEmbedder(Qwen3VLEmbedder):
+        """The card's embedder with the container route on the checkpoint's own Qwen3VLVideoProcessor.
 
-        The card's ``process`` calls ``format_model_input`` per input; the override adds the pin's
-        per-frame shares to the video item (:func:`pin_video_item`), so the loader resizes the
-        container's frames exactly as the engine's processor does."""
+        The card's ``_preprocess_inputs`` hands every video to ``qwen_vl_utils`` (its own loader, its own
+        per-frame pixel bounds, which cannot express the recipe's whole-clip pin); the override keeps the
+        card's text render and its image route -- the same ``apply_chat_template`` call and the same
+        ``process_vision_info`` images under the card's pixel bounds -- and sends a container through the
+        checkpoint's own video processor instead (:func:`video_processor_kwargs`: the recipe's declared
+        fps and whole-clip pin), so the reference realises the engine's frames and per-frame pixels."""
 
-        def format_model_input(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-            conversation = super().format_model_input(*args, **kwargs)
-            pin_video_item(conversation, pin)
-            return conversation
+        def __init__(self, *args: Any, video_fps: float | None, video_pin: tuple[int, int], **kwargs: Any) -> None:
+            self._video_fps = video_fps
+            self._video_pin = video_pin
+            super().__init__(*args, **kwargs)
+
+        def _preprocess_inputs(self, conversations: list[list[dict[str, Any]]]) -> dict[str, Any]:
+            paths = [path for path in (_conversation_video(conversation) for conversation in conversations) if path]
+            if not paths:
+                return super()._preprocess_inputs(conversations)
+            return video_processor_inputs(
+                self.processor,
+                conversations,
+                paths,
+                declared_fps=declared_video_rate(self._video_fps),
+                pin=self._video_pin,
+                max_length=self.max_length,
+            )
 
     path = snapshot_download(str(recipe.get("model")), revision=str(recipe.get("revision")) or None)
-    model = _PinnedVideoEmbedder(model_name_or_path=str(path))
+    model = _ProcessorVideoEmbedder(model_name_or_path=str(path), video_fps=declared_fps, video_pin=pin)
     if device and device != "auto":
         model.model = model.model.to(device)
 
     _refuse_instruction_rows(pairs)  # the card then applies its own default: the pinned frame text
-    constants = card_media_constants()
-    policy = (recipe.get("client") or {}).get("video_policy") or {}
-    declared_fps = policy.get("fps")
 
     # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's scan;
     # a scratch cleanup race must never fail a reference run (the harness's own tempdirs say the same).
@@ -622,7 +795,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                 work=root,
                 clip_name=f"query-{index}",
                 declared_fps=declared_fps,
-                constants=constants,
             )
             for index, row in enumerate(pairs)
         ]
@@ -638,7 +810,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                         work=root,
                         clip_name=f"document-{index}-{position}",
                         declared_fps=declared_fps,
-                        constants=constants,
                     )
                 )
         query_vectors = _one_vector_per_input(model, query_inputs)

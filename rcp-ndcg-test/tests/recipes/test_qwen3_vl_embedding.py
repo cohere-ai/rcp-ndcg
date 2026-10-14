@@ -566,11 +566,19 @@ def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt
         assert declared.startswith(without) and declared[len(without) :] == "<|im_start|>assistant\n"
 
 
-def _media_pairs(tmp_path: Path, recipe: Any) -> Path:
-    """One text row and the media request set's rows (the generator's synthetic image buckets)."""
+def _media_pairs(tmp_path: Path, recipe: Any, *, video: bool = False) -> Path:
+    """One text row and the media request set's rows (the generator's synthetic image buckets).
+
+    The video clips are included only when ``video``: a container's reference side loads the checkpoint's
+    own ``Qwen3VLVideoProcessor``, which the recipe-tests environment (the dev extra: no transformers, no
+    video decoder) does not carry, so the image-bucket stage runs without them and the wave's media stage
+    -- which runs the family's reference python -- covers them.
+    """
     from rcp_ndcg_test.observe.media_set import planned_media_rows
 
     rows, _ = planned_media_rows(recipe)
+    if not video:
+        rows = [row for row in rows if "media:video" not in (row.get("strata") or [])]
     return _pairs(tmp_path, [_PAIRS[0], *[{key: row[key] for key in ("query", "documents", "media")} for row in rows]])
 
 
@@ -580,25 +588,29 @@ def test_the_media_stage_holds_the_client_to_the_card_on_every_image_bucket(
     variant_id: str, tmp_path: Path, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     """Offline, the product's client and the card's reference agree on every image of the media request set:
-    the placement (media before text), the prepared geometry under the pinned budget and the tokens."""
+    the placement (media before text), the prepared geometry under the pinned budget and the tokens. (The
+    video rows' reference side loads the checkpoint's own video processor and runs in the wave's media
+    stage; the processor's realisation is pinned offline by the stub tests below.)"""
     from rcp_ndcg_test.equivalence.media import stage_media
     from rcp_ndcg_test.observe.media_set import planned_media_rows
 
     recipe_cpu = _recipe_cpu(variant_id, _tokenizer_file(variant_id, tmp_path_factory), tmp_path)
     document = stage_media(recipe_cpu, _media_pairs(tmp_path, recipe_cpu), sys.executable)
     assert document is not None and document["passed"] is True, document["failures"][:3]
-    # one media item per planned row (the media-inputs set: the image buckets, the captioned page,
-    # the multi-image and the query-image rows, and -- where the recipe takes video -- the clips)
+    # one media item per planned image row (the media-inputs set: the image buckets, the captioned page,
+    # the multi-image and the query-image rows)
     planned, _ = planned_media_rows(recipe_cpu)
-    assert document["items"] == len(planned) and document["refusals"] == []
+    images = [row for row in planned if "media:video" not in (row.get("strata") or [])]
+    assert document["items"] == len(images) and document["refusals"] == []
 
 
 def test_the_reference_reads_media_rows_into_the_cards_own_inputs() -> None:
     """The reference's media path decodes the harness's ``media`` entries into the card's own
-    ``Qwen3VLEmbedder.process`` input keys: an inline image to a loaded PIL image, a container to a file the
-    card's loader reads at the recipe's declared fps and the engine's realised frame count; the text parts
-    stand where the card can express them, and the forms the card cannot express are refused (never
-    silently reordered). No model weights: the row reading is the card's ``format_model_input`` contract."""
+    ``Qwen3VLEmbedder.process`` input keys: an inline image to a loaded PIL image, a container to the file
+    the checkpoint's own video processor reads (the item naming the recipe's declared fps; the per-frame
+    pixel bounds of the old card-loader route are gone); the text parts stand where the card can express
+    them, and the forms the card cannot express are refused (never silently reordered). No model weights:
+    the row reading is the card's ``format_model_input`` contract."""
     import base64
     import io
     import tempfile
@@ -610,24 +622,20 @@ def test_the_reference_reads_media_rows_into_the_cards_own_inputs() -> None:
     buffer = io.BytesIO()
     Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
     image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
-    clip = video_entry("icon", 64, 64, 64)  # 64 frames at the media set's 8 fps: the declared 2 fps realises 16
-    constants = module.card_media_constants()
+    clip = video_entry("icon", 64, 64, 64)  # 64 frames at the media set's 8 fps
     with tempfile.TemporaryDirectory() as work:
         root = Path(work)
-        payload = module.card_inputs(
-            "caption", [image], work=root, clip_name="query-0", declared_fps=2.0, constants=constants
-        )
+        payload = module.card_inputs("caption", [image], work=root, clip_name="query-0", declared_fps=2.0)
         assert payload["image"].size == (16, 16)
         assert payload["text"] == "caption"
         assert "video" not in payload
-        video_payload = module.card_inputs(
-            "", [clip], work=root, clip_name="query-1", declared_fps=2.0, constants=constants
-        )
+        video_payload = module.card_inputs("", [clip], work=root, clip_name="query-1", declared_fps=2.0)
         clip_path = Path(video_payload["video"])
         assert clip_path.is_file()
         assert clip_path.read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
         assert video_payload["fps"] == 2.0
-        assert video_payload["max_frames"] == 16
+        # the card-loader route's per-frame bounds are gone: the processor realises the container itself
+        assert "max_frames" not in video_payload and "min_pixels" not in video_payload
         # The side's text parts stand after the media (the card's order); a text part before or between
         # media parts, several images/videos, or an image before its video is refused loudly.
         trailing = module.card_inputs(
@@ -636,7 +644,6 @@ def test_the_reference_reads_media_rows_into_the_cards_own_inputs() -> None:
             work=root,
             clip_name="query-2",
             declared_fps=2.0,
-            constants=constants,
         )
         assert trailing["text"] == "and caption"
         for entries in (
@@ -794,80 +801,113 @@ def test_the_media_modes_refuse_the_retired_media_columns() -> None:
         module.mode_embed({}, [row], "cpu")
 
 
-def test_the_reference_video_frames_keep_the_engines_whole_clip_geometry() -> None:
-    """The reference's container route resizes a clip's frames under the recipe's whole-clip pixel pin
-    (``serve.mm_processor_kwargs.videos_kwargs``), the same rule the engine's Qwen3-VL video processor
-    applies: the per-frame bounds the reference hands the card's loader must reproduce the engine's
-    per-frame size for the media set's shipped clips, and the conversation's video item must carry them
-    (qwen-vl-utils' resize keys)."""
-    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, video_entry
+def _stub_video_processor(
+    grid: tuple[int, int, int] = (2, 16, 28), frames_indices: tuple[int, ...] = (0, 1, 2, 3)
+) -> tuple[Any, list[dict[str, Any]]]:
+    """A stand-in for the checkpoint's ``Qwen3VLVideoProcessor``: records its calls, answers a chosen grid.
 
-    from rcp_ndcg.data.resolution import PROCESSORS, _clip_frame_size, smart_resize
+    The stub carries the surface the reference reads: ``__call__``, ``patch_size`` and ``merge_size`` (the
+    grid's patch multiples and the merged patch count) -- the same attributes the real processor's outputs
+    are read through. No decode, no weights.
+    """
+    from types import SimpleNamespace
+
+    calls: list[dict[str, Any]] = []
+
+    class _StubVideoProcessor:
+        patch_size, merge_size, temporal_patch_size = 16, 2, 2
+
+        def __call__(self, videos: list[str], **kwargs: Any) -> dict[str, Any]:
+            calls.append({"videos": list(videos), "kwargs": dict(kwargs)})
+            return {
+                "video_grid_thw": [list(grid)],
+                "video_metadata": [SimpleNamespace(frames_indices=list(frames_indices))],
+            }
+
+    return _StubVideoProcessor(), calls
+
+
+def test_the_reference_video_preparation_reads_the_processors_own_realisation(tmp_path: Path) -> None:
+    """The reference's container route hands the container to the checkpoint's own video processor at the
+    recipe's declared fps and whole-clip pin, and reports what that processor's outputs say it realised:
+    the frames it sampled, the per-frame size it resized to and its patch tokens -- never a re-derived
+    count. The shipped video case's clip (448x256, 4 frames at 2 fps) is the synthetic one: the stub's
+    grid is the real processor's for that clip (2 temporal groups of 16x28 patches), the engine's ported
+    whole-clip rule sizes the same frame under the same pin, and the old card-loader route could not
+    express the pin at all (its per-frame ceiling refused it)."""
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    from rcp_ndcg.data.resolution import PROCESSORS, _clip_frame_size
 
     module = _reference_module()
     recipe = load_recipe("qwen3-vl-embedding-2b").model_dump(mode="json")
     pin = module.video_pixel_pin(recipe)
     assert pin == (4096, 7864320)
-    constants = module.card_media_constants()
-    for name, width, height in VIDEO_CLIPS:
-        entry = video_entry(name, width, height, 64, fps=VIDEO_FPS)
-        frames = module.realised_video_frames(entry, 2.0, constants)
-        assert frames == 16
-        engine = _clip_frame_size(PROCESSORS["qwen3_vl"], frames, height, width, min_pixels=pin[0], max_pixels=pin[1])
-        bounds = module.frame_bounds(frames, pin)
-        reference = smart_resize(
-            height, width, factor=constants["IMAGE_FACTOR"], min_pixels=bounds[0], max_pixels=bounds[1]
-        )
-        assert reference == engine, (name, reference, engine)
-        assert (height, width) == engine, "the shipped clips need no resize: both rules keep the frame"
-    # The resize branch (the shipped clips need none): a 1024x1024 clip of 16 frames exceeds the
-    # whole-clip ceiling, and both rules must downscale it to the same per-frame size.
-    resizing = video_entry("resize", 1024, 1024, 64, fps=VIDEO_FPS)
-    frames = module.realised_video_frames(resizing, 2.0, constants)
-    assert frames == 16
-    engine = _clip_frame_size(PROCESSORS["qwen3_vl"], frames, 1024, 1024, min_pixels=pin[0], max_pixels=pin[1])
-    bounds = module.frame_bounds(frames, pin)
-    reference = smart_resize(1024, 1024, factor=constants["IMAGE_FACTOR"], min_pixels=bounds[0], max_pixels=bounds[1])
-    assert engine == (672, 672)
-    assert reference == engine, (reference, engine)
-    conversation = [
-        {"role": "system", "content": [{"type": "text", "text": "instruction"}]},
-        {
-            "role": "user",
-            "content": [{"type": "video", "video": "file:///clip.avi", "fps": 2.0, "max_frames": 16}],
-        },
-    ]
-    module.pin_video_item(conversation, pin)
-    item = conversation[-1]["content"][0]
-    assert item["min_pixels"] == 256 and item["max_pixels"] == 491520
+    processor, calls = _stub_video_processor()
+    facts = module.video_realisation(
+        processor,
+        video_entry("case", 448, 256, 4, fps=2.0),
+        work=tmp_path,
+        clip_name="document-0-0",
+        declared_fps=2.0,
+        pin=pin,
+    )
+    assert facts == {"frames": 4, "frame_width": 448, "frame_height": 256, "tokens": 224}
+    (call,) = calls
+    assert call["videos"] == [str(tmp_path / "document-0-0.avi")]
+    assert call["kwargs"] == module.video_processor_kwargs(2.0, pin)
+    assert call["kwargs"]["size"] == {"shortest_edge": 4096, "longest_edge": 7864320}
+    assert call["kwargs"]["fps"] == 2.0 and call["kwargs"]["do_sample_frames"] is True
+    assert call["kwargs"]["cap_pixels_per_frame"] is False
+    assert _clip_frame_size(PROCESSORS["qwen3_vl"], 4, 256, 448, min_pixels=pin[0], max_pixels=pin[1]) == (256, 448)
 
 
-def test_the_reference_refuses_a_video_without_a_declared_rate_or_with_an_odd_realised_count(
-    tmp_path: Path,
-) -> None:
-    """A video entry needs the recipe's declared engine rate (the card's fallback would sample at its own
-    FPS) and an even realised count (the card's loader floors to an even count, so an odd one cannot be
-    the engine's): both are refused loudly, never silently sampled differently."""
+def test_the_media_mode_reports_the_processors_own_realisation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The media mode's video item is the checkpoint processor's realisation (frames, per-frame pixels,
+    patch tokens), not a re-derivation: the mode loads the processor from the recipe's pinned snapshot
+    and reports exactly the grid and metadata the processor returns."""
     from rcp_ndcg_test.observe.media_set import video_entry
 
     module = _reference_module()
-    constants = module.card_media_constants()
+    recipe = load_recipe("qwen3-vl-embedding-2b").model_dump(mode="json")
+    processor, calls = _stub_video_processor()
+    monkeypatch.setattr(module, "load_video_processor", lambda _recipe: processor)
+    row = {
+        "query": "a bird",
+        "documents": [""],
+        "media": {"query": [], "documents": [[video_entry("case", 448, 256, 4, fps=2.0)]]},
+    }
+    document = module.mode_media([row], recipe)
+    assert document["rows"] == [
+        {
+            "index": 0,
+            "side": "document 0",
+            "placement": ["video"],
+            "media": [{"kind": "video", "frames": 4, "frame_width": 448, "frame_height": 256, "tokens": 224}],
+        }
+    ]
+    assert calls and calls[0]["kwargs"]["size"] == {"shortest_edge": 4096, "longest_edge": 7864320}
+
+
+def test_the_reference_refuses_a_video_without_a_declared_rate(tmp_path: Path) -> None:
+    """A container needs the recipe's declared engine rate: without it the checkpoint's processor would
+    sample at its own rate, a different instrument, so the reference refuses loudly."""
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    module = _reference_module()
     clip = video_entry("icon", 64, 64, 64)
     with pytest.raises(SystemExit, match="no video rate"):
-        module.card_inputs("", [clip], work=tmp_path, clip_name="query-0", declared_fps=None, constants=constants)
-    odd = video_entry("icon", 64, 64, 30)  # 30 frames at 8 fps: int(30 / 8 * 2) = 7 frames, an odd count
-    with pytest.raises(SystemExit, match="even"):
-        module.card_inputs("", [odd], work=tmp_path, clip_name="query-1", declared_fps=2.0, constants=constants)
+        module.card_inputs("", [clip], work=tmp_path, clip_name="query-0", declared_fps=None)
+    with pytest.raises(SystemExit, match="no video rate"):
+        module.declared_video_rate(None)
 
 
-def test_the_shipped_video_case_reaches_the_card_route_and_its_pin_refuses_it(tmp_path: Path) -> None:
+def test_the_shipped_video_case_reaches_the_processors_route(tmp_path: Path) -> None:
     """The media translation, proven on the shipped video case's own container: the case fill's entry
-    builder reads ``media/clip.mp4`` off the case file and the reference's card route accepts it (the
-    declared fps 2 realises the container's 4 frames, the bytes land in the file the card's loader
-    reads, the side carries the video alone) -- and the recipe's whole-clip pin cannot express that
-    4-frame clip through the card's loader (the per-frame share exceeds the loader's per-frame ceiling),
-    so the reference refuses it loudly.  That refusal is why the case stays a recorded exception in the
-    fill (``case_fill``'s exception path) instead of silently filling."""
+    builder reads ``media/clip.mp4`` off the case file and the reference's container route accepts it --
+    the bytes land in a scratch file whose suffix states the container (ISOBMFF), the item names the
+    recipe's declared fps, and the whole-clip pin is handed to the checkpoint's processor as its own
+    ``size`` (the per-frame ceiling that refused the old card-loader route does not exist there)."""
     import base64
 
     from rcp_ndcg_test.case_fill import _media_entry
@@ -880,17 +920,13 @@ def test_the_shipped_video_case_reaches_the_card_route_and_its_pin_refuses_it(tm
     assert (entry["width"], entry["height"], entry["num_frames"], entry["fps"]) == (448, 256, 4, 2.0)
 
     module = _reference_module()
-    constants = module.card_media_constants()
-    payload = module.card_inputs(
-        "", [entry], work=tmp_path, clip_name="document-0-0", declared_fps=2.0, constants=constants
-    )
-    assert payload["fps"] == 2.0 and payload["max_frames"] == 4
-    assert "image" not in payload and "text" not in payload
+    payload = module.card_inputs("", [entry], work=tmp_path, clip_name="document-0-0", declared_fps=2.0)
+    assert payload["fps"] == 2.0
+    assert "image" not in payload and "text" not in payload and "max_frames" not in payload
     clip = Path(payload["video"])
-    assert clip.read_bytes() == base64.b64decode(str(entry["uri"]).split(",", 1)[1])
+    assert clip.suffix == ".mp4" and clip.read_bytes() == base64.b64decode(str(entry["uri"]).split(",", 1)[1])
 
     recipe = load_recipe("qwen3-vl-embedding-2b").model_dump(mode="json")
-    pin = module.video_pixel_pin(recipe)
-    assert pin == (4096, 7864320)
-    with pytest.raises(SystemExit, match="per-frame ceiling"):
-        module.frame_bounds(payload["max_frames"], pin)
+    kwargs = module.video_processor_kwargs(2.0, module.video_pixel_pin(recipe))
+    assert kwargs["size"] == {"shortest_edge": 4096, "longest_edge": 7864320}
+    assert kwargs["fps"] == 2.0

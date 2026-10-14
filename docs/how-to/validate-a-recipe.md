@@ -103,8 +103,10 @@ and the inputs that moved) and `reference_environment` (the family, its lock has
 A changed pairs file, revision, lock or dtype invalidates; an unchanged one reuses.  Media rows ride the
 same comparison: the five media families' references (qwen3-vl-embedding, qwen3-vl-reranker,
 topk-embed-v1, pplx-embed-v2-late, embeddinggemma-2) read the harness's `media` field in their embed and
-score modes -- an inline image as a loaded PIL image, a container through the card's own loader at the
-recipe's declared video pin, the interleaved parts in order -- and compute the card's own vectors (per
+score modes -- an inline image as a loaded PIL image, a container at the recipe's declared video pin
+(through the checkpoint's own video processor where the card's pipeline has one, as qwen3-vl-embedding's
+`Qwen3VLVideoProcessor` route does, else through the card's own loader), the interleaved parts in order --
+and compute the card's own vectors (per
 token, with the card's declared keep-rule) or rerank scores for them, so stage 2 gates their media rows
 exactly like the text rows.  A recipe whose card's own pipeline genuinely cannot run an input keeps the
 declaration: `reference.known_deviations: [media_approximation]` reports its media rows non-gating with the
