@@ -1,0 +1,479 @@
+rcp-ndcg: waiting up to 1800 s for an engine replica to answer /v1/models
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+rcp-ndcg-vllm: serving qwen3-embedding-0.6b
+rcp-ndcg-vllm: identity: qwen3-embedding-0.6b
+rcp-ndcg-vllm: deployment overrides: none
+(APIServer pid=8) INFO 10-14 07:28:22 [api_utils.py:347] 
+(APIServer pid=8) INFO 10-14 07:28:22 [api_utils.py:347]        █     █     █▄   ▄█
+(APIServer pid=8) INFO 10-14 07:28:22 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.31.0
+(APIServer pid=8) INFO 10-14 07:28:22 [api_utils.py:347]   █▄█▀ █     █     █     █  model   Qwen/Qwen3-Embedding-0.6B
+(APIServer pid=8) INFO 10-14 07:28:22 [api_utils.py:347]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=8) INFO 10-14 07:28:22 [api_utils.py:347] 
+(APIServer pid=8) INFO 10-14 07:28:22 [api_utils.py:286] non-default args: {'model_tag': 'Qwen/Qwen3-Embedding-0.6B', 'host': '0.0.0.0', 'model': 'Qwen/Qwen3-Embedding-0.6B', 'runner': 'pooling', 'dtype': 'bfloat16', 'revision': '97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3', 'max_model_len': 32768, 'served_model_name': ['qwen3-embedding-0.6b'], 'hf_overrides': {'is_matryoshka': True}, 'pooler_config': PoolerConfig(task=None, pooling_type=None, seq_pooling_type=None, tok_pooling_type=None, use_activation=None, dimensions=None, enable_chunked_processing=False, max_embed_len=None, logit_mean=None, logit_sigma=None, step_tag_id=None, returned_token_ids=None)}
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU3_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP_PROTO
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_SERVICE_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_SERVICE_HOST
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP_ADDR
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_SERVICE_PORT_HTTP
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP_PORT
+(APIServer pid=8) WARNING 10-14 07:28:22 [interface.py:1355] Unknown vLLM environment variable detected: VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(APIServer pid=8) INFO 10-14 07:28:29 [model.py:1328] Resolved `--convert auto` to `--convert embed`. Pass the value explicitly to silence this message.
+(APIServer pid=8) INFO 10-14 07:28:29 [model.py:699] Resolved architecture: Qwen3ForCausalLM
+(APIServer pid=8) INFO 10-14 07:28:29 [config.py:1011] Found sentence-transformers modules configuration.
+(APIServer pid=8) INFO 10-14 07:28:29 [config.py:1034] Found pooling configuration.
+(APIServer pid=8) INFO 10-14 07:28:29 [model.py:2109] Using max model len 32768
+(APIServer pid=8) INFO 10-14 07:28:29 [scheduler.py:308] Chunked prefill is enabled with max_num_batched_tokens=16384.
+(APIServer pid=8) INFO 10-14 07:28:30 [kernel.py:408] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['triton', 'native'])
+(APIServer pid=8) WARNING 10-14 07:28:30 [vllm.py:1920] Pooling models do not support full cudagraphs. Overriding cudagraph_mode to PIECEWISE.
+(EngineCore pid=490) INFO 10-14 07:28:38 [core.py:129] Initializing a V1 LLM engine (v0.31.0) with config: model='Qwen/Qwen3-Embedding-0.6B', speculative_config=None, tokenizer='Qwen/Qwen3-Embedding-0.6B', skip_tokenizer_init=False, tokenizer_mode=auto, revision=97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3, tokenizer_revision=97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=32768, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=None, quantization_config=None, enforce_eager=False, aux_output_config=AuxOutputConfig(enable_return_routed_experts=False, max_bytes=None), kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=qwen3-embedding-0.6b, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=PoolerConfig(task=None, pooling_type=None, seq_pooling_type='LAST', tok_pooling_type='ALL', use_activation=True, dimensions=None, enable_chunked_processing=False, max_embed_len=None, logit_mean=None, logit_sigma=None, step_tag_id=None, returned_token_ids=None), compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::qwen4_exp_ple_short_conv', 'vllm::qwen4_exp_qsa_with_output', 'vllm::linear_attention', 'vllm::qwen_gdn_attention_core', 'vllm::qwen_gdn_attention_core_fused_norm_packed', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::hpc_rope_norm_forward', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [16384], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.PIECEWISE: 1>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512, 528, 544, 560, 576, 592, 608, 624, 640, 656, 672, 688, 704, 720, 736, 752, 768, 784, 800, 816, 832, 848, 864, 880, 896, 912, 928, 944, 960, 976, 992, 1008, 1024], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 1024, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, enable_jit_warmup=True, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)
+(EngineCore pid=490) INFO 10-14 07:28:40 [parallel_state.py:1825] world_size=1 rank=0 local_rank=0 distributed_init_method=file:///scratch/tmp/encoder/vllm_dist_ad5d3bba09d149ee810ad00e29e5af85 backend=nccl
+(EngineCore pid=490) INFO 10-14 07:28:40 [parallel_state.py:2269] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, ETP rank 0, EP rank N/A, EPLB rank N/A
+(EngineCore pid=490) INFO 10-14 07:28:40 [gpu_worker.py:479] Using V2 Model Runner
+(EngineCore pid=490) INFO 10-14 07:28:41 [model_runner.py:375] Loading model from scratch...
+(EngineCore pid=490) INFO 10-14 07:28:43 [cuda.py:526] Using FLASHINFER attention backend out of potential backends: ['FLASHINFER', 'FLASH_ATTN', 'TRITON_ATTN', 'FLEX_ATTENTION'].
+(EngineCore pid=490) INFO 10-14 07:28:46 [weight_utils.py:523] Time spent downloading weights for Qwen/Qwen3-Embedding-0.6B: 2.769435 seconds
+(EngineCore pid=490) INFO 10-14 07:28:46 [weight_utils.py:1063] Filesystem type for checkpoints: EXT4. Checkpoint size: 1.11 GiB. Available RAM: 3864.27 GiB.
+(EngineCore pid=490) INFO 10-14 07:28:46 [weight_utils.py:1086] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=490) INFO 10-14 07:28:46 [adapters.py:222] Mapping weights to Qwen3Model as they are relative to this model instead of Qwen3ForEmbedding.
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  4.24it/s]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:00<00:00,  4.23it/s]
+
+(EngineCore pid=490) INFO 10-14 07:28:47 [default_loader.py:484] Loading weights took 0.30 seconds
+(EngineCore pid=490) INFO 10-14 07:28:47 [model_runner.py:407] Model loading took 1.12 GiB memory and 6.586069 seconds
+(EngineCore pid=490) INFO 10-14 07:28:47 [torch_utils.py:286] Reducing Torch threads from 112 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+(EngineCore pid=490) INFO 10-14 07:28:47 [utils.py:343] Using LBHNC KV cache layout.
+(EngineCore pid=490) INFO 10-14 07:28:52 [backends.py:1090] Using cache directory: /root/.cache/vllm/torch_compile_cache/3da75c2e0b/rank_0_0/backbone for vLLM's torch.compile
+(EngineCore pid=490) INFO 10-14 07:28:52 [backends.py:1151] Dynamo bytecode transform time: 4.27 s
+(EngineCore pid=490) INFO 10-14 07:29:08 [backends.py:391] Compiling a graph for compile range (1, 16384) takes 16.38 s
+(EngineCore pid=490) INFO 10-14 07:29:11 [backends.py:916] collected artifacts: 29 entries, 3 artifacts, 6324103 bytes total
+(EngineCore pid=490) INFO 10-14 07:29:11 [decorators.py:717] saved AOT compiled function to /root/.cache/vllm/torch_compile_cache/torch_aot_compile/3b86b6f4c994c587e870a5cdc4387d5861c3461229a415ca7bf9cc8d7b5aafb0/rank_0_0/model
+(EngineCore pid=490) INFO 10-14 07:29:11 [monitor.py:53] torch.compile took 22.92 s in total
+(EngineCore pid=490) INFO 10-14 07:29:11 [monitor.py:81] Initial profiling/warmup run took 0.20 s
+(EngineCore pid=490) INFO 10-14 07:29:12 [flashinfer.py:903] FlashInfer resolved query dtypes: prefill=torch.bfloat16, decode=torch.bfloat16, decode_backend=trtllm-gen, kv_cache_dtype=torch.bfloat16, arch=sm100
+(EngineCore pid=490) WARNING 10-14 07:29:12 [flashinfer.py:721] Using TRTLLM prefill attention (auto-detected).
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/83 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):   1%|          | 1/83 [00:00<00:08,  9.99it/s]Capturing CUDA graphs (PIECEWISE):   5%|▍         | 4/83 [00:00<00:04, 19.36it/s]Capturing CUDA graphs (PIECEWISE):   8%|▊         | 7/83 [00:00<00:03, 21.90it/s]Capturing CUDA graphs (PIECEWISE):  12%|█▏        | 10/83 [00:00<00:03, 23.34it/s]Capturing CUDA graphs (PIECEWISE):  16%|█▌        | 13/83 [00:00<00:02, 23.93it/s]Capturing CUDA graphs (PIECEWISE):  19%|█▉        | 16/83 [00:00<00:02, 23.99it/s]Capturing CUDA graphs (PIECEWISE):  23%|██▎       | 19/83 [00:00<00:02, 24.49it/s]Capturing CUDA graphs (PIECEWISE):  27%|██▋       | 22/83 [00:00<00:02, 24.74it/s]Capturing CUDA graphs (PIECEWISE):  30%|███       | 25/83 [00:01<00:02, 24.69it/s]Capturing CUDA graphs (PIECEWISE):  34%|███▎      | 28/83 [00:01<00:02, 23.95it/s]Capturing CUDA graphs (PIECEWISE):  37%|███▋      | 31/83 [00:01<00:02, 23.88it/s]Capturing CUDA graphs (PIECEWISE):  41%|████      | 34/83 [00:01<00:02, 24.13it/s]Capturing CUDA graphs (PIECEWISE):  45%|████▍     | 37/83 [00:01<00:01, 24.25it/s]Capturing CUDA graphs (PIECEWISE):  48%|████▊     | 40/83 [00:01<00:01, 24.19it/s]Capturing CUDA graphs (PIECEWISE):  52%|█████▏    | 43/83 [00:01<00:01, 24.33it/s]Capturing CUDA graphs (PIECEWISE):  55%|█████▌    | 46/83 [00:01<00:01, 24.35it/s]Capturing CUDA graphs (PIECEWISE):  59%|█████▉    | 49/83 [00:02<00:01, 24.14it/s]Capturing CUDA graphs (PIECEWISE):  63%|██████▎   | 52/83 [00:02<00:01, 24.54it/s]Capturing CUDA graphs (PIECEWISE):  66%|██████▋   | 55/83 [00:02<00:01, 24.57it/s]Capturing CUDA graphs (PIECEWISE):  70%|██████▉   | 58/83 [00:02<00:01, 24.10it/s]Capturing CUDA graphs (PIECEWISE):  73%|███████▎  | 61/83 [00:02<00:00, 24.45it/s]Capturing CUDA graphs (PIECEWISE):  77%|███████▋  | 64/83 [00:02<00:00, 24.70it/s]Capturing CUDA graphs (PIECEWISE):  81%|████████  | 67/83 [00:02<00:00, 24.38it/s]Capturing CUDA graphs (PIECEWISE):  84%|████████▍ | 70/83 [00:02<00:00, 24.78it/s]Capturing CUDA graphs (PIECEWISE):  88%|████████▊ | 73/83 [00:03<00:00, 24.75it/s]Capturing CUDA graphs (PIECEWISE):  92%|█████████▏| 76/83 [00:03<00:00, 24.81it/s]Capturing CUDA graphs (PIECEWISE):  95%|█████████▌| 79/83 [00:03<00:00, 24.74it/s]Capturing CUDA graphs (PIECEWISE):  99%|█████████▉| 82/83 [00:03<00:00, 24.67it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 83/83 [00:03<00:00, 24.14it/s]
+(EngineCore pid=490) INFO 10-14 07:29:16 [model_runner.py:1087] Graph capturing finished in 4 secs, took 0.79 GiB
+(EngineCore pid=490) INFO 10-14 07:29:16 [gpu_worker.py:692] Available KV cache memory: 161.39 GiB
+(EngineCore pid=490) INFO 10-14 07:29:16 [gpu_worker.py:707] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9200 is equivalent to --gpu-memory-utilization=0.9156 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9244. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+(EngineCore pid=490) INFO 10-14 07:29:16 [kv_cache_utils.py:2464] GPU KV cache size: 1,511,008 tokens, Maximum concurrency for 32,768 tokens per request: 46.11x
+(EngineCore pid=490) INFO 10-14 07:29:16 [kernel_warmup.py:172] JIT kernel warmup starting.
+(EngineCore pid=490) INFO 10-14 07:29:16 [kernel_warmup.py:185] JIT kernel warmup finished in 0.00s.
+2026-10-14 07:29:17,549 - INFO - autotuner.py:1046 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(EngineCore pid=490) INFO 10-14 07:29:17 [kernel_warmup.py:437] Using FlashInfer autotune cache file: /root/.cache/vllm/flashinfer_autotune_cache/0.7.0.post1/100a/181f8707ed494845dbc5757cf23ddea892c5e4d81845b0d92a68463e9c49da42/autotune_configs.json
+(EngineCore pid=490) INFO 10-14 07:29:17 [kernel_warmup.py:359] Running FlashInfer autotune with 16384 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192, 16384).
+2026-10-14 07:29:17,624 - INFO - autotuner.py:1069 - flashinfer.jit: [Autotuner]: Autotuning process ends
+2026-10-14 07:29:17,689 - INFO - autotuner.py:3554 - flashinfer.jit: [Autotuner]: Saved 0 configs to /root/.cache/vllm/flashinfer_autotune_cache/0.7.0.post1/100a/181f8707ed494845dbc5757cf23ddea892c5e4d81845b0d92a68463e9c49da42/autotune_configs.json (0 new, 0 from previous config)
+Capturing CUDA graphs (PIECEWISE):   0%|          | 0/83 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):   4%|▎         | 3/83 [00:00<00:03, 24.12it/s]Capturing CUDA graphs (PIECEWISE):   7%|▋         | 6/83 [00:00<00:02, 26.15it/s]Capturing CUDA graphs (PIECEWISE):  11%|█         | 9/83 [00:00<00:02, 27.09it/s]Capturing CUDA graphs (PIECEWISE):  14%|█▍        | 12/83 [00:00<00:02, 27.60it/s]Capturing CUDA graphs (PIECEWISE):  18%|█▊        | 15/83 [00:00<00:02, 27.89it/s]Capturing CUDA graphs (PIECEWISE):  22%|██▏       | 18/83 [00:00<00:02, 28.09it/s]Capturing CUDA graphs (PIECEWISE):  25%|██▌       | 21/83 [00:00<00:02, 28.06it/s]Capturing CUDA graphs (PIECEWISE):  29%|██▉       | 24/83 [00:00<00:02, 28.24it/s]Capturing CUDA graphs (PIECEWISE):  33%|███▎      | 27/83 [00:00<00:01, 28.34it/s]Capturing CUDA graphs (PIECEWISE):  36%|███▌      | 30/83 [00:01<00:01, 28.41it/s]Capturing CUDA graphs (PIECEWISE):  40%|███▉      | 33/83 [00:01<00:01, 28.39it/s]Capturing CUDA graphs (PIECEWISE):  43%|████▎     | 36/83 [00:01<00:01, 28.10it/s]Capturing CUDA graphs (PIECEWISE):  47%|████▋     | 39/83 [00:01<00:01, 28.08it/s]Capturing CUDA graphs (PIECEWISE):  51%|█████     | 42/83 [00:01<00:01, 27.83it/s]Capturing CUDA graphs (PIECEWISE):  54%|█████▍    | 45/83 [00:01<00:01, 27.93it/s]Capturing CUDA graphs (PIECEWISE):  58%|█████▊    | 48/83 [00:01<00:01, 27.99it/s]Capturing CUDA graphs (PIECEWISE):  61%|██████▏   | 51/83 [00:01<00:01, 27.72it/s]Capturing CUDA graphs (PIECEWISE):  65%|██████▌   | 54/83 [00:01<00:01, 27.68it/s]Capturing CUDA graphs (PIECEWISE):  69%|██████▊   | 57/83 [00:02<00:00, 27.67it/s]Capturing CUDA graphs (PIECEWISE):  72%|███████▏  | 60/83 [00:02<00:00, 27.65it/s]Capturing CUDA graphs (PIECEWISE):  76%|███████▌  | 63/83 [00:02<00:00, 27.53it/s]Capturing CUDA graphs (PIECEWISE):  80%|███████▉  | 66/83 [00:02<00:00, 27.47it/s]Capturing CUDA graphs (PIECEWISE):  83%|████████▎ | 69/83 [00:02<00:00, 27.50it/s]Capturing CUDA graphs (PIECEWISE):  87%|████████▋ | 72/83 [00:02<00:00, 27.52it/s]Capturing CUDA graphs (PIECEWISE):  90%|█████████ | 75/83 [00:02<00:00, 27.63it/s]Capturing CUDA graphs (PIECEWISE):  94%|█████████▍| 78/83 [00:02<00:00, 27.57it/s]Capturing CUDA graphs (PIECEWISE):  98%|█████████▊| 81/83 [00:02<00:00, 27.34it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 83/83 [00:02<00:00, 27.68it/s]
+(EngineCore pid=490) INFO 10-14 07:29:21 [model_runner.py:1087] Graph capturing finished in 4 secs, took 0.09 GiB
+(EngineCore pid=490) INFO 10-14 07:29:21 [gpu_worker.py:892] CUDA graph pool memory: 0.09 GiB (actual), 0.79 GiB (estimated), difference: 0.7 GiB (761.7%).
+(EngineCore pid=490) INFO 10-14 07:29:21 [gpu_worker.py:955] Free memory on device (177.74/178.35 GiB) on startup. Desired GPU memory utilization is (0.92, 164.08 GiB). Actual usage is 1.43 GiB for consumed memory (weights + non-torch), 1.26 GiB for peak activation, and 0.09 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=173039119381` (161.16 GiB) to fit into requested memory, or `--kv-cache-memory=187703279104` (174.81 GiB) to fully utilize gpu memory. Current kv cache memory in use is 161.39 GiB.
+(EngineCore pid=490) INFO 10-14 07:29:22 [jit_monitor.py:84] Kernel JIT monitor activated; monitored JIT compilations during inference will use mode=warn.
+(EngineCore pid=490) INFO 10-14 07:29:23 [core.py:373] init engine (profile, create kv cache, warmup model) took 35.44 s (compilation: 22.92 s)
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(EngineCore pid=490) INFO 10-14 07:29:24 [kernel.py:408] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['triton', 'native'])
+(EngineCore pid=490) INFO 10-14 07:29:24 [core.py:454] Resolved pooling config: pooling_type=LAST(source=sentence_transformers), tok_pooling_type=ALL(source=model_default), use_activation=True(source=sentence_transformers), supported_tasks=('embed', 'token_embed')
+(APIServer pid=8) INFO 10-14 07:29:24 [entry.py:132] Supported tasks: ['embed', 'token_embed']
+(APIServer pid=8) INFO 10-14 07:29:24 [hf.py:646] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=8) INFO 10-14 07:29:25 [io_processor.py:79] Loaded prompt prefixes for input_type: ['query', 'document']
+(APIServer pid=8) WARNING 10-14 07:29:25 [utils.py:226] To make v1/embeddings API fast, please install orjson by `pip install orjson`
+(APIServer pid=8) INFO 10-14 07:29:25 [io_processor.py:79] Loaded prompt prefixes for input_type: ['query', 'document']
+(APIServer pid=8) INFO 10-14 07:29:25 [entry.py:136] Starting vLLM server on http://0.0.0.0:8000
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:60] Available routes are:
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /openapi.json, Methods: HEAD, GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /docs, Methods: HEAD, GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /redoc, Methods: HEAD, GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /load, Methods: GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /version, Methods: GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /kv_event_sources, Methods: GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /health, Methods: GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /metrics, Methods: GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /tokenize, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /detokenize, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /v1/models, Methods: GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /ping, Methods: GET
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /ping, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /invocations, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /pooling, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /v1/embeddings, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /v2/embed, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /score, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /v1/score, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /rerank, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /v1/rerank, Methods: POST
+(APIServer pid=8) INFO 10-14 07:29:25 [launcher.py:69] Route: /v2/rerank, Methods: POST
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:48000 - "GET /v1/models HTTP/1.1" 200 OK
+Downloading hf-xet (4.3MiB)
+Downloading networkx (2.0MiB)
+Downloading botocore (14.9MiB)
+Downloading aiohttp (1.7MiB)
+ Downloaded hf-xet
+ Downloaded networkx
+Downloading torch (187.2MiB)
+Downloading grpcio (6.8MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading sympy (6.0MiB)
+Downloading pyarrow (47.8MiB)
+ Downloaded aiohttp
+Downloading scipy (33.7MiB)
+ Downloaded pydantic-core
+ Downloaded botocore
+ Downloaded grpcio
+ Downloaded sympy
+Downloading numpy (15.9MiB)
+Downloading cryptography (4.5MiB)
+ Downloaded cryptography
+ Downloaded scipy
+ Downloaded numpy
+ Downloaded pyarrow
+Downloading pandas (10.3MiB)
+ Downloaded pandas
+Downloading tokenizers (3.2MiB)
+ Downloaded tokenizers
+Downloading pillow (6.6MiB)
+ Downloaded pillow
+ Downloaded torch
+Installed 88 packages in 1.05s
+2026-10-14 07:29:36,655 | INFO     | rcp_ndcg.runs.mirror | [mirror] restored 2 files of /scratch/runs/20261014-072801-k8s-one-container-49e823 from gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/one-container
+2026-10-14 07:29:36,752 | INFO     | rcp_ndcg.runs.pipeline | [run] retrieve: starting
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+INFO:     127.0.0.1:49436 - "POST /v1/embeddings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49450 - "POST /v1/embeddings HTTP/1.1" 200 OK
+Run 20261014-072801-k8s-one-container-49e823 completed (ran)
+  directory  /scratch/runs/20261014-072801-k8s-one-container-49e823
+  requests   0 judge requests
+    retrieve     completed      1.4s
+  mirror     gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/one-container (last upload 2026-10-14T07:29:39.051325+00:00, 0s ago)
+(APIServer pid=8) INFO 10-14 07:29:39 [launcher.py:128] [shutdown] API server: shutdown triggered
+(APIServer pid=8) INFO 10-14 07:29:39 [launcher.py:144] [shutdown] API server: stopping engine client mode=abort timeout=0s
+(APIServer pid=8) INFO 10-14 07:29:39 [core_client.py:762] [shutdown] MPClient: start timeout=0s
+(APIServer pid=8) INFO 10-14 07:29:39 [core_client.py:764] [shutdown] MPClient: stopping engine manager
+(APIServer pid=8) INFO 10-14 07:29:39 [utils.py:638] [shutdown] Process manager: send sigterm to process EngineCore
+(APIServer pid=8) WARNING 10-14 07:29:39 [utils.py:658] [shutdown] Process manager: force killing remaining processes count=1
+(APIServer pid=8) WARNING 10-14 07:29:39 [utils.py:663] [shutdown] Process manager: force killing remaining process EngineCore pid 490
+(EngineCore pid=490) INFO 10-14 07:29:39 [core.py:1409] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=490) INFO 10-14 07:29:39 [core.py:1558] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=490) INFO 10-14 07:29:39 [core.py:1589] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=490) INFO 10-14 07:29:39 [core.py:1422] [shutdown] EngineCore: exiting busy loop
+(APIServer pid=8) INFO 10-14 07:29:39 [core_client.py:766] [shutdown] MPClient: engine manager stopped
+(APIServer pid=8) INFO 10-14 07:29:39 [core_client.py:767] [shutdown] MPClient: cleaning up background resources
+(APIServer pid=8) INFO 10-14 07:29:39 [core_client.py:769] [shutdown] MPClient: complete
+(APIServer pid=8) INFO 10-14 07:29:39 [launcher.py:153] [shutdown] API server: engine client stopped
+(APIServer pid=8) INFO 10-14 07:29:39 [launcher.py:156] [shutdown] API server: signalling HTTP server shutdown
+(APIServer pid=8) INFO 10-14 07:29:39 [launcher.py:178] [shutdown] API server: shutting down FastAPI HTTP server
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

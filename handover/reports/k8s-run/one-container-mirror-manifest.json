@@ -1,0 +1,266 @@
+{
+  "schema": "rcp-ndcg.run-manifest.v1",
+  "layout": "rcp-ndcg.run-layout.v1",
+  "run_id": "20261014-072801-k8s-one-container-49e823",
+  "created_at": "2026-10-14T07:28:02.268626Z",
+  "updated_at": "2026-10-14T07:29:38.784273Z",
+  "status": "completed",
+  "code": {
+    "package_version": "0.0.1",
+    "git_commit": "310e100257338aa4b81adb2afb56b45496dc77fa",
+    "git_dirty": true,
+    "python_version": "3.12.9",
+    "platform": "Linux-6.8.12-680-6063-coreweave-amd64-f81899c8-x86_64-with-glibc2.39"
+  },
+  "config": {
+    "label": "k8s-one-container",
+    "dataset": {
+      "uri": "jsonl:gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/dataset",
+      "options": {}
+    },
+    "candidates": {
+      "from": "retrieval",
+      "retrieval": {
+        "kind": "dense",
+        "encoder": {
+          "api": "openai_embeddings",
+          "model": "qwen3-embedding-0.6b",
+          "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+          "headers_env": {},
+          "concurrency": 64,
+          "timeout_s": 600.0,
+          "connect_timeout_s": 5.0,
+          "max_retries": 2,
+          "wait_on_outage_s": 1800.0,
+          "max_images": 0,
+          "max_videos": 0,
+          "media_sides": [
+            "query",
+            "document"
+          ],
+          "tokenizer": "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+          "max_tokens": 8192,
+          "template": {
+            "query": [
+              {
+                "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+              },
+              {
+                "content": "query"
+              }
+            ],
+            "document": [
+              {
+                "content": "document"
+              }
+            ],
+            "anchor": "last",
+            "anchor_markers": [],
+            "add_special_tokens": true,
+            "normalize": []
+          },
+          "instruction": "none",
+          "on_overflow": "cut",
+          "aggregation": "max",
+          "empty_doc": "send",
+          "request_shape": "text",
+          "query_prompt": "",
+          "doc_prompt": "",
+          "normalize": true,
+          "mrl_kind": "truncation",
+          "mrl_range": [
+            32,
+            1024
+          ],
+          "batch_size": 32
+        }
+      },
+      "depth": 8
+    },
+    "steps": [
+      "retrieve"
+    ],
+    "calibration": {
+      "mode": "auto",
+      "judges": "single",
+      "priors": {
+        "sigma_tau": 1.0,
+        "sigma_alpha": 2.0,
+        "l2_gamma": 0.0001,
+        "l2_beta": 0.0001,
+        "ability_sd": 1.0,
+        "bt_l2": 0.0001
+      }
+    },
+    "evaluation": {
+      "k": 10,
+      "systems": {}
+    },
+    "mirror": "gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/one-container",
+    "mirror_interval_s": 60.0,
+    "seed": 42,
+    "limit": 3,
+    "runner": {
+      "name": "kubernetes",
+      "options": {
+        "resources": {
+          "gpus": 0,
+          "cpus": 8,
+          "memory_gb": 32.0,
+          "time_limit_s": 3600
+        },
+        "env": {
+          "PIP_TRUSTED_HOST": "rcp-ndcg-k8srun-wheels"
+        },
+        "wheelhouse": "http://rcp-ndcg-k8srun-wheels:8080",
+        "constraints": "http://rcp-ndcg-k8srun-wheels:8080/requirements-constraints.txt",
+        "namespace": "default",
+        "context": "gke-us-central1-prod",
+        "service_account": "svc-modeling",
+        "secrets": [],
+        "node_selector": {
+          "cohere.com/mode": "gpu",
+          "nvidia.com/gpu.product": "NVIDIA-B200"
+        },
+        "engine_node_selector": {},
+        "dshm_size": "16Gi",
+        "tolerations": [
+          {
+            "key": "nvidia.com/gpu",
+            "operator": "Equal",
+            "value": "present",
+            "effect": "NoSchedule"
+          }
+        ],
+        "affinity": {},
+        "run_as_non_root": false,
+        "automount_service_account_token": false,
+        "backoff_limit": 0,
+        "ttl_seconds_after_finished": 900
+      }
+    },
+    "serve": {
+      "encoder": {
+        "image": "vllm/vllm-openai:v0.31.0",
+        "command": [
+          "bash",
+          "-lc",
+          "python3 -m pip install --quiet --no-index --trusted-host rcp-ndcg-k8srun-wheels --find-links http://rcp-ndcg-k8srun-wheels:8080 uv && python3 -m pip install --quiet --no-deps --no-index --trusted-host rcp-ndcg-k8srun-wheels --find-links http://rcp-ndcg-k8srun-wheels:8080 rcp-ndcg-vllm==0.0.1 && exec rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000"
+        ],
+        "env": {},
+        "resources": {
+          "gpus": 1
+        },
+        "replicas": 1,
+        "port": 8000,
+        "readiness_path": "/v1/models",
+        "nodes_per_replica": 1,
+        "startup_timeout_s": 1800,
+        "outage_timeout_s": 300
+      }
+    }
+  },
+  "dataset": {
+    "name": "dataset",
+    "revisions": null,
+    "subset": "default",
+    "split": "test",
+    "task": null
+  },
+  "families": {},
+  "steps": [
+    {
+      "name": "retrieve",
+      "status": "completed",
+      "identity": {
+        "dataset": {
+          "uri": "jsonl:gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/dataset",
+          "text_formatting": "rcp-text/1"
+        },
+        "candidates": {
+          "source": "retrieval",
+          "retrieval": {
+            "kind": "dense",
+            "encoder": {
+              "api": "openai_embeddings",
+              "model": "qwen3-embedding-0.6b",
+              "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+              "max_images": 0,
+              "max_videos": 0,
+              "media_sides": [
+                "query",
+                "document"
+              ],
+              "max_tokens": 8192,
+              "template": {
+                "query": [
+                  {
+                    "fixed": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+                  },
+                  {
+                    "content": "query"
+                  }
+                ],
+                "document": [
+                  {
+                    "content": "document"
+                  }
+                ],
+                "anchor": "last",
+                "anchor_markers": [],
+                "add_special_tokens": true,
+                "normalize": []
+              },
+              "instruction": "none",
+              "on_overflow": "cut",
+              "aggregation": "max",
+              "empty_doc": "send",
+              "request_shape": "text",
+              "query_prompt": "",
+              "doc_prompt": "",
+              "normalize": true,
+              "mrl_kind": "truncation",
+              "mrl_range": [
+                32,
+                1024
+              ],
+              "batch_size": 32,
+              "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+            }
+          },
+          "depth": 8
+        },
+        "output": "candidates.parquet",
+        "behaviour_version": "1"
+      },
+      "identity_hash": "2fbd3cd19f7b973f86cb97a0dd8b4ddf50294a3183fb4b63b75e64fda8c013f6",
+      "started_at": "2026-10-14T07:29:37.379630Z",
+      "ended_at": "2026-10-14T07:29:38.783938Z",
+      "duration_s": 1.404308,
+      "inputs": [],
+      "outputs": [
+        {
+          "path": "candidates.parquet",
+          "sha256": "2cacddfd04b0a21af6b1fe548fad634a7c5677d2a7aefa014cd96c70f9df7517"
+        }
+      ],
+      "usage": {
+        "requests": 0,
+        "failed_requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_input_tokens": 0
+      },
+      "engines": [],
+      "error": null
+    }
+  ],
+  "metrics": {},
+  "usage": {
+    "requests": 0,
+    "failed_requests": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cached_input_tokens": 0
+  }
+}

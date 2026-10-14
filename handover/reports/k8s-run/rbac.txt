@@ -1,0 +1,10 @@
+$ kubectl auth can-i create statefulsets -n default
+no - requires one of ["container.statefulSets.create"] permission(s) in Cloud IAM or a Kubernetes RBAC role with verb "create" for resource "statefulsets".
+
+$ kubectl auth can-i create statefulsets -n <each of the 179 namespaces>
+namespaces allowing statefulset create: 0
+
+$ kubectl auth can-i create services -n default
+yes
+$ kubectl auth can-i create jobs.batch -n default
+yes

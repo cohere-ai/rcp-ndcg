@@ -1,0 +1,6 @@
+Run 20261014-072801-k8s-one-container-49e823 submitted (submitted)
+  directory  runs/20261014-072801-k8s-one-container-49e823
+  requests   0 judge requests
+    retrieve     pending            
+  job rcp-20261014-072801-k8s-one-container-49e823 (kubernetes): default/rcp-20261014-072801-k8s-one-container-49e823 pending
+  mirror     gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/one-container (last upload 2026-10-14T07:28:05.214024+00:00, 1s ago)
