@@ -464,6 +464,14 @@ def run_wave(
         if not wave_upload["ok"]:
             document["passed"] = False
             document["verdict"] = "failed"
+            # The wave-level upload is the corpus's carrier (`<out>/observations/...` is a sibling of the
+            # per-recipe directories, which travel alone), so a failed one means the destination holds no
+            # corpus: the --changed-since index must not name any key, or a later wave reading this
+            # wave.json skips the recipe as recorded and reports PASS over a corpus that never left this
+            # node (reviews D2).  The rows keep their fingerprints for reporting; only the index maps are
+            # cleared, and only the local summary is authoritative here (the wave's verdict is failed).
+            document["fingerprints"] = {}
+            document["engine_versions"] = {}
         write_summary()
         if wave_upload["ok"] and not document["passed"]:
             # The destination holds the provisional summary (written before the upload); land the
@@ -2057,16 +2065,15 @@ def _wave_document(
     # recording at that key, so publishing its fingerprint would make a later wave skip it as unchanged and
     # let a recovery wave report PASS with no corpus ever recorded (reviews D1).  The engine version map is
     # gated the same way: the version is the corpus key's other half, and a failed row's version in the
-    # index would stop protocol_due from naming a version the release never recorded.  A recipe whose
-    # per-recipe UPLOAD failed (B1) is not recorded either: its corpus exists only on this node, never at
-    # the destination the index's key names (the upload failure already fails the wave; the key must not
-    # survive it).  Rows without an upload record (no --upload) index as before.  All values stay on the
-    # row for reporting; only the index maps are gated.
+    # index would stop protocol_due from naming a version the release never recorded.  The corpus's PRESENCE
+    # at the destination is gated where it can be known: the corpus lands under ``<out>/observations/...``,
+    # a sibling of the per-recipe directories, so it travels only with the wave-level upload -- ``run_wave``
+    # clears both maps when that upload failed (reviews D2: the per-recipe upload carries
+    # ``<out>/<recipe_id>`` and says nothing about the corpus).  Rows without an upload record (no
+    # ``--upload``) index as before: a local wave.json names no destination.  All values stay on the row for
+    # reporting; only the index maps are gated.
     recorded = [
-        row
-        for row in rows
-        if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"
-        and (row.get("upload") or {}).get("ok", True)
+        row for row in rows if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"
     ]
     fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in recorded if row.get("behaviour_fingerprint")}
     engine_versions = {row["recipe"]: row["engine_version"] for row in recorded if row.get("engine_version")}

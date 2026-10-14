@@ -165,14 +165,65 @@ def test_a_failed_corpus_step_is_not_published_to_the_changed_since_index(
     assert second["recipes"] and second["recipes"][0]["state"] == "verified"
 
 
+def test_a_failed_wave_upload_is_not_published_to_the_changed_since_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The corpus travels only with the WAVE-level upload: ``<out>/observations/...`` is a sibling of the
+    per-recipe directories, so a per-recipe upload that lands and verifies says nothing about the corpus.
+    A wave whose last upload failed therefore leaves no corpus at the destination, and the index must not
+    name the recipe's key anyway: a ``--changed-since`` recovery reading that ``wave.json`` would skip the
+    recipe as recorded and report PASS over a corpus that never left the node (reviews D2: the gate checked
+    the per-recipe upload, which does not carry the corpus at all)."""
+    real_storage = run_wave_module._upload_storage
+    out_dir = tmp_path / "wave1"
+    sources: list[str] = []
+
+    def failing_wave_transfer(source: object, uri: str) -> str | None:
+        sources.append(str(source))
+        if Path(source) == out_dir:  # the wave-level upload's source, never a per-recipe one
+            return "the object store is down"
+        return real_storage(source, uri)
+
+    monkeypatch.setattr(run_wave_module, "_upload_cli", lambda *args: False)
+    monkeypatch.setattr(run_wave_module, "_upload_storage", failing_wave_transfer)
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
+    first = _wave(tmp_path, record_corpus=True, upload=str(tmp_path / "bucket"), out_dir=out_dir)
+    row = first["recipes"][0]
+    # The corpus step passed and the recipe's own directory landed and verified; the wave upload did not.
+    assert row["steps"]["observation_corpus"]["state"] == "passed"
+    assert row["upload"]["ok"] is True
+    assert first["upload"]["ok"] is False and first["verdict"] == "failed"
+    assert sources.count(str(out_dir)) == run_wave_module._UPLOAD_ATTEMPTS
+    # The destination holds the recipe's directory and no corpus at all.
+    assert (tmp_path / "bucket" / "fixture-embed" / "status.json").is_file()
+    assert not (tmp_path / "bucket" / "observations").exists()
+    # So the index -- the local wave.json a later --changed-since reads -- names no key.
+    assert first["fingerprints"] == {}
+    assert first["engine_versions"] == {}
+    index = json.loads((out_dir / "wave.json").read_text(encoding="utf-8"))
+    assert index["fingerprints"] == {} and index["engine_versions"] == {}
+    # The recovery wave attempts the recipe again, never skips it as unchanged.
+    monkeypatch.undo()
+    second = _wave(
+        tmp_path,
+        record_corpus=True,
+        out_dir=tmp_path / "wave2",
+        changed_since_index=out_dir / "wave.json",
+    )
+    assert second["skipped_unchanged"] == []
+    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint", "engine_version"]}
+    assert second["recipes"] and second["recipes"][0]["state"] == "verified"
+
+
 def test_a_failed_recipe_upload_is_not_published_to_the_changed_since_index(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A recipe whose corpus step passed but whose per-recipe UPLOAD failed has no corpus at the
-    destination: the index would name a key the destination never received, so a ``--changed-since``
-    recovery from that index skips the recipe as recorded and the recovery wave can report PASS over a
-    corpus that never left the wave's node (the upload failure already fails the wave -- B1 -- but the
-    index key stayed).  An upload failure disqualifies the row from the index like a failed corpus step."""
+    """Every upload of a wave fails here (the CLIs answer nothing, the storage path errors): the wave is
+    failed (B1) and no index key survives, because the wave-level upload -- the corpus's carrier -- did not
+    land.  The per-recipe upload carries ``<out>/<recipe_id>`` only and is reported through
+    ``upload_failures``; it is not the index's referent (reviews D2, and the sibling test above pins the
+    per-recipe-ok/wave-failed case).  A ``--changed-since`` recovery from this index attempts the recipe
+    again instead of skipping it as recorded."""
     monkeypatch.setattr(run_wave_module, "_upload_cli", lambda *args: False)
     monkeypatch.setattr(run_wave_module, "_upload_storage", lambda *args: "the object store is down")
     monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
