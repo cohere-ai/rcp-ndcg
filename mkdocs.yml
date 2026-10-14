@@ -49,6 +49,7 @@ nav:
   - Reference:
       - "Command line": reference/cli.md
       - "Recipes and serving models": reference/recipes.md
+      - "The GPU validation ledger": reference/gpu-validation.md
       - "The results record: a compatibility contract": reference/results-record.md
       - "Compatibility and versioning": reference/versioning.md
       - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
