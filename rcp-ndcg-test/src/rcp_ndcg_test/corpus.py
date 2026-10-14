@@ -23,7 +23,9 @@ A corpus is one directory:
   result. It is not part of the recording, so no integrity hash covers it.
 
 A **repository subset** (``tests/contract/engines/<engine>-<version>/<recipe>/<fingerprint>/``) carries
-``records.jsonl.gz`` (a stratified sample), the full corpus's ``manifest.json`` byte for byte, its
+``records.jsonl.gz`` (a stratified sample), the full corpus's ``manifest.json`` (byte for byte, or the tracked
+redacted view of it when the recording carried private infrastructure: the manifest's ``engine.redacted``
+entry names the field, the reason and the original's digest), its
 ``nondeterminism.json`` and an ``index.json`` (:func:`write_subset_index`) naming where the full corpus lives
 and hashing the subset's files; its integrity is the index's.
 
@@ -336,8 +338,9 @@ def integrity_mismatches(corpus: ObservationCorpus) -> list[str]:
     """What fails the corpus's integrity check (``[]`` when every hash holds).
 
     A full corpus checks every file its manifest hashes and the manifest's own digest. A repository subset
-    checks every file its ``index.json`` hashes, and that its ``manifest.json`` is the full corpus's, byte for
-    byte (the index records the full manifest's SHA-256).
+    checks every file its ``index.json`` hashes, and that its ``manifest.json`` is the file the index hashes
+    (the full corpus's, byte for byte, or -- when the recording carried private infrastructure -- the tracked
+    redacted view of it, whose ``engine.redacted`` entry names the original's digest).
 
     Args:
         corpus: A corpus from :func:`load_corpus`.
@@ -353,7 +356,7 @@ def integrity_mismatches(corpus: ObservationCorpus) -> list[str]:
             mismatches.append(f"{INDEX_FILE}: {RECORDS_FILE_GZ} is not hashed")
         expected_manifest = (corpus.subset_index.get("full_corpus") or {}).get("manifest_file_sha256")
         if expected_manifest != _sha256(root / MANIFEST_FILE):
-            mismatches.append(f"{MANIFEST_FILE}: not the full corpus's manifest (its SHA-256 differs from the index)")
+            mismatches.append(f"{MANIFEST_FILE}: its SHA-256 differs from the index's")
     else:
         integrity = corpus.manifest.get("integrity") or {}
         files = integrity.get("files") or {}
@@ -378,7 +381,8 @@ def write_subset_index(directory: str | Path, *, full_corpus_path: str, sampling
     """Write a repository subset's ``index.json``: where the full corpus lives, the sampling, the file hashes.
 
     Call it after the subset's other files are written (``manifest.json`` -- the full corpus's, copied byte
-    for byte --, ``records.jsonl.gz`` and ``nondeterminism.json``).
+    for byte and redacted before commit when the recording carried private infrastructure --,
+    ``records.jsonl.gz`` and ``nondeterminism.json``).
 
     Args:
         directory: The subset directory.

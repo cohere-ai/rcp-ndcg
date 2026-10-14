@@ -75,7 +75,10 @@ An observation corpus is raw-first (OBSERVATIONS-SPEC) and has one format and on
 wire, the headers that matter), `nondeterminism.json` (the measured differences between repeated
 sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance --
 the engine's image, argv, `VLLM_*` environment and patch opt-in, the model's facts -- the behaviour
-fingerprint and its named inputs, integrity hashes). The repository keeps subsets
+fingerprint and its named inputs, integrity hashes). The `VLLM_*` environment is the engine's own knobs: the
+pod's Kubernetes Service links ride under the same prefix (the Services are named `vllm-service-...`) and are
+dropped by `rcp_ndcg_test.observe.provenance`, so no internal address or Service name enters a manifest. The
+repository keeps subsets
 (`records.jsonl.gz` and an `index.json` naming the full corpus) at
 `rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
 manifests (`find_corpora`), each with its append-only `verification.jsonl` beside the recorded files.
@@ -126,6 +129,28 @@ naming what moved and why. A re-key touches no record, by this procedure:
 The conformance suite then replays the corpus under its new key; a re-key whose changed inputs did shape
 a recorded exchange fails that replay. `RCP_APPEND_VERIFICATION=1` appends the suite's result to every
 corpus's verification record.
+
+A committed manifest is a **redacted view** of the recording when the recording carried private
+infrastructure the tracked tree may not name (AGENTS.md: public names only) -- the pod's Kubernetes Service
+links in `engine.env`, or the pod's staging directory in a `serve_argv` path. The store's file stays the
+original; the tracked file says what was removed, so nothing is silent. A redaction touches no record, by this
+procedure:
+
+1. Remove the field from `manifest.json` (the environment keys the Service links injected, or the staging
+directory in a `--chat-template` value, reduced to its file name as the family goldens do it) and append to
+   `engine.redacted` an entry with `field_path`, what was removed, `reason`, `date`, `from_manifest_sha256`
+   and `from_manifest_file_sha256` (the original manifest's digest and file SHA-256, from git: they keep the
+   link to the store's file the subset was cut from).
+2. Recompute `integrity.manifest_sha256` with `rcp_ndcg_test.corpus.manifest_digest`, then the corpus's
+   `index.json` (`full_corpus.manifest_file_sha256` is the tracked file's SHA-256 and
+   `full_corpus.manifest_sha256` its digest -- the fields the conformance suite's integrity check reads),
+   then the engine's `index.json` (`write_corpus_index`). The `gs://` pointer becomes the
+   `gs://YOUR-BUCKET/...` placeholder (`docs/how-to/release-candidates.md`: a tracked file never names a real
+   one).
+
+A recording made after the fix needs no redaction: the engine environment's own filter
+(`rcp_ndcg_test.observe.provenance`) keeps the Service links out, and
+`test_no_committed_corpus_names_private_infrastructure` holds the committed bytes to that.
 
 ### Behaviour fingerprint versions
 

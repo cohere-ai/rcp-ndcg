@@ -92,7 +92,10 @@ behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VA
   adapters (`observe.corpus.derived_vectors`); the volatile reply fields (`id`, `created`) are normalised away.
 - `manifest.json` -- the provenance (`observe.provenance`): `engine` (image and digest, vLLM version and commit,
   torch, CUDA, driver, GPUs, the exact serve argv, the `VLLM_*` environment and `RCP_NDCG_VLLM_PATCHES`
-  without credential-named variables,
+  without credential-named variables and without the pod's Kubernetes Service links -- the Services are named
+  `vllm-service-...`, so their links ride under the same `VLLM_` prefix and the filter drops them; a manifest
+  committed with a redaction instead of a re-recording carries `engine.redacted`, naming the field, the reason,
+  the date and the original manifest's digest and file SHA-256,
   start time, readiness wait), `model` (id, revision, weight file hashes from the Hub cache, tokenizer and
   template hashes, plugin with its wheel hash, `hf_overrides`, pooler config, `mm_processor_kwargs`, dtype),
   `recipe` (id, the recipe file's hash, the behaviour fingerprint and its named inputs, status, the declared
@@ -125,8 +128,11 @@ within the measured tolerance; no common request is a failure). A corpus failing
 
 Under `tests/contract/engines/vllm-<version>/<recipe>/<fingerprint>/`: `records.jsonl.gz` (the first record of
 every stratum, then corpus order until 2 MB compressed; corpus order kept), the full corpus's `manifest.json`
-and `nondeterminism.json` byte for byte, and `index.json` (`rcp-ndcg.observation-subset/1`: the full corpus's
-storage path and manifest hash, the recorded sampling, the subset's file hashes). The 30 MB repository total is
+and `nondeterminism.json` byte for byte -- a manifest committed with private infrastructure removed instead
+carries an `engine.redacted` entry (the field, the reason, the date, the original's digest and file SHA-256),
+so the tracked view stays linked to the recording it was cut from -- and `index.json`
+(`rcp-ndcg.observation-subset/1`: the full corpus's storage path (the `gs://YOUR-BUCKET/...` placeholder) and
+manifest hash, the recorded sampling, the subset's file hashes). The 30 MB repository total is
 the conformance suite's to hold.
 
 ### Change handling

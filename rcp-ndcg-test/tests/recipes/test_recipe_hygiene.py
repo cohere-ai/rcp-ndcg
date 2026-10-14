@@ -12,6 +12,7 @@ this scan is their one home everywhere else. Offline by construction: it reads t
 
 from __future__ import annotations
 
+import gzip
 import re
 import subprocess
 from pathlib import Path
@@ -50,6 +51,26 @@ DESIGN_IDS = re.compile(r"owner decisions? \d+|\bdecision \d+|\blane L\d+|\blayo
 #: The scaffolding directories the shipped-tree scan skips: working notes and paper reproduction, deleted at
 #: release.
 SCAFFOLDING = ("handover", "experiments")
+
+#: The committed corpora: the repository subset of every recorded observation (a manifest with the pod's
+#: environment and argv, a subset ``index.json`` naming where the full corpus lives, the records).
+CORPORA = "rcp-ndcg-test/corpora"
+
+#: The private-infrastructure shapes no committed corpus may carry: a private-range address (10/8, 172.16/12
+#: or 192.168/16 -- a pod's Service endpoint), a Kubernetes Service-link name (``*_SERVICE_HOST`` /
+#: ``*_SERVICE_PORT`` and the ``VLLM_SERVICE_`` prefix the Services ride under, which the pod's injection puts
+#: beside the engine's own ``VLLM_*`` knobs) and the pod's staging paths. A committed corpus records the pod,
+#: so this is where a Service address or a staging path lands first.
+PRIVATE_INFRASTRUCTURE = re.compile(
+    r"\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
+    r"|\b192\.168\.\d{1,3}\.\d{1,3}\b"
+    r"|\b172\.(?:1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}\b"
+    r"|_SERVICE_HOST\b|_SERVICE_PORT\b|VLLM_SERVICE_"
+)
+
+#: A machine path in a corpus: the pod's staging directory or an operator checkout. The serve argv records
+#: the paths the pod served from, so a staging root reaches a manifest as directly as an address does.
+MACHINE_PATH = re.compile(r"(?:^|[\s\"'(=])/(?:root|home|Users|private|tmp)/")
 
 
 #: The per-column media fields the harness retired in favour of one ``media`` field (W2). Every family's
@@ -117,7 +138,9 @@ def test_no_shipped_recipe_file_names_a_real_bucket() -> None:
     The wave reports are operator storage; a real bucket or an operator prefix is not a source a reader of
     the wheel can resolve, and the repo's public-names rule declares the placeholder the public form. The
     scan covers the same shipped-file set as the internal-label scan below, so the placeholder cannot
-    regress into a private bucket unnoticed.
+    regress into a private bucket unnoticed. The corpus subset ``index.json`` files name the full corpus's
+    storage path and are covered by :func:`test_no_committed_corpus_names_private_infrastructure` (a
+    whole-tree scan would read the CHANGELOG's own ``gs://bucket/`` example as a host).
     """
     root = default_recipes_root()
     hits = [
@@ -128,6 +151,42 @@ def test_no_shipped_recipe_file_names_a_real_bucket() -> None:
         if (match := _GS_HOST.search(line)) and match.group(1) != PLACEHOLDER_BUCKET
     ]
     assert not hits, "real buckets in shipped recipe files:\n" + "\n".join(hits)
+
+
+def _corpus_text(path: Path) -> str:
+    """One committed corpus file's text: a ``.gz`` record file is decompressed first, so the scan reads the
+    recorded exchanges as well as the manifests (the credential scan reads the subset's records the same way)."""
+    raw = path.read_bytes()
+    if path.suffix == ".gz":
+        raw = gzip.decompress(raw)
+    return raw.decode("utf-8", errors="replace")
+
+
+def test_no_committed_corpus_names_private_infrastructure() -> None:
+    """No committed corpus carries a private-range address, a Kubernetes Service-link name, a real bucket or
+    a machine path.
+
+    A corpus manifest records the pod's environment and the exact serve argv, so the pod's Service links
+    (internal addresses, and internal or unreleased Service names under the ``VLLM_`` prefix the engine's own
+    knobs use) and the pod's staging paths land in a tracked file first; each subset ``index.json`` names the
+    full corpus's storage path. The scan covers every tracked corpus byte (the records included) and is the
+    corpus half of the hygiene guards: what the engine-environment filter in
+    :mod:`rcp_ndcg_test.observe.provenance` keeps out of a new recording, this holds out of the committed one.
+    """
+    root = _repository_root()
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--", CORPORA], check=True, capture_output=True
+    ).stdout
+    hits = [
+        f"{name}:{number}: {line.strip()[:140]}"
+        for name in listed.decode("utf-8").split("\0")
+        if name
+        for number, line in enumerate(_corpus_text(root / name).splitlines(), start=1)
+        if PRIVATE_INFRASTRUCTURE.search(line)
+        or MACHINE_PATH.search(line)
+        or ((match := _GS_HOST.search(line)) and match.group(1) != PLACEHOLDER_BUCKET)
+    ]
+    assert not hits, "private infrastructure in the committed corpora:\n" + "\n".join(hits)
 
 
 def test_every_shipped_recipe_file_reads_as_a_public_statement() -> None:
