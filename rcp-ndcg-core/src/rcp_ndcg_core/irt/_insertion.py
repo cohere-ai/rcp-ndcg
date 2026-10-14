@@ -31,7 +31,7 @@ from typing import cast
 
 from rcp_ndcg_core.gain import sigmoid
 from rcp_ndcg_core.irt._calibration import Priors
-from rcp_ndcg_core.irt._criteria_2pl import DEFAULT_SE_TARGET
+from rcp_ndcg_core.irt._criteria_2pl import DEFAULT_SE_TARGET, _validate_se_target
 from rcp_ndcg_core.metric import discount
 from rcp_ndcg_core.schemas import DocumentEstimate
 
@@ -266,7 +266,7 @@ def insert_document(
             connectivity predicate).
         l2_reg: ridge on the inserted theta: the Bradley-Terry penalty of the fit the thetas come from
             (default ``Priors().bt_l2``, the calibration's own; pass ``calibration.identity.priors.bt_l2``).
-        se_target: the SE the evidence must certify (the information predicate).
+        se_target: the SE the evidence must certify (the information predicate); finite and > 0 (logits).
         min_opponents: distinct opponents required (the connectivity predicate).
 
     Returns:
@@ -277,8 +277,10 @@ def insert_document(
     Raises:
         UnidentifiableInsertion: a predicate fails; ``.report`` names the failed ones.
         ScaleMovementError: the existing thetas changed during the fit.
-        ValueError: ``doc_id`` already has a theta, or a comparison does not involve it.
+        ValueError: ``doc_id`` already has a theta, a comparison does not involve it, or ``se_target`` is
+            not finite and > 0.
     """
+    se_target = _validate_se_target(se_target)
     # --- Scale, structural: snapshot the frozen frame NOW and verify it
     # bit-identical after the fit. Comparing the dict to a later copy of
     # itself is the check; comparing it to itself at one instant would be a

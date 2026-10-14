@@ -237,6 +237,26 @@ class TestComparisonGrammar:
                 existing_comparisons=[],
             )
 
+    def test_a_nonsensical_se_target_is_refused(self) -> None:
+        """``se_target`` is squared into the information predicate: 0.0 raised a bare
+        ``ZeroDivisionError`` from inside it, NaN made it False so the predicate silently
+        refused a well-connected insertion with an unrelated message, and -0.5 / inf silently
+        behaved as +0.5 / a disabled predicate."""
+        docs, _true, comparisons = _dense_world()
+        doc = "d15"
+        existing_comps = [c for c in comparisons if doc not in (c[0], c[1])]
+        new_comps = [c for c in comparisons if doc in (c[0], c[1])]
+        thetas = _fit_bt([d for d in docs if d != doc], existing_comps)
+        for se_target in (0.0, -0.5, float("nan"), float("inf")):
+            with pytest.raises(ValueError, match="se_target"):
+                insert_document(
+                    doc,
+                    new_comparisons=new_comps,
+                    existing_thetas=thetas,
+                    existing_comparisons=existing_comps,
+                    se_target=se_target,
+                )
+
     def test_inserting_a_document_that_already_has_a_theta_refused(self) -> None:
         docs, _true, comparisons = _dense_world()
         thetas = _fit_bt(docs, comparisons)

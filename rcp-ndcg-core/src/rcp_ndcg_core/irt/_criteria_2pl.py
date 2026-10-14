@@ -77,6 +77,19 @@ def _validate_prior_sd(prior_sd: float) -> float:
     return value
 
 
+def _validate_se_target(se_target: float) -> float:
+    """The standard-error target (logits): finite and > 0, or a :class:`ValueError`.
+
+    The target is squared into the information predicate (``information >= 1 / se_target**2``), so 0
+    divides by zero, a negative target silently behaves as its absolute value, and NaN or inf switches
+    the predicate off: the ``low_information`` flag that exists to warn the caller would never fire.
+    """
+    value = float(se_target)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"se_target (logits) must be finite and > 0, got {se_target!r}")
+    return value
+
+
 @dataclass(frozen=True)
 class Criteria2PLDiagnostics:
     """Fit health. All fields are derived from the fit itself -- no human labels.
@@ -328,13 +341,14 @@ class Criteria2PL:
             n: Placements (each answers every criterion): an int, or with ``offsets`` one int per group.
             S: Per criterion, the placements it passed: ``(K,)``, or with ``offsets`` ``(G, K)``;
                 ``0 <= s_k <= n``.
-            se_target: the SE the caller wants the evidence to certify.
+            se_target: the SE the caller wants the evidence to certify; finite and > 0 (logits).
             offsets: ``(G,)`` logit offsets, one per group; ``None`` is one group without an offset.
 
         Returns:
             The :class:`~rcp_ndcg_core.schemas.DocumentEstimate`.
         """
         shift = np.zeros(1) if offsets is None else np.asarray(offsets, dtype=float)
+        se_target = _validate_se_target(se_target)
         counts = np.asarray(n, dtype=float).reshape(-1) if offsets is not None else np.asarray([n], dtype=float)
         passes = np.asarray(S, dtype=float)
         if offsets is None:

@@ -25,19 +25,23 @@ type Gains = Mapping[str, Mapping[str, float]]
 
 
 def item_arrays(items: Any, *, weighted: bool = True) -> tuple[Sequence[float], Sequence[float]]:
-    """``(gamma, beta)`` of ``items``, validated: equal non-zero lengths, finite values, and ``sum(gamma) > 0``.
+    """``(gamma, beta)`` of ``items``, validated: equal non-zero lengths, finite values, and -- when
+    ``weighted`` -- every ``gamma > 0``.
 
     Args:
         items: Item parameters: an :class:`~rcp_ndcg_core.schemas.ItemParams`, any object with ``gamma`` and
             ``beta`` sequences, or a ``{"gamma": [...], "beta": [...]}`` mapping (discriminations, difficulties in
             logits).
-        weighted: Also require ``sum(gamma) > 0``, which the discrimination-weighted :func:`gain` divides by.
+        weighted: Also require every ``gamma > 0``, the rule the discrimination-weighted :func:`gain` needs:
+            it divides by ``sum(gamma)``, and a weighted mean stays inside ``[0, 1]`` only for non-negative
+            weights (a gamma of 0 carries no weight; a negative one inverts its criterion).
 
     Returns:
         ``(gamma, beta)``, as given.
 
     Raises:
-        ValueError: missing, non-finite or mismatched parameters.
+        ValueError: missing, non-finite or mismatched parameters, or a non-positive ``gamma`` in the
+            weighted case.
     """
     if isinstance(items, Mapping):
         try:
@@ -60,8 +64,14 @@ def item_arrays(items: Any, *, weighted: bool = True) -> tuple[Sequence[float], 
             raise ValueError(f"item parameter {name!r} must contain only finite numbers")
     if len(gammas) == 0 or len(gammas) != len(betas):
         raise ValueError(f"item parameters need as many betas as gammas (> 0): {len(gammas)} and {len(betas)}")
-    if weighted and sum(gammas) <= 0:
-        raise ValueError("sum(gamma) must be greater than 0 for the discrimination-weighted gain")
+    if weighted:
+        non_positive = [index for index, gamma in enumerate(gammas) if gamma <= 0]
+        if non_positive:
+            first = non_positive[0]
+            raise ValueError(
+                "every gamma must be greater than 0 for the discrimination-weighted gain, which divides "
+                f"by sum(gamma); gamma[{first}] = {float(gammas[first])!r}"
+            )
     return gammas, betas
 
 
@@ -142,7 +152,8 @@ def gain(theta: float | ArrayLike, items: Any) -> float | NDArray[np.float64]:
 
     Args:
         theta: Calibrated ability, in logits: a scalar, or an array of abilities; finite.
-        items: Item parameters with ``gamma`` and ``beta`` sequences; ``sum(gamma) > 0``.
+        items: Item parameters with ``gamma`` and ``beta`` sequences; every ``gamma > 0`` (the
+            discrimination-weighted mean needs non-negative weights).
 
     Returns:
         The gain in ``[0, 1]`` (the discrimination-weighted mean of the pass probabilities; exactly 0 or 1

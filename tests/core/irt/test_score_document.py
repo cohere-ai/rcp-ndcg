@@ -180,6 +180,17 @@ class TestValidation:
             with pytest.raises(ValueError, match="prior_sd must be finite and > 0"):
                 _score(3, [2, 2, 1], prior_sd=prior_sd)
 
+    def test_a_nonsensical_se_target_is_refused(self) -> None:
+        """``se_target`` is squared into the precision predicate: 0.0 raised a bare
+        ``ZeroDivisionError: float division by zero`` from inside the predicate, NaN made the
+        predicate False so the ``low_information`` flag that exists to warn the caller silently
+        switched off, and -0.5 silently behaved as +0.5."""
+        for se_target in (0.0, -0.5, float("nan"), float("inf")):
+            with pytest.raises(ValueError, match="se_target"):
+                _score(3, [2, 2, 1, 0, 0], se_target=se_target)
+        with pytest.raises(ValueError, match="se_target"):
+            consensus_calibrator().score_document(3, [2, 2, 1, 0, 0], se_target=float("nan"))
+
     def test_reports_an_se_in_range(self) -> None:
         assert 0 < _score(8, [5, 4, 3, 2, 0]).se < 2.0
 
