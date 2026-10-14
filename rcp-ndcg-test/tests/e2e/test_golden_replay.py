@@ -35,9 +35,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
-from tests._engines import emulator_for, harness, load_recipe
+from tests._engines import corpus_of, emulator_for, harness, load_recipe
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "goldens.json"
 ENGINES_ROOT = Path(__file__).resolve().parents[2] / "corpora"
@@ -50,24 +51,93 @@ PROVENANCE = (
 INSTRUCTED = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
 QUESTION = "What is the capital of France?"
 
-#: The golden minis. Texts are the shakedown corpus's recorded request texts; ``gains`` are synthetic
-#: declared fixture values reversed against the model's order, ``qrels`` the fixture's relevance.
+
+def _key_of(emulator: Any, prompt: str) -> str:
+    """One observation key whose prompt part is ``prompt`` (the replay key's first element). A corpus may
+    record the same prompt for more than one request, so the first match is returned."""
+    for key in emulator.observations:
+        if json.loads(key)[0] == prompt:
+            return key
+    raise AssertionError(f"no observation carries the prompt {prompt!r}")
+
+
+def _recorded_bodies(recipe_id: str) -> list[dict[str, Any]]:
+    """The request bodies one recipe's corpus recorded, in record order."""
+    from rcp_ndcg_test.engines import exchanges_of
+
+    corpus = corpus_of(load_recipe(recipe_id))
+    return [dict(exchange.request_body or {}) for exchange in exchanges_of(corpus)]
+
+
+def _embed_case_texts(encoder: str) -> tuple[str, list[str]]:
+    """One observed query text and two observed document texts from the encoder's corpus: the client
+    renders a query with the instruction and a document bare, so the recorded instructed prompts give the
+    query text back (minus the prefix) and the recorded bare prompts are the document texts. The release
+    recordings' prompts are not the shakedown's, so the case reads them instead of hard-coding them."""
+    inputs = [
+        item
+        for body in _recorded_bodies(encoder)
+        for item in (body.get("input") if isinstance(body.get("input"), list) else [body.get("input")])
+        if isinstance(item, str)
+    ]
+    instructed = [text for text in inputs if text.startswith(INSTRUCTED)]
+    bare = [text for text in inputs if not text.startswith(INSTRUCTED)]
+    assert instructed and len(bare) >= 2, (
+        f"{encoder}: the corpus records {len(instructed)} instructed and {len(bare)} bare"
+    )
+    return instructed[0][len(INSTRUCTED) :], bare[:2]
+
+
+def _rerank_case_texts(model: str) -> tuple[str, list[str]]:
+    """One observed query and two observed documents from the reranker's corpus (its first recorded
+    request that carries both)."""
+    for body in _recorded_bodies(model):
+        query, documents = body.get("query"), body.get("documents")
+        if isinstance(query, str) and isinstance(documents, list) and len(documents) >= 2:
+            return query, [str(document) for document in documents[:2]]
+    raise AssertionError(f"{model}: the corpus records no query with two documents")
+
+
+_EMBED_QUERY, _EMBED_DOCS_RAW = _embed_case_texts("qwen3-embedding-0.6b")
+_RERANK_QUERY, _RERANK_DOCS = _rerank_case_texts("zerank-2-reranker")
+_VIDORE_QUERY, _VIDORE_DOCS = _rerank_case_texts("zerank-1-small-reranker")
+
+
+def _ordered_by_model(encoder: str, query_text: str, doc_texts: list[str]) -> list[str]:
+    """The documents ordered so the model's OWN recorded vectors put the LAST one first: the fixture's d0 is
+    judged best (gains ``[0.75, 0.25]``) and relevant (qrels ``[1, 0]``) while the model ranks d1 first, so
+    both pinned metrics are below 1.0 -- the property the mutation test needs, and it holds whatever texts
+    the corpus recorded."""
+    import numpy as np
+
+    emulator = emulator_for(encoder)
+
+    def score(text: str) -> float:
+        query = np.asarray(emulator.observations[_key_of(emulator, INSTRUCTED + query_text)][0].vector, dtype=float)
+        vector = np.asarray(emulator.observations[_key_of(emulator, text)][0].vector, dtype=float)
+        return float(query @ vector)
+
+    return sorted(doc_texts, key=score)  # the model's worst first, its best last (the fixture's d1)
+
+
+_EMBED_DOCS = _ordered_by_model("qwen3-embedding-0.6b", _EMBED_QUERY, _EMBED_DOCS_RAW)
+
+#: The golden minis. Texts are the CURRENT corpus's recorded request texts (the release recordings' prompts
+#: are not the shakedown's, so they are read, never hard-coded); ``gains`` are synthetic declared fixture
+#: values judged opposite the model's order, ``qrels`` the fixture's relevance.
 CASES = {
     "nanobeir": {
         "retrieval": {
             "encoder": "qwen3-embedding-0.6b",
-            "query_text": QUESTION,
-            # d0: the bare question (observed, request #3); d1: the instructed query string sent as a
-            # document (documents render bare, so it is the observed request #1). The model ranks d1
-            # first; the gains judge d0 best.
-            "doc_texts": [QUESTION, INSTRUCTED + QUESTION],
+            "query_text": _EMBED_QUERY,
+            "doc_texts": _EMBED_DOCS,
             "gains": [0.75, 0.25],
             "qrels": [1, 0],
         },
         "rerank": {
             "model": "zerank-2-reranker",
-            "query_text": QUESTION,
-            "doc_texts": ["Paris is the capital of France.", "Berlin is the capital of Germany."],
+            "query_text": _RERANK_QUERY,
+            "doc_texts": _RERANK_DOCS,
             "gains": [0.25, 0.75],
             "qrels": [1, 0],
         },
@@ -76,8 +146,8 @@ CASES = {
         "retrieval": None,  # waived: no page-image observation (module docstring)
         "rerank": {
             "model": "zerank-1-small-reranker",
-            "query_text": QUESTION,
-            "doc_texts": ["Paris is the capital of France.", "Berlin is the capital of Germany."],
+            "query_text": _VIDORE_QUERY,
+            "doc_texts": _VIDORE_DOCS,
             "gains": [0.25, 0.75],
             "qrels": [1, 0],
         },
@@ -272,11 +342,6 @@ def test_a_golden_run_without_its_observations_is_caught(tmp_path: Path) -> None
     assert all(kinds and set(kinds) == {"surrogate"} for kinds in answers.values()), answers
 
 
-def _key_of(emulator, prompt: str) -> str:
-    (key,) = [key for key in emulator.observations if json.loads(key)[0] == prompt]
-    return key
-
-
 def test_the_retrieval_golden_ranks_by_the_vectors(tmp_path: Path) -> None:
     """The retrieval golden moves with the vectors: two documents, the model ranks the judged-best one
     last (reversed gains), and moving one document's vector moves both metrics."""
@@ -288,7 +353,7 @@ def test_the_retrieval_golden_ranks_by_the_vectors(tmp_path: Path) -> None:
     assert pinned["qrel_ndcg@10"] < 1.0 and pinned["rcp_ndcg@10"] < 1.0, "the model's order is not the judged order"
 
     emulator = emulator_for(row["encoder"])
-    query_key, bare_key = _key_of(emulator, INSTRUCTED + QUESTION), _key_of(emulator, QUESTION)
+    query_key, bare_key = _key_of(emulator, INSTRUCTED + row["query_text"]), _key_of(emulator, row["doc_texts"][0])
     saved = emulator.observations
     query_vector = saved[query_key][0].vector
     emulator.observations = {**saved, bare_key: (replace(saved[bare_key][0], vector=query_vector),)}
@@ -337,13 +402,15 @@ def test_the_golden_replay_goes_red_when_a_rerank_score_is_perturbed(tmp_path: P
     emulator = emulator_for(recipe_id)
     before = _load_goldens()[case]["rerank"]
 
-    # perturb the replayed score of the Berlin pair prompt past the Paris one's: the ranking flips
+    # perturb the replayed score of the judged-best document's prompt past the other's: the ranking flips
+    # (the case's texts are the corpus's own, so the perturbed key is derived, never named)
+    judged_best = row["doc_texts"][1]  # gains [0.25, 0.75]: the second document is judged best
     perturbed = dict(emulator.observations)
     flipped_map = {}
     for key, history in perturbed.items():
         rows = [
             replace_score(observation, observation.score + 2.0)
-            if observation.score is not None and "Berlin" in key
+            if observation.score is not None and judged_best in key
             else observation
             for observation in history
         ]

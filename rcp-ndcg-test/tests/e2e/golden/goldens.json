@@ -22,8 +22,8 @@
     "kind": "regression-pin",
     "provenance": "computed by tests/e2e/test_golden_replay.py from the provisional shakedown corpus, which recorded no subset run: a regression pin of the replayed path, not an independent GPU-run number",
     "rerank": {
-      "qrel_ndcg@10": 1.0,
-      "rcp_ndcg@10": 0.7967075809905066
+      "qrel_ndcg@10": 0.6309297535714575,
+      "rcp_ndcg@10": 1.0
     }
   }
 }
