@@ -45,8 +45,12 @@ DESIGN_AND_LANE_IDS = re.compile(r"\bRFC[- ]?\d{3,4}\b|\blane/", re.IGNORECASE)
 #: The internal design-id shorthand the docs wording guard forbids in Markdown, in the non-Markdown homes
 #: the release publishes: the shipped recipe files (package data of ``rcp-ndcg-vllm``) and the generated
 #: schemas (``rcp-ndcg-vllm/schema/`` and the root ``schemas/``). ``tests/docs/test_wording.py`` owns the
-#: Markdown half; this is the same rule for the data files it cannot read.
-DESIGN_IDS = re.compile(r"owner decisions? \d+|\bdecision \d+|\blane L\d+|\blayout-move item \d+", re.IGNORECASE)
+#: Markdown half; this is the same rule for the data files it cannot read. The last alternative is a plan
+#: step id (``the release plan's A1b``): an internal step label a reader of the wheel cannot resolve.
+DESIGN_IDS = re.compile(
+    r"owner decisions? \d+|\bdecision \d+|\blane L\d+|\blayout-move item \d+|\bplan'?s? (?:step )?[A-Z]\d+[a-z]?\b",
+    re.IGNORECASE,
+)
 
 #: The scaffolding directories the shipped-tree scan skips: working notes and paper reproduction, deleted at
 #: release.
@@ -130,6 +134,18 @@ def test_every_reference_refuses_the_same_retired_media_columns() -> None:
     assert found, "no family's reference refuses the retired media columns"
     assert len(set(found.values())) == 1, f"the retired-column copies disagree: {found}"
     assert set(next(iter(found.values()))) == set(RETIRED_MEDIA_COLUMNS), found
+
+
+def test_the_design_id_scan_catches_a_plan_step_id() -> None:
+    """The shape that shipped: an internal plan step id ("the release plan's A1b") is the same class as
+    a numbered decision -- a reader of the wheel cannot resolve it, so the scan must catch it wherever it
+    cites the step. The recipe files carry none (the two citations are reworded to the constraint itself).
+    """
+    assert DESIGN_IDS.search("the release plan's A1b re-verification runs on the final RC")
+    assert DESIGN_IDS.search("the plan's step B2")
+    assert DESIGN_IDS.search("the release plan's a1b")  # a lowercased citation is the same id
+    assert not DESIGN_IDS.search("the plan is to run the gate on the final candidate")
+    assert not DESIGN_IDS.search("the engine's own default clip budget would decide")
 
 
 def test_no_shipped_recipe_file_names_a_real_bucket() -> None:

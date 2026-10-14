@@ -96,9 +96,9 @@ gates: {}
 # The rc0-202610131335 nightly wave (r1, the digest-pinned nightly image above) passed every gate after
 # the fix14gemma fix, and the wave's serve argv equals this recipe's golden. NOTE: the harness's
 # plugin-module keying (b2621274, 2026-10-13) moved this recipe's behaviour fingerprint after that wave
-# (7b81c893 -> d0e1e968), so the wave's evidence is at a superseded fingerprint. The state stays
-# `unverified` until the release plan's A1b re-verification runs on the final RC at the current
-# fingerprint; the wave record below is kept as history.
+# (7b81c893 -> d0e1e968), so that wave's evidence is at a superseded fingerprint. The re-verification
+# on the final candidate (waves-rc0-202610140620/plugin-carriers) ran the same gate at the current
+# fingerprint and passed (min cosine 0.9998652 >= 0.999 at every declared k), which is the state below.
 status:
   state: verified
   image: "vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21"

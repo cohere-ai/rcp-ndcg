@@ -454,13 +454,15 @@ def test_recipe_contract(variant_id: str) -> None:
     assert recipe.engine.model_dump(mode="json") == EXPECTED_ENGINE
     assert recipe.resources.model_dump(mode="json") == EXPECTED_RESOURCES
     # The wave ran and the per-token gate failed in every run (rc0-202610120045..
-    # rc0-202610131205-record): the schema's `failed`, with the image/date/report of the wave that
-    # measured it. Never `unverified` (the measurement exists) and never `verified` without a green
-    # re-run; the gate, its dtype and the disposition stay the owner's.
+    # rc0-202610131205-record), and the re-verification on the final candidate
+    # (waves-rc0-202610140620/plugin-carriers-vllm) failed the same gate at the current fingerprint:
+    # the schema's `failed`, with the image/date/report of the latest wave that measured it. Never
+    # `unverified` (the measurement exists) and never `verified` without a green re-run; the gate, its
+    # dtype and the disposition stay the owner's.
     assert recipe.status.state == "failed"
     assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
-    assert recipe.status.date == "2026-10-13"
-    assert recipe.status.report is not None and "waves-rc0-202610130615" in recipe.status.report
+    assert recipe.status.date == "2026-10-14"
+    assert recipe.status.report is not None and "waves-rc0-202610140620" in recipe.status.report
     assert recipe.sources
 
 

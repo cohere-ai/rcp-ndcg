@@ -929,7 +929,8 @@ def _video_sampling_agrees(recipe: Recipe) -> None:
     scope and/or the flat ``serve.mm_processor_kwargs`` keys ``num_frames``/``fps``/``max_frames`` (the
     shipped embeddinggemma-2 shape pins ``fps`` beside ``max_frames`` to realize the declared
     ``num_frames``).  Both directions are refused: a client declaration the serve pin does not carry, and
-    a serve pin the client does not declare.
+    a serve pin the client does not declare.  A declared ``fps`` counts every frame the rate yields, so a
+    frame count beside it (``num_frames``/``max_frames``) clamps the realized set and is refused too.
 
     Raises:
         ValueError: a sampling pin in one half only, or a rule that differs between the halves.
@@ -948,6 +949,15 @@ def _video_sampling_agrees(recipe: Recipe) -> None:
                 f"{pinned or 'no video sampling'}: the engine's own sampling would decide, and the "
                 f"client's count describes a different clip (pin --media-io-kwargs "
                 f'\'{{"video": {{"fps": {declared_fps}}}}}\', or drop the declaration)'
+            )
+        competing = sorted(key for key in ("num_frames", "max_frames") if key in pins)
+        if competing:
+            raise ValueError(
+                f"client.video_policy declares fps {declared_fps!r}, but serve pins "
+                f"{', '.join(f'{key} {pins[key]!r}' for key in competing)} beside it: a declared fps "
+                "counts every frame the engine's rate yields, and a frame count clamps that set, so the "
+                "declared rate would describe a different clip (drop the frame-count pin, or declare "
+                "num_frames instead of fps)"
             )
         return
     if declared_frames is not None:

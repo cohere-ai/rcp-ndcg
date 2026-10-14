@@ -72,7 +72,7 @@ notes: >-
   - H100 (80 GB; 0.92 -> 68.55 GiB): 68.55 - 30.39 = 38.16 GiB cache -> ~23 concurrent 32k windows. Same
     shape -- no `--set` override needed.
   Engine support: Gemma4ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:418); checked at
-  the pinned revision 2026-10-09. status: unverified until its GPU validation wave passes.
+  the pinned revision 2026-10-09. status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/nvidia/Gemma-4-31B-IT-NVFP4 (revision 4135a98a9b728a548947683219633b25682223ac == the Hub head; Hub tag other with license_name apache-license-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4/raw/4135a98a9b728a548947683219633b25682223ac/config.json (Gemma4ForConditionalGeneration; text 60 layers = 50 sliding + 10 full, hidden 5376, intermediate 21 504, 32 query / 16 KV heads, head 256 / global head 512, global KV 4, sliding window 1024, vocab 262 144, mpe 262 144; quantization_config present), hf_quant_config.json, chat_template.jinja (NVIDIA re-export 16934 B, sha256 prefix 94899c0f917d93f6), model.safetensors.index.json (32 633 255 032 B, 4 shards)"

@@ -76,7 +76,7 @@ notes: >-
   History: the paper served this judge as TP4 x DP2 on 8x B200 in its pooled configuration (the second-judge
   TREC-DL run); the one-GPU-per-replica shape is one TP1 replica per engine, scaled by replicas.
   Engine support: GptOssForCausalLM is in vLLM v0.31.0's registry (registry.py:123, module gpt_oss); the pin
-  equals the Hub head (checked 2026-10-09). status: unverified until its GPU validation wave passes.
+  equals the Hub head (checked 2026-10-09). status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/openai/gpt-oss-120b (revision b5c939de8f754692c1647ca79fbf85e8c1e70f8a == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/openai/gpt-oss-120b/raw/b5c939de8f754692c1647ca79fbf85e8c1e70f8a/config.json (GptOssForCausalLM, 36 layers, hidden 2880, head_dim 64, 8 KV heads, 128 local experts top-4, vocab 201 088, mpe 131 072 via YARN factor 32, sliding window 128 on alternating layers, quant_method mxfp4), model.safetensors.index.json (metadata.total_size 65 248 815 744 B, 15 shards)"

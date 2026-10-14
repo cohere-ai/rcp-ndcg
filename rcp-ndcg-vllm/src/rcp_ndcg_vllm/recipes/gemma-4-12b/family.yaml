@@ -87,7 +87,7 @@ notes: >-
   Engine support: Gemma4UnifiedForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:419-421,
   module gemma4_unified); checked at the pinned revision 2026-10-09. The full-attention layers' global head dim
   512 needs FA4 on Hopper or the Blackwell TRITON_FLASHINFER composite; an A100-class node is not the target.
-  status: unverified until its GPU validation wave passes.
+  status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/google/gemma-4-12B-it (revision 707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/google/gemma-4-12B-it/raw/707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7/config.json (Gemma4UnifiedForConditionalGeneration, model_type gemma4_unified; text 48 layers = 40 sliding + 8 full, hidden 3840, 16 query / 8 KV heads, head 256 / global head 512, global KV 1, sliding window 1024, vocab 262 144, mpe 262 144, final_logit_softcapping 30.0, attention_k_eq_v; vision_config gemma4_unified_vision, model_patch_size 48, patch 16, pooling 3, num_soft_tokens 280; audio_config non-null), processor_config.json (image_processor patch 16, pooling 3, max_soft_tokens 280, image_seq_length 280; video processor 70 soft tokens, 32 frames), tokenizer.json (sha256 cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f), chat_template.jinja (18683 B, sha256 prefix ae53464bf3be2580), model.safetensors (23 919 549 408 B)"
