@@ -23,7 +23,7 @@ Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped onl
 incompatibly, independently of the package version. All four distributions carry the tag version; `rcp-ndcg` pins
 `rcp-ndcg-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
 
-## 0.0.1 — <date at tag time>
+## 0.0.1 — 2026-10-14
 
 ### Overview
 
