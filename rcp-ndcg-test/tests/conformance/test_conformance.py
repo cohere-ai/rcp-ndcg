@@ -4,8 +4,10 @@ verified against.
 
 Every corpus under ``tests/contract/engines/`` is loaded through the corpus seam, its emulator is built
 through ``tests._engines`` (the recipe's real tokenizer and prompt derivation), and **every recorded
-exchange** is replayed and compared within the recorded non-determinism (exact for the shakedown
-corpus). The suite runs in CI on every push and needs no network.
+exchange** is replayed and compared within the recorded non-determinism -- the measured bounds every
+committed corpus declares (``measured: true``), exactly when a corpus measured none, and never over zero
+comparisons (a corpus with no answered exchange is a named problem). The suite runs in CI on every push
+and needs no network.
 """
 
 from __future__ import annotations
@@ -43,14 +45,17 @@ def replay_problems(directory: Path) -> tuple[object, list[str]]:
     (identical status and body within the recorded non-determinism), each naming the record. A record
     whose request got no answer (no recorded status: a connection error, a client refusal, a declared
     omission) is not an exchange: there is nothing to replay, so it is left to the plan's completeness
-    check instead."""
+    check instead. A corpus with no answered exchange at all is a NAMED problem, never a pass: zero
+    comparisons replay "identically" and the verification record compares equal (both sides compute
+    ``exchanges: 0``), so a measurement that never happened would read as a verified corpus -- the same
+    non-vacuity rule the listwise sibling carries."""
     corpus = load_corpus(directory)
-    recipe_id = corpus.manifest["recipe"]["id"]
-    emulator = emulator_for(recipe_id)
+    answered = [exchange for exchange in exchanges_of(corpus) if exchange.answered]
+    if not answered:
+        return corpus, ["the corpus holds no answered exchange: the replay would pass vacuously"]
+    emulator = emulator_for(corpus.manifest["recipe"]["id"])
     problems = []
-    for exchange in exchanges_of(corpus):
-        if not exchange.answered:
-            continue
+    for exchange in answered:
         answer = emulator.handle(as_request(exchange))
         found = compare_exchange(exchange, answer, corpus_tolerance(corpus))
         problems.extend(f"#{exchange.sequence}: {problem}" for problem in found)
@@ -75,6 +80,33 @@ def test_every_recorded_exchange_replays_identically() -> None:
     for directory in corpus_dirs():
         _, problems = replay_problems(directory)
         assert not problems, f"{directory.parent.name}: replay drifted:\n" + "\n".join(problems)
+
+
+def test_a_corpus_with_no_answered_exchange_fails_the_replay_by_name(tmp_path: Path) -> None:
+    """The replay is non-vacuous: a corpus whose records all carry no response status replayed
+    "identically" with zero comparisons, and its verification record compared equal (both sides compute
+    ``exchanges: 0``), so a measurement that never happened would read as a pass.  Such a corpus is
+    writable by the real pipeline -- an empty pairs file gives an empty plan, and the completeness check
+    passes on an empty plan -- so the vacuity is a named problem here, like the listwise sibling's
+    non-vacuity guard, and reaches the wave's record and the conformance report."""
+    import shutil
+
+    frozen = Path(__file__).resolve().parents[1] / "fixtures" / "observation_corpus_v1"
+    directory = tmp_path / "no-answer"
+    shutil.copytree(frozen, directory)
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # A recipe the emulator registry can build, so the only thing under test is the vacuity guard.
+    manifest["recipe"]["id"] = "qwen3-reranker-0.6b"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    records = directory / "records.jsonl"
+    rows = [json.loads(line) for line in records.read_text(encoding="utf-8").splitlines()]
+    assert rows
+    for row in rows:
+        row["response"]["status"] = None  # the collector recorded that nothing crossed the wire
+    records.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    _, problems = replay_problems(directory)
+    assert problems == ["the corpus holds no answered exchange: the replay would pass vacuously"], problems
 
 
 def test_usage_counts_use_the_recipes_real_tokenizer() -> None:
@@ -441,11 +473,12 @@ def test_every_value_is_bounded_by_the_joint_condition() -> None:
 
 def test_every_committed_corpus_declares_the_tolerance_its_measurement_derived() -> None:
     """The tolerance is the corpus's own measurement, never invented: the release recordings sent every
-    request twice in-process and once after a restart, so they measured non-determinism and carry the
-    bounds their report derived; the four shakedown-era corpora the release pass did not re-record sent
-    every request once, declare ``measured: false`` and compare exactly. The report and the reader agree
-    either way, and at least one corpus must measure, so the release recordings are exercised here, not
-    assumed."""
+    request twice in-process and once after a restart, so every committed corpus measured non-determinism
+    (measured over the 12 ``nondeterminism.json`` files: ``measured: true``, ``repeated_requests``
+    111-212) and carries the bounds its report derived.  The report and the reader agree either way, and
+    at least one corpus must measure, so the release recordings are exercised here, not assumed; the
+    ``measured: false`` branch (a shakedown-era corpus that sent every request once) is pinned on the
+    synthetic corpus in ``test_the_tolerance_is_the_corpus_measured_one_and_never_invented``."""
     measured = 0
     for directory in corpus_dirs():
         report = json.loads((directory / "nondeterminism.json").read_text(encoding="utf-8"))

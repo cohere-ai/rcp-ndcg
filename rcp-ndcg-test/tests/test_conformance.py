@@ -465,7 +465,7 @@ def test_the_rerank_client_cuts_a_long_query_to_its_declared_share() -> None:
     [body] = recorded
     assert body["query"] != raw_fold, "the wire must carry the client's cut query, not the raw fold"
     # the client's own fit: the folded query cut to its declared share (settled once for the batch)
-    tokenizer, budget = recipe_fitter(recipe)
+    tokenizer, budget, _, _ = recipe_fitter(recipe)
     folded = str(Query(query_id="", query=long_query).format_query(task_instruction=case.inputs.instruction))
     fitted = fit([(folded, "x")], "pair", budget, tokenizer, ids=["d"], instruction=case.inputs.instruction)
     cut_query = fitted.contents[0][0]

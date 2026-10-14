@@ -3,7 +3,8 @@
 The lists' one home is ``rcp-ndcg-test/wave-lists/``; ``rc_build.sh`` stages them as
 ``<stage>/wave-lists/``.  ``all-retrieval.txt`` lists every shipped recipe id and is pinned to
 :func:`rcp_ndcg_vllm.recipe.iter_recipes` here, so a recipe added or removed without regenerating the
-list turns this file red.
+list turns this file red; ``e2e.txt`` is the T4 scenario wave's list, pinned to the shipped scenarios the
+same way.
 """
 
 from __future__ import annotations
@@ -32,6 +33,24 @@ def test_the_committed_all_retrieval_list_is_current() -> None:
     assert path.is_file(), f"the committed wave list is missing: {path}"
     assert _ids(path) == sorted(recipe.id for recipe in iter_recipes() if recipe.role != "judge")
     assert _ids(path), "the list names no recipe"
+
+
+def test_the_committed_e2e_list_names_the_shipped_scenarios() -> None:
+    """The T4 wave list ``e2e.sh`` reads at ``<stage>/wave-lists/e2e.txt`` (``--wave e2e``): one scenario
+    id per line, pinned to the shipped scenarios (``rcp-ndcg-test/scenarios/*.yaml``; the file stem is the
+    id), so the documented ``submit.sh --script e2e ... e2e`` command resolves a list the repo ships --
+    before this file the stage carried only ``all-retrieval.txt`` and the job exited 1 in the pod
+    (reviews/final2-harness-ds41.md D3) -- and a scenario added or removed without updating the list turns
+    this red.  The ORDER is the list's own: the scenarios' numbering (1 ``text-four-phases``, 2 ``outage``,
+    3 ``identity``, 4 ``vidore``), which is the order the T4 run drives them in."""
+    from rcp_ndcg_test.e2e import iter_scenarios
+
+    path = WAVE_LISTS / "e2e.txt"
+    assert path.is_file(), f"the committed e2e wave list is missing: {path}"
+    ids = _ids(path)
+    shipped = [scenario.id for scenario in iter_scenarios()]
+    assert ids, "the e2e list names no scenario"
+    assert sorted(ids) == sorted(shipped) and len(ids) == len(shipped), (ids, shipped)
 
 
 def test_write_wave_lists_generates_from_the_recipe_catalog(tmp_path: Path) -> None:

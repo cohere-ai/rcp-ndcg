@@ -12,7 +12,16 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_test.cases import Case, CaseBundle, load_case, load_cases, text_of
+from rcp_ndcg_test.cases import (
+    Case,
+    CaseBundle,
+    _check_lengths,
+    _media_tokens_of,
+    _recipe_fitter,
+    load_case,
+    load_cases,
+    text_of,
+)
 from rcp_ndcg_test.errors import CaseError, RecipeError
 from rcp_ndcg_test.fakes import fixture_path
 from rcp_ndcg_vllm.recipe import load_recipe
@@ -494,6 +503,58 @@ def test_a_short_case_must_not_measure_over_the_budget(tmp_path: Path) -> None:
         load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
 
 
+def test_a_short_case_whose_render_the_fit_cuts_is_refused(tmp_path: Path) -> None:
+    """The short arm's second half, on a recipe with a per-shape cap: the raw text measures under the
+    budget (126 <= 128) but the render (template and specials) is 134, so the product's fit cuts it --
+    the shape ``topk-embed-v1-small/query-cap-1024`` had, where the query cap of 1024 cut a 1091-token
+    query under an 8192 budget.  A ``short`` label the fit contradicts is refused, never silently sent
+    cut.  The ``long_over`` half (a case with nothing over budget) is pinned by
+    ``test_a_long_over_case_must_actually_be_cut``."""
+    write_case(
+        tmp_path,
+        "fake-embed",
+        "short-cut",
+        LENGTH_CASE.format(slug="short-cut", length="short", text=" ".join(["budgetpad"] * 14)),
+    )
+    with pytest.raises(CaseError, match="short, but the product's fit cuts"):
+        load_cases(tmp_path, packaged_recipe(), recipes_root=PACKAGED_RECIPES)
+
+
+def test_a_short_case_whose_media_pushes_its_render_over_the_budget_is_refused(tmp_path: Path) -> None:
+    """The short arm measures media like the fit does: this document's text is 56 tokens (under the
+    fixture's 64) but its 6 media tokens tip the render over the budget, so the fit cuts it and the
+    ``short`` label is refused.  Under the old text-only ruler the same case loaded (nothing was cut),
+    which is the hole the media ruler closes."""
+    body = """
+        id: fake-pool/media-over-the-budget
+        recipe: fake-pool
+        role: multi_vector
+        source: {kind: generated}
+        strata: {modality: image, length: short, batch: single}
+        inputs:
+          queries: [{id: q1, text: describe the image}]
+          documents:
+            - id: d1
+              text: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              image: media/pixel.png
+        expected:
+          kind: similarity_matrix
+          values: null
+          tolerance: {abs: 0.01}
+          origin: reference
+          status: pending_gpu
+    """
+    case_file = write_case(tmp_path, "fake-pool", "media-over-the-budget", body)
+    (case_file.parent / "media").mkdir()
+    (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png_bytes())
+    recipe = load_recipe(TEST_RECIPES / "fake-pool")
+    case = load_case(case_file)
+    _, document_media = _media_tokens_of(recipe, case)
+    assert document_media == [6], document_media
+    with pytest.raises(CaseError, match="short, but the product's fit cuts"):
+        _check_lengths(recipe, [case])
+
+
 def test_a_text_ref_materializes_and_verifies(tmp_path: Path) -> None:
     """text_ref produces the recorded bytes (the loader compares by hash), and any drift refuses."""
     import hashlib
@@ -788,12 +849,16 @@ def test_an_image_field_may_name_an_image_only(tmp_path: Path) -> None:
         load_case(case_file)
 
 
-def test_a_textless_media_document_does_not_supply_the_mixed_lengths(tmp_path: Path) -> None:
-    """(round-2 F2, R1a) A media-only document measures nothing (it is not measured) -- it must NOT
-    count as a 0-token "length" that satisfies ``length: mixed``. All text-bearing inputs measuring
-    the same is a mislabel (the load refuses it)."""
+def test_a_media_only_document_supplies_its_media_tokens_to_the_mixed_measure(tmp_path: Path) -> None:
+    """(round-2 F2, R1a; the media ruler) A media-only document is not a 0-token "length": it supplies
+    its media tokens, measured with the same ruler the fit cuts by (the product's
+    ``content_media_tokens`` under the recipe's policy).  Here the image costs 6 prompt tokens against the
+    texts' 4, so the document batch mixes and the ``length: mixed`` label holds -- the outcome the old
+    text-only measure got wrong, which made every image-length mix unsatisfiable (the shipped
+    ``topk-embed-v1-small/image-mixed-sizes``, whose notes say the mix is the image patch counts).  The
+    refusal for a batch that genuinely does not mix is pinned by the sibling test below."""
     body = """
-        id: fake-pool/media-supplies-no-mix
+        id: fake-pool/media-supplies-the-mix
         recipe: fake-pool
         role: multi_vector
         source: {kind: generated}
@@ -813,12 +878,14 @@ def test_a_textless_media_document_does_not_supply_the_mixed_lengths(tmp_path: P
           origin: reference
           status: pending_gpu
     """
-    case_file = write_case(tmp_path, "fake-pool", "media-supplies-no-mix", body)
+    case_file = write_case(tmp_path, "fake-pool", "media-supplies-the-mix", body)
     (case_file.parent / "media").mkdir()
     (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png_bytes())
     recipe = load_recipe(TEST_RECIPES / "fake-pool")
-    with pytest.raises(CaseError, match="holds no mixed lengths"):
-        load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=True)
+    case = load_case(case_file)
+    _, document_media = _media_tokens_of(recipe, case)
+    assert document_media == [0, 6], document_media  # the image's 6 prompt tokens, the text document's none
+    _check_lengths(recipe, [case])  # 4 vs 6: the batch mixes, so the label holds and nothing is raised
 
 
 def test_a_mixed_length_label_needs_the_mix_within_one_sent_batch(tmp_path: Path) -> None:
@@ -888,9 +955,10 @@ def test_a_media_path_may_not_escape_the_media_directory_even_when_the_target_ex
 
 
 def test_a_mixed_length_label_is_measured_on_every_batch_label(tmp_path: Path) -> None:
-    """(v1-F4) ``length: mixed`` means the batch mixes lengths -- measured -- on EVERY batch label,
-    ``mixed_modality`` included: a mislabel cannot satisfy the grid (the CHANGELOG promises this and
-    the mixed-length cross-check must not be satisfiable by a lie)."""
+    """(v1-F4; the media ruler) ``length: mixed`` means the batch mixes lengths -- measured, with media
+    counted like any other prompt token -- on EVERY batch label, ``mixed_modality`` included.  Here every
+    input costs 6 tokens (the image's media tokens against 6-token texts), so no sent batch mixes and the
+    label is refused: media presence alone never satisfies the mix, and the measure is not vacuous."""
     body = """
         id: fake-pool/mixed-lie
         recipe: fake-pool
@@ -899,12 +967,11 @@ def test_a_mixed_length_label_is_measured_on_every_batch_label(tmp_path: Path) -
         strata: {modality: mixed, length: mixed, batch: mixed_modality}
         inputs:
           queries:
-            - {id: q1, text: aaaa}
-            - {id: q2, text: aaaa}
+            - {id: q1, text: aaaaaa}
+            - {id: q2, text: aaaaaa}
           documents:
-            - {id: d1, text: aaaa}
+            - {id: d1, text: aaaaaa}
             - id: d2
-              text: aaaa
               image: media/pixel.png
         expected:
           kind: similarity_matrix
@@ -917,8 +984,12 @@ def test_a_mixed_length_label_is_measured_on_every_batch_label(tmp_path: Path) -
     (case_file.parent / "media").mkdir()
     (case_file.parent / "media" / "pixel.png").write_bytes(_tiny_png_bytes())
     recipe = load_recipe(TEST_RECIPES / "fake-pool")
+    case = load_case(case_file)
+    query_media, document_media = _media_tokens_of(recipe, case)
+    assert query_media == [0, 0] and document_media == [0, 6], (query_media, document_media)
+    assert _recipe_fitter(recipe)[0].count("aaaaaa") == 6  # the media item's own token count, exactly
     with pytest.raises(CaseError, match="holds no mixed lengths"):
-        load_cases(tmp_path, recipe, recipes_root=TEST_RECIPES, check_lengths=True)
+        _check_lengths(recipe, [case])
 
 
 def test_a_run_level_instruction_must_be_on_the_wire_for_the_embed_side(tmp_path: Path) -> None:

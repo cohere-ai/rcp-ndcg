@@ -328,6 +328,50 @@ def test_a_judges_skipped_equivalence_and_record_count_as_satisfied() -> None:
     )
 
 
+def test_a_skipped_corpus_step_leaves_the_row_unverified() -> None:
+    """The corpus gate demands a PASSED corpus step like its siblings: a *skipped* one (the missing pairs
+    file today, any future skip reason tomorrow) would mark a row ``verified`` with no corpus -- the one
+    artifact the whole verified-emulator story rests on. A judge never gets the step at all (decision 15: a
+    judge has no observation corpus), so the gate carries the same ``judge or`` its siblings do."""
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    recipe = resolve_recipe("jina-embeddings-v5-text-nano")
+    base = {"smoke": {"state": "passed"}, "equivalence": {"state": "passed", "passed": True}}
+    assert (
+        run_wave_module._row_state(
+            recipe,
+            {**base, "observation_corpus": {"state": "passed"}},
+            record=False,
+            record_corpus=True,
+            quality=False,
+            controls=False,
+        )
+        == "verified"
+    )
+    assert (
+        run_wave_module._row_state(
+            recipe,
+            {**base, "observation_corpus": {"state": "skipped", "reason": "no pairs file; give --pairs-dir"}},
+            record=False,
+            record_corpus=True,
+            quality=False,
+            controls=False,
+        )
+        == "failed"
+    )
+    assert (
+        run_wave_module._row_state(
+            resolve_recipe("gemma-4-12b-it"),
+            {"smoke": {"state": "passed"}, "equivalence": {"state": "skipped"}, "record": {"state": "skipped"}},
+            record=True,
+            record_corpus=True,
+            quality=False,
+            controls=False,
+        )
+        == "verified"
+    )
+
+
 def test_reference_device_is_cpu_for_a_judge() -> None:
     """A judge has no reference: the device helper returns cpu instead of raising, so the equivalence
     step reaches its skip (the rc0 judges wave failed on `reference_of` before the skip could run)."""

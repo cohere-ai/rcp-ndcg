@@ -1,31 +1,41 @@
 """The golden replays (GPU-VALIDATION.md items 3-4): suite minis run through rcp-ndcg's full retrieval
 and rerank path against the emulators, their nDCG@10 and RCP-nDCG@10 pinned to 1e-9.
 
-**What the numbers are: regression pins, not independent GPU numbers.** The shakedown recorded no
-subset run, so ``tests/e2e/golden/goldens.json`` holds the metrics this code computed from the
-recorded corpus (``RCP_UPDATE_GOLDENS=1`` recomputes them; every entry says ``kind:
-regression-pin``). They catch any change of the replayed path -- fit, template render, transport,
-adapter parse, index, rerank, evaluation -- but they are not evidence that the path reproduces a GPU
-run. The RC0 subset corpus (the full served exchanges of one real NanoBEIR and one ViDoRe subset)
-replaces the fixtures and turns the pins into the GPU run's numbers.
+**What the numbers are: regression pins, not independent GPU numbers.**
+``tests/e2e/golden/goldens.json`` holds the metrics this code computed from the release corpora's
+recorded exchanges (``RCP_UPDATE_GOLDENS=1`` recomputes them; every entry says ``kind: regression-pin``
+and carries the behaviour fingerprints that pin the corpora it was computed from -- the entries were
+regenerated from the release recordings at ``392bd61``, so they are no longer the provisional shakedown
+corpus's numbers). They catch any change of the replayed path -- fit, template render, transport,
+adapter parse, index, rerank, evaluation -- but they are the emulators' replay of the recorded GPU
+exchanges, never an independent GPU-run measurement of the path.
 
 Every request input of these runs is **observed** in the recipe's corpus, so the replay is exact; the
 suite fails if any answer was a surrogate (``x-rcp-ndcg-emulator-source``), and fails when the
 observations are deleted. Texts are the recorded prompts' sources. The RCP gains are **synthetic
-declared fixture values** ranked opposite the model's order (the judged-best document is the one the
-model ranks last), so both metrics move whenever a rank moves.
+declared fixture values**, and how they sit against the model's order is per view, not one property:
+the NanoBEIR retrieval view orders its documents by the model's own recorded vectors with the gain-best
+LAST (``_ordered_by_model``) and the NanoBEIR rerank view's corpus order happens to put the gain-best
+last too, so both metrics move whenever a rank moves there. The ViDoRe rerank pin is the other way
+round: its documents are in the rerank corpus's own order, which the model ranks with the gain-best
+FIRST (``rcp_ndcg@10 = 1.0``) while the qrel-relevant document is second (``qrel_ndcg@10 = 0.6309``).
 
 * NanoBEIR-shaped: the retrieval view over two documents (qwen3-embedding-0.6b: the corpus observes
   two distinct prompts, the instructed query and the bare question, so the documents are the bare
   question and the instructed string as a document -- documents render bare) and the rerank view
-  (zerank-2-reranker: the qwen3-reranker corpora are declared stale for re-recording,
-  ``tests/conformance/stale.json``, so the pin uses a current rerank corpus; both recorded the same
-  text pool).
+  (zerank-2-reranker over the same recorded text pool; every committed corpus is a release recording
+  and current -- ``tests/conformance/stale.json`` ships empty, so the qwen3-reranker corpora are not
+  declared stale).
 * ViDoRe-shaped: the rerank view only (zerank-1-small-reranker over the recorded text pool; the VL
-  reranker's corpus awaits re-recording after the head-dtype declaration). **Waiver**:
-  the retrieval view needs page-image embeddings and the provisional corpus observes none (its VL
-  embedder saw text only); ``test_the_vidore_retrieval_view_waiver_holds`` fails, naming the work, as
-  soon as a corpus with an image input lands.
+  reranker's corpus is a current release recording too, and the pin replays the pool through the
+  reranker it was computed with). **Waiver**:
+  the retrieval view needs ViDoRe page-image embeddings and no committed corpus observes a
+  ViDoRe-sourced image. The VL embedder's corpus does observe media (measured over its committed
+  records: 13 requests carry an image part, 4 a video container), but they are the observation plan's
+  synthetic media buckets, whose qrels and documents are not ViDoRe's.
+  ``test_the_vidore_retrieval_view_waiver_holds`` keys on the waiver's ACTUAL condition -- a
+  ViDoRe-sourced image input -- not on images in general, and fails, naming the work, as soon as one
+  is observed.
 
 Regenerate: ``RCP_UPDATE_GOLDENS=1 uv run --no-sync pytest tests/e2e/test_golden_replay.py``.
 """
@@ -44,8 +54,9 @@ GOLDEN = Path(__file__).resolve().parent / "golden" / "goldens.json"
 ENGINES_ROOT = Path(__file__).resolve().parents[2] / "corpora"
 EPSILON = 1e-9
 PROVENANCE = (
-    "computed by tests/e2e/test_golden_replay.py from the provisional shakedown corpus, which recorded no "
-    "subset run: a regression pin of the replayed path, not an independent GPU-run number"
+    "computed by tests/e2e/test_golden_replay.py from the release corpora's recorded exchanges (the "
+    "fingerprints below pin them), replayed through the recipes' emulators: a regression pin of the "
+    "replayed path, not an independent GPU-run number"
 )
 
 INSTRUCTED = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
@@ -124,7 +135,8 @@ _EMBED_DOCS = _ordered_by_model("qwen3-embedding-0.6b", _EMBED_QUERY, _EMBED_DOC
 
 #: The golden minis. Texts are the CURRENT corpus's recorded request texts (the release recordings' prompts
 #: are not the shakedown's, so they are read, never hard-coded); ``gains`` are synthetic declared fixture
-#: values judged opposite the model's order, ``qrels`` the fixture's relevance.
+#: values and ``qrels`` the fixture's relevance -- how the gains sit against the model's order is per view
+#: (the module docstring: NanoBEIR pins the gain-best last, the ViDoRe rerank pin first).
 CASES = {
     "nanobeir": {
         "retrieval": {
@@ -195,7 +207,8 @@ def _dataset(row: dict, tmp_path: Path, name: str):
 
 
 def _gains(row: dict) -> dict:
-    """The fixture's synthetic declared gains (reversed against the model's order)."""
+    """The fixture's synthetic declared gains, ``qrels``' other half (see the module docstring for how they
+    sit against each view's model order)."""
     return {"q1": {f"d{index}": float(gain) for index, gain in enumerate(row["gains"])}}
 
 
