@@ -3982,6 +3982,20 @@ text it sends to the declared budget.
   cosines agree to 4 decimals across the three kernels. `topk-embed-v1`'s notes and the topkrun lane
   report are rescoped accordingly; no recipe behaviour, gate, bound or dtype changed.
 
+- **The committed corpora carry no private infrastructure** (the pre-release review's release blocker): every
+  one of the twelve corpus manifests recorded the *pod's* environment, not the engine's knobs -- 312
+  Kubernetes Service-link variables per manifest, for 39 internal Services, carrying their internal addresses
+  and internal or unreleased Service names under the same `VLLM_` prefix as vLLM's own knobs -- and six
+  recorded serve argvs carried the pod's staging directory. `rcp_ndcg_test.observe.provenance` now drops every
+  variable the pod's Service links injected (`_service_link_names`; the engine's own knobs and
+  `RCP_NDCG_VLLM_PATCHES` stay), so a new recording cannot carry them, and the twelve committed manifests are
+  committed as redacted views of the recordings: each carries an `engine.redacted` entry naming the field, the
+  reason, the date and the original manifest's digest and file SHA-256, each subset `index.json` records the
+  tracked file's hashes and the `gs://YOUR-BUCKET/...` placeholder in place of the real bucket and operator
+  prefix, and the corpus index is regenerated. No record, no exchange and no behaviour fingerprint moves. The
+  procedure is in [use verified fake engines](docs/how-to/use-verified-fake-engines.md), and
+  `test_no_committed_corpus_names_private_infrastructure` holds the committed bytes to it.
+
 ### Changed
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

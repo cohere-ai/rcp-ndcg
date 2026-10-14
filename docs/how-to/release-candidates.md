@@ -139,7 +139,11 @@ staged RC, with the wave runner in the client environment the bootstrap built:
   `plugin_sha256` inputs. `--changed-since` needs the pod's engine version before engines start: the
   bootstrap exports `RCP_ENGINE_PYTHON` for it. The corpora land at
   `<out>/observations/vllm-<version>/<recipe>/<fingerprint>/<stamp>/` and upload with the wave's final
-  whole-tree copy.
+  whole-tree copy. The repository's copy of a recording is committed as the full corpus's redacted view when
+  the recording carries private infrastructure (the pod's Kubernetes Service links, a staging path in the serve
+  argv): the manifest's `engine.redacted` entry says what was removed, each subset `index.json` points at the
+  full corpus with the `gs://YOUR-BUCKET/...` placeholder, and
+  [use verified fake engines](use-verified-fake-engines.md) has the procedure.
 - **T3 quality** — `--quality --paper-numbers <file>`. Its reference subprocess needs `mteb`,
   `rcp_ndcg[mteb]` and the harness (`rcp_ndcg_test`, the staged wheel) in the reference environment,
   which the bootstrap does not stage today, so run it in an environment built for it (the reference venv
