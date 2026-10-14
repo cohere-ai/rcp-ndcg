@@ -209,6 +209,22 @@ def test_the_weighted_gain_needs_a_positive_gamma_sum() -> None:
     assert len(pass_probabilities(0.0, items)) == 2, "the pass probabilities need no weights"
 
 
+def test_the_weighted_gain_refuses_a_negative_gamma_even_when_the_sum_is_positive() -> None:
+    """A weighted mean is convex only for non-negative weights. ``gamma=[2, -1]`` sums to 1,
+    so the sum-only check passed and ``gain`` returned 1.9999546 at theta=10 and -0.9999546 at
+    theta=-10 -- outside the documented ``[0, 1]``. The fitter already refuses a non-positive
+    gamma (``Criteria2PL``: "every discrimination gamma_k must be positive"), and the canonical
+    ``ItemParams`` record enforces ``> 0``; the public validator enforces the same rule."""
+    items = {"gamma": [2.0, -1.0], "beta": [0.0, 0.0]}
+    for theta in (10.0, -10.0, np.array([0.0, 1.0])):
+        with pytest.raises(ValueError, match="gamma"):
+            gain(theta, items)
+    # A zero gamma is not a weight either: the same division by sum(gamma).
+    with pytest.raises(ValueError, match="gamma"):
+        gain(0.0, {"gamma": [1.0, 0.0], "beta": [0.0, 0.0]})
+    assert len(pass_probabilities(0.0, items)) == 2, "the pass probabilities need no weights"
+
+
 def test_the_weighted_gain_does_not_overflow_on_huge_finite_gammas() -> None:
     """Two equal huge gammas pass item_arrays (finite, positive sum), but sum(gammas)
     overflowed to inf and the scalar gain returned 0.0 -- not the mean of the probabilities."""

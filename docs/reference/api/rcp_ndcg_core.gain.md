@@ -31,7 +31,7 @@ gain(theta: float | ArrayLike, items: Any) -> float | NDArray[np.float64]
 
 ## `item_arrays`
 
-function — ``(gamma, beta)`` of ``items``, validated: equal non-zero lengths, finite values, and ``sum(gamma) > 0``.
+function — ``(gamma, beta)`` of ``items``, validated: equal non-zero lengths, finite values, and -- when ``weighted`` -- every ``gamma > 0``.
 
 ```text
 item_arrays(items: Any, *, weighted: bool = True) -> tuple[Sequence[float], Sequence[float]]
