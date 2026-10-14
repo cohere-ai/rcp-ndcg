@@ -27,7 +27,8 @@ def test_in_a_stock_image_the_release_installs_itself_with_uvx() -> None:
     spec = JobSpec(name="j", argv=("rcp-ndcg", "--help"))
     last = worker_script(spec, install=True, workdir=None).splitlines()[-1]
     assert last == (
-        f"exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]=={__version__}' --constraints "
+        f"exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]=={__version__}' --with rcp-ndcg-vllm=={__version__} "
+        f"--constraints "
         f"{CONSTRAINTS_URL.format(version=__version__)} --index {TORCH_CPU_INDEX} --index-strategy unsafe-best-match "
         "rcp-ndcg --help"
     )
@@ -113,6 +114,8 @@ def test_an_install_source_replaces_the_release_urls_in_the_uvx_command() -> Non
         "uvx",
         "--from",
         f"rcp-ndcg[calibrate,hf,s3,azure]=={__version__}",
+        "--with",
+        f"rcp-ndcg-vllm=={__version__}",
         "--constraints",
         "/shared/c.txt",
         "--find-links",

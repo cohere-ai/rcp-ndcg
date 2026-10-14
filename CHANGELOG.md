@@ -3921,6 +3921,13 @@ text it sends to the declared budget.
   `rcp-ndcg-vllm/schema/family.schema.json` are regenerated; the two shipped recipes that carried
   `float8` are unaffected (none did).
 
+- **A coordinator installs the serving recipes** (the T4 end-to-end's first run found it): the job
+  runner's install-source rendered `uvx --from rcp-ndcg[calibrate,hf,s3,azure]==<version> ...` and never
+  installed `rcp-ndcg-vllm`, so a run config whose `serve:` block references a recipe
+  (`recipe: <id>`) failed at load with `No module named 'rcp_ndcg_vllm'` and exit 3. The install now adds
+  `--with rcp-ndcg-vllm==<version>` (a separate distribution; it depends on pydantic and PyYAML only), in
+  both the index and the wheelhouse forms.
+
 - **The topk-embed-v1 per-token gate's failure is not the GDN prefill kernel** (lane topk-gdn, the
   pinned image's own switch): the `vllm/vllm-openai:v0.31.0` tag vendors flash-linear-attention
   (`vllm/third_party/flash_linear_attention/ops/chunk.py`) and its resolver runs it for the 18

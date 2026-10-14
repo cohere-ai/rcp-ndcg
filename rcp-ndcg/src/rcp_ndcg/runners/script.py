@@ -69,10 +69,12 @@ def install_argv(
             (:data:`CONSTRAINTS_URL`).
 
     Returns:
-        ``uvx --from rcp-ndcg[<extras>]==<version> --constraints <constraints file> --index <CPU torch>
-        --index-strategy unsafe-best-match rcp-ndcg ...`` (from the wheelhouse instead, with ``--find-links``
-        and ``--no-index``). The CPU index is searched with PyPI for every package (``unsafe-best-match``), so
-        torch resolves to its ``+cpu`` build; the constraints file pins every version to the release's lock.
+        ``uvx --from rcp-ndcg[<extras>]==<version> --with rcp-ndcg-vllm==<version> --constraints <constraints
+        file> --index <CPU torch> --index-strategy unsafe-best-match rcp-ndcg ...`` (from the wheelhouse
+        instead, with ``--find-links`` and ``--no-index``). The CPU index is searched with PyPI for every
+        package (``unsafe-best-match``), so torch resolves to its ``+cpu`` build; the constraints file pins
+        every version to the release's lock. ``rcp-ndcg-vllm`` (the serving recipes, a separate
+        distribution) is installed alongside because a run config may reference a recipe.
     """
     if not argv or argv[0] != "rcp-ndcg":
         return tuple(argv)
@@ -86,6 +88,11 @@ def install_argv(
         "uvx",
         "--from",
         f"rcp-ndcg[{','.join(COORDINATOR_EXTRAS)}]=={version}",
+        # The serving recipes: a run config may reference them (``recipe: <id>`` in a ``serve:`` block, the
+        # T4 scenarios do), and ``rcp-ndcg-vllm`` is a separate distribution, so the coordinator installs
+        # it alongside. It depends on pydantic and PyYAML only.
+        "--with",
+        f"rcp-ndcg-vllm=={version}",
         "--constraints",
         constraints or CONSTRAINTS_URL.format(version=version),
         *source,
