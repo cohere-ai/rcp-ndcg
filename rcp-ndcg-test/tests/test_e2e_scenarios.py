@@ -244,6 +244,24 @@ def test_the_identity_rerun_moves_every_port_together() -> None:
     assert f'"judge": {{"urls": ["http://127.0.0.1:{port}/v1"]' in rerun  # coordinators point at it too
 
 
+def test_the_outage_scenario_window_covers_the_restart_boot() -> None:
+    """The shipped outage scenario's ``wait_on_outage_s`` covers the recovers sub-run's whole down span.
+
+    The judge is down for the outage sleep **and** for the restarted engine's boot.  The rc0 outage run
+    (waves-rc0-202610141005) measured this node's judge at 77 s per warm restart and 185 s for the T0
+    smoke's cold boot; against the scenario's 90 s window the 15 s outage ran ~2 s past the window and
+    the sub-run failed the way its expiry twin is meant to.  The scenario's numbers must pass
+    :func:`rcp_ndcg_test.e2e.recovers_outage_s` for boots of the size this node has shown.
+    """
+    from rcp_ndcg_test.e2e import recovers_outage_s
+
+    scenario = load_scenario(SCENARIOS / "outage.yaml")
+    wait_s = float(scenario.judge.config["wait_on_outage_s"])
+    for boot_s in (77.0, 185.0):  # the warm restart and the cold boot the rc0 run measured
+        outage_s = recovers_outage_s(wait_s, boot_s)  # raises when the numbers cannot recover
+        assert outage_s + boot_s < wait_s  # the judge is back before the run's window expires
+
+
 def test_the_two_identical_runs_comparison_states_what_it_compares() -> None:
     """The comparison's contract (judgements may differ at temperature > 0): what is compared is
     identities, the deterministic steps' outputs byte for byte, and the windows' counts and families."""
