@@ -248,6 +248,7 @@ def main() -> int:
 if __name__ == "__main__":
     # The card's own example (its printed queries and documents) reproduces the card's printed
     # cosines through --mode embed: the vectors are the checkpoint's own lasttoken+Normalize
-    # pipeline at the pinned revision, and the harness gates vectors per vector (cosine >= 1-1e-3
-    # after the float16 cast), not any single run's printed number.
+    # pipeline at the pinned revision, and the harness gates vectors per vector (cosine >= 1-1e-3,
+    # both sides compared as decoded -- nothing casts to float16, and the client's transfer
+    # precision is part of the behaviour fingerprint), not any single run's printed number.
     raise SystemExit(main())
