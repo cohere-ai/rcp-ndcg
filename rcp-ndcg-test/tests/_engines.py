@@ -53,13 +53,16 @@ def current_corpora() -> list[Path]:
 
 def harness() -> Any:
     """Import ``rcp_ndcg_vllm`` (outside the uv workspace: its ``src`` goes on the path) and register the
-    vendored tokenizer stores, once."""
+    vendored tokenizer and checkpoint stores, once."""
     if _VLLM_SRC not in sys.path:
         sys.path.insert(0, _VLLM_SRC)
+    from rcp_ndcg_test.equivalence.checkpoint import use_checkpoint_store
     from rcp_ndcg_test.fingerprint import use_tokenizer_store
 
     for store in ENGINES_ROOT.glob("*/_tokenizers"):
         use_tokenizer_store(store)
+    for store in ENGINES_ROOT.glob("*/_checkpoints"):
+        use_checkpoint_store(store)
     return __import__("rcp_ndcg_vllm.recipe", fromlist=["load_recipe"])
 
 
