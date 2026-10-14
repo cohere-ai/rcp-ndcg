@@ -366,8 +366,9 @@ def _diff_rerank_results(expected: Any, actual: Any, tolerance: tuple[float, flo
     for side, entries in (("recorded", expected_results), ("replayed", actual_results)):
         scores = [entry.get("relevance_score") for entry in entries if isinstance(entry, dict)]
         if all(isinstance(score, (int, float)) for score in scores):
-            for position, (left, right) in enumerate(zip(scores, scores[1:], strict=False)):
-                if float(right) > float(left):
+            ranked = [float(score) for score in scores if isinstance(score, (int, float))]
+            for position, (left, right) in enumerate(zip(ranked, ranked[1:], strict=False)):
+                if right > left:
                     problems.append(
                         f".results[{position}].index: the {side} reply is not ranked by score ({right} above {left})"
                     )
@@ -913,14 +914,14 @@ def _media_counts(body: Mapping[str, Any]) -> tuple[int, int]:
     if isinstance(messages, list) and messages:
         conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
         for conversation in conversations:
-            units.append(
-                [
-                    part
-                    for message in conversation
-                    if isinstance(message, dict)
-                    for part in (message.get("content") if isinstance(message.get("content"), list) else [])
-                ]
-            )
+            parts: list[Any] = []
+            for message in conversation:
+                if not isinstance(message, dict):
+                    continue
+                content = message.get("content")
+                if isinstance(content, list):
+                    parts.extend(content)
+            units.append(parts)
     inputs = body.get("input")
     if isinstance(inputs, list):
         units.extend(
