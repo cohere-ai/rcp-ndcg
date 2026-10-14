@@ -52,8 +52,8 @@ Two groups carry the fake engines, and different packages read them:
 - `x-rcp-ndcg-emulator-source`: `replayed` (every input observed), `surrogate`, `mixed`, or
   `refused-unmodelled`. A test that asserts numbers can only use replayed inputs.
 - `x-rcp-ndcg-emulator-route`: `observed` when the corpus recorded the route, `unobserved` when the
-  reply follows the engine's source without a recording (`VllmEmulator.unobserved_routes`; the
-  provisional corpus records no `/pooling` and no `/tokenize`).
+  reply follows the engine's source without a recording (`VllmEmulator.unobserved_routes`; the committed
+  corpora record no `/pooling`, and every one of them records `/tokenize`).
 
 An output is replayed only for the exact context it was observed under: the engine prompt plus every
 request field that changes what the model returns (`use_activation`, `dimensions`,
@@ -84,11 +84,13 @@ so the whole suite runs offline. The emulators read records through `exchanges_o
 (parsed outputs, normalised bodies) is recomputed by versioned code, and the verification tolerance
 is the corpus's own (`corpus_tolerance`).
 
-The committed corpus is **provisional**: the GPU shakedown's recordings, valid to build and test the
-emulators, not release evidence (every manifest says so in its `provisional` block). It sent every
-request once, so its non-determinism is **unmeasured**: replays are compared exactly. It kept parsed
-bodies only, so its records declare their raw bytes reconstructed and conformance compares no raw bytes
-for them.
+The committed corpora are **release recordings**: the wave's own exchanges, cut to a subset and keyed by
+the behaviour fingerprint they were recorded at, each with its append-only verification record (no manifest
+carries a `provisional` block any more). `nondeterminism.json` measures the differences between repeated
+sendings of one request -- twice in one engine process and again after a restart -- and the corpus's replay
+tolerance is derived from them (`corpus_tolerance`); a corpus whose requests were never repeated declares
+its non-determinism unmeasured and is compared exactly. The records keep the raw bytes, so conformance
+compares them, not the parsed bodies alone.
 
 ## Conformance, staleness and goldens
 
@@ -143,9 +145,8 @@ module and in the CHANGELOG; every committed corpus and every per-variant golden
 The golden replays (`tests/e2e/test_golden_replay.py`) run a NanoBEIR-shaped and a ViDoRe-shaped mini
 through rcp-ndcg's retrieval and rerank path against the emulators and pin nDCG@10 and RCP-nDCG@10 to
 1e-9 -- every input observed, or the run fails. The pins are **regression pins** computed by this code
-from the provisional corpus (`kind: regression-pin` in `tests/e2e/golden/goldens.json`), not
-independent GPU-run numbers; the RC0 subset corpus replaces them. The ViDoRe retrieval view is waived
-until a corpus observes a page image.
+from the committed corpora (`kind: regression-pin` in `tests/e2e/golden/goldens.json`), not independent
+GPU-run numbers. The ViDoRe retrieval view is waived until a corpus observes a page image.
 
 <!-- snippet: skip (a repository checkout with the corpora) -->
 ```bash
