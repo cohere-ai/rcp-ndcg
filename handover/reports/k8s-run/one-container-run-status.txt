@@ -1,7 +1,0 @@
-Run 20261014-072801-k8s-one-container-49e823 completed (ran)
-  directory  runs/20261014-072801-k8s-one-container-49e823
-  requests   0 judge requests
-    retrieve     completed      1.4s
-  job rcp-20261014-072801-k8s-one-container-49e823 (kubernetes): default/rcp-20261014-072801-k8s-one-container-49e823 completed
-  mirror     gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/one-container (last upload 2026-10-14T07:28:05.214024+00:00, 350s ago)
-  note       read from the mirror gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/one-container, which is ahead of this directory (restore it with run resume --mirror).

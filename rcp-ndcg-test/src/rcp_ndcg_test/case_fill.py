@@ -2,8 +2,8 @@
 
 A generated case ships ``expected: {origin: reference, status: pending_gpu, values: null}``: the
 numbers the served engine is compared against are the recipe's **reference implementation's own
-outputs** for the case's inputs, never the engine's and never a guess (``handover/specs/case-format.md``;
-the release checklist's "Fill every ``pending_gpu`` expected value").  This module is that fill: it
+outputs** for the case's inputs, never the engine's and never a guess (the case format's own
+specification; the release checklist's "Fill every ``pending_gpu`` expected value").  This module is that fill: it
 loads the recipe's cases, runs the recipe's reference over the pending cases' inputs (one subprocess
 over every case's rows, one model load; the pairs rows are the reference subprocess's own input format),
 shapes the outputs into the case's ``expected.kind`` -- a scores matrix for a rerank recipe, a similarity

@@ -1,7 +1,0 @@
-Run 20261014-073121-k8s-statefulset-9cc6f8 failed (ran)
-  directory  runs/20261014-073121-k8s-statefulset-9cc6f8
-  requests   0 judge requests
-    tournament   pending              0/? windows
-  job rcp-20261014-073121-k8s-statefulset-9cc6f8 (kubernetes):  unknown
-  mirror     gs://cohere-dev-central-2/fabian/rcp-ndcg-k8s-run/20261014-k8srun/runs/statefulset (last upload 2026-10-14T07:31:25.633339+00:00, 154s ago)
-  note       the submission failed: RunnerError: `kubectl --context gke-us-central1-prod apply -f -` exited 1: Error from server (Forbidden): error when creating "STDIN": statefulsets.apps is forbidden: User "fabian.schmidt@cohere.com" cannot create resource "statefulsets" in API group "apps" in the namespace "default": requires one of ["container.statefulSets.create"] permission(s) in Cloud IAM or a Kubernetes RBAC role with verb "create" for resource "statefulsets".

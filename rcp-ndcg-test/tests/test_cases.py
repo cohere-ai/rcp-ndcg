@@ -139,8 +139,8 @@ def test_every_shipped_case_kind_matches_its_roles_stage_shape() -> None:
 
     The regression: ``qwen3-vl-reranker-2b/gen-text-short-uniform`` declared ``similarity_matrix`` for a
     rerank recipe -- the case loader accepted it, the fill skipped the case as another stage's shape,
-    and the conformance runner would have failed it on the shape.  The kind vocabulary is
-    ``handover/specs/case-format.md``'s; the role-to-shape rule is the stage contract.
+    and the conformance runner would have failed it on the shape.  The kind vocabulary is the case
+    format's own; the role-to-shape rule is the stage contract.
     """
     from rcp_ndcg_vllm.recipe import default_recipes_root
 
