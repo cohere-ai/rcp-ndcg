@@ -316,14 +316,13 @@ def _image_size(entry: dict[str, Any]) -> tuple[int, int]:
         return handle.size
 
 
-def declared_video_rate(policy: dict[str, Any]) -> float:
+def declared_video_rate(fps: float | None) -> float:
     """The recipe's declared engine rate (``client.video_policy.fps``), refused loudly when absent.
 
     The Qwen3-VL backend samples a container by fps and IGNORES a pinned ``num_frames``, so the recipe's
     fps is the ONE rate every side applies; without it the checkpoint's processor would sample at its own
     default rate, a different instrument.
     """
-    fps = policy.get("fps")
     if fps is None:
         raise SystemExit(
             "the recipe declares no video rate (client.video_policy.fps): the reference cannot know the "
@@ -525,13 +524,8 @@ def card_inputs(
     for entry in entries:
         kind = str(entry.get("kind", "image"))
         if kind == "video":
-            if declared_fps is None:
-                raise SystemExit(
-                    "the recipe declares no video rate (client.video_policy.fps): the reference cannot know "
-                    "the frames the engine shows, and the checkpoint's processor would sample at its own rate"
-                )
             payload["video"] = str(_write_container(entry, work=work, clip_name=clip_name))
-            payload["fps"] = float(declared_fps)
+            payload["fps"] = declared_video_rate(declared_fps)
         elif kind == "image":
             payload["image"] = _decode_image(entry)
     if body:
@@ -619,7 +613,7 @@ def mode_media(pairs: list[dict[str, Any]], recipe: dict[str, Any] | None = None
     has_video = _carries_video(pairs)
     policy = ((recipe or {}).get("client") or {}).get("video_policy") or {}
     pin = video_pixel_pin(recipe or {}) if has_video else None
-    declared_fps = declared_video_rate(policy) if has_video else None
+    declared_fps = declared_video_rate(policy.get("fps")) if has_video else None
     processor = load_video_processor(recipe or {}) if has_video else None
     rows: list[dict[str, Any]] = []
     # ignore_cleanup_errors: a network-backed tempdir can turn an entry visible after the cleanup's scan;
@@ -774,16 +768,11 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
             paths = [path for path in (_conversation_video(conversation) for conversation in conversations) if path]
             if not paths:
                 return super()._preprocess_inputs(conversations)
-            if self._video_fps is None:
-                raise SystemExit(
-                    "the recipe declares no video rate (client.video_policy.fps): the checkpoint's "
-                    "processor would sample the container at its own rate, a different instrument"
-                )
             return video_processor_inputs(
                 self.processor,
                 conversations,
                 paths,
-                declared_fps=self._video_fps,
+                declared_fps=declared_video_rate(self._video_fps),
                 pin=self._video_pin,
                 max_length=self.max_length,
             )

@@ -899,7 +899,7 @@ def test_the_reference_refuses_a_video_without_a_declared_rate(tmp_path: Path) -
     with pytest.raises(SystemExit, match="no video rate"):
         module.card_inputs("", [clip], work=tmp_path, clip_name="query-0", declared_fps=None)
     with pytest.raises(SystemExit, match="no video rate"):
-        module.declared_video_rate({})
+        module.declared_video_rate(None)
 
 
 def test_the_shipped_video_case_reaches_the_processors_route(tmp_path: Path) -> None:
