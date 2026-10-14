@@ -76,7 +76,7 @@ notes: >-
   History: the scenarios served the NVFP4 candidate at TP4 (and the FP8 fallback at TP4); the per-variant
   resources above are the shipped shapes.
   Engine support: Qwen4ExpForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:601-604, module
-  qwen4_exp); both pins were checked 2026-10-09. status: unverified until its GPU validation wave passes.
+  qwen4_exp); both pins were checked 2026-10-09. status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/nvidia/Qwen3.8-Flash-Next-NVFP4 (revision fc694b54fb0174e0913e6adf86691ef85a4ead47 == the Hub head; gated false; checked 2026-10-09) and https://huggingface.co/api/models/Qwen/Qwen3.8-Flash-Next-FP8 (revision 236dfdf285828023ca3bcd3f37366c58a3469b13 == the Hub head; gated false; checked 2026-10-09)"
   - "config.json at both pins (Qwen4ExpForConditionalGeneration; text config 48 layers, hidden 2560, head_dim 256, 2 KV heads, 512 experts top-10, moe intermediate 640, vocab 248 320, mpe 262 144, full_attention_interval 4; vision tower as the other Qwen3.8 checkpoints), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px), tokenizer.json (sha256 0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3 at both pins)"

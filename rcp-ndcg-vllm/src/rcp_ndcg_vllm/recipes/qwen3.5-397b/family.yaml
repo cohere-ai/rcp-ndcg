@@ -85,7 +85,7 @@ notes: >-
   the TP4 H100 shape above.
   Engine support: Qwen3_5MoeForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:597-600,
   module qwen3_5); re-checked at the pinned revision 2026-10-09. No plugin, no hf_overrides: the stock image
-  serves it. status: unverified until its GPU validation wave passes.
+  serves it. status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/nvidia/Qwen3.5-397B-A17B-NVFP4 (revision 0368c1b3233414cd4a617b8ff9515e25752dc16c resolves; licence apache-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4/raw/0368c1b3233414cd4a617b8ff9515e25752dc16c/config.json (Qwen3_5MoeForConditionalGeneration, 60 layers, hidden 4096, 512 experts top-10, vocab 248 320, mpe 262 144, full_attention_interval 4, 2 KV heads, head_dim 256), hf_quant_config.json (quant_algo NVFP4, kv_cache_quant_algo FP8), model.safetensors.index.json (metadata.total_size 251 135 201 368 B, 11 shards), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px)"

@@ -151,7 +151,7 @@ notes: |
      image's transformers (>=5.10.4,<5.18.0 at v0.31.0); 5.3.x accepts it, so the reference venv
      (--system-site-packages over the image) installs only sentence-transformers. The reference loads the checkpoint with trust_remote_code=True (the model card's
      usage); the served engine never imports that code.
-  8. Status unverified. The render was proved token-exact on CPU (8/8 cases measured when the
+  8. Status verified. The render was proved token-exact on CPU (8/8 cases measured when the
      recipe was written, constants bound to the checkpoint's config files). The first GPU wave
      measured every served vector differing from the card's (cosine 0.08-0.4 on all 68 vectors,
      with the renders equal) and the engine hanging at exactly max_model_len. The root cause was
@@ -160,8 +160,9 @@ notes: |
      suffix (min cosine 0.081024 over the same 68 vectors), while under the pinned 5.3.x line the
      same comparison is min 0.999203; the direct transformers path and the card's encode_query
      agree with the recorded engine vector at 0.999884-0.999890. The served path is correct, the
-     recipe now opts into the pooling-full-context patch for the hang, and E2 re-measures stage 2
-     under the pinned reference environment.
+     recipe now opts into the pooling-full-context patch for the hang, and E2 re-measured stage 2
+     under the pinned reference environment (rc0-202610140620, plugin-carriers: min cosine
+     0.9992174, PASS).
 variants:
   - id: zembed-1-embedding
     model: zeroentropy/zembed-1-embedding

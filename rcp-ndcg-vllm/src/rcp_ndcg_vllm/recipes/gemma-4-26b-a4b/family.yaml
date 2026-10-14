@@ -83,7 +83,7 @@ notes: >-
     GPU-wave probe, not the default (the GPU wave records the chosen MoE backend, VLLM_CUTLASS/Marlin on
     Hopper or a FlashInfer/TRTLLM backend on Blackwell, and any Marlin W4A16 fallback).
   Engine support: Gemma4ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:418, module
-  gemma4_mm); both pins were checked 2026-10-09. status: unverified until its GPU validation wave passes.
+  gemma4_mm); both pins were checked 2026-10-09. status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/google/gemma-4-26B-A4B-it (revision 4d7ae4984b7db7de8f8457170b3f1a419ee76d52 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09) and https://huggingface.co/api/models/nvidia/Gemma-4-26B-A4B-NVFP4 (revision a19cfe00be84568a6867111c9a68c9c44fdcffe6 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)"
   - "config.json at both pins (Gemma4ForConditionalGeneration; text 30 layers = 25 sliding + 5 full, hidden 2816, dense MLP intermediate 2112, 128 experts top-8, moe intermediate 704, 16 query / 8 KV heads, head 256 / global head 512, global KV 2, sliding window 1024, vocab 262 144, mpe 262 144; vision gemma4_vision, 27 layers, hidden 1152, patch 16, pooling 3, default_output_length 280), processor_config.json (sha256 prefix 32bdf45d2ad4cc29 at both pins), tokenizer.json (sha256 cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f at both pins), chat_template.jinja (canonical 18683 B ae53464bf3be2580; NVIDIA re-export 16934 B 94899c0f917d93f6)"

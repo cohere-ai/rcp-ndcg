@@ -82,7 +82,7 @@ notes: >-
   History: the paper's own engine settings for this judge are not recorded beyond the served name and parser;
   the pin is the Hub head at the check date, chosen so the conformance replay stays reproducible.
   Engine support: Qwen3_5ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:596, module
-  qwen3_5); checked at the pinned revision 2026-10-09. status: unverified until its GPU validation wave passes.
+  qwen3_5); checked at the pinned revision 2026-10-09. status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/Qwen/Qwen3.6-27B-FP8 (revision e89b16ebf1988b3d6befa7de50abc2d76f26eb09 == the Hub head; licence apache-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/Qwen/Qwen3.6-27B-FP8/raw/e89b16ebf1988b3d6befa7de50abc2d76f26eb09/config.json (Qwen3_5ForConditionalGeneration, 64 layers, hidden 5120, head_dim 256, 24 query / 4 KV heads, vocab 248 320, mpe 262 144, FP8 block [128,128]; vision tower depth 27, hidden 1152, patch 16, merge 2), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px)"
