@@ -93,7 +93,8 @@ sources:
   - "vllm v0.31.0 vllm/config/multimodal.py:159-162 and vllm/multimodal/video.py:202-241 (--media-io-kwargs video num_frames pins the loader's uniform frame sample: compute_frames_index_to_sample takes np.linspace over the clip)"
   - "vllm v0.31.0 examples/pooling/embed/vision_embedding_online.py (run_qwen3_vl: the request shape, reproduced on CPU with identical token ids)"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the messages route sends the content, add_special_tokens and add_generation_prompt), rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy.engine_pixel_pinning admits a budget below qwen3_vl's 65536 px stock floor when the engine is pinned to it)"
-  - "qwen-vl-utils 0.0.14 qwen_vl_utils/vision_process.py smart_resize and fetch_image (the card's image resize: factor 32, its per-item min_pixels/max_pixels; reference.py --mode media restates it)"
+  - "qwen-vl-utils 0.0.14 qwen_vl_utils/vision_process.py smart_resize and fetch_image (the card's image resize: factor 32, its per-item min_pixels/max_pixels; reference.py --mode media restates it; the container route is no longer this loader)"
+  - "transformers 5.19.0 models/qwen3_vl/video_processing_qwen3_vl.py (Qwen3VLVideoProcessor: sample_frames int(total_num_frames / metadata.fps * fps) clamped to min_frames 4 / max_frames 768 / total, np.linspace indices -- the rule the engine's Qwen3VLVideoBackend implements; resize's clip-level smart_resize under size shortest_edge/longest_edge, the budget vLLM folds videos_kwargs' min_pixels/max_pixels into; cap_pixels_per_frame false, the uncapped resize the engine's 5.17 applies) and models/qwen3_vl/processing_qwen3_vl.py (replace_video_token renders one timestamp line and one vision block per temporal group: the layout the client counts)"
   - "docs/how-to/add-a-model.md (the anchor rule: the cut reserves the fixed tokens and re-attaches the frame)"
 notes: >-
   Frame: the model reads every input through its chat template - a system turn carrying the
@@ -151,9 +152,9 @@ notes: >-
   (vllm/multimodal/video.py:360-400 at v0.31.0: int(total_frames / original_fps * fps), clamped to its
   30 fps ceiling and 4..768 frame bounds), so the old num_frames pin was inert and the client's 64-frame
   count was wrong (GPU-E1: engine 98/458 vs client 512/1952). The client counts each clip's frames with
-  that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices), and the
-  reference's media mode reports the same realised count from the pairs entry's own num_frames/fps; the
-  card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes. The
+  that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices); the
+  card script's container route (fps 1, max_frames 64) is the older sampler this policy supersedes, and
+  the reference no longer reads a container through it (see below). The
   per-clip pixel budget is pinned to the card's own total_pixels 7864320 through
   serve.mm_processor_kwargs.videos_kwargs (the HF Qwen3VL video processor's max_pixels is the whole
   clip's budget at transformers 5.17), and the client's video_policy declares the same
@@ -162,18 +163,23 @@ notes: >-
   count against the engine (the engine's prompt-token difference to the same request without its media), and
   the generated media request set carries a 64-frame MJPEG AVI clip per size, alone and with text
   (observe.media_set, MEDIA_SET_VERSION >= 3), whose header the product's probe_video_header reads.
-  The reference's embed mode reproduces that geometry: the container goes through the card's own loader at
-  the declared fps and realised frame count, and the reference adds the pin's per-frame shares as the
-  loader's own min_pixels/max_pixels (the card's image route uses the same keys), whose smart_resize is
-  the rule the engine's processor applies to the whole clip -- so a frame is resized to the engine's
-  size, not the loader's defaults (W2 B1: 384x384 = 144 patches vs the engine's 4/49). An odd realised
-  count (the loader floors to even) and a per-frame share above the loader's frame ceiling are refused
-  loudly, never silently sampled differently. One declared edge: the loader's downscale lacks the engine
-  processor's max(factor, ...) clamp, so a degenerate-aspect frame (near the processor's 200:1 refusal)
-  can differ by one step; the media set's near-square clips are unaffected.
+  The reference runs the SAME sampling and resize: a container goes to the checkpoint's own
+  Qwen3VLVideoProcessor at the recipe's pinned revision (reference.py load_video_processor;
+  video_processor_kwargs), which decodes it and samples the declared fps with its own rule -- the rule the
+  engine's backend implements -- and resizes the whole clip under the pin, handed as the processor's own
+  size {shortest_edge: 4096, longest_edge: 7864320} (the key vLLM's own _get_vision_info folds
+  videos_kwargs' min_pixels/max_pixels into) with cap_pixels_per_frame false, the uncapped resize the
+  engine's transformers applies. The card's image route and every text path stay exactly as they were
+  (qwen-vl-utils' fetch_image under the card's pixel bounds; the card's render); the embed mode's
+  container route hands the processor the card's conversations and lets it decode, sample, resize,
+  patchify and expand the video placeholder, and the media mode reports what that processor realises
+  (frames, per-frame pixels, patch tokens) from its own outputs, never a re-derived count. The old
+  card-loader route's per-frame share ceiling and its one-step downscale edge are gone with it: the
+  processor's rule is the engine's, whole-clip. A container without the declared rate is refused
+  loudly (the processor would otherwise sample at its own rate).
   Media outputs (stage 2 compares them): the reference's embed mode reads the harness's `media` field --
-  an image entry is decoded to a PIL image, a container is handed to the card's own loader at the
-  recipe's declared fps (2) capped at the engine's realised frame count and resized under the pin --
+  an image entry is decoded to a PIL image, a container goes through the checkpoint's processor at the
+  recipe's declared fps (2) under the whole-clip pin --
   and computes the card's vectors for media rows exactly as for text rows, so stage 2 gates them by the
   same cosine rule; the media stage still gates placement, geometry and tokens. A part sequence the card's own order (video,
   image, text) cannot express (an interleaved text part, several images/videos, an image before its

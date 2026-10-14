@@ -614,8 +614,8 @@ property carries a description (a config field's is its model's documentation).
   rule is likewise refused beside a non-qwen3_vl processor family, and a pinned `num_frames` on the qwen3_vl
   family is refused at count time (that backend samples by fps and ignores the pin; declare `fps`). The
   shipped `qwen3-vl-embedding-2b` recipe now declares that rule (`client.video_policy.fps: 2` with
-  `--media-io-kwargs '{"video": {"fps": 2}}'`), and its reference's media mode reports the same realised
-  frame count from the pairs entry's own frame count and rate.
+  `--media-io-kwargs '{"video": {"fps": 2}}'`), and its reference reads a container through the
+  checkpoint's own `Qwen3VLVideoProcessor` at that rate under the recipe's whole-clip pin (see Fixed).
 - **`PoolingEndpoint.media_head_as_system`** (a media document's fixed head as a system message, for a
   pass-through engine chat template) and **`PoolRequest.system_head`** (the field the pooling adapter renders
   it from).
@@ -1482,6 +1482,26 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
+
+- **The qwen3-vl-embedding reference reads video through the checkpoint's own processor**: the recipe pins
+the engine's video sampling to the checkpoint's own `video_preprocessor_config.json` rate (fps 2) and the
+whole-clip pixel budget to the card's `total_pixels` 7864320 (`serve.mm_processor_kwargs.videos_kwargs`,
+mirrored by `client.video_policy.engine_video_min/max_pixels`), but the reference read a container through
+the card script's `qwen_vl_utils` loader (fps 1, `max_frames` 64, and a per-frame pixel ceiling of
+`768 x 32^2 = 786432` px). That loader cannot express the pin: for the shipped video case's 4-frame clip
+the pin's per-frame share is 1966080 px, above the ceiling, so the reference refused the case
+(`qwen3-vl-embedding-2b/video-short-single`, `pending_gpu`, recorded in the case-fill report). The
+reference's container route now hands the container to the checkpoint's own `Qwen3VLVideoProcessor` at the
+recipe's pinned revision (`reference.py` `load_video_processor`/`video_processor_kwargs`): the declared fps
+with the processor's own sampling rule (the rule the engine's `Qwen3VLVideoBackend` implements) and the pin
+as the processor's own `size` (`{shortest_edge: 4096, longest_edge: 7864320}` -- the key vLLM's own
+`_get_vision_info` folds `videos_kwargs`' `min_pixels`/`max_pixels` into -- with `cap_pixels_per_frame`
+false, the uncapped resize the engine's transformers applies), so the reference realises the engine's
+frames and per-frame pixels. The card's image route and every text path are unchanged; the media mode
+reports what the processor realises (frames, per-frame pixels, patch tokens) from its own outputs, never a
+re-derived count, and a container without the declared rate is refused loudly. The reference's sampling
+deviation is gone: the behaviour fingerprint does not move (the `reference` block is out of it), so no
+corpus re-record is needed, and the case fills from the reference on GPU under its declared tolerance.
 
 - **The embeddinggemma-2 reference prepares media the way the card's processor does** (the stage-2 image
   rows 31/32, cosines 0.9941-0.9963 against the 0.999 gate): the engine's processor runs on the bytes the
