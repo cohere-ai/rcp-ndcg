@@ -1834,6 +1834,7 @@ def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
     )
     lists_src = repo / "rcp-ndcg-test" / "wave-lists"
     assert (stage / "wave-lists" / "all-retrieval.txt").read_bytes() == (lists_src / "all-retrieval.txt").read_bytes()
+    assert (stage / "wave-lists" / "e2e.txt").read_bytes() == (lists_src / "e2e.txt").read_bytes()
     cases_src = repo / "rcp-ndcg-test" / "cases"
     assert sorted(path.name for path in (stage / "cases").iterdir()) == sorted(
         path.name for path in cases_src.iterdir()
