@@ -2,7 +2,7 @@
 # family: jina-reranker-v3
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: c52a1f7a8dd607687e6389cd331b8dea0ded114578e8e823f58dfe51c34d7696
+# reference-in-sha256: 478a8a7a232ded4c48ca097e78c3d6441eb769626c771d9a77d9ca9f0fdf45ce
 # own-torch: false
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.9)
 #

@@ -10,7 +10,14 @@ from __future__ import annotations
 
 from rcp_ndcg_vllm.errors import RecipeError as RecipeError
 
-__all__ = ["CaseError", "ConformanceError", "EmulatorUnmodelledError", "HarnessError", "RecipeError"]
+__all__ = [
+    "CaseError",
+    "ConformanceError",
+    "EmulatorUnmodelledError",
+    "HarnessError",
+    "MediaRefusalError",
+    "RecipeError",
+]
 
 
 class HarnessError(RuntimeError):
@@ -25,6 +32,15 @@ class EmulatorUnmodelledError(HarnessError):
 
     Typed so the emulator can answer it as a marked wire refusal and ``from_corpus`` can skip-and-name the
     record it could not model -- never a bare ``ValueError`` and never a whole-corpus failure."""
+
+
+class MediaRefusalError(HarnessError):
+    """A verified fake engine was asked for a media part the engine's input processor refuses (a corrupt
+    image or video).
+
+    The message is the engine's own 400 message, verbatim (the recorded ``edge:corrupt_image`` /
+    ``edge:corrupt_video`` probes are the ground truth), so the emulator answers exactly what the engine
+    answered instead of its marked unmodelled refusal."""
 
 
 class CaseError(ValueError):

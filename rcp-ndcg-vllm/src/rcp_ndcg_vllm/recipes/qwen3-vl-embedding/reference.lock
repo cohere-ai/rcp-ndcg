@@ -2,7 +2,7 @@
 # family: qwen3-vl-embedding
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 1c1b222433ca852811052aa5c7a726ef76fb5dd02d767c11f2a185e17ba8c63e
+# reference-in-sha256: 65697e1f506cce377b4e6cbd413fea35324594c2f0954c2612fe64c97e90e615
 # own-torch: false
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.8)
 #

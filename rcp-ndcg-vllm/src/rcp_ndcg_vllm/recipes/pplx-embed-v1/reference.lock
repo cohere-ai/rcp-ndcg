@@ -2,7 +2,7 @@
 # family: pplx-embed-v1
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 4ca2cbceb92da5d95ae63b6ed2c3b0668f9b3cded71a852d2be62719797224b1
+# reference-in-sha256: d0706b5546294da19b524bc1581b03ab461f9f055d1cdbbc8432bae274a8efd2
 # own-torch: false
 #
 # The pins below install into the family's reference venv with `pip install --no-deps --no-index --find-links <wheelhouse> -r <this file>`; the image's torch/CUDA stack is read through --system-site-packages and never replaced.

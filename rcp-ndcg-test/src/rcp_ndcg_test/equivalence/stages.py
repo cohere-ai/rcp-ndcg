@@ -1422,13 +1422,22 @@ def served_chat_template(recipe: Recipe) -> tuple[str, str]:
     return recipe.serve.chat_template, (directory / recipe.serve.chat_template).read_text(encoding="utf-8")
 
 
-def render_chat(template_text: str, conversation: list[Any], *, add_generation_prompt: bool) -> str:
+def render_chat(
+    template_text: str, conversation: list[Any], *, add_generation_prompt: bool, instruction: str | None = None
+) -> str:
     """One sent conversation rendered as the engine renders it: the template under transformers' jinja2
-    settings, the parts as vLLM hands them (:func:`engine_conversation`), the request's generation flag."""
+    settings, the parts as vLLM hands them (:func:`engine_conversation`), the request's generation flag,
+    and -- for a request that carries one -- the ``instruction`` the engine passes through
+    ``chat_template_kwargs`` (a template that reads no instruction renders the same prompt)."""
     template = _jinja_environment(strict=False).from_string(template_text)
-    return template.render(
-        messages=engine_conversation(conversation), add_generation_prompt=add_generation_prompt, tools=None
-    )
+    variables: dict[str, Any] = {
+        "messages": engine_conversation(conversation),
+        "add_generation_prompt": add_generation_prompt,
+        "tools": None,
+    }
+    if instruction is not None:
+        variables["instruction"] = instruction
+    return template.render(**variables)
 
 
 def _emptied_text_parts(conversation: list[Any]) -> list[Any]:

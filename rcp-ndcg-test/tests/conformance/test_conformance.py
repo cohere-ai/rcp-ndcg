@@ -10,6 +10,7 @@ corpus). The suite runs in CI on every push and needs no network.
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
@@ -38,12 +39,17 @@ def all_corpus_dirs() -> list[Path]:
 
 def replay_problems(directory: Path) -> tuple[object, list[str]]:
     """Replay every recorded exchange of one corpus against its emulator: the conformance differences
-    (identical status and body within the recorded non-determinism), each naming the record."""
+    (identical status and body within the recorded non-determinism), each naming the record. A record
+    whose request got no answer (no recorded status: a connection error, a client refusal, a declared
+    omission) is not an exchange: there is nothing to replay, so it is left to the plan's completeness
+    check instead."""
     corpus = load_corpus(directory)
     recipe_id = corpus.manifest["recipe"]["id"]
     emulator = emulator_for(recipe_id)
     problems = []
     for exchange in exchanges_of(corpus):
+        if not exchange.answered:
+            continue
         answer = emulator.handle(as_request(exchange))
         found = compare_exchange(exchange, answer, corpus_tolerance(corpus))
         problems.extend(f"#{exchange.sequence}: {problem}" for problem in found)
@@ -72,12 +78,14 @@ def test_every_recorded_exchange_replays_identically() -> None:
 
 def test_usage_counts_use_the_recipes_real_tokenizer() -> None:
     """The replayed ``usage.prompt_tokens`` is the engine's own count (the recipe's real tokenizer
-    files): the recorded values reproduce exactly (measured: the sum of each engine prompt's tokens)."""
+    files): the recorded values reproduce exactly (measured: the sum of each engine prompt's tokens).
+    ``/models``, ``/tokenize`` and ``/health`` are the routes whose replies carry no ``usage`` (a model
+    listing, a count and a readiness answer), so the check covers the routes that do."""
     for directory in corpus_dirs():
         corpus = load_corpus(directory)
         emulator = emulator_for(corpus.manifest["recipe"]["id"])
         for exchange in exchanges_of(corpus):
-            if exchange.status != 200 or exchange.path.endswith("/models"):
+            if exchange.status != 200 or exchange.path.endswith(("/models", "/tokenize", "/health")):
                 continue
             recorded = (exchange.response_json or {}).get("usage", {}).get("prompt_tokens")
             answered = emulator.answer(exchange.path, exchange.method, exchange.request_body).json()
@@ -385,6 +393,35 @@ def test_the_tolerance_is_the_corpus_measured_one_and_never_invented(tmp_path: P
         corpus_tolerance(replace(unmeasured, nondeterminism=None))  # the reader found no nondeterminism.json
 
 
+def test_a_record_with_no_response_status_is_a_no_answer_never_status_zero(tmp_path: Path) -> None:
+    """A record whose response carries no status is a *no answer*: the collector recorded that nothing
+    crossed the wire (a connection error before any response, a client-side refusal, a declared omission),
+    so the record is not an exchange to replay. The record view reads the absence as ``None`` -- never
+    coerced to 0 -- and ``compare_exchange`` names the absence instead of comparing an invented exchange."""
+    from rcp_ndcg_test.engines import Exchange, compare_exchange, exchanges_of
+    from tests._engines import observation_corpus
+
+    connection_error = Exchange(
+        0, "GET", "/v1/models", None, None, {}, None, source="edge:while_loading", response_raw=b"ConnectError"
+    )
+    (loaded,) = exchanges_of(observation_corpus(tmp_path / "no-answer", [connection_error]))
+    assert loaded.status is None  # before the fix: int(None) raised TypeError
+    assert not loaded.answered
+    problems = compare_exchange(loaded, httpx.Response(200, json={"object": "list"}), None)
+    assert problems and "no response" in problems[0], problems
+
+
+def test_a_record_without_an_integer_sequence_is_refused_by_name() -> None:
+    """The collector's sending order is part of the record, like the status: a record that carries no
+    integer sequence is refused by name, never defaulted to 0."""
+    from rcp_ndcg_test.engines import Exchange
+
+    from rcp_ndcg.errors import DataError
+
+    with pytest.raises(DataError, match="integer sequence"):
+        Exchange.from_record({"sequence": None, "request": {}, "response": {}})
+
+
 def test_every_value_is_bounded_by_the_joint_condition() -> None:
     """A replayed number passes only within BOTH measured bounds (absolute and relative): never the
     looser of the two, never their sum."""
@@ -401,12 +438,158 @@ def test_every_value_is_bounded_by_the_joint_condition() -> None:
     assert compare_exchange(recorded, same, None) == []
 
 
-def test_every_committed_corpus_declares_its_tolerance_unmeasured() -> None:
-    """The shakedown sent every request once: no corpus measured a repetition, so none carries a tolerance."""
+def test_every_committed_corpus_declares_the_tolerance_its_measurement_derived() -> None:
+    """The tolerance is the corpus's own measurement, never invented: the release recordings sent every
+    request twice in-process and once after a restart, so they measured non-determinism and carry the
+    bounds their report derived; the four shakedown-era corpora the release pass did not re-record sent
+    every request once, declare ``measured: false`` and compare exactly. The report and the reader agree
+    either way, and at least one corpus must measure, so the release recordings are exercised here, not
+    assumed."""
+    measured = 0
     for directory in corpus_dirs():
         report = json.loads((directory / "nondeterminism.json").read_text(encoding="utf-8"))
-        assert report["derived"]["measured"] is False and report["derived"]["repeated_requests"] == 0, directory
-        assert corpus_tolerance(load_corpus(directory)) is None
+        derived = report["derived"]
+        assert derived["measured"] == (derived["repeated_requests"] > 0), directory
+        tolerance = corpus_tolerance(load_corpus(directory))
+        if derived["measured"]:
+            measured += 1
+            assert tolerance == (derived["abs_tolerance"], derived["rel_tolerance"]), directory
+        else:
+            assert tolerance is None, directory
+    assert measured, "no committed corpus measured a repetition: the release recordings are missing"
+
+
+# -- the release plan's protocol strata (CORPUS_PLAN_VERSION 3) ----------------------------------------
+
+
+def test_a_health_probe_answers_the_engines_readiness_reply() -> None:
+    """The engine's readiness answer is an empty 200 with the server header and no content type (the
+    recorded probe): a byte-asserting test must not see a JSON ``{}`` the engine never sent."""
+    answer = emulator_for("qwen3-reranker-0.6b").answer("/health", "GET", None)
+    assert answer.status_code == 200 and answer.content == b""
+    assert answer.headers["server"] == "uvicorn" and "content-type" not in answer.headers
+
+
+def test_a_malformed_body_is_refused_with_the_engines_validation_error() -> None:
+    """A body that is not JSON is FastAPI's ``json_invalid`` error as vLLM formats it (the recorded
+    ``{not json`` probe): the decoder's offset and message, the empty-dict input, the ``Bad Request``
+    type and the ``body.<offset>`` param -- verbatim, never a paraphrase."""
+    request = httpx.Request(
+        "POST", "http://engine/rerank", content=b"{not json", headers={"content-type": "application/json"}
+    )
+    answer = emulator_for("jina-reranker-v3").handle(request)
+    assert answer.status_code == 400
+    assert answer.json() == {
+        "error": {
+            "message": (
+                "1 validation error:\n  {'type': 'json_invalid', 'loc': 'body.1', 'msg': 'JSON decode error', "
+                "'input': '<dict of 0 items>', 'ctx': {'error': 'Expecting property name enclosed in double quotes'}}"
+            ),
+            "type": "Bad Request",
+            "param": "body.1",
+            "code": 400,
+        }
+    }
+
+
+def test_an_empty_rerank_is_refused_with_the_engines_message() -> None:
+    """A ``/rerank`` with no documents is refused with the engine's own message, for the listwise builder
+    (whose empty set still renders one prompt) and the pointwise template alike."""
+    for recipe_id in ("jina-reranker-v3", "qwen3-reranker-0.6b"):
+        answer = emulator_for(recipe_id).answer("/rerank", "POST", {"model": recipe_id, "query": "", "documents": []})
+        assert answer.status_code == 400, recipe_id
+        assert answer.json()["error"] == {
+            "message": "At least one text_pair element must be given",
+            "type": "BadRequestError",
+            "param": None,
+            "code": 400,
+        }, recipe_id
+
+
+def test_the_media_caps_and_a_corrupt_part_are_the_engines_own_refusals() -> None:
+    """The engine enforces ``limit_mm_per_prompt`` per prompt and refuses a media part its processor cannot
+    decode: both 400 bodies are the engine's own (the recorded edge probes), never the emulator's marked
+    refusal."""
+    import base64
+
+    emulator = emulator_for("qwen3-vl-embedding-2b")
+    image = "data:image/png;base64," + base64.b64encode(_ONE_PIXEL_PNG).decode("ascii")
+    part = {"type": "image_url", "image_url": {"url": image}}
+    two = {
+        "model": "qwen3-vl-embedding-2b",
+        "messages": [{"role": "user", "content": [part, part]}],
+    }
+    answer = emulator.answer("/v1/embeddings", "POST", two)
+    assert answer.status_code == 400
+    assert answer.json()["error"]["message"] == "At most 1 image(s) may be provided in one prompt. (parameter=image)"
+    corrupt = {
+        "model": "qwen3-vl-embedding-2b",
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,bm90IGFuIGltYWdl"}}],
+            }
+        ],
+    }
+    answer = emulator.answer("/v1/embeddings", "POST", corrupt)
+    assert answer.status_code == 400
+    assert answer.json()["error"]["message"] == "Failed to load image: cannot identify image file <_io.BytesIO object>"
+
+
+def test_a_rerank_document_is_echoed_as_the_engine_echoes_it() -> None:
+    """The engine echoes a rerank document as sent: a part-list document as its whole ``content`` under
+    ``multi_modal`` with ``text`` null, a string document as its text with ``multi_modal`` null (the
+    recorded media rows)."""
+    import base64
+
+    emulator = emulator_for("qwen3-vl-reranker-2b")
+    image = "data:image/png;base64," + base64.b64encode(_ONE_PIXEL_PNG).decode("ascii")
+    parts = [{"type": "image_url", "image_url": {"url": image}}, {"type": "text", "text": "a caption"}]
+    body = {
+        "model": "qwen3-vl-reranker-2b",
+        "query": "q",
+        "documents": ["a text document", {"content": parts}],
+    }
+    results = emulator.answer("/rerank", "POST", body).json()["results"]
+    by_index = {entry["index"]: entry["document"] for entry in results}
+    assert by_index[0] == {"text": "a text document", "multi_modal": None}
+    assert by_index[1] == {"text": None, "multi_modal": parts}
+
+
+def test_a_rerank_reply_is_compared_by_document_identity() -> None:
+    """A rerank reply is compared by document identity: a near-tie rank flip within the measured tolerance
+    is not a body drift (the recorded qwen3-reranker-8b case), while a missing document or a score outside
+    the tolerance still refuses."""
+    from rcp_ndcg_test.engines import Exchange
+
+    def reply(scores: list[tuple[int, float]]) -> dict:
+        return {
+            "id": "score-1",
+            "model": "m",
+            "results": [
+                {"index": index, "document": {"text": f"d{index}", "multi_modal": None}, "relevance_score": score}
+                for index, score in scores
+            ],
+        }
+
+    recorded = Exchange(0, "POST", "/rerank", {}, 200, {}, reply([(1, 0.542969), (2, 0.542969)]))
+    flipped = reply([(2, 0.550781), (1, 0.535156)])
+    assert compare_exchange(recorded, httpx.Response(200, json=flipped), (3.0, 1.5)) == []
+    missing = reply([(1, 0.542969)])
+    assert any(
+        "document indices" in problem
+        for problem in compare_exchange(recorded, httpx.Response(200, json=missing), (3.0, 1.5))
+    )
+    moved = reply([(1, 5.0), (2, 0.542969)])
+    assert any(
+        ".results[1]" in problem for problem in compare_exchange(recorded, httpx.Response(200, json=moved), (3.0, 1.5))
+    )
+
+
+_ONE_PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+"""A 1x1 PNG: the smallest image the product's own media probe reads, for the media-refusal pins."""
 
 
 @pytest.mark.skipif(
@@ -466,5 +649,7 @@ def test_the_declared_stale_listwise_corpus_still_replays_its_role_requests() ->
     ]
     assert role_requests, "the corpus records no successful role request: the replay would pass vacuously"
     for exchange in exchanges_of(corpus):
+        if not exchange.answered:
+            continue  # no recorded response: not an exchange, nothing to replay (see replay_problems)
         problems = compare_exchange(exchange, emulator.handle(as_request(exchange)), corpus_tolerance(corpus))
         assert not problems, f"{directory.name} #{exchange.sequence}: {problems}"

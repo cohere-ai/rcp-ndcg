@@ -61,7 +61,7 @@ from rcp_ndcg_test.corpus import (
     normalise_body,
     normalise_raw,
 )
-from rcp_ndcg_test.errors import EmulatorUnmodelledError
+from rcp_ndcg_test.errors import EmulatorUnmodelledError, MediaRefusalError
 
 __all__ = [
     "CORPUS_INDEX_SCHEMA",
@@ -119,7 +119,10 @@ class Exchange:
         method: The HTTP method (``GET``, ``POST``).
         path: The route (``/v1/embeddings``).
         request_body: The request body as parsed JSON (``None`` when none was sent or it is not JSON).
-        status: The response status.
+        status: The response status, or ``None`` for a record whose request got no answer: the collector
+            recorded that nothing crossed the wire (a connection error before any response, a client-side
+            refusal, a declared omission). Such a record accounts for a planned request; it is not an
+            exchange and carries nothing to replay.
         response_headers: The headers that matter (content type, server, the bytes framing's metadata).
         response: The response body as parsed JSON, ``None`` when it is not JSON (a binary body).
         repetition: Which sending (``same_process_1``, ``same_process_2``, ``after_restart``).
@@ -134,7 +137,7 @@ class Exchange:
     method: str
     path: str
     request_body: Any
-    status: int
+    status: int | None
     response_headers: Mapping[str, str]
     response: Any
     repetition: str = "same_process_1"
@@ -147,6 +150,11 @@ class Exchange:
     def response_json(self) -> Any:
         """The parsed response body, or ``None`` for one that is not JSON."""
         return self.response
+
+    @property
+    def answered(self) -> bool:
+        """Whether the engine answered: a record with no recorded status carries no exchange to replay."""
+        return self.status is not None
 
     @property
     def raw_body(self) -> bytes | None:
@@ -162,12 +170,19 @@ class Exchange:
         inputs = record.get("inputs") or {}
         reconstructed = str(inputs.get("body_raw") or "").startswith("reconstructed")
         source = inputs.get("source") or {}
+        sequence = record.get("sequence")
+        if not isinstance(sequence, int):
+            raise DataError(
+                f"the record carries no integer sequence (got {sequence!r}): the collector's sending order "
+                "is part of the record, never defaulted"
+            )
+        status = response.get("status")
         return cls(
-            sequence=int(record.get("sequence", 0)),
+            sequence=sequence,
             method=str(request.get("method", "")),
             path=str(request.get("path", "")),
             request_body=request.get("body_parsed"),
-            status=int(response.get("status", 0)),
+            status=None if status is None else int(status),
             response_headers=dict(response.get("headers") or {}),
             response=response.get("body_parsed"),
             repetition=str(record.get("repetition", "")),
@@ -279,10 +294,17 @@ def compare_exchange(recorded: Exchange, replayed: httpx.Response, tolerance: tu
             jointly; ``None`` (unmeasured) compares exactly.
 
     Returns:
-        A list of differences (``[]`` is conformant); each names what moved. An undecodable replayed
-        body is a named difference, never an exception or a silent pass.
+        A list of differences (``[]`` is conformant); each names what moved. A record with no recorded
+        response is a named difference (there is no exchange to compare), never a comparison against an
+        invented status; an undecodable replayed body is a named difference, never an exception or a
+        silent pass.
     """
     problems = []
+    if not recorded.answered:
+        cause = recorded.raw_body.decode("utf-8", "replace") if recorded.raw_body else "no answer"
+        return [
+            f"the record carries no response ({cause}): nothing crossed the wire, so there is no exchange to compare"
+        ]
     if replayed.status_code != recorded.status:
         return [f"status {replayed.status_code} != recorded {recorded.status}"]
     for name, expected in dict(recorded.response_headers).items():
@@ -305,10 +327,51 @@ def compare_exchange(recorded: Exchange, replayed: httpx.Response, tolerance: tu
         return problems
     expected_body = normalise_body(recorded.response_json)
     actual = normalise_body(actual_body)
-    problems.extend(_diff_bodies(expected_body, actual, "", tolerance or (0.0, 0.0)))
+    if recorded.path.rstrip("/").endswith("/rerank"):
+        problems.extend(_diff_rerank_results(expected_body, actual, tolerance or (0.0, 0.0)))
+    else:
+        problems.extend(_diff_bodies(expected_body, actual, "", tolerance or (0.0, 0.0)))
     if recorded.response_raw is not None and not problems and tolerance is None:
         if normalise_raw(content) != normalise_raw(recorded.response_raw):
             problems.append("raw bytes differ from the recorded bytes (volatile values masked)")
+    return problems
+
+
+def _diff_rerank_results(expected: Any, actual: Any, tolerance: tuple[float, float]) -> list[str]:
+    """A rerank reply compared by **document identity**: the returned document set must match exactly (a
+    missing or extra document still refuses) and each document's entry is compared within the measured
+    tolerance, and each reply must be ranked by score.  The ORDER is not compared: the engine's ranking
+    follows the scores, and scores within the recorded non-determinism may flip near-ties (the
+    measurement is the corpus's own).
+    """
+    if not isinstance(expected, dict) or not isinstance(actual, dict):
+        return _diff_bodies(expected, actual, "", tolerance)
+    expected_results, actual_results = expected.get("results"), actual.get("results")
+    if not isinstance(expected_results, list) or not isinstance(actual_results, list):
+        return _diff_bodies(expected, actual, "", tolerance)
+    problems = _diff_bodies(
+        {key: value for key, value in expected.items() if key != "results"},
+        {key: value for key, value in actual.items() if key != "results"},
+        "",
+        tolerance,
+    )
+    by_index = {entry.get("index"): entry for entry in expected_results if isinstance(entry, dict)}
+    actual_by_index = {entry.get("index"): entry for entry in actual_results if isinstance(entry, dict)}
+    if set(by_index) != set(actual_by_index):
+        return problems + [
+            f".results: document indices {sorted(actual_by_index, key=str)} != recorded {sorted(by_index, key=str)}"
+        ]
+    for index in sorted(by_index, key=str):
+        problems.extend(_diff_bodies(by_index[index], actual_by_index[index], f".results[{index}]", tolerance))
+    for side, entries in (("recorded", expected_results), ("replayed", actual_results)):
+        scores = [entry.get("relevance_score") for entry in entries if isinstance(entry, dict)]
+        if all(isinstance(score, (int, float)) for score in scores):
+            for position, (left, right) in enumerate(zip(scores, scores[1:], strict=False)):
+                if float(right) > float(left):
+                    problems.append(
+                        f".results[{position}].index: the {side} reply is not ranked by score ({right} above {left})"
+                    )
+                    break
     return problems
 
 
@@ -417,8 +480,8 @@ FIELD_CLASSES: Mapping[str, str] = {
     "dimensions": "output",  # the engine's Matryoshka cut
     "task": "output",  # which pooling task runs
     "messages": "prompt",  # the chat-style request: its conversations carry the engine prompt(s)
+    "instruction": "prompt",  # the engine folds it into the rendered prompt where its template reads one
     # unmodelled: changes the prompt or its cut in ways the emulator does not render -> a marked 400
-    "instruction": "unmodelled",  # folded into chat_template_kwargs and rendered by the template
     "chat_template_kwargs": "unmodelled",
     "truncate_prompt_tokens": "unmodelled",  # the engine cuts instead of refusing
     "truncation_side": "unmodelled",
@@ -759,13 +822,27 @@ class PairPrompts(PromptStrategy):
     template: Any
     tokenizer: Any
     media: Callable[[Any], tuple[MediaIdentity, int]] | None = None
+    instruction_render: Callable[[str, str, str], str] | None = None
+    """The engine's render of a pair prompt for a request that carries an ``instruction``:
+    ``(query, document, instruction)`` -> the pair prompt.  The recipe's served template is the engine's
+    renderer (where its pair shape reads an instruction); ``None`` falls back to the client template,
+    which is byte-identical where the recipe's own template reads no instruction."""
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
+        instruction = body.get("instruction")
+        instruction = instruction if isinstance(instruction, str) and instruction else None
         query, query_media, query_tokens, query_placement = _side(body.get("query"), self.media)
         documents = [_side(document, self.media) for document in body.get("documents") or []]
         prompts: list[Prompt] = []
         for document, media, tokens, placement in documents:
-            rendered = self.template.render("pair", self.tokenizer, query=query, document=document)
+            if instruction is not None and self.instruction_render is not None:
+                rendered = self.instruction_render(query, document, instruction)
+            elif instruction is not None:
+                rendered = self.template.render(
+                    "pair", self.tokenizer, query=query, document=document, instruction=instruction
+                )
+            else:
+                rendered = self.template.render("pair", self.tokenizer, query=query, document=document)
             identities = (*query_media, *media)
             prompts.append(
                 MediaPrompt(rendered, identities, query_tokens + tokens, (*query_placement, *placement))
@@ -785,11 +862,21 @@ class EnginePrompts(PromptStrategy):
 
     builder: Callable[[str, Sequence[str]], str]
     add_special: bool = True
+    instruction_builder: Callable[[str, Sequence[str], str], str] | None = None
+    """The reference builder with the request's instruction, for a checkpoint whose N-passage builder
+    reads one (jina-reranker-v3's ``format_docs_prompt(query, docs, instruction)``); ``None`` keeps
+    ``builder``, which is the engine's render where the builder reads no instruction."""
 
     def prompts(self, body: Mapping[str, Any]) -> PromptSet:
         query = _text(body.get("query"))
         documents = [_text(document) for document in body.get("documents") or []]
-        return PromptSet((self.builder(query, documents),), (self.add_special,), "score_list", (0,))
+        instruction = body.get("instruction")
+        instruction = instruction if isinstance(instruction, str) and instruction else None
+        if instruction is not None and self.instruction_builder is not None:
+            prompt = self.instruction_builder(query, documents, instruction)
+        else:
+            prompt = self.builder(query, documents)
+        return PromptSet((prompt,), (self.add_special,), "score_list", (0,))
 
 
 def _conversations(body: Mapping[str, Any]) -> list[list[Any]]:
@@ -815,6 +902,41 @@ def _media_parts(conversation: Sequence[Any]) -> list[dict[str, Any]]:
             if isinstance(part, dict) and part.get("type") in ("image_url", "video_url"):
                 parts.append(part)
     return parts
+
+
+def _media_counts(body: Mapping[str, Any]) -> tuple[int, int]:
+    """The request's largest per-prompt media counts: ``(images, videos)`` over its prompt units -- each
+    ``messages`` conversation, each ``input`` item and each rerank document (and its query) -- which is
+    how the engine's ``limit_mm_per_prompt`` counts."""
+    units: list[list[Any]] = []
+    messages = body.get("messages")
+    if isinstance(messages, list) and messages:
+        conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+        for conversation in conversations:
+            units.append(
+                [
+                    part
+                    for message in conversation
+                    if isinstance(message, dict)
+                    for part in (message.get("content") if isinstance(message.get("content"), list) else [])
+                ]
+            )
+    inputs = body.get("input")
+    if isinstance(inputs, list):
+        units.extend(
+            list(item["content"]) for item in inputs if isinstance(item, dict) and isinstance(item.get("content"), list)
+        )
+    for key in ("query", "documents"):
+        value = body.get(key)
+        values = value if key == "documents" and isinstance(value, list) else [value]
+        units.extend(
+            list(item["content"]) for item in values if isinstance(item, dict) and isinstance(item.get("content"), list)
+        )
+    images = videos = 0
+    for unit in units:
+        images = max(images, sum(1 for part in unit if isinstance(part, dict) and part.get("type") == "image_url"))
+        videos = max(videos, sum(1 for part in unit if isinstance(part, dict) and part.get("type") == "video_url"))
+    return images, videos
 
 
 def _side(
@@ -886,6 +1008,15 @@ def _document_text(value: Any) -> str:
     return _text(value)
 
 
+def _document_echo(document: Any) -> dict[str, Any]:
+    """One rerank document as the engine echoes it in its reply: a part-list document echoes its whole
+    ``content`` list as ``multi_modal`` with ``text`` null; a string document echoes the text with
+    ``multi_modal`` null -- exactly as the recorded media rows show."""
+    if isinstance(document, dict) and isinstance(document.get("content"), list):
+        return {"text": None, "multi_modal": list(document["content"]) or None}
+    return {"text": _document_text(document), "multi_modal": None}
+
+
 def _is_token_ids(item: Any) -> bool:
     return isinstance(item, list) and bool(item) and all(isinstance(v, int) and not isinstance(v, bool) for v in item)
 
@@ -951,6 +1082,9 @@ class EngineFacts:
             the gate admits every integer in range (a card's prose range).
         embedding_size: The checkpoint's full output width (vLLM's ``embedding_size``); ``None`` means the
             width the corpus observed (the emulator's ``dim``).
+        max_images: The per-prompt image cap the engine enforces (``limit_mm_per_prompt``); ``None``
+            enforces none.
+        max_videos: The per-prompt video cap the engine enforces; ``None`` enforces none.
     """
 
     engine_name: str
@@ -961,6 +1095,8 @@ class EngineFacts:
     is_matryoshka: bool = False
     matryoshka_dimensions: tuple[int, ...] | None = None
     embedding_size: int | None = None
+    max_images: int | None = None
+    max_videos: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1040,7 +1176,8 @@ class VllmEmulator:
         facts: The engine facts (the protocol layer's inputs).
         strategy: The request -> engine prompts derivation (the model layer's key).
         tokenizer: The recipe's real tokenizer (usage, over-length and ``/tokenize`` count with it).
-        observations: Per prompt key, the replayed outputs (first observation = the replay).
+        observations: Per prompt key, the replayed outputs (the fullest observation first: the replay;
+            a ``top_n``-truncated framing never hides a fuller one).
         unmodelled_records: One entry per recorded 2xx exchange the model layer could not model (the
             request's unmodelled fields, or a prompt derivation the strategy refused), each naming the
             record and the reason.  The corpus still builds: an unmodelled record is skipped and named
@@ -1107,7 +1244,7 @@ class VllmEmulator:
             The emulator, keyed to the corpus's behaviour fingerprint (model layer) and the engine
             version (protocol layer).
         """
-        observed: dict[str, list[tuple[int, ModelObservation]]] = {}
+        observed: dict[str, list[tuple[int, ModelObservation, bool]]] = {}
         unmodelled_records: list[str] = []
         exchanges = exchanges_of(corpus)
         for exchange in exchanges:
@@ -1116,31 +1253,41 @@ class VllmEmulator:
                 continue
             body = exchange.request_body if isinstance(exchange.request_body, dict) else {}
             where = f"{exchange.source or exchange.path} #{exchange.sequence}"
+            truncated = _truncated_reply(body)
             context, unmodelled = request_context(route, body)
             if unmodelled:
                 unmodelled_records.append(f"{where}: the recorded request carries {unmodelled}, unmodelled")
                 continue
             try:
                 set_ = replace(strategy.prompts(body), context=_canonical_context(context))
-            except EmulatorUnmodelledError as error:
+            except (EmulatorUnmodelledError, MediaRefusalError) as error:
                 # A request the model layer has no derivation for (a chat body without a chat strategy, a
-                # media part without a media model) is skipped and NAMED: one unmodelled record never fails
-                # the whole corpus, and a replayed request for it answers the declared surrogate, marked.
+                # media part without a media model) -- or a 2xx record for a part the engine's processor
+                # refuses -- is skipped and NAMED: one such record never fails the whole corpus, and a
+                # replayed request for it answers the emulator's marked refusal, or the engine's own 400
+                # for a part the engine's processor refuses.
                 unmodelled_records.append(f"{where}: {error}")
                 continue
-            for key, observation in _outputs_from_response(set_, exchange):
-                observed.setdefault(key, []).append((exchange.sequence, observation))
+            for key, observation in _outputs_from_response(set_, exchange, truncated=truncated):
+                observed.setdefault(key, []).append((exchange.sequence, observation, truncated))
         tolerance = corpus_tolerance(corpus)
         for key, history in observed.items():
-            first_sequence, first = history[0]
-            for sequence, other in history[1:]:
-                if _observation_differences(first, other, tolerance):
+            first_sequence, first, first_truncated = history[0]
+            for sequence, other, other_truncated in history[1:]:
+                if _observation_differences(
+                    first, other, tolerance, first_truncated=first_truncated, other_truncated=other_truncated
+                ):
                     raise DataError(
                         f"recipe {corpus.manifest['recipe']['id']}: exchanges #{first_sequence} and #{sequence} "
                         f"answer one replay key with different outputs ({key[:160]}...): the key misses a "
                         "behaviour-shaping field, or the engine varies beyond the measured tolerance"
                     )
-        merged = {key: tuple(observation for _, observation in history) for key, history in observed.items()}
+        # The replay source is the fullest observation of a key: a ``top_n``-truncated reply frames the
+        # same model output shorter, so it must never hide the full ranking from the table.
+        merged = {
+            key: tuple(observation for _, observation, _ in sorted(history, key=lambda row: -_ranked_length(row[1])))
+            for key, history in observed.items()
+        }
         routes = {route_name(exchange.method, exchange.path) for exchange in exchanges}
         widths = {
             width
@@ -1206,6 +1353,8 @@ class VllmEmulator:
         try:
             raw = request.read()
             body = json.loads(raw) if raw else None
+        except json.JSONDecodeError as error:
+            return _malformed_json(error)
         except ValueError:
             body = None
             return _error(400, "invalid JSON body", param="body", kind="BadRequestError")
@@ -1240,7 +1389,9 @@ class VllmEmulator:
         if method == "GET" and path.rstrip("/").endswith("/models"):
             return self._models()
         if method == "GET" and path.rstrip("/").endswith("/health"):
-            return _json(200, {})
+            # The engine's readiness answer: an empty 200 body with the server header and no content type
+            # (the recorded probe).
+            return httpx.Response(200, headers={"server": "uvicorn"}, content=b"")
         if method != "POST":
             return _error(404, f"unrecognized route {method} {path}", kind="NotFoundError")
         if path.rstrip("/").endswith("/embeddings"):
@@ -1299,6 +1450,19 @@ class VllmEmulator:
                 f"The model `{body.get('model')}` does not exist.",
                 kind="NotFoundError",
             )
+        images, videos = _media_counts(body)
+        if self.facts.max_images is not None and images > self.facts.max_images:
+            return None, _error(
+                400,
+                f"At most {self.facts.max_images} image(s) may be provided in one prompt. (parameter=image)",
+                param="image",
+            )
+        if self.facts.max_videos is not None and videos > self.facts.max_videos:
+            return None, _error(
+                400,
+                f"At most {self.facts.max_videos} video(s) may be provided in one prompt. (parameter=video)",
+                param="video",
+            )
         context, unmodelled = request_context(route, body)
         if unmodelled:
             return None, self._unmodelled_refusal(
@@ -1311,9 +1475,15 @@ class VllmEmulator:
             set_ = replace(self.strategy.prompts(body), context=_canonical_context(context))
         except EmulatorUnmodelledError as error:
             return None, self._unmodelled_refusal(str(error), param="input")
+        except MediaRefusalError as error:
+            # The engine's input processor refused a media part (a corrupt image or video): its own 400
+            # message, verbatim.
+            return None, _error(400, str(error))
         except Exception as error:  # noqa: BLE001 - malformed requests are wire refusals
             return None, _error(400, f"invalid request: {error}", kind="BadRequestError")
         if not set_.prompts:
+            if route == "rerank":
+                return None, _error(400, "At least one text_pair element must be given")
             return None, _error(400, "invalid request: empty input", param="input", kind="BadRequestError")
         over = [
             index for index in range(len(set_.prompts)) if set_.count(index, self.tokenizer) > self.facts.max_model_len
@@ -1533,6 +1703,8 @@ class VllmEmulator:
             return error
         assert set_ is not None
         documents = body.get("documents") or []
+        if not documents:  # a listwise builder renders an empty set as one prompt; the engine still refuses
+            return _error(400, "At least one text_pair element must be given")
         sources: list[str] = []
         scored: list[dict[str, Any]] = []
         if set_.slot == "score_list":
@@ -1568,7 +1740,7 @@ class VllmEmulator:
         results = [
             {
                 "index": entry["index"],
-                "document": {"text": _document_text(documents[entry["index"]]), "multi_modal": None},
+                "document": _document_echo(documents[entry["index"]]),
                 "relevance_score": entry["relevance_score"],
             }
             for entry in scored
@@ -1892,15 +2064,51 @@ def _canonical_context(context: Mapping[str, Any]) -> str:
 
 
 def _observation_differences(
-    first: ModelObservation, other: ModelObservation, tolerance: tuple[float, float] | None
+    first: ModelObservation,
+    other: ModelObservation,
+    tolerance: tuple[float, float] | None,
+    *,
+    first_truncated: bool = False,
+    other_truncated: bool = False,
 ) -> list[str]:
-    """Where two observations of one replay key disagree (exact when the tolerance is unmeasured)."""
+    """Where two observations of one replay key disagree (exact when the tolerance is unmeasured).
+
+    A ``top_n``-truncated reply frames the same model output shorter (the first ranked entries), so when
+    either side is truncated the shorter ranked list is compared against the fuller one's prefix, within
+    the measured tolerance. Two full observations compare over their whole ranked list.
+    """
     plain = json.loads(json.dumps(asdict(first)))
     again = json.loads(json.dumps(asdict(other)))
+    if (
+        (first_truncated or other_truncated)
+        and isinstance(plain.get("scores"), list)
+        and isinstance(again.get("scores"), list)
+    ):
+        if len(plain["scores"]) > len(again["scores"]):
+            plain["scores"] = plain["scores"][: len(again["scores"])]
+        else:
+            again["scores"] = again["scores"][: len(plain["scores"])]
     return _diff_bodies(plain, again, "", tolerance or (0.0, 0.0))
 
 
-def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[str, ModelObservation]]:
+def _ranked_length(observation: ModelObservation) -> int:
+    """The length of a ranked-list observation (0 for an observation that is not one): the fullness a
+    ``top_n``-truncated reply must never hide, because the replay source is the fullest observation."""
+    return len(observation.scores) if observation.scores is not None else 0
+
+
+def _truncated_reply(request: Mapping[str, Any]) -> bool:
+    """Whether a ``/rerank`` reply is the ranked list truncated by the request's ``top_n`` (vLLM's rule:
+    absent, ``0`` or at least the document count returns every document; a value in between returns only
+    the first ``top_n`` ranked entries -- the same model output, framed shorter)."""
+    top_n = request.get("top_n")
+    documents = request.get("documents")
+    return isinstance(top_n, int) and isinstance(documents, list) and 0 < top_n < len(documents)
+
+
+def _outputs_from_response(
+    set_: PromptSet, exchange: Exchange, *, truncated: bool = False
+) -> list[tuple[str, ModelObservation]]:
     """The model outputs one recorded 2xx exchange holds, keyed per replay key (prompt + context).
 
     Decodes vLLM v0.31.0's framings: JSON floats, ``base64`` vectors (``embed_dtype`` and
@@ -1908,6 +2116,11 @@ def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[st
     ``metadata`` header's per-item ``start``/``end``/``shape``. Anything it cannot decode -- a base64
     token matrix (vLLM sends no shape), a frame without metadata, a missing score -- is refused naming
     the record: a corpus whose outputs cannot be derived never reads as an empty or guessed table.
+
+    ``truncated`` says the reply is a ``top_n``-framed view of the ranked list (:func:`_truncated_reply`):
+    a pointwise truncation then yields observations only for the positions the reply returned -- an
+    unreturned position is ABSENT, never a ``None`` score that would read as an observation -- while a
+    listwise truncation yields the ranked prefix the consistency check compares as such.
     """
     where = f"{exchange.source or exchange.path} #{exchange.sequence}"
     request = exchange.request_body if isinstance(exchange.request_body, dict) else {}
@@ -1961,10 +2174,10 @@ def _outputs_from_response(set_: PromptSet, exchange: Exchange) -> list[tuple[st
         raise DataError(f"{where}: a rerank reply without scored results cannot be decoded")
     scores = {int(entry.get("index", i)): float(entry["relevance_score"]) for i, entry in enumerate(results)}
     if set_.slot == "score":
-        return [
-            (set_.item_key(position), ModelObservation(score=scores.get(position)))
-            for position in range(len(set_.prompts))
-        ]
+        # A truncated reply returned only its top_n documents: the others were not observed, so they get
+        # no entry (a None score would read as an observation and contradict the full record's score).
+        positions: Iterable[int] = sorted(scores) if truncated else range(len(set_.prompts))
+        return [(set_.item_key(position), ModelObservation(score=scores.get(position))) for position in positions]
     return [(set_.set_key, ModelObservation(scores=tuple(sorted(scores.items()))))]
 
 
@@ -2027,6 +2240,30 @@ def _usage_body(usage: int, *, wide: bool) -> dict[str, Any]:
 def _error(status: int, message: str, *, param: str | None = None, kind: str = "BadRequestError") -> httpx.Response:
     """vLLM's ``ErrorResponse`` (``ErrorInfo``: message, type, param, code)."""
     return _json(status, {"error": {"message": message, "type": kind, "param": param, "code": status}})
+
+
+def _malformed_json(error: json.JSONDecodeError) -> httpx.Response:
+    """The engine's refusal of a body that is not JSON: FastAPI's ``json_invalid`` error (``loc``
+    ``body.<offset>``, the empty-dict input FastAPI passes, the decoder's message in ``ctx``) formatted
+    as vLLM formats its validation errors -- the recorded ``{not json`` probe is the ground truth."""
+    detail = {
+        "type": "json_invalid",
+        "loc": f"body.{error.pos}",
+        "msg": "JSON decode error",
+        "input": "<dict of 0 items>",
+        "ctx": {"error": error.msg},
+    }
+    return _json(
+        400,
+        {
+            "error": {
+                "message": f"1 validation error:\n  {detail!r}",
+                "type": "Bad Request",
+                "param": f"body.{error.pos}",
+                "code": 400,
+            }
+        },
+    )
 
 
 def _json(status: int, body: Any) -> httpx.Response:

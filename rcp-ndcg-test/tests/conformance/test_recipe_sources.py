@@ -65,46 +65,93 @@ def test_every_corpus_manifest_names_a_loaded_recipe() -> None:
 
 
 def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> None:
-    """The provenance the manifests state: the recorded role request (the recorder's snippet through the
-    product's role client) is byte-identical to what the current recipe renders for that snippet, so a
-    recipe edit since the shakedown changed no recorded prompt. (Rerank pair prompts are rendered by
-    the emulator itself and checked by every conformance replay.)"""
+    """The provenance the manifests state: a recorded role request is byte-identical to what the current
+    recipe renders for the input it names, so a recipe edit since the recording changed no recorded
+    prompt. A release recording names its plan row (``pairs:N``): the row comes from the committed pairs
+    file. A shakedown-era corpus records the old recorder's fixed snippet instead. (Rerank pair prompts
+    are rendered by the emulator itself and checked by every conformance replay.)"""
+    import re
+
     from rcp_ndcg_test.corpus import load_corpus
-    from rcp_ndcg_test.engines import exchanges_of
     from rcp_ndcg_test.fingerprint import load_recipe_tokenizer
     from tests._engines import current_corpora, load_recipe
 
     from rcp_ndcg.data.templates import TemplateSpec
 
-    checked = expected = 0
+    checked = 0
+    skipped: list[str] = []
     for directory in current_corpora():  # a declared-stale corpus fails the staleness gate instead
         corpus = load_corpus(directory)
         recipe = load_recipe(corpus.manifest["recipe"]["id"])
         if recipe.role != "embed":
             continue
-        expected += 1
-        role_request = next(
-            exchange.request_body
-            for exchange in exchanges_of(corpus)
-            if exchange.path.endswith("/embeddings")
-            and exchange.status == 200
-            and "unknown_field" not in exchange.request_body
+        records = [
+            record
+            for record in corpus.records
+            if record["request"]["path"].endswith("/embeddings")
+            and record["response"]["status"] == 200
+            and "input" in (record["request"]["body_parsed"] or {})
+        ]
+        record = next(
+            (
+                record
+                for record in records
+                if re.fullmatch(r"pairs:\d+", str((record.get("inputs") or {}).get("request_id") or ""))
+            ),
+            None,
         )
+        if record is None and "plan" in corpus.manifest:
+            # A release plan's VL rows ride the chat route (``messages``), not a text ``input``: no
+            # text-wire plan row is recorded, and the conformance replay checks those chat prompts.
+            skipped.append(recipe.id)
+            continue
+        record = record or records[0]
+        inputs = record["inputs"]
         template = TemplateSpec.model_validate(recipe.client.get("template"))
-        shape = "query" if "query" in template.shapes() else "document"
-        text = "What is the capital of France?" if shape == "query" else "Paris is the capital of France."
-        rendered = template.render(shape, load_recipe_tokenizer(recipe), query=text, document=text)
-        assert role_request["input"] == [rendered], f"{recipe.id}: the recorded prompt no longer renders"
+        row_match = re.fullmatch(r"pairs:(\d+)", str(inputs.get("request_id") or ""))
+        if row_match:
+            row = json.loads(
+                (ENGINES.parent / "pairs" / f"{recipe.id}.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()[int(row_match.group(1))]
+            )
+            query = str(row["query"])
+            if str(inputs.get("side") or "query") == "query":
+                shape, text = "query", query
+            else:
+                shape = "document"
+                text = str(row["documents"][int(str(inputs["item"]).split(":")[1])])
+        else:  # the shakedown plan's fixed snippet (the old recorder's request set)
+            shape = "query" if "query" in template.shapes() else "document"
+            query = text = "What is the capital of France?" if shape == "query" else "Paris is the capital of France."
+        rendered = template.render(shape, load_recipe_tokenizer(recipe), query=query, document=text)
+        assert record["request"]["body_parsed"]["input"] == [rendered], (
+            f"{recipe.id}: the recorded prompt no longer renders"
+        )
         checked += 1
-    assert checked == expected >= 1
+    assert checked >= 1
+    assert skipped in ([], ["qwen3-vl-embedding-2b"]), f"unexpected skip: {skipped}"
 
 
-def test_every_corpus_manifest_states_it_is_provisional() -> None:
-    """The shakedown corpus is valid to build and test the emulators, never release evidence: every
-    manifest says so, and why."""
+def test_every_corpus_manifest_declares_its_provenance() -> None:
+    """Every manifest states what its recording is: a shakedown corpus is valid to build and test the
+    emulators, never release evidence, and says so in its ``provisional`` block (and why); a release
+    recording (the eight re-recorded before the tag) carries the request plan instead and makes no
+    shakedown-only claim. A manifest that declares neither is a corpus with no stated provenance and
+    fails here; both kinds must be present, so neither branch passes vacuously."""
+    provisional = release = 0
     for manifest in sorted(ENGINES.glob("*/*/*/manifest.json")):
-        statement = json.loads(manifest.read_text(encoding="utf-8")).get("provisional") or {}
-        assert statement.get("status") == "provisional", manifest
-        assert "building and testing" in statement.get("valid_for", ""), manifest
-        assert statement.get("not_valid_for", "").startswith("release evidence"), manifest
-        assert "shakedown-only patches" in statement.get("why", ""), manifest
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        statement = document.get("provisional")
+        if statement is not None:
+            provisional += 1
+            assert statement.get("status") == "provisional", manifest
+            assert "building and testing" in statement.get("valid_for", ""), manifest
+            assert statement.get("not_valid_for", "").startswith("release evidence"), manifest
+            assert "shakedown-only patches" in statement.get("why", ""), manifest
+        else:
+            release += 1
+            assert (document.get("plan") or {}).get("request_ids"), (
+                f"{manifest}: a release recording carries its request plan"
+            )
+    assert provisional and release, f"expected shakedown and release recordings, found {provisional} and {release}"
