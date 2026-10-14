@@ -1008,17 +1008,20 @@ def _row_state(
 ) -> str:
     """A recipe's end state: ``verified`` when every step its role requires passed.
 
-    A judge recipe's equivalence and recorder steps are skipped by design (decision 15: a judge has no
-    reference and no observation corpus; its conformance is ``rcp-ndcg judge check`` and the T4 scenarios),
-    so their skip counts as satisfied for a judge; for every other role a skipped equivalence or record
-    step leaves the row unverified. Units: none.
+    A judge recipe's equivalence, recorder and observation-corpus steps are skipped by design (decision 15:
+    a judge has no reference and no observation corpus; its conformance is ``rcp-ndcg judge check`` and the
+    T4 scenarios), so their skip counts as satisfied for a judge; for every other role a skipped equivalence
+    or record step leaves the row unverified.  The corpus gate demands a ``passed`` corpus step like the
+    smoke, record, quality and controls gates: a skipped one (the missing pairs file today, any future skip
+    reason tomorrow) has no corpus, and a ``verified`` row over no corpus is the one claim the whole
+    verified-emulator story rests on.  Units: none.
     """
     judge = recipe.role == "judge"
     equivalence = steps.get("equivalence") or {}
     equivalence_ok = equivalence.get("state") == "skipped" if judge else bool(equivalence.get("passed"))
     record_ok = judge or not record or (steps.get("record") or {}).get("state") == "passed"
     controls_ok = not controls or (steps.get("controls") or {}).get("state") == "passed"
-    corpus_ok = not record_corpus or (steps.get("observation_corpus") or {}).get("state") != "failed"
+    corpus_ok = judge or not record_corpus or (steps.get("observation_corpus") or {}).get("state") == "passed"
     quality_ok = not quality or (steps.get("quality") or {}).get("state") == "passed"
     verified = (
         (steps.get("smoke") or {}).get("state") == "passed"
