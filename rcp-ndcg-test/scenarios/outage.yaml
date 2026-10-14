@@ -5,9 +5,13 @@
 # "restarted by whatever runs them, and the judge bounds the outage instead"
 # (rcp_ndcg.runners.script.supervise).  Two sub-runs and a resume:
 #
-#   (a) the killed judge restarts after ~15 s: the run parks through the outage and finishes;
-#   (b) the killed judge stays down past wait_on_outage_s (90 s here): the run fails with
+#   (a) the killed judge restarts after ~20 s: the run parks through the outage and finishes;
+#   (b) the killed judge stays down past wait_on_outage_s (300 s here): the run fails with
 #       BackendUnavailableError, and a `run resume` after the engine returns finishes it.
+#
+# The window covers the restart's whole down span: the outage sleep AND the engine's boot (the rc0 run
+# measured 77 s per warm restart, 185 s for the T0 smoke's cold boot).  e2e.recovers_outage_s refuses a
+# scenario whose numbers cannot recover, at the start instead of an hour in.
 #
 # Judge (owner, GPU-VALIDATION.md, "Judges for T4"): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
 # commit (https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8), checked 2026-10-07.  The judge is the
@@ -36,10 +40,12 @@ judge:
   recipe: qwen3.8-27b-fp8
   config:
     concurrency: 64
-    # The outage clock: the recover sub-run's outage lasts ~15 s, the expiry sub-run's outlives this.
-    wait_on_outage_s: 90
+    # The outage clock, sized by e2e.recovers_outage_s: the recovers sub-run's outage (~20 s) plus the
+    # judge's restart boot (77 s warm, 185 s cold) must fit with margin; the expiry sub-run's outage
+    # (wait_on_outage_s + 30 s) outlives this on purpose.
+    wait_on_outage_s: 300
   slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "1", gpus: 1,
-         startup_timeout_s: 3600, outage_timeout_s: 90}
+         startup_timeout_s: 3600, outage_timeout_s: 300}
 slots:
   encoder: {port: 8100, vllm_port: 9100, cuda_visible_devices: "0", gpus: 1,
             startup_timeout_s: 1800, outage_timeout_s: 300}

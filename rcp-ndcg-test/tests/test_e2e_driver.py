@@ -26,11 +26,13 @@ from rcp_ndcg_test.e2e import (
     check_process_boundary,
     engine_python_facts,
     read_probe,
+    recovers_outage_s,
     run_job_script,
     t0_smoke,
     write_probe,
     write_srun_shim,
 )
+from rcp_ndcg_test.errors import HarnessError
 
 from rcp_ndcg.runners import JobSpec, Resources, ServeConfig
 from rcp_ndcg.runners.base import JobPhase
@@ -378,6 +380,47 @@ def test_the_resume_is_the_runs_phased_script_with_its_engines(
     assert f"rcp-ndcg run resume --run {run_dir}" in script  # the run's own directory, the run's own phases
     assert "--find-links /stage/wheelhouse" in script and "--no-index" in script
     assert "PYTHONPATH=" in script and "client-probe.jsonl" in script  # the probe rides the phases
+
+
+def test_the_recovers_outage_fits_the_judge_window_or_refuses_the_scenario() -> None:
+    """The recovers sub-run's outage is sized against the whole down span, not the sleep alone.
+
+    The judge is down for the outage sleep **and** for the restarted engine's boot; the span must fit the
+    run's ``wait_on_outage_s`` with margin, or the sub-run is not a recovery but a second expiry.  The
+    rc0 outage run (waves-rc0-202610141005) scheduled 15 s plus a ~77 s restart boot against a 90 s
+    window: the tournament failed with ``BackendUnavailableError`` about 2 s before the judge answered,
+    and the scenario's own "parks and recovers" checks failed on a run the product had handled correctly.
+    A scenario whose numbers cannot recover is refused at the start, with the fix in the message.
+    """
+    with pytest.raises(HarnessError, match="wait_on_outage_s"):
+        recovers_outage_s(90.0, 77.0)  # the rc0 numbers: 15 s sleep + 77 s boot + margin > 90 s
+    assert recovers_outage_s(300.0, 185.0) == 20.0  # the shipped scenario, even with a cold restart boot
+    assert recovers_outage_s(300.0, 77.0) == 20.0  # ... and with the warm restart the node measured
+    assert recovers_outage_s(60.0, 0.0) == 10.0  # the /6 sizing, floored at 5 (an unmeasured boot gates at 0)
+
+
+def test_a_managed_engine_records_the_boot_it_was_waited_on(judge_port: int, tmp_path: Path) -> None:
+    """:class:`ManagedEngine` measures each start-to-ready span (``boot_s``), and resets it per start.
+
+    The outage driver plans the recovers outage around the judge's measured boot
+    (:func:`recovers_outage_s`): without the measurement the scenario's numbers are guesswork, and the
+    rc0 run's guess was 2 s short of the window.
+    """
+    server = _judge_server(judge_port)
+    engine = _managed(judge_port, tmp_path)
+    try:
+        engine.start()
+        assert engine.boot_s is None  # nothing waited on yet
+        assert engine.wait_ready(f"http://127.0.0.1:{judge_port}/v1/models", 10) is True
+        assert engine.boot_s is not None and engine.boot_s >= 0
+        engine.kill()  # the restart's boot is measured from its own start
+        engine.start()
+        assert engine.boot_s is None
+        assert engine.wait_ready(f"http://127.0.0.1:{judge_port}/v1/models", 10) is True
+        assert engine.boot_s is not None
+    finally:
+        server.shutdown()
+        engine.stop()
 
 
 def test_a_managed_engine_is_killed_and_restarted(tmp_path: Path) -> None:

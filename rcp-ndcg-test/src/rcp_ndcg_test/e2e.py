@@ -110,6 +110,7 @@ __all__ = [
     "judge_client_data",
     "load_scenario",
     "main",
+    "recovers_outage_s",
     "render_phased_script",
     "run_facts",
     "run_scenario",
@@ -168,6 +169,10 @@ if _record:
 
 #: Seconds between the outaged judge's rest starts (the outage scenario's ``sleep``s).
 POLL_S = 1.0
+
+#: The margin (seconds) the recovers outage keeps between the judge's whole down span -- the outage sleep
+#: plus the restarted engine's boot -- and the run's ``wait_on_outage_s`` (see :func:`recovers_outage_s`).
+RECOVERY_MARGIN_S = 30.0
 
 
 def _say(scenario_id: str, message: str) -> None:
@@ -901,6 +906,10 @@ class ManagedEngine:
         command: The engine's argv (already ported).
         env: The engine process's environment (its ``CUDA_VISIBLE_DEVICES`` and ports).
         log_path: Where the engine's stdout and stderr go (appended).
+        boot_s: The last measured boot, in seconds from :meth:`start` to the readiness URL's first 2xx
+            (``None``: nothing has waited on this start yet).  The outage driver plans the recovers
+            sub-run's outage around it (:func:`recovers_outage_s`) -- a restart that boots for longer than
+            the run's ``wait_on_outage_s`` is an expiry, not a recovery.
     """
 
     def __init__(self, command: Sequence[str], *, env: Mapping[str, str], log_path: Path) -> None:
@@ -908,6 +917,8 @@ class ManagedEngine:
         self.env = dict(env)
         self.log_path = log_path
         self.process: subprocess.Popen[bytes] | None = None
+        self.boot_s: float | None = None
+        self._started_at = 0.0  # :meth:`start` stamps it; a never-started engine measures no boot
 
     def start(self) -> None:
         """Start the engine (its own session, so :meth:`kill` takes its whole process group), with the
@@ -921,6 +932,8 @@ class ManagedEngine:
         self.process = subprocess.Popen(
             self.command, env=clean, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
         )
+        self.boot_s = None  # the new start has not been waited on; :meth:`wait_ready` measures it
+        self._started_at = time.monotonic()
 
     def kill(self) -> None:
         """SIGKILL the engine's whole process group ("the engine is killed")."""
@@ -941,10 +954,14 @@ class ManagedEngine:
 
     def wait_ready(self, url: str, timeout_s: float) -> bool:
         """Wait until the engine's readiness URL answers 2xx (``False`` at the timeout, or at once when the
-        engine has exited -- a dead engine answers nothing, see :func:`_wait_http`)."""
+        engine has exited -- a dead engine answers nothing, see :func:`_wait_http`).  A yes records the
+        start-to-ready span as :attr:`boot_s`."""
         if self.process is not None and self.process.poll() is not None:
             return False
-        return _wait_http(url, timeout_s, process=self.process)
+        ready = _wait_http(url, timeout_s, process=self.process)
+        if ready and self._started_at:
+            self.boot_s = time.monotonic() - self._started_at
+        return ready
 
     def stop(self) -> None:
         """SIGTERM the engine's session and reap it."""
@@ -1004,6 +1021,7 @@ def t0_smoke(
             "usage": answer.get("usage"),
             "finish_reason": (answer.get("choices") or [{}])[0].get("finish_reason"),
         }
+        report["boot_s"] = engine.boot_s  # the outage driver plans the recovers outage around it
         report["state"] = "verified"
         return report
     except (urllib.error.URLError, OSError, ValueError) as error:
@@ -1394,7 +1412,7 @@ def _pick_judge(
                 engine.start()
                 _say(scenario.id, f"the run-scoped judge is up on device(s) {slot.cuda_visible_devices}")
             summary: dict[str, Any] = {"state": "verified", "attempts": attempts}
-            for key in ("judge_model", "judge_revision", "recipe", "models", "max_model_len", "dtype"):
+            for key in ("judge_model", "judge_revision", "recipe", "models", "max_model_len", "dtype", "boot_s"):
                 if key in report:
                     summary[key] = report[key]
             return engine, candidate, summary
@@ -1578,6 +1596,36 @@ def _run_identity(
     )
 
 
+def recovers_outage_s(wait_s: float, boot_s: float | None) -> float:
+    """The recovers sub-run's outage length: a short sleep whose whole down span fits the run's window.
+
+    The judge is down for the outage sleep **and** for the restarted engine's boot (``boot_s``, the
+    measured boot of the engine the T0 smoke verified; a warm restart boots faster, not guaranteed so).
+    The span must fit ``wait_on_outage_s`` with :data:`RECOVERY_MARGIN_S` to spare, or the sub-run is not
+    a recovery but a second expiry: the rc0 outage run (waves-rc0-202610141005) scheduled 15 s plus a
+    ~77 s restart boot against a 90 s window and the tournament failed with ``BackendUnavailableError``
+    about 2 s before the judge answered -- the product behaved as designed, the scenario's numbers could
+    not recover.
+
+    Inputs: the judge config's ``wait_on_outage_s`` and the engine's measured boot in seconds (``None``:
+    unmeasured, the gate cannot see a boot).  Output: the outage seconds, between 5 and 20.  Raises
+    :class:`HarnessError` naming the fix when the scenario's numbers cannot recover -- at the start, not
+    an hour into the run.
+    """
+    outage_s = max(5.0, min(20.0, wait_s / 6.0))
+    boot = boot_s if boot_s is not None else 0.0
+    span = outage_s + boot + RECOVERY_MARGIN_S
+    if wait_s <= span:
+        raise HarnessError(
+            f"the outage scenario cannot recover: the recovers sub-run sleeps {outage_s:g} s and the judge "
+            f"needed {boot:.0f} s to boot at the T0 smoke, {span:.0f} s against a wait_on_outage_s of "
+            f"{wait_s:g} s -- the run would fail with BackendUnavailableError before the judge is back. "
+            f"Raise judge.config.wait_on_outage_s past the restart boot (rc0's judge: 77 s warm, 185 s "
+            f"cold), e.g. {boot + RECOVERY_MARGIN_S + outage_s + 60.0:.0f} s or more"
+        )
+    return outage_s
+
+
 def _run_outage(
     scenario: Scenario,
     builder: ScenarioResultBuilder,
@@ -1606,7 +1654,9 @@ def _run_outage(
         judge_client_data(scenario.judge, judge_choice, base_url="http://127.0.0.1:1/v1")
     )
     wait_s = float(probe.wait_on_outage_s or 300.0)
-    # (a) the outage it recovers from
+    # (a) the outage it recovers from -- sized against the whole down span (sleep + the restarted
+    # engine's boot), refused at the start when the scenario's numbers cannot recover
+    outage_s = recovers_outage_s(wait_s, builder.judge.get("boot_s"))
     run_out = out / "outage-recovers"
     run_out.mkdir(parents=True, exist_ok=True)
     pipeline, run_dir, script = _prepare_run(
@@ -1618,13 +1668,16 @@ def _run_outage(
     _say(scenario.id, f"outage-recovers: the phased job script is running ({run_dir})")
     status, parked = _outage_pass(
         scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge, slot=judge_choice.slot,
-        outage_s=min(20.0, max(5.0, wait_s / 6)), restart=True,
+        outage_s=outage_s, restart=True, wait_s=wait_s,
     )  # fmt: skip
+    measured_boot = builder.judge.get("boot_s")
+    boot_text = f"{float(measured_boot):.0f} s" if measured_boot is not None else "unmeasured"
     builder.add(
         _check(
             "the outaged run parks and recovers",
             status == 0 and parked,
-            f"parked through the outage: {parked}; the job script exited {status}",
+            f"parked through the outage: {parked}; the job script exited {status} (the outage sleeps "
+            f"{outage_s:g} s, the judge's boot was measured {boot_text}, wait_on_outage_s {wait_s:g} s)",
         )
     )
     builder.add(_steps_all_completed(run_dir, expected=scenario.steps))
@@ -1642,7 +1695,7 @@ def _run_outage(
     _say(scenario.id, f"outage-expires: the phased job script is running ({run_dir})")
     status, parked = _outage_pass(
         scenario, run_out=run_out, script=script, run_dir=run_dir, judge=judge, slot=judge_choice.slot,
-        outage_s=wait_s + 30.0, restart=False,
+        outage_s=wait_s + 30.0, restart=False, wait_s=wait_s,
     )  # fmt: skip
     expired = _check(
         "the outage outlasting wait_on_outage_s fails the run",
@@ -1656,7 +1709,14 @@ def _run_outage(
     # and the resume finishes it (the T4 criterion "resume after a killed engine parks and recovers")
     judge.restart()
     _say(scenario.id, f"restarting the judge engine (up to {judge_choice.slot.startup_timeout_s} s)")
-    judge.wait_ready(f"http://127.0.0.1:{judge_choice.slot.port}/v1/models", judge_choice.slot.startup_timeout_s)
+    if not judge.wait_ready(
+        f"http://127.0.0.1:{judge_choice.slot.port}/v1/models", judge_choice.slot.startup_timeout_s
+    ):
+        raise HarnessError(
+            f"the judge did not come back for the resume: no answer on "
+            f"http://127.0.0.1:{judge_choice.slot.port}/v1/models within "
+            f"{judge_choice.slot.startup_timeout_s:g} s ({judge.log_path})"
+        )
     resume_out = out / "resume"
     resume_out.mkdir(parents=True, exist_ok=True)
     _say(scenario.id, "the judge is back; resuming the run (the run's own phased script again)")
@@ -1683,15 +1743,23 @@ def _outage_pass(
     slot: EngineSlot,
     outage_s: float,
     restart: bool,
+    wait_s: float,
 ) -> tuple[int, bool]:
     """One outage sub-run: the script runs to the middle of the tournament, the judge is killed, and
     ``restart`` decides whether it comes back after ``outage_s`` or stays down past it.  Observes the
     parking: the run is alive and unfinished while the judge is down.  Output: ``(the script's exit
-    status, the parked observation)``."""
+    status, the parked observation)``.  Raises :class:`HarnessError` when the judge never answers after a
+    start (an engine that never comes back is the driver's environment failing, not the run's result).
+    """
     url = f"http://127.0.0.1:{slot.port}/v1"
+    started_here = False  # only a boot this pass waited on is this pass's boot
     if judge.process is None:
         judge.start()
-        judge.wait_ready(f"{url}/models", slot.startup_timeout_s)
+        started_here = True
+        if not judge.wait_ready(f"{url}/models", slot.startup_timeout_s):
+            raise HarnessError(
+                f"the judge never answered {url}/models within {slot.startup_timeout_s:g} s ({judge.log_path})"
+            )
     process = launch_job_script(script, out=run_out)  # the driver's launcher: the srun shim, no probe
     store = run_dir / "judgements" / "tournament.jsonl"
     _say(scenario.id, "waiting for the tournament's first window before killing the judge")
@@ -1707,16 +1775,23 @@ def _outage_pass(
     parked = process.poll() is None  # the run is still going: it parked through the outage
     if restart:
         judge.start()
-        judge.wait_ready(f"{url}/models", slot.startup_timeout_s)
-        _say(scenario.id, "the judge is back up")
+        started_here = True
+        if not judge.wait_ready(f"{url}/models", slot.startup_timeout_s):
+            raise HarnessError(
+                f"the restarted judge never answered {url}/models within {slot.startup_timeout_s:g} s "
+                f"({judge.log_path}); the run's outage wait cannot outlive an engine that is not coming back"
+            )
+        _say(scenario.id, f"the judge is back up (boot {judge.boot_s:.0f} s)")
     status = process.wait()
     _say(scenario.id, f"the sub-run's job script exited {status} (parked: {parked})")
     record = {
         "killed_at": killed_at,
         "outage_s": outage_s,
         "restart": restart,
+        "wait_on_outage_s": wait_s,
         "parked": parked,
         "exit_status": status,
+        "restart_boot_s": judge.boot_s if started_here else None,
     }
     (run_out / "outage.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return status, parked
