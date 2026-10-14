@@ -709,6 +709,35 @@ def test_a_serve_video_sampling_pin_must_match_the_client_policy(tmp_path: Path)
         )
 
 
+def test_a_declared_fps_refuses_a_competing_frame_count_pin(tmp_path: Path) -> None:
+    """A client that declares the engine's own rate counts every frame that rate yields: a serve pin
+    that also fixes or caps the frame count clamps the realized frame set, so the declared rate would
+    describe a different clip (the ``num_frames`` branch already treats the cap as participating)."""
+    load_recipe(
+        _video_sampling_recipe(
+            tmp_path / "fps-only",
+            client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+            extra_args=["--media-io-kwargs", '{"video": {"fps": 2}}'],
+        )
+    )
+    with pytest.raises(RecipeError, match="max_frames"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "fps-and-cap",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 2, "max_frames": 8}}'],
+            )
+        )
+    with pytest.raises(RecipeError, match="num_frames"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "fps-and-count",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 2, "num_frames": 8}}'],
+            )
+        )
+
+
 def test_a_client_video_sampling_declaration_without_the_serve_pin_is_refused(tmp_path: Path) -> None:
     """The engine's own default sampling would decide, so a ``video_url`` declaration the serve args do
     not pin is refused rather than counted against a rule the engine does not run."""
