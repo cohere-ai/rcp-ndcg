@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -605,20 +606,39 @@ def test_the_stale_declarations_are_empty_at_release() -> None:
     )
 
 
+def _assert_rekeyed_entries(manifest: dict[str, Any], where: object) -> int:
+    """One manifest's ``rekeyed`` entries: each keeps the old fingerprint AND the old manifest's digest and
+    file SHA-256, which link the subset to the full corpus it was cut from without git history."""
+    found = 0
+    for entry in manifest["recipe"].get("rekeyed") or []:
+        found += 1
+        name = manifest["recipe"].get("id", where)
+        for key in ("from_behaviour_fingerprint", "from_manifest_sha256", "from_manifest_file_sha256"):
+            value = entry.get(key)
+            assert isinstance(value, str) and len(value) == 64, f"{name}: rekeyed entry lacks {key}"
+    return found
+
+
 def test_a_rekeyed_corpus_names_the_manifest_it_was_rekeyed_from() -> None:
     """A re-key rewrites the manifest (its fingerprint and inputs), so the subset's manifest is no longer the
     full corpus's byte for byte: each ``rekeyed`` entry keeps the old fingerprint AND the old manifest's
-    digest and file SHA-256, which link the subset to the full corpus it was cut from without git history."""
-    found = 0
+    digest and file SHA-256, which link the subset to the full corpus it was cut from without git history.
+    Every committed corpus that carries such an entry is checked, and the rule is pinned on a synthetic
+    manifest so it cannot pass vacuously (the release recordings replaced the two re-keyed zerank corpora,
+    so no committed corpus is re-keyed today)."""
     for directory in all_corpus_dirs():
-        manifest = load_corpus(directory).manifest
-        for entry in manifest["recipe"].get("rekeyed") or []:
-            found += 1
-            name = manifest["recipe"]["id"]
-            for key in ("from_behaviour_fingerprint", "from_manifest_sha256", "from_manifest_file_sha256"):
-                value = entry.get(key)
-                assert isinstance(value, str) and len(value) == 64, f"{name}: rekeyed entry lacks {key}"
-    assert found, "no re-keyed corpus: the check would pass vacuously"
+        _assert_rekeyed_entries(load_corpus(directory).manifest, directory)
+    digest = "0" * 64
+    complete = {
+        "from_behaviour_fingerprint": digest,
+        "from_manifest_sha256": digest,
+        "from_manifest_file_sha256": digest,
+    }
+    assert _assert_rekeyed_entries({"recipe": {"id": "synthetic", "rekeyed": [complete]}}, "synthetic") == 1
+    with pytest.raises(AssertionError):
+        _assert_rekeyed_entries(
+            {"recipe": {"id": "synthetic", "rekeyed": [{"from_behaviour_fingerprint": digest}]}}, "synthetic"
+        )
 
 
 def test_the_declared_stale_listwise_corpus_still_replays_its_role_requests() -> None:

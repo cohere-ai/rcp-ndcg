@@ -35,22 +35,72 @@ def test_an_observed_request_replays() -> None:
     assert answer.status_code == 200 and answer.headers[SOURCE] == "replayed"
 
 
+#: Candidate values per OUTPUT field (the only fields that enter the replay key beside the prompts, see
+#: ``FIELD_CLASSES``): the test picks the first value no exchange of the corpus carries, so a recording
+#: that happens to cover a value moves the test to the next candidate instead of breaking its premise.
+_CANDIDATE_VALUES: dict[str, tuple[object, ...]] = {
+    "use_activation": (False, True),
+    "add_special_tokens": (False, True),
+    "dimensions": (64, 128, 256, 512),
+}
+
+_SENTINEL = "rcp-ndcg-conformance-unobserved-prompt"
+
+
+def _output_candidates(route: str) -> tuple[tuple[str, tuple[object, ...]], ...]:
+    """The route's own output fields, in a stable order: a field the route does not declare is ignored by
+    the engine, so probing it would replay the same context rather than answer the surrogate."""
+    from rcp_ndcg_test.engines import FIELD_CLASSES, ROUTE_FIELDS
+
+    declared = ROUTE_FIELDS[route]
+    return tuple(
+        (field, _CANDIDATE_VALUES[field])
+        for field in sorted(_CANDIDATE_VALUES)
+        if field in declared and FIELD_CLASSES.get(field) == "output"
+    )
+
+
+def _unobserved_context(recipe_id: str, body: dict[str, Any], route: str) -> tuple[str, object]:
+    """A field/value pair no exchange of this corpus carries -- or, when the corpus observes every value
+    of every output field the route declares (the rerank route has one, ``use_activation``, and a release
+    recording carries both), a prompt the corpus never recorded: the key's prompt half is the other half
+    of the context, so an unobserved prompt is an unobserved context by construction."""
+    from rcp_ndcg_test.engines import exchanges_of
+
+    candidates = _output_candidates(route)
+    corpus = corpus_of(load_recipe(recipe_id))
+    observed: dict[str, set[Any]] = {field: set() for field, _ in candidates}
+    for exchange in exchanges_of(corpus):
+        other = dict(exchange.request_body or {})
+        for field, _ in candidates:
+            observed[field].add(other.get(field))
+    for field, values in candidates:
+        for value in values:
+            if value not in observed[field]:
+                return field, value
+    if route == "rerank":
+        return "query", f"{body['query']} {_SENTINEL}"
+    item = body["input"]
+    if isinstance(item, list):
+        return "input", [*item, _SENTINEL]
+    return "input", f"{item} {_SENTINEL}"
+
+
 @pytest.mark.parametrize(
-    ("recipe_id", "sequence", "field", "value"),
+    ("recipe_id", "sequence"),
     [
-        ("qwen3-embedding-0.6b", 1, "add_special_tokens", False),  # another tokenization of the prompt
-        ("qwen3-embedding-0.6b", 1, "use_activation", False),
-        ("zerank-2-reranker", 1, "use_activation", False),  # raw logit instead of the probability
-        ("zerank-1-small-reranker", 1, "use_activation", False),
+        ("qwen3-embedding-0.6b", 1),
+        ("zerank-2-reranker", 1),
+        ("zerank-1-small-reranker", 1),
     ],
 )
-def test_an_unobserved_context_answers_the_marked_surrogate(
-    recipe_id: str, sequence: int, field: str, value: object
-) -> None:
+def test_an_unobserved_context_answers_the_marked_surrogate(recipe_id: str, sequence: int) -> None:
     body = _recorded(recipe_id, sequence)
+    path = "/v1/embeddings" if "embedding" in recipe_id else "/rerank"
+    route = "embeddings" if "embedding" in recipe_id else "rerank"
+    field, value = _unobserved_context(recipe_id, body, route)
     assert body.get(field) != value
     body[field] = value
-    path = "/v1/embeddings" if "embedding" in recipe_id else "/rerank"
     answer = emulator_for(recipe_id).answer(path, "POST", body)
     assert answer.status_code == 200
     assert answer.headers[SOURCE] == "surrogate", f"{field}={value!r} was answered from another context"

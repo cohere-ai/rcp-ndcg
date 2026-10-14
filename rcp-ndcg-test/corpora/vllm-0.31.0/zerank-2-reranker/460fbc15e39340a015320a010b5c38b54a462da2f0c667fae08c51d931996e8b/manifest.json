@@ -4,50 +4,384 @@
   "normalisation_version": 1,
   "engine": {
     "name": "vllm",
-    "version": "0.31.0",
     "image": "vllm/vllm-openai:v0.31.0",
-    "image_digest": {
-      "unavailable": "the shakedown recorded no image digest"
-    },
-    "vllm_version": {
-      "unavailable": "the shakedown recorder did not probe the engine environment"
-    },
-    "vllm_commit": {
-      "unavailable": "the shakedown recorder did not probe the engine environment"
-    },
-    "torch": {
-      "unavailable": "the shakedown recorder did not probe the engine environment"
-    },
-    "cuda": {
-      "unavailable": "the shakedown recorder did not probe the engine environment"
-    },
-    "driver": {
-      "unavailable": "the shakedown recorder did not query the GPUs"
-    },
-    "gpus": {
-      "unavailable": "the shakedown recorder did not query the GPUs"
-    },
-    "serve_argv": {
-      "unavailable": "the shakedown recorder kept no serve argv"
-    },
+    "version": "0.31.0",
+    "image_digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "zeroentropy/zerank-2-reranker",
+      "--revision",
+      "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
+      "--served-model-name",
+      "zerank-2-reranker",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8103",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "8192",
+      "--hf-overrides",
+      "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"Yes\"], \"method\": \"no_post_processing\"}",
+      "--chat-template",
+      "/tmp/rcp-bootstrap.0eEITZ/recipes/zerank/template.jinja",
+      "--pooler-config",
+      "{\"logit_sigma\": 5, \"use_activation\": true}"
+    ],
     "env": {
-      "unavailable": "the shakedown recorder kept no engine environment"
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+      "VLLM_PORT": "9103",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT": "tcp://10.156.11.117:80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP": "tcp://10.156.11.117:80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP_ADDR": "10.156.11.117",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_HOST": "10.156.11.117",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_PORT": "80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT": "tcp://10.156.7.236:80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP": "tcp://10.156.7.236:80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP_ADDR": "10.156.7.236",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_SERVICE_HOST": "10.156.7.236",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_SERVICE_PORT": "80",
+      "VLLM_SERVICE_DOTS_OCR_EMB_QUEUE_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT": "tcp://10.156.1.44:80",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP": "tcp://10.156.1.44:80",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP_ADDR": "10.156.1.44",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_HOST": "10.156.1.44",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_PORT": "80",
+      "VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT": "tcp://10.156.5.255:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP": "tcp://10.156.5.255:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP_ADDR": "10.156.5.255",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_SERVICE_HOST": "10.156.5.255",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_0_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT": "tcp://10.156.10.184:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP": "tcp://10.156.10.184:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP_ADDR": "10.156.10.184",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_SERVICE_HOST": "10.156.10.184",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_1_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT": "tcp://10.156.6.179:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP": "tcp://10.156.6.179:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP_ADDR": "10.156.6.179",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_SERVICE_HOST": "10.156.6.179",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_2_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT": "tcp://10.156.9.97:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP": "tcp://10.156.9.97:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP_ADDR": "10.156.9.97",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_SERVICE_HOST": "10.156.9.97",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_3_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT": "tcp://10.156.5.156:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP": "tcp://10.156.5.156:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP_ADDR": "10.156.5.156",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_SERVICE_HOST": "10.156.5.156",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_4_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT": "tcp://10.156.11.102:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP": "tcp://10.156.11.102:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP_ADDR": "10.156.11.102",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_SERVICE_HOST": "10.156.11.102",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_5_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT": "tcp://10.156.11.249:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP": "tcp://10.156.11.249:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP_ADDR": "10.156.11.249",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_SERVICE_HOST": "10.156.11.249",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_6_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT": "tcp://10.156.9.56:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP": "tcp://10.156.9.56:9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP_ADDR": "10.156.9.56",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_PORT_9901_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_SERVICE_HOST": "10.156.9.56",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_SERVICE_PORT": "9901",
+      "VLLM_SERVICE_QWEN3VL_32B_FP8_BENCH_NVIDIA_7_SERVICE_PORT_HTTP": "9901",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT": "tcp://10.156.10.39:80",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP": "tcp://10.156.10.39:80",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP_ADDR": "10.156.10.39",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_SERVICE_HOST": "10.156.10.39",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_SERVICE_PORT": "80",
+      "VLLM_SERVICE_QWEN3_235B_A22B_THINKING_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT": "tcp://10.156.12.229:80",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP": "tcp://10.156.12.229:80",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP_ADDR": "10.156.12.229",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_SERVICE_HOST": "10.156.12.229",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_OVISOCR2_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT": "tcp://10.156.4.29:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP": "tcp://10.156.4.29:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP_ADDR": "10.156.4.29",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_SERVICE_HOST": "10.156.4.29",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_DOTSMOCR_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT": "tcp://10.156.8.202:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP": "tcp://10.156.8.202:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP_ADDR": "10.156.8.202",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_SERVICE_HOST": "10.156.8.202",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_GLMOCR_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT": "tcp://10.156.7.6:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP": "tcp://10.156.7.6:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP_ADDR": "10.156.7.6",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_SERVICE_HOST": "10.156.7.6",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU3_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT": "tcp://10.156.6.123:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP": "tcp://10.156.6.123:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP_ADDR": "10.156.6.123",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_SERVICE_HOST": "10.156.6.123",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST2_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT": "tcp://10.156.1.45:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP": "tcp://10.156.1.45:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP_ADDR": "10.156.1.45",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_SERVICE_HOST": "10.156.1.45",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERUFAST_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT": "tcp://10.156.1.165:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP": "tcp://10.156.1.165:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP_ADDR": "10.156.1.165",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_SERVICE_HOST": "10.156.1.165",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_MINERU_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT": "tcp://10.156.4.137:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP": "tcp://10.156.4.137:80",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP_ADDR": "10.156.4.137",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_SERVICE_HOST": "10.156.4.137",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_PARSE5_QWEN397_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT": "tcp://10.156.9.239:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP": "tcp://10.156.9.239:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP_ADDR": "10.156.9.239",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_SERVICE_HOST": "10.156.9.239",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_122B_A10B_FP8_4_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT": "tcp://10.156.9.106:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP": "tcp://10.156.9.106:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP_ADDR": "10.156.9.106",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_SERVICE_HOST": "10.156.9.106",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_4_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT": "tcp://10.156.7.170:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP": "tcp://10.156.7.170:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP_ADDR": "10.156.7.170",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_SERVICE_HOST": "10.156.7.170",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_6_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT": "tcp://10.156.14.65:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP": "tcp://10.156.14.65:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP_ADDR": "10.156.14.65",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_SERVICE_HOST": "10.156.14.65",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_35B_A3B_FP8_8_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT": "tcp://10.156.14.0:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP": "tcp://10.156.14.0:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP_ADDR": "10.156.14.0",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_SERVICE_HOST": "10.156.14.0",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_12_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT": "tcp://10.156.10.117:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP": "tcp://10.156.10.117:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP_ADDR": "10.156.10.117",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_SERVICE_HOST": "10.156.10.117",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT": "tcp://10.156.9.171:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP": "tcp://10.156.9.171:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP_ADDR": "10.156.9.171",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_SERVICE_HOST": "10.156.9.171",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_2_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT": "tcp://10.156.6.131:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP": "tcp://10.156.6.131:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP_ADDR": "10.156.6.131",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_SERVICE_HOST": "10.156.6.131",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_4_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT": "tcp://10.156.12.30:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP": "tcp://10.156.12.30:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP_ADDR": "10.156.12.30",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_SERVICE_HOST": "10.156.12.30",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_5_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT": "tcp://10.156.12.118:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP": "tcp://10.156.12.118:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP_ADDR": "10.156.12.118",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_SERVICE_HOST": "10.156.12.118",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_6_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT": "tcp://10.156.8.75:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP": "tcp://10.156.8.75:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP_ADDR": "10.156.8.75",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_SERVICE_HOST": "10.156.8.75",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_7_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT": "tcp://10.156.8.61:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP": "tcp://10.156.8.61:80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP_ADDR": "10.156.8.61",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_SERVICE_HOST": "10.156.8.61",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_QWEN35_397B_A17B_FP8_8_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT": "tcp://10.156.9.28:80",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP": "tcp://10.156.9.28:80",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP_ADDR": "10.156.9.28",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_SERVICE_HOST": "10.156.9.28",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_CHANDRA2_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT": "tcp://10.156.7.135:80",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP": "tcp://10.156.7.135:80",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP_ADDR": "10.156.7.135",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_SERVICE_HOST": "10.156.7.135",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_DOTSMOCR_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT": "tcp://10.156.12.0:80",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP": "tcp://10.156.12.0:80",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP_ADDR": "10.156.12.0",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_SERVICE_HOST": "10.156.12.0",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_GLM53FLASH_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT": "tcp://10.156.11.69:80",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP": "tcp://10.156.11.69:80",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP_ADDR": "10.156.11.69",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_SERVICE_HOST": "10.156.11.69",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_INFINITYPARSER2PRO_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT": "tcp://10.156.15.97:80",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP": "tcp://10.156.15.97:80",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP_ADDR": "10.156.15.97",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_SERVICE_HOST": "10.156.15.97",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_PADDLEOCRVL_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT": "tcp://10.156.7.184:80",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP": "tcp://10.156.7.184:80",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP_ADDR": "10.156.7.184",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_SERVICE_HOST": "10.156.7.184",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_QWEN35_35B_JUDGE_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT": "tcp://10.156.7.247:80",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP": "tcp://10.156.7.247:80",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP_ADDR": "10.156.7.247",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_PORT_80_TCP_PROTO": "tcp",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_SERVICE_HOST": "10.156.7.247",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_SERVICE_PORT": "80",
+      "VLLM_SERVICE_VIOLET_TABLE_TELEOCR_1_SERVICE_PORT_HTTP": "80",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
     },
-    "started": {
-      "unavailable": "the shakedown recorder kept no engine start time"
+    "started": "2026-10-14T11:08:31+00:00",
+    "ready_wait_s": 97.991,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
     },
-    "ready_wait_s": {
-      "unavailable": "the shakedown recorder kept no readiness wait"
-    }
+    "driver": "580.126.09",
+    "vllm_version": "0.31.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0"
   },
   "model": {
     "id": "zeroentropy/zerank-2-reranker",
     "revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
     "weights": {
-      "unavailable": "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c is not in the Hugging Face cache on this machine"
+      "model-00001-of-00002.safetensors": "c354d29058e74326533d7807cadacf57a5720307bd01e9df314262d7011eaeb0",
+      "model-00002-of-00002.safetensors": "f1371ad465557d2c0df2681bce28bd35ba29acf8eed9a7b6f4af1567683b32f4",
+      "model.safetensors.index.json": "06b3d5319b6d76d1a4a2433419180016cfd54ed62d086a5e6567a809f8c82634"
     },
     "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
-    "template_sha256": "4c1a43d4cb0ffa65179797130e88061412c51649ea5192f5b7812ff80b620e28",
+    "template_sha256": "9ea5a7bf0b1dda6fb4dbdc068320c797134d9de1b6046466f2cb4ca7ffed4320",
     "plugin": {
       "unavailable": "the recipe installs no plugin"
     },
@@ -61,35 +395,23 @@
       "method": "no_post_processing"
     },
     "pooler_config": {
-      "logit_sigma": 5
+      "logit_sigma": 5,
+      "use_activation": true
     },
     "mm_processor_kwargs": {},
     "dtype": "bfloat16"
   },
   "recipe": {
     "id": "zerank-2-reranker",
-    "file_sha256": "6febb0b9b0985dd85fcbc414821f166f2ea4facc554c2be5b948e20d1dc4dcf2",
+    "shipped": false,
+    "file_sha256": "a0c283585de05f4df8397f61678956147fedb6e7e651a90f2a113bceff1d6c55",
     "behaviour_fingerprint": "460fbc15e39340a015320a010b5c38b54a462da2f0c667fae08c51d931996e8b",
     "fingerprint_inputs": {
-      "client.api": "rerank",
-      "client.empty_doc": "send",
-      "client.empty_query": "send",
-      "client.instruction": "none",
-      "client.listwise": "false",
-      "client.max_images": "0",
-      "client.max_tokens": "8192",
-      "client.max_videos": "0",
-      "client.media_sides": "[\"query\",\"document\"]",
-      "client.on_overflow": "cut",
-      "client.query_max_tokens": "4096",
-      "client.request_shape": "text",
-      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
-      "client.use_activation": "true",
-      "engine.image": "vllm/vllm-openai:v0.31.0",
-      "engine.min_version": "0.31.0",
       "fingerprint_schema": "rcp-fp/4",
       "model": "zeroentropy/zerank-2-reranker",
       "revision": "5eae30d5ee3c6b2df2ef6d723bde45172d761c4c",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
       "serve.chat_template": "template.jinja",
       "serve.convert": "null",
       "serve.dtype": "bfloat16",
@@ -106,7 +428,21 @@
       "serve.runner": "pooling",
       "serve.trust_remote_code": "false",
       "template_file": "sha256:9ea5a7bf0b1dda6fb4dbdc068320c797134d9de1b6046466f2cb4ca7ffed4320",
-      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
+      "client.empty_doc": "send",
+      "client.empty_query": "send",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.use_activation": "true"
     },
     "status": {
       "state": "unverified",
@@ -115,123 +451,221 @@
       "report": null
     },
     "declared_dim": null,
-    "rekeyed": [
-      {
-        "from_behaviour_fingerprint": "c7773e20f3123ceeb7845c7ca00e00079c238084c9e15d883558e8844fcd88fd",
-        "from_manifest_sha256": "57b9a427cab3bbbccf10790d684f0f73fde7eccae2e3eefa5463416ed42ecce3",
-        "from_manifest_file_sha256": "889026310e2eab6dabca71290ce762c1ef1d3dfb8be95df287195c576d8e6380",
-        "changed_inputs": {
-          "client.empty_query": [
-            "refuse",
-            "send"
-          ],
-          "client.template": [
-            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
-            "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}"
-          ],
-          "engine.image": [
-            null,
-            "vllm/vllm-openai:v0.31.0"
-          ],
-          "engine.min_version": [
-            null,
-            "0.31.0"
-          ],
-          "fingerprint_schema": [
-            "rcp-fp/3",
-            "rcp-fp/4"
-          ],
-          "serve.chat_template": [
-            "zerank2_score_template.jinja",
-            "template.jinja"
-          ],
-          "serve.patches": [
-            null,
-            "[]"
-          ],
-          "serve.plugin_architectures": [
-            null,
-            "[]"
-          ],
-          "serve.pooler_config": [
-            "{\"logit_sigma\":5}",
-            "{\"logit_sigma\":5,\"use_activation\":true}"
-          ],
-          "template_file": [
-            "sha256:4c1a43d4cb0ffa65179797130e88061412c51649ea5192f5b7812ff80b620e28",
-            "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008"
-          ]
-        },
-        "reason": "metadata only for every recorded exchange: refuse -> send: only an empty query is affected and no recorded query is empty; the declared template normalisation/strip restatement; the family test proves the render byte-equal for every recorded row; the engine image is now a fingerprint input; the corpus was recorded on this image; the engine floor is now a fingerprint input; the corpus was recorded on this image; the rcp-fp/4 rule keys the engine image and plugin code; the recorded exchanges are unchanged; the template file was renamed by the family conversion; the renders are byte-equal; absent -> []: the new rcp-fp/4 input, no patch declared; absent -> []: the new rcp-fp/4 input, no architecture named; the pooler config restates the engine default; the shared family template file is byte-different but renders byte-equal",
-        "date": "2026-10-09"
-      },
-      {
-        "from_behaviour_fingerprint": "b3a914de4c88b5afde101936cc6682e1c9a1b6a3c06b02f930e3cba5268321e6",
-        "from_manifest_sha256": "0b67eb1f9875fb5b20d115216e6dc12c5aa8fb3eaa45337e7860f8c1e9367e56",
-        "from_manifest_file_sha256": "01d1163464b7a6c20d50099a32b1d71ac243d4137421bdd6d8a6086dd287995e",
-        "changed_inputs": {
-          "template_file": [
-            "sha256:e5ba1122ef87e0e0c98fe68c952299a0d140669ece083893ba77849c5308b008",
-            "sha256:9ea5a7bf0b1dda6fb4dbdc068320c797134d9de1b6046466f2cb4ca7ffed4320"
-          ]
-        },
-        "reason": "metadata only for every recorded exchange: the design-id wording cleanup reworded a Jinja comment inside the family's template.jinja; the render is byte-identical for every context, so no recorded exchange moves",
-        "date": "2026-10-13"
-      }
-    ]
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
   },
   "collector": {
     "package": "rcp-ndcg-vllm",
-    "version": {
-      "unavailable": "the shakedown's rc build version was not recorded"
-    },
+    "version": "0.0.1",
     "commit": {
-      "unavailable": "the shakedown's source commit was not recorded"
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
     },
-    "generator_version": {
-      "unavailable": "the recorder's fixed exchange set predates the request generator"
-    },
-    "corpus_plan_version": {
-      "unavailable": "the recorder's fixed exchange set predates the corpus plan"
-    },
+    "generator_version": 2,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 3,
     "record_schema": 1,
-    "seed": {
-      "unavailable": "the recorder's fixed exchange set draws nothing"
-    },
+    "seed": "rcp-observe-v1",
     "dataset_commits": {
-      "unavailable": "the recorder's fixed exchange set samples no dataset"
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
     },
-    "wave_id": "shake-a2",
+    "wave_id": "wave",
     "job_id": {
-      "unavailable": "the shakedown's job id is not public"
+      "unavailable": "RCP_JOB_ID is not set"
     },
-    "started": "2026-10-06",
-    "finished": "2026-10-06",
-    "host_sha256": {
-      "unavailable": "the shakedown recorder did not hash the node's hostname"
-    },
-    "recorder": "rcp_ndcg_vllm.record (the recorder's fixed exchange set)",
-    "note": "shakedown corpus, rewritten in the observation-corpus format without touching a recorded value: one repetition per request, no /tokenize ground truth, no engine image digest, bodies as the recorder kept them (parsed JSON; body_raw reconstructed, said so per record). recipe.file_sha256 is the recipe file's hash when the corpus was rewritten, not at recording: the recorded run predates the recipe fixes of 2026-10-07; the recorded prompts still render from the current recipes, which tests/conformance/test_recipe_sources.py checks for the embedding requests and every conformance replay checks for the rerank pair prompts."
+    "started": "2026-10-14T11:10:48+00:00",
+    "finished": "2026-10-14T11:11:59+00:00",
+    "host_sha256": "1bb84b58116c9e789d5b5b2f7dd50dec0d99ef1de1b3625aa2d648a1c273adaa",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "zerank-2-reranker@2026-10-14T11:08:31+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "zerank-2-reranker@2026-10-14T11:08:31+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "zerank-2-reranker@2026-10-14T11:11:46+00:00"
+      }
+    ]
   },
-  "provisional": {
-    "status": "provisional",
-    "valid_for": "building and testing the verified fake engines (the emulators and their conformance suite)",
-    "not_valid_for": "release evidence: no recipe is verified, no GPU-run number is reproduced from this corpus",
-    "why": "recorded by the GPU shakedown (waves shake-a1/shake-a2 of 2026-10-06) with the recorder's fixed exchange set: one repetition per request, request and response bodies kept as parsed JSON (not raw bytes), no engine image digest, no /tokenize ground truth, no /pooling recording; some recipes of that shakedown were served with temporary shakedown-only patches",
-    "replaced_by": "the RC0 recording wave (rcp_ndcg_vllm.observe), keyed by behaviour fingerprint"
+  "plan": {
+    "corpus_plan_version": 3,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=true",
+      "wire:use_activation=false",
+      "wire:instruction=on",
+      "edge:top_n_over_documents"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 8112
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 16222
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 81110
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl": {
+        "present": false,
+        "reason": "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+      },
+      "wire:top_n=1": {
+        "present": true
+      },
+      "wire:top_n=all": {
+        "present": true
+      },
+      "wire:use_activation=true": {
+        "present": true
+      },
+      "wire:use_activation=false": {
+        "present": true
+      },
+      "wire:instruction=on": {
+        "present": true
+      },
+      "edge:top_n_over_documents": {
+        "present": true
+      },
+      "wire:encoding_format": {
+        "present": false,
+        "reason": "the /rerank route has no encodings"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
   },
   "integrity": {
     "files": {
       "nondeterminism.json": {
-        "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
-        "bytes": 653
+        "sha256": "a38cb8bca6370c80dcd02388d13defd8ed2a3bbf41a2999b430df23817f4a1f5",
+        "bytes": 75638
       },
       "records.jsonl": {
-        "sha256": "eb3b021b892ab4e22b3c5eec98332d4694799e07ba1f81b4f71593079deadb5c",
-        "bytes": 74235
+        "sha256": "8b8248e55a690e545a5b84b5b9d39af1e1d747047cb0bd370003751aea9dd9d2",
+        "bytes": 6790948
       }
     },
-    "records_count": 4,
-    "manifest_sha256": "cd135d767e8bd2101579543b6987644ecbc9dcf48fa9b53b28fd3f67157f78cb"
+    "records_count": 397,
+    "manifest_sha256": "5ef84845f048bfbc6dc9ee2f226f891ae4c3f20fe93a5de42f48e920a98ff7d5"
   }
 }

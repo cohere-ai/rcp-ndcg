@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
+import pytest
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
 ENGINES = Path(__file__).resolve().parents[2] / "corpora"
@@ -133,25 +135,48 @@ def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> N
     assert skipped in ([], ["qwen3-vl-embedding-2b"]), f"unexpected skip: {skipped}"
 
 
+def _assert_provenance(document: dict[str, Any], where: object) -> str:
+    """One manifest's stated provenance: ``"provisional"`` for a shakedown corpus (valid to build and test
+    the emulators, never release evidence) or ``"release"`` for a recording that carries its request plan.
+    A manifest that declares neither has no stated provenance and fails here."""
+    statement = document.get("provisional")
+    if statement is not None:
+        assert statement.get("status") == "provisional", where
+        assert "building and testing" in statement.get("valid_for", ""), where
+        assert statement.get("not_valid_for", "").startswith("release evidence"), where
+        assert "shakedown-only patches" in statement.get("why", ""), where
+        return "provisional"
+    assert (document.get("plan") or {}).get("request_ids"), f"{where}: a release recording carries its request plan"
+    return "release"
+
+
 def test_every_corpus_manifest_declares_its_provenance() -> None:
-    """Every manifest states what its recording is: a shakedown corpus is valid to build and test the
-    emulators, never release evidence, and says so in its ``provisional`` block (and why); a release
-    recording (the eight re-recorded before the tag) carries the request plan instead and makes no
-    shakedown-only claim. A manifest that declares neither is a corpus with no stated provenance and
-    fails here; both kinds must be present, so neither branch passes vacuously."""
-    provisional = release = 0
-    for manifest in sorted(ENGINES.glob("*/*/*/manifest.json")):
-        document = json.loads(manifest.read_text(encoding="utf-8"))
-        statement = document.get("provisional")
-        if statement is not None:
-            provisional += 1
-            assert statement.get("status") == "provisional", manifest
-            assert "building and testing" in statement.get("valid_for", ""), manifest
-            assert statement.get("not_valid_for", "").startswith("release evidence"), manifest
-            assert "shakedown-only patches" in statement.get("why", ""), manifest
-        else:
-            release += 1
-            assert (document.get("plan") or {}).get("request_ids"), (
-                f"{manifest}: a release recording carries its request plan"
-            )
-    assert provisional and release, f"expected shakedown and release recordings, found {provisional} and {release}"
+    """Every committed manifest states what its recording is, and at the release the set holds no
+    shakedown corpus: the four provisional recordings were re-recorded with the eight, so every manifest
+    carries its request plan and none makes a shakedown-only claim (the checklist's "manifests no longer
+    say provisional"). The provisional branch's own rules are pinned by the synthetic manifest below."""
+    kinds = [
+        _assert_provenance(json.loads(manifest.read_text(encoding="utf-8")), manifest)
+        for manifest in sorted(ENGINES.glob("*/*/*/manifest.json"))
+    ]
+    assert kinds, "no committed corpus"
+    assert kinds.count("release") == len(kinds), (
+        f"the release holds no shakedown corpus: {kinds.count('provisional')} still declare provisional"
+    )
+
+
+def test_a_shakedown_manifest_states_why_it_is_not_release_evidence() -> None:
+    """The provisional branch of the provenance rule, on a synthetic manifest: a shakedown corpus says what
+    it is valid for, what it is not, and why -- so the branch cannot pass vacuously once the tree holds no
+    provisional corpus."""
+    statement = {
+        "status": "provisional",
+        "valid_for": "building and testing the verified fake engines (the emulators and their conformance)",
+        "not_valid_for": "release evidence",
+        "why": "the shakedown's shakedown-only patches",
+    }
+    assert _assert_provenance({"provisional": statement}, "synthetic") == "provisional"
+    with pytest.raises(AssertionError):
+        _assert_provenance({"provisional": {**statement, "not_valid_for": "anything"}}, "synthetic")
+    with pytest.raises(AssertionError):
+        _assert_provenance({}, "synthetic")  # neither kind declared

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_test.engines import Exchange, behaviour_diff
-from tests._engines import emulator_for
+from rcp_ndcg_test.engines import Exchange, behaviour_diff, exchanges_of
+from tests._engines import corpus_of, emulator_for, load_recipe
 
 from rcp_ndcg.errors import ConfigError
 
@@ -24,11 +24,25 @@ def test_top_n_zero_returns_the_whole_ranked_list() -> None:
     assert len(one.json()["results"]) == 1
 
 
+def _an_observed_input(recipe_id: str) -> str:
+    """One text input the corpus recorded (its first embeddings request): the release recordings' prompts
+    are not the shakedown's, so the test reads one instead of hard-coding it."""
+    for exchange in exchanges_of(corpus_of(load_recipe(recipe_id))):
+        item = (exchange.request_body or {}).get("input")
+        if isinstance(item, str):
+            return item
+        if isinstance(item, list) and item and isinstance(item[0], str):
+            return item[0]
+    raise AssertionError(f"{recipe_id}: no recorded text input")
+
+
 def test_a_surrogate_vector_has_the_observed_width() -> None:
     """An unseen input in a batch with an observed one must not answer a ragged batch: the surrogate
     takes the width the corpus observed for the model."""
     emulator = emulator_for("qwen3-embedding-0.6b")
-    body = emulator.answer("/v1/embeddings", "POST", {"input": ["What is the capital of France?", "unseen text"]})
+    body = emulator.answer(
+        "/v1/embeddings", "POST", {"input": [_an_observed_input("qwen3-embedding-0.6b"), "unseen text"]}
+    )
     assert body.headers["x-rcp-ndcg-emulator-source"] == "mixed"
     widths = {len(item["embedding"]) for item in body.json()["data"]}
     assert widths == {1024}, widths

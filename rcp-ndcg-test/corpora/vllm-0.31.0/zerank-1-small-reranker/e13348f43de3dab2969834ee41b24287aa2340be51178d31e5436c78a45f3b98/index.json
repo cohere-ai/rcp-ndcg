@@ -1,30 +1,57 @@
 {
   "schema": "rcp-ndcg.observation-subset/1",
   "full_corpus": {
-    "path": "unavailable: the shakedown corpus is the recorder's node-local output, never uploaded",
-    "manifest_file_sha256": "5bac884b85ff353dc1c69cc21f21777ad8d86635b1ad59389dacf171bca45ada",
-    "manifest_sha256": "b5b97c341c24ebf9437f7ee24c072ef2df4a25f5f735f306c1822f0c7ab0d9df"
+    "path": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610141005/provisional-release/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/zerank-1-small-reranker",
+    "manifest_file_sha256": "6adf139774b2d803893984ff77c99c9a0bf43260fb2a176db6cc1f448074b942",
+    "manifest_sha256": "4ea800a06413511239e1af671a9da834cf4321dfb2baa8b9e07f37896d4ff32a"
   },
   "sampling": {
     "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
     "budget_bytes": 2097152,
     "strata_covered": [
-      "probe:ok",
-      "probe:over_length",
-      "probe:provenance",
-      "probe:unknown_field"
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:top_n_over_documents",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:instruction=on",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=false",
+      "wire:use_activation=true"
     ],
-    "rows": 4,
-    "of_rows": 4
+    "rows": 397,
+    "of_rows": 397
   },
   "files": {
     "nondeterminism.json": {
-      "sha256": "095a5477e6146d9ffcbab95e9e412f498e6d54f893352b5b8ad03dc55f92447c",
-      "bytes": 653
+      "sha256": "bf92b917723edc5a86a3261f9088902cfe996960fcf90de73d90c7b624a2eb9a",
+      "bytes": 76905
     },
     "records.jsonl.gz": {
-      "sha256": "d25c61910b10ab8664c851c474cafedbde95307fed778f1941f475cf4cffbd9e",
-      "bytes": 3176
+      "sha256": "3ce3e27148b921f5f22aea016e00f70d66bfe1b3fe70059d9d90d709ad60bbef",
+      "bytes": 744057
     }
   }
 }

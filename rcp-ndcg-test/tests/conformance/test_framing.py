@@ -112,13 +112,19 @@ def test_an_undecodable_recorded_body_is_refused_loudly(tmp_path: Path) -> None:
 
 
 def test_every_unobserved_route_is_declared_in_the_reply_and_the_record() -> None:
+    """The emulator declares which routes its corpus observed and which it did not, and a request to an
+    unobserved route is marked ``unobserved`` rather than answered from another route's records. The
+    unobserved set is read from the emulator, not assumed: the release recordings probe more routes than
+    the shakedown's did."""
     emulator = emulator_for("zerank-2-reranker")
     assert "POST /rerank" in emulator.observed_routes
-    assert {"POST /pooling", "POST /v1/embeddings", "POST /tokenize"} <= set(emulator.unobserved_routes)
+    unobserved = sorted(set(emulator.unobserved_routes))
+    assert unobserved, "the corpus observes every route: nothing to check"
     rerank = emulator.answer("/rerank", "POST", {"query": "q", "documents": ["d"]})
-    tokenize = emulator.answer("/tokenize", "POST", {"prompt": "q"})
     assert rerank.headers["x-rcp-ndcg-emulator-route"] == "observed"
-    assert tokenize.headers["x-rcp-ndcg-emulator-route"] == "unobserved"
+    path = unobserved[0].split(" ", 1)[1]
+    answer = emulator.answer(path, "POST", {"prompt": "q", "input": ["q"], "query": "q", "documents": ["d"]})
+    assert answer.headers["x-rcp-ndcg-emulator-route"] == "unobserved"
 
 
 def test_the_unobserved_routes_follow_the_engine_source() -> None:
