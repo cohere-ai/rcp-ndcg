@@ -1,6 +1,6 @@
 # Lane topk-gdn — the GDN prefill backend is not the topk divergence
 
-**Lane:** `lane/topk-gdn` (worktree `/root/repos/rcp-ndcg-lanes/wt-topk-gdn`, outside the operator's
+**Lane:** `lane/topk-gdn` (its own worktree, outside the operator’s
 checkout). **Base:** `afc76650`. **Knob commit:** `0dbc6520`. **Rescope commit:** `52917238`.
 **Three node jobs** on the pinned image `vllm/vllm-openai:v0.31.0`
 (`sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3`) against the same RC as the

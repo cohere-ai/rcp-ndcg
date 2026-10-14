@@ -4,7 +4,7 @@ The release checklist's real-infrastructure item, Kubernetes only
 (`handover/RELEASE-CHECKLIST.md:74`: "one SLURM and one Kubernetes run of the one-container and StatefulSet
 job shapes"). **SLURM is explicitly out of scope and was not run** (see the end of this report).
 
-Worktree `/root/repos/rcp-ndcg-lanes/wt-k8s-run`, branch `lane/k8s-run`, base commit `310e1002` (the rfc-0001
+Worktree , branch `lane/k8s-run`, base commit `310e1002` (the rfc-0001
 tip, the commit the running RC wave `rc0-202610140620` was staged from); the lane's HEAD is the commit that
 contains this report (`git log -1` in the worktree). Submitting host: the lane box, env built with
 `uv sync --locked --extra dev` (see `.lane/env-build.log`).
@@ -69,7 +69,7 @@ Two deviations from the plain recipe spelling, both forced and both recorded bel
 ### Command and result
 
 ```console
-$ cd /root/repos/rcp-ndcg-lanes/wt-k8s-run
+$ cd 
 $ uv run --no-sync rcp-ndcg run start .lane/k8s-run/k8s-one-container.yaml --runner kubernetes
 Run 20261014-072801-k8s-one-container-49e823 submitted (submitted)
   directory  runs/20261014-072801-k8s-one-container-49e823

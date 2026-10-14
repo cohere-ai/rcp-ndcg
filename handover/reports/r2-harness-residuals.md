@@ -1,6 +1,6 @@
 # Lane r2-harness-residuals — the round-2 harness residuals
 
-**Lane:** `lane/r2-harness-residuals` (worktree `/root/repos/rcp-ndcg-lanes/wt-r2-harness`).
+**Lane:** `lane/r2-harness-residuals` (worktree ).
 **Base:** `rfc-0001` at `afc76650`. **HEAD:** `4267d932` (5 commits, each red-first).
 **Scope:** `release-code-fixes-ds41.md`'s harness residuals (items 1, 2, 3, 4 of the lane brief) and the
 fleet-verdict gap check against the HV lane's merges (`c807701b` + its commits) — item 5. The topk gate,
