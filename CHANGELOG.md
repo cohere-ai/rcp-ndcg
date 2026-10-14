@@ -3928,6 +3928,12 @@ text it sends to the declared budget.
   `--with rcp-ndcg-vllm==<version>` (a separate distribution; it depends on pydantic and PyYAML only), in
   both the index and the wheelhouse forms.
 
+- **The `pyjwt` pin moves to 2.15.1** (`pip-audit` against the release's constraints found 2.14.0 carrying
+  two advisories, PYSEC-2026-4141 / CVE-2026-101918 and PYSEC-2026-4183 / CVE-2026-102275, both fixed in
+  2.15.0). It is reached only through the optional `[azure]` extra (`adlfs` -> `azure-identity` ->
+  `pyjwt[crypto]`), never the core install; the lock and `requirements-constraints.txt` carry the bump and
+  the 107-pin check agrees.
+
 - **The topk-embed-v1 per-token gate's failure is not the GDN prefill kernel** (lane topk-gdn, the
   pinned image's own switch): the `vllm/vllm-openai:v0.31.0` tag vendors flash-linear-attention
   (`vllm/third_party/flash_linear_attention/ops/chunk.py`) and its resolver runs it for the 18
