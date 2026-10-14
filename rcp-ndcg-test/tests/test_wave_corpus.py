@@ -82,12 +82,24 @@ def test_an_abandoned_corpus_body_cannot_restart_the_engine(
     def fake_record_corpus(recipe, base_url, rows, out_dir, *, restart=None, **kwargs):
         del base_url, rows, kwargs
         Path(out_dir).mkdir(parents=True, exist_ok=True)
-        with run_wave_module._LIVE_LOCK:
-            engine = next(engine for engine in run_wave_module._LIVE_ENGINES if engine.recipe.id == recipe.id)
+        # The engine's registration races this body under load (the wave registers it as the serve step
+        # starts): wait for it rather than unpacking a bare next(), which raises StopIteration and leaves
+        # the outcomes list empty.
+        engine = None
+        registered_deadline = time.monotonic() + 60.0
+        while engine is None and time.monotonic() < registered_deadline:
+            with run_wave_module._LIVE_LOCK:
+                engine = next(
+                    (item for item in run_wave_module._LIVE_ENGINES if item.recipe.id == recipe.id), None
+                )
+            if engine is None:
+                time.sleep(0.05)
+        assert engine is not None, "the wave never registered the corpus step's engine"
         os.killpg(engine.popen.pid, signal.SIGKILL)  # the engine's own death, never the runner's stop
         # Wait until the runner has abandoned this step body (its teardown removes the engine from the
-        # wave's registry, which happens after the step token is cleared), then reach the restart.
-        deadline = time.monotonic() + 30.0
+        # wave's registry, which happens after the step token is cleared), then reach the restart. The
+        # deadline is generous: the gate runs this suite beside GPU waves and lanes.
+        deadline = time.monotonic() + 120.0
         while time.monotonic() < deadline:
             with run_wave_module._LIVE_LOCK:
                 abandoned = engine not in run_wave_module._LIVE_ENGINES
