@@ -76,6 +76,21 @@ PRIVATE_INFRASTRUCTURE = re.compile(
 #: the paths the pod served from, so a staging root reaches a manifest as directly as an address does.
 MACHINE_PATH = re.compile(r"(?:^|[\s\"'(=])/(?:root|home|Users|private|tmp)/")
 
+#: The files that legitimately *name* the Service-link shape: the filter that drops it out of a new recording,
+#: this module's own pattern, and the filter's test. Every other tracked byte must not carry it.
+SERVICE_LINK_CARRIERS = frozenset(
+    {
+        "rcp-ndcg-test/src/rcp_ndcg_test/observe/provenance.py",
+        "rcp-ndcg-test/tests/recipes/test_recipe_hygiene.py",
+        "rcp-ndcg-test/tests/test_observe_corpus.py",
+    }
+)
+
+#: The Service-link shape on its own. Unlike a bare private-range address (a public document may quote one) or
+#: a ``gs://`` host (the docs show ``gs://bucket`` in URI examples), this shape names a Kubernetes Service's
+#: injected link variables and nothing else, so it can be held across the whole tracked tree.
+SERVICE_LINK = re.compile(r"_SERVICE_HOST\b|_SERVICE_PORT\b|VLLM_SERVICE_")
+
 
 #: The per-column media fields the harness retired in favour of one ``media`` field (W2). Every family's
 #: ``reference.py`` refuses them, because a row carrying one would otherwise be encoded or scored as text --
@@ -176,6 +191,40 @@ def _corpus_text(path: Path) -> str:
     if path.suffix == ".gz":
         raw = gzip.decompress(raw)
     return raw.decode("utf-8", errors="replace")
+
+
+def test_the_service_link_pattern_matches_the_injected_shape() -> None:
+    """The tree-wide guard's pattern still matches what it exists to catch, so it cannot rot unnoticed."""
+    assert SERVICE_LINK.search("VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_HOST=10.156.11.117")
+    assert SERVICE_LINK.search("VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_PORT")
+    assert SERVICE_LINK.search("KUBERNETES_SERVICE_HOST=10.156.0.1")  # the pod's own API-server link
+    assert not SERVICE_LINK.search("VLLM_BUILD_COMMIT=db9527a46873454610df6dbedf79a36d6bf1a7f6")
+    assert not SERVICE_LINK.search("RCP_NDCG_VLLM_PATCHES=pooling-full-context")
+
+
+def test_no_tracked_file_outside_the_corpora_names_a_service_link() -> None:
+    """No tracked file outside the carriers names a Kubernetes Service link.
+
+    The corpora scan below covers the private-range addresses, the buckets and the machine paths -- shapes with
+    legitimate public occurrences (a public document may quote a private address; the docs show ``gs://bucket``
+    in URI examples), which is why that scan is scoped to the corpora, where the leak landed. This shape is
+    unambiguous, so it is held tree-wide instead: a manifest-like artifact committed anywhere -- a fixture, a
+    log, a wave report -- cannot carry the pod's Service links either. The corpora are skipped here because the
+    scan below already reads every byte of them.
+    """
+    root = _repository_root()
+    listed = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], check=True, capture_output=True).stdout
+    hits = [
+        f"{name}:{number}: {line.strip()[:140]}"
+        for name in listed.decode("utf-8").split("\0")
+        if name and name not in SERVICE_LINK_CARRIERS and not name.startswith(CORPORA)
+        for number, line in enumerate(_corpus_text(root / name).splitlines(), start=1)
+        if SERVICE_LINK.search(line)
+    ]
+    assert not hits, (
+        "a Kubernetes Service link is named in a tracked file outside the three carriers (the pod's Service "
+        "links are private infrastructure):\n" + "\n".join(hits)
+    )
 
 
 def test_no_committed_corpus_names_private_infrastructure() -> None:
