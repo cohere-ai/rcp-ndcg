@@ -7,7 +7,9 @@ corpora can be explained and a missing fact is visible, not silent.  The engine 
 from the recipe, its files and the Hugging Face cache; the collector facts from this package and the run.
 Secrets never enter: the engine environment is filtered to the behaviour-affecting ``VLLM_*`` variables and the
 ``RCP_NDCG_VLLM_PATCHES`` patch opt-in minus anything named like a credential, and the node's hostname is
-recorded hashed.
+recorded hashed.  Private infrastructure never enters either: the pod's Kubernetes Service links ride under the
+same ``VLLM_`` prefix (the Services are named ``vllm-service-...``) and are dropped by
+:func:`_service_link_names`.
 
 Public surface:
 
@@ -34,6 +36,9 @@ __all__ = ["collector_facts", "engine_facts", "model_facts", "recipe_facts", "un
 
 _SECRET_NAME = re.compile(r"(?i)(token|secret|key|password|passwd|credential|auth)")
 
+_SERVICE_LINK_HOST = "_SERVICE_HOST"
+"""The Service-link suffix that names the Service (see :func:`_service_link_names`)."""
+
 _ENGINE_PROBE = (
     "import json, torch, vllm\n"
     "print(json.dumps({'vllm_version': getattr(vllm, '__version__', None),"
@@ -43,6 +48,26 @@ _ENGINE_PROBE = (
 """What the engine environment's Python reports about itself (run with ``-c``)."""
 
 Runner = Callable[..., "subprocess.CompletedProcess[str]"]
+
+
+def _service_link_names(environ: Mapping[str, str]) -> set[str]:
+    """Every environment variable Kubernetes' Service links injected into the pod.
+
+    Kubernetes injects, per Service in the pod's namespace (``enableServiceLinks``, on by default), a group of
+    eight: the ``<NAME>_SERVICE_HOST`` and ``<NAME>_SERVICE_PORT`` pair, the ``<NAME>_SERVICE_PORT_<proto>`` of
+    each named port, and the docker-link family ``<NAME>_PORT``, ``<NAME>_PORT_<port>_<proto>`` and that leaf's
+    ``_ADDR``/``_PORT``/``_PROTO``.  ``<NAME>_SERVICE_HOST`` is what ties them together -- it names the
+    Service, and every sibling is that name plus one of the seven other suffixes -- so matching on the stem
+    keeps the engine's own knobs (no ``VLLM_SERVICE_HOST`` names ``VLLM``, so ``VLLM_PORT`` and the rest stay)
+    while dropping all eight shapes, the bare ``<NAME>_PORT`` included (no name shape alone tells that one from
+    a real ``*_PORT`` knob).
+    """
+    services = {name[: -len(_SERVICE_LINK_HOST)] for name in environ if name.endswith(_SERVICE_LINK_HOST)}
+    return {
+        name
+        for name in environ
+        if name.endswith(_SERVICE_LINK_HOST) or any(name.startswith(f"{service}_") for service in services)
+    }
 
 
 def unavailable(reason: str) -> dict[str, str]:
@@ -80,9 +105,12 @@ def engine_facts(
     and readiness wait (seconds), the version the RUNNING engine reported (``None``: the declared image's tag
     is the stand-in for a caller that did not probe; the wave always probes), and the subprocess runner
     (tests inject one).  The image digest comes from ``RCP_IMAGE_DIGEST`` (the pod cannot read its own digest;
-    the submit step exports it).  Output: the block, every key a value or an :func:`unavailable` reason.
+    the submit step exports it).  The ``env`` block keeps the engine's own ``VLLM_*`` knobs and the patch
+    opt-in and drops the pod's Kubernetes Service links (:func:`_service_link_names`) and anything named like a
+    credential.  Output: the block, every key a value or an :func:`unavailable` reason.
     """
     env = dict(os.environ if environ is None else environ)
+    service_links = _service_link_names(env)
     facts: dict[str, Any] = {
         "name": "vllm",
         "image": image,
@@ -95,8 +123,12 @@ def engine_facts(
             for name, value in sorted(env.items())
             # The engine's own VLLM_* knobs, and the patch opt-in (an RCP_NDCG_* name the engine reads):
             # the declared patches are what the behaviour fingerprint keys, so the value the process
-            # actually ran with must be visible beside the key, never only in the recipe.
-            if (name.startswith("VLLM_") or name == PATCHES_ENV) and not _SECRET_NAME.search(name)
+            # actually ran with must be visible beside the key, never only in the recipe.  The pod's
+            # Kubernetes Service links share the VLLM_ prefix and name private infrastructure, so they are
+            # dropped (:func:`_service_link_names`), as is anything named like a credential.
+            if (name.startswith("VLLM_") or name == PATCHES_ENV)
+            and name not in service_links
+            and not _SECRET_NAME.search(name)
         },
         "started": started or unavailable("the engine's start time was not recorded"),
         "ready_wait_s": ready_wait_s
