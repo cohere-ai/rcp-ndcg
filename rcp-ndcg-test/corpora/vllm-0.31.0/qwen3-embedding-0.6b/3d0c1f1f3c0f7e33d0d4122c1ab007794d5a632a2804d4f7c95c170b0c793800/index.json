@@ -1,9 +1,9 @@
 {
   "schema": "rcp-ndcg.observation-subset/1",
   "full_corpus": {
-    "path": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc0-202610141005/provisional-release/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/qwen3-embedding-0.6b",
-    "manifest_file_sha256": "ddb5099f1c99457c4067b8e97f73e4f550d5bb193a651b301002b5ea3867b5a6",
-    "manifest_sha256": "fb6affeac81c52fed08f771f6cb00ce073a8a63f25fbac74c0fc61caf6ea36f7"
+    "path": "gs://YOUR-BUCKET/observations/vllm-0.31.0/qwen3-embedding-0.6b",
+    "manifest_file_sha256": "e2a17eeda5daddd296b844ea973ecc569edd02091601f117a70c9d925a69d759",
+    "manifest_sha256": "b7d29e3847dab2603d69f67b05761bf7ab723930e867bed83e24fe998db0c74c"
   },
   "sampling": {
     "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",

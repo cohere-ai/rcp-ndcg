@@ -641,6 +641,47 @@ def test_a_rekeyed_corpus_names_the_manifest_it_was_rekeyed_from() -> None:
         )
 
 
+def _assert_redacted_entries(manifest: dict[str, Any], where: object) -> int:
+    """One manifest's ``engine.redacted`` entries: each names the field it redacted, why and when, and keeps
+    the original manifest's digest and file SHA-256 -- the link to the store's recorded original, which the
+    tracked file is now a redacted view of."""
+    found = 0
+    for entry in (manifest.get("engine") or {}).get("redacted") or []:
+        found += 1
+        name = (manifest.get("recipe") or {}).get("id", where)
+        for key in ("field_path", "reason", "date"):
+            value = entry.get(key)
+            assert isinstance(value, str) and value.strip(), f"{name}: redacted entry lacks {key}"
+        for key in ("from_manifest_sha256", "from_manifest_file_sha256"):
+            value = entry.get(key)
+            assert isinstance(value, str) and len(value) == 64, f"{name}: redacted entry lacks {key}"
+    return found
+
+
+def test_a_redacted_corpus_names_the_manifest_it_was_redacted_from() -> None:
+    """A redaction rewrites the manifest (its engine environment and argv), so the subset's manifest is no
+    longer the store's original byte for byte: each ``engine.redacted`` entry keeps the original manifest's
+    digest and file SHA-256, which link the tracked view to the recording it was cut from without git
+    history, and names the field, the reason and the date -- nothing silent. Every committed corpus that
+    carries such an entry is checked, and the rule is pinned on a synthetic manifest so it cannot pass
+    vacuously."""
+    for directory in all_corpus_dirs():
+        _assert_redacted_entries(load_corpus(directory).manifest, directory)
+    digest = "0" * 64
+    complete = {
+        "field_path": "engine.env",
+        "reason": "the pod's Service links ride under the VLLM_ prefix the engine's own knobs use",
+        "date": "2026-10-14",
+        "from_manifest_sha256": digest,
+        "from_manifest_file_sha256": digest,
+    }
+    assert _assert_redacted_entries({"recipe": {"id": "synthetic"}, "engine": {"redacted": [complete]}}, "s") == 1
+    with pytest.raises(AssertionError):
+        _assert_redacted_entries(
+            {"engine": {"redacted": [{"field_path": "engine.env", "reason": "r", "date": "2026-10-14"}]}}, "s"
+        )
+
+
 def test_the_declared_stale_listwise_corpus_still_replays_its_role_requests() -> None:
     """Listwise replay coverage while jina-reranker-v3's corpus is declared stale.
 
