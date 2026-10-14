@@ -3933,6 +3933,19 @@ text it sends to the declared budget.
   non-empty criteria mapping with 0 or 1 per verdict, the exact `C1..C<num_criteria>` keys checked at fit
   time -- and the `gs://bucket/` example is the `gs://YOUR-BUCKET/` placeholder.
 
+- **Three more public refusals in the core** (the second core review's D1-D3): `item_arrays` and `gain`
+  refuse a non-positive `gamma` in the discrimination-weighted path, which divides by `sum(gamma)` and is a
+  weighted mean only for non-negative weights (gammas `[2, -1]` sum to 1, so the sum-only check passed and
+  `gain` returned 1.9999546 at theta 10 and -0.9999546 at -10, outside the documented `[0, 1]`; the fitter
+  and `ItemParams` already require `gamma > 0`); `score_document` and `insert_document` refuse a non-finite
+  or non-positive `se_target` (0.0 raised a bare `ZeroDivisionError`, NaN silently switched the
+  `low_information` flag off, -0.5 behaved as +0.5); and `BaseScoredModel` -- so the public
+  `BradleyTerryEstimator` and `RaschEstimator` -- refuses duplicate `doc_ids`, which collapsed to one
+  ability while `n_docs` still counted them (an orphan slot pinned at 0, shifting the fit by ~1.1e-4). No
+  pipeline input is affected (item parameters come from `ItemParams`, the calibration's CLI validates
+  `se_target`, and the ids are built from unique sets and dict keys), so no shipped number moves; the
+  package README's gain-interval comment now says `[0, 1]`, as the docstrings already did.
+
 - **The recipe schema's exported JSON Schema follows the served image's own dtype literal** (the
   pre-0.0.1 fleet's vLLM findings): `ServeConfig.dtype`'s enum loses `float8` (which the pinned
   `vllm/vllm-openai:v0.31.0` rejects) and gains `half` (which it accepts), the `pooler_config` keys

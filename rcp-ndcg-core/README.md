@@ -18,7 +18,7 @@ from rcp_ndcg_core import PROTOCOLS, count_gain, gain, ndcg, pass_probabilities,
 
 items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}  # per criterion C1..C5
 thetas = {"d1": 1.4, "d2": -0.3, "d3": 0.6}  # calibrated abilities, in logits
-gains = {doc_id: gain(theta, items) for doc_id, theta in thetas.items()}  # RCP gains in (0, 1)
+gains = {doc_id: gain(theta, items) for doc_id, theta in thetas.items()}  # RCP gains in [0, 1]
 
 scores = {"d1": 0.91, "d2": 0.75, "d3": 0.20}  # one system's scores for the query
 print(ndcg(scores, gains, k=10))  # RCP-nDCG@10, group-mean ties
