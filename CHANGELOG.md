@@ -273,6 +273,39 @@ incompatibly, independently of the package version. All four distributions carry
 - **Public surface**: the `calibration-coverage.v1` and `calibration-summary.v1` schemas'
   `no_tournament_evidence_documents` description now states the joint standard-error referent
   (`1 / sqrt(bt_l2 * W)`); both exported schemas are regenerated. No field, type or schema version changes.
+- **The answer is the text after the last `</think>`** (`PARSE_VERSION` 4). An engine that drops the opening
+  `<think>` leaves the judge's reasoning inline before its answer. The decoder used to strip that reasoning only up
+  to the first `{`, so braces in the reasoning (set notation, code, LaTeX) made it decode a draft object from the
+  reasoning, or fail. It now takes the answer as the text after the last `</think>`, whether that tag closes a
+  `<think>` block or lost its opening tag: a draft between two reasoning blocks, or an object that only precedes a
+  stray `</think>` or a later reasoning block, is refused, since it cannot be told apart from a draft (this
+  reverses the 0.0.1 rule that kept an object before a stray tag). The cut is at that tag wherever it stands, so the
+  text after it is never rewritten. An object that opens inside a `<think>` that never closes is a draft too (the
+  judge was cut at the token limit while thinking): it stays refused, `truncated` at the token limit. Both stages
+  share the decoder, so the rubric reads its answers the same way. The shipped serve commands split the reasoning
+  with `--reasoning-parser` and are not affected; `rcp-ndcg judge reparse` of answers stored with inline
+  reasoning, such as the paper's, is. For Stage A it now reads exactly the paper's v2 rule (the text after the
+  last `</think>`, decoded by this decoder). For Stage B the decoder reads the same object as that rule, but the
+  paper's rubric prompt also asked a sixth criterion (C6) that the paper never fitted: arXiv v2 dropped C6 and then
+  required C1..C5 of every document, while the rubric parser refuses a criterion the prompt did not ask (`schema`),
+  so a reparse of the paper's Stage B answers refuses those windows. On the paper's stored Qwen3.5-397B tournament
+  answers the 0.0.1 decoder failed on 14% of the NanoBEIR windows (11% of NanoMSMARCO, NanoHotpotQA and
+  NanoDBPedia) and 87% of the BRIGHT AoPS windows, and read a draft instead of the final answer in 20 to 59 windows
+  per NanoBEIR dataset and 43 AoPS windows; the fixed decoder reads exactly the judge's final answers (checked on
+  45,576 windows). On the paper's stored NanoBEIR and TREC-DL answers of both stages (577,449 windows) it decodes
+  the same object as the paper's v2 rule in every window.
+- **A number beyond Python's limits is a refusal, not a crash**: an integer literal beyond Python's digit limit
+  (4,300 digits; a score or a document id written as a number) raised `ValueError` and nesting beyond the recursion
+  limit (a degenerate `[[[[...` answer) raised `RecursionError` out of the decoder, and a document id written as a
+  string of that many digits (`"doc_1111..."`, as a ranking entry, a score key or a rubric document key) raised
+  `ValueError` out of the id reader. The judging loop and `judge reparse` catch neither, so one such answer aborted
+  the pass, and a resume asked the judge again. The first two are now `invalid_json`, the id string `schema`
+  (`truncated` at the token limit, either way); a repeated key stays `schema`. No answer that parsed before reads
+  differently, so the parse version does not move for it.
+- **The code-fence strip runs in linear time**: its pattern backtracked on a fence followed by a long whitespace run
+  (7 s at 3,000 whitespace characters, 132 s at 8,000), stalling a judging pass or a reparse. The strip now
+  locates the same fence directly and returns the same content for every answer (checked against the pattern on
+  every stored paper-era window and on random fences).
 
 ## 0.0.1 — 2026-10-14
 
@@ -4209,7 +4242,9 @@ text it sends to the declared budget.
   a prompt edit or a tokenizer swap re-judges instead of skipping with stale judgements.
 - **An orphaned think-end never erases a complete answer (sweep-llm M5):** the orphaned-think-end strip applies
   only to the text before the object, so an answer followed by a stray think-end tag parses instead of being
-  recorded `no_json` after every retry and dropped from every fit.
+  recorded `no_json` after every retry and dropped from every fit. (Reversed after 0.0.1: from `PARSE_VERSION` 4
+  the answer is the text after the last `</think>`, so an object only before a stray tag is refused; see
+  Unreleased.)
 - **One torn last line of the shared `preprocessing.jsonl` no longer poisons a store (sweep-llm M6):** the
   census file's rows are read through one helper (`rcp_ndcg.data.preprocess.read_census_rows`) that skips a
   torn last row with a warning — the tolerance the judgement records have — and raises the typed `DataError`

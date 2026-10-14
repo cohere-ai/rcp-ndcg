@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import math
 import random
+import re
+import time
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -18,7 +20,13 @@ import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.schemas import Judgement, Placement
 
-from rcp_ndcg.judging._parsing.common import MAX_ESCAPE_REPAIRS, PARSE_VERSION, UnparseableAnswer, decode_answer
+from rcp_ndcg.judging._parsing.common import (
+    MAX_ESCAPE_REPAIRS,
+    PARSE_VERSION,
+    UnparseableAnswer,
+    decode_answer,
+    strip_code_fence,
+)
 from rcp_ndcg.judging._parsing.listwise import judgement_comparisons, parse_calibrated_listwise, window_comparisons
 from rcp_ndcg.judging._parsing.rubric import parse_rubric_criteria
 from rcp_ndcg.judging._parsing.schema import answer_schema, response_format
@@ -33,6 +41,10 @@ ANSWER = {
     "scores": {"doc_1": 1.5, "doc_2": 3.0, "doc_3": -2.0},
 }
 OBJECT = json.dumps(ANSWER)
+#: A complete answer object the judge drafted in its reasoning, another order than its final one.
+DRAFT = json.dumps(
+    {"reasoning": "draft", "ranking": ["doc_3", "doc_1", "doc_2"], "scores": {"doc_1": 0, "doc_2": -1, "doc_3": 2}}
+)
 PARSED_RANKING = ["b", "a", "c"]
 PARSED_SCORES = {"a": 1.5, "b": 3.0, "c": -2.0}
 
@@ -64,10 +76,17 @@ RECOVERED = {
     "stray-quote-after-a-number": OBJECT.replace("-2.0}", '-2.0"}'),
     "think-block-with-numbered-prose": "<think>1. doc_3\n2. doc_1\n3. doc_2 {draft}</think>\n" + OBJECT,
     "orphaned-think-end-with-numbered-prose": "Ranking: 3, 1, 2.\n1. doc_3 is best\n</think>\n\n" + OBJECT,
-    "orphaned-think-end-after-the-object": OBJECT + "\n</think>",  # a stray tag never erases the object
-    "orphaned-think-end-after-the-object-with-prose": OBJECT + "\n</think>\n(its reasoning was cut)",
-    "think-inside-a-string-and-a-trailing-end": json.dumps({**ANSWER, "reasoning": "I used <think> here"})
-    + "\n</think>",
+    "orphaned-think-end-after-reasoning-with-braces": "Doc 1 defines {x : x > 0}; doc 2 has {a, b}.\n</think>\n\n"
+    + OBJECT,
+    "draft-object-in-the-reasoning-before-the-think-end": '{"ranking": ["doc_2", "doc_1", "doc_3"]} is my draft; '
+    + "on reflection doc_3 wins.\n</think>\n"
+    + OBJECT,
+    # the answer is what follows the LAST think-end: a draft between two reasoning blocks is reasoning too
+    "a-draft-between-two-reasoning-blocks": "<think>first pass</think>\n" + DRAFT + "\n<think>no</think>\n" + OBJECT,
+    "a-reasoning-block-then-an-orphaned-think-end": "<think>a {draft}</think> more {x} </think>\n" + OBJECT,
+    "an-unclosed-think-after-the-object": OBJECT + "\n<think>let me double-check {doc_1}",
+    # an opener inside the object's own string is no reasoning: the object opens before it
+    "think-inside-a-string": json.dumps({**ANSWER, "reasoning": "I used <think> here"}),
     "code-fence": "```json\n" + OBJECT + "\n```",
     "code-fence-inside-prose": "Here is the ranking:\n```json\n" + OBJECT + "\n```\nI ranked 3 documents.",
     "prose-before-the-json": "Sure. Of documents 1, 2 and 3, doc_3 is weakest:\n" + OBJECT,
@@ -96,6 +115,15 @@ REFUSED = {
     "numbered-prose-only": ("1. doc_3\n2. doc_1\n3. doc_2", "stop", "no_json"),
     "think-leftovers-with-numbered-prose-only": ("<think>doc_3 > doc_1</think>Ranking: 3, 1, 2", "stop", "no_json"),
     "empty": ("", "stop", "no_json"),
+    # PARSE_VERSION 4: an object before a stray think-end cannot be told from a draft in the reasoning
+    "object-only-before-an-orphaned-think-end": (OBJECT + "\n</think>", "stop", "no_json"),
+    "object-before-an-orphaned-think-end-with-prose": (
+        OBJECT + "\n</think>\n(its reasoning was cut)",
+        "stop",
+        "no_json",
+    ),
+    # the answer is what follows the last think-end, so an object before a later reasoning block is not it
+    "object-before-a-later-reasoning-block": (OBJECT + "\n<think>on reflection doc_3 wins</think>", "stop", "no_json"),
     "truncated-at-the-token-limit": (_TRUNCATED, "length", "truncated"),
     "truncated-reasoning-at-the-token-limit": ("<think>1. doc_3 2. doc_1", "length", "truncated"),
     "unclosed-think-before-the-object": ("<think>\nLet me draft: " + OBJECT + "\nnow refine", "stop", "no_json"),
@@ -104,12 +132,63 @@ REFUSED = {
         "stop",
         "schema",
     ),
+    # what json raises past its grammar is a refusal, never an exception that aborts the pass
+    "an-integer-beyond-the-digit-limit": (
+        '{"ranking": ["doc_2", "doc_1", "doc_3"], "scores": {"doc_1": 1' + "0" * 5000 + ', "doc_2": 2, "doc_3": 0}}',
+        "stop",
+        "invalid_json",
+    ),
+    "a-document-id-beyond-the-digit-limit": (
+        '{"ranking": [2, 1, 3' + "0" * 5000 + '], "scores": {"1": 1, "2": 2, "3": 0}}',
+        "stop",
+        "invalid_json",
+    ),
+    # a document id string beyond int's digit limit names no slot: refused, never a ValueError out of the parser
+    "a-ranking-id-string-beyond-the-digit-limit": (
+        '{"ranking": ["doc_' + "1" * 4301 + '", "doc_1", "doc_3"], "scores": {"doc_1": 1, "doc_2": 2, "doc_3": 0}}',
+        "stop",
+        "schema",
+    ),
+    "a-score-key-beyond-the-digit-limit": (
+        '{"ranking": ["doc_2", "doc_1", "doc_3"], "scores": {"doc_' + "1" * 4301 + '": 1, "doc_2": 2, "doc_3": 0}}',
+        "stop",
+        "schema",
+    ),
+    "nesting-beyond-the-recursion-limit": ('{"ranking": ' + "[" * 100_000, "stop", "invalid_json"),
+    "nesting-beyond-the-recursion-limit-at-the-token-limit": ('{"ranking": ' + "[" * 100_000, "length", "truncated"),
+    "closed-nesting-beyond-the-recursion-limit": (
+        '{"scores": ' + '{"a": ' * 50_000 + "1" + "}" * 50_001,
+        "stop",
+        "invalid_json",
+    ),
+    # the cut is at the last think-end wherever it stands: a block inside the object leaves no object (never one
+    # of two duplicate values), and an object before a trailing think-end is not read, whatever its strings hold
     "think-block-inside-the-object": (
         '{"ranking": ["doc_1", "doc_2", "doc_3"], "scores": {"doc_1": 2, <think>" , "doc_1": 9, </think>'
         '"doc_2": 1, "doc_3": 0}}',
         "stop",
-        "invalid_json",  # the block is kept, so the duplicate-key guard sees the raw text (never one value)
+        "no_json",
     ),
+    "think-inside-a-string-and-a-trailing-end": (
+        json.dumps({**ANSWER, "reasoning": "I used <think> here"}) + "\n</think>",
+        "stop",
+        "no_json",
+    ),
+    # ... even inside a string: the head of the object is reasoning, and its nested scores object is no answer
+    "think-end-inside-a-string-of-the-object": (
+        json.dumps({**ANSWER, "reasoning": "the tag </think> closes it"}),
+        "stop",
+        "schema",
+    ),
+    # an object that opens inside reasoning that never closed is a draft, never the answer
+    "a-draft-in-reasoning-cut-at-the-token-limit": (
+        "<think>Draft:\n" + DRAFT + "\nbut doc_2 is",
+        "length",
+        "truncated",
+    ),
+    "a-draft-in-reasoning-that-never-closed": ("<think>Draft:\n" + DRAFT, "stop", "no_json"),
+    "a-draft-after-an-unclosed-opener-with-attributes": ('<think mode="draft">\n' + DRAFT, "stop", "no_json"),
+    "a-draft-in-a-second-unclosed-reasoning-block": ("<think>a</think>\n<think>" + DRAFT, "length", "truncated"),
     "truncated-without-a-length-finish": (_TRUNCATED, "stop", "invalid_json"),
     "unquoted-identifiers": ('{"ranking": [doc_2, doc_1, doc_3], "scores": {}}', "stop", "invalid_json"),
     "prose-with-a-brace-before-the-json": ("Scores {doc_1 high}: " + OBJECT, "stop", "invalid_json"),
@@ -138,6 +217,38 @@ def test_an_answer_without_the_judges_complete_object_is_refused_with_its_catego
     text: str, finish_reason: str, category: str
 ) -> None:
     assert _category(_tournament, text, finish_reason=finish_reason) == category
+
+
+def test_what_json_raises_past_its_grammar_is_refused_in_the_rubric_too() -> None:
+    """The rubric shares the decoder: a digit-limit integer or runaway nesting is ``invalid_json``, never a crash."""
+    huge = '{"doc_1": {"criteria": {"C1": 1' + "0" * 5000 + ', "C2": 0}}}'
+    assert _category(_rubric, huge, ["a"]) == "invalid_json"
+    assert _category(_rubric, '{"doc_1": ' + "[" * 100_000, ["a"]) == "invalid_json"
+    key = '{"doc_' + "1" * 4301 + '": {"criteria": {"C1": 1, "C2": 0}}}'
+    assert _category(_rubric, key, ["a"]) == "schema"
+
+
+#: The code-fence pattern the decoder used before the linear strip; the linear strip must match it exactly.
+_FENCE_PATTERN = re.compile(r"^```(?:\w+)?\s*(.*?)\s*```$", flags=re.DOTALL)
+
+
+def test_the_code_fence_strip_is_the_fence_pattern_in_linear_time() -> None:
+    """Every fence, language, whitespace and closing combination strips exactly as the pattern did, and a fence
+    followed by a long whitespace run (where the pattern backtracked for minutes) takes no time."""
+    rng = random.Random(20261015)
+    parts = ["`", "```", "a", "json", "_", "1", " ", "\n", "\t", "{", "}", "é", "\u00a0", "\u2028", "x y", "\r\n"]
+    for _ in range(20_000):
+        text = "".join(rng.choice(parts) for _ in range(rng.randint(0, 10)))
+        if rng.random() < 0.7:
+            text = "```" + text
+        if rng.random() < 0.5:
+            text += rng.choice(["```", "```\n", "``` ", "````", "\n```\n"])
+        match = _FENCE_PATTERN.match(text)
+        assert strip_code_fence(text) == (match.group(1).strip() if match else text), repr(text)
+    started = time.perf_counter()
+    for text in ("```" + " " * 200_000 + "x", "```json" + "\n" * 200_000 + "{}```x", "```" + " \t" * 100_000 + "```"):
+        strip_code_fence(text)
+    assert time.perf_counter() - started < 1.0
 
 
 def test_an_invalid_escape_is_kept_as_text_and_a_valid_one_as_json_defines_it() -> None:
@@ -203,9 +314,9 @@ class TestTournament:
 # ---------------------------------------------------------------------------
 
 _PROSE = ["Ranking:", "1.", "2)", "doc_3", "doc_1 >", "best", "3, 1, 2", "\n", "- doc_2", "score 4.5", "#"]
-#: What may follow the object, an orphaned ``</think>`` included: only what sits before the
-#: object is reasoning, so a tag after it must never erase the object.
-_TAIL = ["}", "}}", "]", "{", '{"ranking": [1]}', "doc_1", "4 3 2 1", "```", "\n", "<think>", "</think>", '"', "..."]
+#: What may follow the object. An orphaned ``</think>`` is not among it: from PARSE_VERSION 4 everything before
+#: the last orphaned think-end is reasoning (see the test below).
+_TAIL = ["}", "}}", "]", "{", '{"ranking": [1]}', "doc_1", "4 3 2 1", "```", "\n", "<think>", '"', "..."]
 
 
 def _junk(rng: random.Random, words: list[str], n: int) -> str:
@@ -238,6 +349,35 @@ def test_the_parsed_ranking_is_the_embedded_one_whatever_surrounds_it() -> None:
         response = _tournament(text, ids)
         assert response.ranking == [ids[position - 1] for position in ranking], text
         assert response.scores == {ids[position - 1]: score for position, score in scores.items()}, text
+
+
+def test_an_object_before_an_orphaned_think_end_is_never_read() -> None:
+    """Everything before the last orphaned think-end is reasoning: an object there (the answer, or a draft of it)
+    is never read, so the answer is refused unless a complete object follows the tag."""
+    rng = random.Random(20261014)
+    for _ in range(200):
+        text, _, _, w = _embedded(rng)
+        if text.rfind("<think>") > text.rfind("</think>"):
+            continue  # an unmatched opening tag would pair with the appended one into a reasoning block
+        stray = text + "\n</think>" + _junk(rng, ["\n", "...", "doc_1", "4 3 2 1"], rng.randint(0, 3))
+        with pytest.raises(UnparseableAnswer):
+            _tournament(stray, [f"u{i}" for i in range(1, w + 1)])
+
+
+def test_an_object_inside_reasoning_that_never_closed_is_never_read() -> None:
+    """An answer whose object opens after an unclosed ``<think>`` holds a draft (the judge was still thinking when it
+    stopped, or was cut at the token limit): refused, ``truncated`` at the token limit, whatever precedes the tag."""
+    rng = random.Random(20261015)
+    for _ in range(200):
+        text, _, _, w = _embedded(rng)
+        ids = [f"u{i}" for i in range(1, w + 1)]
+        head = _junk(rng, _PROSE, rng.randint(0, 4))
+        if rng.random() < 0.5:
+            head = "<think>" + _junk(rng, _PROSE, 3) + "</think>" + head
+        unclosed = head + "\n<think>" + text.replace("</think>", "")
+        assert _category(_tournament, unclosed, ids, finish_reason="length") == "truncated", unclosed
+        with pytest.raises(UnparseableAnswer):
+            _tournament(unclosed, ids)
 
 
 def test_an_answer_whose_object_lacks_a_document_is_never_given_an_order() -> None:
@@ -534,6 +674,8 @@ def test_the_response_format_is_the_openai_standard_json_schema_form() -> None:
 
 def test_the_parse_version_is_pinned() -> None:
     """The parse version is part of the judgement family, the policy M5's fix trips: parsing changed in a way
-    that alters the observations read from identical text (a trailing orphaned think-end no longer erases the
-    object), so the version must move (pre- and post-fix observations never pool), pinned as a literal."""
-    assert PARSE_VERSION == 3
+    that alters the observations read from identical text (v3: a trailing orphaned think-end no longer erases the
+    object; v4: the answer is the text after the last think-end, cut at the tag, never at the first brace, and an
+    object inside reasoning that never closed is not read), so the version must move (pre- and post-fix
+    observations never pool), pinned as a literal."""
+    assert PARSE_VERSION == 4

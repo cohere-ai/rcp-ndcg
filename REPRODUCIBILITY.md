@@ -186,8 +186,9 @@ The gpt-oss-120b releases have 38 (NanoBEIR) and 18 (BRIGHT) such windows, and T
 | Significance decisions that change (all near p = 0.05) | 13 of 1,183 | 9 of 1,092 |
 
 **What changed in the code:**
-- One decoder serves both stages. It removes reasoning blocks and one code fence, and reads the first complete JSON
-  object, ignoring text after it.
+- One decoder serves both stages. It takes the answer as the text after the last reasoning end tag (`</think>`),
+  so an object drafted in the reasoning is never read (parse version 4), removes one code fence, and reads the first
+  complete JSON object, ignoring text after it.
 - It repairs only a stray quote after a number, and keeps an invalid escape inside a string as literal text. Every
   ranking, score and criterion it returns is the judge's own. It never reads numbers from free text and never fills
   in missing documents.

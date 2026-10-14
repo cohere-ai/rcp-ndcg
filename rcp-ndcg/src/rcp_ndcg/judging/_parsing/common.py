@@ -4,12 +4,12 @@
 what surrounds the object, and makes exactly two named repairs inside it (items 4
 and 5):
 
-1. it strips ``<think>...</think>`` blocks, and an orphaned ``</think>`` that sits
-   before the object (an engine may drop the opening tag and keep the closing one); one that trails the
-   object is what surrounds it, and never erases the object. Stripping happens **outside** the object
-   only: a tag inside the object's own text must not rewrite it, and an **unclosed** opener before the
-   object makes everything from it to the end of the answer reasoning (a truncated answer's reasoning is
-   never the judgement);
+1. it takes the answer as the text after the last ``</think>``: everything before it is reasoning, a whole
+   ``<think>...</think>`` block or reasoning whose opening tag the engine dropped, so an object drafted in
+   the reasoning is never read, and an object that only precedes a ``</think>`` (a stray one, or a later
+   reasoning block) is not the answer; an **unclosed** opener before the answer's object makes everything
+   from it to the end of the answer reasoning (cut at the token limit, or never closed), so a truncated
+   answer's draft is never the judgement;
 2. it strips one code fence around the whole answer;
 3. it decodes the first complete JSON object that starts at the first ``{`` and
    ignores whatever follows it (prose, a stray ``}``, a second object);
@@ -42,12 +42,12 @@ from rcp_ndcg_core.schemas import InvalidCategory
 #: observations read from identical text, including the JSON schemas that
 #: :mod:`rcp_ndcg.judging._parsing.schema` sends the endpoint. Part of the judgement
 #: family: observations parsed by different versions are never pooled.
-PARSE_VERSION = 3
+PARSE_VERSION = 4
 
-_THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>")
-_ORPHANED_THINK_END = re.compile(r"^[\s\S]*?</think>")
+_THINK_END = "</think>"
 _THINK_OPEN = re.compile(r"<think\b")
-_CODE_FENCE = re.compile(r"^```(?:\w+)?\s*(.*?)\s*```$", flags=re.DOTALL)
+_FENCE = "```"
+_FENCE_LANGUAGE = re.compile(r"\w*")
 _STRAY_QUOTE = re.compile(r'(-?\d+\.?\d*)"(\s*\n?\s*})')
 
 #: Invalid escapes repaired in one answer at most; an answer with more is refused as ``invalid_json``.
@@ -103,40 +103,50 @@ _DECODER = json.JSONDecoder(object_pairs_hook=_object_without_duplicate_keys)
 
 
 def strip_reasoning(text: str) -> str:
-    """``text`` without ``<think>...</think>`` blocks, and without an orphaned
-    ``</think>`` that sits before the object.
+    """The answer of ``text``: what follows its last ``</think>``, without reasoning that never closed.
 
-    Closed think blocks are removed, and an orphaned end tag strips what leads up to it -- but only
-    **outside** the object. A block that contains the object is reasoning (it is removed and the next
-    object is the answer), while a tag inside the object's own text is left where it is: a block between
-    two duplicate keys must not delete one (the duplicate-key guard refuses the answer) and a tag inside a
-    string must not truncate it. An **unclosed** opener before the object is reasoning to the end of the
-    answer, so a truncated answer's drafted example is never read as the judgement.
+    Everything up to the last think-end is the judge's reasoning: one or more ``<think>...</think>`` blocks,
+    or reasoning whose opening tag the engine dropped. Reasoning routinely holds braces and drafts of the
+    answer object, so the cut is at the tag, never at the first ``{``. An object that only precedes a
+    think-end (a stray one, or a later reasoning block) is therefore not read: from the text alone it cannot
+    be told apart from a draft in the reasoning, and reading a draft would put an observation in the fit that
+    the judge did not answer. The cut is at the last think-end wherever it stands, even inside a string of
+    an object: nothing before it is ever read, and the text after it is never rewritten.
+
+    An **unclosed** ``<think`` opener before the answer's first ``{`` means the object lies inside the
+    reasoning (an answer cut at the token limit while the judge was still thinking, or reasoning the judge
+    never closed): the answer is what precedes that tag, so the draft is not read. An opener after the first
+    ``{`` is left to the decoder, which reads the object and ignores what follows it.
     """
-    while True:
-        start = text.find("{")
-        if start < 0:
-            break
-        covering = next((match for match in _THINK_BLOCK.finditer(text) if match.start() < start < match.end()), None)
-        if covering is None:
-            break
-        text = text[: covering.start()] + text[covering.end() :]
-    start = text.find("{")
-    if start < 0:
-        stripped = _THINK_BLOCK.sub("", text)
-        stripped = _ORPHANED_THINK_END.sub("", stripped).strip()
-        return "" if _THINK_OPEN.search(stripped) else stripped
-    head, tail = text[:start], text[start:]
-    head = _THINK_BLOCK.sub("", head)
-    if _THINK_OPEN.search(head):
-        return ""
-    return (_ORPHANED_THINK_END.sub("", head) + tail).strip()
+    end = text.rfind(_THINK_END)
+    answer = text[end + len(_THINK_END) :] if end >= 0 else text
+    opening, brace = _THINK_OPEN.search(answer), answer.find("{")
+    if opening is not None and (brace < 0 or opening.start() < brace):
+        answer = answer[: opening.start()]
+    return answer.strip()
 
 
 def strip_code_fence(text: str) -> str:
-    """The content of one markdown code fence (```lang ... ```) around the whole of ``text``, else ``text``."""
-    match = _CODE_FENCE.match(text)
-    return match.group(1).strip() if match else text
+    """The content of one markdown code fence (```lang ... ```) around the whole of ``text``, else ``text``.
+
+    The text must open with the fence (an optional language word after it) and close with one at its end, or
+    before one final newline; the content between them is returned stripped. This is what the pattern
+    ``^```(?:\\w+)?\\s*(.*?)\\s*```$`` (DOTALL) matches, located in linear time: that pattern backtracked
+    quadratically or worse on a fence followed by a long whitespace run.
+    """
+    if not text.startswith(_FENCE):
+        return text
+    language = _FENCE_LANGUAGE.match(text, len(_FENCE))  # \w* always matches, possibly empty
+    after_language = language.end() if language else len(_FENCE)
+    if text.endswith(_FENCE):
+        closing = len(text) - len(_FENCE)
+    elif text.endswith(_FENCE + "\n"):
+        closing = len(text) - len(_FENCE) - 1
+    else:
+        return text
+    if closing < after_language:  # the closing fence would overlap the opening one
+        return text
+    return text[after_language:closing].strip()
 
 
 def _invalid_escape(text: str, error: json.JSONDecodeError) -> int | None:
@@ -166,6 +176,13 @@ def _decode_object(candidate: str) -> Any:
                     text, quote_repaired = repaired, True
                     continue
             raise UnparseableAnswer(f"the JSON object does not decode: {error}", "invalid_json") from error
+        except _DuplicateKey:
+            raise  # a repeated key is a schema refusal (decode_answer), not a decoding failure
+        except (ValueError, RecursionError) as error:
+            # What json raises past its own grammar: an integer literal beyond int's digit limit (4,300 digits) is a
+            # ValueError, nesting beyond the recursion limit a RecursionError. Either is an answer that does not
+            # decode, never an exception that escapes the judging loop.
+            raise UnparseableAnswer(f"the JSON object does not decode: {error}", "invalid_json") from error
 
 
 def decode_answer(text: str | None) -> dict[str, Any]:
@@ -173,7 +190,8 @@ def decode_answer(text: str | None) -> dict[str, Any]:
 
     Raises:
         UnparseableAnswer: ``no_json`` when the answer holds no ``{``; ``invalid_json`` when the object at the
-            first ``{`` does not decode; ``schema`` when it repeats a key.
+            first ``{`` does not decode (an integer literal beyond the digit limit and nesting beyond the
+            recursion limit included); ``schema`` when it repeats a key.
     """
     body = strip_code_fence(strip_reasoning(text or ""))
     start = body.find("{")
@@ -200,7 +218,12 @@ def document_position(value: object) -> int:
     if isinstance(value, str):
         match = _DOCUMENT_KEY_RE.fullmatch(value.strip())
         if match:
-            return int(match.group(1))
+            try:
+                return int(match.group(1))
+            except ValueError:  # beyond int's digit limit (4,300 digits): no window holds that slot
+                raise UnparseableAnswer(
+                    f"invalid document identifier of {len(value)} characters ({value[:40]!r}...)", "schema"
+                ) from None
     raise UnparseableAnswer(f"invalid document identifier {value!r}", "schema")
 
 

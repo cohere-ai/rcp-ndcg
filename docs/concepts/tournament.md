@@ -27,14 +27,15 @@ counts. Nothing is completed or filled in.
 
 ## Parsing an answer
 
-The judge's JSON object is read from the answer with a tolerant decoder, which the rubric shares. The decoder removes
-` thinking...</think>` blocks and an orphaned `</think>` that sits before the object (one that trails it is merely what surrounds it), removes one code fence around the answer, and decodes
-the first complete JSON object from the first `{`, ignoring any text after it (prose, a stray `}`, a second object).
-The strip is outside the object only: a tag inside the object's own text must not rewrite it, and an **unclosed**
-opening tag before the object makes everything from it to the end of the answer reasoning, so a truncated answer's
-drafted example is never read as the judgement. An answer equal to the prompt's own worked example (the fenced JSON
-block the prompt shows) is refused too: a model echoing the example must not be recorded as an observation of a
-window the example happens to fit.
+The judge's JSON object is read from the answer with a tolerant decoder, which the rubric shares. The answer is the
+text after the last `</think>`: everything before it is reasoning (`<think>...</think>` blocks, or reasoning whose
+opening tag the engine dropped), so an object drafted there is never read, and an object that only precedes a
+`</think>` is refused. An object that opens inside a `<think>` that never closes is a draft too (the judge was cut
+while thinking) and is refused, as `truncated` when the answer hit the token limit. The decoder then removes one code
+fence around the answer and decodes the first complete JSON object from the first `{`, ignoring any text after it
+(prose, a stray `}`, a second object). The text after the last `</think>` is never rewritten: no tag is removed from
+inside it. An answer equal to the prompt's own worked example (the fenced JSON block the prompt shows) is refused too:
+a model echoing the example must not be recorded as an observation of a window the example happens to fit.
 When a string of that object holds an invalid escape, such as LaTeX (`\pi`, `\{`) in the reasoning, it doubles that
 backslash, so the string keeps the backslash as text, and decodes again (at most 1000 times per answer). This changes
 the content of that string only. If the object still does not decode, it retries once with a stray quote after a number
