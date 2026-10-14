@@ -59,14 +59,16 @@ def fit_bradley_terry(
         l2: L2 penalty on the abilities (logits^-2): ``Priors.bt_l2``, the calibration's (``Priors().bt_l2`` is
             the tournament's live fit's).
         doc_ids: The documents to estimate (default: every document in ``comparisons``,
-            in order of first appearance); a document without comparisons gets the mean.
+            in order of first appearance); a document without comparisons gets the mean. Must be unique:
+            a duplicate would collapse to one ability while still counting in the fit's size.
 
     Returns:
         ``{doc_id: theta_BT}``.
 
     Raises:
         ValueError: ``l2`` is not finite and >= 0; a comparison's weight or soft label is out of range;
-            or a comparison names a document outside ``doc_ids`` or compares a document with itself.
+            or a comparison names a document outside ``doc_ids`` or compares a document with itself; or
+            ``doc_ids`` contains a duplicate.
     """
     from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 

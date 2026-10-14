@@ -14,7 +14,8 @@ class BaseScoredModel(nn.Module):
     """An ability ``theta`` per document (zero-mean), an L2 penalty, and an L-BFGS fit.
 
     ``l2_reg`` defaults to the paper's Stage A Bradley-Terry ridge (1e-4, ``Priors.bt_l2``); a caller
-    with a fitted calibration's own penalty passes it explicitly.
+    with a fitted calibration's own penalty passes it explicitly. ``doc_ids`` must be unique: the index
+    map collapses a duplicate to one slot while the ability vector still counts it.
 
     Subclasses define :meth:`model_loss` and may override the ability
     parameterisation and :meth:`_compute_standard_errors`.
@@ -24,6 +25,17 @@ class BaseScoredModel(nn.Module):
         super().__init__()
         if not math.isfinite(l2_reg) or l2_reg < 0:
             raise ValueError(f"l2_reg must be finite and >= 0, got {l2_reg!r}")
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        for doc_id in doc_ids:
+            if doc_id in seen and doc_id not in duplicates:
+                duplicates.append(doc_id)
+            seen.add(doc_id)
+        if duplicates:
+            raise ValueError(
+                f"doc_ids contains duplicate document IDs: {duplicates}. A duplicate collapses to one "
+                "ability while the fit still counts it, so an orphan slot pinned at 0 shifts every theta"
+            )
         self.doc_ids = list(doc_ids)
         self.n_docs = len(self.doc_ids)
         self.doc_to_idx = {d: i for i, d in enumerate(self.doc_ids)}

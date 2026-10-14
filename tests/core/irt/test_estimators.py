@@ -76,6 +76,20 @@ def test_the_bare_estimator_default_is_the_documented_bt_ridge() -> None:
     assert RaschEstimator(doc_ids=["a"], num_criteria=2).l2_reg == 1e-4
 
 
+def test_duplicate_doc_ids_are_refused_not_silently_collapsed() -> None:
+    """``doc_to_idx`` collapses a duplicate to its last index while ``n_docs`` counts every entry,
+    leaving an orphan ``theta_raw`` slot pinned at 0 that still enters the mean-centring and the
+    ridge. On ``CHAIN*5`` with l2=1e-4, ``doc_ids=["a","b","c","a"]`` gives
+    a=6.2751122, c=-6.2751279 against a=6.2750177, c=-6.2750173 for the unique ids -- a silent
+    ~1.1e-4 shift. The public records already refuse duplicate ``doc_ids``."""
+    with pytest.raises(ValueError, match="duplicate"):
+        BradleyTerryEstimator(doc_ids=["a", "b", "a"])
+    with pytest.raises(ValueError, match="duplicate"):
+        RaschEstimator(doc_ids=["a", "a"], num_criteria=2)
+    with pytest.raises(ValueError, match="duplicate"):
+        fit_bradley_terry(CHAIN, l2=1e-4, doc_ids=["a", "b", "c", "a"])
+
+
 def test_rasch_criteria_of_an_unknown_document_are_refused_not_dropped() -> None:
     """One policy for both estimators: an observation that cannot be attached is evidence the model would
     silently lose (a chunk id where a document id belongs fits a weaker stratification)."""
