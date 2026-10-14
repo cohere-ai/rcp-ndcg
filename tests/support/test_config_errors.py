@@ -11,6 +11,7 @@ from click.testing import CliRunner
 from rcp_ndcg.cli.main import cli
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runs.config import RunConfig
+from rcp_ndcg.support.config import config_error, validation_problems
 
 
 @pytest.fixture
@@ -92,3 +93,12 @@ def test_a_runner_option_typo_in_the_file_names_the_key_the_file_holds(config: P
     (problem,) = error.details["errors"]
     assert (problem["field"], problem["source"]) == ("runner.options.namspace", str(config))
     assert "--set runner.options.namspace=..." in (error.cli_hint or "")
+
+
+def test_a_non_pydantic_error_is_never_read_as_one() -> None:
+    """A validator that raised something other than a ``ValidationError`` is re-raised as itself: the reader
+    never calls ``errors()`` on it, so a bug inside a validator is not reported as a broken config reader."""
+    with pytest.raises(KeyError, match="judge"):
+        validation_problems(KeyError("judge"))
+    with pytest.raises(KeyError, match="judge"):
+        config_error(KeyError("judge"))

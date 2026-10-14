@@ -248,8 +248,9 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
     A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes through unchanged.  Raises
     :class:`~rcp_ndcg.errors.ConfigError`: unknown recipe id (the shipped ids named), a path rcp-ndcg-vllm's
     loader refuses, rcp-ndcg-vllm absent (the install line), an unreadable recipe ``schema_version``
-    (:data:`RECIPE_SCHEMA_VERSIONS`), a CONTENT field that disagrees with the recipe, or an MRL selection
-    outside the recipe's declared set.
+    (:data:`RECIPE_SCHEMA_VERSIONS`), a recipe whose role the config does not take (the recipe, its role and
+    the roles ``classes`` names are all in the message), a CONTENT field that disagrees with the recipe, or an
+    MRL selection outside the recipe's declared set.
     """
     if not isinstance(data, dict):
         return data
@@ -261,6 +262,15 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
         # identity and the block beside it is the recipe's own, so there is nothing to load again.
         return data
     loaded = _load(str(recipe_id))
+    if loaded.role not in classes:
+        # A recipe of a role this config does not take (a judge recipe in the retriever's encoder slot, a
+        # reranker in the judge slot): a typed refusal naming the recipe, the role it has and the roles the
+        # config takes, never the bare ``KeyError`` a lookup of ``classes[loaded.role]`` would raise.
+        wanted = "/".join(sorted(classes))
+        raise ConfigError(
+            f"recipe {recipe_id!r} has role {loaded.role!r}, but this config takes {wanted} recipes",
+            hint=f"name a recipe of role {wanted}, or configure a {loaded.role}",
+        )
     client = dict(loaded.client)
     config_cls = classes[loaded.role]
     content = {name for name, role in declared_roles(config_cls).items() if role is FieldRole.CONTENT}
