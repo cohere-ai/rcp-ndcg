@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from rcp_ndcg.cli.retrieval import retrieval_group as retrieval
 from rcp_ndcg.data import Rankings, load_rankings
+from rcp_ndcg.errors import ExitCode
 
 
 def _invoke(*args: str) -> dict:
@@ -70,6 +71,30 @@ def test_search_needs_exactly_one_of_retriever_and_index(dataset: str, tmp_path:
 
     assert document["exit_code"] == 2
     assert document["error"]["code"] == "USAGE"
+
+
+def test_a_recipe_of_the_wrong_role_is_a_config_error(dataset: str, tmp_path: Path) -> None:
+    """A judge recipe in the retriever or reranker slot is a CONFIG refusal naming the recipe and both roles
+    -- not the bare ``KeyError`` that escaped ``expand_role_recipe`` and was reported as an internal bug."""
+    rankings = tmp_path / "first.parquet"
+    Rankings.from_orders({"q1": ["d1"]}, system="first").save(rankings)
+    forms = {
+        "retriever": [
+            "index", "--dataset", dataset, "--retriever", "recipe:gemma-4-12b-it",
+            "--out", str(tmp_path / "index"),
+        ],
+        "reranker": [
+            "rerank", "--dataset", dataset, "--rankings", str(rankings),
+            "--reranker", "recipe:gemma-4-12b-it", "--out", str(tmp_path / "reranked.jsonl"),
+        ],
+    }  # fmt: skip
+    for which, args in forms.items():
+        document = _invoke(*args)
+        assert document["exit_code"] == ExitCode.CONFIG, (which, document)
+        assert document["error"]["code"] == "CONFIG", (which, document)
+        message = document["error"]["message"]
+        assert "gemma-4-12b-it" in message and "judge" in message, (which, message)
+        assert "embed/multi_vector/rerank" in message, (which, message)
 
 
 def test_a_malformed_retriever_is_a_config_error(dataset: str, tmp_path: Path) -> None:

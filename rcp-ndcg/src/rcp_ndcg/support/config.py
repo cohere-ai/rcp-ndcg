@@ -124,8 +124,14 @@ def validation_problems(
     Each entry carries ``field`` (the dotted path), ``problem``, ``input`` (the given value; ``null`` for a
     missing field), ``expected`` (the type or the allowed values, when known), ``did_you_mean`` (the closest
     known key, for an unknown one) and ``source`` (``"--set"`` when an override set the field, else *source*).
-    Config validation (:func:`config_error`) and the CLI's argument validation raise with this shape.
+    Config validation (:func:`config_error`) and the CLI's argument validation raise with this shape.  ``exc``
+    that is not a pydantic ``ValidationError`` has no such problems to read: it is re-raised as itself, so a
+    validator that raised something else surfaces as what it is instead of an ``AttributeError`` on it.
     """
+    from pydantic import ValidationError
+
+    if not isinstance(exc, ValidationError):
+        raise exc
     schema = _json_schema(model)
     set_keys = [override.partition("=")[0].strip() for override in overrides]
     problems = []

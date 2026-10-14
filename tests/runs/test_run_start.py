@@ -10,6 +10,7 @@ import yaml
 from click.testing import CliRunner
 
 from rcp_ndcg.cli.main import cli
+from rcp_ndcg.errors import ExitCode
 from tests.conftest import SESSION_TOKENIZER
 from tests.runs.conftest import tiny_config
 
@@ -472,6 +473,29 @@ class TestTheEngineFlag:
             "resume", "--run", str(finished), "--engine", "judge=http://node:8000/v1", "--runner", "local"
         )
         assert code == 2 and "--engine apply to a resume in this process" in error["message"]
+
+
+def test_a_judge_recipe_in_the_encoder_slot_is_a_config_error(data: Path, tmp_path: Path) -> None:
+    """A recipe of the wrong role reaches the retrieval encoder through the run config: the refusal is the
+    typed CONFIG one naming the recipe and both roles, never a bare ``KeyError`` reported as a bug."""
+    config = tmp_path / "run.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                **tiny_config(data).resolved(),
+                "candidates": {
+                    "from": "retrieval",
+                    "retrieval": {"kind": "dense", "encoder": {"recipe": "gemma-4-12b-it"}},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    code, error = _refusal("start", str(config), "--runs-dir", str(tmp_path / "runs"))
+
+    assert code == ExitCode.CONFIG and error["code"] == "CONFIG", error
+    assert "gemma-4-12b-it" in error["message"] and "judge" in error["message"], error["message"]
 
 
 def test_a_packaged_config_starts_by_name_from_any_directory(tmp_path: Path, monkeypatch) -> None:
