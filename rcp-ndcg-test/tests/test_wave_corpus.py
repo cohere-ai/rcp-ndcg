@@ -89,9 +89,7 @@ def test_an_abandoned_corpus_body_cannot_restart_the_engine(
         registered_deadline = time.monotonic() + 60.0
         while engine is None and time.monotonic() < registered_deadline:
             with run_wave_module._LIVE_LOCK:
-                engine = next(
-                    (item for item in run_wave_module._LIVE_ENGINES if item.recipe.id == recipe.id), None
-                )
+                engine = next((item for item in run_wave_module._LIVE_ENGINES if item.recipe.id == recipe.id), None)
             if engine is None:
                 time.sleep(0.05)
         assert engine is not None, "the wave never registered the corpus step's engine"
