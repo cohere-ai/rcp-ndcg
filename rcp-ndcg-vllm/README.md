@@ -53,15 +53,16 @@ recipe passes before the release.
 
 The shipped recipes are grouped into **families**: one directory per model family,
 `recipes/<family>/family.yaml`, holds the shared serving contract and a `variants` table with only the
-per-size facts, and the family's ONE `reference.py` (parameterised by the variant) runs every size's
-equivalence check. Every variant is a full recipe id -- served by `rcp-ndcg-vllm serve <variant-id>`,
-resolvable by `recipe: <variant-id>` in `rcp-ndcg`, contract-tested and GPU-validated on its own; a family id
-is never served.
+per-size facts, and -- for a retrieval family -- the family's ONE `reference.py` (parameterised by the
+variant) runs every size's equivalence check. Every variant is a full recipe id -- served by
+`rcp-ndcg-vllm serve <variant-id>`, resolvable by `recipe: <variant-id>` in `rcp-ndcg`, contract-tested
+and GPU-validated on its own; a family id is never served.
 
 The catalog is **24 families and 44 variants**: 34 retrieval variants (16 families: embed, multi_vector and
 rerank) and 10 judge variants (8 families, `role: judge`). Every variant must pass its end-to-end GPU
-validation against its reference implementation before the tag (equivalence, quality and end-to-end waves);
-`family.yaml` records
+validation before the tag (equivalence, quality and end-to-end waves) -- every *retrieval* variant against
+its reference implementation, a judge variant by `rcp-ndcg judge check` and the T4 scenarios, since a judge
+recipe carries no equivalence reference; `family.yaml` records
 each variant's model revision and `sources`, and `status.state` (`unverified`, `verified`, `failed`) records the
 outcome beside the engine `image`, the `date` and the report. The `status` column below is copied from each
 variant's own `status.state` (the family's until a variant declares its own), so it reads `unverified` for every

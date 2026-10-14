@@ -2,9 +2,12 @@
 
 Every shipped recipe is validated on GPUs before a tag: served on its declared engine image, its replies
 compared against its own reference implementation (the model card's published path or the paper's code),
-and its observation corpus recorded. This page is the release's record of that work — one row per variant:
-the release candidate and the wave that verified it, the date the wave finished, and the behaviour
-fingerprint the wave ran against.
+and its observation corpus recorded. Every *retrieval* variant is compared against its reference that way;
+a judge recipe carries no equivalence reference, so a judge variant is validated by `rcp-ndcg judge check`
+and the T4 scenarios instead. The corpora whose replay needs them are committed under
+`rcp-ndcg-test/corpora/`. This page is the release's record of that work — one row per variant:
+the release candidate and the wave whose evidence the row records, the date that wave finished, and the
+behaviour fingerprint the tree computes today (the key a wave's evidence must carry).
 
 The machine-readable record is each family's `status` block in
 `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/family.yaml` (the `state`, the engine `image`, the `date`
@@ -56,8 +59,8 @@ ran against the fingerprint the tree computes today.
 | `qwen3.8-27b-fp8` | judge | `vllm/vllm-openai:v0.31.0` | `rc0-202610121840` | 2026-10-12 | `70ac81a6c78e…` | verified |
 | `qwen3.8-flash-next-nvfp4` | judge | `vllm/vllm-openai:v0.31.0` | `rc0-202610121840` | 2026-10-12 | `5c4bf3df96d4…` | verified |
 | `qwen3.8-flash-next-fp8` | judge | `vllm/vllm-openai:v0.31.0` | `rc0-202610121840` | 2026-10-12 | `553fc2bf43fc…` | verified |
-| `topk-embed-v1-xsmall` | multi_vector | `vllm/vllm-openai:v0.31.0` | — | — | `01c4e57b0343…` | failed |
-| `topk-embed-v1-small` | multi_vector | `vllm/vllm-openai:v0.31.0` | — | — | `1ac72016965a…` | failed |
+| `topk-embed-v1-xsmall` | multi_vector | `vllm/vllm-openai:v0.31.0` | `rc0-202610140620` | 2026-10-14 | `01c4e57b0343…` | failed |
+| `topk-embed-v1-small` | multi_vector | `vllm/vllm-openai:v0.31.0` | `rc0-202610140620` | 2026-10-14 | `1ac72016965a…` | failed |
 | `zembed-1-embedding` | embed | `vllm/vllm-openai:v0.31.0` | `rc0-202610140620` | 2026-10-14 | `21bb1fd31dc8…` | verified |
 | `zerank-1-reranker` | rerank | `vllm/vllm-openai:v0.31.0` | `rc0-202610140620` | 2026-10-14 | `f4ca536b33ae…` | verified |
 | `zerank-1-small-reranker` | rerank | `vllm/vllm-openai:v0.31.0` | `rc0-202610140620` | 2026-10-14 | `e13348f43de3…` | verified |
@@ -72,12 +75,22 @@ ran against the fingerprint the tree computes today.
   also run on its own vendored flash-linear-attention prefill path (`--gdn-prefill-backend triton`), which
   diverges identically, so the residual is not a selectable kernel. The full measurements — the per-row
   per-token minima, the per-layer cosines, the three backends, and the text/image split — are in the
-  family's notes. The disposition of the family's gate is an explicit owner decision, recorded in the
-  release notes; a recipe in this state ships only under that decision, never silently.
-- **Two reference-case expected values remain `pending_gpu`** in
-  `rcp-ndcg-test/cases/qwen3-vl-embedding-2b/` (`video-short-single.yaml`, `query-cap-1024.yaml`): they
-  record a per-clip video budget and a query cap whose expected values need a GPU reference run, and the
-  case files say so. They are validation fixtures, not recipe gates.
+  family's notes. The evidence is keyed honestly: the wave that first measured the failure
+  (`rc0-202610130615`, 2026-10-13) ran at a superseded behaviour fingerprint (`1fdf2847…`, before the
+  plugin-module keying moved it), so the gate was re-run at the current key on 2026-10-14 in the
+  `rc0-202610140620` wave's `plugin-carriers-vllm` sub-wave and failed again with the same signature —
+  stage 1 passes, stage 2's per-token cosine floor fails. The two rows above carry that 2026-10-14 wave.
+  Nothing is deferred past the tag: the state stays `failed`, and the gate's disposition stays the owner's
+  explicit decision, recorded in the release notes; a recipe in this state ships only under that decision,
+  never silently.
+- **One reference case remains `pending_gpu`**: `rcp-ndcg-test/cases/topk-embed-v1-small/query-cap-1024.yaml`,
+  in the family whose gate the owner dispositioned. Its query renders past the recipe's declared
+  `client.query_max_tokens: 1024`, so the client's fit cuts it, and the case's `expected.kind` is `none`,
+  which carries no values by design: it observes that at-cap query rather than comparing scores, which is
+  also why the case-fill skips it. The video case this bullet used to name,
+  `rcp-ndcg-test/cases/qwen3-vl-embedding-2b/video-short-single.yaml`, was filled from the reference
+  implementation on cuda on 2026-10-14 and reads `status: reproduced`. These are validation fixtures, not
+  recipe gates.
 - **The ViDoRe retrieval view carries a documented waiver** (`rcp-ndcg-test/tests/e2e/test_golden_replay.py`):
   the golden's retrieval view needs ViDoRe page-image embeddings, and no committed corpus of the VL
   embedder observes a ViDoRe-sourced image yet. The tripwire fails the moment one does, naming the work.
