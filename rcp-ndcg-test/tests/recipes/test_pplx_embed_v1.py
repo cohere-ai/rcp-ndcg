@@ -245,7 +245,7 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")  # the engine must not 400 the budget
     assert (FAMILY_DIR / "reference.lock").is_file()  # the family's one environment (decision 35)
     assert (FAMILY_DIR / "reference.py").is_file()
-    assert recipe.status.state == "unverified"
+    assert recipe.status.state == "verified"
     assert recipe.sources
 
 

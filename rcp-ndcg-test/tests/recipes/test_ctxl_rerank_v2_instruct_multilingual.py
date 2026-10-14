@@ -279,7 +279,7 @@ def test_recipe_loads_and_declares_the_full_contract(variant_id: str) -> None:
         top=expected["top"],
     )
     assert recipe.engine.model_dump(mode="json") == expected["engine"]
-    assert recipe.input == ["text"] and recipe.status.state == "unverified"
+    assert recipe.input == ["text"] and recipe.status.state == "verified"
 
 
 def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(variant_id: str) -> None:

@@ -310,7 +310,7 @@ def test_recipe_contract() -> None:
         reference=EXPECTED_REFERENCE,
         top=EXPECTED_TOP,
     )
-    assert recipe.status.state == "unverified"
+    assert recipe.status.state == "verified"
     assert recipe.sources
 
 

@@ -306,7 +306,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert recipe.reference.kind == "sentence_transformers"
     assert recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]  # the model's over-cap cut drops the anchor
-    assert recipe.status.state == "unverified"
+    assert recipe.status.state == "verified"
     assert recipe.sources, "the recipe lists the URLs and path:line references it rests on"
 
 
