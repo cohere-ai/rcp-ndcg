@@ -3956,12 +3956,14 @@ text it sends to the declared budget.
   alias first, so every judging phase of a run reaches its engine.
 
 - **A media-bearing batch splits at the endpoint's declared media caps** (the T4's vidore run found it):
-  `max_images`/`max_videos` are what ONE wire request carries, but the embed and pool clients packed
-  `batch_size` items into a request regardless, so a VL encoder declaring `max_images: 1` (the served
-  engine's `limit_mm_per_prompt`) refused its own corpus with "this request carries 32 images and the
-  endpoint accepts 1 per request". The packing now splits a media-bearing batch at the caps -- one image
-  per request where the declaration says one -- and leaves a text-only batch grouped by `batch_size` as
-  before (the recordings already sent media one item per request, so no recorded exchange moves).
+  `max_images`/`max_videos` are what ONE wire request carries, but the embed client packed `batch_size`
+  items into a request regardless, so a VL encoder declaring `max_images: 1` (the served engine's
+  `limit_mm_per_prompt`) refused its own corpus with "this request carries 32 images and the endpoint
+  accepts 1 per request". The packing now splits a media-bearing batch at the caps -- one image per
+  request where the declaration says one -- and leaves a text-only batch grouped by `batch_size` as
+  before (the recordings already sent media one item per request, so no recorded exchange moves). The
+  pool client takes the same splitter; its wire already emitted one call per media item, so the split
+  changes only the requests the client packs, not what goes on the wire.
 
 - **The `pyjwt` pin moves to 2.15.1** (`pip-audit` against the release's constraints found 2.14.0 carrying
   two advisories, PYSEC-2026-4141 / CVE-2026-101918 and PYSEC-2026-4183 / CVE-2026-102275, both fixed in
