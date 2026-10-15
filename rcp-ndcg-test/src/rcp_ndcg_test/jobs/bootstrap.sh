@@ -69,6 +69,18 @@ auth() {
 
 now_s() { date +%s; }
 
+# gpu_count: the node's GPU count (the wave's --gpus).  nvidia-smi's own failure is loud, never the
+# malformed '1\n0' the old `... | wc -l || echo 0` pipeline produced under pipefail: run_wave's argparse
+# would then die with an invalid int, after the whole environment build.
+gpu_count() {
+  local listing
+  if ! listing="$(nvidia-smi --list-gpus 2>&1)"; then
+    echo "bootstrap: nvidia-smi --list-gpus failed: ${listing%%$'\n'*}" >&2
+    return 1
+  fi
+  grep -c '^GPU ' <<<"$listing" || true
+}
+
 # validate_version VERSION: the downloaded manifest's version field must be a plain PEP 440-shaped string.
 # The manifest is not itself hashed (only the files it lists are), so this field is attacker-controlled
 # for anyone who can write the stage: it may never reach a shell word or an install spec as syntax.
@@ -807,7 +819,7 @@ python3 "$REPORT_PY" emit --file "$REPORT"
 # --- wave mode: the wave runs through the client mechanism -------------------------------------------
 
 if [[ "$MODE" == "wave" ]]; then
-  gpus="$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 0)"
+  gpus="$(gpu_count)"
   echo "bootstrap: running the wave '$WAVE_NAME' on $gpus GPUs (list: $WAVE_LIST_FILE)" >&2
   mapfile -t wave_argv < <(wave_command "$WAVE_LIST_FILE" "$RECIPES_ROOT" "$gpus")
   exec "$STATE/client" python -m rcp_ndcg_test.jobs.run_wave "${wave_argv[@]}"

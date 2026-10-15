@@ -498,6 +498,34 @@ def test_bootstrap_searches_only_the_declared_sdk_dirs(tmp_path: Path, sdk_dirs:
     assert f"bootstrap: GCS transfer path: {expected}\n" in completed.stderr, completed.stderr
 
 
+def test_bootstrap_gpu_count_refuses_a_failing_nvidia_smi(bootstrap_functions: str, tmp_path: Path) -> None:
+    """g-rcjobs-3: a failed ``nvidia-smi --list-gpus`` must be loud, not a malformed count ('1\\n0') handed
+    to run_wave's ``--gpus`` (an argparse crash after the whole environment build)."""
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    nvidia = fakes / "nvidia-smi"
+    nvidia.write_text("#!/bin/sh\necho 'No devices were found'\nexit 6\n", encoding="utf-8")
+    nvidia.chmod(0o755)
+    env = {"PATH": sandbox_path(fakes, "bash", "grep"), "RCP_GCLOUD_SDK_DIRS": ""}
+    completed = subprocess.run(
+        ["bash", "-c", f'source "{bootstrap_functions}" && gpu_count'],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode != 0
+    assert "nvidia-smi --list-gpus failed: No devices were found" in completed.stderr
+    nvidia.write_text("#!/bin/sh\nprintf 'GPU 0: A\\nGPU 1: B\\n'\n", encoding="utf-8")
+    completed = subprocess.run(
+        ["bash", "-c", f'source "{bootstrap_functions}" && gpu_count'],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "2"
+
+
 def test_bootstrap_writes_a_quoted_client_wrapper_and_refuses_a_hostile_version(
     bootstrap_functions: str, tmp_path: Path
 ) -> None:
@@ -2846,6 +2874,60 @@ def test_the_probe_names_the_tensors_a_recording_missed() -> None:
     names = {"patch_embed": "patch_embed", "merger": "merger", "blocks.0": "block_0"}
     assert probe._missing_recorded(names, {"merger": object()}) == ["block_0", "patch_embed"]
     assert probe._missing_recorded(names, {key: object() for key in names.values()}) == []
+
+
+def test_wave0_preflight_refuses_a_failing_nvidia_smi(tmp_path: Path) -> None:
+    """g-rcjobs-3: with ``nvidia-smi --list-gpus`` failing (no GPUs visible, a driver mismatch) the old
+    pipeline yielded GPUS='1\\n0'; the arithmetic error inside an ``if`` read as false, so preflight passed
+    a GPU-less node and the job failed later, after the environment build.  The failure is now a named
+    preflight step and bootstrap never runs."""
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    nvidia = fakes / "nvidia-smi"
+    nvidia.write_text("#!/bin/sh\necho 'No devices were found'\nexit 6\n", encoding="utf-8")
+    nvidia.chmod(0o755)
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_transfer_detect() { printf "python\\n"; }\n'
+        'gcs_cp() { printf "%s\\n" "cp $*" >> "$STUB_GCS_LOG"; }\n',
+        encoding="utf-8",
+    )
+    bootstrap_log = tmp_path / "bootstrap.log"
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$STUB_BOOTSTRAP_LOG"\nexit 0\n', encoding="utf-8"
+    )
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    completed = subprocess.run(
+        ["bash", str(WAVE0_SH), str(stage), str(tmp_path / "out")],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": sandbox_path(fakes, "bash", "cat", "date", "grep", "mkdir", "mktemp", "python3", "rm"),
+            "HOME": str(tmp_path),
+            "TMPDIR": str(tmp_path),
+            "RCP_GCLOUD_SDK_DIRS": "",
+            "RCP_GCS_AUTH_FILE": str(auth),
+            "RCP_REPORT_PY": str(REPORT_PY),
+            "RCP_HOST_PY": str(WAVE0_HOST),
+            "RCP_BOOTSTRAP_SH": str(bootstrap),
+            "RCP_REFERENCE_DEPS_PY": str(REFERENCE_DEPS),
+            "RCP_GCS_HELPER_SH": str(gcs),
+            "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+            "HF_TOKEN": "hf_test_token",
+            "STUB_BOOTSTRAP_LOG": str(bootstrap_log),
+            "STUB_GCS_LOG": str(tmp_path / "gcs.log"),
+        },
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "wave0: step preflight failed: nvidia-smi --list-gpus failed: No devices were found" in completed.stderr
+    assert not bootstrap_log.exists(), "preflight stops the job before the environment build"
+    report = json.loads(completed.stdout[completed.stdout.index("{") :])
+    assert report["failed_step"] == "preflight"
+    assert "nvidia-smi --list-gpus failed" in report["error"]
 
 
 def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes() -> None:

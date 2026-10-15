@@ -232,7 +232,14 @@ raise SystemExit(0 if json.load(open(sys.argv[1])).get("passed", True) else 1)' 
 
 # --- preflight: the assumptions the node must meet ----------------------------------------------------
 
-GPUS="$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 0)"
+# The GPU count: nvidia-smi's own failure (no devices visible, a driver mismatch) is a named preflight
+# failure.  The old pipeline (`... | wc -l || echo 0`) yielded '1\n0' under pipefail, whose arithmetic
+# error an `if` reads as false: preflight passed a GPU-less node and the job died later, after the
+# environment build.
+if ! GPU_LISTING="$(nvidia-smi --list-gpus 2>&1)"; then
+  fail_step preflight "nvidia-smi --list-gpus failed: ${GPU_LISTING%%$'\n'*}"
+fi
+GPUS="$(grep -c '^GPU ' <<<"$GPU_LISTING" || true)"
 if ((GPUS < WAVE0_MIN_GPUS)); then
   fail_step preflight "the node has $GPUS GPUs, wave 0 needs $WAVE0_MIN_GPUS (two slots at once)"
 fi
