@@ -691,6 +691,45 @@ def test_the_plugin_check_falls_back_to_this_interpreter_without_a_shebang(
         run_console(["serve", "harrier-oss-v1-27b"])
 
 
+def test_the_plugin_spec_parses_a_ranged_url_or_non_canonical_spec() -> None:
+    """A ``serve.plugin`` is a pip spec: the name is the leading requirement name, PEP 503-normalised, and
+    a ranged, URL or underscore-spelled spec names the same distribution as the bare canonical one."""
+    from rcp_ndcg_vllm.recipe import plugin_distribution_name
+
+    assert plugin_distribution_name("rcp-ndcg-vllm>=0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp-ndcg-vllm~=0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp_ndcg_vllm==0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp-ndcg-vllm[extra]==0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp-ndcg-vllm @ file:///x.whl") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("  rcp-ndcg-vllm  ") == "rcp-ndcg-vllm"
+    with pytest.raises(RecipeError, match="serve.plugin"):
+        plugin_distribution_name("https://example.invalid/rcp_ndcg_vllm-0.0.1-py3-none-any.whl")
+
+
+def test_a_non_canonical_plugin_spelling_still_gets_the_architecture_check() -> None:
+    """The underscore spelling is the same distribution: a plugin architecture the wheel does not register is
+    refused, not silently loaded because the exact-string comparison missed."""
+    from pydantic import ValidationError
+    from rcp_ndcg_vllm.recipe import ServeConfig
+
+    base = {"runner": "pooling", "dtype": "bfloat16", "max_model_len": 1024}
+    with pytest.raises(ValidationError, match="PplxTypo"):
+        ServeConfig(**base, plugin="rcp_ndcg_vllm==0.0.1", plugin_architectures=("PplxTypo",))
+
+
+def test_the_missing_plugin_hint_quotes_the_spec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The install line is pasted into a shell: a ranged spec must be quoted, or ``>=`` redirects."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    monkeypatch.setattr(serve_module.shutil, "which", lambda _name: None)
+    directory = _write_family(tmp_path, family="foreign-plugin", serve_extra="  plugin: some-other-plugin>=1.0")
+    with pytest.raises(SystemExit) as excinfo:
+        run_console(["serve", str(directory)])
+    assert "pip install --no-deps 'some-other-plugin>=1.0'" in str(excinfo.value)
+
+
 def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

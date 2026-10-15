@@ -100,7 +100,7 @@ def _check_plugin(spec: str | None, *, engine_python: str | None = None) -> None
         where = "this environment"
     raise SystemExit(
         f"recipe names plugin {spec!r}, which {where} does not carry.\n"
-        f"install it first: pip install --no-deps {spec}"
+        f"install it first: pip install --no-deps {shlex.quote(spec)}"
     )
 
 

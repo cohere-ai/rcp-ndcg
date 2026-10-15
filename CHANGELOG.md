@@ -44,6 +44,11 @@ incompatibly, independently of the package version. All four distributions carry
   `PATH` from another environment (a pipx/uv-tool install) is refused before it starts when that environment
   lacks the wheel; an executable with no readable shebang falls back to the console's own environment, the
   documented one-interpreter install.
+- **`plugin_distribution_name` parses a real pip requirement** (vllm-4): a ranged, URL or non-canonical
+  `serve.plugin` spec (`rcp-ndcg-vllm>=0.0.1`, `rcp_ndcg_vllm==0.0.1`) now names the distribution it installs
+  (PEP 503-normalised), so it is no longer refused as missing, the architecture check applies to the
+  underscore spelling, text with no requirement name is refused naming the accepted forms, and the install
+  hint quotes the spec for the shell.
 
 ## 0.0.1 — 2026-10-14
 

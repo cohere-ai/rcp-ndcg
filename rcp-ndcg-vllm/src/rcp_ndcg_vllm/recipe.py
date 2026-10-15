@@ -211,15 +211,28 @@ always a misplaced engine setting -- silently ignored by the product's endpoint 
 an engine of another family."""
 
 
+_REQUIREMENT_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
+"""The PEP 508 requirement name: letters, digits and ``-_.`` inside, starting and ending alphanumeric."""
+
+
 def plugin_distribution_name(spec: str) -> str:
     """The distribution name a pip spec installs (``rcp-ndcg-vllm==0.0.1`` -> ``rcp-ndcg-vllm``).
 
     One home for the rule the recipe loader, the ``rcp-ndcg-vllm serve`` console and the harness's
-    behaviour fingerprint all need: the plugin spec's extras and exact-version pins are not part of the
-    distribution name.  ``spec`` is the ``serve.plugin`` value; the returned name is what
-    :func:`importlib.metadata.distribution` takes and what a recipe compares against the shipped wheel.
+    behaviour fingerprint all need: only the requirement's leading name is the distribution, PEP 503-
+    normalised (``rcp_ndcg_vllm`` and ``rcp-ndcg-vllm`` name the same distribution), and the extras, the
+    version specifiers and the URL a spec may carry are not part of it.  ``spec`` is the ``serve.plugin``
+    value; the returned name is what :func:`importlib.metadata.distribution` takes and what a recipe
+    compares against the shipped wheel.  Raises :class:`RecipeError` for text with no requirement name
+    (a bare URL has none), naming the field and the accepted forms.
     """
-    return spec.split("==", 1)[0].split("[", 1)[0].strip()
+    text = spec.strip()
+    match = _REQUIREMENT_NAME.match(text)
+    if match is None or not (match.end() == len(text) or text[match.end()] in "[<>=!~;@ "):
+        raise RecipeError(
+            f"serve.plugin {spec!r}: the form is NAME, NAME==VERSION, NAME[extras]==VERSION or NAME @ URL"
+        )
+    return re.sub(r"[-_.]+", "-", match.group(0)).lower()
 
 
 def _no_extra() -> dict[str, Any]:
