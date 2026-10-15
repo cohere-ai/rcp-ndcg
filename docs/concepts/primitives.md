@@ -116,7 +116,7 @@ Choose whom to judge the new document against, judge exactly those windows on St
 windows the calibration was fitted on together with the new ones:
 
 ```python
-windows = select_opponents(calibration, "q1", "q1-new", n=9, window=5)   # two windows of the new one and 4 opponents
+windows = select_opponents(calibration, "q1", "q1-new", n=9, window=5)   # 3 windows: 4 + 4 + 1 opponents
 # judge(dataset, None, judge_cfg, stage="tournament", out="tiny/judgements", windows={"q1": windows})
 inserted = insert_documents(calibration, read_judgements("tiny/judgements", "tiny/insertion"))
 ```
