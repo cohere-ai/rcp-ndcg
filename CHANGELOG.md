@@ -4686,12 +4686,15 @@ text it sends to the declared budget.
   and `fit`'s pair checks and cuts use it for a template-less config; every shipped reranker recipe declares a
   template and is unchanged.
 
-- **The qwen3_vl unsized-container bound is a true ceiling again**: the bound divided the per-clip pixel
+- **The qwen3_vl unsized-container bound is a true ceiling**: the bound divided the per-clip pixel
   ceiling by `temporal_patch * factor^2`, i.e. it assumed the resize's temporal bar equals the frames rendered.
-  For an odd sampled frame count the bar is one frame shorter than the `ceil(n / temporal_patch)` groups the
-  engine renders, so the bound could sit up to 1.5x below the exact count (75 frames at 30 fps sampled at
-  2 fps: bound 12,326 against an exact 18,470), and a role client reserving media from it under-reserved. The
-  bound is now per group (`ceiling // (t_bar * factor^2)`, `t_bar` the resize's own bar) times the groups.
+  The resize shrinks by `beta = sqrt(n * h * w / ceiling)` -- the rendered frame count `n`, while the bar
+  `round(n / 2) * 2` is one frame MORE than `n` for `n = 3 mod 4` (7, 15, 23, ...) -- and the factor floor can
+  bind at the resize's 200:1 aspect ceiling, so the figure could sit below the exact count (7 frames at
+  3072x2048: bound 12,338 against an exact 13,874; 150 frames at 32x6304: bound 13,127 against an exact
+  14,327), and a role client reserving media from it under-reserved. The bound now takes the largest of the
+  resize's three regimes: the bar's share, the rendered frame count's share (with the factor floor's
+  `sqrt(200)` long-edge case), and the floor's upscale rounding.
 
 - **A pair cut by both `document_max_tokens` and the budget records both mechanisms**: the cap's
   `document_share` row used to be replaced by the budget cut's `budget_cut` when the capped pair still

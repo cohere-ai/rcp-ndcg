@@ -328,9 +328,12 @@ class TestContentMediaTokens:
         assert "fps" in str(refused.value)
 
     def test_an_unsized_qwen3_vl_container_is_bounded_by_the_clip_budget(self):
-        """The per-clip budget bounds the whole clip's patch tokens -- 25,165,824px over a temporal patch
-        times the 32-pixel factor is 12,288 merged tokens -- plus the outer vision pair and each group's
-        wrapper and timestamp (75 groups for a 600-frame/8 fps clip sampled at 2 fps)."""
+        """The per-clip budget bounds the whole clip's patch tokens per temporal group: the resize's
+        temporal bar is the 150 frames themselves, but the factor floor binds for a frame at the resize's
+        200:1 aspect ceiling -- the short edge keeps one factor block while the long edge reaches
+        floor(sqrt(200 * 25,165,824 / (150 * 32^2))) = 181 merged tokens -- so the bound is 75 groups x
+        181, plus the outer vision pair and each group's wrapper and timestamp (75 groups for a 600-frame/
+        8 fps clip sampled at 2 fps)."""
         clip = MediaRef(uri="gs://v/a.mp4", num_frames=600, fps=8.0)
         policy = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
 
@@ -340,24 +343,43 @@ class TestContentMediaTokens:
             _video(None, "video_url", fps=2.0, engine_video_pinning=True),
         )
 
-        # 150 sampled frames, even: the resize's temporal bar is the 150 frames themselves, so the bound is
-        # 75 groups x floor(25165824 / (150 * 32^2)) = 75 x 163 patch tokens.
-        assert count == (VISION_WRAPPER_TOKENS + 75 * (25165824 // (150 * 32 * 32)) + 75 * (2 + 10), 1)
+        # 150 sampled frames, even: the bound is 75 groups x 181 patch tokens (the 200:1 floor case).
+        assert count == (VISION_WRAPPER_TOKENS + 75 * 181 + 75 * (2 + 10), 1)
 
-    def test_an_unsized_qwen3_vl_bound_is_a_true_ceiling_for_odd_frame_counts(self):
-        """The resize enforces the per-clip ceiling over ``round(n / 2) * 2`` frames, but the engine renders
-        ``ceil(n / 2)`` temporal groups: for an odd n the resize's temporal bar is one frame short of the
-        groups rendered, so a bound derived from the whole-clip ceiling undercounts by up to 1.5x. The bound
-        is per group -- ``ceiling // (t_bar * factor^2)``, with ``t_bar`` the resize's own bar -- times the
-        groups."""
+    @pytest.mark.parametrize("sampled", [4, 5, 6, 7, 8, 9, 11, 15, 23, 31, 32, 63, 64, 122, 123, 150, 767, 768])
+    @pytest.mark.parametrize("size", [(3072, 2048), (1920, 2160), (32, 6304), (6304, 32)])
+    @pytest.mark.parametrize(
+        ("rate", "method"),
+        [(None, None), (0.25, "evs"), (0.5, "vidcom2")],
+        ids=["unpruned", "evs-0.25", "vidcom2-0.5"],
+    )
+    def test_an_unsized_qwen3_vl_bound_is_a_true_ceiling(
+        self, sampled: int, size: tuple[int, int], rate: float | None, method: str | None
+    ) -> None:
+        """The bound must hold for EVERY sampled frame count and frame geometry, not only the count the
+        first test happened to use. The resize shrinks by ``beta = sqrt(n * h * w / ceiling)`` -- the frame
+        count ``n`` the engine renders, while the temporal bar ``t_bar = round(n / 2) * 2`` is one frame
+        MORE than ``n`` for ``n = 3 mod 4`` -- and the factor floor can bind at the resize's 200:1 aspect
+        ceiling; both leave the old whole-clip and per-group figures below the exact count."""
+        height, width = size
         image = ImagePolicy(min_px=65536, max_px=1003520, processor="qwen3_vl")
-        video = _video(None, "video_url", fps=2.0, engine_video_pinning=True)
-        base = dict(uri="/x/clip.mp4", mime="video/mp4", num_frames=75, fps=30.0, duration_s=2.5)
+        video = _video(
+            None,
+            "video_url",
+            fps=2.0,
+            engine_video_pinning=True,
+            engine_video_pruning=rate,
+            engine_video_pruning_method=method,
+        )
+        # `sampled * 15` frames at 30 fps sampled at 2 fps realise exactly `sampled` frames.
+        base = dict(uri="/x/clip.mp4", mime="video/mp4", num_frames=sampled * 15, fps=30.0, duration_s=sampled / 2)
         exact = content_media_tokens(
-            Content.from_parts([VideoPart(ref=MediaRef(width=3072, height=2048, **base))]), image, video
+            Content.from_parts([VideoPart(ref=MediaRef(width=width, height=height, **base))]), image, video
         ).tokens
         bound = content_media_tokens(Content.from_parts([VideoPart(ref=MediaRef(**base))]), image, video).tokens
-        assert bound >= exact, f"the bound {bound} is below the exact count {exact}"
+        assert bound >= exact, (
+            f"the bound {bound} is below the exact count {exact} for {sampled} sampled frames at {height}x{width}"
+        )
 
     def test_a_container_without_a_frame_policy_is_refused(self):
         """The engine's default sampling would decide the cost; nothing here knows it."""
