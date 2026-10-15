@@ -143,6 +143,25 @@ def test_a_variant_id_not_unique_within_the_family_is_refused(tmp_path: Path) ->
         load_family(copied)
 
 
+def test_a_variant_id_declared_by_two_families_is_refused_by_resolve_recipe(tmp_path: Path) -> None:
+    """g-rcjobs-6: two family directories declaring one variant id would let resolve_recipe pick whichever
+    sorts first (the bootstrap links every staged family directory), so a stale directory could supply the
+    recipe the wave validates.  iter_recipes refuses duplicates; resolve_recipe must refuse them too."""
+    import shutil
+
+    import yaml
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    for name in ("a-family", "b-family"):
+        copied = tmp_path / name
+        shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+        family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+        family["id"] = name
+        (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="two families"):
+        resolve_recipe("fixture-embed", root=tmp_path)
+
+
 def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) -> None:
     """client.max_tokens must fit the engine's max_model_len: the engine would 400 the rendered prompt."""
     import shutil

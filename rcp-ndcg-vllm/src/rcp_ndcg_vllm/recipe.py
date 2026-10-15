@@ -1882,14 +1882,16 @@ def resolve_recipe(variant_id: str, root: str | Path | None = None) -> Recipe:
     Inputs: the recipe id (the variant id of the family that declares it) and the recipes root whose family
     directories carry it.  Outputs: the frozen resolved recipe, its ``_dir`` set to the family directory --
     shipped when the directory is one of the package's own (any spelling of that root), unshipped otherwise.
-    Raises :class:`RecipeError`: an unknown id (the known ids named), or the first family that failed to load --
-    a broken family must not read as an unknown id.
+    Raises :class:`RecipeError`: an unknown id (the known ids named), an id two families declare (variant
+    ids are unique across the catalog, as :func:`iter_recipes` enforces), or the first family that failed to
+    load -- a broken family must not read as an unknown id.
     """
     root = Path(root) if root is not None else default_recipes_root()
     if not root.is_dir():
         raise RecipeError(f"no recipe root at {root}")
     failure: RecipeError | None = None
     known: list[str] = []
+    matches: list[tuple[RecipeFamily, Variant, Path]] = []
     for directory in _family_dirs(root):
         try:
             family = load_family(directory)
@@ -1899,7 +1901,15 @@ def resolve_recipe(variant_id: str, root: str | Path | None = None) -> Recipe:
         known.extend(variant.id for variant in family.variants)
         for variant in family.variants:
             if variant.id == variant_id:
-                return _expand_variant(family, variant, directory, directory / "family.yaml")
+                matches.append((family, variant, directory))
+    if len(matches) > 1:
+        raise RecipeError(
+            f"recipe id {variant_id!r} resolves from two families ({matches[0][2].name} and "
+            f"{matches[1][2].name}): variant ids must be unique across the catalog"
+        )
+    if matches:
+        family, variant, directory = matches[0]
+        return _expand_variant(family, variant, directory, directory / "family.yaml")
     if failure is not None:
         raise failure
     known_text = ", ".join(sorted(known)) if known else "(none)"

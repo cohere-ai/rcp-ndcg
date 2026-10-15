@@ -556,6 +556,21 @@ if bad:
     print(f"bootstrap: these staged files do not hash to the manifest: {bad}", file=sys.stderr)
     raise SystemExit(1)
 print(f"bootstrap: {len(manifest['files'])} staged files verified", file=sys.stderr)
+# g-rcjobs-6: a re-staged RC name merges over the old prefix, so a stage can hold files the manifest does
+# not list (bootstrap links every staged family directory; a stale one could supply a recipe the wave
+# validates).  reports/ and scenarios/ are the documented operator-added paths.
+listed = {entry["path"] for entry in manifest["files"]}
+unlisted = []
+for path in stage.rglob("*"):
+    if not path.is_file():
+        continue
+    relative = str(path.relative_to(stage))
+    if relative in listed or relative == "manifest.json" or relative.startswith(("reports/", "scenarios/")):
+        continue
+    unlisted.append(relative)
+if unlisted:
+    print(f"bootstrap: the stage holds files the manifest does not list: {sorted(unlisted)}", file=sys.stderr)
+    raise SystemExit(1)
 PYEOF
 
 # --- uv, outside the engine environment --------------------------------------------------------------

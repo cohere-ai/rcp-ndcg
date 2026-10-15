@@ -206,6 +206,25 @@ if siblings:
 PYEOF
 }
 
+# refuse_existing_stage: the stage name must be fresh.  A recursive copy into an existing prefix merges
+# over the old stage (the storage CLIs only add or overwrite): files the new manifest does not list would
+# survive, and bootstrap links every staged family directory (g-rcjobs-6).  Refuses with a fresh-name hint.
+refuse_existing_stage() {
+  local uri="${RCP_STAGE_PREFIX%/}/${RC_NAME:?set RC_NAME}" listing=0
+  if command -v gcloud >/dev/null; then
+    if gcloud storage ls "$uri/manifest.json" >/dev/null 2>&1; then listing=1; fi
+  elif gsutil -q ls "$uri/manifest.json" >/dev/null 2>&1; then
+    listing=1
+  fi
+  if ((listing)); then
+    echo "rc_build: $uri already holds a stage; a recursive copy would merge over it (stale files the" \
+      "manifest never lists). Use a fresh name (e.g. $RC_NAME-$(date -u +%Y%m%d%H%M)) or delete the old" \
+      "prefix first." >&2
+    return 1
+  fi
+  return 0
+}
+
 rc_build_main() {
 RC_NAME="${1:?usage: rc_build.sh <RC_NAME> [<COMMIT>]}"
 COMMIT="${2:-HEAD}"
@@ -464,6 +483,7 @@ print(f"rc_build: manifest lists {len(files)} files ({len(cpu_inert)} inert on a
 PYEOF
 
 echo "rc_build: staging to ${RCP_STAGE_PREFIX%/}/$RC_NAME/"
+refuse_existing_stage || exit 1
 if command -v gcloud >/dev/null; then
   gcloud storage cp -r stage/"$RC_NAME" "${RCP_STAGE_PREFIX%/}/"
 else

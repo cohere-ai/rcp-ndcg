@@ -861,6 +861,45 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     assert empty["reference"]["n_families"] == 0
 
 
+def test_bootstrap_refuses_a_stage_file_the_manifest_does_not_list(tmp_path: Path) -> None:
+    """g-rcjobs-6: re-staging an RC name merges over the old prefix, so a stage can hold stale files the
+    manifest never lists (bootstrap used to install and load them: it links every staged family directory).
+    The verification refuses them by name, outside reports/ and scenarios/ (the documented operator paths)."""
+    work = tmp_path / "work"
+    (work / "gcs").mkdir(parents=True)
+    (work / "gcs" / "gcs.sh").write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_transfer_detect() { echo "stub"; }\ngcs_cp() { :; }\n', encoding="utf-8"
+    )
+    (work / "gcs" / "gcs.py").write_text("", encoding="utf-8")
+    auth = work / "gcs_auth.sh"
+    auth.write_text("", encoding="utf-8")
+    stage = work / "stage"
+    (stage / "recipes" / "stale-family").mkdir(parents=True)
+    (stage / "recipes" / "stale-family" / "family.yaml").write_text("id: stale\n", encoding="utf-8")
+    (stage / "scenarios").mkdir()
+    (stage / "scenarios" / "wave.yaml").write_text("name: wave\n", encoding="utf-8")
+    (stage / "manifest.json").write_text(
+        json.dumps({"version": "0.0.1", "commit": "0" * 40, "files": []}), encoding="utf-8"
+    )
+    env = {
+        **os.environ,
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_GCS_HELPER_SH": str(work / "gcs" / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(work / "gcs" / "gcs.py"),
+        "RCP_REPORT_PY": str(REPORT_PY),
+    }
+    completed = subprocess.run(
+        ["bash", str(BOOTSTRAP), "envs", str(stage), "--state", str(work / "state")],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "files the manifest does not list" in completed.stderr
+    assert "recipes/stale-family/family.yaml" in completed.stderr
+    assert "scenarios/wave.yaml" not in completed.stderr  # a documented operator-added path
+
+
 def test_reference_install_failure_is_loud(tmp_path: Path) -> None:
     """A pin the staged wheelhouse cannot satisfy fails the install loudly, with the way out."""
     fake = _fake_reference_python(tmp_path, fail=True)
@@ -1870,6 +1909,42 @@ def test_rc_build_without_wave_lists_stages_none(tmp_path: Path) -> None:
     completed = _stage_wave_lists(tmp_path, checkout)
     assert completed.returncode == 0
     assert "staging no wave lists" in completed.stderr
+
+
+def test_rc_build_refuses_a_stage_name_that_already_holds_a_stage(tmp_path: Path) -> None:
+    """g-rcjobs-6: a recursive copy into an existing prefix merges over the old stage (stale files the new
+    manifest never lists stay behind), so a reused RC name is refused with a fresh-name hint."""
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    gcloud = fakes / "gcloud"
+    gcloud.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    gcloud.chmod(0o755)
+    env = {"PATH": f"{fakes}:/usr/bin:/bin"}
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{RC_BUILD}" && RCP_STAGE_PREFIX="gs://YOUR-BUCKET/rc" RC_NAME=rc0 refuse_existing_stage',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode != 0
+    assert "already holds a stage" in completed.stderr
+    assert "fresh name" in completed.stderr
+    gcloud.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{RC_BUILD}" && RCP_STAGE_PREFIX="gs://YOUR-BUCKET/rc" RC_NAME=rc0 refuse_existing_stage',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_rc_build_stages_the_recipe_tree_before_it_reads_the_family_locks() -> None:
