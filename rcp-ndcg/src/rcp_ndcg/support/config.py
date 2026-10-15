@@ -22,7 +22,7 @@ from typing import Any
 import yaml
 
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.support.resources import REDACTED, looks_like_secret
+from rcp_ndcg.support.resources import REDACTED, carries_a_key, looks_like_secret
 from rcp_ndcg.support.urls import redact_urls
 
 EXTENDS_KEY = "extends"
@@ -335,23 +335,72 @@ def _plain(value: Any) -> Any:
     return repr(value)
 
 
+def _credential_flag(word: str) -> bool:
+    """Whether an argv word names a credential-bearing flag (``--api-key``, ``--hf-token``, ...).
+
+    The flag's own name, with ``-`` read as ``_``, is judged by
+    :func:`~rcp_ndcg.support.resources.looks_like_secret`: ``--max-num-batched-tokens`` is a budget and
+    ``--tokenizer`` names a model, so neither is a credential.
+    """
+    if not word.startswith("--"):
+        return False
+    flag = word.partition("=")[0].removeprefix("--").replace("-", "_")
+    return looks_like_secret(flag)
+
+
+def _redacted_word(word: str) -> str:
+    """One argv word: a value that carries a credential by shape, or an inline ``--flag=value`` credential's
+    value, becomes REDACTED; every other string is passed through
+    :func:`~rcp_ndcg.support.urls.redact_urls` so a credential-bearing URL cannot ride out either."""
+    if carries_a_key(word):
+        return REDACTED
+    flag, separator, _ = word.partition("=")
+    if separator and _credential_flag(flag):
+        return f"{flag}={REDACTED}"
+    return redact_urls(word)
+
+
+def _redacted_words(words: Sequence[Any], loc: Sequence[str]) -> list[Any]:
+    """An argv list: a credential flag's separated value (``--api-key sk-...``) becomes REDACTED too."""
+    redacted: list[Any] = []
+    credential_next = False
+    for word in words:
+        if isinstance(word, str):
+            if credential_next and not word.startswith("-"):
+                redacted.append(REDACTED)
+                credential_next = False
+                continue
+            redacted.append(_redacted_word(word))
+            credential_next = _credential_flag(word) and "=" not in word
+        else:
+            redacted.append(_redacted_input(word, loc))
+            credential_next = False
+    return redacted
+
+
 def _redacted_input(value: Any, loc: Sequence[str]) -> Any:
     """``value`` as the ``input`` of one problem, with secrets redacted.
 
     The details reach ``--json`` output, CI logs and MCP tool results, so a secret must not ride out in them:
     a value under a secret-looking key (or under an ``env`` mapping, whose values are credentials by
-    convention) becomes :data:`~rcp_ndcg.support.resources.REDACTED`, and every string is passed through
-    :func:`~rcp_ndcg.support.urls.redact_urls` so a credential-bearing URL cannot either. ``loc`` is the
-    problem's location; nested mapping keys are appended as the walk goes.
+    convention) becomes :data:`~rcp_ndcg.support.resources.REDACTED`, a value that carries a credential by
+    shape (:func:`~rcp_ndcg.support.resources.carries_a_key`) becomes it too, a credential flag's value in an
+    argv list (``--api-key sk-...``/``--api-key=sk-...``) is replaced, and every other string is passed
+    through :func:`~rcp_ndcg.support.urls.redact_urls` so a credential-bearing URL cannot either. ``loc`` is
+    the problem's location; nested mapping keys are appended as the walk goes.
     """
     if any(looks_like_secret(part) for part in loc):
         return REDACTED
+    if "env" in loc:
+        # An env mapping's values are credentials by convention, whatever the variable is called; the names
+        # stay (they are what the message is about) and every value becomes REDACTED.
+        return {str(key): REDACTED for key in value} if isinstance(value, Mapping) else REDACTED
     if isinstance(value, Mapping):
         return {str(key): _redacted_input(item, (*loc, str(key))) for key, item in value.items()}
     if isinstance(value, list | tuple):
-        return [_redacted_input(item, loc) for item in value]
+        return _redacted_words(value, loc)
     if isinstance(value, str):
-        return redact_urls(value)
+        return _redacted_word(value)
     return value
 
 
