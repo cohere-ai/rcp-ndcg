@@ -416,6 +416,7 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
     fake_transformers = types.ModuleType("transformers")
     fake_transformers.AutoConfig = FakeAutoConfig  # type: ignore[attr-defined]
     fake_transformers.Qwen3_5Config = type("Qwen3_5Config", (), {})  # type: ignore[attr-defined]
+    fake_transformers.Qwen3_5TextConfig = type("Qwen3_5TextConfig", (), {})  # type: ignore[attr-defined]
     fake_transformers.Qwen3Config = type("Qwen3Config", (), {})  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "vllm", fake_vllm)
     monkeypatch.setitem(sys.modules, "vllm.model_executor", types.ModuleType("vllm.model_executor"))

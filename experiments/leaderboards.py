@@ -244,7 +244,12 @@ def known_deviations(suites: Iterable[str]) -> tuple[KnownDeviation, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--suite", nargs="*", default=["nanobeir", "bright", "vidore", "trecdl"])
+    ap.add_argument(
+        "--suite",
+        nargs="+",
+        choices=["nanobeir", "bright", "vidore", "trecdl"],
+        default=["nanobeir", "bright", "vidore", "trecdl"],
+    )
     ap.add_argument("--out", help="write the per-query scores to this CSV")
     args = ap.parse_args(argv)
     fetch_group("leaderboards")

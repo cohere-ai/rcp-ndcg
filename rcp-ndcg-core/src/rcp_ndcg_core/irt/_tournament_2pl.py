@@ -32,6 +32,15 @@ import torch.optim as optim
 
 from rcp_ndcg_core.irt._calibration import MIN_SHARED_ITEMS, JudgeOverlapError, verdicts
 
+#: The optimiser's iteration cap.
+MAX_ITER = 500
+
+#: The sum-unit gradient at or below which the tournament fit counts as converged. The float32
+#: optimiser stops at about 1e-6 in mean units (a few units once the mean loss is written in sum
+#: units) and a float64 continuation reaches about 0.1, so this separates the two; the optimiser's
+#: own ``tolerance_grad`` (1e-13, mean units) can never trigger in float32.
+CONVERGED_GRAD_SUM = 1.0
+
 
 class Tournament2PLCalibrator(nn.Module):
     """Offline 2PL IRT calibrator with per-query affine transforms on frozen BT theta.
@@ -337,7 +346,7 @@ class Tournament2PLCalibrator(nn.Module):
         optimizer = optim.LBFGS(
             [p for p in self.parameters() if p.requires_grad],
             lr=1.0,
-            max_iter=500,
+            max_iter=MAX_ITER,
             tolerance_grad=1e-13,
             tolerance_change=1e-15,
             history_size=100,
@@ -358,6 +367,20 @@ class Tournament2PLCalibrator(nn.Module):
             optimizer.step(closure)
         finally:
             torch.set_num_threads(threads)
+
+        # The optimiser's own state, for the fit diagnostics. The loss is a mean over N*K terms, so
+        # the sum-unit gradient is the mean gradient times N*K; the max is over the per-query scale
+        # and offset parameters (gamma/beta are shared across queries, severity across judges).
+        state = optimizer.state.get(optimizer.param_groups[0]["params"][0], {})
+        self.n_iter = int(state.get("n_iter", 0))
+        scale = float(self._Y.numel()) if self._Y is not None else 1.0
+        per_query: list[torch.Tensor] = []
+        for name in ("tau_raw", "alpha_param"):
+            param = getattr(self, name, None)
+            if param is not None and param.grad is not None:
+                per_query.append(param.grad.detach().abs() * scale)
+        self.max_grad_sum = max((float(grad.max()) for grad in per_query), default=0.0)
+        self.converged = self.n_iter < MAX_ITER and self.max_grad_sum <= CONVERGED_GRAD_SUM
 
     def get_item_params(self) -> dict:
         """Return calibrated item parameters as a plain dict."""

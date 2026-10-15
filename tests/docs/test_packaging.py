@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -407,6 +408,11 @@ _NOTICE_PATH = re.compile(
     r"|experiments|packages)/[A-Za-z0-9_./-]+\.(?:py|jinja))\b"
 )
 
+#: A folded model file's header names its upstream (a fold note, an upstream SPDX line or the
+#: HuggingFace copyright): the attribution test collects these files automatically.
+_THIRD_PARTY_HEADER = re.compile(r"Folded from|SPDX-FileCopyrightText|Copyright .* HuggingFace")
+
+
 #: The audited derived files under the recipes and plugins: each ports, adapts or restates third-party code
 #: (a model card's usage code, a checkpoint's remote code, vLLM internals), so NOTICE must name it. Every
 #: template and every vendored module of a recipe directory is added automatically below.
@@ -442,7 +448,8 @@ def test_every_repository_path_the_notice_names_exists() -> None:
 
 
 def test_the_notice_attributes_every_third_party_recipe_and_plugin_file() -> None:
-    """Every recipe template, every vendored recipe module and every audited port is named in NOTICE."""
+    """Every recipe template, every vendored recipe module, every audited port and every folded model
+    file is named in NOTICE."""
     notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
     recipes = ROOT / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
     automatic = {
@@ -450,7 +457,14 @@ def test_the_notice_attributes_every_third_party_recipe_and_plugin_file() -> Non
         for path in recipes.glob("*/*")
         if path.suffix == ".jinja" or (path.suffix == ".py" and path.name != "reference.py")
     }
-    expected = automatic | set(_DERIVED_RECIPE_AND_PLUGIN_FILES)
+    models = ROOT / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "models"
+    folded = {
+        path.relative_to(ROOT).as_posix()
+        for path in models.rglob("*.py")
+        if _THIRD_PARTY_HEADER.search("\n".join(path.read_text(encoding="utf-8").splitlines()[:15]))
+    }
+    assert folded, "no folded model file declares its upstream; update this test if the fold changed"
+    expected = automatic | folded | set(_DERIVED_RECIPE_AND_PLUGIN_FILES)
     missing = sorted(path for path in expected if path not in notice)
     assert not missing, f"NOTICE does not attribute: {missing}"
 
@@ -601,3 +615,138 @@ def test_the_notice_summary_names_every_licence_its_entries_name() -> None:
     assert named, "no NOTICE entry names its licence"
     missing = sorted(licence for licence in named if licence not in " ".join(summary.split()))
     assert not missing, f"the NOTICE summary omits the entries' licence(s) {missing}"
+
+
+#: The pydantic config keys the records rely on; they first exist in pydantic 2.11.
+PYDANTIC_211_KEYS = ("validate_by_name=", "validate_by_alias=", "serialize_by_alias=")
+PYDANTIC_211 = Version("2.11")
+
+
+def test_the_pydantic_floor_covers_the_config_keys_the_code_uses() -> None:
+    """Pydantic before 2.11 ignores unknown ``ConfigDict`` keys without a warning.
+
+    ``validate_by_name``, ``validate_by_alias`` and ``serialize_by_alias`` arrived in 2.11, and the
+    records rely on them: with an older pydantic, ``Query(text=..., id=...)`` fails validation and every
+    record with a ``schema`` alias is dumped under its field name (``schema_name``), violating the
+    committed JSON Schemas. The declared floor must admit the version that implements them.
+    """
+    sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for folder in ("rcp-ndcg/src", "rcp-ndcg-core/src")
+        for path in (ROOT / folder).rglob("*.py")
+    )
+    used = [key for key in PYDANTIC_211_KEYS if key in sources]
+    assert used, "the scan found no pydantic 2.11 config keys; update this test if the models changed"
+    for member in ("rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"):
+        manifest = tomllib.loads((ROOT / member / "pyproject.toml").read_text(encoding="utf-8"))
+        requirements = [Requirement(spec) for spec in manifest["project"]["dependencies"]]
+        pydantic = [req for req in requirements if req.name.lower() == "pydantic"]
+        assert len(pydantic) == 1, f"{member} declares pydantic {len(pydantic)} times"
+        floors = [Version(spec.version) for spec in pydantic[0].specifier if spec.operator == ">="]
+        assert floors and min(floors) >= PYDANTIC_211, f"{member} declares {pydantic[0]}"
+
+
+def test_every_member_build_directory_is_ignored() -> None:
+    """An in-tree build (``pip wheel ./rcp-ndcg``) leaves ``build/`` output behind.
+
+    ``/rcp-ndcg-*/build/`` covers the three hyphenated members; the main distribution's directory must be
+    ignored too, or its build output shows up in ``git status`` and in ``git add -A``.
+    """
+    for member in ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test"):
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", f"{member}/build/lib/x.py"], cwd=ROOT, capture_output=True
+        )
+        assert result.returncode == 0, f"{member}/build/ is not ignored"
+
+
+def test_the_wheel_smoke_gates_run_the_freeze_check_and_every_dry_run() -> None:
+    """AGENTS.md's release gates: the ``--no-deps`` freeze check and a dry-run of every recipe, from a wheel.
+
+    The CI tests standing in for them build the wheel with ``uv build --offline`` and turned a failed
+    build into a skip, so both gates reported green without running. The freeze check and the
+    every-recipe dry-run must be steps of the tag pipeline and of CI's wheel-smoke job.
+    """
+    for name in ("release.yml", "ci.yml"):
+        workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
+        runs = [str(step.get("run", "")) for job in workflow["jobs"].values() for step in job.get("steps", [])]
+        assert any("check_no_deps_install.py" in run and "dist/rcp_ndcg_vllm-*.whl" in run for run in runs), (
+            f"{name}: no step runs the --no-deps freeze check on the built rcp-ndcg-vllm wheel"
+        )
+        assert any("iter_recipes()" in run and "--dry-run" in run and "for " in run for run in runs), (
+            f"{name}: no step dry-runs every recipe from the built wheel"
+        )
+
+
+def test_the_wheel_build_fixture_fails_in_ci_instead_of_skipping(tmp_path: Path) -> None:
+    """A wheel build that fails offline must fail CI, not skip the freeze and recipe checks away.
+
+    The fixture is exercised with an empty uv cache and no network, which is the vllm-plugins job's
+    situation: the build cannot resolve its build requirements there, and in CI that must be an error.
+    """
+    env = {**os.environ, "CI": "1", "UV_OFFLINE": "1", "UV_CACHE_DIR": str(tmp_path / "empty-uv-cache")}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "rcp-ndcg-vllm/tests/models/test_wheel_contract.py"
+            "::test_the_wheel_is_pure_python_and_declares_only_the_image_deps",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode != 0, result.stdout
+    assert "skipped" not in result.stdout
+
+
+def test_the_gated_job_type_checks_with_the_integrations_installed() -> None:
+    """The dev-only ``types`` job sees mteb, datasets and transformers as ``Unknown``.
+
+    Every error the integrations carry is invisible there, so the gated job (which installs the
+    ``mteb`` and ``data`` extras) must run basedpyright with them resolved.
+    """
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    runs = [str(step.get("run", "")) for step in workflow["jobs"]["gated"]["steps"]]
+    assert any("cpu-env.sh" in run and "mteb" in run for run in runs), "the gated job must install the mteb extra"
+    assert any("basedpyright" in run for run in runs), "the gated job must type-check with the integrations resolved"
+
+
+def test_every_network_marked_test_file_runs_in_a_network_enabled_job() -> None:
+    """A network-marked test file no CI job opens is dead coverage: it skips everywhere and reports green.
+
+    The check was dead in CI once (``tests/test_cases_package.py``); this keeps that fix from being the
+    last one. Each marked file must be named by a step of a ci.yml job that sets
+    ``RCP_NDCG_NETWORK_TESTS=1`` (a step env or an export in the step's shell).
+    """
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    enabled_runs: list[str] = []
+    for job in workflow["jobs"].values():
+        steps = job.get("steps", [])
+        enabled = any(
+            str((step.get("env") or {}).get("RCP_NDCG_NETWORK_TESTS")) == "1"
+            or "RCP_NDCG_NETWORK_TESTS=1" in str(step.get("run", ""))
+            for step in steps
+        )
+        if enabled:
+            enabled_runs.extend(str(step.get("run", "")) for step in steps)
+    marked = [
+        path.relative_to(ROOT).as_posix()
+        for path in sorted((ROOT / "tests").rglob("*.py"))
+        if re.search(r"^\s*@?pytest\.mark\.network\b", path.read_text(encoding="utf-8"), re.M)
+    ]
+    assert marked, "no network-marked test file found; update this test if the markers changed"
+
+    def named_by(run: str, path: str) -> bool:
+        if re.search(rf"(?<![\w./-]){re.escape(path)}(?![\w])", run):
+            return True
+        parent = path.rsplit("/", 1)[0]
+        return re.search(rf"(?<![\w./-]){re.escape(parent)}(?![\w./-])", run) is not None
+
+    uncovered = [path for path in marked if not any(named_by(run, path) for run in enabled_runs)]
+    assert not uncovered, f"network-marked test files that no network-enabled CI job opens: {uncovered}"

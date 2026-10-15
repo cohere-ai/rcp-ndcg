@@ -81,6 +81,12 @@ class FitDiagnostics(pydantic.main.BaseModel)
 
 - `skipped_queries: int` = 0
 
+- `tournament_converged: bool | None` = None
+
+- `tournament_iterations: int | None` = None
+
+- `tournament_max_grad: float | None` = None
+
 ## `JudgeOverlapError`
 
 exception — Pooled judges share too few ``(query, doc)`` items to be put on one scale.

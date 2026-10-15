@@ -27,7 +27,9 @@ so this is the only config surface the engine consumes.
 
 from __future__ import annotations
 
-from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5Config
+from typing import cast
+
+from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5Config, Qwen3_5TextConfig
 
 __all__ = ["TopkEmbedConfig", "MODEL_TYPE"]
 
@@ -66,4 +68,6 @@ class TopkEmbedConfig(Qwen3_5Config):
             self.output_dim = self.dim
         if not 0 < self.output_dim <= self.dim:
             raise ValueError(f"output_dim must be in 1..{self.dim}")
-        self.text_config.use_cache = False
+        # transformers types the parent's ``text_config`` as ``dict | PreTrainedConfig | None``; the
+        # sub-config machinery has already built the checkpoint's Qwen3.5 text config.
+        cast(Qwen3_5TextConfig, self.text_config).use_cache = False

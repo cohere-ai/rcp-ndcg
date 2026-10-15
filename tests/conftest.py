@@ -13,10 +13,15 @@ from pathlib import Path
 from typing import Any
 
 # Keep a test run out of the user's cache: caches (media, remote-object and calibration
-# caches) go to a per-session temporary directory.
+# caches) go to a per-session temporary directory. The assignment is unconditional -- an exported
+# RCP_NDCG_CACHE_DIR (the documented container and shared-volume setting) must not redirect the
+# suite into a real cache -- and the media and runs directories are cleared for the same reason;
+# the tests that need them set them with monkeypatch.
 ROOT = Path(__file__).resolve().parent.parent
 _SESSION_SCRATCH = Path(tempfile.mkdtemp(prefix="rcp-ndcg-tests-"))
-os.environ.setdefault("RCP_NDCG_CACHE_DIR", str(_SESSION_SCRATCH / "cache"))
+os.environ["RCP_NDCG_CACHE_DIR"] = str(_SESSION_SCRATCH / "cache")
+os.environ.pop("RCP_NDCG_MEDIA_CACHE", None)
+os.environ.pop("RCP_NDCG_RUNS_DIR", None)
 
 #: The session's saved word-level tokenizer, written once at import: the explicit-budget tests declare it
 #: (a self-hosted role config names its tokenizer), and a client that declares a budget loads the file.
@@ -335,7 +340,7 @@ def write_mjpeg_avi(path: Path, *, frames: int = 12, fps: int = 4, size: tuple[i
     samples frame *i* can be checked against it. Pillow is the only dependency.
     (Second writer by intent: this one serves the root distribution's data-I/O
     tests, which cannot import the serving package; the pairs generator's own
-    writer is ``rcp_ndcg_vllm.observe.media_set.mjpeg_avi`` -- keep both headers
+    writer is ``rcp_ndcg_test.observe.media_set.mjpeg_avi`` -- keep both headers
     BITMAPINFOHEADER-exact (strf's 40 bytes) when changing either.)
     """
     import io

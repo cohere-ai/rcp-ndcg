@@ -25,7 +25,7 @@ classifiers = [
 # `pip install rcp-ndcg-core` stays viable on any platform.
 dependencies = [
   "numpy>=1.26",
-  "pydantic>=2.0",
+  "pydantic>=2.11",
 ]
 
 [project.optional-dependencies]

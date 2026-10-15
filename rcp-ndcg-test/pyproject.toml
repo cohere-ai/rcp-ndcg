@@ -27,7 +27,7 @@ dependencies = [
   "rcp-ndcg==0.0.1",
   "rcp-ndcg-vllm==0.0.1",
   "numpy>=1.26",
-  "pydantic>=2.0",
+  "pydantic>=2.11",
   "PyYAML>=6.0",
 ]
 

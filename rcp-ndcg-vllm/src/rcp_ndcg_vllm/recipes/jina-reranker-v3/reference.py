@@ -7,8 +7,9 @@ checkpoint's remote code at revision ``d7d7e73b6ea138ced340b83865931b5dfb6c97aa`
   trust_remote_code=True, revision=...)`` -> the remote ``JinaForRanking``; the paper's factory passed
   only model, device and revision -- every runtime parameter is the remote code's default);
 - ``score(query, docs)`` is the paper's harness (``JinaRerank.predict`` in
-  ``experiments/paper/rerankers/reference/jina.py:65-76``; the pre-unification
-  ``rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py:427-455``): whitespace-only
+  ``experiments/paper/rerankers/reference/jina.py:65-76``; the pre-unification in-process reranker
+  this port replaced, its ``JinaRerank.predict`` at lines 427-455, deleted from the package):
+  whitespace-only
   documents score exactly 0.0 without a model call, the rest go to the checkpoint's ``model.rerank()``
   (which blocks at 125 documents or a residual token capacity of ``131072 - 2*q_len`` flushed at
   ``<= 2048``, weights blocks by ``max((1+cos)/2)``, block-averages the query embed and scores every

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """The ``EmbeddingGemma2Model`` config hook, folded from the vLLM nightly the recipe pins.
 
 Folded from vLLM commit ``8cbd5d03006c33185f402249ff2b448efd594986``

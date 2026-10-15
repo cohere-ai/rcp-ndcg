@@ -29,7 +29,7 @@ classifiers = [
 # validates it when it reads it) and the reference runs as a subprocess
 # (the per-family reference.in/reference.lock, owner decision 35).
 dependencies = [
-  "pydantic>=2.0",
+  "pydantic>=2.11",
   "PyYAML>=6.0",
 ]
 

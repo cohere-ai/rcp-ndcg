@@ -285,3 +285,19 @@ def test_the_move_table_names_the_root_package(source: str, destination: str) ->
     assert (source, destination) in module.MOVES
     assert module.OPTIONAL_SOURCES == frozenset({"packages/rcp-ndcg-test"})
     assert module.EXEMPT == frozenset({"tools/layout_move.py", "tests/test_layout_move.py"})
+
+
+def test_the_checkout_is_in_the_target_layout() -> None:
+    """``--check`` must pass on the real checkout: it is the tool's own claim that the move landed.
+
+    The synthetic fixture cannot see a prose mention of a bare ``pyproject.toml`` in a workflow
+    comment; the real tree carries one, and a rule that rewrites it would edit documentation.
+    """
+    proc = subprocess.run(
+        [sys.executable, "tools/layout_move.py", "--check"],
+        cwd=REAL_SCRIPT.parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr

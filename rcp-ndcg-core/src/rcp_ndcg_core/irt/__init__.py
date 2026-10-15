@@ -116,18 +116,32 @@ def score_document(
             the per-judge shapes disagree, ``prior_sd`` is not finite and > 0, or ``se_target`` is not
             finite and > 0.
     """
-    from rcp_ndcg_core.irt._criteria_2pl import Criteria2PL
+    from rcp_ndcg_core.irt._criteria_2pl import Criteria2PL, _validate_prior_sd
 
-    # A prior N(mu, sd) on theta is a prior N(0, sd) on theta - mu with every
-    # difficulty shifted by mu, so the estimator runs unchanged.
-    model = Criteria2PL(np.asarray(items.gamma), np.asarray(items.beta) - prior_mean, prior_sd=prior_sd)
+    # Integrate in standardised units: the quadrature grid is fixed, so a prior whose sd is far
+    # from 1 (a rubric-only fit reports N(shift, scale * ability_sd), and scale is about 6 when the
+    # criteria are strongly correlated) would be truncated at the grid's upper edge. A prior
+    # N(mu, sd) on theta is a prior N(0, 1) on (theta - mu) / sd with gamma scaled by sd and every
+    # difficulty shifted and scaled; the result maps back by sd. Severity offsets are already logits.
+    prior_sd = _validate_prior_sd(prior_sd)
+    gamma = np.asarray(items.gamma)
+    beta = np.asarray(items.beta)
+    model = Criteria2PL(gamma * prior_sd, (beta - prior_mean) / prior_sd, prior_sd=1.0)
     score = model.score_document(
         placements,
         np.asarray(passes, dtype=float),
         se_target=se_target,
         offsets=None if severity is None else np.asarray(severity, dtype=float),
     )
-    return score.model_copy(update={"theta": score.theta + prior_mean})
+    information = score.information / prior_sd**2
+    return score.model_copy(
+        update={
+            "theta": score.theta * prior_sd + prior_mean,
+            "se": score.se * prior_sd,
+            "information": information,
+            "flags": score.flags.model_copy(update={"low_information": information < 1.0 / se_target**2}),
+        }
+    )
 
 
 #: The estimator classes whose module imports torch: available from this package, imported on first read.

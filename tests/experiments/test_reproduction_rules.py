@@ -248,9 +248,10 @@ def test_the_bright_exclusion_tasks_are_one_concept_with_one_definition(experime
     assert [re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") for label in labels] == ids
 
 
-def test_the_two_setup_snippets_give_the_same_install_commands():
+def test_the_setup_snippets_give_the_same_install_commands():
     """Experiments install the checkout's own core first (``pip install -e .`` alone would resolve
-    ``rcp-ndcg-core==0.0.1`` from PyPI): ``experiments/README.md`` and ``REPRODUCIBILITY.md`` say the same."""
+    ``rcp-ndcg-core==0.0.1`` from PyPI): ``experiments/README.md``, ``REPRODUCIBILITY.md`` and
+    ``docs/how-to/reproduce-the-paper.md`` say the same."""
 
     def install_commands(text: str) -> list[str]:
         return [
@@ -262,7 +263,8 @@ def test_the_two_setup_snippets_give_the_same_install_commands():
 
     readme = install_commands((ROOT / "experiments" / "README.md").read_text(encoding="utf-8"))
     repro = install_commands((ROOT / "REPRODUCIBILITY.md").read_text(encoding="utf-8"))
-    assert readme and readme == repro
+    how_to = install_commands((ROOT / "docs" / "how-to" / "reproduce-the-paper.md").read_text(encoding="utf-8"))
+    assert readme and readme == repro == how_to
 
 
 def test_paper_values_cover_the_three_leaderboard_tables(experiment):
@@ -273,3 +275,73 @@ def test_paper_values_cover_the_three_leaderboard_tables(experiment):
             table = lb[suite][metric]
             assert len(table) == 14
             assert all(len(cells) == n_datasets + 1 for cells in table.values())
+
+
+def test_the_data_directory_knob_is_the_environment_variable(experiment, monkeypatch, tmp_path) -> None:
+    """``fetch_data.py --data-dir`` moves its own download; the checks resolve ``RCP_EXPERIMENTS_DATA``.
+
+    The README promised that ``--data-dir`` moved the data directory, so a reader who ran it saw
+    ``run_all.py`` download the corpus again into the checkout (or fail offline).
+    """
+    fetch_data = experiment("fetch_data")
+    monkeypatch.setenv("RCP_EXPERIMENTS_DATA", str(tmp_path))
+    assert fetch_data.local_path("repo", "file.parquet") == tmp_path / "repo" / "file.parquet"
+
+    readme = (ROOT / "experiments" / "README.md").read_text(encoding="utf-8")
+    assert "`RCP_EXPERIMENTS_DATA` or `fetch_data.py --data-dir` moves the data directory" not in readme
+    assert "`RCP_EXPERIMENTS_DATA` moves the data directory for the checks" in readme
+
+
+def test_the_reference_environment_installs_flash_attn_after_torch() -> None:
+    """flash-attn's sdist imports torch in its ``setup.py``; pip's build isolation hides the torch
+    already listed in the same file, so a one-shot install failed with ``ModuleNotFoundError: torch``.
+
+    The paper-exact reference environment installs torch first, then flash-attn with
+    ``--no-build-isolation`` from its own requirements file.
+    """
+    reference = ROOT / "experiments" / "paper" / "rerankers" / "reference"
+    files = sorted(reference.glob("requirements*.txt"))
+    assert files, "the reference environment's requirements files are there"
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        packages = {
+            line.split("==")[0].split(">=")[0].split(";")[0].strip()
+            for line in text.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+        if "flash-attn" in packages:
+            assert "torch" not in packages, f"{path.name} installs flash-attn beside torch in one pip run"
+
+    instructions = (reference / "requirements.txt").read_text(encoding="utf-8")
+    assert "pip install --no-build-isolation -r requirements-flash-attn.txt" in instructions
+
+
+def test_the_reranker_readme_does_not_claim_every_config_names_a_recipe() -> None:
+    """Seven of the ten served configs keep explicit fields instead of a ``recipe:`` pointer (their content
+    deliberately differs from the recipe's serving path), so the README may not claim every config names one."""
+    rerankers = ROOT / "experiments" / "paper" / "rerankers"
+    readme = re.sub(r"\s+", " ", (rerankers / "README.md").read_text(encoding="utf-8"))
+    if "Each config names the recipe that serves it" in readme:
+        served = [
+            path
+            for path in sorted(rerankers.glob("*.yaml"))
+            if re.search(r"^api: rerank\b", path.read_text(encoding="utf-8"), re.M)
+        ]
+        missing = [path.name for path in served if not re.search(r"^recipe:", path.read_text(encoding="utf-8"), re.M)]
+        assert not missing, f"the README claims every served config names a recipe; these do not: {missing}"
+
+
+def test_an_empty_or_unknown_suite_selection_is_refused(experiment, monkeypatch) -> None:
+    """``--suite`` with no values compared nothing and exited 0; a typo raised a bare ValueError after the fetch."""
+    leaderboards = experiment("leaderboards")
+    monkeypatch.setattr(leaderboards, "fetch_group", lambda *args, **kwargs: None)
+
+    for argv in (["--suite"], ["--suite", "nanobeir,bright"], ["--suite", "nanobeir", "--suite", "typo"]):
+        with pytest.raises(SystemExit) as caught:
+            leaderboards.main(argv)
+        assert caught.value.code != 0, argv
+
+
+def test_a_checker_that_compared_nothing_fails(experiment) -> None:
+    """A green '0 checks' run is a reproduction that checked nothing."""
+    assert experiment("checks").Checker("nothing").finish() == 1

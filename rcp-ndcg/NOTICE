@@ -14,8 +14,8 @@ GitHub, anonymously), its SHA-256 compared with the one quoted here and diffed
 against the shipped copy, and each licence read at that revision (the Hub's
 model card metadata; the LICENSE file of a GitHub repository). Each recipe's
 `sources`/`notes` record that file's exact deltas.
-Every distribution of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm, the
-plugin wheels and the unpublished rcp-ndcg-test) carries this same file.
+Every distribution of this project (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm and the unpublished
+rcp-ndcg-test) carries this same file.
 
 Hugging Face transformers
   https://github.com/huggingface/transformers
@@ -37,6 +37,24 @@ Hugging Face transformers
   - rcp-ndcg-test/tests/fixtures/recipes/fixture-vl-embed/reference.py:
     `card_resize` restates the same `smart_resize` (at commit 528c267) as the
     test fixture's card resize.
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/configuration_embedding_gemma2.py:
+    the `transformers/models/embedding_gemma2/configuration_embedding_gemma2.py` at transformers
+    5.19.0, folded so the digest-pinned engine nightly (whose transformers does not carry the
+    package) can serve the embeddinggemma-2 checkpoint; the shipped body is the upstream file
+    byte-identical plus a fold header (upstream SHA-256
+    d85a68e7eac4c53ec3c95cc85b7b2907cbbed3f1f8ce3c3b5069dec891aefd01).
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/modeling_embedding_gemma2.py:
+    the `modeling_embedding_gemma2.py` of the same directory at transformers 5.19.0, folded with it;
+    the shipped body is the upstream file byte-identical plus a fold header (upstream SHA-256
+    132d8714852fa8f0c376af797229e7b48fe94e0cf6cae6f6640681e934062923).
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/processing_embedding_gemma2.py:
+    the `processing_embedding_gemma2.py` of the same directory at transformers 5.19.0, folded with
+    it; the shipped body is the upstream file byte-identical plus a fold header (upstream SHA-256
+    6bc770072c6c1df02c3cde4f79c65720c84e1d7f76ca4092baa0dbd217151b52).
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/video_processing_embedding_gemma2.py:
+    the `video_processing_embedding_gemma2.py` of the same directory at transformers 5.19.0, folded
+    with it; the shipped body is the upstream file byte-identical plus a fold header (upstream
+    SHA-256 77e0866c0fbcc61476a4601ad6cddceb90f70cb4cb6aae3b7aed7f0ea56ac864).
 
 vLLM
   https://github.com/vllm-project/vllm
@@ -65,6 +83,17 @@ vLLM
   - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/pooler.py:
     `PplxChunkPool` subclasses vLLM's `AllPool` and is modeled on its `StepPool`
     (vllm/model_executor/layers/pooler/tokwise/methods.py at v0.31.0).
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/embedding_gemma2.py:
+    the `vllm/model_executor/models/embedding_gemma2.py` at commit
+    8cbd5d03006c33185f402249ff2b448efd594986 (the digest-pinned nightly), folded so the engine can
+    register the architecture its own vLLM 0.31.0-based registry lacks; the shipped body is the
+    upstream file byte-identical plus a fold header (upstream SHA-256
+    49b34a6ed71ef1eeafaf6850de138e3e59fd66bfb7b10be00a52346c9fda245b).
+  - rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/config.py:
+    `EmbeddingGemma2ModelConfig` restates the class of `vllm/model_executor/models/config.py` at the
+    same commit (the Gemma4 heterogeneous-head-dimension hook, TRITON_ATTN as the declared default
+    backend and the 8192 context cap), added to `MODELS_CONFIG_MAP` when the running vLLM lacks the
+    entry; the class body is upstream's, unchanged.
   - rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker/template.jinja (the
     family's one template file, shared by the 0.6B/4B/8B variants): adapted
     from examples/pooling/score/template/qwen3_reranker.jinja at the v0.31.0

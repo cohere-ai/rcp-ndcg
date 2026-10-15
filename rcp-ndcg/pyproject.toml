@@ -34,12 +34,12 @@ dependencies = [
   # BM25 (bm25s: numpy and scipy only) and its Snowball stemmers, so a keyword first stage runs on any install.
   "bm25s==0.2.13",
   "PyStemmer>=2.2",
-  "pydantic>=2.0",
+  "pydantic>=2.11",
   "tqdm>=4.67",
   "click>=8.1",
   # Read only by ``rcp-ndcg --env-file``; the package never loads a .env file on its own.
   "python-dotenv>=1.0",
-  # The judge client (llm/client.py) and the hosted embedding and rerank clients send their requests over
+  # The judge client (judging/client.py) and the hosted embedding and rerank clients send their requests over
   # httpx through the shared transport (rcp_ndcg.inference); there is no second HTTP stack.
   "httpx>=0.27",
   # Storage: fsspec is the universal path layer (rcp_ndcg.storage); gcsfs keeps
