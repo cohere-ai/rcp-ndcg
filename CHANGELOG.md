@@ -4328,6 +4328,13 @@ text it sends to the declared budget.
   and names the URL through `safe_url` (credentials never enter the message), and the transport maps httpx's
   `UnsupportedProtocol`/`InvalidURL` to the same `ConfigError` instead of the outage path.
 
+- **One corpus encode is no longer quadratic before the first request**: the shared preparation pipeline
+  resolved each item's media-token reservation with a linear `list.index` over the kept positions, and rebuilt
+  `set(omitted)`/`set(dropped)` inside per-item conditions (the pooling and rerank omission paths did the
+  same). Each is one dict lookup or one hoisted set now: a 40k-document encode spent 6.3 s of single-threaded
+  CPU before any request, extrapolating to hours for the multi-million-document BEIR corpora, where a GPU
+  engine sat idle.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

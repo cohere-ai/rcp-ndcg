@@ -1209,7 +1209,8 @@ class RoleClient[C: Endpoint]:
         # the budget dropped is empty -- exactly like an empty text document -- so the same empty policy
         # applies to the fitted contents (the media stage's contract; the policy never sees a framed
         # non-empty turn where the sent content is empty).
-        kept_positions = [index for index in range(len(prepared)) if index not in set(omitted)]
+        omitted_set = set(omitted)
+        kept_positions = [index for index in range(len(prepared)) if index not in omitted_set]
         fitted, media_tokens = self._stage_media(
             kept,
             shape=shape,
@@ -1232,14 +1233,17 @@ class RoleClient[C: Endpoint]:
                 merged = changes.setdefault(original, [])
                 merged.extend(mechanism for mechanism in applied if mechanism not in merged)
             dropped_empty = [kept_positions[index] for index in dropped_empty_kept]
-        dropped = sorted(set(omitted) | set(dropped_empty))
-        positions = [index for index in range(len(prepared)) if index not in set(dropped)]
+        dropped = sorted(omitted_set | set(dropped_empty))
+        dropped_set = set(dropped)
+        positions = [index for index in range(len(prepared)) if index not in dropped_set]
         # render + budget (shared): the fixed frame reserved, the content spans cut to what remains, the
-        # template re-attached, every cut recorded.
+        # template re-attached, every cut recorded. The media-token reservation maps each kept position to
+        # its slot through one dict: a ``list.index`` per item made a whole-corpus encode quadratic.
+        kept_index = {position: index for index, position in enumerate(kept_positions)}
         kept, cuts, result = self._stage_budget(
             kept,
             shape=shape,
-            media_tokens=[media_tokens[kept_positions.index(position)] for position in positions]
+            media_tokens=[media_tokens[kept_index[position]] for position in positions]
             if kept_positions
             else [],
             positions=positions,

@@ -9,6 +9,7 @@ the sync bridge (one rule: a non-transport sender must provide ``run``), and the
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import Any, ClassVar
 
 import pytest
@@ -1076,3 +1077,33 @@ def test_a_config_missing_a_budget_field_is_refused_not_defaulted(tokenizer_json
     with pytest.raises(ConfigError, match="on_overflow") as caught:
         client._resolve_budget()
     assert "on_overflow" in (caught.value.hint or ""), "the hint names the missing field"
+
+
+class TestPrepareScaling:
+    def test_the_media_reservation_never_scans_the_kept_positions_per_item(
+        self, tokenizer_json: str
+    ) -> None:
+        """``_prepare_rows`` maps each kept position through one dict, not ``list.index`` per item: a linear
+        scan per item made a whole-corpus encode quadratic (hours for a BEIR-size corpus) before any request
+        was sent."""
+        client = EmbeddingClient(
+            EmbeddingEndpoint(api="openai_embeddings", model="m", tokenizer=tokenizer_json, max_tokens=8192),
+            sender=RecordingSender(),
+        )
+
+        def index_calls(items: int) -> int:
+            calls = 0
+
+            def profiler(frame: Any, event: str, arg: Any) -> None:
+                nonlocal calls
+                if event == "c_call" and getattr(arg, "__qualname__", "") == "list.index":
+                    calls += 1
+
+            sys.setprofile(profiler)
+            try:
+                client._prepare([Content.from_text(f"doc {index}") for index in range(items)], EncodeRole.DOCUMENT)
+            finally:
+                sys.setprofile(None)
+            return calls
+
+        assert index_calls(64) == index_calls(8)  # a per-item scan would be 64 against 8

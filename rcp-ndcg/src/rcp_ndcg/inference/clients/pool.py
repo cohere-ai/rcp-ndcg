@@ -230,8 +230,9 @@ class PoolingClient(RoleClient):
             per_item.extend(chunk.vectors[a:b] for a, b in zip(offsets[:-1], offsets[1:], strict=True))
         sent = iter(per_item)
         slices: list[np.ndarray] = []
+        omitted = set(prepared.omitted)
         for index in range(len(contents)):
-            if index in set(prepared.omitted):
+            if index in omitted:
                 slices.append(np.zeros((0, 0), dtype=self.config.embed_dtype))
             else:
                 slices.append(next(sent))

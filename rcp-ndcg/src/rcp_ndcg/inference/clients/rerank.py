@@ -488,7 +488,8 @@ class RerankClient(RoleClient):
         query = prepared_query
         documents = prepared_documents
         kept_documents, omitted = self._apply_empty_documents(documents, changes=changes)
-        kept_positions = [index for index in range(len(documents)) if index not in set(omitted)]
+        omitted_set = set(omitted)
+        kept_positions = [index for index in range(len(documents)) if index not in omitted_set]
         if self._budget is None or not kept_documents:
             self._record_processing("pair", changes=changes)
         if self._budget is None:
