@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -147,16 +147,27 @@ def job_for(
     # A resubmission passes the last job's recorded options; a value the config *declares* wins over the record,
     # so an explicit `--set runner.options.*` is not silently overridden by the last job (it would go to the old
     # partition while run.yaml and the manifest record the new one). A resolved config also carries its options'
-    # defaults; those are dropped here so they cannot override the record either.
+    # defaults; those are dropped here so they cannot override the record either -- except a key this resume's
+    # `--set` names: its value may equal the default and is still a declaration.
+    declared: set[str] = set()
     if options and configured:
-        configured = _declared_runner_options(runner, configured)
+        explicit = getattr(pipeline, "_declared_runner_options", frozenset())
+        configured = _declared_runner_options(runner, configured, declared=explicit)
+        declared = set(configured) - set(JOB_OPTIONS)
     runner_options, fields = _split_options({**(options or {}), **configured})
     if runner == "local":  # keep the job's output with the run, and run it where it was started
         runner_options = {"log_dir": str(Path(root) / "logs"), "cwd": os.getcwd(), **runner_options}
     backend = get_runner(runner, **runner_options)
     parsed = getattr(backend, "options", None)
     if isinstance(parsed, JobOptions):
-        runner_options = parsed.resolved()
+        resolved = parsed.resolved()
+        # The record names what the config declared, not what differs from a default: an explicit
+        # `--set runner.options.<key>=<default>` stays in the record, so the next resume keeps it too (a
+        # resolved config carries it as a default there and drops it).
+        for key in declared & runner_options.keys():
+            if key not in resolved and key in type(parsed).model_fields:
+                resolved[key] = runner_options[key]
+        runner_options = resolved
         backend = get_runner(runner, **runner_options)
     run_root = getattr(backend, "run_root", None)
     if run_root is not None:
@@ -179,14 +190,18 @@ def job_for(
     return backend, job, runner_options
 
 
-def _declared_runner_options(runner: str, configured: Mapping[str, Any]) -> dict[str, Any]:
-    """The runner options a config declares: values equal to the runner's own defaults are dropped.
+def _declared_runner_options(
+    runner: str, configured: Mapping[str, Any], *, declared: Collection[str] = frozenset()
+) -> dict[str, Any]:
+    """The runner options a config declares: values equal to the runner's own defaults are dropped, unless the
+    config names them explicitly (a resume's ``--set``, in ``declared``).
 
     A config read back from ``run.yaml`` carries every option (a resolved dump), including defaults that were
     never set. A resubmission merges the last job's recorded options with these, so a default-valued field must
     not count as a declaration and override the record (``--detach`` would turn itself off, a recorded
     ``log_dir`` would go back to the default). A value the config *does* declare -- the original submission's
-    options, or a ``--set`` change -- differs from the default and wins over the record.
+    options, or a ``--set`` change -- differs from the default and wins over the record; a ``--set`` that names
+    a default-valued option is a declaration too, which the resolved dump alone cannot show.
     """
     try:
         defaults = getattr(get_runner(runner), "options", None)
@@ -195,12 +210,16 @@ def _declared_runner_options(runner: str, configured: Mapping[str, Any]) -> dict
     if not isinstance(defaults, JobOptions):
         return dict(configured)  # a plugin's free-form options: whatever the config carries is a declaration
     fields = type(defaults).model_fields
-    declared: dict[str, Any] = {}
+    found: dict[str, Any] = {}
     for key, value in configured.items():
-        if key in fields and _option_equal(value, getattr(defaults, key), fields[key].annotation):
+        if (
+            key not in declared
+            and key in fields
+            and _option_equal(value, getattr(defaults, key), fields[key].annotation)
+        ):
             continue
-        declared[key] = value
-    return declared
+        found[key] = value
+    return found
 
 
 def _option_equal(given: Any, expected: Any, annotation: Any) -> bool:
@@ -658,15 +677,33 @@ def cancel(run_dir: str | Path) -> RunState:
         live.append((job["handle"], state))
     stopped = 0
     live_to_stop = [(handle, state) for handle, state in live if state in (JobStatus.PENDING, JobStatus.RUNNING)]
+    before: RunManifest | None = None
+    marked: RunManifest | None = None
     if live_to_stop and run.manifest.status in (RunStatus.SUBMITTED, RunStatus.RUNNING):
         # The cancel intent is recorded before the signal: the coordinator's SIGTERM handler keeps CANCELLED only
         # when the manifest already says so, and otherwise records the step and run as failed (the canceller had
         # not marked yet). Marking first makes the coordinator's own record the cancellation, and the stop below
-        # confirms it.
+        # confirms it. The snapshots let a failed stop take the mark back: a job that is still live must not be
+        # recorded cancelled, while the coordinator's own record of the interrupt stays.
+        before = run.manifest.model_copy(deep=True)
         mark(run, RunStatus.CANCELLED)
-    for handle, _ in live_to_stop:
-        backend.cancel(handle)
-        stopped += 1
+        marked = run.manifest.model_copy(deep=True)
+    try:
+        for handle, _ in live_to_stop:
+            backend.cancel(handle)
+            stopped += 1
+    except BaseException:
+        # The runner refused the stop (a failed scancel/kubectl delete, a process group that survived SIGKILL):
+        # the job may still be live. Take the mark back only when nothing has recorded the cancellation over
+        # it (a coordinator that saw the mark writes its own interrupt record, which stays).
+        if before is not None and marked is not None:
+            try:
+                unchanged = RunManifest.load(run.layout) == marked
+            except Exception:  # noqa: BLE001 - never mask the runner's own failure with a damaged manifest
+                unchanged = False
+            if unchanged:
+                before.save(run.layout)
+        raise
     if stopped:
         manifest = run.manifest
         if manifest.status in (RunStatus.SUBMITTED, RunStatus.RUNNING):

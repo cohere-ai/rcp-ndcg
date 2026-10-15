@@ -59,6 +59,26 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+#: The prefix of a ``runner.options`` override (``--set runner.options.partition=gpu``).
+_RUNNER_OPTIONS = "runner.options."
+
+
+def _runner_option_overrides(overrides: Sequence[str]) -> frozenset[str]:
+    """The ``runner.options`` keys ``overrides`` name (the nested first component of each key).
+
+    A resume's ``--set runner.options.<key>=<value>`` declares that key even when the value equals the runner's
+    own default, which the resolved config alone cannot tell apart from a default (see ``job_for``).
+    """
+    keys: set[str] = set()
+    for override in overrides:
+        key, sep, _ = override.partition("=")
+        key = key.strip()
+        if sep and key.startswith(_RUNNER_OPTIONS):
+            name = key[len(_RUNNER_OPTIONS) :].split(".", 1)[0]
+            if name:
+                keys.add(name)
+    return frozenset(keys)
+
 
 class Pipeline:
     """The steps of one run against one run directory.
@@ -95,6 +115,9 @@ class Pipeline:
         # this, the handler itself crashes with an AttributeError that masks the typed error.
         self._judge_usage: Usage | None = None
         self._engines = dict(engines) if engines is not None else _engines_overlay()
+        # The ``runner.options`` keys this invocation's overrides named (``run resume --set``): a resubmission
+        # keeps them even when the value equals the runner's default (see :func:`~rcp_ndcg.runs.execution.job_for`).
+        self._declared_runner_options: frozenset[str] = frozenset()
         if self._engines:
             _check_engines(config, self._engines)
         self.only = list(only) if only else None
@@ -145,7 +168,9 @@ class Pipeline:
         layout = RunLayout.at(run_dir)
         manifest = RunManifest.load(layout)
         config = RunConfig.from_data(manifest.config, overrides=overrides or [])
-        return cls(config, layout=layout, manifest=manifest, only=only, engines=engines)
+        pipeline = cls(config, layout=layout, manifest=manifest, only=only, engines=engines)
+        pipeline._declared_runner_options = _runner_option_overrides(overrides or [])
+        return pipeline
 
     @property
     def steps(self) -> list[str]:

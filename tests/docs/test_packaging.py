@@ -738,6 +738,25 @@ def test_the_wheel_build_fixture_fails_in_ci_instead_of_skipping(tmp_path: Path)
     assert "skipped" not in result.stdout
 
 
+def test_the_vllm_plugins_job_fetches_the_offline_builds_requirements() -> None:
+    """release-2: the fail-not-skip fixtures make the vllm-plugins job red unless its own steps put the
+    wheel build's requirements in the uv cache.
+
+    The fixtures build the wheel with ``uv build --offline``; the isolated build resolves
+    ``setuptools>=77`` and ``wheel`` (``rcp-ndcg-vllm/pyproject.toml``'s build-system requires), the lock
+    holds no ``wheel`` and setup-uv prunes cached wheels before saving, so the job must fetch them itself
+    before the model tests run.
+    """
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    job = workflow["jobs"]["vllm-plugins"]
+    runs = [str(step.get("run", "")) for step in job["steps"]]
+    installs = [run for run in runs if "uv pip install" in run]
+    assert any("wheel" in install and "setuptools" in install for install in installs), (
+        "the vllm-plugins job never installs the offline build's requirements (setuptools>=77, wheel): "
+        "its wheel fixtures fail CI when the build cannot run"
+    )
+
+
 def test_the_gated_job_type_checks_with_the_integrations_installed() -> None:
     """The dev-only ``types`` job sees mteb, datasets and transformers as ``Unknown``.
 
