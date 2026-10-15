@@ -40,13 +40,37 @@ def test_a_literal_secret_in_runner_options_is_refused_with_a_hint() -> None:
 
 @pytest.mark.parametrize(
     "name",
-    ["HF_TOKEN", "OPENAI_API_KEY", "MY_SECRET", "DB_PASSWORD", "SERVICE_PASSWD", "GOOGLE_APPLICATION_CREDENTIALS"],
+    [
+        "HF_TOKEN",
+        "OPENAI_API_KEY",
+        "MY_SECRET",
+        "DB_PASSWORD",
+        "SERVICE_PASSWD",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "AZURE_STORAGE_CONNECTION_STRING",
+        "AZURE_STORAGE_SAS_TOKEN",
+    ],
 )
 def test_a_secret_looking_name_is_refused_in_a_job_and_an_engine_environment(name: str) -> None:
     with pytest.raises(ValidationError, match="secret"):
         JobOptions(env={name: SECRET})
     with pytest.raises(ValidationError, match="secret"):
         ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), env={name: SECRET})
+
+
+def test_a_connection_string_value_is_refused_whatever_its_name() -> None:
+    """The name heuristic cannot know every vendor's variable; a value carrying ``AccountKey=`` or a ``sig=``
+    is a credential by shape, and the recorded path redacts it too (a plugin runner's options are free-form,
+    so a value that reaches the record by another route must not ride out)."""
+    connection = (
+        "DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=SECRETKEY==;EndpointSuffix=core.windows.net"
+    )
+    with pytest.raises(ValidationError, match="secret"):
+        JobOptions(env={"AZURE_STORAGE_ACCOUNT": connection})
+    config = _config(runner={"name": "mine", "options": {"env": {"AZURE_STORAGE_ACCOUNT": connection}}})
+    recorded = config.recorded()
+    assert recorded["runner"]["options"]["env"]["AZURE_STORAGE_ACCOUNT"] == "<redacted>"
+    assert "SECRETKEY" not in json.dumps(recorded)
 
 
 @pytest.mark.parametrize("name", ["HF_HOME", "HF_HUB_OFFLINE", "UV_CACHE_DIR", "MONKEY", "KEYSTONE", "TOKENIZER"])

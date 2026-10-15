@@ -21,10 +21,17 @@ _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 REDACTED = "<redacted>"
 
 #: An environment variable name that names a credential (``*_TOKEN``, ``*_KEY``, ``*SECRET*``, ``*PASSWORD*``,
-#: ``*_AUTH``, ``*CREDENTIAL*``). Word-bounded, so ``MONKEY`` and ``KEYSTONE`` are ordinary names.
+#: ``*_AUTH``, ``*CREDENTIAL*``, ``*CONNECTION_STRING*``, ``*_DSN``). Word-bounded, so ``MONKEY`` and
+#: ``KEYSTONE`` are ordinary names.
 _SECRET_NAME = re.compile(
-    r"(?i)(?:^|_)(?:token|key|secret|password|passwd|credential|auth)(?:_|$)|secret|password|passwd|credential"
+    r"(?i)(?:^|_)(?:token|key|secret|password|passwd|credential|auth|connection_string|conn_str|dsn)(?:_|$)"
+    r"|secret|password|passwd|credential|connection_string|conn_str|dsn"
 )
+
+#: A VALUE that carries a credential by shape: an Azure connection string's ``AccountKey=``, its
+#: ``SharedAccessSignature=``, or a presigned URL's ``sig=`` query parameter. The name heuristic cannot know
+#: every vendor's variable name; this catches the value itself.
+_KEY_BEARING_VALUE = re.compile(r"(?i)(?:accountkey|sharedaccesssignature)\s*=|(?:^|[?&])sig=")
 
 
 def no_control_characters(value: str) -> str:
@@ -68,6 +75,17 @@ def looks_like_secret(name: str) -> bool:
     return _SECRET_NAME.search(name) is not None
 
 
+def carries_a_key(value: str) -> bool:
+    """Whether a value carries a credential by shape: ``AccountKey=``, ``SharedAccessSignature=`` or a
+    ``sig=`` query parameter.
+
+    The name heuristic misses a vendor's own connection-string variable (``AZURE_STORAGE_CONNECTION_STRING``
+    is named above, but a plugin's name may be anything); a value of this shape is a credential whatever its
+    name, so it is refused in a config and redacted in a record.
+    """
+    return _KEY_BEARING_VALUE.search(value) is not None
+
+
 def refuse_secret_value(name: str, value: str) -> str:
     """``value``, refused when ``name`` looks like a credential and the value is not the redaction marker.
 
@@ -78,7 +96,7 @@ def refuse_secret_value(name: str, value: str) -> str:
     Raises:
         ValueError: ``name`` looks like a credential and ``value`` is a literal value.
     """
-    if looks_like_secret(name) and value != REDACTED:
+    if value != REDACTED and (looks_like_secret(name) or carries_a_key(value)):
         raise ValueError(
             f"env.{name} looks like a credential (a *_TOKEN, *_KEY, *SECRET* or *PASSWORD* name), and its value "
             "would be written into run.yaml, the manifest and the mirror; export it in the environment the job "
@@ -121,6 +139,7 @@ __all__ = [
     "EnvName",
     "REDACTED",
     "Resources",
+    "carries_a_key",
     "looks_like_secret",
     "no_control_characters",
     "no_nul_byte",

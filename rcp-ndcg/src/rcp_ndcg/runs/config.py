@@ -47,7 +47,7 @@ from rcp_ndcg.runners.local import LocalOptions
 from rcp_ndcg.runners.slurm import SlurmOptions
 from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
 from rcp_ndcg.support.identity import FieldRole
-from rcp_ndcg.support.resources import REDACTED, looks_like_secret, no_control_characters
+from rcp_ndcg.support.resources import REDACTED, carries_a_key, looks_like_secret, no_control_characters
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, ServeByRole, ServeConfig
 from rcp_ndcg.support.urls import safe_url
 
@@ -851,20 +851,22 @@ def _redact_env(data: dict[str, Any]) -> None:
 
 
 def _redact_mapping(env: Any) -> None:
-    """``{name: value}`` with every secret-looking name's value replaced by :data:`REDACTED`, and every other
-    value stripped of a URL's userinfo, query and fragment (:func:`~rcp_ndcg.support.urls.safe_url`).
+    """``{name: value}`` with every secret-looking name's value replaced by :data:`REDACTED`, a value carrying a
+    credential by shape (``AccountKey=``, ``sig=``) replaced too, and every other value stripped of a URL's
+    userinfo, query and fragment (:func:`~rcp_ndcg.support.urls.safe_url`).
 
     The name rule alone leaves a credential that rides the VALUE: ``serve.judge.env.HF_ENDPOINT:
     https://user:pw@proxy`` looks like no secret name, and the mirrored ``run.yaml`` kept the password.  The
     URL form keeps the host and path the environment variable names (a resume reads it back from the redacted
-    file), which is why it is stripped rather than replaced.
+    file), which is why it is stripped rather than replaced; a value whose shape is a credential (a connection
+    string, a signed URL) is replaced whole.
     """
     if not isinstance(env, dict):
         return
     for name, value in env.items():
         if not isinstance(value, str):
             continue
-        env[name] = REDACTED if looks_like_secret(name) else safe_url(value)
+        env[name] = REDACTED if looks_like_secret(name) or carries_a_key(value) else safe_url(value)
 
 
 def _config_file(path: str | Path) -> Path:

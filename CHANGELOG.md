@@ -4846,3 +4846,8 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   --endpoint` put the raw target -- userinfo and query included -- into the check detail. The spec is redacted,
   `_URL_IN_TEXT` stops at a comma, and the doctor detail names the URL through `safe_url` and redacts the
   exception's own text.
+- **A connection string is refused by value, not only by name**: the secret-name heuristic missed
+  `AZURE_STORAGE_CONNECTION_STRING` (adlfs's standard credential variable for the supported `az://` backend),
+  so its `AccountKey=` was written to `run.yaml`, the manifest and the mirror. `*CONNECTION_STRING*`, `*CONN_STR*`
+  and `*_DSN` now count as secret-looking names, and a value carrying `AccountKey=`, `SharedAccessSignature=`
+  or a `sig=` parameter is refused in a config and redacted on the recording path whatever its name.
