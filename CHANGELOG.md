@@ -4597,6 +4597,15 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   fields of the judgement family, so a judgement recorded before this change never pools with one recorded
   after it.
 
+- **`--estimate` labels its wall time a floor and refuses a window over the judge's `max_images`**: the
+  projection was a bare per-call constant (`SECONDS_PER_CALL`, 20 s at the judge's concurrency) with no term
+  for what a call carries, and on the measured run a 150-image window took 12,851 s against a projected 680 s
+  (18.9x). The wall-time assumption and the `wall_s` schema description now say floor, and the printed
+  `--estimate` line says "at least". The estimate also refuses, with the pass's own `CapabilityError`
+  (exit 8), a judged window carrying more images than the judge's `max_images` -- the measured run's window
+  needed 150 against a shipped cap of 10, and the first real call would have failed -- naming the cap, the
+  window and `--set judge.max_images=...`. The token counts are unchanged.
+
 ### Removed
 
 - **The self-hosted judge configs** (`qwen35_397b_nvfp4`, `qwen35_397b_fp8`, `gpt_oss_120b`, `qwen36_27b_fp8`)

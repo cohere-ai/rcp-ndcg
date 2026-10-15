@@ -60,7 +60,7 @@
           "type": "object"
         },
         "wall_s": {
-          "description": "Wall time in seconds at the judge's concurrency (approximate).",
+          "description": "Wall time in seconds at the judge's concurrency: a floor, not a projection -- the per-call constant has no term for the tokens or images a call carries.",
           "title": "Wall S",
           "type": "number"
         }

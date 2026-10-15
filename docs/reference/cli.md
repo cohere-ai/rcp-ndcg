@@ -90,7 +90,7 @@ the form its wire speaks -- `.../v1` for `api: openai_embeddings`, the engine's 
 | `--sink NAME` | `results export`: the sink to write to (`jsonl`, `parquet`, `null`, or an installed `rcp_ndcg.results` entry point); see `rcp-ndcg results sinks` |
 | `--depth INT`, `--limit INT` | candidate depth; the first N — queries on `judge tournament\|rubric`, records on `data convert`, runs on `run list` |
 | `--rrf-k INT` | `run start`: the fusion's RRF constant k in 1 / (k + rank) (sets `candidates.fuse.rrf_k`); the systems to fuse stay the config's ([the fuse step](../concepts/runs.md#runs-and-job-runners)) |
-| `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time; call no judge |
+| `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time (a floor); call no judge; refuse (exit 8) a window carrying more images than the judge's `max_images` |
 | `--dry-run` | print the plan; no side effects; refuses what the real command would refuse |
 | `--force` | judge into a store of another identity; the old records are moved aside |
 | `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) or a document whose tournament windows are all invalid, instead of warning |

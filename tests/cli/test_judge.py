@@ -55,6 +55,14 @@ def test_the_estimate_labels_token_counts_as_approximations(dataset: str, tmp_pa
     assert not (tmp_path / "s").exists()
 
 
+def test_the_estimate_text_says_the_wall_time_is_a_floor(dataset: str, tmp_path: Path) -> None:
+    """The wall time has no term for what a call carries: the printed line must not read as an expectation."""
+    code, text = _invoke("rubric", "--dataset", dataset, "--judge", "fake", "--out", str(tmp_path / "s"), "--estimate")
+
+    assert code == 0, text
+    assert "at least" in text and "about" not in text
+
+
 def test_a_shipped_judge_is_named_from_any_directory(
     dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
