@@ -4605,7 +4605,10 @@ text it sends to the declared budget.
 - **A judging pass releases each query's prepared media when it finishes** (`g-video-7`): the per-pass cache
   held every prepared page and frame of every query -- inlined PNG data URIs -- to the end of the pass,
   defeating the shared image LRU's one-pool bound and growing peak memory with the number of queries;
-  `run_tournament`/`run_rubric` now drop the finished query's entries.
+  `run_tournament`, `run_rubric` and the `judge(windows=...)` path now drop the finished query's entries.
+  The peak before the first answer is bounded too: the window budget prepares a query's pool synchronously
+  before its first await, so a pass that started every query at once held one pool per query -- a media pass
+  now runs one query at a time.
 - **`judge --estimate` counts the media the pass sends and gates videos too** (`g-video-8`): the window gate
   counted every raw frame of a frame directory (a 60-frame clip under `num_frames: 4` was refused against a
   cap the pass accepts), counted a `video_url` part's frames as images, and never checked `max_videos` (a
@@ -4699,12 +4702,15 @@ text it sends to the declared budget.
   and `fit`'s pair checks and cuts use it for a template-less config; every shipped reranker recipe declares a
   template and is unchanged.
 
-- **The qwen3_vl unsized-container bound is a true ceiling again**: the bound divided the per-clip pixel
+- **The qwen3_vl unsized-container bound is a true ceiling**: the bound divided the per-clip pixel
   ceiling by `temporal_patch * factor^2`, i.e. it assumed the resize's temporal bar equals the frames rendered.
-  For an odd sampled frame count the bar is one frame shorter than the `ceil(n / temporal_patch)` groups the
-  engine renders, so the bound could sit up to 1.5x below the exact count (75 frames at 30 fps sampled at
-  2 fps: bound 12,326 against an exact 18,470), and a role client reserving media from it under-reserved. The
-  bound is now per group (`ceiling // (t_bar * factor^2)`, `t_bar` the resize's own bar) times the groups.
+  The resize shrinks by `beta = sqrt(n * h * w / ceiling)` -- the rendered frame count `n`, while the bar
+  `round(n / 2) * 2` is one frame MORE than `n` for `n = 3 mod 4` (7, 15, 23, ...) -- and the factor floor can
+  bind at the resize's 200:1 aspect ceiling, so the figure could sit below the exact count (7 frames at
+  3072x2048: bound 12,338 against an exact 13,874; 150 frames at 32x6304: bound 13,127 against an exact
+  14,327), and a role client reserving media from it under-reserved. The bound now takes the largest of the
+  resize's three regimes: the bar's share, the rendered frame count's share (with the factor floor's
+  `sqrt(200)` long-edge case), and the floor's upscale rounding.
 
 - **A pair cut by both `document_max_tokens` and the budget records both mechanisms**: the cap's
   `document_share` row used to be replaced by the budget cut's `budget_cut` when the capped pair still
@@ -4753,9 +4759,11 @@ text it sends to the declared budget.
   `Qwen2VLVideoBackend`) samples by fps and ignores `num_frames`, so a pinned policy counted a temporal grid
   (ceil(num_frames / temporal_patch) groups at the family's per-frame budget) the engine never renders -- the
   window budget under-reserved media and the recorded instrument named a frame count the model never saw.
-  A container for `qwen2_vl`/`qwen2_5_vl` is now refused under either rule (the family's fps rule is not
-  ported here), with a hint to send `wire: frames` or serve a `qwen3_vl` checkpoint; the "32 frames
-  elsewhere" text in the policy and the preprocessing page is corrected too.
+  A container for `qwen2_vl`/`qwen2_5_vl` is refused under either rule (the family's fps rule is not ported
+  here), with a hint to send `wire: frames` or serve a `qwen3_vl` checkpoint; the plan refuses it too, so a
+  pass with no `context_tokens` or no tokenizer -- which never reached the count and sent the container while
+  the store recorded `num_frames: 8` -- now refuses it before any request. The "32 frames elsewhere" text in
+  the policy and the preprocessing page is corrected too.
 
 - **The media fit drops a frame-sampled video whole**: `fit_media_to_budget` treated every prepared frame as
   an independent item, so an over-budget frames video lost its most expensive frames one by one -- a clip

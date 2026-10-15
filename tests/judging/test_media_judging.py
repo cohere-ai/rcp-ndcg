@@ -443,6 +443,152 @@ class TestVideoContainers:
         assert "preprocessing.video" in (caught.value.hint or "")
         assert fake.usage.requests == 0
 
+    def test_a_pinned_qwen2_container_is_refused_whatever_the_budget_settings(self, tmp_path: Path) -> None:
+        """A qwen2_vl/qwen2_5_vl judge with a pinned ``video_url`` container: the family's engine backend
+        samples by fps and ignores ``num_frames``, and its fps rule is not ported here, so no declaration can
+        be counted honestly. The count refuses it, but a pass with no ``context_tokens`` or no tokenizer
+        never reaches that count -- it swallowed the refusal and sent the container while the store recorded
+        ``num_frames: 8`` -- so the plan refuses it now, before any request."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts(
+            [
+                VideoPart(
+                    ref=MediaRef(
+                        uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300, fps=30.0, duration_s=10.0
+                    )
+                )
+            ]
+        )
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"image_processor": "qwen2_5_vl", "max_videos": 1})
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=1003520, processor="qwen2_5_vl"),
+            video=VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True),
+        )
+
+        with pytest.raises(ConfigError, match="num_frames") as caught:
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL,
+                preprocessing=preprocessing,
+            )  # fmt: skip
+        assert "frames" in (caught.value.hint or "")
+        assert fake.usage.requests == 0
+
+    def test_an_fps_qwen2_container_is_refused_before_the_pass(self, tmp_path: Path) -> None:
+        """The engine's fps rule is ported for the qwen3_vl family only: a judge whose processor resolves to
+        a qwen2 family is refused before any request, whatever the budget settings."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts(
+            [
+                VideoPart(
+                    ref=MediaRef(
+                        uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300, fps=30.0, duration_s=10.0
+                    )
+                )
+            ]
+        )
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"image_processor": "qwen2_5_vl", "max_videos": 1})
+        # The deferred form: the judge's image_processor fills the policy's processor at plan time.
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=1003520),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+
+        with pytest.raises(ConfigError, match="qwen3_vl"):
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL,
+                preprocessing=preprocessing,
+            )  # fmt: skip
+        assert fake.usage.requests == 0
+
+
+def test_a_media_pass_bounds_prepared_media_to_one_query_s_pool(tmp_path: Path, pages, monkeypatch) -> None:
+    """Every prepared page and frame is an inlined PNG data URI; the shared image LRU is sized to one
+    query's pool, but a pass that starts every query before its first answer used to hold one pool per
+    query (the window budget prepared each pool synchronously, before the first await). The pass now runs
+    one media query at a time, so the prepared dict never holds more than one query's pool."""
+    from rcp_ndcg.judging.judging import _Pass
+
+    observed: list[int] = []
+    original = _Pass.ask_all
+
+    async def spy(self: _Pass, *args, **kwargs):
+        observed.append(len(self.prepared))
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(_Pass, "ask_all", spy)
+    rows = [
+        RankingExample(
+            query_id=f"q{index}",
+            query="what is the yield curve",
+            doc_ids=[f"p{page}" for page in range(len(pages))],
+            contents=[Content.from_parts([ImagePart(ref=ref)]) for ref in pages],
+        )
+        for index in (1, 2)
+    ]
+    fake = FakeJudge()
+    fake.config = fake.config.model_copy(update={"max_images": len(pages), "context_tokens": 100_000})
+
+    judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL)
+
+    assert observed, "the pass asked"
+    peak = max(observed)
+    assert peak <= len(pages), f"prepared media peaked at {peak} entries; one query's pool is {len(pages)}"
+
+
+async def test_run_planned_releases_a_query_s_prepared_media(tmp_path: Path, pages) -> None:
+    """The ``judge(windows=...)`` path (calibration insert/rejudge) prepared every query's media and never
+    released it: after the pass returned, every pool was still resident. It releases like the two stage
+    workers do."""
+    from rcp_ndcg_core.schemas import JudgementFamily
+
+    from rcp_ndcg.data.census import TextTruncationCensus
+    from rcp_ndcg.data.prepare import MediaCensus
+    from rcp_ndcg.judging.judging import _Pass, _Query, run_planned
+    from rcp_ndcg.judging.store import JudgementStore
+
+    prompt = load_prompt("rubric_vision")
+    units = [f"p{i}" for i in range(len(pages))]
+    query = _Query(
+        dataset="d",
+        query_id="q1",
+        text="what is the yield curve",
+        units=units,
+        contents={unit: Content.from_parts([ImagePart(ref=ref)]) for unit, ref in zip(units, pages, strict=True)},
+        chunk_mapping=None,
+    )
+    client = FakeJudge()
+    client.config = client.config.model_copy(update={"max_images": len(pages)})
+    run = _Pass(
+        stage="rubric",
+        client=client,
+        prompt=prompt,
+        family=JudgementFamily(
+            stage="rubric", judge_model="fake", prompt_hash=prompt.sha256, criteria=prompt.criteria, parse_version=1
+        ),
+        store=JudgementStore(tmp_path / "store"),
+        existing={},
+        preprocessing=Preprocessing(),
+        census=TextTruncationCensus(),
+        media_census=MediaCensus(),
+        tokenizer=None,
+        schedule_key="schedule",
+        dataset_key="dataset",
+    )
+
+    await run_planned(query, [units], run, mirror=False)
+
+    assert run.prepared == {}, "a planned pass releases the query's prepared media when it returns"
+
 
 async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_path: Path, pages) -> None:
     """A judging pass cached every prepared page and frame of every query for the whole pass (the shared

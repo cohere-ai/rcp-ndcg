@@ -1148,6 +1148,49 @@ def refuse_unpolicied_containers(contents: Iterable[Content], video: VideoPolicy
                 refuse_container_without_policy(part.ref.uri)
 
 
+def refuse_uncountable_containers(
+    contents: Iterable[Content], image: ImagePolicy | None, video: VideoPolicy | None
+) -> None:
+    """Refuse a video container the resolved processor family cannot count, whatever the budget settings are.
+
+    The Qwen2-VL families (``qwen2_vl``, ``qwen2_5_vl``) send their containers to an engine video backend
+    (vLLM v0.31.0's ``Qwen2VLVideoBackend``) that samples by fps and ignores ``num_frames``, and their fps
+    rule is not ported here, so no container declaration can be counted honestly.
+    :func:`content_media_tokens` refuses such a container when it counts, but a judging pass with no
+    ``context_tokens`` or no tokenizer never reaches that count: this is the one home of the rule for the
+    plan path, as :func:`refuse_unpolicied_containers` is for the missing-policy rule.
+
+    Args:
+        contents: The contents a pass would send.
+        image: The effective image policy (its ``processor`` names the family), or ``None``.
+        video: The effective video policy, or ``None``.
+
+    Raises:
+        ConfigError: a content holds a container part, the wire sends containers, and the family's engine
+            video backend is fps-driven with no ported fps rule.
+    """
+    if video is None or video.wire != "video_url" or image is None or image.processor is None:
+        return
+    if not PROCESSORS[image.processor].video_fps_only:
+        return
+    for content in contents:
+        for part in content.parts:
+            if not isinstance(part, VideoPart) or part.ref is None:
+                continue
+            if video.num_frames is not None:
+                detail = "so a pinned `num_frames` names a layout the engine never renders"
+            else:
+                detail = f"so the declared `fps` ({video.fps:g}) would count a layout the engine never renders"
+            raise ConfigError(
+                f"cannot count the container {part.ref.uri}: the {image.processor} engine video backend "
+                f"samples by fps and ignores num_frames (vLLM v0.31.0's Qwen2VLVideoBackend), {detail}; and "
+                "the family's fps rule is not ported here (only the qwen3_vl family's is), so a container "
+                "cannot be counted for this family.",
+                hint="send frames instead (`video_policy: {num_frames: N, wire: frames}`, client-sampled and "
+                "exact), or serve a qwen3_vl checkpoint whose fps rule is ported",
+            )
+
+
 def content_media_tokens(
     content: Content,
     image: ImagePolicy,
@@ -1285,15 +1328,11 @@ def _container_tokens(
                 + sum(ts + VISION_WRAPPER_TOKENS + tokens for ts, tokens in zip(timestamps, group_tokens, strict=True)),
                 timestamp_bound,
             )
-        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens, PER GROUP. The
-        # resize enforces the ceiling over ``t_bar = round(n / temporal_patch) * temporal_patch`` frames
-        # (smart_resize's own bar), while the engine renders ``ceil(n / temporal_patch)`` groups -- one more
-        # for an odd n -- so the whole-clip figure ``ceiling // (temporal_patch * factor^2)`` is not an
-        # upper bound: each group may keep up to ``ceiling // (t_bar * factor^2)`` merged tokens. n = 1 has
-        # t_bar 0 (no temporal shrink: one frame keeps the whole ceiling), bounded by the ceiling itself.
+        # no recorded size: the per-group bound covers every frame geometry the resize accepts (see
+        # _unsized_clip_group_bound): the resize's temporal bar is not the rendered frame count, and the
+        # factor floor and the floor's upscale both let a group exceed the whole-clip share.
         groups = len(timestamps)
-        t_bar = round(frames / geometry.temporal_patch) * geometry.temporal_patch
-        per_group_bound = clip_max_pixels // (max(t_bar, 1) * geometry.factor**2)
+        per_group_bound = _unsized_clip_group_bound(geometry, frames, clip_min_pixels, clip_max_pixels)
         if video.engine_video_pruning:
             group_tokens = _pruned_group_tokens(per_group_bound, groups, video)
             patch_total = sum(group_tokens)
@@ -1365,6 +1404,52 @@ def _container_timestamps(
     if tokenizer is None:
         return [geometry.video_timestamp_tokens] * len(groups), 1
     return [len(tokenizer.ids(f"<{group:.1f} seconds>", add_special_tokens=False)) for group in groups], 0
+
+
+def _unsized_clip_group_bound(
+    geometry: ProcessorGeometry,
+    frames: int,
+    min_pixels: int,
+    max_pixels: int,
+) -> int:
+    """The largest per-temporal-group patch count the whole-clip resize can keep for ``frames`` frames.
+
+    The bound must cover every frame geometry the resize accepts -- an unsized reference has no recorded
+    size -- so it takes the largest of the resize's three regimes (:func:`_clip_frame_size`):
+
+    * **No temporal shrink** (``t_bar * h_bar * w_bar <= max_pixels``): each frame keeps at most
+      ``max_pixels // (t_bar * factor^2)`` merged tokens, where ``t_bar = round(n / temporal_patch) *
+      temporal_patch`` is the resize's own temporal bar.
+    * **Temporal shrink**: the resize scales by ``beta = sqrt(n * h * w / max_pixels)`` -- the RENDERED
+      frame count ``n``, not ``t_bar`` (which is one frame MORE than ``n`` for ``n = 3 mod 4``: 7, 15,
+      23, ...) -- so a frame keeps at most ``max_pixels // (n * factor^2)`` merged tokens. When the factor
+      floor binds (an aspect ratio above ``max_pixels // (n * factor^2)``, reachable while that figure is
+      below the resize's 200:1 ceiling), the short edge keeps one factor block and the long edge reaches
+      ``floor(sqrt(200 * max_pixels // (n * factor^2)))``.
+    * **Floor upscale** (the frame is smaller than the floor): the resize scales both edges UP to the
+      floor, each rounding to the factor, so a group can exceed the floor's share by up to two factor
+      blocks; ``floor(share + 2 * sqrt(200 * share) + 1)`` covers the rounding.
+
+    Args:
+        geometry: The family's geometry (``factor``, ``temporal_patch``).
+        frames: The frames the engine renders (>= 1).
+        min_pixels: The clip's floor (``video.engine_video_min_pixels`` or the family's stock floor).
+        max_pixels: The clip's ceiling (``video.engine_video_max_pixels`` or the family's stock ceiling).
+
+    Returns:
+        An upper bound, in merged tokens, on one temporal group's patch count for any frame size.
+    """
+    factor2 = geometry.factor**2
+    t_bar = max(round(frames / geometry.temporal_patch) * geometry.temporal_patch, 1)
+    no_shrink = max_pixels // (t_bar * factor2)
+    # The shrink regime keeps at most ``max_pixels / (frames * factor^2)`` per frame; the factor floor
+    # binds below the 200:1 aspect ceiling, when the long edge can reach sqrt(200) times that share.
+    per_frame = max_pixels // (frames * factor2)
+    shrink = per_frame if per_frame >= 200 else math.isqrt(200 * max_pixels // (frames * factor2))
+    # The upscale regime targets ``min_pixels``; each edge's ceiling rounds up to the factor.
+    floor_share = min_pixels // (frames * factor2)
+    upscale = floor_share + 2 * math.isqrt(200 * min_pixels // (frames * factor2)) + 1
+    return max(no_shrink, shrink, upscale)
 
 
 def _pruned_group_tokens(per_group: int, groups: int, video: VideoPolicy) -> list[int]:
@@ -1492,6 +1577,7 @@ __all__ = [
     "gemma4_resize",
     "qwen3_vl_video_frame_indices",
     "refuse_container_without_policy",
+    "refuse_uncountable_containers",
     "refuse_unpolicied_containers",
     "sample_video_part",
     "smart_resize",
