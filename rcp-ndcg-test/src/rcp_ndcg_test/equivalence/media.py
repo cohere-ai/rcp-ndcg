@@ -245,11 +245,24 @@ def _video_frames(video_policy: Any, num_frames: int | None, original_fps: float
 def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) -> dict[str, Any]:
     """The facts of one sent side: the placement (part kinds in order), and per media item its kind, geometry
     or frame count and the tokens the client counted for it (the product's own count, exact when the recipe's
-    tokenizer is passed -- an fps container's timestamp lines are tokenizer-dependent)."""
+    tokenizer is passed -- an fps container's timestamp lines are tokenizer-dependent).
+
+    An image's geometry is the geometry the ENGINE consumes, not the bytes' own: a ``gemma4`` policy sends
+    the raw image, whose processor resizes it once (g-ref-vl-1), so the reference's one-pass grid is
+    computed here with the product's own public rule; the other families' prepared image is already the
+    engine's output (its policy keeps it)."""
     from rcp_ndcg.data.prepare import media_policies_for
-    from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
+    from rcp_ndcg.data.resolution import PROCESSORS, ImagePolicy, content_media_tokens, gemma4_resize
 
     image_policy, video_policy = media_policies_for(client.config)
+
+    def consumed_geometry(height: int, width: int) -> tuple[int, int]:
+        if image_policy is None or not image_policy.resizes:
+            return height, width
+        if PROCESSORS[image_policy.processor].resize == "gemma4":
+            assert image_policy.max_soft_tokens is not None
+            return gemma4_resize(height, width, max_soft_tokens=image_policy.max_soft_tokens)
+        return image_policy.target_size(height, width)
 
     def tokens_of(content: Any) -> int | None:
         try:
@@ -272,7 +285,8 @@ def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) 
             ref = content.parts[0].ref
             assert ref is not None  # sent_media_content always builds a ref
             if sent_kind == "image":
-                items.append({"kind": "image", "width": ref.width, "height": ref.height, "tokens": tokens_of(content)})
+                height, width = consumed_geometry(ref.height or 0, ref.width or 0)
+                items.append({"kind": "image", "width": width, "height": height, "tokens": tokens_of(content)})
             else:
                 frames = _video_frames(video_policy, ref.num_frames, ref.fps)
                 items.append({"kind": "video", "frames": frames, "tokens": tokens_of(content)})

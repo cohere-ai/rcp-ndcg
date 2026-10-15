@@ -16,16 +16,20 @@ Gemma 4 soft-token budget -- and a known processor family
    does with ``do_convert_rgb`` for an opaque image. Sending RGB removes any dependence on an engine's own
    alpha handling.
 3. **Resize.** To :meth:`~rcp_ndcg.data.resolution.ImagePolicy.target_size` -- the processor's own resize under
-   the budget (``smart_resize`` for the Qwen families; the soft-token fixed point for ``gemma4``) -- with Pillow's
-   BICUBIC filter, the processor's own ``resample``
+   the budget (``smart_resize`` for the Qwen families) -- with Pillow's BICUBIC filter, the processor's own
+   ``resample``
    (models/qwen2_vl/image_processing_qwen2_vl.py:95 and image_processing_pil_qwen2_vl.py:90 @ 528c267). An image
-   already at its target size is not resampled.
+   already at its target size is not resampled. A ``gemma4`` policy is the exception: its target is the RAW
+   decoded image, because the card's pipeline hands the processor the raw image and the processor resizes it
+   once (g-ref-vl-1); the engine applies that same one-pass resize, and the client counts it.
 4. **Encode** losslessly as PNG, so the pixels the engine decodes are the pixels resized here, whatever image
    decoder the engine uses.
 
 The engine then runs the same ``smart_resize`` on an image that is already at a fixed point of it: the budget is
 checked to lie inside the engine's default budget (:data:`~rcp_ndcg.data.resolution.PROCESSORS`), so the resize
-keeps the size, and both the torchvision and the Pillow resize return an equal-size image unchanged.
+keeps the size, and both the torchvision and the Pillow resize return an equal-size image unchanged. (A
+``gemma4`` image is sent raw: the engine's processor applies the card's one-pass resize, and
+``ImagePolicy.image_tokens`` counts that grid.)
 
 Without a budget, or when the judge declares no ``image_processor``, an image is sent **unchanged** (its stored bytes
 and MIME type) and the engine's processor decides; the effective policy records that (``processor: null``).

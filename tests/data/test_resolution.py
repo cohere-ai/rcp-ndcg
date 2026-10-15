@@ -14,6 +14,7 @@ from rcp_ndcg.data.resolution import (
     VideoPolicyError,
     content_media_tokens,
     engine_media_check,
+    gemma4_fixed_point,
     gemma4_resize,
     qwen3_vl_video_frame_indices,
     sample_video_part,
@@ -837,24 +838,28 @@ class TestGemma4Geometry:
     """
 
     def test_the_resize_matches_the_transformers_algorithm(self):
-        assert GEMMA4.target_size(16, 16) == (768, 768)
-        assert GEMMA4.target_size(842, 595) == (912, 672)
-        assert GEMMA4.target_size(1080, 1920) == (576, 1056)
+        assert gemma4_resize(16, 16, max_soft_tokens=280) == (768, 768)
+        assert gemma4_resize(842, 595, max_soft_tokens=280) == (912, 672)
+        assert gemma4_resize(1080, 1920, max_soft_tokens=280) == (576, 1056)
 
-    def test_the_prepared_size_is_a_fixed_point_of_the_processor(self):
-        """The engine runs the processor on the prepared bytes, and the Gemma 4 resize is not idempotent:
-        the client prepares the size the processor keeps. A 4096x576 page's single pass is 2112x288 and
-        settles at 2160x288; a 3000x20 strip walks to 13344x48."""
-        assert gemma4_resize(4096, 576, max_soft_tokens=280) == (2112, 288)
-        assert GEMMA4.target_size(4096, 576) == (2160, 288)
-        assert GEMMA4.target_size(20, 3000) == (48, 13344)
-        for size in ((768, 768), (912, 672), (576, 1056), (2160, 288), (48, 13344)):
-            assert GEMMA4.target_size(*size) == size, "a prepared size must be one the engine keeps"
+    def test_the_client_sends_the_raw_image(self):
+        """g-ref-vl-1: the card's pipeline hands the Gemma 4 processor the RAW image, which resizes it
+        ONCE; the client sends the decoded image unchanged too, so the engine's processor applies the
+        card's one-pass resize rather than a fixed-point no-op on a grid the card never produces."""
+        for size in ((16, 16), (842, 595), (1080, 1920), (4096, 576), (20, 3000)):
+            assert GEMMA4.target_size(*size) == size
+        # The fixed point stays a port of the processor's iterated rule (the old preparation rule).
+        assert gemma4_fixed_point(4096, 576, max_soft_tokens=280) == (2160, 288)
 
-    def test_tokens_are_the_pooled_patches(self):
+    def test_tokens_are_the_one_pass_pooled_patches(self):
+        """The counted grid is the processor's single pass over the raw image (the engine's output):
+        a 4096x576 page is 2112x288 = 264 patches (not the 2160x288 / 270 of its fixed point), and a
+        20x3000 strip is 48x9792 = 204 (not 48x13344 / 278)."""
         assert GEMMA4.image_tokens(16, 16) == 256
         assert GEMMA4.image_tokens(842, 595) == 266
         assert GEMMA4.image_tokens(1080, 1920) == 264
+        assert GEMMA4.image_tokens(4096, 576) == 264
+        assert GEMMA4.image_tokens(20, 3000) == 204
 
     def test_the_bound_is_the_soft_budget(self):
         assert GEMMA4.max_image_tokens == 280
@@ -874,7 +879,7 @@ class TestGemma4Geometry:
 
     def test_a_pinned_soft_budget_is_admitted(self):
         policy = ImagePolicy(max_soft_tokens=560, processor="gemma4", engine_pixel_pinning=True)
-        assert policy.target_size(224, 224) == (1104, 1104)
+        assert policy.target_size(224, 224) == (224, 224)
         assert policy.image_tokens(224, 224) == 529
         assert policy.descriptor == "soft560 gemma4 pinned"
 

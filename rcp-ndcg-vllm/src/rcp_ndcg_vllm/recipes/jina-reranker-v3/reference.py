@@ -38,6 +38,12 @@ it); the harness process never imports it.  CLI contract (``rcp_ndcg_test.equiva
 The instruction is never sent: the checkpoint's ``rerank()`` hard-codes ``instruction=None`` in every
 ``_compute_single_batch`` call (the paper never sends one), so ``score`` refuses a non-None
 instruction and ``render`` ignores the pairs row's instruction field.
+
+Tokenizer: the render mode loads the checkpoint's own ``tokenizer.json`` the way its remote code
+resolves it (``AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)`` at the pinned
+revision, whose sidecars are all carried by the file itself), with ``tokenizers`` directly -- the
+reference does not import the product (``AGENTS.md``); a CPU-only equivalence test holds this loader to
+the product's own ``rcp_ndcg.data.tokenizer`` path over an exhaustive corpus.
 """
 
 from __future__ import annotations
@@ -122,22 +128,43 @@ def format_docs_prompt(query: str, docs: Sequence[str], instruction: str | None 
     return prefix + prompt + suffix
 
 
-def _product_tokenizer(spec: str):
-    """The recipe tokenizer through the product's loader (the same file stage 1's fits count with)."""
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+def _checkpoint_tokenizer(spec: str):
+    """The checkpoint's own tokenizer, loaded the way its remote code resolves it.
 
-    return load_tokenizer(spec)
+    ``modeling.py``'s ``_ensure_tokenizer`` builds ``AutoTokenizer.from_pretrained(name_or_path,
+    trust_remote_code=True)`` at the pinned revision; for this checkpoint that resolves to its one
+    ``tokenizer.json`` (Qwen2 byte-level BPE, 29 added tokens, a no-op ByteLevel post-processor) plus
+    the sidecars it already carries (``clean_up_tokenization_spaces: false``, the pad token and every
+    added token are in the file), so this reference loads that file directly with ``tokenizers`` -- the
+    checkpoint's own tokenizer, never through the product's ``rcp_ndcg.data.tokenizer.load_tokenizer``
+    (the reference must not import the product, AGENTS.md).  A CPU-only equivalence test holds this
+    loader to the product's own tokenizer path over an exhaustive corpus.
+    """
+    from huggingface_hub import hf_hub_download
+    from tokenizers import Tokenizer
+
+    location, _, revision = spec.rpartition("@")
+    if "/" in revision:
+        # A local path that carries an '@' (the tokenizer cache names a file
+        # ``<repo>@<revision>/tokenizer.json``): the whole spec is the location.
+        location, revision = spec, ""
+    path = Path(location)
+    if path.is_file():
+        file = path
+    elif path.is_dir():
+        file = path / "tokenizer.json"
+    else:
+        file = Path(hf_hub_download(location, "tokenizer.json", revision=revision or None))
+    return Tokenizer.from_file(str(file))
 
 
 def _truncate_text(text: str, backend: object, max_length: int) -> str:
     """modeling.py ``_truncate_texts``' per-text rule: right-truncate the RAW text before templating; a
     text that reaches ``max_length`` tokens is ``decode(ids[:max_length])`` back to text.
 
-    ``tokenizer(text, truncation=True, max_length=N)`` keeps the first N ids here (this tokenizer's
-    post-processor adds no special tokens), and HF's ``decode`` keeps special tokens
-    (``skip_special_tokens=False``, its default).  The shared backend is never reconfigured (no
-    ``enable_truncation``): the product's ``load_tokenizer`` caches it, so a mutation would cap every
-    later count in the same process."""
+    The remote code's ``tokenizer(text, truncation=True, max_length=N)`` keeps the first N ids (this
+    tokenizer's post-processor adds no special tokens), and its ``decode`` keeps special tokens
+    (``skip_special_tokens=False``, HF's default)."""
     ids = list(backend.encode(text, add_special_tokens=True).ids)  # type: ignore[attr-defined]
     if len(ids) >= max_length:
         text = backend.decode(ids[:max_length], skip_special_tokens=False)  # type: ignore[attr-defined]
@@ -151,10 +178,9 @@ def render_query_and_document(query: str, document: str, tokenizer_spec: str, in
     ``rerank()`` does, then formats.  This is the text the recipe's declared pair shape must render to
     byte for byte (the prompt-level view; stage 1's render check compares the wire's SPANS instead).
     """
-    tokenizer = _product_tokenizer(tokenizer_spec)
-    backend = tokenizer.backend
-    truncated_query = _truncate_text(query, backend, MAX_QUERY_LENGTH)
-    truncated_doc = _truncate_text(document, backend, MAX_DOC_LENGTH)
+    tokenizer = _checkpoint_tokenizer(tokenizer_spec)
+    truncated_query = _truncate_text(query, tokenizer, MAX_QUERY_LENGTH)
+    truncated_doc = _truncate_text(document, tokenizer, MAX_DOC_LENGTH)
     return format_docs_prompt(truncated_query, [truncated_doc], instruction=instruction)
 
 
@@ -168,8 +194,7 @@ def render_rows(pairs: list[dict], tokenizer_spec: str) -> list[dict]:
     the spans are the raw texts and compare byte-identically with the wire's spans; over-cap rows
     differ from the client's cuts and ride the declared ``over_cap_cut_differs`` table.
     """
-    tokenizer = _product_tokenizer(tokenizer_spec)
-    backend = tokenizer.backend
+    tokenizer = _checkpoint_tokenizer(tokenizer_spec)
     rows: list[dict] = []
     for index, row in enumerate(pairs):
         query = str(row["query"])
@@ -178,8 +203,8 @@ def render_rows(pairs: list[dict], tokenizer_spec: str) -> list[dict]:
             {
                 "index": index,
                 "shape": "pair",
-                "query": _truncate_text(query, backend, MAX_QUERY_LENGTH),
-                "documents": [_truncate_text(document, backend, MAX_DOC_LENGTH) for document in documents],
+                "query": _truncate_text(query, tokenizer, MAX_QUERY_LENGTH),
+                "documents": [_truncate_text(document, tokenizer, MAX_DOC_LENGTH) for document in documents],
             }
         )
     return rows

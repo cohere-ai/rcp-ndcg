@@ -24,7 +24,7 @@ ran against the fingerprint the tree computes today.
 | `ctxl-rerank-v2-instruct-multilingual-1b` | rerank | `vllm/vllm-openai:v0.31.0` | `rc0-202610131335` | 2026-10-13 | `9f143b140d85…` | verified |
 | `ctxl-rerank-v2-instruct-multilingual-2b` | rerank | `vllm/vllm-openai:v0.31.0` | `rc0-202610131335` | 2026-10-13 | `00934b2089bb…` | verified |
 | `ctxl-rerank-v2-instruct-multilingual-6b` | rerank | `vllm/vllm-openai:v0.31.0` | `rc0-202610131335` | 2026-10-13 | `b9c99ae7e998…` | verified |
-| `embeddinggemma-2` | embed | `vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@sha256:b25e8a046fdbe948987b3dba06ef2cf9ea0f02b36d9482a25113a445ee52ad21` | `rc0-202610140620` | 2026-10-14 | `d0e1e96816fc…` | verified |
+| `embeddinggemma-2` | embed | `vllm/vllm-openai:v0.31.0` | `rc0-202610140620` | 2026-10-14 | `cc5e5c3c0766…` | verified |
 | `gemma-4-12b-it` | judge | `vllm/vllm-openai:v0.31.0` | `rc0-202610121840` | 2026-10-12 | `315c94e5d8ea…` | verified |
 | `gemma-4-26b-a4b-it` | judge | `vllm/vllm-openai:v0.31.0` | `rc0-202610121840` | 2026-10-12 | `ae68e4fd1c72…` | verified |
 | `gemma-4-26b-a4b-nvfp4` | judge | `vllm/vllm-openai:v0.31.0` | `rc0-202610121840` | 2026-10-12 | `3359e28b3ace…` | verified |
@@ -83,6 +83,12 @@ ran against the fingerprint the tree computes today.
   Nothing is deferred past the tag: the state stays `failed`, and the gate's disposition stays the owner's
   explicit decision, recorded in the release notes; a recipe in this state ships only under that decision,
   never silently.
+- **The `embeddinggemma-2` row's engine image is stock `vllm/vllm-openai:v0.31.0`** (vllm-7, owner
+  decision 8): the verifying waves ran that image with the recipe's plugin backport, not the nightly
+  digest the row used to name. The correction moves the recipe's behaviour fingerprint (the engine image
+  is a key), so the row's fingerprint cell names the value the tree computes today (`cc5e5c3c0766…`);
+  the `rc0-202610140620` wave ran at the superseded nightly-keyed `d0e1e968…`, and the release's
+  re-recording waves re-run this row at the current key before the tag.
 - **One reference case remains `pending_gpu`**: `rcp-ndcg-test/cases/topk-embed-v1-small/query-cap-1024.yaml`,
   in the family whose gate the owner dispositioned. Its query renders past the recipe's declared
   `client.query_max_tokens: 1024`, so the client's fit cuts it, and the case's `expected.kind` is `none`,

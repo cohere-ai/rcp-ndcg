@@ -30,7 +30,7 @@
   "tokenizer": "perplexity-ai/pplx-embed-v1-0.6b@2c4d510dd4a732063c31a0f70193e35067b51fd8"
  },
  "fingerprint": {
-  "fingerprint": "69be7be776a5595cc66e7a986da4d30517b8d0f62b6616f02f8fa6714834adc2",
+  "fingerprint": "17b6373c2bee8cb9e82dfb7f55e54e8582ac2b6df3494f984b0a6239ece7c986",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -50,8 +50,8 @@
    "fingerprint_schema": "rcp-fp/4",
    "model": "perplexity-ai/pplx-embed-v1-0.6b",
    "plugin_sha256.rcp_ndcg_vllm.models": "sha256:cd90979e6cbf9def6287355fbbfb51d01b835de7be427b8e555f5e6e5f35db0b",
-   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:46213ea54e56222971038b7e595e83dfc9bcbe55cbc31f65762ce15cb0e5be39",
-   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:62f25dfcadcbdc797e7b81c15bbd867aa3e53d8064ed41bc3a0e9e6a7e7a5b96",
+   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:36e84e2e87cfe7dd4a5432dc7f0ee8ff7e82722bf1562399099ff2eb9cf304cb",
+   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:caef4d06eb65f3003ca8bc1f3152148e0ae81457b460f43830faf709163ea6c8",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:942cdfeb17a6267c8c24ce67b934948299c940a5fb1f4b320f5f2aeedb52a479",

@@ -1,7 +1,7 @@
-# Folded from vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986 (the digest-pinned nightly the
-# embeddinggemma-2 recipe names; `vllm/model_executor/models/embedding_gemma2.py` at that commit) by
-# the rcp-ndcg-vllm plugin: the engine image the recipe pins reports vLLM 0.31.0 and its registry
-# carries no `EmbeddingGemma2Model` (its supported-architecture list equals the v0.31.0 tag's), so
+# Folded from vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986 (the fold's source; the
+# embeddinggemma-2 recipe serves stock v0.31.0; `vllm/model_executor/models/embedding_gemma2.py` at that commit) by
+# the rcp-ndcg-vllm plugin: the stock v0.31.0 image the recipe serves carries no
+# `EmbeddingGemma2Model` (its supported-architecture list equals the v0.31.0 tag's), so
 # the plugin ships the model class and `register_embedding_gemma2` registers it lazily as
 # `rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2:EmbeddingGemma2Model` when the
 # running vLLM does not already carry the architecture. The upstream body below is byte-identical

@@ -31,8 +31,9 @@ engine environment's patch opt-in, and exits). `--set` names a **deployment** fi
 `serve.port`, `serve.max_model_len` -- and the schema declares that surface once
 (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field (the model, the revision, the dtype, a template, ...) is
 refused by name, `serve.max_model_len` is refused below the client's largest token budget, and
-`serve.max_num_batched_tokens` is refused below a `serve.max_model_len` an at-budget prompt reaches on a
-pooling recipe without the `pooling-full-context` patch. A checkpoint that needs its model plugin is refused
+`serve.max_num_batched_tokens` is rendered at a `serve.max_model_len` an at-budget prompt reaches on a pooling
+recipe without the `pooling-full-context` patch when nothing sets it (a smaller explicit value is warned
+about and replaced by the safe one). A checkpoint that needs its model plugin is refused
 with the exact install line, judged in the interpreter the `vllm` executable's shebang names (so a `vllm` from
 another environment must carry the wheel itself). Example, on the stock image:
 

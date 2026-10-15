@@ -59,7 +59,7 @@ rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8000 \
 | `resources.gpus` | `--tensor-parallel-size` | the recipe's per-variant GPU count, overridden |
 | `serve.gpu_memory_utilization` | `--gpu-memory-utilization` | a finite fraction above 0 and at most 1 (the engine's own default until set) |
 | `serve.max_num_seqs` | `--max-num-seqs` | |
-| `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | at or above `serve.max_model_len` when the client's largest budget reaches it and the recipe carries no `pooling-full-context` patch, see below |
+| `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | rendered at `serve.max_model_len` when the client's largest budget reaches it and the recipe carries no `pooling-full-context` patch; a smaller explicit value is warned about and replaced, see below |
 | `serve.host` | `--host` | the interface the engine listens on (`0.0.0.0` by default) |
 | `serve.port` | `--port` | wins over the console's `--port`; 0-65535 (0: the engine binds an ephemeral port) |
 | `serve.max_model_len` | `--max-model-len` | at or above the client's largest token budget, see below |
@@ -80,13 +80,20 @@ was started with verbatim (`engine.serve_argv`), so an engine started with overr
 the GPU waves serve the recipes as shipped, with no overrides. `--port` (the run's own spelling of
 `serve.port`) and `--set serve.port` are checked the same way; `--set serve.port` wins when both are given.
 
-`serve.max_num_batched_tokens` is refused, with both numbers and the patch's name, when it falls below a
-`serve.max_model_len` that the client's largest token budget reaches exactly, on a pooling recipe that does not
-declare `serve.patches: [pooling-full-context]`: an exactly-full prompt is then chunked, and the pinned
-v0.31.0 scheduler never schedules its last token, so the request hangs and holds the engine slot. A recipe
-whose client budget stays below `serve.max_model_len` (the `qwen3-reranker` family: 8192 against 10000) never
-sends such a prompt, and a recipe that carries the patch finishes it; both may chunk freely. The patch is a
-content field, so the serve-time remedy is `--set serve.max_num_batched_tokens=<at least serve.max_model_len>`.
+`serve.max_num_batched_tokens` is **rendered at** `serve.max_model_len` when the client's largest token budget
+reaches `serve.max_model_len` exactly and the recipe does not declare
+`serve.patches: [pooling-full-context]` (owner decision 6(b)): an exactly-full prompt is then chunked, and the
+pinned v0.31.0 scheduler never schedules its last token, so the request hangs and holds the engine slot. The
+engine's own default chunk depends on the GPU class (2048 on A100 and GPUs under 70 GiB, below these
+recipes' budgets), so the recipe renders the safe value instead of relying on it -- nothing is left to the
+engine's default. A recipe whose client budget stays below `serve.max_model_len` (the `qwen3-reranker`
+family: 8192 against 10000) never sends such a prompt, and a recipe that carries the patch finishes it; both
+may chunk freely and render no derived value. An explicit `--set serve.max_num_batched_tokens` below the
+floor is **warned about and replaced by** `serve.max_model_len`, naming the value asked for, the value
+rendered and the patch: decision 6(b) chose a warning over a refusal, but rendering the smaller value would
+reproduce the hang the rule exists to prevent. Carrying the patch on the seven affected recipes is deferred:
+v0.31.0 is the latest release and the five pooling bugfix PRs upstream (60978, 55226, 55192, 60035, 61062)
+are open, none merged, so no release carries the fix yet.
 
 ## 3. Your own recipe file: a path instead of an id
 

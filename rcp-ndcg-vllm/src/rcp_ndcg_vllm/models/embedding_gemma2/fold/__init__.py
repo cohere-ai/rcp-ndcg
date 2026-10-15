@@ -2,14 +2,14 @@
 
 The four ``*_embedding_gemma2.py`` files here are transformers 5.19.0's ``models/embedding_gemma2/``
 modules (configuration, modeling, processing, video processing) and ``embedding_gemma2.py`` is vLLM
-nightly ``8cbd5d03``'s ``model_executor/models/embedding_gemma2.py``, each with a header naming the
+commit ``8cbd5d03``'s ``model_executor/models/embedding_gemma2.py``, each with a header naming the
 upstream file. The parent package loads them by path under their upstream module names, so their
 relative imports resolve inside transformers.
 
 Importing this package installs them under those upstream names **before any folded module body
 runs**: vLLM imports the folded model module as the registered ``"module:Class"`` string, and that
-module's first statements are ``from transformers.models.embedding_gemma2...`` -- the pinned image's
-transformers does not carry the package, so those imports resolve only if the fold is installed
+module's first statements are ``from transformers.models.embedding_gemma2...`` -- the stock v0.31.0
+image's transformers does not carry the package, so those imports resolve only if the fold is installed
 first, in every process that imports the model (E2 round 5: the engine core imported the model with
 the plugin loaded but the fold's patch not applied there, and died with
 ``ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'``). The installation is

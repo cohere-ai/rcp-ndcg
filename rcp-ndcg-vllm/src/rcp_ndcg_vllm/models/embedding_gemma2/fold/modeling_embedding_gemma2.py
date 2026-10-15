@@ -1,5 +1,5 @@
 # Folded from transformers 5.19.0 (`transformers/models/embedding_gemma2/modeling_embedding_gemma2.py`) by the
-# rcp-ndcg-vllm plugin: the digest-pinned engine nightly's transformers does not carry the
+# rcp-ndcg-vllm plugin: the stock v0.31.0 engine's transformers does not carry the
 # `embedding_gemma2` classes, so this wheel ships them and `rcp_ndcg_vllm.models.embedding_gemma2`
 # loads each file under its upstream module name (`transformers.models.embedding_gemma2.<module>`)
 # before vLLM imports its own `embedding_gemma2` model module. The upstream body below is

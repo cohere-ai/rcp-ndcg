@@ -23,9 +23,9 @@ prompt strings changed is a loud error, never a silent drift.
   document). A media row's ``media`` field is read (:func:`side_input`): a media side is a one-user-turn
   conversation with the parts in order (the prompt rides the card's own system message, which the
   checkpoint's template renders first) through the card's ``encode``; an image entry is a loaded PIL image
-  PREPARED at the card's fixed point (:func:`prepared_image`: the card's own resize rule, read from the
-  loaded processor's module and iterated to the size the processor keeps, applied once -- the pixels the
-  client's preparation sends the engine) and a video entry is written to a scratch file and handed to the
+  handed to the card's processor RAW (:func:`side_input`), so the processor's own single pass is the
+  resize the card's pipeline applies -- the reference never pre-resizes to the client's old fixed point --
+  and a video entry is written to a scratch file and handed to the
   checkpoint's own video processor with the recipe's declared pin
   (:func:`video_processing_kwargs`: the engine's fps and frame cap plus the checkpoint's uniform overflow
   strategy), whose ``sample_frames`` reproduces the engine's indices exactly (W2 re-verification). A
@@ -41,9 +41,9 @@ prompt strings changed is a loud error, never a silent drift.
   scaled toward ``max_soft_tokens x pooling_kernel_size^2`` patches, both edges floored to
   ``patch_size x pooling_kernel_size`` = 48) and its prompt tokens (the pooled patches plus the two vision
   markers), and each video's declared frame count (the engine's pinned sampling, read from the resolved
-  recipe's ``serve.extra_args``). Needs PIL only: this mode imports no transformers, so its fixed point is
-  the mirror of the card's rule (:func:`gemma4_resize`/:func:`gemma4_fixed_point`, cross-checked against the
-  product's policy by a test), while the embed mode takes the same rule from the processor it loads.
+  recipe's ``serve.extra_args``). Needs PIL only: this mode imports no transformers, so its one-pass rule
+  is the mirror of the card's rule (:func:`gemma4_resize`, cross-checked against the product's policy by a
+  test), and the embed mode's processor applies the same rule.
 
 Reference environment (``reference.in``/``reference.lock`` in this directory): transformers 5.19.0 (the first
 release with ``EmbeddingGemma2Model``, ``EmbeddingGemma2Processor`` and the Gemma 4 image/video processors;
@@ -205,87 +205,9 @@ def gemma4_resize(height: int, width: int, *, max_soft_tokens: int) -> tuple[int
     return target_height, target_width
 
 
-def gemma4_fixed_point(height: int, width: int, *, max_soft_tokens: int) -> tuple[int, int]:
-    """The size the checkpoint's processor KEEPS: :func:`gemma4_resize` iterated to its fixed point.
-
-    The engine runs the processor on the prepared bytes, and the Gemma 4 resize is not idempotent (the
-    floor to 48 can move an edge on a second pass), so the client prepares the fixed point and the model
-    consumes it; this mode reports that same geometry. The embed mode, which loads the checkpoint's own
-    processor, takes the same rule from it (:func:`processor_fixed_point`) instead of this mirror."""
-    current = (height, width)
-    for _ in range(16):
-        following = gemma4_resize(*current, max_soft_tokens=max_soft_tokens)
-        if following == current:
-            return current
-        current = following
-    raise SystemExit(f"the Gemma 4 resize of {height}x{width} did not settle within 16 passes")
-
-
-def _aspect_ratio_rule(image_processor: Any) -> Any:
-    """The card's own aspect-ratio-preserving resize, read from the loaded image processor's own module.
-
-    transformers 5.19.0 defines ``get_aspect_ratio_preserving_size`` beside the Gemma 4 image processor
-    (``models/gemma4/image_processing_gemma4.py`` for the torchvision backend and
-    ``image_processing_pil_gemma4.py`` for the PIL one); taking it from the processor's own class keeps the
-    rule the card's code, never a port of it.
-    """
-    module = sys.modules.get(type(image_processor).__module__)
-    rule = getattr(module, "get_aspect_ratio_preserving_size", None) if module is not None else None
-    if rule is None:
-        raise SystemExit(
-            f"the image processor {type(image_processor).__name__} carries no "
-            "get_aspect_ratio_preserving_size: the reference cannot prepare media the card's way"
-        )
-    return rule
-
-
-def processor_fixed_point(image_processor: Any, height: int, width: int, *, max_soft_tokens: int) -> tuple[int, int]:
-    """The size the card's own image processor KEEPS for one image: its own resize iterated to its fixed
-    point.
-
-    The served path sends the client's prepared bytes, so the engine's processor runs on the fixed point and
-    leaves it unchanged; the reference consumes the same grid by preparing the same size, with the rule read
-    from the loaded processor itself (:func:`_aspect_ratio_rule`), under the recipe's declared budget (the
-    budget the client prepares under).
-    """
-    rule = _aspect_ratio_rule(image_processor)
-    pooling = int(image_processor.pooling_kernel_size)
-    max_patches = max_soft_tokens * pooling**2
-    current = (height, width)
-    for _ in range(16):
-        following = rule(
-            height=current[0],
-            width=current[1],
-            patch_size=int(image_processor.patch_size),
-            max_patches=max_patches,
-            pooling_kernel_size=pooling,
-        )
-        if following == current:
-            return current
-        current = following
-    raise SystemExit(
-        f"the card's resize of {height}x{width} did not settle within 16 passes (at {current[0]}x{current[1]})"
-    )
-
-
-def prepared_image(image: Any, image_processor: Any, *, max_soft_tokens: int) -> Any:
-    """One image as the served path sends it: the card's fixed point, resized in one pass.
-
-    The client prepares exactly these pixels -- the decoded bytes resized once, with the processor's own
-    declared ``resample`` (Pillow's BICUBIC), to the size the processor keeps -- and the processor's own
-    resize is then the identity on them, so the model consumes what the engine consumes.
-    """
-    target_height, target_width = processor_fixed_point(
-        image_processor, image.height, image.width, max_soft_tokens=max_soft_tokens
-    )
-    if (target_height, target_width) == (image.height, image.width):
-        return image
-    return image.resize((target_width, target_height), image_processor.resample)
-
-
 def _image_budget(recipe: dict[str, Any]) -> int:
     """The declared image soft-token budget (``client.image_policy.max_soft_tokens``, the checkpoint's own
-    280 when the recipe declares none): the budget the client prepares under and the media mode reports."""
+    280 when the recipe declares none): the budget the engine's processor applies and the media mode reports."""
     client = recipe.get("client") or {}
     return int((client.get("image_policy") or {}).get("max_soft_tokens") or 280)
 
@@ -322,7 +244,9 @@ def media_side(
             continue
         placement.append("image")
         width, height = _image_size(entry)
-        target_height, target_width = gemma4_fixed_point(height, width, max_soft_tokens=image_budget)
+        # The card's processor resizes the raw image ONCE; the engine's processor does the same, so this is
+        # the grid the model consumes (g-ref-vl-1 decision 9(a)).
+        target_height, target_width = gemma4_resize(height, width, max_soft_tokens=image_budget)
         patches = (target_height // _GEMMA4_PATCH) * (target_width // _GEMMA4_PATCH)
         tokens = patches // _GEMMA4_POOLING**2 + 2
         media.append({"kind": "image", "width": target_width, "height": target_height, "tokens": tokens})
@@ -406,37 +330,20 @@ def _decode_image(entry: dict[str, Any]) -> Any:
         return handle.convert("RGB")
 
 
-def _model_image_processor(model: Any) -> Any:
-    """The card's own Gemma 4 image processor, from the checkpoint's processor the model loaded.
-
-    ST's input module holds the ``AutoProcessor`` its ``encode`` calls (``SentenceTransformer`` is the
-    checkpoint's module sequence and the input module carries ``processor``); the image processor beside it
-    is the component whose own resize rule the served path reproduces. A checkpoint whose pipeline carries
-    none is a loud error, never a silent raw-bytes pass-through.
-    """
-    for module in model:
-        image_processor = getattr(getattr(module, "processor", None), "image_processor", None)
-        if image_processor is not None:
-            return image_processor
-    raise SystemExit("the checkpoint's processor carries no image processor: the reference cannot prepare media")
-
-
 def side_input(
     text: str,
     entries: list[dict[str, Any]],
     *,
     work: Path,
     clip_name: str,
-    image_processor: Any,
-    image_budget: int,
 ) -> Any:
     """One side as the card's own ST input: its text, or a one-user-turn conversation with the parts in order.
 
     A side without media is its text (the card's ``prompt_name`` prepends the declared task prompt to it);
     a media side is a conversation (the card's ``prompt_name`` rides as a system message, which the
     checkpoint's template renders before the user turn -- the same render the client sends). An image entry
-    becomes a loaded PIL image PREPARED at the card's fixed point (:func:`prepared_image`: the pixels the
-    client's preparation sends the engine, so the processor's own resize is the identity on them), a video
+    becomes a loaded PIL image handed to the card's processor RAW (the card's own input; the processor's
+    single pass is the card's resize, and the client sends the same raw bytes), a video
     entry is written to ``work/<clip_name>.avi`` and handed to the checkpoint's own video processor, which
     samples it at the declared pin (:func:`_video_pin`); a text entry stands where it stands, and a side with
     no part at all is the empty string (the card's bare prompt).
@@ -452,12 +359,7 @@ def side_input(
                 parts.append({"type": "text", "text": str(entry["text"])})
         elif kind == "image":
             image = _decode_image(entry)
-            parts.append(
-                {
-                    "type": "image",
-                    "image": prepared_image(image, image_processor, max_soft_tokens=image_budget),
-                }
-            )
+            parts.append({"type": "image", "image": image})
         elif kind == "video":
             path = work / f"{clip_name}.avi"
             path.write_bytes(_entry_bytes(entry))
@@ -527,8 +429,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                 "a checkpoint whose prompt table changed is a new instrument"
             )
     video_fps, video_max_frames = _video_pin(recipe)
-    image_processor = _model_image_processor(model)
-    image_budget = _image_budget(recipe)
 
     def vectors(sides: list[Any], prompt_name: str) -> list[list[float]]:
         """One vector per side: a text-only side through the card's own tokenizer path
@@ -571,8 +471,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                 list((row.get("media") or {}).get("query") or []),
                 work=root,
                 clip_name=f"query-{index}",
-                image_processor=image_processor,
-                image_budget=image_budget,
             )
             for index, row in enumerate(pairs)
         ]
@@ -586,8 +484,6 @@ def mode_embed(recipe: dict[str, Any], pairs: list[dict[str, Any]], device: str)
                         list(documents_media[position] or []) if position < len(documents_media) else [],
                         work=root,
                         clip_name=f"document-{index}-{position}",
-                        image_processor=image_processor,
-                        image_budget=image_budget,
                     )
                     for position, document in enumerate(row["documents"])
                 ]
