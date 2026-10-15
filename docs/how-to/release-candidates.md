@@ -326,7 +326,9 @@ recipes document none, so their single documented mode is the shipped client blo
 probe (one prepared probe image beside its no-media baseline under the processor family's stock budget; the
 engine's media delta against the client's counted tokens), stops the engine's process group, records the
 verdicts, the engine version and the NVFP4/Marlin backend lines from the engine log, and moves on — a
-failed judge is recorded, never fatal. The outputs are `<OUT_PREFIX>/<wave>/<recipe>/<mode>.json`, the
+failed judge is recorded, never fatal. A judge's record is `verified` only when every documented mode
+passed **and** its engine media check passed (a text-only judge's check is not applicable); a media
+mismatch, refusal or `not_checked` fails the judge exactly like a failed mode. The outputs are `<OUT_PREFIX>/<wave>/<recipe>/<mode>.json`, the
 `<recipe>/media.json` probes, and `judgecheck-report.json` beside them; the job exits 1 when any judge
 failed. `JUDGECHECK_DRY=1 bash judgecheck.sh ...` prints the plan.
 

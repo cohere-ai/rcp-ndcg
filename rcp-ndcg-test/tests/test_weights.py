@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import os
+import types
 from pathlib import Path
 from typing import Any
 
 import pytest
 from rcp_ndcg_test.jobs import weights
+
+#: The real helper, captured before the autouse offline fixture replaces the module attribute.
+_REAL_MODEL_WEIGHT_FILES = weights.model_weight_files
 
 
 @pytest.fixture()
@@ -114,3 +118,48 @@ def test_will_fit_refuses_a_model_that_measurably_does_not_fit() -> None:
     assert ok and reason == ""
     ok, reason = weights.will_fit(free, None)
     assert ok and reason == ""  # unknown size: the caller records it and decides
+
+
+def test_model_disk_bytes_counts_only_the_format_the_engine_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """g-rcjobs-8: vLLM downloads one weight format (the first of safetensors/bin/pt at the repo root,
+    ignoring ``original/**``) plus the small files beside it.  Summing every sibling sized
+    openai/gpt-oss-120b at 182.3 GiB against the 60.8 GiB it downloads, so a node with 62-183 GiB free
+    false-failed the judge recipe."""
+    import huggingface_hub
+
+    siblings = [
+        types.SimpleNamespace(rfilename="model-00001.safetensors", size=10 << 30),
+        types.SimpleNamespace(rfilename="original/model-00001.safetensors", size=10 << 30),
+        types.SimpleNamespace(rfilename="metal/model.bin", size=10 << 30),
+        types.SimpleNamespace(rfilename="config.json", size=1024),
+    ]
+    info = types.SimpleNamespace(siblings=siblings)
+    monkeypatch.setattr(weights, "model_weight_files", _REAL_MODEL_WEIGHT_FILES)
+    monkeypatch.setattr(
+        huggingface_hub.HfApi,
+        "model_info",
+        lambda self, model, revision=None, files_metadata=False: info,  # noqa: ARG005
+    )
+    expected = (10 << 30) + 1024
+    assert weights.model_disk_bytes("openai/gpt-oss-120b", "b5c939de") == expected
+    found = weights.model_weight_files("openai/gpt-oss-120b", "b5c939de")
+    assert found == ("*.safetensors", expected)
+
+
+def test_model_weight_files_falls_back_to_bin_when_no_safetensors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No root-level safetensors: the loader's next pattern decides, so a repo that ships only
+    ``pytorch_model.bin`` (plus another format's copy) is sized by the bin files alone."""
+    import huggingface_hub
+
+    siblings = [
+        types.SimpleNamespace(rfilename="pytorch_model.bin", size=4 << 30),
+        types.SimpleNamespace(rfilename="model.pt", size=9 << 30),
+        types.SimpleNamespace(rfilename="tokenizer.json", size=512),
+    ]
+    monkeypatch.setattr(weights, "model_weight_files", _REAL_MODEL_WEIGHT_FILES)
+    monkeypatch.setattr(
+        huggingface_hub.HfApi,
+        "model_info",
+        lambda self, model, revision=None, files_metadata=False: types.SimpleNamespace(siblings=siblings),  # noqa: ARG005
+    )
+    assert weights.model_weight_files("org/model") == ("*.bin", (4 << 30) + 512)

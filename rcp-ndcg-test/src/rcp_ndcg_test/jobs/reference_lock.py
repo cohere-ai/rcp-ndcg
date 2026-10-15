@@ -17,8 +17,14 @@ The lock is a pip requirements file (install with ``--no-deps`` from the staged 
 :mod:`rcp_ndcg_test.jobs.reference_deps` complete the venv's own dependencies), whose header records the
 inputs the environment's identity is made of: the family, the engine image, the SHA-256 of the
 ``reference.in`` and of the image stack the lock was generated against, the ``own-torch`` declaration,
-and the image constraints the family's floors were checked against.  Its SHA-256 **is** the environment
-identity (the stored reference outputs key on it).
+and the image constraints the family's floors were checked against.  Its SHA-256 is the environment's
+**declared identity** (the stored reference outputs key on it) -- but it is not the whole environment:
+the locks are ``--no-deps`` compilations, so the transitive dependencies a venv actually resolves
+(``reference_deps.py`` installs the highest version the shared wheelhouse holds) are not fixed by the
+lock hash, and the built venv's ``freeze.txt`` is recorded beside the outputs (``equivalence.json``)
+but is not part of the key.  A reference store reused across RC builds can therefore mix transitive
+versions under one lock hash (g-rcjobs-12); a full closure lock or a freeze-keyed store would close
+that gap.
 
 The tool is committed and run offline against a wheelhouse or online against an index::
 

@@ -10,7 +10,7 @@ whether one is accepted.
 A corpus is keyed by engine + version and the recipe's **behaviour fingerprint**
 (:func:`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VALIDATION.md item 8): the full corpus lives at
 :func:`corpus_path` (``observations/<engine>-<version>/<recipe>/<fingerprint>/<recorded-at>/``, never
-overwritten) and its repository subset at ``tests/contract/engines/<engine>-<version>/<recipe>/<fingerprint>/``.
+overwritten) and its repository subset at ``rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<fingerprint>/``.
 
 Nothing derived is stored: vectors (:func:`derived_vectors`, decoded by the product's own adapters), normalised
 bodies and tolerances are recomputed from the raw records by versioned code.
@@ -392,9 +392,27 @@ def _comparable(
     components (a base64 or bytes frame carries its numbers only once decoded).  ``kept_of`` supplies a
     record's declared kept counts when the recipe declares an engine-side keep rule (the same one home as
     :func:`declared_kept_counts`); ``outputs`` is the recipe's declared head, so a per-chunk reply's vectors
-    decode (and are measured) instead of silently dropping out."""
+    decode (and are measured) instead of silently dropping out.  A ``/rerank`` reply's result leaves are
+    keyed by the document's own index, never by ranked position (g-observe-1)."""
     response = record.get("response") or {}
-    leaves = dict(_numeric_leaves(normalise_body(response.get("body_parsed"))))
+    body = normalise_body(response.get("body_parsed"))
+    leaves = dict(_numeric_leaves(body))
+    # A /rerank reply's results arrive in ranked order, and a near-tie flip between two sendings reorders
+    # them: keying the leaves by ranked position compares different documents and the integer index leaf
+    # moves by 1 -- the recorded qwen3-reranker-8b flip derived abs 3.0 / rel 1.5 from ~0.012 of real score
+    # noise (g-observe-1).  Key the result leaves by the document's own index; a changed result-index SET
+    # is a normalised-body difference (``bodies_differ``), never a numeric leaf.
+    if isinstance(body, dict) and isinstance(body.get("results"), list) and body["results"]:
+        remapped: dict[str, float] = {}
+        for position, result in enumerate(body["results"]):
+            if not isinstance(result, dict) or not isinstance(result.get("index"), int):
+                break
+            prefix = f".results[{position}]"
+            for key, value in leaves.items():
+                if key.startswith(prefix + "."):
+                    remapped[f".results[index={result['index']}]" + key[len(prefix) :]] = value
+        else:
+            leaves = remapped
     try:
         vectors = derived_vectors(
             record, dim=dim, kept=kept_of(record) if kept_of is not None else None, outputs=outputs

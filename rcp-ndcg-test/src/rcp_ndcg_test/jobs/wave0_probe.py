@@ -349,7 +349,12 @@ def _engine_version(port: int) -> str | None:
 
 
 def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
-    """The 20-text check: the product's ``fit`` under an explicit budget, the product's client, /tokenize."""
+    """The 20-text check: the product's ``fit`` under an explicit budget, the product's client, /tokenize.
+
+    ``client_budget_wired`` is derived from the client's own per-row ``ProcessingRecord``s (exactly the
+    over-length rows carry ``budget_cut``, and no kept request exceeds its budget), never assumed: a
+    client that stopped fitting fails the fragment.
+    """
     import numpy as np
 
     from rcp_ndcg.data.preprocess import TextBudget, fit
@@ -383,6 +388,19 @@ def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
     }
     client = EmbeddingClient(EmbeddingEndpoint(**endpoint_kwargs))
     embeddings = client.encode([Content.from_text(text) for text in inputs], EncodeRole.DOCUMENT)
+    # The client's own per-row records are the only reading that proves the budget is wired inside it
+    # (g-rcjobs-11): a row it sent as given has no record, and a row it cut carries ``budget_cut`` with the
+    # request's kept size.  A client that stopped fitting sends the raw over-budget inputs and leaves no
+    # records, so the fragment fails instead of reporting the property it never measured.
+    cut_ids = {record.input_id for record in client.processing if "budget_cut" in record.mechanisms}
+    expected_cut = {str(index) for index in range(len(inputs) - args.over, len(inputs))}
+    kept_within_budget = all(
+        record.kept_request_tokens is None
+        or record.budget_tokens is None
+        or record.kept_request_tokens <= record.budget_tokens
+        for record in client.processing
+    )
+    client_budget_wired = cut_ids == expected_cut and kept_within_budget
     rows = []
     for index, (text, kind) in enumerate(zip(texts, kinds, strict=True)):
         engine_ids = _engine_tokenize(args.base_url, args.served_model_name, text)
@@ -407,10 +425,11 @@ def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
         "n_over_length": args.over,
         "cuts_recorded": len(fitted.cuts),
         "overhead_tokens": fitted.overhead,
-        "client_budget_wired": True,
+        "client_budget_wired": client_budget_wired,
+        "client_cut_ids": sorted(cut_ids),
         "client": {"n_vectors": int(vectors.shape[0]), "dim": int(vectors.shape[1]), "finite": finite},
         "tokenize_check": {"checked": len(rows), "passed": ids_ok, "rows": rows},
-        "passed": ids_ok and int(vectors.shape[0]) == len(inputs) and finite,
+        "passed": ids_ok and int(vectors.shape[0]) == len(inputs) and finite and client_budget_wired,
     }
     _write(report, fragment)
     return fragment

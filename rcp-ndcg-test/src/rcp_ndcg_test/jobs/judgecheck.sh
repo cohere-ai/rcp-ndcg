@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The release checklist's judge item: `rcp-ndcg judge check` against each judge recipe's served engine,
-# in both thinking modes, with the engine's media token count (submitted as submit.sh --script judgecheck).
+# in the recipe's documented thinking modes, with the engine's media token count (submitted as submit.sh
+# --script judgecheck).
 #
 #   judgecheck.sh <RC_STAGE_URI> <OUT_URI>
 #
@@ -14,9 +15,9 @@
 #                    (rcp-ndcg + rcp-ndcg-test + rcp-ndcg-vllm from the staged wheels) every command runs in
 #   2. per judge      serve the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`), wait for
 #                     GET /v1/models within RCP_JUDGECHECK_STARTUP_S, then, with the engine up:
-#                       both thinking modes:  `rcp-ndcg judge check --judge <id> --judge-model <id>
-#                                             --set judge.base_url=http://127.0.0.1:<N>/v1
-#                                             --set judge.extra_body=<the family's switch> --json`
+#                       thinking modes:  `rcp-ndcg judge check --judge <id> --judge-model <id>
+#                                        --set judge.base_url=http://127.0.0.1:<N>/v1
+#                                        [--set judge.extra_body=<the mode's switch>] --json`
 #                       the media probe:      `python -m rcp_ndcg_test.jobs.judgecheck_probe media ...`
 #                                             (one prepared probe image beside its no-media baseline; the
 #                                             engine's media delta against the client's counted tokens)
@@ -174,12 +175,14 @@ sys.exit(0 if ready else 1)
 PYEOF
 }
 
-# stop_engine PID: SIGTERM the engine's process group (the session setsid started), then SIGKILL it.
+# stop_engine PID: SIGTERM the engine's process group (the session setsid started), then SIGKILL it once
+# the grace period is up -- whether or not the leader already exited: a tensor-parallel worker that
+# outlives an OOM-killed API server keeps the GPUs the next judge needs.
 stop_engine() {
   local pid="$1"
   kill -TERM -- "-$pid" 2>/dev/null || true
   for _ in 1 2 3 4 5 6; do
-    kill -0 "$pid" 2>/dev/null || return 0
+    kill -0 -- "-$pid" 2>/dev/null || break  # the whole group is gone
     sleep 5
   done
   kill -KILL -- "-$pid" 2>/dev/null || true
@@ -368,8 +371,13 @@ if media_path.is_file():
         media = {"checked": False, "outcome": "unreadable", "detail": "the media probe wrote an unreadable report"}
 models = json.loads((state / f"models-{recipe}.json").read_text(encoding="utf-8"))
 backends = json.loads((state / f"backends-{recipe}.json").read_text(encoding="utf-8"))
+# The judge's own record: verified only when every documented mode passed AND the engine media check
+# passed.  A text-only judge records checked:false with no outcome (not applicable); a mismatch,
+# refusal, not_checked, a crashed probe and a missing report all fail the judge.
+media_applies = bool(media.get("checked")) or media.get("outcome") is not None
+media_ok = bool(media.get("ok")) or not media_applies
 document = {
-    "state": "verified" if modes and all(row["ok"] for row in modes.values()) else "failed",
+    "state": "verified" if modes and all(row["ok"] for row in modes.values()) and media_ok else "failed",
     "port": port,
     "wall_s": wall_s,
     "models": models,
@@ -389,7 +397,7 @@ document = json.load(open(sys.argv[1], encoding="utf-8"))
 raise SystemExit(0 if document["state"] == "verified" else 1)
 PYEOF
   then
-    echo "judgecheck: $recipe failed a thinking mode (recorded in the report)" >&2
+    echo "judgecheck: $recipe failed a thinking mode or the media check (recorded in the report)" >&2
     FAILED_RECIPES+=("$recipe")
   fi
 done

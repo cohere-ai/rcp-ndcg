@@ -183,6 +183,48 @@ def _release_workflow() -> tuple[dict, str]:
     return yaml.safe_load(text), text
 
 
+#: The shared release checks the workflow's build job runs (and rc_build.sh calls too).
+CHECK_RELEASE = ROOT / ".github" / "scripts" / "check_release.py"
+
+
+def _release_tree(
+    tmp_path: Path,
+    versions: dict[str, str],
+    *,
+    core: str = '"rcp-ndcg-core==0.0.1"',
+    vllm: str | None = '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = ["rcp-ndcg==0.0.1"]\n',
+    core_in_extras: bool = False,
+    extra_core: str | None = None,
+) -> Path:
+    """A fixture release tree: the four manifests (each at its ``versions`` entry), the citation and the
+    given core/vllm declarations; ``vllm=None`` leaves the manifest the release builds absent."""
+    tree = tmp_path / f"tree-{len(list(tmp_path.iterdir()))}"
+    declaration = f"[project.optional-dependencies]\ndev = [{core}]" if core_in_extras else f"dependencies = [{core}]"
+    if extra_core is not None:
+        declaration += f"\n[project.optional-dependencies]\nprobe = [{extra_core}]"
+    for package, version in versions.items():
+        if package == "rcp-ndcg-vllm":
+            continue  # written from the vllm parameter below (or left absent)
+        directory = tree / package
+        directory.mkdir(parents=True)
+        if package == "rcp-ndcg":
+            body = f'[project]\nname = "rcp-ndcg"\nversion = "{version}"\n{declaration}\n'
+        else:
+            body = f'[project]\nname = "{package}"\nversion = "{version}"\n'
+        (directory / "pyproject.toml").write_text(body, encoding="utf-8")
+    if vllm is not None:
+        (tree / "rcp-ndcg-vllm").mkdir(parents=True, exist_ok=True)
+        (tree / "rcp-ndcg-vllm" / "pyproject.toml").write_text(vllm, encoding="utf-8")
+    (tree / "CITATION.cff").write_text(f"cff-version: 1.2.0\nversion: {versions['rcp-ndcg']}\n", encoding="utf-8")
+    return tree
+
+
+def _run_release_check(tree: Path, version: str = "0.0.1", *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(CHECK_RELEASE), version, "--root", str(tree), *args], capture_output=True, text=True
+    )
+
+
 def _assert_one_environment_per_package(workflow: dict) -> None:
     """The release contract: one build, then one publish job per package, each in its own GitHub environment."""
     jobs = workflow["jobs"]
@@ -270,13 +312,14 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
     """The release check requires ``rcp-ndcg-core==<tag>`` in this manifest and, where ``rcp-ndcg-vllm`` depends
     on ``rcp-ndcg``, exactly ``rcp-ndcg==<tag>`` there.
 
-    The check runs the workflow's own step against manifests in ``tmp_path``; a manifest the release builds but
-    cannot find is a failure ("nothing to check" is never a pass), and no dependency means nothing to pin.
+    The build job runs ``.github/scripts/check_release.py`` (the one home rc_build.sh shares); the test drives
+    the script against manifests in ``tmp_path``: a manifest the release builds but cannot find is a failure
+    ("nothing to check" is never a pass), and no dependency means nothing to pin.
     """
     workflow, _ = _release_workflow()
     steps = workflow["jobs"]["build"]["steps"]
-    step = next(step for step in steps if "pins its sibling" in str(step.get("name", "")))
-    body = str(step["run"]).split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    step = next(step for step in steps if "manifests, the citation and the pins" in str(step.get("name", "")))
+    assert "check_release.py" in str(step["run"]), "the build job runs the shared release checks"
 
     def check(
         manifest: str | None,
@@ -285,36 +328,35 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
         core_in_extras: bool = False,
         extra_core: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        tree = tmp_path / f"check-{check.calls:03d}-{version}"
-        check.calls += 1
-        package = tree / "rcp-ndcg-vllm"
-        package.mkdir(parents=True)
-        (tree / "rcp-ndcg").mkdir()
-        declaration = (
-            f"[project.optional-dependencies]\ndev = [{core}]" if core_in_extras else f"dependencies = [{core}]"
+        tree = _release_tree(
+            tmp_path,
+            dict.fromkeys(("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test"), version),
+            core=core,
+            vllm=manifest,
+            core_in_extras=core_in_extras,
+            extra_core=extra_core,
         )
-        if extra_core is not None:
-            declaration += f"\n[project.optional-dependencies]\nprobe = [{extra_core}]"
-        (tree / "rcp-ndcg" / "pyproject.toml").write_text(
-            f'[project]\nname = "rcp-ndcg"\n{declaration}\n', encoding="utf-8"
-        )
-        if manifest is not None:
-            (package / "pyproject.toml").write_text(manifest, encoding="utf-8")
-        return subprocess.run([sys.executable, "-", version], input=body, capture_output=True, text=True, cwd=tree)
+        return _run_release_check(tree, version)
 
-    check.calls = 0
-
-    exact = '[project]\nname = "rcp-ndcg-vllm"\ndependencies = ["rcp-ndcg==0.0.1"]\n'
+    exact = '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = ["rcp-ndcg==0.0.1"]\n'
     assert check(exact).returncode == 0, "an exact pin must pass"
-    assert check('[project]\ndependencies = ["rcp-ndcg[calibrate]==0.0.1"]\n').returncode == 0
-    assert check('[project]\ndependencies = ["rcp_ndcg==0.0.1"]\n').returncode == 0, "a _ name normalises"
-    assert check('[project]\ndependencies = ["rcp-ndcg == 0.0.1"]\n').returncode == 0, "spaces normalise"
-    assert check('[project]\ndependencies = ["rcp-ndcg (==0.0.1)"]\n').returncode == 0, "parentheses normalise"
-    dotted = check('[project]\ndependencies = ["rcp.ndcg==0.0.1"]\n')
+    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp-ndcg[calibrate]==0.0.1"]\n').returncode == 0
+    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp_ndcg==0.0.1"]\n').returncode == 0, (
+        "a _ name normalises"
+    )
+    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp-ndcg == 0.0.1"]\n').returncode == 0, (
+        "spaces normalise"
+    )
+    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp-ndcg (==0.0.1)"]\n').returncode == 0, (
+        "parentheses normalise"
+    )
+    dotted = check('[project]\nversion = "0.0.1"\ndependencies = ["rcp.ndcg==0.0.1"]\n')
     assert dotted.returncode == 0 and "pins rcp-ndcg==0.0.1" in dotted.stdout, "a . name normalises (PEP 503)"
-    dotted_loose = check('[project]\ndependencies = ["RCP.NDCG==0.0.2"]\n')
+    dotted_loose = check('[project]\nversion = "0.0.1"\ndependencies = ["RCP.NDCG==0.0.2"]\n')
     assert dotted_loose.returncode == 1 and "==0.0.1" in dotted_loose.stderr, "a . name must still be checked"
-    assert check('[project]\ndependencies = ["numpy"]\n').returncode == 0, "no dependency, nothing to pin"
+    assert check('[project]\nversion = "0.0.1"\ndependencies = ["numpy"]\n').returncode == 0, (
+        "no dependency, nothing to pin"
+    )
     missing = check(None)
     assert missing.returncode == 1 and "pyproject.toml" in missing.stderr, (
         "a manifest the release builds may not be absent"
@@ -337,7 +379,7 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
     stale = check(exact, core='"rcp-ndcg-core==0.0.2"')
     assert stale.returncode == 1 and "==0.0.1" in stale.stderr, "a wrong core pin must be refused"
     for wrong in ("rcp-ndcg>=0.0.1", "rcp-ndcg", "rcp-ndcg[calibrate]", "rcp-ndcg==0.0.2"):
-        result = check(f'[project]\ndependencies = ["{wrong}"]\n')
+        result = check(f'[project]\nversion = "0.0.1"\ndependencies = ["{wrong}"]\n')
         assert result.returncode == 1, f"{wrong} must be refused"
         assert "==0.0.1" in result.stderr
 
@@ -345,28 +387,19 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
 def test_the_release_workflow_checks_every_workspace_manifests_version(tmp_path) -> None:
     """The tag's version is that of all four workspace manifests, not only the three the release builds.
 
-    The check runs the workflow's own step against a tree of four manifests in ``tmp_path``: the
-    unpublished ``rcp-ndcg-test`` included, because a stale version there leaves the lock and the stated
-    release rule disagreeing.
+    The build job runs ``.github/scripts/check_release.py``; the test drives it against a tree of four
+    manifests in ``tmp_path``: the unpublished ``rcp-ndcg-test`` included, because a stale version there
+    leaves the lock and the stated release rule disagreeing.
     """
     workflow, _ = _release_workflow()
     steps = workflow["jobs"]["build"]["steps"]
-    step = next(step for step in steps if "workspace manifest" in str(step.get("name", "")))
-    body = str(step["run"]).split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    step = next(step for step in steps if "manifests, the citation and the pins" in str(step.get("name", "")))
+    assert "check_release.py" in str(step["run"])
     packages = ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test")
 
     def check(versions: dict[str, str]) -> subprocess.CompletedProcess[str]:
-        tree = tmp_path / f"check-{check.calls:03d}"
-        check.calls += 1
-        for package, version in versions.items():
-            directory = tree / package
-            directory.mkdir(parents=True)
-            (directory / "pyproject.toml").write_text(
-                f'[project]\nname = "{package}"\nversion = "{version}"\n', encoding="utf-8"
-            )
-        return subprocess.run([sys.executable, "-", "0.0.1"], input=body, capture_output=True, text=True, cwd=tree)
+        return _run_release_check(_release_tree(tmp_path, versions))
 
-    check.calls = 0
     at_tag = dict.fromkeys(packages, "0.0.1")
     assert check(at_tag).returncode == 0, "four manifests at the tag's version must pass"
     stale = dict(at_tag, **{"rcp-ndcg-test": "0.0.2"})

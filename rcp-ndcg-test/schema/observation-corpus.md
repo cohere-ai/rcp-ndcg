@@ -126,7 +126,7 @@ within the measured tolerance; no common request is a failure). A corpus failing
 
 ### The repository subset (`python -m rcp_ndcg_test.observe.corpus subset DIR OUT --gcs-path URI`)
 
-Under `tests/contract/engines/vllm-<version>/<recipe>/<fingerprint>/`: `records.jsonl.gz` (the first record of
+Under `rcp-ndcg-test/corpora/vllm-<version>/<recipe>/<fingerprint>/`: `records.jsonl.gz` (the first record of
 every stratum, then corpus order until 2 MB compressed; corpus order kept), the full corpus's `manifest.json`
 and `nondeterminism.json` byte for byte -- a manifest committed with private infrastructure removed instead
 carries an `engine.redacted` entry (the field, the reason, the date, the original's digest and file SHA-256),

@@ -81,13 +81,15 @@ names the generator that produced it.  The version is NOT part of the sampling s
 (:data:`GENERATOR_SEED` is), so a bump never re-draws a row; the manifest records both, and the per-file
 SHA-256 pins the artifact."""
 
-CORPUS_PLAN_VERSION = 3
+CORPUS_PLAN_VERSION = 4
 """The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
 the uncut content kinds, the wire variants, the MRL stratum and the protocol edges).  Versioned apart from
 :data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated.  Version 2 adds
 the MRL stratum: a declared head records one bare ``dimensions=k`` probe per declared ``k`` (the declared
 set, or a range's endpoints and the run's selection) instead of the hard-coded ``dimensions=32`` probe;
-version 3 adds the media set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``).  Two
+version 3 adds the media set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``);
+version 4 adds one rung over each declared per-side cap (``length:over_document_cap``,
+``length:over_query_cap``) for a recipe whose cap sits under its whole budget (g-observe-6).  Two
 lanes bumped 2 for different plans; the merged plan is 3, so no two different plans share a version.
 
 The version is provenance, not a staleness key: it is recorded in the manifest and the record plan but
@@ -538,10 +540,19 @@ def _length_rows(
 
     overhead = _overhead(recipe, tokenizer, "pair" if rerank else "document")
     query_tokens = 64 if rerank else 32
+    query_cap = recipe.client.get("query_max_tokens")
+    if query_cap is not None:
+        query_tokens = min(query_tokens, max(8, int(query_cap) - _GUARD_TOKENS))
     query_text = _pad_to_tokens(tokenizer, "budget query", query_tokens)
     # The query span shares a pair's budget (rerank); an embed row's at-budget side is the document.
     reserved = query_tokens + _GUARD_TOKENS if rerank else _GUARD_TOKENS
     usable = budget - overhead - reserved
+    # A declared document cap cuts the content client-side before the engine sees it (jina-reranker-v3:
+    # 2048 under a 3219 budget): the ladder's "within budget" rows must fit the cap too, or both ride over
+    # it and no near-cap uncut document is ever planned (g-observe-6).
+    document_cap = recipe.client.get("document_max_tokens")
+    if document_cap is not None:
+        usable = min(usable, int(document_cap) - _GUARD_TOKENS)
     for stratum, target in (("at_90", usable * 9 // 10), ("at_budget", usable)):
         row_target = max(8, target)
         if row_target * 10 > _CHAR_CAP:
@@ -680,6 +691,24 @@ _LADDER_OVER: tuple[tuple[str, int, int], ...] = (("over_by_1", 1, 1), ("over_2x
 ``factor * usable + plus`` of the recipe's own tokens, where ``usable`` is the budget left once the template's
 fixed overhead and the guard are reserved -- one token over, twice and ten times the budget."""
 
+
+def _cap_rungs(recipe: Any, budget: int) -> list[tuple[str, str, int]]:
+    """One rung over each declared per-side cap the pair-budget ladder does not already cover.
+
+    ``document_max_tokens`` cuts a document client-side (jina-reranker-v3: 2048 under a 3219 budget), so
+    the pair-budget rungs never send a near-cap document uncut; ``query_max_tokens`` cuts a query the same
+    way.  Returns ``(name, side, content tokens)``; empty for a recipe that declares neither (g-observe-6).
+    """
+    rungs: list[tuple[str, str, int]] = []
+    document_cap = recipe.client.get("document_max_tokens")
+    if document_cap is not None and int(document_cap) < budget:
+        rungs.append(("over_document_cap", "document", int(document_cap) + 1))
+    query_cap = recipe.client.get("query_max_tokens")
+    if query_cap is not None and int(query_cap) < budget:
+        rungs.append(("over_query_cap", "query", int(query_cap) + 1))
+    return rungs
+
+
 _ROLE_ROUTES = {"embed": "/v1/embeddings", "multi_vector": "/pooling", "rerank": "/rerank"}
 
 
@@ -775,15 +804,20 @@ def corpus_plan(
     query_tokens = 64 if rerank else 32
     query = _pad_to_tokens(tokenizer, "ladder query", query_tokens)
     usable = max(8, budget - overhead - (query_tokens if rerank else 0) - _GUARD_TOKENS)
-    for name, factor, plus in _LADDER_OVER:
-        text = _pad_to_tokens(tokenizer, f"{name} document", factor * usable + plus)
+    ladder: list[tuple[str, str, int]] = [
+        (name, "document", factor * usable + plus) for name, factor, plus in _LADDER_OVER
+    ] + _cap_rungs(recipe, budget)
+    for name, side, target in ladder:
+        text = _pad_to_tokens(tokenizer, f"{name} {side}", target)
+        row_query = text if side == "query" else query
+        row_documents = [text] if side == "document" else [_pad_to_tokens(tokenizer, f"{name} document", 32)]
         stratum = f"length:{name}"
         plan.rows.append(
             {
                 "request_id": f"ladder:{name}",
                 "stratum": stratum,
-                "query": query,
-                "documents": [text],
+                "query": row_query,
+                "documents": row_documents,
                 "_strata": [stratum],
             }
         )
@@ -795,10 +829,10 @@ def corpus_plan(
                 "layer": "model",
                 "method": "POST",
                 "path": _ROLE_ROUTES[recipe.role],
-                "body": _bare_body(recipe, query, [text]),
+                "body": _bare_body(recipe, row_query, row_documents),
             }
         )
-        plan.strata[stratum] = {"present": True, "content_tokens": factor * usable + plus}
+        plan.strata[stratum] = {"present": True, "content_tokens": target}
     # A kind is carried by the pairs file only when one of its rows put the kind's text on a side (its strata
     # say ``content:<kind>@query`` or ``@document``); a kind too long for either side rode as an anchor only.
     pairs_kinds = {
@@ -808,7 +842,7 @@ def corpus_plan(
         if label.startswith("content:") and "@" in label
     }
     for kind in CONTENT_KINDS:
-        text = synthetic_text(kind, tokenizer)
+        text = synthetic_text(kind, tokenizer, vocab_size=embeddable_vocab_size)
         stratum = f"content:{kind}"
         if kind in pairs_kinds:
             plan.strata[f"{stratum}:uncut"] = {
@@ -843,6 +877,16 @@ def corpus_plan(
             }
         )
         plan.strata[f"{stratum}:uncut"] = {"present": True}
+        if kind == "special_token_spellings":
+            # Nothing is cut silently: the uncut probe carries the same bound as the pairs row, and the
+            # manifest says which added token was left out and why (g-observe-3).
+            omissions = omitted_spellings(tokenizer, vocab_size=embeddable_vocab_size)
+            if omissions:
+                plan.strata[f"{stratum}:uncut"]["omitted_added_tokens"] = omissions
+                plan.strata[f"{stratum}:uncut"]["omitted_reason"] = (
+                    "the checkpoint's embedding has no row for it: the tokenizer declares an added token at "
+                    f"id {omissions[0]['id']} while config.json declares vocab_size {embeddable_vocab_size}"
+                )
     first = rows[0] if rows else {"query": query, "documents": ["a document"]}
     _wire_variants(recipe, plan, str(first["query"]), [str(document) for document in first["documents"]])
     return plan
@@ -1205,8 +1249,22 @@ def _validate_and_prune(
         if not red:
             break
         # Stage 1 reports the text rows' positions among the text rows (the media rows are the media stage's).
+        # A position past the plan's text rows is one of stage 1's own over-length samples or a
+        # media-template row: a failure there is the whole recipe's blocker (the reference/anchor contract
+        # broke), never a row to prune -- and mapping it through text_positions would raise IndexError
+        # (g-observe-4).
         text_positions = [index for index, row in enumerate(plan.rows) if not _inline_media(row)]
-        red = [(text_positions[index] if index is not None else None, entry) for index, entry in red]
+        beyond = [entry for index, entry in red if index is not None and index >= len(text_positions)]
+        if beyond:
+            blocked["anchor_check"] = (
+                "blocked: a stage-1 check failed on an over-length or media-template probe row, not a pairs "
+                f"row: {beyond[0]}"
+            )
+        red = [
+            (text_positions[index] if index is not None else None, entry)
+            for index, entry in red
+            if index is None or index < len(text_positions)
+        ]
         drop = {index for index, _ in red if index is not None}
         kept: list[PlannedRow] = []
         for index, row in enumerate(plan.rows):
@@ -1217,7 +1275,13 @@ def _validate_and_prune(
         plan = RecipePlan(
             recipe_id=plan.recipe_id,
             rows=kept,
-            strata=plan.strata,
+            strata=_presence_after_pruning(
+                plan.strata,
+                carried={label for row in plan.rows for label in row.strata},
+                kept_labels={label for row in kept for label in row.strata},
+                pruned=pruned,
+                recipe=recipe,
+            ),
             skipped_sources=plan.skipped_sources,
             validation=blocked,
         )
@@ -1234,7 +1298,13 @@ def _validate_and_prune(
         plan = RecipePlan(
             recipe_id=plan.recipe_id,
             rows=kept,
-            strata=plan.strata,
+            strata=_presence_after_pruning(
+                plan.strata,
+                carried={label for row in plan.rows for label in row.strata},
+                kept_labels={label for row in kept for label in row.strata},
+                pruned=pruned,
+                recipe=recipe,
+            ),
             skipped_sources=plan.skipped_sources,
             validation=plan.validation,
         )
@@ -1259,6 +1329,49 @@ def _validate_and_prune(
         ),
         pruned,
     )
+
+
+def _presence_after_pruning(
+    strata: dict[str, dict[str, Any]],
+    *,
+    carried: set[str],
+    kept_labels: set[str],
+    pruned: list[dict[str, Any]],
+    recipe: Any,
+) -> dict[str, dict[str, Any]]:
+    """The plan's strata after pruning: presence is recomputed from the KEPT rows' labels.
+
+    A stratum every row of which was pruned is absent, with the pruning reason that named it; a content
+    kind is present only when a kept row carries it ON A SIDE (``content:<kind>@document``/``@query``),
+    never when its text rode only as an anchor in a row that fits neither side.  Strata no row ever carried
+    (the wire variants, the edges, the MRL and instruction records) keep their computed presence -- they
+    are not row-derived.  g-observe-2: carrying the pre-pruning ``plan.strata`` into every rebuilt plan
+    recorded pruned strata present and an anchor-only kind present, so the coverage map showed strata the
+    waves never send.
+    """
+    kinds_on_side = {
+        label.split(":", 1)[1].split("@", 1)[0]
+        for label in kept_labels
+        if label.startswith("content:") and "@" in label
+    }
+    out = dict(strata)
+    for key, entry in out.items():
+        if not entry.get("present"):
+            continue
+        reasons = [str(entry_.get("reason")) for entry_ in pruned if key in (entry_.get("strata") or [])]
+        pruning_reason = reasons[0] if reasons else "stage-1 validation pruned every row of this stratum"
+        if key.startswith("content:") and key.count(":") == 1:
+            kind = key.split(":", 1)[1]
+            if kind in kinds_on_side:
+                continue
+            if key in kept_labels:
+                # an anchor-only row (the kind fits neither side): the budget reason, not a pruning
+                out[key] = {"present": False, "reason": _kind_absent_reason(kind, recipe)}
+            else:
+                out[key] = {"present": False, "reason": f"pruned by stage-1 validation: {pruning_reason}"}
+        elif key in carried and key not in kept_labels:
+            out[key] = {"present": False, "reason": f"pruned by stage-1 validation: {pruning_reason}"}
+    return out
 
 
 def _inline_media(row: PlannedRow) -> bool:
@@ -1322,6 +1435,12 @@ def _red_row_indexes(document: dict[str, Any]) -> tuple[list[tuple[int | None, s
     and whether the render comparison hit a reference-contract drift (never a row problem)."""
     red: list[tuple[int | None, str]] = []
     drift = False
+    # A reference-row note ("the reference rendered more texts than the client shipped") carries the
+    # reference's WRITTEN row dict; the render section's origin list maps that written index back to the
+    # pairs row it was rendered from (an embed reference writes one row per document, so the written index
+    # is not a pairs-row index -- g-observe-4).  A written index the origin list cannot name is
+    # unattributable, never a wrong row.
+    origins = (document.get("render_check") or {}).get("origins") or []
     # A row the client refused (before or after sending) is a row problem: the probe recorded its position
     # and the reason, and the row is pruned like any red one -- never a silent drop, never a failed recipe.
     for refusal in document.get("refusals") or []:
@@ -1337,8 +1456,14 @@ def _red_row_indexes(document: dict[str, Any]) -> tuple[list[tuple[int | None, s
             if _is_contract_drift(failure):
                 drift = True
                 continue
-            index = failure.get("row", failure.get("index"))
-            index = index.get("index") if isinstance(index, dict) else index
+            row = failure.get("row")
+            if isinstance(row, dict):
+                written = row.get("index")
+                index = int(origins[written][0]) if isinstance(written, int) and 0 <= written < len(origins) else None
+            elif isinstance(row, int):
+                index = row
+            else:
+                index = failure.get("index")
             if index is None and isinstance(failure.get("referent"), str):
                 match = re.match(r"row (\d+)", failure["referent"])
                 index = int(match.group(1)) if match else None
@@ -1358,10 +1483,21 @@ def main(argv: list[str] | None = None) -> int:
     ``--reference-python`` runs the harness's stage-1 validation per recipe and prunes red rows first;
     without it the files are written unvalidated (the manifest records the rows as written).  A stall
     watchdog (``faulthandler.dump_traceback_later(60, repeat=True)``) writes every live stack to stderr
-    every 60 s: wrap a run in ``timeout 300`` and redirect stderr to a scratch file to see where any
-    stall sits (the operator's runbook).
+    every 60 s while this call runs, and is cancelled before ``main`` returns: an in-process call never
+    leaves the no-GIL stack walk armed for the rest of the process.  Wrap a run in ``timeout 300`` and
+    redirect stderr to a scratch file to see where any stall sits (the operator's runbook).
     """
     faulthandler.dump_traceback_later(60, repeat=True)
+    try:
+        return _generate(argv)
+    finally:
+        # The watchdog belongs to this call, never to the process: the test suite calls main()
+        # in-process, and a repeating watchdog left armed walks every thread's frames without the GIL
+        # on every tick and can SIGSEGV the interpreter silently (the CI crash at ~95% of the suite).
+        faulthandler.cancel_dump_traceback_later()
+
+
+def _generate(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m rcp_ndcg_test.observe.requests",
         description="Generate the deterministic request set for every recipe (pairs files + manifest).",
@@ -1448,6 +1584,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
             write_pairs_file(plan, out)
         except Exception as error:  # noqa: BLE001 - one recipe's generation never stops the batch
+            # The recipe is skipped, so its previous file must go too: run_wave picks <id>.jsonl by
+            # existence, and a stale plan under a skipped manifest entry would drive equivalence and the
+            # corpus with nothing recording it (g-observe-5; the empty-plan branch above does the same).
+            (out / f"{recipe.id}.jsonl").unlink(missing_ok=True)
             skipped_recipes.append(
                 {"recipe": recipe.id, "error": f"generation failed: {type(error).__name__}: {error}"}
             )

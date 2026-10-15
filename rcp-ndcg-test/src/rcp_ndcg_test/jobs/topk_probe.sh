@@ -43,8 +43,8 @@
 # RCP_TOPK_CONTROL_VECTORS (unset: the
 # control is `not_run` and the report says so), RCP_TOPK_MODEL / RCP_TOPK_REVISION (unset: read from the
 # staged family.yaml in the client environment, the recipe's own pin).
-# TOPK_DRY=1 prints the plan and runs nothing.  The transfer runs gcloud or gsutil when either is
-# present, else the python gcsfs helper (jobs/gcs.sh owns the dispatch).
+# TOPK_DRY=1 prints the plan and runs nothing.  The transfer runs jobs/gcs.sh's gcs_cp (the one dispatch
+# home: gcloud/gsutil when one is present, else the python gcsfs helper).
 
 set -euo pipefail
 
@@ -99,15 +99,30 @@ if [[ "${TOPK_DRY:-0}" == "1" ]]; then
   exit 0
 fi
 
-for helper in "$BOOTSTRAP_SH" "$PROBE_PY"; do
+AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
+[[ -f "$AUTH_SCRIPT" ]] || { echo "topk_probe: no auth script at $AUTH_SCRIPT (set RCP_GCS_AUTH_FILE)" >&2; exit 1; }
+for helper in "$BOOTSTRAP_SH" "$PROBE_PY" "$GCS_SH" "$GCS_HELPER_PY"; do
   [[ -f "$helper" ]] || { echo "topk_probe: missing mounted helper $helper" >&2; exit 1; }
 done
 
-AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
-if [[ -f "$AUTH_SCRIPT" ]]; then
-  # shellcheck disable=SC1090
-  source "$AUTH_SCRIPT"
+# The mounted auth script runs before anything else (executed, never printed): it sets up the credentials
+# every transfer path uses.  Then the transfer path is chosen once (jobs/gcs.sh).
+set +e
+auth_out="$(mktemp)"
+bash "$AUTH_SCRIPT" >"$auth_out" 2>&1
+auth_status=$?
+rm -f "$auth_out"
+set -e
+if ((auth_status != 0)); then
+  echo "topk_probe: the GCS auth script failed with exit code $auth_status (its output is not echoed)" >&2
+  exit 1
 fi
+# shellcheck disable=SC1090  # the helper is mounted at a job-specific path
+source "$GCS_SH"
+gcs_sdk_on_path  # an SDK the auth script installed, searched in RCP_GCLOUD_SDK_DIRS (gcs.sh)
+export GCS_PY="${GCS_PY:-$(command -v python3)}"
+export GCS_WHEELHOUSE=""  # set once the stage is local (below): the helper prefers the staged gcsfs wheel
+export GCS_TOOLS_DIR="${GCS_TOOLS_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/rcp-topkprobe-gcs.XXXXXX")}"
 
 STATE="$(mktemp -d "${TMPDIR:-/tmp}/rcp-topkprobe.XXXXXX")"
 echo "topk_probe: state $STATE"
@@ -126,6 +141,9 @@ fi
 
 echo "topk_probe: building the node's environments (bootstrap.sh envs)"
 bash "$BOOTSTRAP_SH" envs "$RC_STAGE_URI" --state "$STATE" --recipes "$STAGE/recipes" --wave-list "$WAVE_LIST"
+if [[ -d "$STAGE/wheelhouse" ]]; then
+  export GCS_WHEELHOUSE="$STAGE/wheelhouse"  # the staged gcsfs wheel, preferred over PyPI by the helper
+fi
 
 REFERENCE_PYTHON="$STATE/reference/topk-embed-v1/bin/python"
 [[ -x "$REFERENCE_PYTHON" ]] || {
@@ -197,25 +215,13 @@ tail -n 40 "$STATE/probe.log" || true
 [[ -f "$PROBE_OUT/probe-report.md" ]] || { echo "topk_probe: no report written (exit $status)" >&2; exit 1; }
 
 echo "topk_probe: uploading to ${OUT_URI%/}/topk-probe/"
-upload() {
-  if command -v gcloud >/dev/null; then
-    gcloud storage cp --quiet --recursive "$PROBE_OUT"/* "${OUT_URI%/}/topk-probe/"
-  elif command -v gsutil >/dev/null; then
-    gsutil -q -m cp -r "$PROBE_OUT"/* "${OUT_URI%/}/topk-probe/"
-  elif [[ -f "$GCS_SH" ]]; then
-    # shellcheck disable=SC1090
-    source "$GCS_SH"
-    upload_tree "$PROBE_OUT" "${OUT_URI%/}/topk-probe"
-  elif [[ -f "$GCS_HELPER_PY" ]]; then
-    python3 "$GCS_HELPER_PY" upload-tree "$PROBE_OUT" "${OUT_URI%/}/topk-probe"
-  else
-    echo "topk_probe: no transfer path (gcloud, gsutil, $GCS_SH, $GCS_HELPER_PY)" >&2
-    return 1
-  fi
-}
-if ! upload; then
+if ! gcs_cp "$PROBE_OUT" "${OUT_URI%/}/topk-probe" dir; then
   echo "topk_probe: UPLOAD-FAILED: the report is at $PROBE_OUT on the node and nowhere else" >&2
   exit 1
 fi
+if ((status != 0)); then
+  echo "topk_probe: FAILED (probe exit $status; the partial report was uploaded from $PROBE_OUT)" >&2
+  exit "$status"
+fi
 
-echo "topk_probe: DONE (probe exit $status; report uploaded from $PROBE_OUT)"
+echo "topk_probe: DONE (report uploaded from $PROBE_OUT)"

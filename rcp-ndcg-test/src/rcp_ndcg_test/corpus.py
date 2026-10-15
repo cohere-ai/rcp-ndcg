@@ -22,7 +22,7 @@ A corpus is one directory:
   :func:`verification_records`): which verifier checked the corpus, when, with which tolerances, and the
   result. It is not part of the recording, so no integrity hash covers it.
 
-A **repository subset** (``tests/contract/engines/<engine>-<version>/<recipe>/<fingerprint>/``) carries
+A **repository subset** (``rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<fingerprint>/``) carries
 ``records.jsonl.gz`` (a stratified sample), the full corpus's ``manifest.json`` (byte for byte, or the tracked
 redacted view of it when the recording carried private infrastructure: the manifest's ``engine.redacted``
 entry names the field, the reason and the original's digest), its
@@ -88,10 +88,12 @@ RECORD_SCHEMA = 1
 """The version of one exchange record. A bump never invalidates an old corpus: :func:`load_corpus` migrates
 every older record through the migrations registered with :func:`register_record_migration`."""
 
-NORMALISATION_VERSION = 1
+NORMALISATION_VERSION = 2
 """The version of :func:`normalise_body`'s rule. Version 1 strips the volatile leaves of a reply: the top-level
 ``id`` and ``created`` (request ids and timestamps), ``data[*].created``, and the ``/v1/models`` permission
-rows' ``id`` and ``created``. A changed rule is a new version, never a silent edit of this one."""
+rows' ``id`` and ``created``. Version 2 keys a ``/rerank`` reply's result leaves by the document's own index
+instead of the ranked position, so a near-tie flip between repeated sendings is a reorder, not a moved
+score (g-observe-1). A changed rule is a new version, never a silent edit of this one."""
 
 RECORDS_FILE = "records.jsonl"
 RECORDS_FILE_GZ = "records.jsonl.gz"

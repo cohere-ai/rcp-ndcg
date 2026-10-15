@@ -37,6 +37,8 @@ TOPK_PROBE_SH = JOBS / "topk_probe.sh"
 TOPK_PROBE_PY = JOBS / "topk_probe.py"
 TOPK_PROBE_COSINES = JOBS / "wave-cosines-topk-small.json"
 WAVE0_HOST = JOBS / "wave0_host.py"
+CHECK_DEPS_INSTALL = JOBS.parents[3] / "rcp-ndcg-vllm" / "tests" / "models" / "check_no_deps_install.py"
+REPO = Path(__file__).resolve().parents[2]
 
 SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH)
 
@@ -78,7 +80,7 @@ def test_bootstrap_freeze_guard_passes_an_unchanged_environment(bootstrap_functi
     allowed = tmp_path / "allowed"
     before.write_text("pkg-a==1.0\npkg-b==2.0\n", encoding="utf-8")
     shutil.copy(before, after)
-    allowed.write_text("my-plugin\n", encoding="utf-8")
+    allowed.write_text("", encoding="utf-8")  # no plugin declared: an unchanged freeze is the whole contract
     completed = subprocess.run(
         [
             "bash",
@@ -93,6 +95,36 @@ def test_bootstrap_freeze_guard_passes_an_unchanged_environment(bootstrap_functi
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_bootstrap_freeze_guard_requires_every_declared_plugin_to_appear(
+    bootstrap_functions: str, tmp_path: Path
+) -> None:
+    """g-rcjobs-9: the guard's other direction.  A declared plugin that pip reported installed but that never
+    appears in the freeze is a refusal, not a pass: the node would otherwise run a plugin the recording's
+    freeze key does not cover (and ``--no-deps`` would have left its dependencies missing)."""
+    before = tmp_path / "before"
+    after = tmp_path / "after"
+    allowed = tmp_path / "allowed"
+    before.write_text("pkg-a==1.0\npkg-b==2.0\n", encoding="utf-8")
+    shutil.copy(before, after)
+    allowed.write_text("my-plugin\n", encoding="utf-8")
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{bootstrap_functions}" && freeze_diff_guard "$1" "$2" "$3"',
+            "bash",
+            str(before),
+            str(after),
+            str(allowed),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 1
+    assert "did not gain every declared plugin" in completed.stderr
+    assert "my-plugin" in completed.stderr
 
 
 def test_bootstrap_freeze_guard_fires_beyond_the_plugin(bootstrap_functions: str, tmp_path: Path) -> None:
@@ -221,14 +253,18 @@ def _install_plugin_wheels(
     fail_spec: str = "",
     extra: tuple[str, ...] = (),
     wheels: tuple[str, ...] = (),
+    wheel_bytes: dict[str, bytes] | None = None,
+    check_deps_py: Path | None = None,
     installed: str = "0.0.1",
 ) -> subprocess.CompletedProcess[str]:
     """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python.
 
     ``extra`` names EXTRA_DIRS entries staged under ``<stage>/extra/<name>/``; a name ending in ``/wheelhouse``
-    stages that entry with a wheelhouse directory, any other name without one.  ``wheels`` names stub wheel
-    files to write under the stage (relative paths), so a test can stage several versions.  ``installed`` is
-    the version the fake engine environment reports for ``rcp-ndcg-vllm`` after the install."""
+    stages that entry with a wheelhouse directory, any other name without one.  ``wheels`` names wheel files
+    to write under the stage (relative paths), so a test can stage several versions; ``wheel_bytes`` overrides
+    a file's bytes (a forged wheel).  ``check_deps_py`` is the declared-dependency check the bootstrap runs
+    (default: a stub that accepts).  ``installed`` is the version the fake engine environment reports for
+    ``rcp-ndcg-vllm`` after the install."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
     for entry in extra:
@@ -236,7 +272,7 @@ def _install_plugin_wheels(
     for relative in wheels:
         path = stage / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"stub wheel")
+        path.write_bytes((wheel_bytes or {}).get(relative, b"stub wheel"))
     recipes = tmp_path / "recipes"
     recipes.mkdir()
     specs_file = tmp_path / "specs.txt"
@@ -244,6 +280,8 @@ def _install_plugin_wheels(
     allowed = tmp_path / "allowed.txt"
     failed = tmp_path / "failed.txt"
     fake = _fake_engine_python(tmp_path, fail_spec=fail_spec)
+    stub_check = tmp_path / "check_no_deps_install_stub.py"
+    stub_check.write_text("import sys\n\nsys.exit(0)\n", encoding="utf-8")
     completed = subprocess.run(
         [
             "bash",
@@ -253,9 +291,43 @@ def _install_plugin_wheels(
         ],
         capture_output=True,
         text=True,
-        env={**os.environ, "FAKE_PLUGIN_VERSION": installed},
+        env={
+            **os.environ,
+            "FAKE_PLUGIN_VERSION": installed,
+            "RCP_CHECK_DEPS_PY": str(check_deps_py or stub_check),
+        },
     )
     return completed
+
+
+def test_bootstrap_refuses_a_plugin_wheel_that_declares_an_unshipped_dependency(tmp_path: Path) -> None:
+    """g-rcjobs-9: decision 16's declared-dependency check runs on the node: the staged rcp-ndcg-vllm
+    wheel passes ``check_no_deps_install.assert_pure_python`` before the install, so a wheel declaring
+    torch (which ``--no-deps`` would leave missing on the stock image) is refused with its exact name."""
+    import io
+    import zipfile
+
+    wheel = "wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("rcp_ndcg_vllm/__init__.py", "")
+        archive.writestr("rcp_ndcg_vllm-0.0.1.dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
+        archive.writestr(
+            "rcp_ndcg_vllm-0.0.1.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: rcp-ndcg-vllm\nVersion: 0.0.1\nRequires-Dist: torch>=2.0\n",
+        )
+    completed = _install_plugin_wheels(
+        tmp_path,
+        "rcp-ndcg-vllm\n",
+        wheels=(wheel,),
+        wheel_bytes={wheel: buffer.getvalue()},
+        check_deps_py=CHECK_DEPS_INSTALL,
+    )
+    assert completed.returncode == 0, completed.stderr  # the loop carries on; the job never dies here
+    assert "declared-dependency check" in completed.stderr
+    assert "torch" in completed.stderr
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-ndcg-vllm"
+    assert not (tmp_path / "engine-python.log").exists(), "the wheel was refused before any install"
 
 
 def test_bootstrap_pins_the_shipped_plugin_install_to_the_staged_wheel(tmp_path: Path) -> None:
@@ -496,6 +568,34 @@ def test_bootstrap_searches_only_the_declared_sdk_dirs(tmp_path: Path, sdk_dirs:
         },
     )
     assert f"bootstrap: GCS transfer path: {expected}\n" in completed.stderr, completed.stderr
+
+
+def test_bootstrap_gpu_count_refuses_a_failing_nvidia_smi(bootstrap_functions: str, tmp_path: Path) -> None:
+    """g-rcjobs-3: a failed ``nvidia-smi --list-gpus`` must be loud, not a malformed count ('1\\n0') handed
+    to run_wave's ``--gpus`` (an argparse crash after the whole environment build)."""
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    nvidia = fakes / "nvidia-smi"
+    nvidia.write_text("#!/bin/sh\necho 'No devices were found'\nexit 6\n", encoding="utf-8")
+    nvidia.chmod(0o755)
+    env = {"PATH": sandbox_path(fakes, "bash", "grep"), "RCP_GCLOUD_SDK_DIRS": ""}
+    completed = subprocess.run(
+        ["bash", "-c", f'source "{bootstrap_functions}" && gpu_count'],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode != 0
+    assert "nvidia-smi --list-gpus failed: No devices were found" in completed.stderr
+    nvidia.write_text("#!/bin/sh\nprintf 'GPU 0: A\\nGPU 1: B\\n'\n", encoding="utf-8")
+    completed = subprocess.run(
+        ["bash", "-c", f'source "{bootstrap_functions}" && gpu_count'],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "2"
 
 
 def test_bootstrap_writes_a_quoted_client_wrapper_and_refuses_a_hostile_version(
@@ -762,6 +862,45 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     assert empty["reference"]["n_families"] == 0
 
 
+def test_bootstrap_refuses_a_stage_file_the_manifest_does_not_list(tmp_path: Path) -> None:
+    """g-rcjobs-6: re-staging an RC name merges over the old prefix, so a stage can hold stale files the
+    manifest never lists (bootstrap used to install and load them: it links every staged family directory).
+    The verification refuses them by name, outside reports/ and scenarios/ (the documented operator paths)."""
+    work = tmp_path / "work"
+    (work / "gcs").mkdir(parents=True)
+    (work / "gcs" / "gcs.sh").write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_transfer_detect() { echo "stub"; }\ngcs_cp() { :; }\n', encoding="utf-8"
+    )
+    (work / "gcs" / "gcs.py").write_text("", encoding="utf-8")
+    auth = work / "gcs_auth.sh"
+    auth.write_text("", encoding="utf-8")
+    stage = work / "stage"
+    (stage / "recipes" / "stale-family").mkdir(parents=True)
+    (stage / "recipes" / "stale-family" / "family.yaml").write_text("id: stale\n", encoding="utf-8")
+    (stage / "scenarios").mkdir()
+    (stage / "scenarios" / "wave.yaml").write_text("name: wave\n", encoding="utf-8")
+    (stage / "manifest.json").write_text(
+        json.dumps({"version": "0.0.1", "commit": "0" * 40, "files": []}), encoding="utf-8"
+    )
+    env = {
+        **os.environ,
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_GCS_HELPER_SH": str(work / "gcs" / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(work / "gcs" / "gcs.py"),
+        "RCP_REPORT_PY": str(REPORT_PY),
+    }
+    completed = subprocess.run(
+        ["bash", str(BOOTSTRAP), "envs", str(stage), "--state", str(work / "state")],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "files the manifest does not list" in completed.stderr
+    assert "recipes/stale-family/family.yaml" in completed.stderr
+    assert "scenarios/wave.yaml" not in completed.stderr  # a documented operator-added path
+
+
 def test_reference_install_failure_is_loud(tmp_path: Path) -> None:
     """A pin the staged wheelhouse cannot satisfy fails the install loudly, with the way out."""
     fake = _fake_reference_python(tmp_path, fail=True)
@@ -901,6 +1040,8 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
     assert f"files.bootstrap.from_file={JOBS / 'bootstrap.sh'}" in words
     assert f"files.report.from_file={REPORT_PY}" in words
     assert f"files.refdeps.from_file={JOBS / 'reference_deps.py'}" in words  # the reference completion helper
+    # The node's declared-dependency check: bootstrap runs it on the staged plugin wheel (g-rcjobs-9).
+    assert f"files.checkdeps.from_file={CHECK_DEPS_INSTALL}" in words
     assert f"files.gcsauth.from_file={tmp_path / 'gcs_auth.sh'}" in words
     config_flag = words[words.index("-f") + 1]
     assert config_flag == str(tmp_path / "config.yaml")  # RCP_KJOBS_CONFIG, not a default path
@@ -1774,6 +1915,42 @@ def test_rc_build_without_wave_lists_stages_none(tmp_path: Path) -> None:
     assert "staging no wave lists" in completed.stderr
 
 
+def test_rc_build_refuses_a_stage_name_that_already_holds_a_stage(tmp_path: Path) -> None:
+    """g-rcjobs-6: a recursive copy into an existing prefix merges over the old stage (stale files the new
+    manifest never lists stay behind), so a reused RC name is refused with a fresh-name hint."""
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    gcloud = fakes / "gcloud"
+    gcloud.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    gcloud.chmod(0o755)
+    env = {"PATH": f"{fakes}:/usr/bin:/bin"}
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{RC_BUILD}" && RCP_STAGE_PREFIX="gs://YOUR-BUCKET/rc" RC_NAME=rc0 refuse_existing_stage',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode != 0
+    assert "already holds a stage" in completed.stderr
+    assert "fresh name" in completed.stderr
+    gcloud.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{RC_BUILD}" && RCP_STAGE_PREFIX="gs://YOUR-BUCKET/rc" RC_NAME=rc0 refuse_existing_stage',
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_rc_build_stages_the_recipe_tree_before_it_reads_the_family_locks() -> None:
     """The wheelhouse's reference wheels come from the families' ``reference.lock`` files under the staged
     recipes, so the recipe tree must be staged before the lock glob runs: with the old order the glob saw an
@@ -1853,20 +2030,65 @@ def _check_pins(
 ) -> subprocess.CompletedProcess[str]:
     """Source rc_build.sh and run ``check_pins`` on a scratch checkout with the given manifests."""
     checkout = tmp_path / "checkout"
-    (checkout / "rcp-ndcg").mkdir(parents=True)
-    (checkout / "rcp-ndcg-vllm").mkdir(parents=True)
-    (checkout / "rcp-ndcg" / "pyproject.toml").write_text(
-        '[project]\nname = "rcp-ndcg"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n", encoding="utf-8"
+    for member in ("rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-core", "rcp-ndcg-test"):
+        (checkout / member).mkdir(parents=True, exist_ok=True)
+
+    def _write(path: Path, text: str) -> None:
+        """Create the fixture file once: a test may edit it and call again to re-run the check."""
+        if not path.is_file():
+            path.write_text(text, encoding="utf-8")
+
+    _write(
+        checkout / "rcp-ndcg" / "pyproject.toml",
+        '[project]\nname = "rcp-ndcg"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n",
     )
-    (checkout / "rcp-ndcg-vllm" / "pyproject.toml").write_text(
+    _write(
+        checkout / "rcp-ndcg-vllm" / "pyproject.toml",
         '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
-        encoding="utf-8",
     )
+    for member in ("rcp-ndcg-core", "rcp-ndcg-test"):
+        _write(checkout / member / "pyproject.toml", f'[project]\nname = "{member}"\nversion = "0.0.1"\n')
+    _write(checkout / "CITATION.cff", "cff-version: 1.2.0\nversion: 0.0.1\n")
+    scripts = checkout / ".github" / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    checker = REPO / ".github" / "scripts" / "check_release.py"
+    _write(scripts / "check_release.py", checker.read_text(encoding="utf-8"))
     return subprocess.run(
         ["bash", "-c", f'source "{RC_BUILD}" && check_pins "$1" 0.0.1', "bash", str(checkout)],
         capture_output=True,
         text=True,
     )
+
+
+def test_rc_build_release_check_refuses_a_stale_citation_or_manifest(tmp_path: Path) -> None:
+    """g-rcjobs-5(a): rc_build runs release.yml's four-manifest and CITATION.cff checks (one home,
+    .github/scripts/check_release.py).  A commit whose citation or one workspace manifest carried another
+    version used to pass every node gate and then fail the tag -- with a new commit, so the tested RC was
+    not the published one."""
+    completed = _check_pins(tmp_path)
+    assert completed.returncode == 0, completed.stderr
+    (tmp_path / "checkout" / "CITATION.cff").write_text("cff-version: 1.2.0\nversion: 0.0.2\n", encoding="utf-8")
+    stale_citation = _check_pins(tmp_path)
+    assert stale_citation.returncode != 0
+    assert "CITATION.cff" in stale_citation.stderr and "0.0.2" in stale_citation.stderr
+    (tmp_path / "checkout" / "CITATION.cff").write_text("cff-version: 1.2.0\nversion: 0.0.1\n", encoding="utf-8")
+    (tmp_path / "checkout" / "rcp-ndcg-test" / "pyproject.toml").write_text(
+        '[project]\nname = "rcp-ndcg-test"\nversion = "0.0.2"\n', encoding="utf-8"
+    )
+    stale_manifest = _check_pins(tmp_path)
+    assert stale_manifest.returncode != 0
+    assert "rcp-ndcg-test/pyproject.toml" in stale_manifest.stderr
+
+
+def test_rc_build_runs_the_release_checks_and_smokes_from_one_home() -> None:
+    """g-rcjobs-5(b,e): the constraints check is ``.github/scripts/check_constraints.py`` (semantic, the
+    one CI and the release run -- not a textual diff a newer uv re-serialisation fails), and the three
+    wheel smokes release.yml runs (core alone, vllm alone) run here too, not only the rcp-ndcg smoke."""
+    script = RC_BUILD.read_text(encoding="utf-8")
+    assert ".github/scripts/check_constraints.py" in script
+    assert "diff <(grep -v '^#'" not in script  # the textual diff is gone
+    assert "smoke-core" in script and "smoke-vllm" in script
+    assert "assert len(recipes) == 44" in script
 
 
 def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:
@@ -1983,6 +2205,17 @@ def test_judgecheck_vision_toggle_is_the_gemma_recipe_s_documented_choice() -> N
     notes = (default_recipes_root() / "gemma-4-12b" / "family.yaml").read_text(encoding="utf-8")
     assert '"chat_template_kwargs": {"enable_thinking": true}' in notes
     assert "the parser reads the template kwarg, not reasoning_effort" in notes
+
+
+def test_the_judgecheck_header_names_the_documented_thinking_modes() -> None:
+    """g-rcjobs-14: the header said every judge runs 'both thinking modes' with 'the family's switch'; only
+    the Gemma 4 judges have two modes, and the other six run one documented mode with no ``--set``
+    (``judgecheck_probe.judge_modes``).  submit.sh repeated the stale claim in its usage text."""
+    header = JUDGECHECK_SH.read_text(encoding="utf-8").split("set -euo pipefail", 1)[0]
+    assert "both thinking modes" not in header
+    assert "the family's switch" not in header
+    assert "the mode's switch" in header
+    assert "both thinking modes" not in SUBMIT.read_text(encoding="utf-8")
 
 
 def test_judgecheck_media_probe_uses_the_engines_own_stock_budget() -> None:
@@ -2268,7 +2501,9 @@ def test_the_topk_probe_wrapper_forwards_the_dtypes(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     gcs = tmp_path / "gcs.sh"
-    gcs.write_text("upload_tree() { :; }\n", encoding="utf-8")
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     # A gcloud that succeeds shadows the real one: the transfer is not this test's subject.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -2277,13 +2512,14 @@ def test_the_topk_probe_wrapper_forwards_the_dtypes(tmp_path: Path) -> None:
     gcloud.chmod(0o755)
     base_env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
-        "RCP_GCS_AUTH_FILE": "/nonexistent",
+        "RCP_GCS_AUTH_FILE": str(auth),
         "RCP_BOOTSTRAP_SH": str(bootstrap),
         "RCP_TOPK_PROBE_PY": str(probe_py),
         "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
         "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
         "RCP_TOPK_REVISION": "0" * 40,
         "RCP_GCS_HELPER_SH": str(gcs),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
     }
     for extra, expected in (
         ({}, "--dtype bfloat16 --reference-dtype bfloat16"),
@@ -2344,7 +2580,9 @@ def test_the_topk_probe_wrapper_forwards_the_gdn_backend(tmp_path: Path) -> None
         encoding="utf-8",
     )
     gcs = tmp_path / "gcs.sh"
-    gcs.write_text("upload_tree() { :; }\n", encoding="utf-8")
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gcloud = bin_dir / "gcloud"
@@ -2352,13 +2590,14 @@ def test_the_topk_probe_wrapper_forwards_the_gdn_backend(tmp_path: Path) -> None
     gcloud.chmod(0o755)
     base_env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
-        "RCP_GCS_AUTH_FILE": "/nonexistent",
+        "RCP_GCS_AUTH_FILE": str(auth),
         "RCP_BOOTSTRAP_SH": str(bootstrap),
         "RCP_TOPK_PROBE_PY": str(probe_py),
         "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
         "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
         "RCP_TOPK_REVISION": "0" * 40,
         "RCP_GCS_HELPER_SH": str(gcs),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
     }
     for extra in ({}, {"RCP_TOPK_GDN_BACKEND": "triton"}, {"RCP_TOPK_GDN_BACKEND": "cutedsl"}):
         calls.unlink(missing_ok=True)
@@ -2380,6 +2619,131 @@ def test_the_topk_probe_wrapper_forwards_the_gdn_backend(tmp_path: Path) -> None
 
 
 # --- topk_probe.py: the engine-side accessor and the image's API contract ---------------------------------
+
+
+def _topk_probe_harness(
+    tmp_path: Path, *, auth_body: str, probe_exit: int = 0
+) -> tuple[dict[str, str], Path, Path, Path]:
+    """The topk wrapper's minimal node: a stage with one recipe and its pairs, a stub bootstrap that leaves
+    the reference venv, a stub probe that writes its report, a stub auth script and a stub gcs.sh."""
+    stage = tmp_path / "stage"
+    (stage / "recipes" / "topk-embed-v1").mkdir(parents=True)
+    (stage / "recipes" / "topk-embed-v1" / "family.yaml").write_text("id: topk-embed-v1\n", encoding="utf-8")
+    (stage / "pairs").mkdir()
+    (stage / "pairs" / "topk-embed-v1-small.jsonl").write_text("", encoding="utf-8")
+    calls = tmp_path / "calls.log"
+    probe_py = tmp_path / "topk_probe.py"
+    probe_py.write_text(
+        "import pathlib, sys\n"
+        f"open({str(calls)!r}, 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + chr(10))\n"
+        "if '--check-engine' not in sys.argv:\n"
+        "    out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1])\n"
+        "    out.mkdir(parents=True, exist_ok=True)\n"
+        "    (out / 'probe-report.md').write_text('stub', encoding='utf-8')\n"
+        f"    raise SystemExit({probe_exit})\n",
+        encoding="utf-8",
+    )
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'state=""\n'
+        'while (($#)); do [[ "$1" == "--state" ]] && { state="$2"; shift 2; continue; }; shift; done\n'
+        'mkdir -p "$state/reference/topk-embed-v1/bin"\n'
+        "printf '#!/bin/sh\\n' > \"$state/reference/topk-embed-v1/bin/python\"\n"
+        'chmod +x "$state/reference/topk-embed-v1/bin/python"\n',
+        encoding="utf-8",
+    )
+    auth = tmp_path / "auth.sh"
+    auth.write_text(auth_body, encoding="utf-8")
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_BOOTSTRAP_SH": str(bootstrap),
+        "RCP_TOPK_PROBE_PY": str(probe_py),
+        "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
+        "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
+        "RCP_TOPK_REVISION": "0" * 40,
+        "RCP_GCS_HELPER_SH": str(gcs),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+        "GCS_PY": "/bin/false",
+    }
+    return env, calls, stage, tmp_path / "out"
+
+
+def test_the_topk_probe_executes_the_auth_script_and_never_prints_it(tmp_path: Path) -> None:
+    """g-rcjobs-4: the mounted auth script is executed, never sourced: a sourced ``exit 0`` would end the
+    job green before anything ran, and its output (a credential line) would reach the log.  A missing auth
+    script fails the job, as it does in every sibling script."""
+    env, calls, stage, out = _topk_probe_harness(tmp_path, auth_body="#!/usr/bin/env bash\necho SECRET-LINE\nexit 0\n")
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert calls.read_text(encoding="utf-8").splitlines()[0] == "--check-engine"  # the job ran past the auth
+    assert "SECRET-LINE" not in completed.stdout + completed.stderr
+    env["RCP_GCS_AUTH_FILE"] = str(tmp_path / "missing.sh")
+    missing = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
+    )
+    assert missing.returncode == 1, missing.stdout + missing.stderr
+    assert "auth script" in missing.stderr
+
+
+def test_the_topk_probe_upload_goes_through_the_gcs_helper_dispatch(tmp_path: Path) -> None:
+    """g-rcjobs-1: the stock image ships neither gcloud nor gsutil, and the upload's old fallback called
+    ``upload_tree``, which gcs.sh does not define: the probe's only artefacts were lost.  With the real
+    gcs.sh mounted and no CLI on PATH, the python helper must receive ``cp <state>/probe <out> dir``."""
+    env, _, stage, _ = _topk_probe_harness(tmp_path, auth_body="#!/usr/bin/env bash\nexit 0\n")
+    recorded = tmp_path / "gcs-calls.jsonl"
+    stub_python = tmp_path / "python-stub"
+    stub_python.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        f"open({str(recorded)!r}, 'a', encoding='utf-8').write(json.dumps(sys.argv[1:]) + chr(10))\n",
+        encoding="utf-8",
+    )
+    stub_python.chmod(0o755)
+    # A PATH with the commands the wrapper needs and no gcloud/gsutil (the stock image's shape).
+    hermetic = tmp_path / "bin"
+    hermetic.mkdir()
+    for name in ("bash", "env", "python3", "mktemp", "rm", "mkdir", "chmod", "tail", "sleep"):
+        target = shutil.which(name)
+        assert target is not None
+        (hermetic / name).symlink_to(target)
+    env |= {
+        "PATH": str(hermetic),
+        "RCP_GCLOUD_SDK_DIRS": "",
+        "RCP_GCS_HELPER_SH": str(JOBS / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+        "GCS_PY": str(stub_python),
+    }
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), "gs://YOUR-BUCKET/waves"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    invocations = [json.loads(line) for line in recorded.read_text(encoding="utf-8").splitlines()]
+    copies = [args for args in invocations if args[0].endswith("gcs.py") and args[1] == "cp"]
+    assert copies, invocations
+    assert copies[-1][2].endswith("/probe")
+    assert copies[-1][3:] == ["gs://YOUR-BUCKET/waves/topk-probe", "dir"]
+
+
+def test_a_crashed_topk_probe_is_a_failed_job_even_with_a_partial_report(tmp_path: Path) -> None:
+    """g-rcjobs-13: the probe rewrites its report after every row, so a crash later still leaves a file; the
+    wrapper must exit non-zero after uploading it, never print DONE for a crashed probe."""
+    env, _, stage, out = _topk_probe_harness(tmp_path, auth_body="#!/usr/bin/env bash\nexit 0\n", probe_exit=3)
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
+    )
+    assert completed.returncode == 3, completed.stdout + completed.stderr
+    assert "FAILED" in completed.stderr
 
 
 def _probe_module():
@@ -2545,6 +2909,10 @@ def test_the_topk_probe_wrapper_checks_the_engine_api_before_loading_weights(tmp
         'chmod +x "$state/reference/topk-embed-v1/bin/python"\n',
         encoding="utf-8",
     )
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
     completed = subprocess.run(
         [
             "bash",
@@ -2556,12 +2924,14 @@ def test_the_topk_probe_wrapper_checks_the_engine_api_before_loading_weights(tmp
         text=True,
         env={
             "PATH": "/usr/bin:/bin",
-            "RCP_GCS_AUTH_FILE": "/nonexistent",
+            "RCP_GCS_AUTH_FILE": str(auth),
             "RCP_BOOTSTRAP_SH": str(bootstrap),
             "RCP_TOPK_PROBE_PY": str(probe_py),
             "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
             "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
             "RCP_TOPK_REVISION": "0" * 40,
+            "RCP_GCS_HELPER_SH": str(gcs),
+            "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
         },
     )
     assert completed.returncode == 1, completed.stdout + completed.stderr
@@ -2703,6 +3073,60 @@ def test_the_probe_names_the_tensors_a_recording_missed() -> None:
     assert probe._missing_recorded(names, {key: object() for key in names.values()}) == []
 
 
+def test_wave0_preflight_refuses_a_failing_nvidia_smi(tmp_path: Path) -> None:
+    """g-rcjobs-3: with ``nvidia-smi --list-gpus`` failing (no GPUs visible, a driver mismatch) the old
+    pipeline yielded GPUS='1\\n0'; the arithmetic error inside an ``if`` read as false, so preflight passed
+    a GPU-less node and the job failed later, after the environment build.  The failure is now a named
+    preflight step and bootstrap never runs."""
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    nvidia = fakes / "nvidia-smi"
+    nvidia.write_text("#!/bin/sh\necho 'No devices were found'\nexit 6\n", encoding="utf-8")
+    nvidia.chmod(0o755)
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text(
+        'gcs_sdk_on_path() { :; }\ngcs_transfer_detect() { printf "python\\n"; }\n'
+        'gcs_cp() { printf "%s\\n" "cp $*" >> "$STUB_GCS_LOG"; }\n',
+        encoding="utf-8",
+    )
+    bootstrap_log = tmp_path / "bootstrap.log"
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$STUB_BOOTSTRAP_LOG"\nexit 0\n', encoding="utf-8"
+    )
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    completed = subprocess.run(
+        ["bash", str(WAVE0_SH), str(stage), str(tmp_path / "out")],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": sandbox_path(fakes, "bash", "cat", "date", "grep", "mkdir", "mktemp", "python3", "rm"),
+            "HOME": str(tmp_path),
+            "TMPDIR": str(tmp_path),
+            "RCP_GCLOUD_SDK_DIRS": "",
+            "RCP_GCS_AUTH_FILE": str(auth),
+            "RCP_REPORT_PY": str(REPORT_PY),
+            "RCP_HOST_PY": str(WAVE0_HOST),
+            "RCP_BOOTSTRAP_SH": str(bootstrap),
+            "RCP_REFERENCE_DEPS_PY": str(REFERENCE_DEPS),
+            "RCP_GCS_HELPER_SH": str(gcs),
+            "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+            "HF_TOKEN": "hf_test_token",
+            "STUB_BOOTSTRAP_LOG": str(bootstrap_log),
+            "STUB_GCS_LOG": str(tmp_path / "gcs.log"),
+        },
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "wave0: step preflight failed: nvidia-smi --list-gpus failed: No devices were found" in completed.stderr
+    assert not bootstrap_log.exists(), "preflight stops the job before the environment build"
+    report = json.loads(completed.stdout[completed.stdout.index("{") :])
+    assert report["failed_step"] == "preflight"
+    assert "nvidia-smi --list-gpus failed" in report["error"]
+
+
 def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes() -> None:
     """``JUDGECHECK_DRY=1`` prints what the node would run (the operator's plan), and runs nothing: the ten
     judges in order, each served on its own port, both thinking modes' checks with the recipe's client block
@@ -2729,12 +3153,12 @@ def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes()
     assert "continuing past a failure" in plan
 
 
-def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -> None:
+def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, request: pytest.FixtureRequest) -> None:
     """Drive judgecheck.sh's node path with stubs: bootstrap envs builds the client wrapper, every judge is
     served and waited for on its own port, both thinking modes' checks run with the recipe's client block and
     the family's toggle, the media probe runs for every judge, one judge whose engine dies does not stop the
-    next, every engine's process group is stopped, the JSONs and the report upload, and the job exits 1 with
-    the failure recorded."""
+    next, every engine's process group is stopped (including a TERM-ignoring survivor), a media mismatch fails
+    its judge, the JSONs and the report upload, and the job exits 1 with the failures recorded."""
     auth = tmp_path / "gcs_auth.sh"
     auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     gcs_log = tmp_path / "gcs.log"
@@ -2764,6 +3188,7 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
     bootstrap_log = tmp_path / "bootstrap.log"
     client_log = tmp_path / "client.log"
     serve_pids = tmp_path / "serve-pids"
+    orphans = tmp_path / "orphans"
     bootstrap = tmp_path / "bootstrap.sh"
     bootstrap.write_text(
         "#!/usr/bin/env bash\n"
@@ -2783,6 +3208,9 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
         '    for arg in "$@"; do [[ "$prev" == "--port" ]] && port="$arg"; prev="$arg"; done\n'
         '    echo "$$" >> "$STUB_SERVE_PIDS"\n'
         '    if [[ "${3:-}" == "gpt-oss-120b" ]]; then echo "stub engine: CUDA out of memory" >&2; exit 3; fi\n'
+        '    if [[ "${3:-}" == "qwen3.6-27b-fp8" ]]; then\n'
+        '      bash -c \'trap "" TERM; echo $$ >> "$STUB_ORPHANS"; exec sleep 300\' &\n'
+        "    fi\n"
         '    exec python3 "$STUB_ENGINE_PY" "$port" "${3:-}"\n'
         "    ;;\n"
         "  rcp-ndcg)\n"
@@ -2803,7 +3231,11 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
         "        media)\n"
         '          out=""; prev=""\n'
         '          for arg in "$@"; do [[ "$prev" == "--out" ]] && out="$arg"; prev="$arg"; done\n'
-        '          printf \'{"checked": true, "outcome": "ok"}\\n\' > "$out"\n'
+        '          if [[ "$recipe" == "gemma-4-12b-it" ]]; then\n'
+        '            printf \'{"checked": true, "ok": false, "outcome": "mismatch"}\\n\' > "$out"\n'
+        "            exit 1\n"
+        "          fi\n"
+        '          printf \'{"checked": true, "ok": true, "outcome": "ok"}\\n\' > "$out"\n'
         "          ;;\n"
         "      esac\n"
         "    fi\n"
@@ -2833,11 +3265,25 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
             "STUB_SERVE_PIDS": str(serve_pids),
             "STUB_ENGINE_PY": str(stub_engine),
             "STUB_GCS_LOG": str(gcs_log),
+            "STUB_ORPHANS": str(orphans),
             "RCP_JUDGECHECK_STARTUP_S": "20",
         },
     )
+
+    def _kill_orphans() -> None:
+        """The TERM-ignoring stub child (a stand-in for a surviving TP worker) must never outlive the job."""
+        if not orphans.is_file():
+            return
+        for line in orphans.read_text(encoding="utf-8").splitlines():
+            try:
+                os.kill(int(line), 9)
+            except (ProcessLookupError, ValueError):
+                pass
+
+    request.addfinalizer(_kill_orphans)
+    orphan_pids = [int(line) for line in orphans.read_text(encoding="utf-8").splitlines()] if orphans.is_file() else []
     assert completed.returncode == 1, completed.stdout + completed.stderr  # the dead engine fails the job
-    assert "judgecheck: 1 recipe(s) failed: gpt-oss-120b" in completed.stderr
+    assert "judgecheck: 2 recipe(s) failed: gpt-oss-120b gemma-4-12b-it" in completed.stderr
     state_line = next(line for line in completed.stdout.splitlines() if "judgecheck: state " in line)
     state = Path(state_line.split("judgecheck: state ", 1)[1])
     # the bootstrap envs call carries the ten-recipe wave list (the client environment)
@@ -2869,8 +3315,13 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
     # the media probe ran for every judge (the helper records text-only itself); gpt-oss's engine never booted
     assert log.count("judgecheck_probe media") == 9, log
     assert not (state / "media-gpt-oss-120b.json").exists()
-    # every engine's process group was stopped
+    # every engine's process group was stopped -- including the TERM-ignoring member qwen3.6's stub left
+    # behind (the group poll + unconditional SIGKILL; g-rcjobs-10)
     for pid in (int(line) for line in serve_pids.read_text(encoding="utf-8").splitlines()):
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    assert orphan_pids, "the stub recorded the TERM-ignoring child it left in the engine's session"
+    for pid in orphan_pids:
         with pytest.raises(ProcessLookupError):
             os.kill(pid, 0)
     # the checks' JSONs upload per judge and mode; the failed judge's engine log does not become a check
@@ -2897,6 +3348,9 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
     assert set(single["modes"]) == {"default"} and single["modes"]["default"]["ok"] is True
     assert single["modes_note"] == "single documented mode: the recipe documents no thinking-mode toggle"
     assert single["media"]["outcome"] == "ok"
+    # a vision judge whose engine media check failed is 'failed', not 'verified' (g-rcjobs-2)
+    assert report["recipes"]["gemma-4-12b-it"]["state"] == "failed"
+    assert report["recipes"]["gemma-4-12b-it"]["media"]["outcome"] == "mismatch"
     gemma = report["recipes"]["gemma-4-12b-it"]
     assert set(gemma["modes"]) == {"off", "on"} and all(row["ok"] for row in gemma["modes"].values())
     assert "modes_note" not in gemma

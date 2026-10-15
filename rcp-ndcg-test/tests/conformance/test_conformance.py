@@ -2,7 +2,7 @@
 items 2-7), staleness fails with the changed inputs named, and the registry refuses what it was not
 verified against.
 
-Every corpus under ``tests/contract/engines/`` is loaded through the corpus seam, its emulator is built
+Every corpus under ``rcp-ndcg-test/corpora/`` is loaded through the corpus seam, its emulator is built
 through ``tests._engines`` (the recipe's real tokenizer and prompt derivation), and **every recorded
 exchange** is replayed and compared within the recorded non-determinism -- the measured bounds every
 committed corpus declares (``measured: true``), exactly when a corpus measured none, and never over zero

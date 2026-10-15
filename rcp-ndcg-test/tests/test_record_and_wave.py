@@ -328,6 +328,104 @@ def test_a_judges_skipped_equivalence_and_record_count_as_satisfied() -> None:
     )
 
 
+def test_a_judges_skipped_quality_and_controls_count_as_satisfied() -> None:
+    """g-observe-9: ``_steps`` never runs quality or controls for a judge (decision 15: a judge's
+    conformance is judge check plus T4), but ``_row_state`` required them passed: a ``--quality`` or
+    ``--controls`` wave over the default recipe list (which includes the judges) marked every judge row
+    failed and the wave FAIL although nothing failed."""
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    judge = resolve_recipe("gemma-4-12b-it")
+    steps = {"smoke": {"state": "passed"}, "equivalence": {"state": "skipped"}, "record": {"state": "skipped"}}
+    assert (
+        run_wave_module._row_state(judge, steps, record=True, record_corpus=True, quality=True, controls=True)
+        == "verified"
+    )
+
+
+def test_a_wave_that_skips_everything_still_indexes_the_skipped_recipes(tmp_path: Path) -> None:
+    """g-observe-7: ``--changed-since`` cannot be chained.  Wave N+1's index held only the recipes it
+    re-recorded, so the documented next step (``--changed-since <N+1's wave.json>``) found every recipe
+    N+1 skipped missing and re-recorded it on GPU with false reasons and a false protocol_due.  The
+    skipped recipes' entries are carried forward (they still describe a recording at that key)."""
+    from rcp_ndcg_test.fingerprint import behaviour_fingerprint
+
+    ids = ["fixture-embed", "fixture-embed-cls"]
+    recipes = [load_recipe(RECIPES / recipe_id) for recipe_id in ids]
+    index = tmp_path / "previous-wave.json"
+    index.write_text(
+        json.dumps(
+            {
+                "fingerprints": {recipe.id: behaviour_fingerprint(recipe) for recipe in recipes},
+                "engine_versions": {recipe.id: "test-stub" for recipe in recipes},
+            }
+        ),
+        encoding="utf-8",
+    )
+    first = run_wave(
+        ids,
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave",
+        changed_since_index=index,
+        vllm_cmd=VLLM_CMD,
+    )
+    assert first["skipped_unchanged"] == ids
+    assert set(first["fingerprints"]) == set(ids), first["fingerprints"]
+    assert set(first["engine_versions"]) == set(ids), first["engine_versions"]
+    second = run_wave(
+        ids,
+        RECIPES,
+        gpus=1,
+        out_dir=tmp_path / "wave-2",
+        changed_since_index=tmp_path / "wave" / "wave.json",
+        vllm_cmd=VLLM_CMD,
+    )
+    assert second["skipped_unchanged"] == ids, second["changes"]
+    assert second["protocol_due"] == []
+
+
+def test_the_engine_stop_kills_survivors_after_the_leader_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """robust-5: ``stop`` returned as soon as the leader was reaped, before any group signal: a tensor
+    parallel worker that outlives an OOM-killed API server kept the GPUs the next recipe needs.  The group
+    is signalled (and SIGKILLed after the grace period) even when the leader is already gone, while the
+    death evidence stays a death (``stopped_by_runner`` is not set)."""
+    import os
+    import subprocess
+
+    monkeypatch.setattr(run_wave_module, "_STOP_GRACE_S", 0.5)
+    leader = subprocess.Popen(
+        ["bash", "-c", "bash -c 'trap \"\" TERM; sleep 300' & exit 1"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    try:
+        leader.wait(timeout=10)
+
+        class StandIn:
+            """The engine surface ``stop`` touches (hashable: it joins the live-engine registry)."""
+
+        stand_in = StandIn()
+        stand_in._stop_lock = threading.Lock()
+        stand_in._stopped = False
+        stand_in.popen = leader
+        stand_in.stopped_by_runner = False
+        stand_in._thread = threading.Thread(target=lambda: None)
+        stand_in._thread.start()
+        run_wave_module._EngineRun.stop(stand_in)
+        with pytest.raises(ProcessLookupError):
+            os.killpg(leader.pid, 0)
+        assert stand_in.stopped_by_runner is False
+    finally:
+        try:
+            os.killpg(leader.pid, 9)
+        except ProcessLookupError:
+            pass
+
+
 def test_a_skipped_corpus_step_leaves_the_row_unverified() -> None:
     """The corpus gate demands a PASSED corpus step like its siblings: a *skipped* one (the missing pairs
     file today, any future skip reason tomorrow) would mark a row ``verified`` with no corpus -- the one
@@ -474,7 +572,9 @@ def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch
 
 def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A model whose size cannot fit the free disk fails before its engine started (one line)."""
-    monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: 1 << 40)  # 1 TiB of weights
+    monkeypatch.setattr(
+        weights, "model_weight_files", lambda model, revision=None: ("*.safetensors", 1 << 40)
+    )  # 1 TiB of weights
     monkeypatch.setattr(weights, "disk_free_bytes", lambda path: 2 << 30)  # 2 GiB free: it cannot fit
     document = run_wave(
         ["fixture-embed"],
@@ -489,6 +589,7 @@ def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypa
     assert row["state"] == "failed"
     assert "free" in (row["error"] or "") and "GiB" in (row["error"] or "")
     assert row["disk"]["model_bytes"] == 1 << 40
+    assert row["disk"]["weight_pattern"] == "*.safetensors"
     assert row["steps"]["serve"]["state"] == "failed"
     assert not (tmp_path / "wave" / "fixture-embed" / "serve.log").exists()  # no engine ever started
 
@@ -997,7 +1098,14 @@ def test_stopping_an_engine_signals_its_own_session_by_pid(monkeypatch: pytest.M
             self.gone = True
             return 0
 
-    monkeypatch.setattr(run_wave_module.os, "killpg", lambda pgid, sig: calls.append((pgid, sig)))
+    monkeypatch.setattr(run_wave_module, "_STOP_GRACE_S", 0.0)
+
+    def killpg(pgid: int, sig: int) -> None:
+        calls.append((pgid, sig))
+        if sig == 0:
+            raise ProcessLookupError  # the group is gone once SIGTERM landed
+
+    monkeypatch.setattr(run_wave_module.os, "killpg", killpg)
     monkeypatch.setattr(
         run_wave_module.os, "getpgid", lambda pid: pytest.fail("the stop must not look the group up again")
     )
@@ -1012,10 +1120,12 @@ def test_stopping_an_engine_signals_its_own_session_by_pid(monkeypatch: pytest.M
         wave=run_wave_module._Wave(token="t"),
     )
     run.stop()
-    assert calls == [(4242, signal_module.SIGTERM)]
+    assert calls[0] == (4242, signal_module.SIGTERM)
+    assert calls[-1] == (4242, signal_module.SIGKILL)  # the group is always SIGKILLed after the grace period
+    assert all(pgid == 4242 for pgid, _ in calls)
     assert run.stopped_by_runner is True
     run.stop()  # idempotent: the engine is gone, nothing more is signalled
-    assert calls == [(4242, signal_module.SIGTERM)]
+    assert calls[-1] == (4242, signal_module.SIGKILL)
 
 
 def test_wave_logs_the_serve_boundaries_and_writes_its_running_status(

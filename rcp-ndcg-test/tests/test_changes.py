@@ -45,16 +45,16 @@ def _record(embedding: list[float]) -> dict:
     }
 
 
-def _corpora_root(tmp_path: Path, index: dict) -> Path:
+def _corpora_root(tmp_path: Path, index: dict, *, recipe_id: str = "fixture-embed") -> Path:
     """A corpora root whose manifests carry ``index``'s fingerprints over the fixture recipe."""
     for fingerprint, inputs in index.items():
-        directory = tmp_path / "vllm-0.31.0" / "fixture-embed" / fingerprint
+        directory = tmp_path / "vllm-0.31.0" / recipe_id / fingerprint
         directory.mkdir(parents=True)
         manifest = {
             "schema": "rcp-ndcg.observation-corpus/1",
             "engine": {"name": "vllm", "version": "0.31.0", "image": "vllm/vllm-openai:v0.31.0"},
             "model": {"id": "fixtures/DenseEmbedder", "revision": "0123456789abcdef0123456789abcdef01234567"},
-            "recipe": {"id": "fixture-embed", "behaviour_fingerprint": fingerprint, "fingerprint_inputs": inputs},
+            "recipe": {"id": recipe_id, "behaviour_fingerprint": fingerprint, "fingerprint_inputs": inputs},
         }
         records = directory / "records.jsonl"
         records.write_text(json.dumps(_record([0.5, 0.5])) + "\n", encoding="utf-8")
@@ -65,6 +65,17 @@ def _corpora_root(tmp_path: Path, index: dict) -> Path:
         manifest["integrity"]["manifest_sha256"] = manifest_digest(manifest)
         (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return tmp_path / "vllm-0.31.0"
+
+
+def test_a_missing_corpora_root_is_refused_not_reported_as_all_new(tmp_path: Path) -> None:
+    """g-observe-10: a --corpora-root that does not exist (or holds no corpus manifest) used to rglob
+    nothing and report every recipe ``new`` with exit 0: a reviewer re-records everything, or reads a clean
+    ``nothing changed`` as no corpora at all.  It is a typed refusal naming the root now."""
+    missing = tmp_path / "no-such-corpora"
+    assert main(["changed", "--recipes-root", str(RECIPES), "--corpora-root", str(missing)]) == 3
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert main(["changed", "--recipes-root", str(RECIPES), "--corpora-root", str(empty)]) == 3
 
 
 def test_the_changed_selection_names_the_recipes_and_the_inputs(tmp_path: Path) -> None:
@@ -86,8 +97,10 @@ def test_the_changed_selection_names_the_recipes_and_the_inputs(tmp_path: Path) 
     assert states["fixture-embed"]["state"] == "changed"
     assert states["fixture-embed"]["changed_inputs"] == ["client.template"]
 
-    # no corpus at all: new
-    states = changed_recipes(RECIPES, tmp_path / "empty")
+    # no corpus for this recipe, but a root that holds corpora for another: new (g-observe-10 refuses a
+    # root that does not exist or holds no manifest at all, so the "new" state needs a real root)
+    root = _corpora_root(tmp_path / "other", {"0" * 64: {}}, recipe_id="fixture-embed-cls")
+    states = changed_recipes(RECIPES, root)
     assert states["fixture-embed"]["state"] == "new"
     assert states["fixture-embed"]["changed_inputs"] == []
 
@@ -112,7 +125,9 @@ def test_one_broken_family_never_stops_the_selection(tmp_path: Path) -> None:
     (root / "broken-family" / "family.yaml").write_text(
         yaml.safe_dump({"id": "broken-family", "variants": []}, sort_keys=False), encoding="utf-8"
     )
-    states = changed_recipes(root, tmp_path / "empty-corpora")
+    states = changed_recipes(
+        root, _corpora_root(tmp_path / "other-corpora", {"0" * 64: {}}, recipe_id="fixture-embed-cls")
+    )
     assert states["broken-family"]["state"] == "unloadable"
     assert states["fixture-embed"]["state"] == "new"
 

@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from rcp_ndcg_test.jobs.wave0_report import Wave0Report, wave0_report_schema
 
-from tests.conftest import STUB, TOKENIZER
+from tests.conftest import STUB, TOKENIZER, start_stub
 
 PY = sys.executable
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" / "wave0.sh"
@@ -212,6 +212,42 @@ def test_embed_check_fits_embeds_and_tokenizes(tmp_path: Path) -> None:
     assert check["passed"] is True and check["checked"] == 20
     over = [row for row in check["rows"] if row["kind"] == "over_length"]
     assert len(over) == 5 and all(row["cut"] and row["fit_tokens"] <= 128 for row in over)
+
+
+def test_embed_check_fails_when_the_client_did_not_fit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """g-rcjobs-11: ``client_budget_wired`` must be derived from the client's own per-row
+    ``ProcessingRecord``s, never hard-coded: a client that stops fitting sends the raw over-budget inputs
+    and leaves no ``budget_cut`` record, so the wave must fail instead of reporting the property it never
+    measured."""
+    import argparse
+    import types
+
+    import numpy as np
+    from rcp_ndcg_test.jobs import wave0_probe
+
+    engine = start_stub("--tokenizer", str(TOKENIZER))  # waits for the stub's readiness line
+    try:
+
+        class UnfittedClient:
+            processing: list = []
+
+            def encode(self, contents, role, **kwargs):  # noqa: ARG002
+                return types.SimpleNamespace(as_matrix=lambda: np.ones((len(contents), 4), dtype="float32"))
+
+        monkeypatch.setattr("rcp_ndcg.inference.EmbeddingClient", lambda endpoint: UnfittedClient())  # noqa: ARG005
+        args = argparse.Namespace(
+            base_url=engine.base_url,
+            served_model_name="fixture",
+            tokenizer=str(TOKENIZER),
+            budget=128,
+            count=20,
+            over=5,
+        )
+        fragment = wave0_probe._embed(args, tmp_path / "embed.json")
+    finally:
+        engine.stop()
+    assert fragment["client_budget_wired"] is False
+    assert fragment["passed"] is False
 
 
 # --- the eviction probe (f) on a fake cache ---------------------------------------------------------------
@@ -434,6 +470,7 @@ def _full_report(tmp_path: Path) -> Path:
             "cuts_recorded": 5,
             "overhead_tokens": 1,
             "client_budget_wired": True,
+            "client_cut_ids": ["15", "16", "17", "18", "19"],
             "client": {"n_vectors": 20, "dim": 1024, "finite": True},
             "tokenize_check": {
                 "checked": 20,

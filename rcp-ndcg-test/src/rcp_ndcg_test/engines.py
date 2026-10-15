@@ -237,7 +237,7 @@ def find_corpora(
     from (and the staleness check can name what moved).
 
     Args:
-        root: Where to scan (``tests/contract/engines``, one engine-version directory, or a mirror).
+        root: Where to scan (``rcp-ndcg-test/corpora``, one engine-version directory, or a mirror).
         recipe_id: Keep only the corpora whose manifest names this recipe.
         engine_name: Keep only this engine (``vllm``).
         engine_version: Keep only this engine version (``0.31.0``).

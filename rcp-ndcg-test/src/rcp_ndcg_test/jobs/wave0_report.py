@@ -56,7 +56,8 @@ class Wave0Embed(BaseModel):
     n_over_length: int = Field(ge=0)
     cuts_recorded: int = Field(ge=0)
     overhead_tokens: int | None = None
-    client_budget_wired: bool  # always true since the clients-final merge: the wired role client fits
+    client_budget_wired: bool  # the client's own budget_cut records cover exactly the over-length rows
+    client_cut_ids: list[str]  # the input ids the client recorded a budget_cut for
     client: dict[str, Any]  # n_vectors, dim, finite
     tokenize_check: dict[str, Any]  # checked, passed, rows (the product's own /tokenize check shape)
     passed: bool

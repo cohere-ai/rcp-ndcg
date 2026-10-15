@@ -3,20 +3,25 @@
 The binding rule for the plugin wheel: installing it with
 ``pip install --no-deps`` into an environment that already has vLLM must
 change ``pip freeze`` by exactly this one distribution — nothing pulled in,
-nothing upgraded.  The GPU wave runs this check around the real install into
-the engine environment (GPU-VALIDATION.md, engine environment item 1); this
-script is the CPU simulation and the same reusable check:
+nothing upgraded.  The node's bootstrap runs this script's pure-Python and
+declared-dependency half (``--pure-python``) on the staged plugin wheel before
+installing it (decision 16); this script's full fresh-venv freeze check is the
+CPU/CI simulation around a real ``--no-deps`` install:
 
     python tests/check_no_deps_install.py <wheel> [--python <interpreter>]
+    python tests/check_no_deps_install.py <wheel> --pure-python
 
 It creates a fresh venv (offline: ``pip install --no-index --no-deps``),
 records ``pip freeze`` before and after, and asserts the delta is exactly the
 wheel's distribution.  It also asserts the wheel is pure Python (no compiled
 extensions) and targets ``py3-none-any`` — the properties that make
-``--no-deps`` safe in the engine image.
+``--no-deps`` safe in the engine image — and that it declares no dependency
+beyond the ones the stock image ships (pydantic, PyYAML): the declared-
+dependency half a ``--no-deps`` install would otherwise leave missing.
 
 Exit 0 and a one-line summary on success; exit 1 with the offending diff on
-failure.  Stdlib only, so it runs anywhere.
+failure.  Stdlib only, so it runs anywhere (including mounted beside
+``bootstrap.sh`` on the node).
 """
 
 from __future__ import annotations
@@ -195,8 +200,20 @@ def main(argv: list[str] | None = None) -> int:
             "Python, falling back to a system Python whose ensurepip works)"
         ),
     )
+    parser.add_argument(
+        "--pure-python",
+        action="store_true",
+        help=(
+            "only assert the wheel is pure Python and declares no dependency beyond the image's "
+            "(the node's bootstrap check; skips the fresh-venv install)"
+        ),
+    )
     args = parser.parse_args(argv)
 
+    if args.pure_python:
+        assert_pure_python(args.wheel)
+        print(f"OK: {args.wheel.name} is pure Python and declares no dependency beyond the image's")
+        return 0
     assert_pure_python(args.wheel)
     base_python = args.python or pick_base_python()
     with tempfile.TemporaryDirectory(prefix="rcp-vllm-topk-freeze-") as tmp:

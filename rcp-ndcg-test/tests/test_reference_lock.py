@@ -212,6 +212,16 @@ def test_every_family_ships_a_reference_in_and_lock() -> None:
         assert not (family / "requirements-reference.txt").exists(), f"{family}: the old file must be migrated"
 
 
+def test_the_lock_is_the_declared_identity_not_the_resolved_freeze() -> None:
+    """g-rcjobs-12: the locks are ``--no-deps`` compilations, so their SHA-256 fixes the DIRECT pins but
+    not the transitive deps a venv resolves (``reference_deps.py`` installs the highest version in the
+    shared wheelhouse); the module docstring must say the lock is the DECLARED identity and name the
+    limitation, never claim the lock alone is the environment."""
+    text = rl.__doc__ or ""
+    assert "declared identity" in text
+    assert "transitive" in text and "not part of the key" in text
+
+
 def test_every_committed_lock_matches_its_inputs() -> None:
     """The CPU guard: every committed lock's header hashes its committed reference.in and the committed
     image stack, every family requirement is pinned or image-constrained, and the own-torch declaration
