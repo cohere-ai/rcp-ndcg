@@ -49,7 +49,6 @@ from typing import Any, Literal
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 from rcp_ndcg_core.records import ID, Document, Query
 
-from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import (
     DataShape,
     DuplicateCounts,
@@ -442,18 +441,20 @@ class HubReader(SourceReader):
                 rows[query_id] = text
         elif self._declares_instruction_column():
             labelled = self.qrels()
+            kept: set[str] = set()
             for row in self._rows("queries"):
                 query_id = required_id(row, ("_id", "id"), source=self.source, what="a query row")
                 if query_id not in labelled:
                     continue  # mteb cuts the queries to those with qrels; an unlabelled row is never read
+                kept.add(query_id)
                 text = _text_or_none(row.get("instruction"))
                 if text is not None:
                     rows[query_id] = text
             # An empty table is no instruction source at all (nothing to be incomplete about); a non-empty one
             # that does not cover every KEPT query is a mixed subset. Completeness is decided over the queries
-            # mteb keeps (those with qrels): a row the qrels cut drops is never read, so its missing instruction
-            # cannot make a coherent subset look mixed.
-            complete = not rows or all(query_id in rows for query_id in labelled)
+            # mteb keeps (the queries rows whose id has qrels): a qrels row with no queries row is never read,
+            # so its missing instruction cannot make a coherent subset look mixed.
+            complete = not rows or all(query_id in rows for query_id in kept)
         self._instruction_rows = rows
         self._instruction_rows_complete = complete
         return rows, complete
@@ -531,28 +532,40 @@ class HubReader(SourceReader):
             gains: dict[str, dict[str, float]] = {}
             thetas: dict[str, dict[str, float]] = {}
             fold = DuplicateFold(self.duplicates_policy, source=self.source, what="qrels label")
-            has_gains: bool | None = None
             for row in self._rows("qrels"):
                 query_id = required_id(row, ("query-id", "query_id"), source=self.source, what="a qrels row")
                 doc_id = required_id(row, ("corpus-id", "corpus_id"), source=self.source, what="a qrels row")
                 label = grade(row.get("score"), source=f"{self.source}: qrels of {query_id!r}/{doc_id!r}")
                 if fold.add(f"{query_id}/{doc_id}", (label,)):
                     qrels.setdefault(query_id, {})[doc_id] = label
-                    if has_gains is None:
-                        has_gains = "gain" in row and "theta" in row
-                    if has_gains and row.get("theta") == row.get("theta"):  # null outside the judged pool
-                        gain, theta = row["gain"], row["theta"]
+                    # gain and theta are read independently per column: a gains-only table (the writer emits
+                    # the gain column whenever gains is given, the theta column only when thetas is given)
+                    # reloads its gains, and a theta without its gain is refused rather than half-read. A row
+                    # whose theta is null is outside the calibrated pool, so its gain is not a calibrated one
+                    # (the released tables write both columns, null together outside the pool).
+                    gain = row.get("gain")
+                    theta = row.get("theta")
+                    has_gain = "gain" in row
+                    has_theta = "theta" in row
+                    if has_theta and not _is_null(theta) and has_gain and _is_null(gain):
+                        raise DataError(
+                            f"{self.source}: gain {gain!r} of query {query_id!r}, document {doc_id!r} "
+                            "is not a gain in [0, 1]",
+                            hint="the theta column pairs with the gain column: write both, or neither",
+                        )
+                    if has_gain and (not has_theta or not _is_null(theta)):
                         if not _is_finite_number(gain) or not 0.0 <= float(gain) <= 1.0:
                             raise DataError(
                                 f"{self.source}: gain {gain!r} of query {query_id!r}, document {doc_id!r} "
                                 "is not a gain in [0, 1]"
                             )
+                        gains.setdefault(query_id, {})[doc_id] = float(gain)
+                    if has_theta and not _is_null(theta):
                         if not _is_finite_number(theta):
                             raise DataError(
                                 f"{self.source}: theta {theta!r} of query {query_id!r}, document {doc_id!r} "
                                 "is not finite"
                             )
-                        gains.setdefault(query_id, {})[doc_id] = float(gain)
                         thetas.setdefault(query_id, {})[doc_id] = float(theta)
             self._note_row_duplicates("qrels", fold)
             self._labels = _Labels(qrels, gains, thetas)
@@ -775,6 +788,12 @@ def _is_finite_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(float(value))
 
 
+def _is_null(value: Any) -> bool:
+    """Whether a qrels extra cell is null: ``None``, or the float NaN a null in a float-typed column reads as
+    (pandas) -- the cell is then absent, never a value to validate."""
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
 def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
     """Bytes, extension and MIME type for a Hub media cell, preferring the undecoded original.
 
@@ -785,14 +804,22 @@ def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
     format comes from its magic numbers. The MIME is the video table's for a container suffix and ``None``
     for an image one (the extension states it).
     """
-    default_extension = ".png" if column == "image" else ".mp4"
     if isinstance(cell, dict):
         payload = cell.get("bytes")
         if payload:
-            return _with_mime(payload, _extension_of(str(cell.get("path") or ""), default_extension))
+            declared = Path(str(cell.get("path") or "")).suffix.lower()
+            if declared in IMAGE_MIME_BY_SUFFIX or declared in VIDEO_MIME_BY_SUFFIX:
+                return _with_mime(payload, declared)
+            # No known suffix: the bytes must state the format (a suffix-less cell used to default to
+            # video/mp4 and store arbitrary bytes under it).
+            return _with_mime(payload, _sniffed_media_extension(payload, column=column))
         if cell.get("path"):
-            path = str(cell["path"])
-            return _with_mime(storage.read_bytes(path), _extension_of(path, default_extension))
+            raise DataError(
+                f"the {column} cell names a path ({cell['path']!r}) and carries no bytes; this reader never "
+                "reads a path a data row supplies",
+                hint="a media cell must carry its bytes (a `datasets` {{bytes, path}} struct): the path could "
+                "name any local file or a credentialed remote URI, so it is refused rather than read",
+            )
         raise DataError(f"the {column} cell has neither bytes nor a path: {sorted(cell)}")
     if isinstance(cell, bytes | bytearray | memoryview):
         payload = bytes(cell)
@@ -820,17 +847,27 @@ def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
     )
 
 
+def _sniffed_media_extension(payload: bytes, *, column: str) -> str:
+    """The extension a struct media cell's bytes state, refused when their magic numbers name no media type.
+
+    A cell's path suffix is a claim, not a check: when it names no known media type (or names none at all),
+    the bytes themselves must state one, so arbitrary bytes never reach the media cache under a media MIME
+    type.
+    """
+    extension = media_extension(payload)
+    if extension is None:
+        raise DataError(
+            f"the {column} cell's bytes are not a media type any magic number names ({len(payload)} bytes)",
+            hint="the cell is neither a known image nor a known video container; convert it at the source",
+        )
+    return extension
+
+
 def _with_mime(payload: bytes, extension: str) -> tuple[bytes, str, str | None]:
     """The payload with the MIME type its suffix states: the video table's for a container, ``None`` for an
     image (``store_media`` derives that one from the extension)."""
     mime = VIDEO_MIME_BY_SUFFIX.get(extension) if extension not in IMAGE_MIME_BY_SUFFIX else None
     return payload, extension, mime
-
-
-def _extension_of(path: str, default: str) -> str:
-    """The file suffix of a media cell's path, with its dot; the default when the path names none."""
-    suffix = Path(path).suffix.lower()
-    return suffix if suffix else default
 
 
 def _card_configs(repo: str, revision: str | None) -> dict[str, _Config]:
@@ -890,12 +927,57 @@ def _card_configs(repo: str, revision: str | None) -> dict[str, _Config]:
         name = entry.get("config_name")
         if not name:
             continue
-        files = tuple((item.get("split"), item["path"]) for item in entry.get("data_files", []) if "path" in item)
+        files = _card_data_files(str(name), entry.get("data_files"))
         configs[name] = _Config(name=name, entries=files, features=features.get(name, frozenset()))
     for name, names in features.items():
         # A config the card lists only under dataset_info (no data_files): its features are still its own.
         configs.setdefault(name, _Config(name=name, entries=(), features=names))
     return configs
+
+
+def _card_data_files(config_name: str, data_files: Any) -> tuple[tuple[str | None, str], ...]:
+    """The ``(split, pattern)`` entries of one card config's ``data_files``, in the forms HF cards allow.
+
+    A list of ``{"split": ..., "path": ...}`` dicts, a bare string path, and a ``path`` that is a list of
+    files are all valid; each string becomes one entry. Any other shape is refused, naming the config -- a
+    silently ignored declaration falls back to the conventional ``{subset}/{part}.parquet`` path, which is a
+    404 or an unrelated file, and a list pattern used to reach the download as a filename.
+    """
+    if data_files is None:
+        return ()
+    items = [data_files] if isinstance(data_files, str) else data_files
+    if not isinstance(items, list):
+        raise ConfigError(
+            f"the card's {config_name!r} config has a data_files that is neither a path nor a list: "
+            f"{type(data_files).__name__}",
+            hint="a card config's data_files is a path string or a list of {split, path} entries",
+        )
+    entries: list[tuple[str | None, str]] = []
+    for item in items:
+        if isinstance(item, str):
+            entries.append((None, item))
+            continue
+        if not isinstance(item, dict) or "path" not in item:
+            raise ConfigError(
+                f"the card's {config_name!r} config has a data_files entry that names no path: {item!r}",
+                hint="each data_files entry is a path string or a {split, path} mapping",
+            )
+        split = item.get("split")
+        if split is not None and not isinstance(split, str):
+            raise ConfigError(
+                f"the card's {config_name!r} config has a data_files split that is not a name: {split!r}",
+                hint="a data_files split is a split name string",
+            )
+        paths = item["path"]
+        paths = [paths] if isinstance(paths, str) else paths
+        if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+            raise ConfigError(
+                f"the card's {config_name!r} config has a data_files path that is neither a string nor a "
+                f"list of strings: {item['path']!r}",
+                hint="a data_files path is a file pattern or a list of them",
+            )
+        entries.extend((split, path) for path in paths)
+    return tuple(entries)
 
 
 def hub_subsets(repo: str, revision: str | None) -> tuple[str, ...]:
@@ -1081,10 +1163,14 @@ def _iter_table_rows(local: Path, source: str) -> Iterator[Mapping[str, Any]]:
     name = local.name.lower()
     compressed = name.endswith(".gz")
     if name.endswith(".parquet"):
-        import pandas as pd
-        import pyarrow  # noqa: F401  (pandas' parquet engine)
+        import pyarrow.parquet as pq
 
-        yield from pd.read_parquet(local).to_dict("records")
+        # pyarrow hands back native types with None for nulls; pandas turns a null string cell into a float
+        # NaN, which the text checks refuse as "not text", and a nullable integer column into floats. Reading
+        # in batches also avoids materialising each whole shard as a pandas frame plus one dict per row.
+        with pq.ParquetFile(local) as parquet:
+            for batch in parquet.iter_batches():
+                yield from batch.to_pylist()
     elif name.endswith((".jsonl", ".json", ".jsonl.gz")):
         opener = gzip.open if compressed else open
         with opener(local, "rt", encoding="utf-8") as handle:  # type: ignore[operator]
