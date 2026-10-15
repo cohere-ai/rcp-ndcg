@@ -99,7 +99,7 @@ def republish(
     """
     uri = f"hf://{owner}/{repo}"
     revision = revision or _published_revision(repo)
-    source = _task_source(repo)
+    source = _task_source(repo, owner, revision)
     repo_subsets = list(_repo_subsets(f"{owner}/{repo}", revision))
     _check_subsets(repo, repo_subsets, _data_subsets(source))
     parts = tuple(_load(f"{uri}/{subset}", revision=revision) for subset in repo_subsets)
@@ -155,11 +155,12 @@ def _corpus_entries(repo: str, revision: str | None) -> dict[str, tuple[tuple[st
     return entries
 
 
-def _task_source(repo: str) -> str:
-    """The text of the repository's published ``rcp_ndcg_tasks.py`` (the task definitions, read as data)."""
+def _task_source(repo: str, owner: str, revision: str | None) -> str:
+    """The text of the repository's published ``rcp_ndcg_tasks.py`` at the owner and revision the data is
+    read at (the task definitions, read as data, never executed)."""
     from rcp_ndcg.eval.mteb import _hub_text
 
-    return _hub_text(f"{OWNER}/{repo}", TASK_FILE)
+    return _hub_text(f"{owner}/{repo}", TASK_FILE, revision)
 
 
 def _definitions(source: str, subset: str) -> list[dict[str, Any]]:

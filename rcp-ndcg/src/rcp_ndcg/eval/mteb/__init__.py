@@ -125,7 +125,7 @@ def get_tasks(
                 f"names {repeated} appear twice; pass each subset once",
                 hint="drop the repeated names, or pass no names for all of them",
             )
-    source = _hub_text(SUITES[suite].repo, "rcp_ndcg_tasks.py")
+    source = _hub_text(SUITES[suite].repo, "rcp_ndcg_tasks.py", revision)
     released, metadata = task_metadata(source)
     aliases = task_subsets(source)
     revision = revision or released
@@ -188,10 +188,16 @@ def task_subsets(source: str) -> dict[str, str]:
         ) from exc
 
 
-def _hub_text(repo: str, path: str) -> str:
+def _hub_text(repo: str, path: str, revision: str | None = None) -> str:
+    """The text of one file of a published suite repository, read at *revision* (``None`` is main).
+
+    The task file and the data are read at the same revision: a pinned evaluation must build its task names,
+    splits and prompt from the task file of that revision, never from today's main (after decision 40's
+    re-lay, a pinned task would silently change its prompt or fall back to a config's only split).
+    """
     from rcp_ndcg.data.io.hub import _hub_file
 
-    local = _hub_file(repo, path, None)
+    local = _hub_file(repo, path, revision)
     if local is None:
         raise MissingInputError(
             f"hf://{repo}: {path} does not exist",
