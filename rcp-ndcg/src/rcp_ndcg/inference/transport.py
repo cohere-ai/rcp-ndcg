@@ -218,6 +218,20 @@ def _body_text(response: httpx.Response) -> str:
     return response.text[:500]
 
 
+def _malformed_url(url: str, exc: BaseException) -> ConfigError:
+    """The typed error for an unusable base URL: a config error, not the outage path.
+
+    httpx's ``UnsupportedProtocol`` (a schemeless or mistyped scheme) and ``InvalidURL`` say the URL itself
+    is wrong, so retrying it, setting the replica aside and parking for ``wait_on_outage_s`` cannot help; the
+    message names the URL through :func:`safe_url` (it may carry credentials) and the hint says what a
+    ``base_url`` must look like.
+    """
+    return ConfigError(
+        f"base_url {safe_url(url)} cannot be used: {describe_failure(exc)}",
+        hint="give base_url as http://host:port[/path] or https://..., or fake:// for the offline fakes",
+    )
+
+
 def _reply(response: httpx.Response, *, url: str | None = None) -> Reply:
     """The :class:`~rcp_ndcg.inference.types.Reply` of one response: JSON decoded, ``application/octet-stream``
     (and anything that does not parse) kept as bytes; ``url`` names the replica that answered."""
@@ -435,9 +449,17 @@ class Transport:
         """One call, once, to one replica; the shared status map decides reply or error."""
         headers = {**base_headers, **call.headers}
         path = call.path if call.path.startswith("/") else f"/{call.path}"
-        request = self._client().build_request(call.method, self._url(replica, path), json=call.json, headers=headers)
+        try:
+            request = self._client().build_request(
+                call.method, self._url(replica, path), json=call.json, headers=headers
+            )
+        except httpx.InvalidURL as exc:
+            raise _malformed_url(replica.url, exc) from None
         try:
             response = await self._client().send(request)
+        except (httpx.UnsupportedProtocol, httpx.InvalidURL) as exc:
+            # The URL, not the endpoint: a config error now, never an outage parked out for 30 minutes.
+            raise _malformed_url(replica.url, exc) from None
         except httpx.TransportError as exc:
             raise _Unavailable(describe_failure(exc), cause=_redacted(exc)) from None
         status = response.status_code

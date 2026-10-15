@@ -4321,6 +4321,13 @@ text it sends to the declared budget.
   request parks and retries until `wait_on_outage_s`. A rate-limited hosted endpoint at the default concurrency
   used to abort a whole corpus encode or rerank pass with a non-retryable `RequestRejectedError`.
 
+- **A schemeless or mistyped `base_url` is a typed `ConfigError`, not a 30-minute outage**: `localhost:8000/v1`
+  or `htp://...` reached httpx as an unsupported protocol, which the transport treated as unavailable --
+  retried, the replica set aside and the request parked for `wait_on_outage_s` (1800 s by default) before
+  failing with a hint that pointed the wrong way. `Endpoint` now requires `http://`, `https://` or `fake://`
+  and names the URL through `safe_url` (credentials never enter the message), and the transport maps httpx's
+  `UnsupportedProtocol`/`InvalidURL` to the same `ConfigError` instead of the outage path.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

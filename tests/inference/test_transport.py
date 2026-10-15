@@ -592,6 +592,39 @@ class TestEndpointUrls:
         with pytest.raises(ConfigError, match="base_url"):
             Transport(Endpoint(model="m"))
 
+    @pytest.mark.parametrize("url", ["localhost:8000/v1", "127.0.0.1:8000/v1", "htp://127.0.0.1:8000/v1"])
+    def test_a_base_url_without_a_usable_scheme_is_refused(self, url: str) -> None:
+        """A schemeless or mistyped base_url is a config error, not an outage to park out."""
+        with pytest.raises(ConfigError, match="scheme"):
+            Endpoint(base_url=url, model="m")
+        with pytest.raises(ConfigError, match="scheme"):
+            Endpoint(base_url=["http://a/v1", url], model="m")
+
+    def test_a_scheme_refusal_never_echoes_credentials(self) -> None:
+        with pytest.raises(ConfigError) as raised:
+            Endpoint(base_url="htp://user:SECRET@h/v1", model="m")
+        assert "SECRET" not in str(raised.value)
+
+    def test_a_malformed_url_is_a_config_error_at_send_not_an_outage(self) -> None:
+        """httpx's UnsupportedProtocol/InvalidURL say the URL is wrong, not that the endpoint is down: they
+        must not be retried and parked as unavailable (30 minutes by default)."""
+
+        class _Unsupported(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+                raise httpx.UnsupportedProtocol(f"unsupported protocol {request.url.scheme!r}")
+
+        class _Invalid(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+                raise httpx.InvalidURL("bad url")
+
+        for mock in (_Unsupported(), _Invalid()):
+            transport = Transport(
+                Endpoint(base_url="http://a/v1", model="m", max_retries=0, wait_on_outage_s=60),
+                httpx_transport=mock,
+            )
+            with pytest.raises(ConfigError, match="base_url|URL"):
+                _send(transport)
+
 
 class TestAdapterAuth:
     """Auth in the transport (R6): the adapter profile's credential facts are the transport's input, and the
