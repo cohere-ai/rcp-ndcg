@@ -4322,6 +4322,15 @@ text it sends to the declared budget.
   procedure is in [use verified fake engines](docs/how-to/use-verified-fake-engines.md), and
   `test_no_committed_corpus_names_private_infrastructure` holds the committed bytes to it.
 
+- **Document insertion uses the joint fit's own ridge**: `insert_document` and `rcp-ndcg calibration insert`
+  minimised `sum_incident(w*BCE) + 0.5*l2*theta^2`, while the Bradley-Terry fit they insert into minimises
+  `sum(w*BCE)/W + 0.5*l2*||theta||^2` -- a ridge of `l2*W` (about 0.6 at a paper-sized query) once both losses
+  are written in sum units. An inserted document therefore came out systematically more extreme than the same
+  document in the joint fit (a two-window document at a paper-sized query: theta 2.78 against 2.07), and its
+  calibrated gain was inflated against the documents it is ranked with. The conditional ridge is now `l2*W`, so
+  inserted abilities and the gains of `calibration insert` move toward the joint fit; the Bradley-Terry fit
+  itself, the fitted documents and the reported standard errors are unchanged.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

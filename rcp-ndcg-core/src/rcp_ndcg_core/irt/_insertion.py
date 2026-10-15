@@ -107,7 +107,7 @@ def incident_information(
     ``p = sigmoid(theta_doc - theta_other)``. Per-document referent: sums ONLY
     comparisons facing ``doc_id`` -- pairs among opponents inform the
     opponents, not the inserted document.
-    Includes the ``+l2_reg`` ridge term the conditional MAP carries.
+    Includes the ``+l2_reg`` ridge term.
     """
     info = 0.0
     for a, b, wt, _sl in comparisons:
@@ -126,15 +126,18 @@ def conditional_insert_theta(
     comparisons: list[Comparison],
     theta_fixed: dict[str, float],
     l2_reg: float,
+    *,
+    weight_total: float,
 ) -> tuple[float, float]:
     """1-D conditional MAP of ``doc_id``'s ability; returns ``(theta, information)``.
 
-    Loss = ``-sum_{c incident to doc} w_c * BCE(z_c, sl_c) + 0.5 * l2 * theta^2``
-    where ``z_c = theta - theta_opponent`` -- the same ridge the BT estimator
-    applies to every theta, so the conditional estimate is commensurate with
-    the frozen ones. Minimised by bounded 1-D optimisation; the returned
-    information is the observed information at the optimum (the SE's
-    denominator, per-document referent).
+    Loss = ``-sum_{c incident to doc} w_c * BCE(z_c, sl_c) + 0.5 * l2 * W * theta^2``
+    where ``z_c = theta - theta_opponent`` and ``W`` is ``weight_total``: the comparison-weight
+    total of the joint Bradley-Terry fit the frozen thetas come from. The BT estimator minimises
+    ``sum(w*BCE)/W + 0.5*l2*||theta||^2``, i.e. a ridge of ``l2*W`` on every theta once its loss is
+    written in these sum units, so the conditional estimate is commensurate with the frozen ones.
+    Minimised by bounded 1-D optimisation; the returned information is the observed information at
+    the optimum (the SE's denominator, per-document referent).
 
     Regression guard baked into this function's contract: when the inserted
     document LOSES a comparison, the soft label flips (``1 - sl``) and the
@@ -152,13 +155,15 @@ def conditional_insert_theta(
     incident = [(a, b, wt, sl) for a, b, wt, sl in comparisons if a == doc_id or b == doc_id]
     if not incident:
         raise ValueError(f"no comparisons incident to {doc_id!r}: nothing identifies its ability")
+    if not math.isfinite(weight_total) or weight_total <= 0:
+        raise ValueError(f"weight_total must be finite and > 0, got {weight_total!r}")
     for a, b, _wt, _sl in incident:
         other = b if a == doc_id else a
         if other not in theta_fixed:
             raise ValueError(f"opponent {other!r} has no frozen theta")
 
     def neg_loss(t: float) -> float:
-        loss = 0.5 * l2_reg * t * t
+        loss = 0.5 * l2_reg * weight_total * t * t
         for a, b, wt, sl in incident:
             if a == doc_id:
                 z = t - theta_fixed[b]
@@ -266,6 +271,8 @@ def insert_document(
             connectivity predicate).
         l2_reg: ridge on the inserted theta: the Bradley-Terry penalty of the fit the thetas come from
             (default ``Priors().bt_l2``, the calibration's own; pass ``calibration.identity.priors.bt_l2``).
+            The conditional loss is in sum units, so it is scaled by the comparison-weight total of
+            ``existing_comparisons + new_comparisons``, the same normaliser the joint fit divides by.
         se_target: the SE the evidence must certify (the information predicate); finite and > 0 (logits).
         min_opponents: distinct opponents required (the connectivity predicate).
 
@@ -308,7 +315,12 @@ def insert_document(
     opponents_ok = len(opponents) >= min_opponents
 
     # --- conditional MAP with every opponent frozen ---
-    theta_hat, info = conditional_insert_theta(doc_id, new_comparisons, existing_thetas, l2_reg)
+    weight_total = sum(wt for _a, _b, wt, _sl in existing_comparisons) + sum(
+        wt for _a, _b, wt, _sl in new_comparisons
+    )
+    theta_hat, info = conditional_insert_theta(
+        doc_id, new_comparisons, existing_thetas, l2_reg, weight_total=weight_total
+    )
     se = 1.0 / math.sqrt(max(info, 1e-12))
     at_bound = abs(theta_hat) >= THETA_BOUND - 1e-3
     information_ok = info >= 1.0 / (se_target**2)

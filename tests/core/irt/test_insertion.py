@@ -45,6 +45,27 @@ def _fit_bt(doc_ids: list[str], comparisons: list[tuple[str, str, float, float]]
     return fit_bradley_terry(comparisons, l2=1e-5, doc_ids=sorted({d for c in comparisons for d in c[:2]}))
 
 
+def _window_comparisons(true: dict[str, float], window: list[str]) -> list[tuple[str, str, float, float]]:
+    """Every pair of a window, the higher true theta winning with a hard label."""
+    out = []
+    for i, a in enumerate(window):
+        for b in window[i + 1 :]:
+            hi, lo = (a, b) if true[a] >= true[b] else (b, a)
+            out.append((hi, lo, 1.0, 1.0))
+    return out
+
+
+def _paper_world(seed: int = 3) -> tuple[list[str], list[tuple[str, str, float, float]]]:
+    """A paper-sized tournament: 100 documents in 136 windows of 10, and X in two of them."""
+    rng = random.Random(seed)
+    docs = [f"d{i:03d}" for i in range(100)]
+    true = {d: rng.gauss(0.0, 1.0) for d in docs}
+    true["X"] = 3.0
+    comparisons = [c for _ in range(136) for c in _window_comparisons(true, rng.sample(docs, 10))]
+    comparisons += [c for _ in range(2) for c in _window_comparisons(true, [*rng.sample(docs, 9), "X"])]
+    return docs, comparisons
+
+
 class TestConditionalInsertion:
     def test_existing_thetas_are_bit_identical_after_insertion(self) -> None:
         """The property the whole design rests on."""
@@ -119,9 +140,53 @@ class TestInformationReferent:
         """
         from rcp_ndcg_core.irt._insertion import conditional_insert_theta
 
-        theta_hat, info = conditional_insert_theta("d", [("a", "d", 2.0, 0.5)], {"a": 0.0}, l2_reg=0.5)
+        theta_hat, info = conditional_insert_theta(
+            "d", [("a", "d", 2.0, 0.5)], {"a": 0.0}, l2_reg=0.5, weight_total=1.0
+        )
         assert abs(theta_hat) < 1e-6, theta_hat
         assert abs(info - 1.0) < 1e-6, info
+
+
+class TestConditionalRidge:
+    """The conditional loss is in sum units, so its ridge must be the joint fit's ``l2 * W``.
+
+    The BT estimator minimises ``sum(w*BCE)/W + 0.5*l2*||theta||^2``; the conditional loss is
+    ``sum_incident(w*BCE) + 0.5*ridge*theta^2``, so the commensurate ridge is ``l2 * W`` with W the
+    joint fit's comparison-weight total. A ridge of ``l2`` alone made a two-window document more
+    extreme than the joint fit by more than half a logit at paper size.
+    """
+
+    def test_the_conditional_ridge_matches_the_joint_fit(self) -> None:
+        """At the joint optimum the conditional gradient is zero, so the estimates must agree."""
+        from rcp_ndcg_core.irt._insertion import conditional_insert_theta
+
+        docs, comparisons = _paper_world()
+        incident = [c for c in comparisons if "X" in c[:2]]
+        existing = [c for c in comparisons if "X" not in c[:2]]
+        full = fit_bradley_terry(comparisons, l2=1e-4, doc_ids=[*docs, "X"])
+        frozen = {d: full[d] for d in docs}
+        weight_total = sum(weight for _a, _b, weight, _sl in existing + incident)
+        theta_hat, _info = conditional_insert_theta(
+            "X", incident, frozen, l2_reg=1e-4, weight_total=weight_total
+        )
+        assert abs(theta_hat - full["X"]) < 1e-2, (theta_hat, full["X"])
+
+    def test_insert_document_scales_the_ridge_like_the_joint_fit(self) -> None:
+        """End to end: with the scaled ridge the two-window document is inserted, not refused."""
+        docs, comparisons = _paper_world()
+        incident = [c for c in comparisons if "X" in c[:2]]
+        existing = [c for c in comparisons if "X" not in c[:2]]
+        full = fit_bradley_terry(comparisons, l2=1e-4, doc_ids=[*docs, "X"])
+        frozen = {d: full[d] for d in docs}
+        result = insert_document(
+            "X",
+            new_comparisons=incident,
+            existing_thetas=frozen,
+            existing_comparisons=existing,
+            l2_reg=1e-4,
+            se_target=2.0,
+        )
+        assert abs(result.theta - full["X"]) < 1e-2, (result.theta, full["X"])
 
 
 class TestIdentifiabilityPredicates:
@@ -284,7 +349,7 @@ class TestEstimatorCorrectness:
         thetas = {"opp": 0.5, "d*": None}
         del thetas["d*"]
         comparisons = [("opp", "d*", 1.0, 0.8)]  # opp beats d* with prob 0.8
-        theta_hat, _info = conditional_insert_theta("d*", comparisons, thetas, l2_reg=1e-5)
+        theta_hat, _info = conditional_insert_theta("d*", comparisons, thetas, l2_reg=1e-5, weight_total=1.0)
         expected = 0.5 + math.log(0.2 / 0.8)  # d* loses: logit(1 - sl) below the opponent
         assert abs(theta_hat - expected) < 1e-3, (theta_hat, expected)
 
@@ -303,9 +368,10 @@ class TestEstimatorCorrectness:
         existing_comps = [c for c in comparisons if doc not in (c[0], c[1])]
         thetas = _fit_bt([d for d in docs if d != doc], existing_comps)
         # An opponent pinned near the search box (a degenerate existing fit's
-        # top document); d* beats it unanimously with hard labels.
+        # top document); d* beats it unanimously with hard labels. The ridge is
+        # ``l2 * W`` (W ~ 876 here), so the pull has to be this strong to clamp.
         far = max((d for d in thetas), key=lambda d: thetas[d])
-        thetas[far] = 15.0
+        thetas[far] = 19.0
         new_comps = [(doc, far, 1.0, 1.0) for _ in range(6)]
         with pytest.raises(UnidentifiableInsertion) as excinfo:
             insert_document(
