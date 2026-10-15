@@ -329,3 +329,19 @@ def test_the_reranker_readme_does_not_claim_every_config_names_a_recipe() -> Non
         ]
         missing = [path.name for path in served if not re.search(r"^recipe:", path.read_text(encoding="utf-8"), re.M)]
         assert not missing, f"the README claims every served config names a recipe; these do not: {missing}"
+
+
+def test_an_empty_or_unknown_suite_selection_is_refused(experiment, monkeypatch) -> None:
+    """``--suite`` with no values compared nothing and exited 0; a typo raised a bare ValueError after the fetch."""
+    leaderboards = experiment("leaderboards")
+    monkeypatch.setattr(leaderboards, "fetch_group", lambda *args, **kwargs: None)
+
+    for argv in (["--suite"], ["--suite", "nanobeir,bright"], ["--suite", "nanobeir", "--suite", "typo"]):
+        with pytest.raises(SystemExit) as caught:
+            leaderboards.main(argv)
+        assert caught.value.code != 0, argv
+
+
+def test_a_checker_that_compared_nothing_fails(experiment) -> None:
+    """A green '0 checks' run is a reproduction that checked nothing."""
+    assert experiment("checks").Checker("nothing").finish() == 1

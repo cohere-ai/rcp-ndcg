@@ -121,6 +121,9 @@ class Checker:
         """
         n = len(self.rows)
         by = {s: sum(r.status == s for r in self.rows) for s in ("ok", "known", "FAIL")}
+        if n == 0:
+            print(f"  FAIL  {self.title}: no checks ran -- a run that compared nothing cannot pass")
+            return 1
         population_failures = []
         for dev in self.deviations:
             taken = sum(r.status == "known" and r.dev == dev for r in self.rows)
