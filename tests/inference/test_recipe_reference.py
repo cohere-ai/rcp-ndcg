@@ -65,6 +65,18 @@ def test_a_field_the_recipe_leaves_undeclared_accepts_the_configs_value() -> Non
     assert expand_role_recipe({"recipe": RECIPE_ID}, classes=CLASSES)["instruction"] == "none"
 
 
+def test_an_undeclared_listwise_is_implied_by_the_recipes_scoring() -> None:
+    """The recipe declares its scoring mode at recipe level, and the loader ties it to the client's listwise
+    flag: an undeclared ``client.listwise`` is not free -- ``listwise: true`` on a pointwise recipe was
+    accepted while the run still recorded the recipe's id."""
+    assert "listwise" not in recipe_client_data(RECIPE_ID)
+    with pytest.raises(ConfigError, match="listwise") as excinfo:
+        expand_role_recipe({"recipe": RECIPE_ID, "listwise": True}, classes=CLASSES)
+    assert "pointwise" in str(excinfo.value), excinfo.value
+    # the implied value itself is accepted when it agrees
+    assert expand_role_recipe({"recipe": RECIPE_ID, "listwise": False}, classes=CLASSES)["listwise"] is False
+
+
 def test_an_unknown_recipe_id_names_the_shipped_ids() -> None:
     with pytest.raises(ConfigError, match="no shipped recipe") as excinfo:
         expand_role_recipe({"recipe": "nonexistent-recipe"}, classes=CLASSES)

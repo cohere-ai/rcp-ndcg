@@ -4423,6 +4423,12 @@ text it sends to the declared budget.
   `error.details.anchor_report` (the `--dry-run` row also now says which two commands write or restore
   something before doing nothing else).
 
+- **A recipe pointer implies `listwise` from its scoring mode**: a rerank recipe declares
+  `scoring: pointwise|listwise` at recipe level and the loader ties it to `client.listwise`, but the recipe's
+  client block leaves `listwise` out when it is pointwise, so `--set listwise=true` on a pointwise recipe was
+  accepted while the run still recorded the recipe's id. An undeclared `listwise` must now agree with the
+  recipe's scoring, or the config is refused naming both.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

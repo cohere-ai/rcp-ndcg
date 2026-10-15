@@ -245,6 +245,9 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
     Matryoshka kind and the card's set (``mrl_kind`` with ``mrl_dims``/``mrl_range``) and ships the checkpoint's
     full width, so a config's ``mrl_dim``/``dimensions`` is a *selection* — accepted when ``k`` is in the
     declared set, refused naming the set otherwise — not a disagreement with the recipe's declared ``null``.
+    One field the recipe leaves out of its client block is still implied, not free: a rerank recipe declares
+    its scoring mode at recipe level (``pointwise``/``listwise``) and the loader ties it to ``client.listwise``,
+    so a config's ``listwise`` must agree with that scoring.
     A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes through unchanged.  Raises
     :class:`~rcp_ndcg.errors.ConfigError`: unknown recipe id (the shipped ids named), a path rcp-ndcg-vllm's
     loader refuses, rcp-ndcg-vllm absent (the install line), an unreadable recipe ``schema_version``
@@ -312,13 +315,26 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
                             "recipe that declares the card's set",
                         )
             expected = client.get(key)
-            if key not in client:
-                merged[key] = given  # nothing the recipe declares can conflict
-            elif _content_equal(given, expected, config_cls.model_fields[key].annotation):
+            implied = key not in client
+            if implied:
+                if key == "listwise":
+                    # A rerank recipe declares its scoring mode at recipe level, and the loader ties it to the
+                    # client's listwise flag (rcp_ndcg_vllm/recipe.py): an undeclared client.listwise is
+                    # implied by the recipe, not free to take any value.
+                    expected = getattr(loaded, "scoring", None) == "listwise"
+                else:
+                    merged[key] = given  # nothing the recipe declares can conflict
+                    continue
+            if _content_equal(given, expected, config_cls.model_fields[key].annotation):
                 merged[key] = expected
             else:
+                declared = (
+                    f"whose scoring is {getattr(loaded, 'scoring', None)!r}"
+                    if implied
+                    else f"which declares {expected!r}"
+                )
                 raise ConfigError(
-                    f"{key}: {given!r} disagrees with recipe {recipe_id!r}, which declares {expected!r}",
+                    f"{key}: {given!r} disagrees with recipe {recipe_id!r}, {declared}",
                     hint=f"drop {key} (the client block comes from recipe: {recipe_id}) or name a recipe that "
                     f"declares {given!r}; both values are: config {given!r} vs recipe {expected!r}",
                 )
