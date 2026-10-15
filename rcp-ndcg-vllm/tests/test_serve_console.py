@@ -627,9 +627,7 @@ def test_an_io_processor_plugin_is_config_resolved_not_installed_by_name(tmp_pat
     assert run_console(["serve", str(directory), "--dry-run"]) == 0
 
 
-def test_the_plugin_check_probes_the_engines_interpreter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_plugin_check_probes_the_engines_interpreter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A ``vllm`` on PATH from another environment decides the engine's imports: the presence check runs in
     the engine interpreter the script's shebang names, not in the console's, so a foreign engine without the
     plugin is refused before it starts."""
@@ -717,9 +715,7 @@ def test_a_non_canonical_plugin_spelling_still_gets_the_architecture_check() -> 
         ServeConfig(**base, plugin="rcp_ndcg_vllm==0.0.1", plugin_architectures=("PplxTypo",))
 
 
-def test_the_missing_plugin_hint_quotes_the_spec(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_missing_plugin_hint_quotes_the_spec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The install line is pasted into a shell: a ranged spec must be quoted, or ``>=`` redirects."""
     import rcp_ndcg_vllm.serve as serve_module
 

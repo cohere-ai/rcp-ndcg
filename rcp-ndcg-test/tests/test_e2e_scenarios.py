@@ -464,9 +464,7 @@ def test_a_failed_upload_fails_the_run(tmp_path: Path, monkeypatch: pytest.Monke
             scenario=scenario.id, description=scenario.description, mode="identity", status="passed"
         ),
     )
-    monkeypatch.setattr(
-        run_wave, "_upload", lambda out, uri: {"ok": False, "attempts": 3, "files": 0, "error": "boom"}
-    )
+    monkeypatch.setattr(run_wave, "_upload", lambda out, uri: {"ok": False, "attempts": 3, "files": 0, "error": "boom"})
     out = tmp_path / "out"
     out.mkdir()  # run_scenario creates it on the real path; the stub does not
     status = e2e.main(
