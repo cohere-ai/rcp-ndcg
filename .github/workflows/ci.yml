@@ -356,6 +356,31 @@ jobs:
         env:
           RCP_NDCG_NETWORK_TESTS: "1"
 
+  network-tests:
+    name: the other network-marked tests under tests/ (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+      - run: .github/scripts/cpu-env.sh dev data mteb docs
+      # The network-marked tests under tests/ that no other job opens: the mteb:<Task> reader (its only
+      # test), the live Hub reader, the ctxl pad-token divergence, and the examples and doc snippets that
+      # fetch from the public Hub. Non-blocking, like the mteb job: the public Hub is not this CI's to
+      # guarantee, but a regression must show.
+      - run: >
+          uv run --no-sync pytest
+          tests/data/test_io_mteb_task.py
+          tests/data/test_io_hub_live.py
+          tests/data/test_tokenizer.py
+          tests/docs/test_examples.py
+          tests/docs/test_snippets.py
+          -q -p no:cacheprovider
+        env:
+          RCP_NDCG_NETWORK_TESTS: "1"
+
   changelog:
     name: CHANGELOG entry for public-surface changes
     if: github.event_name == 'pull_request'

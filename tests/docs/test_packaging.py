@@ -715,3 +715,40 @@ def test_the_gated_job_type_checks_with_the_integrations_installed() -> None:
     runs = [str(step.get("run", "")) for step in workflow["jobs"]["gated"]["steps"]]
     assert any("cpu-env.sh" in run and "mteb" in run for run in runs), "the gated job must install the mteb extra"
     assert any("basedpyright" in run for run in runs), "the gated job must type-check with the integrations resolved"
+
+
+def test_every_network_marked_test_file_runs_in_a_network_enabled_job() -> None:
+    """A network-marked test file no CI job opens is dead coverage: it skips everywhere and reports green.
+
+    The check was dead in CI once (``tests/test_cases_package.py``); this keeps that fix from being the
+    last one. Each marked file must be named by a step of a ci.yml job that sets
+    ``RCP_NDCG_NETWORK_TESTS=1`` (a step env or an export in the step's shell).
+    """
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    enabled_runs: list[str] = []
+    for job in workflow["jobs"].values():
+        steps = job.get("steps", [])
+        enabled = any(
+            str((step.get("env") or {}).get("RCP_NDCG_NETWORK_TESTS")) == "1"
+            or "RCP_NDCG_NETWORK_TESTS=1" in str(step.get("run", ""))
+            for step in steps
+        )
+        if enabled:
+            enabled_runs.extend(str(step.get("run", "")) for step in steps)
+    marked = [
+        path.relative_to(ROOT).as_posix()
+        for path in sorted((ROOT / "tests").rglob("*.py"))
+        if re.search(r"^\s*@?pytest\.mark\.network\b", path.read_text(encoding="utf-8"), re.M)
+    ]
+    assert marked, "no network-marked test file found; update this test if the markers changed"
+
+    def named_by(run: str, path: str) -> bool:
+        if re.search(rf"(?<![\w./-]){re.escape(path)}(?![\w])", run):
+            return True
+        parent = path.rsplit("/", 1)[0]
+        return re.search(rf"(?<![\w./-]){re.escape(parent)}(?![\w./-])", run) is not None
+
+    uncovered = [
+        path for path in marked if not any(named_by(run, path) for run in enabled_runs)
+    ]
+    assert not uncovered, f"network-marked test files that no network-enabled CI job opens: {uncovered}"
