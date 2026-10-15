@@ -400,9 +400,7 @@ def _remote_source_digest(location: str) -> str:
     if entries:
         rows = []
         for entry in entries:
-            rows.append(
-                f"{storage.relative(entry, location)}\0{_remote_object_digest(entry, storage.info(entry))}"
-            )
+            rows.append(f"{storage.relative(entry, location)}\0{_remote_object_digest(entry, storage.info(entry))}")
         return hash_strings(sorted(rows))
     if info is not None:  # a directory the backend reports with no files under it
         return hash_strings([])

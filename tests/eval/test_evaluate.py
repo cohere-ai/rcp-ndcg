@@ -741,8 +741,7 @@ def test_sensitivity_is_the_share_of_pairs_a_paired_t_test_separates(report: Eva
         warnings.simplefilter("ignore", RuntimeWarning)
         expected = np.mean(
             [
-                np.ptp(np.array(values[b]) - np.array(values[a])) != 0
-                and ttest_rel(values[a], values[b]).pvalue < 0.05
+                np.ptp(np.array(values[b]) - np.array(values[a])) != 0 and ttest_rel(values[a], values[b]).pvalue < 0.05
                 for a, b in pairs
             ]
         )

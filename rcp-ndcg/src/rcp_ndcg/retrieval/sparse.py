@@ -132,8 +132,7 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
     if not any(tokenized.ids):
         raise DataError(
             "the corpus has no indexable tokens: every document is empty, or only stop words after removal",
-            hint=f"check the corpus texts; BM25 tokenizes with the {stopwords!r} stop list and the configured "
-            "stemmer",
+            hint=f"check the corpus texts; BM25 tokenizes with the {stopwords!r} stop list and the configured stemmer",
         )
     model = engine.BM25()
     model.index(tokenized, show_progress=False)

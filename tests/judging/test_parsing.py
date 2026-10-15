@@ -300,9 +300,7 @@ def test_a_genuine_answer_whose_reasoning_differs_from_the_example_parses() -> N
     )
     assert parsed_tournament.ranking is not None
     with pytest.raises(UnparseableAnswer, match="worked example"):
-        parse_window(
-            "tournament", "q1", Completion(response=json.dumps(tournament)), four, 0, example=tournament
-        )
+        parse_window("tournament", "q1", Completion(response=json.dumps(tournament)), four, 0, example=tournament)
 
 
 #: LaTeX that is an invalid JSON escape when written raw into a string (``\\u`` followed by a non-hex letter too).

@@ -442,9 +442,7 @@ def _queries(
                 hint="merge the rows, or give the second query its own id",
             )
         seen.add(row.id)
-    unknown = sorted(
-        {str(key) for mapping in (candidates, docs) if mapping is not None for key in mapping} - seen
-    )
+    unknown = sorted({str(key) for mapping in (candidates, docs) if mapping is not None for key in mapping} - seen)
     if unknown:
         # The other direction of the selection: a key that names no row is not judged, so a pass that
         # dropped it would report success while a query the caller named never reached the judge.
@@ -1452,9 +1450,7 @@ def _plan(
     # sent at the engine's default sampling while the estimate refuses the same pass: the plan refuses it too.
     from rcp_ndcg.data.resolution import refuse_unpolicied_containers
 
-    refuse_unpolicied_containers(
-        [content for query in queries for content in query.contents.values()], effective.video
-    )
+    refuse_unpolicied_containers([content for query in queries for content in query.contents.values()], effective.video)
     if stage == "tournament":
         thin = [query.query_id for query in queries if len(query.units) < 2]
         if thin:

@@ -412,8 +412,20 @@ class TestSweepCommand:
         result = CliRunner().invoke(
             retrieval_group,
             [
-                "sweep", "--store", str(store), "--out-dir", str(out_dir),
-                "--dataset", dataset.uri, "--metrics", "qrel_ndcg", "--k", "2", "--k", "4", "--json",
+                "sweep",
+                "--store",
+                str(store),
+                "--out-dir",
+                str(out_dir),
+                "--dataset",
+                dataset.uri,
+                "--metrics",
+                "qrel_ndcg",
+                "--k",
+                "2",
+                "--k",
+                "4",
+                "--json",
             ],  # fmt: skip
         )
 
