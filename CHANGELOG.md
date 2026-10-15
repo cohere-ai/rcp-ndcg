@@ -93,7 +93,8 @@ that exports it.
   `pass_probabilities`, `count_gain` and `qrel_gain` with the type `Gains`; the scoring protocols `Protocol`,
   `PROTOCOLS`, `score_query` and `aggregate`, with `MetricName` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`). The public
   records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
-  judge call's parsed observation), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
+  judge call's parsed observation; its `generation` names the pool generation of a scheduled window, so a resume
+  retires the later phases of its own pool's fit only), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
   judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window),
   `JudgementFamily` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
   `tokenizer.json`, part of `key` and left out of `rubric_key`), `DocumentEstimate` (a document's estimated

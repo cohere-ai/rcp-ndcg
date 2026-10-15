@@ -23612,6 +23612,13 @@
             "required": false,
             "type": "str | None"
           },
+          "generation": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "input_tokens": {
             "alias": null,
             "default": null,
