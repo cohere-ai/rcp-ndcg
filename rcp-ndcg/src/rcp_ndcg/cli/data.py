@@ -41,18 +41,38 @@ def _suite(dataset: str) -> str | None:
 
 
 def _repo_id(dataset: str) -> str | None:
-    """The HuggingFace dataset repository of a suite name or an ``hf://org/repo`` URI."""
+    """The HuggingFace dataset repository of a suite name (an ``hf://`` URI goes through
+    :func:`_hub_locator`)."""
     from rcp_ndcg.data import SUITES
 
     suite = _suite(dataset)
-    if suite is not None:
-        return SUITES[suite].repo
-    if dataset.startswith("hf://"):
-        repo = dataset.removeprefix("hf://").strip("/")
-        if repo.count("/") != 1:
-            raise UsageError(f"{dataset!r} is not hf://<org>/<repo>", hint="e.g. hf://org/name")
-        return repo
-    return None
+    return SUITES[suite].repo if suite is not None else None
+
+
+def _hub_locator(dataset: str) -> tuple[str, str | None, str | None]:
+    """``(repo, subset, revision)`` of an ``hf://<org>/<repo>[/<subset>][@<revision>]`` URI.
+
+    The data layer's own URI grammar (:mod:`rcp_ndcg.data.dataset`, :mod:`rcp_ndcg.data.revisions`): a third
+    path segment is the subset and ``@rev`` the revision. A URI outside the grammar is a UsageError naming
+    the form, never a repository id handed to the Hub (which answered with an untyped HFValidationError,
+    classified as an internal error).
+    """
+    locator = dataset.removeprefix("hf://").strip("/")
+    path, _, revision = locator.partition("@")
+    parts = path.split("/")
+    if len(parts) not in (2, 3) or not all(parts):
+        raise UsageError(
+            f"{dataset!r} is not hf://<org>/<repo>[/<subset>][@<revision>]",
+            hint="e.g. hf://org/name, hf://org/name/subset@main; --subset and --revision name the same parts",
+        )
+    return "/".join(parts[:2]), parts[2] if len(parts) == 3 else None, revision or None
+
+
+def _one_value(what: str, from_uri: str | None, given: str | None) -> str | None:
+    """The one value of *what*: the URI's when only it is given, the flag's when only it is, both when equal."""
+    if from_uri is not None and given is not None and from_uri != given:
+        raise UsageError(f"two {what}s for one dataset: {from_uri!r} in the URI and {given!r}")
+    return from_uri if from_uri is not None else given
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -85,22 +105,27 @@ def data_fetch(request: DataFetchRequest) -> DataFetch:
     if request.dataset == "tiny":
         return _fetch_example(request)
     repo_id = _repo_id(request.dataset)
+    subset, revision = request.subset, request.revision
+    if repo_id is None and request.dataset.startswith("hf://"):
+        repo_id, uri_subset, uri_revision = _hub_locator(request.dataset)
+        subset = _one_value("subset", uri_subset, subset)
+        revision = _one_value("revision", uri_revision, revision)
     if repo_id is None:
         raise UsageError(f"cannot fetch {request.dataset!r}", hint=_FETCH_HELP)
     from huggingface_hub import snapshot_download
 
-    patterns = None if request.subset is None else [f"{request.subset}/*", f"{request.subset}__*/*"]
+    patterns = None if subset is None else [f"{subset}/*", f"{subset}__*/*"]
     path = Path(
         snapshot_download(
-            repo_id, repo_type="dataset", revision=request.revision, allow_patterns=patterns, local_dir=request.out
+            repo_id, repo_type="dataset", revision=revision, allow_patterns=patterns, local_dir=request.out
         )
     )
     files = sum(1 for item in path.rglob("*") if item.is_file() and ".cache" not in item.parts)
     return DataFetch(
         dataset=request.dataset,
         repo_id=repo_id,
-        subset=request.subset,
-        revision=request.revision,
+        subset=subset,
+        revision=revision,
         path=str(path),
         files=files,
     )
@@ -211,7 +236,7 @@ def _dataset_summary(request: DataInspectRequest, dataset: Any) -> DatasetSummar
         kind="dataset",
         subset=dataset.name,
         revision=request.revision,
-        queries=len(set(candidates) | set(positive)),
+        queries=len(set(candidates) | {query for query, docs in positive.items() if docs}),
         judged_documents=sum(len(docs) for docs in gains.values()),
         positive_labels=sum(len(docs) for docs in positive.values()),
         labels=dict(sorted(labels.items())),
