@@ -236,20 +236,21 @@ def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
     assert adapter.validate_python({"kind": "late_interaction", "encoder": pooling}).kind == "late_interaction"
 
 
-def test_a_version_segment_is_refused_on_the_pooling_wires_base_url() -> None:
+@pytest.mark.parametrize("version", ["/v1", "/v2"])
+def test_a_version_segment_is_refused_on_the_pooling_wires_base_url(version: str) -> None:
     """The pooling wire's route is root-relative (vLLM registers ``/pooling`` at the root, not under
-    ``/v1``), so a ``.../v1`` base used to load and 404 at the first request; the retriever config refuses
-    it at the load, naming the wire and the fix."""
+    ``/v1``), so a versioned base used to load and 404 at the first request; the retriever config refuses it
+    at the load, naming the wire and the fix."""
     data = {
         "kind": "late_interaction",
-        "encoder": {"api": "vllm_pooling", "model": "colqwen", "base_url": "http://h:8003/v1", **_SERVED_BUDGET},
+        "encoder": {"api": "vllm_pooling", "model": "colqwen", "base_url": f"http://h:8003{version}", **_SERVED_BUDGET},
     }
     with pytest.raises(ConfigError, match="at the root") as caught:
         validate_retriever(data)
-    assert "/pooling" in str(caught.value) and "/v1" in str(caught.value)
+    assert "/pooling" in str(caught.value) and version in str(caught.value)
     assert "base_url" in (caught.value.hint or "")
     # every replica of a list is checked: one versioned replica reaches the same 404
-    replicas = {**data["encoder"], "base_url": ["http://h:8003", "http://h:8004/v1"]}
+    replicas = {**data["encoder"], "base_url": ["http://h:8003", f"http://h:8004{version}"]}
     with pytest.raises(ConfigError, match="at the root"):
         validate_retriever({**data, "encoder": replicas})
 
