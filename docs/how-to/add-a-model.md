@@ -60,10 +60,9 @@ change what is served.
 4. A new family needs its `family.yaml` (below), its reference, its template when it needs one, its family
    test module and its variant goldens.
 
-Validate a family/variant without an engine (run from the package directory, so the recipes root resolves):
+Validate a family/variant without an engine:
 
 ```bash
-cd rcp-ndcg-vllm
 python -m rcp_ndcg_test.equivalence --recipe <variant-id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
@@ -379,7 +378,7 @@ on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDC
 
 ```bash
 python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.0.0.1:8100 \
-    --pairs pairs.jsonl --out /tmp/equiv            # stages 1 and 2 against a running engine
+    --pairs pairs.jsonl --out /tmp/equiv --reference-python <reference-venv-python>   # stages 1 and 2
 ```
 
 A recipe with image or video input also runs the **media stage** beside stages 1 and 2. Stage 2 now
