@@ -4335,6 +4335,12 @@ text it sends to the declared budget.
   CPU before any request, extrapolating to hours for the multi-million-document BEIR corpora, where a GPU
   engine sat idle.
 
+- **A late-interaction corpus encode reassembles its batches in one pass**: the pooling client folded the
+  gathered chunks with `Embeddings.concat` pairwise, and each call re-concatenated the whole accumulated
+  buffer, so N batches copied about N^2/2 chunk sizes (and peak memory doubled at the end) after every
+  request had returned. One `np.concatenate` with cumulative offsets builds the same buffer; the single-chunk
+  case still returns the chunk itself.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

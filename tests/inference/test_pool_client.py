@@ -19,9 +19,9 @@ import pytest
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.clients.pool import PoolingClient
+from rcp_ndcg.inference.clients.pool import PoolingClient, _concat_all
 from rcp_ndcg.inference.config import PoolingEndpoint
-from rcp_ndcg.inference.types import EncodeRole
+from rcp_ndcg.inference.types import Embeddings, EncodeRole
 from tests.inference import _budget
 from tests.inference._pooling import PoolingServer, RecordingSender, server_sender
 
@@ -1088,3 +1088,30 @@ def _media_chunk_client(sender: Any) -> PoolingClient:
         ),
         sender=sender,
     )
+
+
+class TestConcatAll:
+    def test_the_chunks_reassemble_in_one_pass(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``_concat_all`` builds the buffer once: the pairwise fold called ``Embeddings.concat`` per chunk,
+        and each call re-concatenated the whole accumulated buffer, so a late-interaction corpus encode
+        copied O(N^2) bytes after every request had returned."""
+        fold = Embeddings.concat
+        calls = 0
+
+        def counting(self: Embeddings, other: Embeddings) -> Embeddings:
+            nonlocal calls
+            calls += 1
+            return fold(self, other)
+
+        chunks = [
+            Embeddings.ragged([np.full((2 + index, 3), float(index), dtype=np.float32)]) for index in range(6)
+        ]
+        expected = chunks[0]
+        for chunk in chunks[1:]:
+            expected = fold(expected, chunk)
+        monkeypatch.setattr(Embeddings, "concat", counting)
+        result = _concat_all(chunks)
+        assert calls <= 1  # one fold for the whole buffer, never one per chunk
+        assert result.num_items == expected.num_items == 6
+        assert np.array_equal(result.vectors, expected.vectors)
+        assert result.offsets is not None and np.array_equal(result.offsets, expected.offsets)

@@ -48,7 +48,7 @@ from rcp_ndcg.data.resolution import (
 )
 from rcp_ndcg.data.templates import RequestShape
 from rcp_ndcg.data.text_budget import FitResult, ProcessingRecord, TextTruncationCensus
-from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError
+from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, ProviderError
 from rcp_ndcg.inference.adapters.base import Adapter, get_adapter
 from rcp_ndcg.inference.clients._base import PreparedItems, RoleClient
 from rcp_ndcg.inference.config import PoolingEndpoint
@@ -709,11 +709,40 @@ class PoolingClient(RoleClient):
 
 
 def _concat_all(chunks: Sequence[Embeddings]) -> Embeddings:
-    """Append every chunk's items in order (one chunk needs no copy)."""
-    result = chunks[0]
+    """Append every chunk's items in order, in one pass: a pairwise fold re-concatenated the whole
+    accumulated buffer once per chunk, so a late-interaction corpus encode copied O(N^2) bytes after the
+    requests had returned. The checks and the result are :meth:`Embeddings.concat`'s, over the whole list."""
+    first = chunks[0]
+    if len(chunks) == 1:
+        return first  # one chunk needs no copy
+    if any(chunk.is_multi_vector != first.is_multi_vector for chunk in chunks[1:]):
+        raise DataError(
+            "cannot concatenate single-vector and multi-vector embeddings",
+            hint="one buffer per layout: pool the multi-vector side explicitly first",
+        )
+    non_empty = [chunk for chunk in chunks if chunk.num_items]
+    if non_empty:
+        expected_dim = non_empty[0].dim
+        for chunk in non_empty[1:]:
+            if chunk.dim != expected_dim:
+                raise DataError(
+                    f"dimension mismatch: {expected_dim} vs {chunk.dim}",
+                    hint="one endpoint's embeddings share a dimension; these buffers came from different "
+                    "widths (a zero-width buffer is an all-omitted batch: empty_doc omit_zero with nothing "
+                    "sent)",
+                )
+    vectors = np.concatenate([chunk.vectors for chunk in non_empty], axis=0) if non_empty else first.vectors
+    if any(chunk.offsets is None for chunk in chunks):
+        return Embeddings(vectors=vectors)
+    first_offsets = first.offsets
+    assert first_offsets is not None  # every chunk's offsets are checked above
+    offsets: list[np.ndarray] = [first_offsets]
+    shift = int(first_offsets[-1])
     for chunk in chunks[1:]:
-        result = result.concat(chunk)
-    return result
+        assert chunk.offsets is not None
+        offsets.append(chunk.offsets[1:] + shift)
+        shift += int(chunk.offsets[-1])
+    return Embeddings(vectors=vectors, offsets=np.concatenate(offsets))
 
 
 __all__ = ["PoolingClient"]
