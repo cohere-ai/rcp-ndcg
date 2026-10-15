@@ -58,6 +58,32 @@ VARIANT = """\
     revision: "{revision}"
 """
 
+JUDGE_FAMILY = """\
+# A user judge recipe (never shipped): its client block carries the completion cap the engine reserves.
+id: {family}
+schema_version: "1"
+role: judge
+input: [text]
+licence: apache-2.0
+engine:
+  name: vllm
+  image: "vllm/vllm-openai:v0.31.0"
+  min_version: "0.31.0"
+resources: {{gpus: 1}}
+serve:
+  runner: generate
+  dtype: bfloat16
+  max_model_len: {max_model_len}
+client:
+  api: chat
+  max_output_tokens: {max_output_tokens}
+status: {{state: unverified, image: null, date: null, report: null}}
+variants:
+  - id: {family}
+    model: example/My-Judge
+    revision: "{revision}"
+"""
+
 
 def _write_family(
     root: Path,
@@ -309,6 +335,12 @@ def test_a_chunk_below_max_model_len_is_refused_when_a_full_prompt_is_admissible
     pooling-full-context patch must not be served with a smaller chunk: an exactly-full prompt is chunked,
     and the v0.31.0 scheduler never finishes its last token.  Both numbers and the patch are named."""
     recipe = load_recipe("octen-embedding-8b")  # client.max_tokens 8192 == serve.max_model_len 8192
+def test_a_judge_without_context_tokens_floors_the_engine_on_its_output_cap() -> None:
+    """A judge that declares no ``context_tokens`` (qwen3.6-27b: documents are sent whole) still reserves
+    its completion from the engine's context.  vLLM v0.31.0's input budget is
+    ``--max-model-len - max_output_tokens``, so a context at or below the cap admits no prompt at all;
+    the refusal names both numbers, and one token above the cap is the smallest context that serves."""
+    recipe = load_recipe("qwen3.6-27b-fp8")  # client.max_output_tokens 16384, no context_tokens
     with pytest.raises(RecipeError) as excinfo:
         serve_argv(
             recipe,
@@ -366,6 +398,40 @@ def test_the_dry_run_shows_an_empty_patch_opt_in(capsys: pytest.CaptureFixture[s
     """A recipe that opts into no patch prints the empty value a real serve clears the environment to."""
     assert run_console(["serve", SHIPPED, "--dry-run"]) == 0
     assert capsys.readouterr().out.splitlines()[3] == "engine environment: RCP_NDCG_VLLM_PATCHES="
+            deployment=parse_deployment_overrides(["serve.max_model_len=16384"]),
+        )
+    message = str(excinfo.value)
+    assert "16384" in message and "max_output_tokens" in message
+
+    argv = serve_argv(
+        recipe,
+        port=8000,
+        served_model_name=recipe.id,
+        deployment=parse_deployment_overrides(["serve.max_model_len=16385"]),
+    )
+    assert _flag_value(argv, "--max-model-len") == "16385"
+
+
+def test_the_recipe_loader_refuses_a_judge_output_cap_at_or_above_the_context(tmp_path: Path) -> None:
+    """The same floor at load time: a judge recipe whose ``serve.max_model_len`` is at or below its
+    client's ``max_output_tokens`` would serve an engine that rejects every request, so the loader
+    refuses it and names both numbers; one token above the cap loads."""
+    directory = tmp_path / "my-judge"
+    directory.mkdir()
+    (directory / "family.yaml").write_text(
+        JUDGE_FAMILY.format(family="my-judge", max_model_len=16384, max_output_tokens=16384, revision=REVISION),
+        encoding="utf-8",
+    )
+    with pytest.raises(RecipeError) as excinfo:
+        load_recipe(directory)
+    message = str(excinfo.value)
+    assert "16384" in message and "max_output_tokens" in message
+
+    (directory / "family.yaml").write_text(
+        JUDGE_FAMILY.format(family="my-judge", max_model_len=16385, max_output_tokens=16384, revision=REVISION),
+        encoding="utf-8",
+    )
+    assert load_recipe(directory).client["max_output_tokens"] == 16384
 
 
 def test_the_dry_run_prints_the_argv_the_identity_and_the_applied_overrides(capsys: pytest.CaptureFixture[str]) -> None:

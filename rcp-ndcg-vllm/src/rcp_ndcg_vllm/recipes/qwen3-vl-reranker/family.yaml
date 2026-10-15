@@ -209,8 +209,8 @@ notes: |-
   control report); an engine pinned to other numbers fails the media stage's engine count.
 
   Video: out of scope (input: [text, image]). A sibling recipe declaring video follows the one
-  video-policy decision (qwen3-vl-embedding-2b: 64 uniformly spaced frames per clip, the
-  container sent as video_url with the engine pinned via --media-io-kwargs); this reference
+  video-policy decision (qwen3-vl-embedding-2b: the engine's fps rule at fps 2, the container
+  sent as video_url with the engine pinned via --media-io-kwargs); this reference
   refuses video-bearing rows loudly rather than sampling them at any default.
 
   Empty sides: the recipe pins empty_doc send_text with the card's own "NULL" placeholder

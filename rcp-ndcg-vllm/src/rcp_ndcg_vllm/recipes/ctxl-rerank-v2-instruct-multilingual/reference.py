@@ -172,7 +172,8 @@ class CtxlRerankReference:
 
     Behaviour is the paper's (``experiments/paper/rerankers/reference/contextual.py``,
     ``ContextualRerank``): the same prompt frame, padding side (left), whole-prompt right
-    truncation at ``MAX_SEQ_LEN``, dtype (bfloat16, the pipeline's), the length-descending
+    truncation at ``MAX_SEQ_LEN``, dtype (the engine's served dtype, :func:`_served_dtype` -- float32
+    for 1b/2b, bfloat16 for 6b), the length-descending
     character-batch permutation with the per-model document cap and the 15,000-character
     padded-area budget, and the OOM back-off that splits a batch in half. The only changes from
     that module are the harness's subprocess interface (``--mode`` CLI, pairs file in, JSON out),

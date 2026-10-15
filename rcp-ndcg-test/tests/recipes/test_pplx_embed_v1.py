@@ -566,3 +566,35 @@ def test_the_reference_embeds_one_query_vector_per_query_text() -> None:
     assert len(query_vectors) == 1, "one entry per query text, never one per dimension"
     assert query_vectors[0] == [1.0, 1.0, 1.0, 1.0]
     assert document["rows"][0]["document_vectors"] == [[1.0] * 4, [2.0] * 4]
+
+
+def test_the_rebuilt_encoder_stays_on_the_declared_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The card's pipeline is rebuilt from its modules before the trailing storage quantiser, and the
+    rebuild keeps the declared ``--device``: sentence-transformers resolves ``device=None`` to
+    ``get_device_name()`` and moves the model there (base/model.py), so a ``--device cpu`` run on a GPU
+    host silently placed the fp32 encoder on cuda:0 -- the engine's GPU. The harness passes and records
+    the device; the rebuild must not re-decide it. No weights, no sentence-transformers: the module is
+    stubbed."""
+    import types
+
+    module = _reference_module()
+    seen: list[dict[str, Any]] = []
+    classes = {name: type(name, (), {}) for name in module.EXPECTED_MODULES}
+
+    class FakeSentenceTransformer:
+        """The two constructor calls ``_load_encoder`` makes: the full pipeline, then the rebuild."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
+            seen.append(kwargs)
+
+        def __iter__(self) -> Any:
+            return iter([cls() for cls in classes.values()])
+
+    stub = types.ModuleType("sentence_transformers")
+    stub.SentenceTransformer = FakeSentenceTransformer  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sentence_transformers", stub)
+
+    encoder = module._load_encoder("example/Model", "0" * 40, "cpu")
+    assert encoder is not None
+    assert seen[0]["device"] == "cpu", "the full pipeline loads on the declared device"
+    assert seen[1]["device"] == "cpu", "the rebuilt pipeline keeps the declared device, never re-decides it"

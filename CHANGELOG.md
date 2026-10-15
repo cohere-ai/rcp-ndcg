@@ -4749,6 +4749,79 @@ text it sends to the declared budget.
   recount of the fitted contents then refused it with a `VideoPolicyError` blaming the corpus (so
   `on_overflow: cut` never worked for an overflowing frames video). A video part's consecutive prepared
   frames are now one atomic unit: the clip is kept or dropped whole, every frame's drop recorded.
+- **The paper's three zerank reranker configs name the served model**: `model` is the
+  `--served-model-name`, and `rcp-ndcg-vllm serve <id>` hard-codes it to the recipe id
+  (`zerank-1-reranker`, `zerank-1-small-reranker`, `zerank-2-reranker`), not the short Hub redirect
+  (`zerank-1`, `zerank-1-small`, `zerank-2`). Every `/rerank` call to the recipe's own serve path
+  previously 404ed with vLLM's "model does not exist"; the configs' budgets and copied blocks are
+  unchanged.
+
+- **A judge's output cap floors the engine's context**: vLLM v0.31.0 reserves the request's completion
+  out of `--max-model-len` (its input budget is `max_model_len - max_output_tokens`), so a judge recipe
+  whose `serve.max_model_len` is at or below its client's `max_output_tokens` serves an engine that
+  rejects every request. The recipe loader and `serve` now refuse that pair, naming both numbers. The
+  judges that declare `context_tokens` keep the existing floor (the context must admit the whole window),
+  and every shipped judge's cap (16384 or 8192) sits far below its context (262144 or 131072), so no
+  serve argv moves.
+
+- **The recipe comments no longer promise a refusal for `instruction: none`**: the product drops a
+  dataset task instruction by declaration (the client returns the prepared content; only an undeclared
+  mode raises), but eleven family comments said "refused, never silently folded". Each comment now states
+  the drop, the five families whose frame carries no card instruction (octen-embedding, pplx-embed-v1,
+  pplx-embed-v2-context, zembed-1 and jina-embeddings-v5-text) no longer claim one is baked in, and
+  zerank's "the reference raises on one" is corrected to the reference ignoring it. No recipe field moves
+  (the comments are not part of the resolved contract).
+
+- **The pplx-embed-v1 reference keeps its declared `--device`**: the card's pipeline is rebuilt from its
+  modules before the trailing storage quantiser, and the rebuild passed no device, so
+  sentence-transformers resolved `device=None` to `get_device_name()` and moved the fp32 encoder to
+  cuda:0 whenever a GPU was visible -- a `--device cpu` run on a wave node (no reference GPU reserved)
+  then ran on the engine's GPU, OOMing or producing stage-2 numerics from a device the report did not
+  name. The rebuild now takes the same device the full pipeline was loaded with. The `reference` block is
+  out of the behaviour fingerprint, so no corpus re-record is needed.
+
+- **The text references' stale prose is corrected**: the review's sweep found claims the code no longer
+  matched. ctxl's reference called the pipeline's dtype bfloat16 while it loads the engine's served dtype
+  (float32 for 1b/2b), and `reference.in` cited the removed `serve.hf_overrides head_dtype: model`;
+  qwen3-reranker's score docstring said "flash attention 2 on CUDA" while it loads the recipe's declared
+  `attn_implementation` (sdpa); pplx-embed-v2-context quoted a 262142-token client budget while the client
+  declares 131070, and claimed int8-valued vectors survive the fp16 wire cast exactly while the served
+  head L2-normalises; zembed-1's notes claimed the unmodified image with no plugin while its serve block
+  carries the `rcp-ndcg-vllm` patch wheel; and the octen family cited `octen.yaml:9-11` for keys the
+  mapping form removed (the `"- "` document frame is the recipe's template, `batch_size: 32` is at :22).
+  A new cross-family test (`rcp-ndcg-test/tests/recipes/test_recipe_prose.py`) holds quoted client budgets,
+  plugin claims and paper citations to the code; the octen and zembed-1 goldens moved for the
+  `sources`/`notes` edits.
+
+- **The qwen3-vl-reranker family names the real video policy**: its module docstring, its video refusal
+  and its notes said "64 uniformly spaced frames per clip", but the sibling `qwen3-vl-embedding`
+  recipe's ONE policy is the engine's fps rule at fps 2 (the container sent as `video_url`, the engine
+  pinned with `--media-io-kwargs`); a pinned `num_frames` is inert on the Qwen3-VL backend, and the
+  engine's 98/458 against the client's old 512/1952 frame count is the measured evidence. The reranker
+  still refuses every video row, so no output moves; the qwen3-vl-reranker goldens moved for the notes
+  edit.
+
+- **The qwen3-vl-reranker reference's LogitScore cross-check runs**: `_true_false_ids` probed
+  `Path("Qwen/Qwen3-VL-Reranker-2B@<rev>")/1_LogitScore/config.json` -- a relative path that never
+  exists -- so the comparison of the vocab's yes/no ids with the checkpoint's declared
+  `true_token_id`/`false_token_id` was skipped on every run. The file is now resolved the way the
+  checkpoint is (a local snapshot directory, or `hf_hub_download` at the spec's revision), and an
+  absent or disagreeing file fails loudly. The ids still come from the vocabulary, so no score moves.
+
+- **qwen3-vl-embedding's render mode refuses the harness's `media` field**: the module docstring promised
+  that a media column in render mode is refused loudly, but `_MEDIA_COLUMNS` listed only the retired
+  per-column fields, so a row carrying the harness's `media` field rendered its text and was never
+  refused. `media` is now listed, as the embeddinggemma-2 sibling does. Stage 1 hands the reference text
+  rows only, so no gate is affected today and no output moves.
+
+- **The qwen3.8-flash-next-nvfp4 note names its real quantisation**: the checkpoint's
+  `hf_quant_config.json` declares quant_algo MIXED_PRECISION, so vLLM v0.31.0's override loop replaces the
+  declared `--quantization modelopt_fp4` with `modelopt_mixed` before its mismatch check -- the flag is
+  inert and the engine runs modelopt_mixed (the card's own `--quantization modelopt` names the same
+  auto-detection). The variant note had claimed auto-detection mapped the checkpoint's NVFP4 quant_algo to
+  the same method, and the family note attributed the BF16 KV dtype to "the paper set none" for a model
+  the paper never ran. The declared flag stays (it is inert; changing it would move the behaviour
+  fingerprint for no engine-side difference), and no serve argv moves.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 

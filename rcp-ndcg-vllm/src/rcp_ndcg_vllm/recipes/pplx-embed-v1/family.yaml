@@ -105,8 +105,8 @@ client:
                         # a zero vector. omit_zero never sends it and places a zero vector,
                         # recorded as the declared empty policy -- the pairs generator
                         # leaves the empty-content row out and records the stratum absent
-  instruction: none     # the card's own instruction is baked into the fixed frame; a dataset task
-                        # instruction is refused, never silently folded
+  instruction: none     # the model's frame is fixed; a dataset task instruction is DROPPED
+                        # by declaration, never folded
   normalize: true  # the card compares by cosine and the served vectors are unnormalized
                    # (use_activation false: no Normalize module); the client L2-normalises,
                    # which the cosine comparison does not need but the pipeline's uniform

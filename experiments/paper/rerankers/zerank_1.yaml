@@ -8,7 +8,7 @@
 # capped at 4096; the release's in-process path passed the bare query, hence `instruction: none`.
 api: rerank
 base_url: http://127.0.0.1:8000/v1
-model: zerank-1
+model: zerank-1-reranker
 revision: d03c467e29e29c0a16a130a86ce3b62d30116a2c
 tokenizer: zeroentropy/zerank-1-reranker@d03c467e29e29c0a16a130a86ce3b62d30116a2c
 max_tokens: 8192

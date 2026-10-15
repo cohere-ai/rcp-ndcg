@@ -90,8 +90,8 @@ client:
   # The reference path embeds an empty document as its bare prefix ("Document: "), so the
   # empty string is sent (the vendor's hosted-API rule, omit_zero, would diverge from it).
   empty_doc: send
-  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
-                     # instruction is refused, never silently folded
+  instruction: none  # the model's frame is fixed; a dataset task instruction is DROPPED
+                     # by declaration, never folded
   request_shape: text
   # The server L2-normalises (PoolerNormalize); the client normalising again is harmless
   # (idempotent) and keeps the client contract with servers that do not.

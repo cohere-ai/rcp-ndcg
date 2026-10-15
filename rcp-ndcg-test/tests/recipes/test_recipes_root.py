@@ -9,6 +9,8 @@ recipe the product refuses cannot pass unnoticed, and a family id can never be s
 
 from __future__ import annotations
 
+import re
+
 from rcp_ndcg_vllm.recipe import default_recipes_root, iter_families, iter_recipes
 
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
@@ -50,3 +52,33 @@ def test_family_ids_are_not_recipe_ids() -> None:
     assert not (multi_variant & variant_ids), sorted(multi_variant & variant_ids)
     assert variant_ids, "no variant ids"
     assert default_recipes_root().is_dir()
+
+
+def test_every_commented_instruction_none_states_the_drop_policy() -> None:
+    """``instruction: none`` DROPS a dataset task instruction by declaration -- the client returns the
+    prepared content, and only an UNDECLARED mode raises -- so the comment beside the field must state
+    the drop and must not promise a refusal (or a reference that raises).  The wording lives in each
+    family.yaml's own comment; this smoke test holds every commented ``instruction: none`` line to the
+    policy, and a comment that mentions a dataset task instruction must say it is dropped."""
+    offenders: list[str] = []
+    for directory in sorted(default_recipes_root().iterdir()):
+        family = directory / "family.yaml"
+        if not family.is_file():
+            continue
+        lines = family.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            match = re.match(r"\s*instruction:\s*none\b(.*)$", line)
+            if match is None or "#" not in match.group(1):
+                continue  # an uncommented declaration: no wording to hold
+            block = [match.group(1).split("#", 1)[1]]
+            for follow in lines[index + 1 : index + 3]:
+                if follow.lstrip().startswith("#"):
+                    block.append(follow.split("#", 1)[1])
+                else:
+                    break
+            comment = " ".join(part.strip() for part in block)
+            if "refused" in comment or "raises on one" in comment:
+                offenders.append(f"{directory.name}: promises a refusal: {comment}")
+            if "dataset task" in comment and "dropped" not in comment.lower():
+                offenders.append(f"{directory.name}: does not say the instruction is dropped: {comment}")
+    assert not offenders, "instruction: none drops by declaration:\n" + "\n".join(offenders)

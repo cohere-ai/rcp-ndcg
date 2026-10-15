@@ -753,6 +753,53 @@ def test_the_reference_hands_the_model_tensor_token_type_ids() -> None:
     assert types.dtype.is_floating_point is False
 
 
+def test_the_true_false_ids_cross_check_reads_the_logit_score_config_at_the_pinned_revision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The vocab's yes/no ids are cross-checked against the repo's ``1_LogitScore/config.json`` (never
+    hardcoded).  The check probed ``Path("Qwen/Qwen3-VL-Reranker-2B@<rev>")/1_LogitScore/config.json``
+    -- a relative path that never exists -- so the comparison was skipped on every run.  The file is now
+    resolved through ``hf_hub_download`` at the spec's revision: a disagreement or an absent file fails
+    loudly, and an agreeing file passes."""
+    import types
+
+    import huggingface_hub
+
+    module = _reference_module()
+
+    class StubTokenizer:
+        def convert_tokens_to_ids(self, token: str) -> int:
+            return {"yes": 1, "no": 2}[token]
+
+    reference = module.Qwen3VLRerankerReference("example-org/Qwen3-VL-Reranker-2B@4bd860ac")
+    reference.processor = types.SimpleNamespace(tokenizer=StubTokenizer())
+    downloaded: list[tuple[str, str, str | None]] = []
+
+    def _downloads(values: dict[str, int]) -> Any:
+        def download(repo: str, filename: str, revision: str | None = None) -> str:
+            downloaded.append((repo, filename, revision))
+            path = tmp_path / f"config-{len(downloaded)}.json"
+            path.write_text(json.dumps(values), encoding="utf-8")
+            return str(path)
+
+        return download
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", _downloads({"true_token_id": 9693, "false_token_id": 2152}))
+    with pytest.raises(ValueError, match="disagrees"):
+        reference._true_false_ids()
+    assert downloaded[0] == ("example-org/Qwen3-VL-Reranker-2B", "1_LogitScore/config.json", "4bd860ac")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", _downloads({"true_token_id": 1, "false_token_id": 2}))
+    assert reference._true_false_ids() == (1, 2)
+
+    def missing(repo: str, filename: str, revision: str | None = None) -> str:  # noqa: ARG001
+        raise FileNotFoundError(f"{repo}/{filename} not found")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", missing)
+    with pytest.raises(ValueError, match="1_LogitScore/config.json"):
+        reference._true_false_ids()
+
+
 def test_the_score_mode_reads_the_harness_media_field_and_refuses_the_retired_columns() -> None:
     """The score mode's row reading: a media row's ``media`` field becomes the card's own
     ``{"text", "image"}`` side payload with the inline image decoded to a loaded PIL image; a text side
@@ -779,3 +826,23 @@ def test_the_score_mode_reads_the_harness_media_field_and_refuses_the_retired_co
             module.side_payload("", entries)
     with pytest.raises(SystemExit):
         module._refuse_old_media_columns(0, {"query_image": "data:image/png;base64,AA=="})
+
+
+def test_the_video_refusal_names_the_sibling_recipes_actual_policy() -> None:
+    """The family refuses video (``input: [text, image]``) and points at the ``qwen3-vl-embedding``
+    family's one video policy. That policy is the engine's fps rule at fps 2
+    (``client.video_policy``), pinned with ``--media-io-kwargs`` -- a pinned ``num_frames`` would be
+    inert on the Qwen3-VL backend -- so the refusal, the module docstring and the notes must not
+    name the superseded 64 uniformly spaced frames."""
+    sibling = yaml.safe_load((default_recipes_root() / "qwen3-vl-embedding" / "family.yaml").read_text("utf-8"))
+    policy = sibling["client"]["video_policy"]
+    assert policy["fps"] == 2 and "num_frames" not in policy, "the sibling policy is the engine's fps rule"
+
+    module = _reference_module()
+    with pytest.raises(SystemExit) as excinfo:
+        module._content_parts("", "", video="a clip")
+    message = str(excinfo.value)
+    assert "64 uniformly spaced" not in message
+    assert "fps 2" in message and "--media-io-kwargs" in message
+    assert "64 uniformly spaced" not in (RECIPE_DIR / "reference.py").read_text(encoding="utf-8")
+    assert "64 uniformly spaced" not in (RECIPE_DIR / "family.yaml").read_text(encoding="utf-8")

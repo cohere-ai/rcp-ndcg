@@ -94,8 +94,8 @@ client:
   on_overflow: cut
   empty_doc: send # no empty-document rule exists in the checkpoints' own config; the served engine
     # embeds the post-processor's tokens alone
-  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
-                     # instruction is refused, never silently folded
+  instruction: none  # the card's own instruction is part of the fixed frame; a dataset
+                     # task instruction is DROPPED by declaration, never folded
   normalize: true # the server pooler already L2-normalises (the ST Normalize module); the client's is
     # idempotent
   # No MRL head: the three cards contain no Matryoshka/MRL/projection sentence and each config.json

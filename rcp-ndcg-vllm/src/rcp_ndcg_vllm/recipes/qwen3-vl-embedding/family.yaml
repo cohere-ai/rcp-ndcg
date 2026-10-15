@@ -49,8 +49,8 @@ client:
     add_special_tokens: true    # sent with every messages request (the chat route's own default is false, v0.31.0 base/protocol.py ChatRequestOptionsMixin): the tokenizer's post-processor appends endoftext (id 151643, tokenizer.json TemplateProcessing) after the chat render -- the pooled last token
   on_overflow: cut
   empty_doc: send_text
-  instruction: none             # the card's own instruction is baked into the fixed frame; a dataset task
-                                # instruction is refused, never silently folded
+  instruction: none             # the card's own instruction is part of the fixed frame; a dataset
+                                # task instruction is DROPPED by declaration, never folded
   empty_doc_text: "NULL"        # the card's empty-input rule: format_model_input renders the text "NULL" when text, image and video are all empty
   normalize: true               # the server L2-normalises (PoolerNormalize); the client normalising again is harmless
   # The card's MRL declaration: "supports user-defined output dimensions ranging

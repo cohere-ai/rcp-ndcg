@@ -82,7 +82,9 @@ CARD_SCRIPT_SHA256 = "8ffa74a1a6bb759610c57865ea416fd4daf9936cb787520e1112a3e1d5
 SHAPES = ("query", "document")
 
 #: The pairs-file media columns the harness knows; a row carrying one is refused (see below).
+#: ``media`` is the harness's own field, listed first: a text-only mode must never swallow it.
 _MEDIA_COLUMNS = (
+    "media",
     "image",
     "images",
     "video",

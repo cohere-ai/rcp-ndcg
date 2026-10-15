@@ -58,9 +58,10 @@ Deviations from the card's script, all declared:
   in both modes. It keeps the assistant tail (the anchor) and cuts differently from the client:
   the recipe's declared ``over_cap_cut_differs`` (over-cap pairs are reported non-gating).
 - The card's video branch (fps 1 / max_frames 64 containers, ``total_pixels`` frame arrays) is
-  refused, not mirrored: the recipe declares ``input: [text, image]``, and the family's ONE video
-  policy (64 uniformly spaced frames per clip -- the ``qwen3-vl-embedding`` family's
-  ``client.video_policy``) supersedes the card's container sampler. A video-bearing row is a loud
+  refused, not mirrored: the recipe declares ``input: [text, image]``, and the ``qwen3-vl-embedding``
+  family's ONE video policy (the engine's fps rule at fps 2, the container sent as ``video_url`` and
+  the engine pinned with ``--media-io-kwargs``) supersedes the card's container sampler. A
+  video-bearing row is a loud
   error in every mode, never a silent sampling at either rule. A media row's ``media`` field rides
   the card's per-document message builder in ``score`` only (:func:`side_payload`); ``render``
   refuses it (its contract is the text spans the client ships).
@@ -126,8 +127,8 @@ def _content_parts(prefix: str, text: str, image: Any = None, video: Any = None)
     if video:
         raise SystemExit(
             "a side carries a video, and this recipe declares input [text, image] -- video is out "
-            "of its serving form. The family's one video policy (64 uniformly spaced frames per "
-            "clip, the container as video_url under a pinned engine) lives in the "
+            "of its serving form. The family's one video policy (the engine's fps rule at fps 2, "
+            "the container as video_url and the engine pinned with --media-io-kwargs) lives in the "
             "qwen3-vl-embedding family recipe; drop the video or hold the row for that recipe"
         )
     if image:
@@ -231,20 +232,41 @@ class Qwen3VLRerankerReference:
 
     def _true_false_ids(self) -> tuple[int, int]:
         """The yes/no token ids from the snapshot's vocab, cross-checked against the repo's
-        1_LogitScore/config.json when the file is present (never hardcoded)."""
+        ``1_LogitScore/config.json`` at the spec's own revision (never hardcoded).
+
+        The file is resolved the way the checkpoint is: a local snapshot directory reads it directly,
+        and a ``repo@revision`` spec downloads it at that revision.  A file that is absent or disagrees
+        fails loudly -- the check is the safety net for a revision whose vocab and score head drift
+        apart, so it may not be skipped silently.
+        """
         if self.processor is None:
             raise RuntimeError("call load(device) first")
         tokenizer = self.processor.tokenizer
         true_id = tokenizer.convert_tokens_to_ids("yes")
         false_id = tokenizer.convert_tokens_to_ids("no")
-        config_path = Path(self.model_name_or_path) / "1_LogitScore" / "config.json"
-        if config_path.is_file():
-            config = json.loads(config_path.read_text(encoding="utf-8"))
-            if int(config["true_token_id"]) != int(true_id) or int(config["false_token_id"]) != int(false_id):
+        repo, revision = _repo_and_revision(self.model_name_or_path)
+        config_path = Path(repo) / "1_LogitScore" / "config.json"
+        if not config_path.is_file():
+            if Path(repo).exists():
                 raise ValueError(
-                    f"the snapshot's vocab (yes={true_id}, no={false_id}) disagrees with "
-                    f"{config_path} (true={config['true_token_id']}, false={config['false_token_id']})"
+                    f"{repo} carries no 1_LogitScore/config.json to cross-check the snapshot's yes/no ids "
+                    f"({true_id}, {false_id}) against"
                 )
+            from huggingface_hub import hf_hub_download
+
+            try:
+                config_path = Path(hf_hub_download(repo, "1_LogitScore/config.json", revision=revision))
+            except Exception as error:  # noqa: BLE001 - every hf_hub_download failure is the same refusal here
+                raise ValueError(
+                    f"{repo}@{revision or 'main'} carries no 1_LogitScore/config.json to cross-check the "
+                    f"snapshot's yes/no ids ({true_id}, {false_id}) against: {error}"
+                ) from error
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        if int(config["true_token_id"]) != int(true_id) or int(config["false_token_id"]) != int(false_id):
+            raise ValueError(
+                f"the snapshot's vocab (yes={true_id}, no={false_id}) disagrees with "
+                f"{config_path} (true={config['true_token_id']}, false={config['false_token_id']})"
+            )
         return int(true_id), int(false_id)
 
     def load(self, device: str) -> Qwen3VLRerankerReference:

@@ -51,8 +51,8 @@ client:
     add_special_tokens: true
   on_overflow: cut
   empty_doc: send
-  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
-                     # instruction is refused, never silently folded
+  instruction: none  # the model's frame is fixed; a dataset task instruction is DROPPED
+                     # by declaration, never folded
   normalize: true
   # The card's MRL declaration: "The model supports flexible dimension projections
   # (2560, 1280, 640, 320, 160, 80, 40)" (README.md:33). Projection kind: the smaller sizes are the
@@ -100,7 +100,8 @@ sources:
   - "vllm/entrypoints/pooling/embed/io_processor.py:530-536 - /v2/embed with input_type renders chat messages through the checkpoint's chat template; this recipe never routes there (verified at both revisions)"
 notes: |
   Serving: vllm serve zeroentropy/zembed-1-embedding --runner pooling --convert embed
-  --max-model-len 32768, on the unmodified vllm/vllm-openai:v0.31.0 image, no plugin.
+  --max-model-len 32768, on the stock vllm/vllm-openai:v0.31.0 image with the rcp-ndcg-vllm plugin
+  wheel (the pooling-full-context patch; no custom image).
   1. Runner/convert are explicit for robustness: at v0.31.0 a bare serve already resolves this
      checkpoint to pooling + embed, because the sentence-transformers modules.json wins over the
      generative Qwen3ForCausalLM architecture and convert falls through to embed for a pooling

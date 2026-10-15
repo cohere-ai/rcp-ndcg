@@ -148,8 +148,8 @@ client:
                                  # documents (see notes, 'Empty documents')
   normalize: true                # the server L2-normalizes per token (PoolerNormalize); normalizing
                                  # again client-side is a no-op and keeps the pipeline's rule uniform
-  instruction: none              # the card's own instruction is baked into the fixed frame; a dataset
-                                 # task instruction is refused, never silently folded
+  instruction: none              # the card's own instruction is part of the fixed frame; a dataset
+                                 # task instruction is DROPPED by declaration, never folded
   embed_dtype: float16           # the owner's transfer precision (Q11); MaxSim accumulates in float32
   dim: 2048                      # config.json:100 dim / :101 output_dim; rebuilds the flat base64
                                  # frame of /pooling and is cross-checked against usage.prompt_tokens
