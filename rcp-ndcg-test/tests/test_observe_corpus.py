@@ -369,6 +369,29 @@ def test_the_tolerance_is_three_times_the_measured_repetition_drift() -> None:
     assert summary["derived"]["measured"] is True and summary["derived"]["bodies_differ"] is True
 
 
+def test_a_near_tie_flip_does_not_inflate_the_measured_tolerance() -> None:
+    """g-observe-1: /rerank replies were compared by ranked POSITION, so two documents swapping rank
+    between sendings moved the integer index leaf by 1 and the derived tolerance became vacuous
+    (qwen3-reranker-8b shipped at abs 3.0 / rel 1.5 although the score noise is ~0.012).  Results are
+    keyed by their document index now."""
+    request = {"query": "q", "documents": ["a", "b"]}
+    first = _exchange(
+        "/rerank",
+        request,
+        {"results": [{"index": 1, "relevance_score": 0.551}, {"index": 0, "relevance_score": 0.535}]},
+    )
+    second = _exchange(
+        "/rerank",
+        request,
+        {"results": [{"index": 0, "relevance_score": 0.543}, {"index": 1, "relevance_score": 0.543}]},
+        rep="after_restart",
+    )
+    summary = summarise_nondeterminism([first, second])
+    assert summary["summary"]["max_abs_diff"] < 0.05, summary["summary"]
+    assert summary["derived"]["abs_tolerance"] < 0.1, summary["derived"]
+    assert summary["derived"]["measured"] is True
+
+
 # --- section 4: provenance ------------------------------------------------------------------------------------
 
 
