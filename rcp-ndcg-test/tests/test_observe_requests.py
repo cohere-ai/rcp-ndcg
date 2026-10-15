@@ -979,9 +979,9 @@ def test_the_video_clips_are_structurally_sound_avis() -> None:
 
 def test_the_video_rows_are_planned_for_a_video_recipe() -> None:
     """A recipe with video input and a declared video policy plans a clip per size, alone and with text:
-    the container inline with its recorded facts, its frame count the policy's declared one, the strata
-    present with the facts; a recipe without video input plans none and says why."""
-    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, planned_media_rows
+    the container inline with its recorded facts, the generated frame count its declared policy samples
+    from, the strata present with the facts; a recipe without video input plans none and says why."""
+    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, VIDEO_FRAMES, planned_media_rows
 
     recipe = load_recipe(RECIPES / "fixture-vl-video")
     rows, strata = planned_media_rows(recipe)
@@ -998,7 +998,7 @@ def test_the_video_rows_are_planned_for_a_video_recipe() -> None:
     (page_entry,) = video_rows[1]["media"]["documents"][0]
     assert icon_entry["width"] == 64 and page_entry["width"] == 224
     for entry in (icon_entry, page_entry):
-        assert entry["num_frames"] == 4, "the clip carries the declared sampling's frame count"
+        assert entry["num_frames"] == VIDEO_FRAMES, "the clip carries the frames its fps policy samples from"
         assert (
             entry["sha256"]
             == __import__("hashlib").sha256(__import__("base64").b64decode(entry["uri"].split(",", 1)[1])).hexdigest()
@@ -1007,11 +1007,11 @@ def test_the_video_rows_are_planned_for_a_video_recipe() -> None:
     assert strata["media:video"] == {
         "present": True,
         "clips": len(VIDEO_CLIPS),
-        "num_frames": 4,
+        "num_frames": VIDEO_FRAMES,
         "fps": VIDEO_FPS,
     }
-    assert strata["media:video:icon"] == {"present": True, "width": 64, "height": 64, "num_frames": 4}
-    assert strata["media:video:page"] == {"present": True, "width": 224, "height": 224, "num_frames": 4}
+    assert strata["media:video:icon"] == {"present": True, "width": 64, "height": 64, "num_frames": VIDEO_FRAMES}
+    assert strata["media:video:page"] == {"present": True, "width": 224, "height": 224, "num_frames": VIDEO_FRAMES}
     assert strata["media:video+text"]["present"] is True
     again = planned_media_rows(recipe)
     assert rows == again[0], "deterministic in MEDIA_SET_VERSION"

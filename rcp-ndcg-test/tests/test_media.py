@@ -71,10 +71,23 @@ def media_pairs(path: Path) -> Path:
 
 
 def stub_for(recipe: Any, *flags: str) -> Any:
-    """The stub engine started with the recipe's own serve argv (the served chat template and pixel pin)."""
+    """The stub engine started with the recipe's own serve argv (the served chat template and sampling pin)
+    and the processor family the recipe's client declares: the stub's defaults are qwen2_vl's geometry, so a
+    fixture on another family (the video fixture's qwen3_vl) would otherwise resize and count its media as
+    the wrong engine."""
+    from rcp_ndcg.data.resolution import PROCESSORS
+
     argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
     argv = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
-    return start_stub("--tokenizer", str(TOKENIZER), *argv, *flags)
+    processor = recipe.client.get("image_processor")
+    family: list[str] = []
+    if processor:
+        geometry = PROCESSORS.get(str(processor))
+        family += ["--model-processor", str(processor)]
+        if geometry is not None:
+            family += ["--model-image-factor", str(geometry.factor)]
+            family += ["--model-image-pixels", f"{geometry.min_pixels},{geometry.max_pixels}"]
+    return start_stub("--tokenizer", str(TOKENIZER), *argv, *family, *flags)
 
 
 @pytest.fixture(scope="module")
@@ -319,7 +332,8 @@ def video_entry(width: int, height: int, num_frames: int) -> dict[str, Any]:
 
 
 def video_recipe() -> Any:
-    """The video fixture (fixture-vl-video): a video policy of 4 pinned frames, two images, one video."""
+    """The video fixture (fixture-vl-video): an fps policy (2 fps) whose Qwen3-VL rule realises 4 frames of
+    the 12-frame clips, two images, one video."""
     from rcp_ndcg_vllm import load_recipe
 
     from tests.conftest import RECIPES
@@ -334,8 +348,9 @@ def vl_recipe() -> Any:
 
 def video_pairs(path: Path, *, clip_frames: int = 12) -> Path:
     """Image rows, an interleaved row (text-image-text-image), and a video row per size, alone and with
-    text: the containers carry more frames than the fixture's declared sampling (4), so a pinned engine
-    samples exactly the policy's frames and an unpinned one does not."""
+    text: the containers carry more frames than the declared rule realises (4 of the clips' 12 at 8 fps
+    under the 2 fps rule), so an engine pinned to the declared rate counts the client's frames and one
+    pinned differently does not."""
     rows: list[dict[str, Any]] = [
         {"query": "the clip", "documents": [""], "media": {"documents": [[video_entry(64, 64, clip_frames)]]}},
         {
@@ -373,7 +388,7 @@ def video_pairs(path: Path, *, clip_frames: int = 12) -> Path:
 
 
 def test_video_and_interleaved_rows_gate_against_the_stub(vl_recipe: Any, tmp_path: Path) -> None:
-    """Offline: every video item's declared frame count equals the reference's, every interleaved row's
+    """Offline: every video item's realised frame count equals the reference's, every interleaved row's
     placement (every text part standing where it stands around the media) and every image's facts match,
     and the client counted every side; the engine's count is not run without an engine."""
     document = stage_media(vl_recipe, video_pairs(tmp_path / "pairs.jsonl"), REFERENCE_PYTHON)
@@ -383,10 +398,10 @@ def test_video_and_interleaved_rows_gate_against_the_stub(vl_recipe: Any, tmp_pa
     assert document["engine_check"]["status"] == "not_run" and document["engine_check"]["passed"] is None
 
 
-def test_the_stub_counts_a_clip_and_an_unpinned_engine_does_not(vl_recipe: Any, tmp_path: Path) -> None:
-    """With an engine: the stub samples the container under its served pin (--media-io-kwargs) and counts
-    it as the client counted it; served without the pin, the engine samples its own default frame count and
-    the stage fails on the video rows' engine count (the images are unaffected)."""
+def test_the_stub_counts_a_clip_and_a_differently_pinned_engine_does_not(vl_recipe: Any, tmp_path: Path) -> None:
+    """With an engine: the stub samples the container under its served pin (--media-io-kwargs fps) and
+    counts it as the client counted it; an engine pinned to a different rate samples other frames and the
+    stage fails on the video rows' engine count (the images are unaffected)."""
     pairs = video_pairs(tmp_path / "pairs.jsonl")
     engine = stub_for(vl_recipe)
     try:
@@ -395,8 +410,7 @@ def test_the_stub_counts_a_clip_and_an_unpinned_engine_does_not(vl_recipe: Any, 
         engine.stop()
     assert document is not None and document["passed"] is True, (document["failures"], document["engine_check"])
     assert document["engine_check"]["checked"] == 5 and document["engine_check"]["passed"] is True
-    unpinned = vl_recipe.model_copy(update={"serve": vl_recipe.serve.model_copy(update={"extra_args": []})})
-    engine = stub_for(unpinned)
+    engine = stub_for(vl_recipe, "--media-io-kwargs", '{"video": {"fps": 4}}')
     try:
         document = stage_media(vl_recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url)
     finally:
@@ -410,14 +424,34 @@ def test_the_stub_counts_a_clip_and_an_unpinned_engine_does_not(vl_recipe: Any, 
     )
 
 
-def test_a_clip_shorter_than_the_declared_sampling_is_refused(vl_recipe: Any, tmp_path: Path) -> None:
+def pinned_video_recipe(tmp_path: Path) -> Any:
+    """A copy of the video fixture that declares a pinned ``num_frames`` policy and its matching serve pin:
+    the pinned declaration is the one that refuses a clip shorter than its count (the fixture's fps rule
+    accepts any clip it can sample), so the short-clip refusal keeps a home."""
+    import shutil
+
+    import yaml
+
+    directory = tmp_path / "recipes" / "fixture-vl-video-pinned"
+    shutil.copytree(RECIPES / "fixture-vl-video", directory)
+    shutil.copy(RECIPES.parent / "tokenizer.json", tmp_path / "tokenizer.json")  # ../../tokenizer.json
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")  # the reference's import
+    data = yaml.safe_load((directory / "family.yaml").read_text(encoding="utf-8"))
+    data["id"] = "fixture-vl-video-pinned"
+    data["client"]["video_policy"] = {"num_frames": 4, "wire": "video_url", "engine_video_pinning": True}
+    data["serve"]["extra_args"] = ["--media-io-kwargs", '{"video": {"num_frames": 4}}']
+    (directory / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(directory)
+
+
+def test_a_clip_shorter_than_the_declared_sampling_is_refused(tmp_path: Path) -> None:
     """A container with fewer frames than the policy's num_frames is refused by the client's own video
     policy (a short clip is not shown whole: vLLM would resample it at its processor's own rate) -- the stage
     names the refusal."""
     rows = [
         {"query": "short clip", "documents": [""], "media": {"documents": [[video_entry(64, 64, 2)]]}},
     ]
-    document = stage_media(vl_recipe, write_pairs(tmp_path / "pairs.jsonl", rows), REFERENCE_PYTHON)
+    document = stage_media(pinned_video_recipe(tmp_path), write_pairs(tmp_path / "pairs.jsonl", rows), REFERENCE_PYTHON)
     assert document is not None and document["passed"] is False
     assert document["refusals"] and "VideoPolicyError" in document["refusals"][0]["error"]
     assert "frames" in document["refusals"][0]["error"]
@@ -757,31 +791,6 @@ def test_the_engine_prompt_tokens_probe_fails_on_a_drifted_report(recipe: Any) -
 # ---------------------------------------------------------------------------
 
 
-def fps_recipe(tmp_path: Path) -> Any:
-    """A copy of the video fixture that declares the engine's fps rule instead of a pinned frame count: the
-    Qwen3-VL backend samples by fps and ignores ``num_frames``, so the declared policy is the rate and the
-    engine's argv pins it.  The reference computes the realised count from the clip's own facts."""
-    import shutil
-
-    directory = tmp_path / "recipes" / "fixture-vl-video-fps"
-    shutil.copytree(RECIPES / "fixture-vl-video", directory)
-    shutil.copy(RECIPES.parent / "tokenizer.json", tmp_path / "tokenizer.json")  # ../../tokenizer.json
-    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")  # the reference's import
-    manifest = (directory / "family.yaml").read_text(encoding="utf-8")
-    manifest = manifest.replace("id: fixture-vl-video", "id: fixture-vl-video-fps")
-    manifest = manifest.replace("image_processor: qwen2_vl", "image_processor: qwen3_vl")
-    manifest = manifest.replace(
-        """extra_args: ["--media-io-kwargs", '{"video": {"num_frames": 4}}']""",
-        """extra_args: ["--media-io-kwargs", '{"video": {"fps": 2}}']""",
-    )
-    manifest = manifest.replace(
-        "video_policy: {num_frames: 4, wire: video_url, engine_video_pinning: true}",
-        "video_policy: {fps: 2, wire: video_url, engine_video_pinning: true}",
-    )
-    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
-    return load_recipe(directory)
-
-
 def fps_pairs(path: Path) -> Path:
     """Two clip rows (64 frames at 8 fps): the fps rule realises 16 frames -- neither the clip's 64 nor the
     loader's default 32."""
@@ -799,13 +808,13 @@ def fps_pairs(path: Path) -> Path:
 def test_an_fps_clip_gates_on_the_rules_realised_frame_count(tmp_path: Path) -> None:
     """The client counts the fps rule's realised frames (16, not the clip's 64 or the loader's 32), the
     reference computes the same count from the clip's facts, and the engine -- served with the declared pin
-    -- counts exactly the client's tokens; served without the pin it samples its own default and the media
+    -- counts exactly the client's tokens; served at a different rate it samples other frames and the media
     gate's engine check fails."""
     from rcp_ndcg_test.equivalence import media as media_module
     from rcp_ndcg_test.equivalence.fitting import load_pairs
     from rcp_ndcg_test.equivalence.media import media_rows
 
-    recipe = fps_recipe(tmp_path)
+    recipe = video_recipe()
     pairs = fps_pairs(tmp_path / "pairs.jsonl")
     facts, _, _, _ = media_module._client_facts(recipe, media_rows(load_pairs(pairs)), None)
     frames = [item["frames"] for side in facts.values() for item in side["media"]]

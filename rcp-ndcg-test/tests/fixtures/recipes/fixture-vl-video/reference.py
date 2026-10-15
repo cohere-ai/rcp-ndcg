@@ -1,12 +1,12 @@
 """The fixture vision-and-video embedder's reference, run as a subprocess (never imported by the harness).
 
 Independent of the product: it renders the prompt from its own constants and sizes images with its own
-processor rule -- the fixture "card": Qwen2-VL's ``smart_resize`` (patch 14 x merge 2 = 28 px per token
+processor rule -- the fixture "card": Qwen3-VL's ``smart_resize`` (patch 16 x merge 2 = 32 px per token
 edge) under the card's pixel budget 784..200704 px, each image costing its merged patches plus its two
 vision markers. The card consumes a side's parts in the GIVEN order (an interleaved-native card): every text segment and
-media part stands where it stands, so a caption after its page stays after it. A video is the card's declared frame
-count (the sampling the recipe pins on both sides); its tokens are the processor's and are not counted
-here.
+media part stands where it stands, so a caption after its page stays after it. A video is the card's realised frame
+count under the declared fps rule (the sampling the recipe pins on both sides); its tokens are the
+processor's and are not counted here.
 
 Modes: ``render`` and ``embed`` as the fixture embedder's (text rows; deterministic vectors), and
 ``media``: per pairs row and side that carries media, ``{"index", "side", "placement", "media":
@@ -27,14 +27,15 @@ from pathlib import Path
 PREFIX = "doc: "
 SUFFIX = " [END]"
 EMBED_TAG = "embed"
-FACTOR = 28
+FACTOR = 32
 MIN_PIXELS = 784
 MAX_PIXELS = 200704
 MAX_IMAGES = 2
 MAX_VIDEOS = 1
 VIDEO_FRAMES = 4
-"""The card's declared video sampling: the recipe's video_policy.num_frames, restated here as the card's
-own constant (the recipe's test pins the two to the same number)."""
+"""The card's fallback frame count when the recipe declares no fps rule: a pinned ``num_frames`` restated
+here as the card's own constant. The fixture declares the engine's fps rule, so :data:`DECLARED_FPS`
+decides the realised count; the fallback keeps a policy-less copy readable."""
 
 DECLARED_FPS: float | None = None
 """The card's declared sampling rate, when the recipe declares the engine's fps rule instead of a pinned

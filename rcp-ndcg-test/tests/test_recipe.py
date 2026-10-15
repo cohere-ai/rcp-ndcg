@@ -655,8 +655,8 @@ def test_convert_must_match_the_roles_route(tmp_path: Path) -> None:
 
 def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_args: list[str]) -> Path:
     """``fixture-vl-video`` copied with the client's video policy and the given pruning args added to
-    serve's ``extra_args`` (the fixture's own video sampling pin is kept: it is the client's declaration's
-    engine half)."""
+    serve's ``extra_args``; the fixture's own sampling pin is replaced by the one matching the client
+    policy (the declaration's engine half)."""
     import shutil
 
     import yaml
@@ -670,7 +670,14 @@ def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_a
         data["client"].pop("video_policy", None)
     else:
         data["client"]["video_policy"] = client_policy
-    data["serve"]["extra_args"] = [*data["serve"]["extra_args"], *extra_args]
+    policy = client_policy or {}
+    if policy.get("num_frames") is not None:
+        pin: dict[str, dict[str, int]] | None = {"video": {"num_frames": policy["num_frames"]}}
+    elif policy.get("fps") is not None:
+        pin = {"video": {"fps": policy["fps"]}}
+    else:
+        pin = None
+    data["serve"]["extra_args"] = (["--media-io-kwargs", json.dumps(pin)] if pin else []) + list(extra_args)
     (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return copied
 
