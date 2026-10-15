@@ -196,3 +196,19 @@ def test_the_mirror_interval_flag_reaches_the_mirror(
     code, out = _invoke(*args, "--mirror-interval", "0.5", "--json")
     assert code == 0, out
     assert seen == [0.5]
+
+
+def test_candidates_pools_break_ties_toward_the_lower_document_id(dataset: str, tmp_path: Path) -> None:
+    """``judge --candidates`` sorted by ``(score, doc_id)`` descending, so tied scores went to the HIGHER
+    document id -- against ``Rankings.top`` and ``runs/pipeline._order``, the stack's one tie rule (score
+    descending, then the lower id). On the same file and depth the CLI judged a different set than
+    ``run start`` does; the pools are built through the library's rule now."""
+    from rcp_ndcg.cli.judge import TournamentRequest, _pools
+    from rcp_ndcg.data import Rankings, load_dataset
+
+    written = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 0.5}}, system="a").save(
+        tmp_path / "run.parquet"
+    )
+    request = TournamentRequest(candidates=str(written), depth=1, out=str(tmp_path / "store"), dataset=dataset)
+    pools = _pools(request, load_dataset(dataset))
+    assert pools["q1"] == ["d1"]

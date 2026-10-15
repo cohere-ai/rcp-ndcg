@@ -4397,6 +4397,12 @@ text it sends to the declared budget.
   overflowed, so the processing record could not tell that the checkpoint's own document cap had bound. The
   cap's row is recorded beside the budget row now, and `processing_records` names both.
 
+- **`judge --candidates` applies the stack's one tie rule**: the CLI sorted each pool by `(score, doc_id)`
+  descending, so tied scores at the depth cut went to the HIGHER document id -- against `Rankings.top` and the
+  run pipeline's order (score descending, then the lower id). On the same rankings file and depth the command
+  judged a different set of documents than `run start` does. The pools now go through `Rankings.top(depth)`
+  and the one `rcp_ndcg.data.rankings.ordered_documents` helper, which the run pipeline also uses.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

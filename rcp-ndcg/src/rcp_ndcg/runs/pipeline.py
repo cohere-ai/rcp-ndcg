@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
 
 from rcp_ndcg.data import Dataset, Rankings
+from rcp_ndcg.data.rankings import ordered_documents
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
 from rcp_ndcg.judging.client import Usage
 from rcp_ndcg.judging.prompts import load_prompt, shipped_prompts_digest
@@ -640,7 +641,7 @@ class Pipeline:
     def _fused_pools(self) -> dict[str, list[str]]:
         """Each query's pool from the fused systems, before the fuse step has written the candidates file."""
         fused = self._fused_rankings()
-        pools = {query: _order(scores) for query, scores in fused.queries().items()}
+        pools = {query: ordered_documents(scores) for query, scores in fused.queries().items()}
         depth = self.config.candidates.depth
         return {query: pool[:depth] for query, pool in self._limited(pools).items()}
 
@@ -652,7 +653,7 @@ class Pipeline:
         supplied = load_rankings(path)
         system = self.config.candidates.system or _only_system(supplied, path)
         pools = supplied.queries(system=system, dataset=self.dataset.name)
-        return {query: _order(scores) for query, scores in pools.items()}
+        return {query: ordered_documents(scores) for query, scores in pools.items()}
 
     def _step_rerank(self) -> tuple[list[ArtifactRef], Usage | None]:
         from rcp_ndcg.retrieval import rerank
@@ -899,7 +900,7 @@ class Pipeline:
                 )
             pools = self._dataset_pools()
         else:
-            pools = {query: _order(scores) for query, scores in _read_rankings(path).queries().items()}
+            pools = {query: ordered_documents(scores) for query, scores in _read_rankings(path).queries().items()}
         depth = self.config.candidates.depth
         return {query: pool[:depth] for query, pool in self._limited(pools).items()}
 
@@ -1050,12 +1051,6 @@ FUSED = "rrf"
 JUDGE = "judge"
 #: The reference systems every run scores beside the user's own: the pool order and the judge's abilities.
 REFERENCE_SYSTEMS: tuple[str, str] = (CANDIDATES, JUDGE)
-
-
-def _order(scores: dict[str, float]) -> list[str]:
-    """Document ids best first (score descending, then the lower document id: the retrieval stack's one tie
-    rule, the same one ``Rankings.top`` and the first stage's cut apply)."""
-    return sorted(scores, key=lambda doc: (-scores[doc], doc))
 
 
 def _only_system(rankings: Rankings, where: str) -> str:
