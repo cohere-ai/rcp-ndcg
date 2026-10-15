@@ -44,6 +44,9 @@ incompatibly, independently of the package version. All four distributions carry
   `over_cap_cut_differs` failed stage 2 on exactly the text the deviation declares non-gating, and the row
   was missing from the `over_cap` table; declared, the mismatch is now reported there with both counts,
   undeclared it gates and is named there too.
+- **Harness: a constant conformance row fails its `spearman_min` gate wherever it sits** (testpkg-4): the
+  worst-row tracking never replaced a finite minimum with a NaN, so a constant second query passed as
+  'worst spearman 1 >= spearman_min'; the NaN row is now selected and the failure names the query.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
