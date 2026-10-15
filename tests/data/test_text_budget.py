@@ -567,7 +567,23 @@ class TestDocumentCap:
         )
         assert result.contents[0] == (self.SHORT_QUERY, "the page") and len(census) == 0
 
+    def test_a_capped_document_the_budget_still_cuts_names_both_causes(self) -> None:
+        """The document cap bound first and the pair still overflowed: the budget then cut the rest, and the
+        record names both mechanisms -- the cap's ``document_share`` is not replaced by ``budget_cut``."""
+        budget = TextBudget(tokenizer=WORDS.name, max_tokens=10, query_max_tokens=3, document_max_tokens=6)
+        result = fit(
+            [("one two three four five six ", "the a of to and in is it evidence query")],
+            shape="pair",
+            budget=budget,
+            tokenizer=WORDS,
+        )
+        (record,) = processing_records("rerank", "pair", cuts=result.cuts)
+        assert "document_share" in record.mechanisms
+        assert "budget_cut" in record.mechanisms
+
     def test_a_pair_the_capped_document_still_overflows_is_cut_by_the_budget(self) -> None:
+        """The cap bound the document and the pair still overflowed: the budget cuts the rest, and both
+        mechanisms are recorded -- the cap's ``document_share`` row and the ``budget_cut`` row."""
         census = TextTruncationCensus()
         query = " ".join(["the"] * 40)
         result = fit(
@@ -579,7 +595,7 @@ class TestDocumentCap:
         )
         assert len(engine_ids(result.texts[0], pair_template(), "pair")) <= 64
         assert FRAMED.count(result.contents[0][1]) <= 8
-        assert [cut.cause for cut in census.cuts()] == ["budget_cut"]
+        assert [cut.cause for cut in census.cuts()] == ["document_share", "budget_cut"]
 
     def test_the_cap_is_validated_and_enters_the_identity(self) -> None:
         with pytest.raises(ValueError, match="document_max_tokens"):

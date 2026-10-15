@@ -4386,6 +4386,11 @@ text it sends to the declared budget.
   2 fps: bound 12,326 against an exact 18,470), and a role client reserving media from it under-reserved. The
   bound is now per group (`ceiling // (t_bar * factor^2)`, `t_bar` the resize's own bar) times the groups.
 
+- **A pair cut by both `document_max_tokens` and the budget records both mechanisms**: the cap's
+  `document_share` row used to be replaced by the budget cut's `budget_cut` when the capped pair still
+  overflowed, so the processing record could not tell that the checkpoint's own document cap had bound. The
+  cap's row is recorded beside the budget row now, and `processing_records` names both.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

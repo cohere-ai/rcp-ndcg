@@ -1065,6 +1065,18 @@ def fit(
                     part_pairs=_pair_part_pairs(index, query, document),
                 )
                 continue
+            # The cap bound and the pair still overflows: the budget decides the rest. Record the cap's own
+            # cut beside the budget row (the same doc_id), so the processing record names both mechanisms.
+            _record(
+                doc_id=input_id,
+                original=original,
+                kept=(query, document),
+                aggregation=budget.aggregation,
+                request_tokens=request_tokens,
+                raw=raw,
+                cause="document_share",
+                part_pairs=_pair_part_pairs(index, query, document),
+            )
         if uncut_tokens <= cap:
             if not (template is None and shape == "pair"):
                 texts.append(assemble(query, document))
