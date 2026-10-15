@@ -181,6 +181,47 @@ class TestReplicas:
         stuck, fine = asyncio.run(both())
         assert isinstance(stuck, RequestRejectedError) and fine[0].status == 200
 
+    def test_a_rate_limited_request_is_not_refused_while_others_succeed(self) -> None:
+        """A 429 is load, not this request's failure: it stays on the outage path (park and retry), never
+        the rejection rule, even when sibling requests succeed on the replica while it is set aside."""
+
+        def serve(request: httpx.Request) -> httpx.Response:
+            stuck = b"stuck" in request.content
+            if stuck:
+                return httpx.Response(429, json={"error": {"message": "rate limited"}})
+            return httpx.Response(200, json=_BODY)
+
+        transport = Transport(
+            Endpoint(base_url="http://a/v1", model="m", max_retries=0, wait_on_outage_s=0.2),
+            httpx_transport=httpx.MockTransport(serve),
+        )
+
+        async def both() -> list[Any]:
+            stuck = transport.send([Call("POST", "/chat/completions", {"prompt": "stuck"})])
+            fine = transport.send([Call("POST", "/chat/completions", {"prompt": "fine"})])
+            return await asyncio.gather(stuck, fine, return_exceptions=True)
+
+        stuck, fine = asyncio.run(asyncio.wait_for(both(), timeout=10.0))
+        assert not isinstance(stuck, RequestRejectedError), stuck
+        assert isinstance(stuck, BackendUnavailableError), stuck
+        assert fine[0].status == 200
+
+    def test_a_set_aside_honours_retry_after(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A 429's Retry-After is the set-aside window, not just the within-request retry delay: with
+        BACKOFF_S at 60 s the request would park for a minute without it."""
+        monkeypatch.setattr(Transport, "BACKOFF_S", 60.0)
+        monkeypatch.setattr(Transport, "RETRY_MAX_BACKOFF_S", 60.0)
+        clock = _Clock()
+        monkeypatch.setattr(transport_module, "time", clock)
+        monkeypatch.setattr(transport_module, "_sleep", clock.sleep)
+        script = ReplicaScript((429, {"Retry-After": "0.05"}), 200)
+        transport = _transport(script, max_retries=0, wait_on_outage_s=None)
+        replies = asyncio.run(asyncio.wait_for(transport.send([Call("POST", "/x", {})]), timeout=5.0))
+        assert replies[0].status == 200
+        assert clock.sleeps == [pytest.approx(0.05)]  # the server's Retry-After, never the 60 s backoff
+
 
 class TestOutages:
     def test_a_transient_failure_is_retried_on_the_replica(self) -> None:

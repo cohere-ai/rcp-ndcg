@@ -4314,6 +4314,13 @@ text it sends to the declared budget.
   procedure is in [use verified fake engines](docs/how-to/use-verified-fake-engines.md), and
   `test_no_committed_corpus_names_private_infrastructure` holds the committed bytes to it.
 
+- **A 429 or 408 no longer refuses a request that is merely rate-limited**: the rejection rule ("the replica
+  served other requests, so this failure is this request's") now applies only to a connection failure, a timeout
+  or a 5xx. A 408 or 429 stays on the outage path: the replica is set aside for the server's `Retry-After` when
+  it gives one (otherwise the backoff, jittered so the parked requests do not all return at once), and the
+  request parks and retries until `wait_on_outage_s`. A rate-limited hosted endpoint at the default concurrency
+  used to abort a whole corpus encode or rerank pass with a non-retryable `RequestRejectedError`.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

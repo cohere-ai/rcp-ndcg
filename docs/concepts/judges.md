@@ -199,7 +199,9 @@ the judge is one of its roles.
   default, carried to the step in `RCP_NDCG_ENGINES`) and then fails, since its engine will not come back on
   its own.
 - **A request that keeps failing on a replica that answers other requests** is that request's failure: it is
-  refused and recorded like any refused window.
+  refused and recorded like any refused window. A 408 or 429 never is: it is the endpoint's load, so it stays on
+  the outage path (the replica is set aside for the server's `Retry-After` when it gives one, and the request
+  parks and retries).
 
 ## How the client behaves
 

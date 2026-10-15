@@ -117,7 +117,10 @@ plus a large model's load); `wait_on_outage_s: null` is the explicit "wait indef
 `step_budget_s` bounds the step on top: the transport checks it before each request and after every park, so a
 step over budget stops with `StepBudgetExceededError` instead of working through a long outage
 ([runs](runs.md)). A request that keeps failing on a replica
-that answers other requests is that request's failure: it is refused (`RequestRejectedError`).
+that answers other requests is that request's failure: it is refused (`RequestRejectedError`). A 408 or 429 is
+never that: it is the endpoint's load, and stays on the outage path -- the replica is set aside for the
+server's `Retry-After` when it gives one (otherwise the backoff, jittered so parked requests do not all return
+at once), and the request parks and retries instead of a rate-limited window aborting a whole encode.
 
 ## Third-party adapters (C2)
 
