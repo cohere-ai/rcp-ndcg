@@ -306,6 +306,22 @@ class TestPhases:
         blocks = [line for line in script.splitlines() if line in here]
         assert blocks == [f'{steps}"$WORKER_1" &', f'{steps}"$WORKER_2"', f'{steps}"$WORKER_3" &']
 
+    def test_a_phase_does_not_leave_its_trap_and_pids_for_the_next(self) -> None:
+        """runs-10: an engine-free phase after an engine phase inherited the earlier phase's EXIT trap and its
+        reaped PIDs; at job exit the trap TERM/KILLed them again (a PID the kernel may have reused)."""
+        phases = (
+            JobPhase(engines={"judge": SERVE.model_copy(update={"image": None})}, argv=("a",)),
+            JobPhase(argv=("b",)),
+        )
+        lines = SlurmRunner().render([JobSpec(name="j", phases=phases)])["j"].splitlines()
+        first = next(i for i, line in enumerate(lines) if line.endswith('bash -c "$WORKER_1" &'))
+        second = next(i for i, line in enumerate(lines) if line.endswith('bash -c "$WORKER_2"'))
+        between = lines[first:second]
+
+        assert "trap - EXIT TERM INT" in between
+        assert any(line.startswith("unset RCP_NDCG_COORDINATOR_PID") for line in between)
+        assert any(line.startswith("unset RCP_NDCG_ENGINE_PID") for line in between)
+
     @pytest.mark.parametrize("runtime", ["none", "apptainer", "pyxis"])
     @pytest.mark.parametrize(
         "phases",

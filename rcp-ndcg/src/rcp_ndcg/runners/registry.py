@@ -18,7 +18,7 @@ from typing import Any
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.runners.base import JobRunner
-from rcp_ndcg.support.entrypoints import provider_of, registered_names
+from rcp_ndcg.support.entrypoints import load_target, provider_of, registered_names
 
 ENTRY_POINT_GROUP = "rcp_ndcg.runners"
 
@@ -41,9 +41,9 @@ def get_runner(name: str, **options: Any) -> JobRunner:
             f"unknown runner {name!r}; installed: {list(available)}",
             hint=f"a runner is a {ENTRY_POINT_GROUP!r} entry point; install the package that provides it",
         )
-    runner = provider_of(entries, ENTRY_POINT_GROUP, name, kind="runner").load()
+    runner = load_target(provider_of(entries, ENTRY_POINT_GROUP, name, kind="runner"), kind="runner")
     try:
-        return runner(**options)
+        return runner(**options)  # type: ignore[operator]  # the loaded plugin's own constructor
     except (TypeError, ValueError) as exc:
         # A plugin whose constructor rejects the options raises what it raises; built-ins and plugins then
         # fail with the same typed error for the same mistake (JobOptions.parse converts for the built-ins).

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from rcp_ndcg.data import load_rankings
+from rcp_ndcg.data import Rankings, load_rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError, RcpNdcgWarning
 from rcp_ndcg.judging import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
@@ -153,6 +153,30 @@ class TestResume:
         assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
         assert _statuses(Pipeline.resume(run_dir).run()) == dict.fromkeys(STEPS, "completed")
 
+    def test_the_identity_refusal_hint_names_a_working_remedy(self, data: Path, tmp_path: Path) -> None:
+        """runs-8: the hint said to move ``judgements/<stage>.jsonl`` aside, but ``identity.json`` keeps the
+        claim (and a mirror restores the file), so the next resume refuses again; a mirrored run also needs a
+        new mirror URI, which the hint did not say."""
+        from rcp_ndcg import storage
+
+        pipeline = Pipeline(
+            tiny_config(data, steps=["tournament"], mirror="memory://mirror/identity"),
+            runs_dir=str(tmp_path / "runs"),
+        )
+        try:
+            pipeline.run()
+            with pytest.raises(IdentityError) as caught:
+                Pipeline.resume(pipeline.layout.root, overrides=["tournament.seed=7"]).run()
+        finally:
+            memory = storage.filesystem("memory://")
+            memory.store.clear()
+            memory.pseudo_dirs[:] = [""]
+
+        hint = caught.value.hint or ""
+        assert "start a new run" in hint
+        assert "move" not in hint and "aside" not in hint
+        assert "new mirror URI" in hint
+
 
 class TestFailure:
     def test_a_failing_step_fails_the_run(self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -250,6 +274,20 @@ class TestAFailedChange:
         monkeypatch.undo()
         assert _statuses(Pipeline.resume(run_dir).run()) == dict.fromkeys(STEPS, "completed")
 
+    def test_a_failed_dataset_override_leaves_the_run_as_it_was(self, run_dir: Path) -> None:
+        """runs-1: the from:dataset preamble loaded the dataset outside the failure handling, so a resume
+        whose dataset load fails kept the failed --set change and left the run 'running' forever."""
+        recorded = RunManifest.load(run_dir)
+        run_yaml = (run_dir / "run.yaml").read_text(encoding="utf-8")
+
+        with pytest.raises(FileNotFoundError):
+            Pipeline.resume(run_dir, overrides=[f"dataset=jsonl:{run_dir}/missing.jsonl"]).run()
+
+        manifest = RunManifest.load(run_dir)
+        assert manifest.config == recorded.config
+        assert (run_dir / "run.yaml").read_text(encoding="utf-8") == run_yaml
+        assert manifest.status is RunStatus.COMPLETED
+
     def test_a_step_rerun_before_the_failure_is_redone_under_the_recorded_config(
         self, run_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -287,6 +325,27 @@ class TestAFailedChange:
             "tournament": "completed",
             "rubric": "completed",
         }
+
+
+def test_a_failed_step_error_is_recorded_redacted(data: Path, tmp_path: Path) -> None:
+    """runs-12: a credentialed URI the recorded config strips must not ride the error text into the mirrored
+    ``manifest.json`` or ``logs/run.log``."""
+    from rcp_ndcg.runs.run import execute_run
+
+    config = tiny_config(
+        data,
+        candidates={"from": "rankings", "rankings": "memory://key:secret@bkt/missing.jsonl"},
+        steps=["retrieve"],
+    )
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    with pytest.raises(MissingInputError):
+        execute_run(pipeline)
+
+    manifest = Path(pipeline.layout.manifest).read_text(encoding="utf-8")
+    log = (Path(pipeline.layout.root) / "logs" / "run.log").read_text(encoding="utf-8")
+    assert "rankings file not found" in manifest, "the failure is still recorded"
+    assert "secret" not in manifest
+    assert "secret" not in log
 
 
 class TestOnly:
@@ -1536,6 +1595,62 @@ def test_only_rerank_regenerates_a_missing_first_stage(
 
     assert first.is_file(), "the first stage is regenerated"
     assert load_rankings(root / "candidates.parquet").queries().keys() == expected.keys()
+
+
+class TestRemoteInputs:
+    """A step input named by URI is hashed like a local one (arch-1): a replaced object re-keys the step."""
+
+    @pytest.fixture(autouse=True)
+    def _empty_memory_fs(self):
+        from rcp_ndcg import storage
+
+        memory = storage.filesystem("memory://")
+        memory.store.clear()
+        memory.pseudo_dirs[:] = [""]
+        yield
+        memory.store.clear()
+        memory.pseudo_dirs[:] = [""]
+
+    def _remote_rankings(self) -> str:
+        rows, _ = tiny_rows()
+        orders = {row.id: row.doc_ids[:6] for row in rows}
+        Rankings.from_orders(orders, system="text").save("memory://bkt/rankings.jsonl")
+        return "memory://bkt/rankings.jsonl"
+
+    def test_a_remote_rankings_input_is_hashed_and_a_replaced_object_re_runs_the_step(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        remote = self._remote_rankings()
+        pipeline = Pipeline(
+            tiny_config(data, candidates={"from": "rankings", "rankings": remote}, steps=["retrieve"]),
+            runs_dir=str(tmp_path / "runs"),
+        )
+        assert [ref.path for ref in pipeline._inputs("retrieve")] == [remote]
+        manifest = pipeline.run()
+        assert manifest.status is RunStatus.COMPLETED
+
+        rows, _ = tiny_rows()
+        changed = {row.id: list(reversed(row.doc_ids[:6])) for row in rows}
+        Rankings.from_orders(changed, system="text").save(remote)
+
+        assert Pipeline.resume(pipeline.layout.root).plan()[0] == {"step": "retrieve", "status": "would run"}
+
+    def test_a_credentialed_input_uri_is_recorded_redacted(self, data: Path, tmp_path: Path) -> None:
+        rows, _ = tiny_rows()
+        orders = {row.id: row.doc_ids[:6] for row in rows}
+        Rankings.from_orders(orders, system="text").save("memory://key:secret@bkt/rankings.jsonl")
+        pipeline = Pipeline(
+            tiny_config(
+                data,
+                candidates={"from": "rankings", "rankings": "memory://key:secret@bkt/rankings.jsonl"},
+                steps=["retrieve"],
+            ),
+            runs_dir=str(tmp_path / "runs"),
+        )
+
+        (ref,) = pipeline._inputs("retrieve")
+        assert ref.path == "memory://bkt/rankings.jsonl"
+        assert "secret" not in ref.path
 
 
 def test_the_rankings_first_stage_orders_a_tied_pair_by_the_lower_id() -> None:

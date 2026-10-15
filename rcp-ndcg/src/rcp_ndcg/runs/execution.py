@@ -40,7 +40,7 @@ from rcp_ndcg.runners.base import JobOptions, JobRunner, JobSpec, JobStatus
 from rcp_ndcg.runners.registry import get_runner
 from rcp_ndcg.runs.config import RunConfig, redact_runner_options
 from rcp_ndcg.runs.layout import MANIFEST_NAME, RunLayout, slugify
-from rcp_ndcg.runs.manifest import RunManifest, RunStatus
+from rcp_ndcg.runs.manifest import RunManifest, RunStatus, StepStatus
 from rcp_ndcg.runs.run import JobState, Run, RunState, execute_run, mark, prepare, reopen
 from rcp_ndcg.storage import publish_bytes
 from rcp_ndcg.support.resources import Resources
@@ -144,7 +144,13 @@ def job_for(
                 hint=f"the job fields describe the job and are read when the config names the runner in use: set "
                 f"runner.name: {runner} and put {', '.join(dropped)} under its options, or drop them",
             )
-    runner_options, fields = _split_options({**configured, **(options or {})})
+    # A resubmission passes the last job's recorded options; a value the config *declares* wins over the record,
+    # so an explicit `--set runner.options.*` is not silently overridden by the last job (it would go to the old
+    # partition while run.yaml and the manifest record the new one). A resolved config also carries its options'
+    # defaults; those are dropped here so they cannot override the record either.
+    if options and configured:
+        configured = _declared_runner_options(runner, configured)
+    runner_options, fields = _split_options({**(options or {}), **configured})
     if runner == "local":  # keep the job's output with the run, and run it where it was started
         runner_options = {"log_dir": str(Path(root) / "logs"), "cwd": os.getcwd(), **runner_options}
     backend = get_runner(runner, **runner_options)
@@ -171,6 +177,44 @@ def job_for(
         fields=fields,
     )
     return backend, job, runner_options
+
+
+def _declared_runner_options(runner: str, configured: Mapping[str, Any]) -> dict[str, Any]:
+    """The runner options a config declares: values equal to the runner's own defaults are dropped.
+
+    A config read back from ``run.yaml`` carries every option (a resolved dump), including defaults that were
+    never set. A resubmission merges the last job's recorded options with these, so a default-valued field must
+    not count as a declaration and override the record (``--detach`` would turn itself off, a recorded
+    ``log_dir`` would go back to the default). A value the config *does* declare -- the original submission's
+    options, or a ``--set`` change -- differs from the default and wins over the record.
+    """
+    try:
+        defaults = getattr(get_runner(runner), "options", None)
+    except Exception:  # noqa: BLE001 - a plugin runner whose constructor needs its options
+        return dict(configured)
+    if not isinstance(defaults, JobOptions):
+        return dict(configured)  # a plugin's free-form options: whatever the config carries is a declaration
+    fields = type(defaults).model_fields
+    declared: dict[str, Any] = {}
+    for key, value in configured.items():
+        if key in fields and _option_equal(value, getattr(defaults, key), fields[key].annotation):
+            continue
+        declared[key] = value
+    return declared
+
+
+def _option_equal(given: Any, expected: Any, annotation: Any) -> bool:
+    """Whether a config's option value equals the runner's default, compared in the field's own type (a
+    resolved dump omits schema defaults inside a nested model, so plain equality is not enough)."""
+    if given == expected:
+        return True
+    from pydantic import TypeAdapter, ValidationError
+
+    adapter = TypeAdapter(annotation)
+    try:
+        return bool(adapter.validate_python(given) == adapter.validate_python(expected))
+    except ValidationError:
+        return False
 
 
 def _phased_job(
@@ -309,7 +353,14 @@ def submit_run(pipeline: Any, runner: str, options: Mapping[str, Any] | None = N
     record: dict[str, Any] = {
         "runner": runner,
         "options": redact_runner_options(runner_options),
-        "jobs": [{"name": job.name, "handle": None}],
+        # A synchronous runner's job is its name: record the handle before it runs, so a job that fails still
+        # has one (its log and its status stay reachable); a scheduler handle exists only after submit returns.
+        "jobs": [
+            {
+                "name": job.name,
+                "handle": job.name if getattr(backend, "synchronous", False) else None,
+            }
+        ],
         # The submission is in flight: a process killed before the handle is written leaves this flag, and a
         # resubmission must refuse rather than start a second job over the first.
         "submitting": True,
@@ -392,6 +443,8 @@ def _refuse_live_jobs(run: Run) -> None:
                 cli_hint=f"check the scheduler and cancel it before resubmitting: rcp-ndcg run status --run {run.dir}",
             ) from exc
         if state is JobStatus.UNKNOWN:
+            if record.get("error") and getattr(backend, "synchronous", False):
+                continue  # a synchronous job that ran and failed: nothing of it is live
             raise ConfigError(
                 f"the {record['runner']} runner cannot find job {job['name']} ({job['handle']}) of {run.layout.run_id}",
                 hint="its handle may be live: check the scheduler and cancel it before resubmitting",
@@ -435,7 +488,9 @@ def status(run_dir: str | Path) -> RunState:
     record = run.jobs()
     if record is None:
         return state.model_copy(update={"note": " ".join(notes) or None})
-    if record.get("error"):
+    if record.get("error") and not any(job["handle"] for job in record["jobs"]):
+        # A submission that produced no job at all failed; one whose job has a handle ran (or was handed to the
+        # scheduler) and its failure is reported through the job's status and its log.
         notes.append(f"the submission failed: {record['error']}")
     backend, _ = _backend(run)
     jobs = []
@@ -498,6 +553,13 @@ def status(run_dir: str | Path) -> RunState:
     return state.model_copy(update=update)
 
 
+def _was_interrupted(manifest: RunManifest) -> bool:
+    """Whether the manifest's failure is a step interrupted by SIGINT/SIGTERM (the signal ``run cancel`` sends)."""
+    from rcp_ndcg.runs.pipeline import INTERRUPT_ERROR
+
+    return any(record.status is StepStatus.FAILED and record.error == INTERRUPT_ERROR for record in manifest.steps)
+
+
 def _newer_from_mirror(run: Run, remote: str, manifest: RunManifest, notes: list[str]) -> RunManifest:
     """The mirror's manifest when it was updated after ``manifest``, else ``manifest``.
 
@@ -524,6 +586,14 @@ def _newer_from_mirror(run: Run, remote: str, manifest: RunManifest, notes: list
         )
         return manifest
     if mirrored is None or mirrored.updated_at <= manifest.updated_at:
+        return manifest
+    if manifest.status is RunStatus.CANCELLED and mirrored.status is RunStatus.FAILED and _was_interrupted(mirrored):
+        # This host cancelled the run; the job's own manifest (a pod's, on its scratch disk) records the
+        # interrupt as a failure and is newer, but it must not turn the user's cancellation back into a failure.
+        notes.append(
+            f"the mirror {safe_url(remote)} is ahead, and it records the cancelled run as failed: this host "
+            "cancelled it, so this is the local state."
+        )
         return manifest
     notes.append(
         f"read from the mirror {safe_url(remote)}, which is ahead of this directory (restore it with run resume "
@@ -587,12 +657,24 @@ def cancel(run_dir: str | Path) -> RunState:
             )
         live.append((job["handle"], state))
     stopped = 0
-    for handle, state in live:
-        if state in (JobStatus.PENDING, JobStatus.RUNNING):
-            backend.cancel(handle)
-            stopped += 1
-    if stopped and run.manifest.status in (RunStatus.SUBMITTED, RunStatus.RUNNING):
+    live_to_stop = [(handle, state) for handle, state in live if state in (JobStatus.PENDING, JobStatus.RUNNING)]
+    if live_to_stop and run.manifest.status in (RunStatus.SUBMITTED, RunStatus.RUNNING):
+        # The cancel intent is recorded before the signal: the coordinator's SIGTERM handler keeps CANCELLED only
+        # when the manifest already says so, and otherwise records the step and run as failed (the canceller had
+        # not marked yet). Marking first makes the coordinator's own record the cancellation, and the stop below
+        # confirms it.
         mark(run, RunStatus.CANCELLED)
+    for handle, _ in live_to_stop:
+        backend.cancel(handle)
+        stopped += 1
+    if stopped:
+        manifest = run.manifest
+        if manifest.status in (RunStatus.SUBMITTED, RunStatus.RUNNING):
+            mark(run, RunStatus.CANCELLED)
+        elif manifest.status is RunStatus.FAILED and _was_interrupted(manifest):
+            # The job handled SIGTERM before the intent reached it (a pod whose manifest lives on its own disk,
+            # or a scheduler signal): the failing step's error is the interrupt, so this was the cancellation.
+            mark(run, RunStatus.CANCELLED)
     return status(run_dir)
 
 

@@ -37,6 +37,7 @@ string: :func:`shorthand_config` expands it and ``--set`` fills the runtime fiel
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from rcp_ndcg.errors import ConfigError
@@ -158,6 +159,22 @@ def _load(recipe_id: str):
             "(decision 18): upgrade rcp-ndcg, or ship recipes of a schema version it reads",
         )
     return loaded
+
+
+def rebase_recipe_path(value: str, base: Path) -> str:
+    """A recipe value's relative path made absolute against ``base``; anything else unchanged.
+
+    Both spellings are accepted: the string form ``recipe:./my-family`` (a run config's ``judge:``) and the
+    mapping value ``./my-family`` (a config's ``recipe:`` key, or a retriever/reranker YAML). A recipe named
+    by path is a file of the operator's own, so it is relative to the file that names it, like every other
+    relative path in a config; a shipped id names package data and is returned as it is.
+    """
+    prefix, source = "", value
+    if value.startswith("recipe:"):
+        prefix, source = "recipe:", value.split(":", 1)[1].strip()
+    if not source.startswith((".", "/")):
+        return value
+    return f"{prefix}{(base / source).resolve()}"
 
 
 def recipe_source(value: str) -> str | None:

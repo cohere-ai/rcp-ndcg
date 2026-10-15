@@ -48,7 +48,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator
 
 from rcp_ndcg import storage
-from rcp_ndcg.errors import DataError, Interrupted
+from rcp_ndcg.errors import ConfigError, DataError, Interrupted
 from rcp_ndcg.runs.layout import MANIFEST_NAME, WORK_DIR
 from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.urls import redact_urls, safe_url
@@ -105,7 +105,7 @@ class Mirror:
 
     def __init__(self, root: str | Path, remote: str, *, state_file: str | Path | None = None) -> None:
         self.root = Path(root)
-        self.remote = remote.rstrip("/")
+        self.remote = _refuse_blank_mirror(remote).rstrip("/")
         if safe_url(self.remote) != self.remote:
             logger.warning(
                 "[mirror] %s carries credentials in its URI; they are never recorded (run.yaml, the manifest, the "
@@ -117,6 +117,7 @@ class Mirror:
         self._ends: dict[str, int] = {}
         self._tails: dict[str, bytes] = {}
         self._seen: dict[str, tuple[int, int]] = {}
+        self._checked_scope = False
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -126,11 +127,24 @@ class Mirror:
     def flush(self) -> None:
         """Upload what changed since the last flush, then record the upload time.
 
+        Every append-only file is checked against what the mirror holds *before* anything is uploaded: a
+        rewritten file refuses the whole flush, so the mirror never ends up holding a new ``identity.json``
+        beside another generation's parts.
+
         Raises:
             DataError: an append-only file was rewritten (it no longer extends what the mirror holds).
         """
         with self._lock:
-            for path in self._files():
+            if not self._checked_scope:
+                # The mirror is run-scoped, and the first flush enforces it exactly as restore does: a staging
+                # flush must not overwrite another run's manifest before the job that would run this one starts.
+                self._refuse_foreign_run(_remote_files(self._target))
+                self._checked_scope = True
+            files = self._files()
+            for path in files:
+                if path.name in APPEND_ONLY:
+                    self._prepare_append(path, path.relative_to(self.root).as_posix())
+            for path in files:
                 relative = path.relative_to(self.root).as_posix()
                 if path.name in APPEND_ONLY:
                     self._append(path, relative)
@@ -156,7 +170,8 @@ class Mirror:
             files.append(path)
         return files
 
-    def _append(self, path: Path, relative: str) -> None:
+    def _prepare_append(self, path: Path, relative: str) -> int:
+        """The mirror's current end for an append-only file, refusing a rewritten one; cached for ``_append``."""
         start = self._ends.get(relative)
         if start is None:  # first contact: what the mirror holds, and its last bytes to compare the file with
             parts = _parts(self._target, relative)
@@ -169,6 +184,13 @@ class Mirror:
                 f"{path} no longer extends what the mirror holds ({start} bytes): it was rewritten or superseded",
                 hint="mirror the rewritten store to a new URI",
             )
+        self._ends[relative] = start
+        return start
+
+    def _append(self, path: Path, relative: str) -> None:
+        start = self._prepare_append(path, relative)
+        size = path.stat().st_size
+        tail = self._tails.get(relative, b"")
         chunk = _read(path, start, size)
         end = start + chunk.rfind(b"\n") + 1  # up to the last complete line; a torn line waits
         if end > start:
@@ -224,13 +246,21 @@ class Mirror:
         for relative, kind in sorted(remote.items()):
             if relative in SKIPPED_FILES:
                 continue
-            target = self.root / relative
+            target = self.root / _safe_relative(relative, where=str(self.root))
             if kind == "parts":
                 parts = _parts(self._target, relative)
                 end = _end(parts)
                 if target.exists() and target.stat().st_size >= end:
                     continue
                 payload = b"".join(self._target.read(name) for _, _, name in parts)
+                if target.exists() and not payload.startswith(target.read_bytes()):
+                    # The local file is shorter than the mirror's parts and is not their prefix: it is another
+                    # generation (a superseded store), and rebuilding it from these parts would mix the two.
+                    raise DataError(
+                        f"the local {target} is not a prefix of the mirror's parts of {relative}: it was "
+                        "rewritten or superseded, and restoring would mix two generations",
+                        hint="mirror the rewritten store to a new URI, or start a new run",
+                    )
             else:
                 if target.exists() and not behind:
                     continue
@@ -289,7 +319,7 @@ class Mirror:
         local_id = self._local_run_id() or self.root.name
         if run_id != local_id:
             raise DataError(
-                f"the mirror {self.remote} holds the run {run_id!r}, and this directory is {local_id!r}",
+                f"the mirror {safe_url(self.remote)} holds the run {run_id!r}, and this directory is {local_id!r}",
                 hint="the mirror is another run's: mirror this run to its own URI (a run-scoped prefix), or "
                 "restore it into the directory of the run it holds",
             )
@@ -391,8 +421,10 @@ def check_target(remote: str) -> None:
     job must read them from the environment instead.
 
     Raises:
+        ConfigError: ``remote`` is blank (an empty mirror would resolve to the working directory).
         DependencyError: no fsspec filesystem is installed or registered for the URI's protocol.
     """
+    remote = _refuse_blank_mirror(remote)
     if safe_url(remote) != remote:
         logger.warning(
             "[mirror] %s carries credentials in its URI; they are never recorded (run.yaml, the manifest, the "
@@ -400,6 +432,20 @@ def check_target(remote: str) -> None:
             safe_url(remote),
         )
     storage.filesystem(remote, **_options(remote))
+
+
+def _refuse_blank_mirror(remote: str) -> str:
+    """The mirror URI, refused when it is blank: an empty value resolves to the current working directory.
+
+    Raises:
+        ConfigError: ``remote`` is empty or whitespace.
+    """
+    if not remote.strip():
+        raise ConfigError(
+            "the mirror URI is empty: an empty value resolves to the current working directory",
+            hint="drop the mirror field (or set it to null) to run without a mirror",
+        )
+    return remote
 
 
 def _options(remote: str) -> dict[str, bool]:
@@ -480,8 +526,26 @@ class _Target:
         for entry in entries:
             name = str(entry["name"]).rstrip("/")
             relative_name = name[len(prefix) :] if name.startswith(prefix) else name.lstrip("/")
-            out.append((relative_name, entry.get("type") == "directory"))
+            out.append((_safe_relative(relative_name, where=self.root), entry.get("type") == "directory"))
         return out
+
+
+def _safe_relative(relative: str, *, where: str) -> str:
+    """A mirror key, refused when it escapes the mirror root: an absolute path, or a ``..`` or ``.`` segment.
+
+    A mirror's listing is remote input: an object store allows keys like ``runs/r1/../../.bashrc``, and
+    restoring one would write outside the run directory (a shared or compromised prefix could overwrite any
+    file of the user that restores from it).
+
+    Raises:
+        DataError: the key names a path outside the mirror's root.
+    """
+    if relative.startswith("/") or any(part in (".", "..") for part in relative.split("/")):
+        raise DataError(
+            f"the mirror {safe_url(where)} holds the key {safe_url(relative)!r}, which escapes its root",
+            hint="the mirror is damaged or was written by another tool: restore from another copy or start a new run",
+        )
+    return relative
 
 
 def _remote_files(target: _Target) -> dict[str, str]:

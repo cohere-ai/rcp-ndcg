@@ -383,7 +383,8 @@ A judge whose engine the job does not start keeps its own `wait_on_outage_s`.
 
 A failed job is not retried by default. To run it again, engine included, submit the run again with
 `rcp-ndcg run resume --run <dir> --runner slurm`: it takes the runner options of the run's last
-job and its `serve:` section, restores the directory from the mirror first when the run has one, and the new job
+job (a `--set runner.options.<key>=...` change wins over the record) and its `serve:` section, restores the
+directory from the mirror first when the run has one, and the new job
 resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
 resumes in this process, which starts no engine. On Kubernetes, a resubmission of the same run id is not
 available: the runner refuses to apply over an existing Job (Kubernetes never restarts one), and once the Job is

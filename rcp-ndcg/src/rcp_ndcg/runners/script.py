@@ -648,6 +648,13 @@ def supervise(engines: Sequence[EngineStep], *, coordinator: str, engines_env: s
         # until each engine's port stops answering, so the next phase cannot reach this phase's engine.
         *([f"rcp_ndcg_stop {' '.join(f'"${pid}"' for pid in pid_vars)}"] if pid_vars else []),
         *boundary,
+        # The phase is over: its coordinator and engines are stopped and reaped. Unset their PIDs and reset the
+        # traps, so an engine-free phase that runs next in the same shell (SLURM renders each phase as one srun)
+        # does not inherit this phase's EXIT trap -- at job exit it would TERM/KILL PIDs the kernel may have
+        # reused for another process of the same user.
+        "unset RCP_NDCG_COORDINATOR_PID",
+        *[f"unset {pid}" for pid in pid_vars],
+        "trap - EXIT TERM INT",
     ]
 
 

@@ -40,17 +40,18 @@ from rcp_ndcg.runs.config import (
     redact_candidates_payload,
     redact_evaluation_payload,
     redact_fuse_payload,
+    safe_systems_location,
 )
 from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
-from rcp_ndcg.storage import local_dir, publish_bytes
+from rcp_ndcg.storage import exists, local_dir, publish_bytes
 from rcp_ndcg.storage.artifacts import ArtifactRef, artifact_ref
 from rcp_ndcg.support.identity import hash_payload, identity_payload
 from rcp_ndcg.support.logging import get_logger
 from rcp_ndcg.support.paths import runs_dir as default_runs_dir
 from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, EngineURLs, parse_engines_env
 from rcp_ndcg.support.step_budget import StepBudget, step_budgeted
-from rcp_ndcg.support.urls import safe_url
+from rcp_ndcg.support.urls import redact_urls, safe_url
 
 if TYPE_CHECKING:
     from rcp_ndcg.judging.schedule import Modality as ScheduleModality
@@ -214,7 +215,7 @@ class Pipeline:
             return
         pools, _ = self._planned_pools()
         for stage in stages:
-            with _run_identity_hint(self.layout, stage):
+            with _run_identity_hint(self.layout, stage, mirrored=self.config.mirror is not None):
                 preflight(
                     self.dataset,
                     pools,
@@ -323,14 +324,19 @@ class Pipeline:
         recorded = self.manifest.model_copy(deep=True)
         claims = self._store_claims()
         self.layout.ensure()
-        self._write_config()
-        self.manifest.status = RunStatus.RUNNING
-        self.manifest.save(self.layout)
+        # The dataset is loaded (and a from:dataset run's first-stage pools computed) before anything is written:
+        # a failure here -- a typo in --set dataset=..., a Hub error -- leaves run.yaml, the recorded config and
+        # the status exactly as they were, as this method promises.
+        pools: dict[str, list[str]] | None = None
         if self.config.candidates.source == "dataset" and set(self.config.steps) - {"retrieve"}:
             # A reranker rescores the whole first stage; the depth cut comes after it.
             pools = self._dataset_pools()
             if "rerank" not in self.config.steps:
                 pools = {query: pool[: self.config.candidates.depth] for query, pool in pools.items()}
+        self._write_config()
+        self.manifest.status = RunStatus.RUNNING
+        self.manifest.save(self.layout)
+        if pools is not None:
             _write_rankings(self._first_stage, Rankings.from_orders(pools, system=CANDIDATES))
         ran: set[str] = set()
         for step in self.steps:
@@ -339,7 +345,7 @@ class Pipeline:
                     ran.add(step)
             except IdentityError as exc:
                 self._refused(ran, recorded)
-                _identity_hint(exc, self.layout, step)
+                _identity_hint(exc, self.layout, step, mirrored=self.config.mirror is not None)
                 raise
             except (Exception, KeyboardInterrupt) as exc:
                 # An interruption (SIGINT, or SIGTERM from a scheduler) is recorded like a failure.
@@ -348,7 +354,9 @@ class Pipeline:
                 if _substance(self.config) != _substance(RunConfig.from_data(recorded.config)) and (
                     self._store_claims() == claims
                 ):
-                    logger.warning("[run] %s failed; the run keeps its recorded config: %s", step, exc)
+                    logger.warning(
+                        "[run] %s failed; the run keeps its recorded config: %s", step, redact_urls(str(exc))
+                    )
                     self._refused(ran, recorded, failed=step)
                 else:
                     self.manifest.status = RunStatus.FAILED
@@ -468,12 +476,16 @@ class Pipeline:
             }
         if step == "fuse":
             # The fusion's content: the systems (their names and locations), the constant and the depth. The
-            # systems' files' hashes are the step's inputs, so an edited ranking re-keys it.
+            # systems' files' hashes are the step's inputs, so an edited ranking re-keys it. The argument order
+            # is content too: a fused-score tie at the depth cut breaks by earliest appearance
+            # (``rcp_ndcg.retrieval.fuse``), and canonical JSON sorts the systems mapping's keys, so the order
+            # is recorded beside it -- a reordered config never reuses a pool a fresh run would not produce.
             fusion = config.candidates.fuse
             assert fusion is not None  # validated: the fuse step needs candidates.from: fuse
             return {
                 **dataset,
                 "fusion": redact_fuse_payload(identity_payload(fusion)),
+                "systems_order": list(fusion.systems),
                 "depth": config.candidates.depth,
                 "output": self.layout.relative(self._first_stage),
             }
@@ -552,7 +564,7 @@ class Pipeline:
                 layout.path("calibration", "thetas.parquet"),
                 *(location.partition("#")[0] for location in self.config.evaluation.systems.values()),
             ]
-        return [artifact_ref(path, layout=layout) for path in paths if Path(path).exists()]
+        return [_input_ref(path, layout) for path in paths if exists(path)]
 
     # ------------------------------------------------------------------
     # Steps
@@ -607,25 +619,27 @@ class Pipeline:
         from rcp_ndcg.data import load_rankings
 
         path, _, system = location.partition("#")
-        if not Path(path).exists():
+        if not exists(path):
             raise MissingInputError(
-                f"the fuse step needs the rankings of system {name!r} at {path}, and it does not exist",
-                hint=f"write it (rcp-ndcg retrieval search --out {path}) and point candidates.fuse.systems.{name} "
-                "at it",
+                f"the fuse step needs the rankings of system {name!r} at {safe_systems_location(location)}, and it "
+                "does not exist",
+                hint=f"write it (rcp-ndcg retrieval search --out {safe_systems_location(location)}) and point "
+                f"candidates.fuse.systems.{name} at it",
             )
         supplied = load_rankings(path)
         if system and system not in supplied.systems:
             raise DataError(
-                f"the fuse step's system {name!r} names {path}#{system}, and {path} holds {supplied.systems}: "
-                f"the system {system!r} was not retrieved into it",
+                f"the fuse step's system {name!r} names {safe_systems_location(location)}, and it holds "
+                f"{supplied.systems}: the system {system!r} was not retrieved into it",
                 hint="name one of the systems the file holds, so the fusion is of the systems you mean",
             )
         if not system:
             if len(supplied.systems) != 1:
                 raise DataError(
-                    f"candidates.fuse.systems.{name}: {path} holds {len(supplied.systems)} systems "
-                    f"{supplied.systems}; name the one to fuse",
-                    hint=f"write candidates.fuse.systems.{name}: {path}#<one of {supplied.systems}>",
+                    f"candidates.fuse.systems.{name}: {safe_systems_location(location)} holds "
+                    f"{len(supplied.systems)} systems {supplied.systems}; name the one to fuse",
+                    hint=f"write candidates.fuse.systems.{name}: {safe_systems_location(location)}#<one of "
+                    f"{supplied.systems}>",
                 )
             system = supplied.systems[0]
         scores = supplied.queries(system=system, dataset=self.dataset.name)
@@ -1005,11 +1019,15 @@ def _check_engines(config: RunConfig, engines: Mapping[EngineRole, EngineURLs]) 
             )
 
 
+#: The error text :func:`_describe` records for a step interrupted by SIGINT or SIGTERM.
+INTERRUPT_ERROR = "Interrupted: interrupted (SIGINT or SIGTERM)"
+
+
 def _describe(exc: BaseException) -> str:
-    """A step's recorded error."""
+    """A step's recorded error, with every URL in it redacted (it reaches the mirrored manifest and run.log)."""
     if isinstance(exc, KeyboardInterrupt):
-        return "Interrupted: interrupted (SIGINT or SIGTERM)"
-    return f"{type(exc).__name__}: {exc}"
+        return INTERRUPT_ERROR
+    return redact_urls(f"{type(exc).__name__}: {exc}")
 
 
 def _cancelled_meanwhile(layout: RunLayout) -> bool:
@@ -1017,21 +1035,29 @@ def _cancelled_meanwhile(layout: RunLayout) -> bool:
     return Path(layout.manifest).exists() and RunManifest.load(layout).status is RunStatus.CANCELLED
 
 
-def _identity_hint(exc: IdentityError, layout: RunLayout, step: str) -> None:
-    """Give a run's refusal of a judging store of another identity the run's own way out."""
+def _identity_hint(exc: IdentityError, layout: RunLayout, step: str, *, mirrored: bool) -> None:
+    """Give a run's refusal of a judging store of another identity the run's own way out.
+
+    The store's ``identity.json`` keeps the claim, so moving the stage's JSONL aside does not clear it (and a
+    mirror restores the file); the remedy is a new run, and a mirrored one needs a new mirror URI, since the
+    run-scoped mirror holds the old store.
+    """
     store = layout.path("judgements", f"{step}.jsonl")
-    exc.hint = exc.cli_hint = (
-        f"start a new run with the changed config (`rcp-ndcg run start`), or move {store} aside to "
-        f"judge the {step} step again in this run"
+    hint = (
+        f"start a new run with the changed config (`rcp-ndcg run start`), which judges the {step} step under its "
+        f"own identity in its own store; {store} keeps its claim, so this run cannot judge it again"
     )
+    if mirrored:
+        hint += "; give the new run a new mirror URI too, since this run's mirror holds the old store"
+    exc.hint = exc.cli_hint = hint
 
 
 @contextmanager
-def _run_identity_hint(layout: RunLayout, step: str) -> Iterator[None]:
+def _run_identity_hint(layout: RunLayout, step: str, *, mirrored: bool) -> Iterator[None]:
     try:
         yield
     except IdentityError as exc:
-        _identity_hint(exc, layout, step)
+        _identity_hint(exc, layout, step, mirrored=mirrored)
         raise
 
 
@@ -1087,6 +1113,14 @@ def _evaluation_systems(key: str, location: str, dataset: str) -> dict[str, dict
     if len(supplied.systems) == 1:
         return {key: supplied.queries(dataset=dataset)}
     return {name: supplied.queries(system=name, dataset=dataset) for name in supplied.systems}
+
+
+def _input_ref(path: str, layout: RunLayout) -> ArtifactRef:
+    """One step input's artifact reference: hashed through the storage layer (a URI is read like a local file),
+    recorded with its URI redacted, so a credentialed input never reaches ``manifest.json``."""
+    ref = artifact_ref(path, layout=layout)
+    safe = safe_url(ref.path)
+    return ref if safe == ref.path else ref.model_copy(update={"path": safe})
 
 
 def _write_rankings(path: str, rankings: Rankings) -> None:

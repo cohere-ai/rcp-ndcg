@@ -188,6 +188,28 @@ class TestTheEngineCommand:
         engine = ServeConfig(command=("python3", "-m", "encoder", "--host", "0.0.0.0"))
         assert engine.resources.gpus == 0 and engine.port == 8000
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            ("vllm", "serve", "m", "--api-key", "sk-x"),
+            ("vllm", "serve", "m", "--api-key=sk-x"),
+            ("vllm", "serve", "m", "--hf-token", "hf_x"),
+            ("vllm", "serve", "m", "--token=abc"),
+            ("vllm", "serve", "m", "--secret", "s"),
+        ],
+    )
+    def test_a_credential_in_an_engine_command_is_refused(self, command: tuple[str, ...]) -> None:
+        """security-6: the command is written verbatim into run.yaml, the manifest, every job script and every
+        mirror copy, so a key passed as a flag was recorded in clear, against ``recorded()``'s promise."""
+        with pytest.raises(ValueError, match="credential"):
+            ServeConfig(command=command)
+
+    def test_a_tokenizer_flag_is_not_a_credential(self) -> None:
+        """``--tokenizer`` and ``--tokenizer-mode`` name a model, not a key; refusing them would refuse valid
+        serving commands."""
+        engine = ServeConfig(command=("vllm", "serve", "m", "--tokenizer", "org/tok", "--tokenizer-mode", "auto"))
+        assert engine.command[-2:] == ("--tokenizer-mode", "auto")
+
 
 class TestParseEnginesEnv:
     """``RCP_NDCG_ENGINES`` carries the current phase's engines to the coordinator."""

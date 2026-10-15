@@ -7418,7 +7418,7 @@
         }
       ],
       "default": null,
-      "description": "Any fsspec URI (e.g. ``s3://bucket/runs``) the run directory is mirrored to while it runs, and restored from on resume (rcp_ndcg.runs.mirror).",
+      "description": "Any fsspec URI (e.g. ``s3://bucket/runs/<run-id>``) the run directory is mirrored to while it runs, and restored from on resume (rcp_ndcg.runs.mirror). The mirror is run-scoped: point each run at its own prefix, since a flush refuses a prefix that holds another run's manifest.",
       "title": "Mirror"
     },
     "mirror_interval_s": {

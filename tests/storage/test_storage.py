@@ -255,6 +255,23 @@ class TestPublish:
         storage.publish_bytes(target, b"new")
         assert stat.S_IMODE(target.stat().st_mode) == 0o640
 
+    def test_publish_reads_the_umask_without_setting_it(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """runs-14: ``_umask()`` set the process umask to 0 and restored it in two statements; two concurrent
+        publishers (the mirror's flush thread and the main thread) could interleave and leave the process umask
+        at 0, making every later file and directory world-writable."""
+        import os
+
+        calls: list[int] = []
+        real = os.umask
+
+        def record(mask: int) -> int:
+            calls.append(mask)
+            return real(mask)
+
+        monkeypatch.setattr(os, "umask", record)
+        storage.publish_bytes(tmp_path / "out" / "f.bin", b"payload")
+        assert calls == []
+
     def test_the_publish_temp_ends_in_tmp_so_a_mirror_walk_skips_it(self, tmp_path: Path) -> None:
         """The mirror's walk skips ``*.tmp``; ``publish``'s temp must be one, or a SIGKILL mid-publish leaves a
         partial file the mirror uploads and ``restore()`` later brings back."""

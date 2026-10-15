@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -24,7 +25,25 @@ class DatasetInput(BaseModel):
 
 
 def load_yaml_config(path: str, overrides: list[str]) -> dict[str, Any]:
-    """A YAML config (``extends:`` resolved) with ``key=value`` overrides applied."""
+    """A YAML config (``extends:`` resolved) with ``key=value`` overrides applied.
+
+    A retriever or reranker YAML's ``recipe:`` paths are relative to the file that names them, like every
+    other relative path in a config (the run config's rule); the overrides' paths stay relative to the
+    working directory.
+    """
     from rcp_ndcg.support.config import load_config
 
-    return load_config(path, overrides=overrides)
+    return load_config(path, overrides=overrides, relative=_relative_recipe_paths)
+
+
+def _relative_recipe_paths(data: dict[str, Any], base: Path) -> dict[str, Any]:
+    """A retriever or reranker YAML with its ``recipe:`` paths made relative to ``base`` (the file's directory)."""
+    from rcp_ndcg.inference.recipes import rebase_recipe_path
+
+    data = dict(data)
+    if isinstance(data.get("recipe"), str):
+        data["recipe"] = rebase_recipe_path(data["recipe"], base)
+    encoder = data.get("encoder")
+    if isinstance(encoder, dict) and isinstance(encoder.get("recipe"), str):
+        data["encoder"] = {**encoder, "recipe": rebase_recipe_path(encoder["recipe"], base)}
+    return data

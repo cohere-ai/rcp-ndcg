@@ -107,6 +107,36 @@ def test_a_malformed_retriever_is_a_config_error(dataset: str, tmp_path: Path) -
     assert "api" in document["error"]["hint"], document["error"]["hint"]
 
 
+def test_a_retriever_yamls_relative_recipe_path_resolves_against_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """g-decisions-6: the retriever YAML loader rebased no path, so ``encoder.recipe: ./my-encoder`` resolved
+    against the working directory instead of the file that names it."""
+    import shutil
+
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    from rcp_ndcg.cli._args import load_yaml_config
+    from rcp_ndcg.retrieval import validate_retriever
+
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    family = configs / "my-encoder"
+    shutil.copytree(default_recipes_root() / "qwen3-embedding", family)
+    family_yaml = family / "family.yaml"
+    data = yaml.safe_load(family_yaml.read_text(encoding="utf-8"))
+    data["id"] = "my-encoder"
+    data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
+    family_yaml.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    path = configs / "retriever.yaml"
+    path.write_text(yaml.safe_dump({"kind": "dense", "encoder": {"recipe": "./my-encoder"}}), encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)  # the working directory is not the config's directory
+    config = validate_retriever(load_yaml_config(str(path), []))
+
+    assert config.encoder.recipe is not None and config.encoder.recipe.startswith("unshipped:sha256:")
+
+
 def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def stub_rerank_many(self, examples, *, instruction=None, checkpoint=None):
         """The stub endpoint scores each document by its text length."""
