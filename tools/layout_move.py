@@ -158,6 +158,23 @@ def _matches_files(name: Path, globs: tuple[str, ...] | None) -> bool:
     return any(fnmatch.fnmatch(text, glob) or fnmatch.fnmatch(text, f"**/{glob}") for glob in globs)
 
 
+def _subn_outside_comments(text: str, pattern: str, replacement: str) -> tuple[str, int]:
+    """``re.subn`` over the lines that are not comments: prose is not executable path syntax.
+
+    The bare-``pyproject.toml`` rule is scoped to workflows and scripts; a ``#`` comment there may
+    name the manifest in prose ("all four pyproject.toml files"), and rewriting that edits
+    documentation instead of a path.
+    """
+    lines = text.splitlines(keepends=True)
+    count = 0
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            continue
+        lines[index], hits = re.subn(pattern, replacement, line)
+        count += hits
+    return "".join(lines), count
+
+
 def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
     hits: list[str] = []
     for rule, pattern, replacement, files in REWRITES:
@@ -167,7 +184,10 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
             continue  # `recursive-include src/rcp_ndcg ...` is relative to its own directory
         if rule == "root-src" and name.as_posix() == "tests/docs/test_packaging.py":
             continue  # its NOTICE-path pattern lists the old spelling as data to recognise, never a live path
-        new, count = re.subn(pattern, replacement, text)
+        if rule == "bare-pyproject":
+            new, count = _subn_outside_comments(text, pattern, replacement)
+        else:
+            new, count = re.subn(pattern, replacement, text)
         if count:
             hits.append(f"{rule} x{count}")
             text = new
@@ -235,6 +255,7 @@ def run(root: Path, *, check: bool = False) -> int:
     # 2. The rewrite sweep over every tracked text file outside EXEMPT (before the split, so the
     #    moved manifest's kept sections are already clean of old paths when they reach the root).
     rewritten: list[str] = []
+    touched: list[str] = []
     for name in _tracked_files(root):
         path = root / name
         if name.as_posix() in EXEMPT or name.as_posix().startswith(EXEMPT_PREFIXES):
@@ -250,6 +271,7 @@ def run(root: Path, *, check: bool = False) -> int:
             path.write_text(new, encoding="utf-8")
             done_work = True
             rewritten.append(f"{name.as_posix()}: {', '.join(hits)}")
+            touched.append(name.as_posix())
 
     # 3. The root pyproject's split: its package tables travel with the root package into
     #    rcp-ndcg/pyproject.toml; the workspace and tooling tables stay at the root, and the
@@ -267,15 +289,19 @@ def run(root: Path, *, check: bool = False) -> int:
                 )
                 package_manifest.write_text(package_text, encoding="utf-8")
                 workspace_manifest.write_text(workspace_text, encoding="utf-8")
+                touched.extend(["pyproject.toml", "rcp-ndcg/pyproject.toml"])
                 done_work = True
                 print("rewrote pyproject.toml: split (package -> rcp-ndcg/pyproject.toml, workspace stays)")
 
-    # 4. Stage the result, so the stale scan covers generated files too.
+    # 4. Stage only what the tool moved or rewrote, never the whole worktree: `git add -A` would
+    #    stage an unrelated contributor's untracked files alongside the move.
     if not check:
-        staged = _git(root, "add", "-A")
-        if staged.returncode != 0:
-            print(f"layout_move: git add -A failed: {staged.stderr.strip()}", file=sys.stderr)
-            return 1
+        touched.extend(destination for _source, destination in MOVES if (root / destination).exists())
+        if touched:
+            staged = _git(root, "add", "--", *sorted(set(touched)))
+            if staged.returncode != 0:
+                print(f"layout_move: git add failed: {staged.stderr.strip()}", file=sys.stderr)
+                return 1
 
     # 5. Nothing the move took away may survive anywhere it may not.
     for entry in STALE:
