@@ -31,11 +31,12 @@ from rcp_ndcg.data.preprocess import (
 from rcp_ndcg.data.templates import Segment, TemplateSpec
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import check_declarations, identity_payload
-from tests._tokenizers import framed_bpe_tokenizer, spaced_special_tokenizer, word_tokenizer
+from tests._tokenizers import bert_like_tokenizer, framed_bpe_tokenizer, spaced_special_tokenizer, word_tokenizer
 
 FRAMED = framed_bpe_tokenizer()
 WORDS = word_tokenizer()
 SPACED = spaced_special_tokenizer()
+BERT = bert_like_tokenizer()
 
 #: The two special tokens the framed fixture adds: a template's suffix anchor and the post-processor's,
 #: written in templates by name and resolved to these literals from the tokenizer's added tokens.
@@ -510,6 +511,20 @@ class TestPairSplit:
             TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=41)
         equal = TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=40)
         assert equal.query_max_tokens == 40
+
+    def test_untemplated_pair_counts_the_engine_pair_encoding(self) -> None:
+        """An untemplated pair is measured as the engine encodes it -- the tokenizer's pair post-processor
+        (one more separator than the single sequence) and the two spans' join -- never as the single
+        sequence ``query + document``, which lets the fit pass a pair the engine reads over budget."""
+        budget = TextBudget(tokenizer=BERT.name, max_tokens=12, query_max_tokens=4)
+        result = fit(
+            [("relevant query ", "the evidence of the answer is in the page one two three four five")],
+            shape="pair",
+            budget=budget,
+            tokenizer=BERT,
+        )
+        (query, document), = result.contents
+        assert len(BERT.backend.encode(query, document, add_special_tokens=True).ids) <= 12
 
 
 class TestDocumentCap:

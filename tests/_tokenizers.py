@@ -47,6 +47,28 @@ def byte_bpe_tokenizer(name: str = "test/byte-bpe") -> TextTokenizer:
 
 
 @functools.cache
+def bert_like_tokenizer(name: str = "test/bert-like") -> TextTokenizer:
+    """A WordLevel tokenizer with BERT's pair post-processor (``[CLS] $A [SEP] $B:1 [SEP]:1``).
+
+    The single and the pair sequence carry different specials (``[CLS] $A [SEP]`` against
+    ``[CLS] $A [SEP] $B [SEP]``), so a pair budget measured as the single sequence ``query + document``
+    undercounts it by the extra separator; a cross-encoder engine pair-encodes the rerank wire exactly
+    this way.
+    """
+    from tokenizers import Tokenizer, models, pre_tokenizers, processors
+
+    vocab = {"[UNK]": 0, "[CLS]": 1, "[SEP]": 2, **{word: index + 3 for index, word in enumerate(WORDS.split())}}
+    backend = Tokenizer(models.WordLevel(vocab=vocab, unk_token="[UNK]"))
+    backend.pre_tokenizer = pre_tokenizers.Whitespace()
+    backend.post_processor = processors.TemplateProcessing(
+        single="[CLS] $A [SEP]",
+        pair="[CLS] $A [SEP] $B:1 [SEP]:1",
+        special_tokens=[("[CLS]", 1), ("[SEP]", 2)],
+    )
+    return TextTokenizer.from_backend(backend, name=name)
+
+
+@functools.cache
 def framed_bpe_tokenizer(name: str = "test/framed-bpe") -> TextTokenizer:
     """A byte-level BPE with two named special tokens and a post-processor anchor, for template tests.
 

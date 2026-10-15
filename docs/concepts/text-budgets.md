@@ -50,7 +50,10 @@ print(pair.shapes())
 The `pair` shape orders query and document per model -- the reranker above reads the query first; a
 reranker whose template puts the document first makes the query block an anchor, and the segments say so. A
 special token is written by name (`{special:end_turn}`) and resolved at render time from the tokenizer's added
-tokens; specials are never typed literally, so a template outlives tokenizer rewrites. The template also declares
+tokens; specials are never typed literally, so a template outlives tokenizer rewrites. Without a template a
+single-sequence shape is the content itself, and a `pair` is counted through the tokenizer's own pair encoding
+(`count_pair`: the engine's pair post-processor and the two spans' join) -- never as the single sequence
+`query + document`, which sees one separator fewer and merges the join. The template also declares
 `anchor` (`last`, `first`, `last_content`, `mean` or `marker`, with `anchor_markers` naming the specials) --
 the position the model reads its output from. `last_content` is for a model that pools the last real token of raw
 text (jina-embeddings-v5): no fixed tail exists and the shape may end on a content span -- which `last` refuses --

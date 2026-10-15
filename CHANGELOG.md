@@ -4371,6 +4371,14 @@ text it sends to the declared budget.
   is computed and the chunks still cover the text. A single-token piece the frame's join still pushes over the
   cap is cut and its uncovered tail recorded as its own cut row.
 
+- **An untemplated rerank pair budget is measured as the engine reads it**: `fit` counted an untemplated pair
+  as the single sequence `query + document`, so the tokenizer's pair post-processor (one separator more than
+  the single sequence) and the spans' join were invisible; a pair cut to exactly `max_tokens` reached a
+  cross-encoder 1-2 tokens over (and at `max_tokens = max_model_len`, vLLM refused it).
+  `TextTokenizer.count_pair` encodes the pair the engine's way, and `fixed_overhead`, `rendered_pair_tokens`
+  and `fit`'s pair checks and cuts use it for a template-less config; every shipped reranker recipe declares a
+  template and is unchanged.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

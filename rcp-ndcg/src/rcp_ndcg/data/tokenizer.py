@@ -211,6 +211,25 @@ class TextTokenizer:
             self._encode(text, add_special_tokens=add_special_tokens, split_special_tokens=split_special_tokens).ids
         )
 
+    def count_pair(
+        self, query: str, document: str, *, add_special_tokens: bool = False, split_special_tokens: bool = False
+    ) -> int:
+        """The number of tokens of a PAIR (query then document), encoded the way a cross-encoder engine
+        reads the rerank wire: through the tokenizer's own pair post-processor (``[CLS] $A [SEP] $B [SEP]``
+        for BERT, ``<s> $A </s></s> $B </s>`` for XLM-R) and the two spans' join.
+
+        The single-sequence count of their concatenation sees neither: it carries one separator fewer (two,
+        for XLM-R) and merges the last query token with the first document token. An untemplated pair budget
+        is measured with this, never with ``count(query + document)``.
+
+        ``split_special_tokens`` is :meth:`count`'s parse. The default is the file's own parse.
+        """
+        return len(
+            self._encode_pair(
+                query, document, add_special_tokens=add_special_tokens, split_special_tokens=split_special_tokens
+            ).ids
+        )
+
     def _encode(self, text: str, *, add_special_tokens: bool, split_special_tokens: bool) -> Any:
         """One encode under the requested parse; the parse toggle is a backend property, so it is set for
         the call and restored after it (the tokenizer is shared and cached: a flag that stuck would change
@@ -222,6 +241,19 @@ class TextTokenizer:
         backend.encode_special_tokens = split_special_tokens
         try:
             return backend.encode(text, add_special_tokens=add_special_tokens)
+        finally:
+            backend.encode_special_tokens = previous
+
+    def _encode_pair(self, query: str, document: str, *, add_special_tokens: bool, split_special_tokens: bool) -> Any:
+        """One pair encode under the requested parse (:meth:`_encode`'s toggle, with the document as the
+        backend's second sequence)."""
+        backend = self.backend
+        previous = backend.encode_special_tokens
+        if previous == split_special_tokens:
+            return backend.encode(query, document, add_special_tokens=add_special_tokens)
+        backend.encode_special_tokens = split_special_tokens
+        try:
+            return backend.encode(query, document, add_special_tokens=add_special_tokens)
         finally:
             backend.encode_special_tokens = previous
 

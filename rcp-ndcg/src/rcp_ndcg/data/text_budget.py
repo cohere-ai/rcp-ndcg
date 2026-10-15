@@ -571,6 +571,10 @@ def fixed_overhead(
     template = budget.template
     if template is not None:
         overhead = template.overhead(shape, tokenizer, instruction=instruction or "")
+    elif shape == "pair":
+        # An untemplated pair is read as a pair: the engine's pair post-processor adds a separator the
+        # single-sequence count of ``""`` does not carry.
+        overhead = tokenizer.count_pair("", "", add_special_tokens=True)
     else:
         overhead = tokenizer.count("", add_special_tokens=True)
     return overhead + _unframed_instruction_tokens(budget, tokenizer, instruction or "", template)
@@ -605,9 +609,15 @@ def rendered_pair_tokens(
     shape's ``add_special_tokens`` flag applied) plus the instruction's own tokens when the config sends it
     as a request field the template does not render (:data:`TextBudget.instruction_field`). A rerank client
     checks every shipped pair against the budget with this -- the same measure the fit cut to, so a pair the
-    fit verified passes here."""
+    fit verified passes here. Without a template the pair is measured through the tokenizer's own pair
+    encoding (:meth:`~rcp_ndcg.data.tokenizer.TextTokenizer.count_pair`), the way the engine reads it.
+    """
+    if budget.template is None:
+        return tokenizer.count_pair(query, document, add_special_tokens=True) + _unframed_instruction_tokens(
+            budget, tokenizer, instruction, budget.template
+        )
     rendered = rendered_request(budget, tokenizer, "pair", query=query, document=document, instruction=instruction)
-    flag = budget.template.adds_special_tokens("pair") if budget.template is not None else True
+    flag = budget.template.adds_special_tokens("pair")
     return tokenizer.count(rendered, add_special_tokens=flag) + _unframed_instruction_tokens(
         budget, tokenizer, instruction, budget.template
     )
@@ -837,6 +847,14 @@ def fit(
         """The full rendered request, the frame re-attached around whatever the spans now hold."""
         return rendered_request(budget, tokenizer, shape, query=query, document=document, instruction=instr)
 
+    def measure(query: str, document: str) -> int:
+        """The engine's token count of the assembled request: a template's render counted as one sequence,
+        an untemplated PAIR through the tokenizer's own pair encoding (the cross-encoder engine reads the
+        two spans as a pair, with its pair post-processor -- never their concatenation)."""
+        if template is None and shape == "pair":
+            return tokenizer.count_pair(query, document, add_special_tokens=flag)
+        return tokenizer.count(assemble(query, document), add_special_tokens=flag)
+
     # An instruction the config sends as the engine's own request field while the template renders no
     # ``instruction`` span: the engine still places it, so every render below is that many tokens smaller
     # than the request the engine reads -- the item's cap subtracts it (the frame inside the render already
@@ -849,7 +867,15 @@ def fit(
         media, which ride beside the rendered string and are never cut). The piece is rendered into its OWN
         span, with the other span held at ``other``, so the verified count is the render the engine reads --
         the two joins of an asymmetric frame tokenize differently, and measuring a piece in the wrong span
-        would ship an over-budget render."""
+        would ship an over-budget render. An untemplated pair is counted through the engine's pair encoding,
+        with the piece in its own side and ``other`` in the other."""
+        if template is None and shape == "pair":
+
+            def count_piece(piece: str) -> int:
+                query_, document_ = (piece, other) if span == "query" else (other, piece)
+                return tokenizer.count_pair(query_, document_, add_special_tokens=flag)
+
+            return token_prefix(text, cap, tokenizer, count_rendered=count_piece)
         if span == "query":
             rendered = lambda piece: assemble(piece, other)  # noqa: E731  (shape 'query' ignores ``other``; pair holds the document there)
         else:
@@ -922,9 +948,9 @@ def fit(
             rows = [(original_text, kept_text)]
         if isinstance(kept, str):
             kept_render = assemble(kept, "") if shape == "query" else assemble("", kept)
+            kept_request_tokens = tokenizer.count(kept_render, add_special_tokens=flag) + spent + extra
         else:
-            kept_render = assemble(kept[0], kept[1])
-        kept_request_tokens = tokenizer.count(kept_render, add_special_tokens=flag) + spent + extra
+            kept_request_tokens = measure(kept[0], kept[1]) + spent + extra
         for original_text, kept_text in rows:
             cut = TextCutRecord(
                 corpus=corpus,
@@ -979,7 +1005,7 @@ def fit(
             )
 
         def fits(piece: str) -> bool:
-            return tokenizer.count(assemble(query, piece), add_special_tokens=flag) <= cap
+            return measure(query, piece) <= cap
 
         pieces = split_into_chunks(content, budget.chunk, tokenizer, fits=fits)
         losses: list[tuple[int, str]] = []
@@ -1014,7 +1040,7 @@ def fit(
             assert isinstance(item, str) and isinstance(raw, str)
             query, document = (item, "") if shape == "query" else ("", item)
             original = item
-        uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
+        uncut_tokens = measure(query, document)
         # The uncut request's whole size as the engine would read it: every census row of this input names it.
         request_tokens = uncut_tokens + spent + extra
         # A declared per-document cap binds first, whatever the budget says: the checkpoint never reads past it
@@ -1022,7 +1048,7 @@ def fit(
         document_cap = budget.document_max_tokens if shape == "pair" else None
         if document_cap is not None and tokenizer.count(document) > document_cap:
             document = token_prefix(document, document_cap, tokenizer)
-            uncut_tokens = tokenizer.count(assemble(query, document), add_special_tokens=flag)
+            uncut_tokens = measure(query, document)
             if uncut_tokens <= cap:
                 if template is not None:
                     texts.append(assemble(query, document))
@@ -1069,7 +1095,7 @@ def fit(
                 q_final = query if tokenizer.count(query) <= share else token_prefix(query, share, tokenizer)
             # The query must leave room for the frame (and the post-processor's anchor) even with an empty document.
             q_final = _cut_span(q_final, span="query", other="", cap=cap)
-            q_min = tokenizer.count(assemble(q_final, ""), add_special_tokens=flag)
+            q_min = measure(q_final, "")
             if q_min >= cap and tokenizer.count(document) > 0:
                 raise TextBudgetExceededError(
                     f"the query of input {input_id!r} fills the pair budget of {shape_budget} tokens and "
@@ -1080,7 +1106,7 @@ def fit(
             if budget.on_overflow == "cut":
                 d_final = _cut_span(document, span="document", other=q_final, cap=cap)
                 if (
-                    tokenizer.count(assemble(q_final, d_final), add_special_tokens=flag) > cap
+                    measure(q_final, d_final) > cap
                 ):  # pragma: no cover - guarded by construction
                     raise DataError(
                         f"the assembled render of input {input_id!r} exceeds the budget of {shape_budget} "
@@ -1163,7 +1189,7 @@ def fit(
                 )
             if len(pieces) == 1:
                 if (
-                    tokenizer.count(assemble("", pieces[0]), add_special_tokens=flag) > cap
+                    measure("", pieces[0]) > cap
                 ):  # pragma: no cover - guarded by construction
                     raise DataError(
                         f"the assembled render of input {input_id!r} exceeds the budget of {shape_budget} "

@@ -193,6 +193,7 @@ def token_prefix(
     tokenizer: TextTokenizer,
     *,
     rendered: Callable[[str], str] | None = None,
+    count_rendered: Callable[[str], int] | None = None,
     add_special_tokens: bool = False,
 ) -> str:
     """A prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries and counts at most
@@ -206,13 +207,16 @@ def token_prefix(
     re-tokenizes into fewer tokens than it has boundaries is not sought, so the cut can stop a few characters short
     of the longest prefix that would fit. With ``add_special_tokens`` the count is the engine's (the tokenizer's
     post-processor tokens included), which is how a served request's budget is verified against what the engine
-    actually reads.
+    actually reads. ``count_rendered`` is for a render that is not a string -- an untemplated PAIR, which the
+    engine encodes as a pair (:meth:`~rcp_ndcg.data.tokenizer.TextTokenizer.count_pair`), not as one sequence.
 
     Args:
         text: The document text.
         max_tokens: The budget, in tokens.
         tokenizer: The judge's tokenizer.
         rendered: How the text appears to the judge, when that is not the text itself.
+        count_rendered: How many tokens the engine reads for a candidate prefix, when that is not a string
+            count (a pair encoding); it takes precedence over ``rendered``/``add_special_tokens``.
         add_special_tokens: Count as the engine does, the post-processor's tokens included.
 
     Returns:
@@ -220,6 +224,8 @@ def token_prefix(
     """
 
     def count(piece: str) -> int:
+        if count_rendered is not None:
+            return count_rendered(piece)
         return tokenizer.count(
             rendered(piece) if rendered is not None else piece, add_special_tokens=add_special_tokens
         )
