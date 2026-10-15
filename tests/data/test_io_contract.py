@@ -647,6 +647,27 @@ def test_frame_indices_record_the_source_frames(frame_dir) -> None:
     assert part.frame_indices == [1, 7, 42]
 
 
+def test_a_frame_number_is_the_last_number_in_the_name() -> None:
+    """The first digit run is often part of the clip name (``clip1_frame_0001``), so every frame recorded
+    the same index; the frame's number is the last run in its file name."""
+    from rcp_ndcg.data.io.frame_dir import _frame_number
+
+    assert [_frame_number(name) for name in ("a/clip1_frame_0001.jpg", "a/clip1_frame_0002.jpg")] == [1, 2]
+    assert _frame_number("a/img_1080p_000123.png") == 123
+
+
+def test_a_clip_whose_frame_numbers_do_not_increase_is_refused(tmp_path) -> None:
+    """Frame numbers that repeat or regress cannot say which frame of the source was shown: refused
+    rather than recorded."""
+    clip = tmp_path / "frames" / "clip_a"
+    clip.mkdir(parents=True)
+    PIL.new("RGB", (8, 8)).save(clip / "a_10.jpg")
+    PIL.new("RGB", (8, 8)).save(clip / "b_2.jpg")
+
+    with pytest.raises(DataError, match="strictly increasing"):
+        list(get_reader("frames", uri=str(tmp_path / "frames")).documents())
+
+
 def test_a_headerless_qrels_row_that_is_not_a_header_is_not_eaten(beir_dir) -> None:
     """A headerless file whose first label failed the digit check lost its first row as a "header":
     the same label with a header raised the typed DataError -- two behaviours for one input. Now the
