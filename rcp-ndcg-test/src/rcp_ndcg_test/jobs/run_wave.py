@@ -274,7 +274,11 @@ def run_wave(
     skipped_unchanged: list[str] = []
     change_verdict: dict[str, Any] | None = None
     if changed_since_index is not None:
-        recipes, skipped_unchanged, change_verdict = _filter_changed(recipes, Path(changed_since_index), vllm_cmd)
+        recipes, skipped_unchanged, change_verdict, previous_index = _filter_changed(
+            recipes, Path(changed_since_index), vllm_cmd
+        )
+    else:
+        previous_index = None
     results: dict[str, dict[str, Any]] = {}
     # The two early-failure classes that know no engine: a recipe that fails validation, and a recipe
     # whose plugin the bootstrap could not install.  Both are failed rows; the wave runs the rest.
@@ -439,7 +443,13 @@ def run_wave(
             engine.stop()
     if _CURRENT_WAVE[0] is wave:
         _CURRENT_WAVE[0] = None  # between waves: no start joins a wave that has ended
-    document = _wave_document(gpus, results, skipped_unchanged=skipped_unchanged, change_verdict=change_verdict)
+    document = _wave_document(
+        gpus,
+        results,
+        skipped_unchanged=skipped_unchanged,
+        change_verdict=change_verdict,
+        previous_index=previous_index,
+    )
     upload_failures = {
         recipe_id: row["upload"]
         for recipe_id, row in results.items()
@@ -507,6 +517,8 @@ class _EngineRun:
         self._stop_lock = threading.Lock()
         """Serializes this engine's teardown: the worker's ``_stop_after_failure`` and the wave's end can
         stop the same engine at once, and one teardown must not interleave with the other's signal."""
+        self._stopped = False
+        """Whether a stop already ran: a second stop is a no-op (the group was signalled once)."""
         self.disk: dict[str, Any] = disk or {}
         self.env: dict[str, str] = {}
         self.reference_gpu: int | None = None
@@ -586,28 +598,42 @@ class _EngineRun:
         second syscall whose answer can name another process group if the child's number was reused in
         between, and the stop is called from the worker and the wave's end at once, so the whole teardown
         is serialized on this engine's lock (a double stop signals once).  An engine's death never takes
-        another one down (GPU-E1).  A deliberate stop is recorded as such: it is not the engine's own
+        another one down (GPU-E1).  The group is signalled even when the leader is already gone (a TP
+        worker that outlived an OOM-killed API server keeps the GPUs the next recipe needs, robust-5):
+        Linux does not reuse a pid while it is still a live process-group id, so the group signal is safe
+        after the leader was reaped.  A deliberate stop is recorded as such: it is not the engine's own
         death.  Stopping removes the engine from the wave's registry (the wave's end sweeps whatever is
         left).
         """
         with self._stop_lock:
+            if self._stopped:
+                return
+            self._stopped = True
             with _LIVE_LOCK:
                 _LIVE_ENGINES.discard(self)
-            if self.popen.poll() is not None:
-                return  # already gone: not the runner's doing, so the death evidence stays a death
-            self.stopped_by_runner = True
+            if self.popen.poll() is None:
+                self.stopped_by_runner = True
             try:
                 os.killpg(self.popen.pid, signal.SIGTERM)
-            except (ProcessLookupError, PermissionError):  # pragma: no cover - the engine already died
-                self.popen.kill()
-            try:
-                self.popen.wait(timeout=15)
-            except subprocess.TimeoutExpired:  # pragma: no cover - a stuck engine
+            except (ProcessLookupError, PermissionError):  # the whole group is already gone
+                pass
+            deadline = time.monotonic() + _STOP_GRACE_S
+            while time.monotonic() < deadline:
                 try:
-                    os.killpg(self.popen.pid, signal.SIGKILL)
+                    os.killpg(self.popen.pid, 0)
                 except (ProcessLookupError, PermissionError):
-                    pass
-                self.popen.wait()
+                    break
+                time.sleep(0.2)
+            try:
+                os.killpg(self.popen.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            if self.popen.poll() is None:
+                try:
+                    self.popen.wait(timeout=_STOP_GRACE_S)
+                except subprocess.TimeoutExpired:  # pragma: no cover - a stuck leader
+                    self.popen.kill()
+                    self.popen.wait()
             self._thread.join(timeout=5)
 
 
@@ -1016,21 +1042,21 @@ def _row_state(
 ) -> str:
     """A recipe's end state: ``verified`` when every step its role requires passed.
 
-    A judge recipe's equivalence, recorder and observation-corpus steps are skipped by design (decision 15:
-    a judge has no reference and no observation corpus; its conformance is ``rcp-ndcg judge check`` and the
-    T4 scenarios), so their skip counts as satisfied for a judge; for every other role a skipped equivalence
-    or record step leaves the row unverified.  The corpus gate demands a ``passed`` corpus step like the
-    smoke, record, quality and controls gates: a skipped one (the missing pairs file today, any future skip
-    reason tomorrow) has no corpus, and a ``verified`` row over no corpus is the one claim the whole
-    verified-emulator story rests on.  Units: none.
+    A judge recipe's equivalence, recorder, observation-corpus, quality and controls steps are skipped by
+    design (decision 15: a judge has no reference and no observation corpus; its conformance is ``rcp-ndcg
+    judge check`` and the T4 scenarios), so their skip counts as satisfied for a judge; for every other role
+    a skipped equivalence or record step leaves the row unverified.  The corpus gate demands a ``passed``
+    corpus step like the smoke, record, quality and controls gates: a skipped one (the missing pairs file
+    today, any future skip reason tomorrow) has no corpus, and a ``verified`` row over no corpus is the one
+    claim the whole verified-emulator story rests on.  Units: none.
     """
     judge = recipe.role == "judge"
     equivalence = steps.get("equivalence") or {}
     equivalence_ok = equivalence.get("state") == "skipped" if judge else bool(equivalence.get("passed"))
     record_ok = judge or not record or (steps.get("record") or {}).get("state") == "passed"
-    controls_ok = not controls or (steps.get("controls") or {}).get("state") == "passed"
+    controls_ok = judge or not controls or (steps.get("controls") or {}).get("state") == "passed"
     corpus_ok = judge or not record_corpus or (steps.get("observation_corpus") or {}).get("state") == "passed"
-    quality_ok = not quality or (steps.get("quality") or {}).get("state") == "passed"
+    quality_ok = judge or not quality or (steps.get("quality") or {}).get("state") == "passed"
     verified = (
         (steps.get("smoke") or {}).get("state") == "passed"
         and equivalence_ok
@@ -1166,6 +1192,9 @@ _LIVE_LOCK = threading.Lock()
 """Every engine the wave started, and whether the wave is winding down (GPU-E1: an abandoned corpus
 body can call :func:`_start` after its worker's snapshot, so the wave's end sweeps the registry and no
 engine may start once the wave closes -- the wave leaves no engine behind)."""
+
+_STOP_GRACE_S = 15.0
+"""Seconds an engine's process group gets between the stop's SIGTERM and its SIGKILL."""
 
 _MODEL_SIZES: dict[str, tuple[str, int] | None] = {}
 """The Hub's downloaded-weight ``(pattern, bytes)`` per model, asked once per wave (the same model does
@@ -1863,10 +1892,11 @@ def _controls(
 
 def _filter_changed(
     recipes: list[Recipe], index_path: Path, vllm_cmd: str | None
-) -> tuple[list[Recipe], list[str], dict[str, Any]]:
+) -> tuple[list[Recipe], list[str], dict[str, Any], dict[str, Any]]:
     """OBSERVATIONS-SPEC section 7's re-record-changed-only: keep the recipes whose corpus key -- behaviour
     fingerprint and engine version -- differs from the previous ``wave.json``'s, and return the untouched ones'
-    ids and the verdict (why each changed, which engine versions are new) for the wave document.  The engine
+    ids, the verdict (why each changed, which engine versions are new) for the wave document, and the parsed
+    index (the skipped recipes' keys are carried forward into the new document, g-observe-7).  The engine
     version is the pod's (the engine environment's own ``vllm``, the same source the recording probes), never
     the recipe's declared image; without it the selection refuses rather than guessing."""
     from ..observe.corpus import changed_since
@@ -1886,7 +1916,7 @@ def _filter_changed(
     except HarnessError as error:
         raise HarnessError(f"--changed-since cannot fingerprint the wave's recipes: {error}") from error
     changed = set(verdict["changed"])
-    return [recipe for recipe in recipes if recipe.id in changed], verdict["unchanged"], verdict
+    return [recipe for recipe in recipes if recipe.id in changed], verdict["unchanged"], verdict, index
 
 
 def _resolve_recipes(recipe_ids: list[str], recipes_root: str | Path | None) -> tuple[list[Recipe], dict[str, str]]:
@@ -2055,6 +2085,7 @@ def _wave_document(
     *,
     skipped_unchanged: tuple[str, ...] | list[str] = (),
     change_verdict: dict[str, Any] | None = None,
+    previous_index: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The wave summary: one row per recipe, the corpus keys (the recorded recipes' fingerprints and the
     probed engine versions of recorded corpora), the verdict.
@@ -2078,6 +2109,16 @@ def _wave_document(
     recorded = [row for row in rows if (row.get("steps") or {}).get("observation_corpus", {}).get("state") == "passed"]
     fingerprints = {row["recipe"]: row["behaviour_fingerprint"] for row in recorded if row.get("behaviour_fingerprint")}
     engine_versions = {row["recipe"]: row["engine_version"] for row in recorded if row.get("engine_version")}
+    # A recipe this wave skipped as unchanged still has a recording at the index's key: its entries are
+    # carried forward, or the next wave's --changed-since (the documented chain) would find it missing,
+    # re-record it with false reasons and report a false protocol_due (g-observe-7).
+    for recipe_id in skipped_unchanged:
+        fingerprint = (previous_index or {}).get("fingerprints", {}).get(recipe_id)
+        version = (previous_index or {}).get("engine_versions", {}).get(recipe_id)
+        if fingerprint and recipe_id not in fingerprints:
+            fingerprints[recipe_id] = fingerprint
+        if version and recipe_id not in engine_versions:
+            engine_versions[recipe_id] = version
     verified = bool(rows) and all(row["state"] == "verified" for row in rows)
     skipped = not rows and bool(skipped_unchanged)
     verdict = "passed" if verified else ("skipped" if skipped else "failed")
