@@ -177,13 +177,16 @@ def score_delta(
 
     ``order_a``/``order_b`` are the systems' displayed orders (best first): they say which documents each shows
     at ``k``, and ordering is B's score minus the score of B's shown documents arranged in A's order (those A
-    lacks keep their own).
+    lacks follow A's own documents, in B's order).
 
     With the systems' score mappings and the protocol's tie rule (``scores_a``, ``scores_b``, ``ties``) every
     value is the metric's: the totals are ``ndcg(scores_b, gains, ties=ties) - ndcg(scores_a, ...)``, so the gap
     equals the report's per-query values under the protocol it was scored with, and the mixed arrangement is
-    re-scored under the same rule (a ``group_mean`` protocol credits an equal-score class its mean gain).
-    Without the mappings the orders are scored as lists, which is the metric for the ordered tie rules only.
+    re-scored under the same rule (a ``group_mean`` protocol credits an equal-score class its mean gain). The
+    mixed arrangement is built from A's own order, never from the two systems' score scales: a document A lacks
+    sits below every A-scored one (so a monotone rescaling of B, which changes no nDCG, cannot move the split),
+    and A's equal-score classes are preserved. Without the mappings the orders are scored as lists, which is the
+    metric for the ordered tie rules only.
 
     Returns:
         ``(total, selection, ordering)``; the two components sum to the total.
@@ -208,7 +211,16 @@ def score_delta(
         return total, total - ordering, ordering
     score_a = ndcg(scores_a, gains, k=k, ties=ties)
     score_b = ndcg(scores_b, gains, k=k, ties=ties)
-    mixed = {d: scores_a.get(d, scores_b[d]) for d in b_in_a_order}
+    # The mixed arrangement's scores come from A's order, not from the two systems' raw scales: a monotone
+    # rescaling of either system changes no nDCG, so it must not move the split. A's own equal-score classes
+    # are preserved (group_mean still credits them their mean gain), and a document A lacks sits below every
+    # A-scored one, in B's own order -- the way the list path appends them.
+    a_values = sorted({scores_a[doc] for doc in b_in_a_order if doc in scores_a})
+    rank_of = {value: float(index) for index, value in enumerate(a_values)}
+    b_only = [doc for doc in b_in_a_order if doc not in scores_a]
+    floor = min(rank_of.values(), default=0.0) - len(b_only) - 1
+    mixed = {doc: rank_of[scores_a[doc]] for doc in b_in_a_order if doc in scores_a}
+    mixed.update({doc: floor + index for index, doc in enumerate(b_only)})
     ordering = score_b - ndcg(mixed, gains, k=k, ties=ties)
     total = score_b - score_a
     return total, total - ordering, ordering

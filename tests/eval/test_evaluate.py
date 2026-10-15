@@ -647,7 +647,8 @@ def test_deltas_are_b_minus_a_with_the_papers_paired_t_test(report: EvalReport) 
     assert [(p.system_a, p.system_b) for p in result.pairs] == [("bad", "good"), ("bad", "mixed")]
     assert pair.delta == pytest.approx(report.value("good", k=4) - report.value("bad", k=4))
     assert pair.delta > 0 and pair.ci_low - 1e-12 <= pair.delta <= pair.ci_high + 1e-12
-    assert pair.significant and pair.p_value == 0.0, "scipy's test: a constant gain on every query"
+    assert pair.t is None and pair.p_value is None, "a constant gain on every query has no variance to test"
+    assert not pair.significant, "the docstrings: a pair without variance in its differences is not separated"
     assert mixed_pair.p_value == pytest.approx(
         ttest_rel(
             mixed, [r.value for r in report.per_query if (r.system, r.metric, r.k) == ("bad", "rcp_ndcg", 4)]
@@ -738,7 +739,13 @@ def test_sensitivity_is_the_share_of_pairs_a_paired_t_test_separates(report: Eva
     pairs = (("good", "bad"), ("good", "mixed"), ("bad", "mixed"))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        expected = np.mean([ttest_rel(values[a], values[b]).pvalue < 0.05 for a, b in pairs])
+        expected = np.mean(
+            [
+                np.ptp(np.array(values[b]) - np.array(values[a])) != 0
+                and ttest_rel(values[a], values[b]).pvalue < 0.05
+                for a, b in pairs
+            ]
+        )
 
     assert sensitivity(report, metric="qrel_ndcg", k=4) == pytest.approx(expected)
 
@@ -780,6 +787,34 @@ def test_sensitivity_is_the_mean_over_datasets_of_each_datasets_share_of_separat
 
     # a: 2 of 3 pairs, b: 0 of 3 pairs; the mean over the two datasets is 1/3.
     assert sensitivity(report, metric="qrel_ndcg") == pytest.approx(1 / 3)
+
+
+def test_a_pair_with_zero_variance_in_its_differences_is_not_separated() -> None:
+    """The docstrings say a pair whose differences have no variance is not separated; scipy returns t=inf and
+    p=0.0 for constant nonzero differences, which used to count as significant with ``t`` serialised as null."""
+    from rcp_ndcg_core.protocol import PROTOCOLS
+
+    from rcp_ndcg.eval import QueryValue, SummaryValue
+    from rcp_ndcg.eval.compare import _paired_t
+
+    assert _paired_t(np.array([0.25, 0.25])) == (None, None)
+    assert _paired_t(np.array([0.1, 0.1, 0.1])) == (None, None)
+    assert _paired_t(np.array([0.0, 0.0])) == (None, None)
+
+    rows = [
+        QueryValue(system=system, dataset="d", query_id=f"q{i}", metric="qrel_ndcg", k=10, value=base)
+        for system, base in (("a", 0.2), ("b", 0.7))
+        for i in range(4)
+    ]
+    summary = [
+        SummaryValue(system=system, metric="qrel_ndcg", k=10, value=0.0, ci_low=None, ci_high=None,
+                     num_queries=4, num_datasets=1)
+        for system in ("a", "b")
+    ]  # fmt: skip
+    report = EvalReport(protocol=PROTOCOLS["plain"], gains_source="none", metrics=["qrel_ndcg"], k=[10],
+                        per_query=rows, per_dataset=[], summary=summary)  # fmt: skip
+
+    assert sensitivity(report, metric="qrel_ndcg") == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -903,6 +938,26 @@ def test_score_delta_refuses_one_score_mapping_alone() -> None:
         score_delta(["a", "b"], ["b", "a"], {"a": 1.0, "b": 0.0}, scores_a={"a": 1.0, "b": 0.0})
     with pytest.raises(ValueError, match="both score mappings"):
         score_delta(["a", "b"], ["b", "a"], {"a": 1.0, "b": 0.0}, scores_b={"a": 1.0, "b": 0.0})
+
+
+def test_score_delta_does_not_depend_on_the_score_scale() -> None:
+    """The mixed arrangement is built from A's order, so a B-only document's place must not depend on how
+    large B's scores are: rescaling B leaves every nDCG unchanged and used to move the split."""
+    from rcp_ndcg.eval.explain import score_delta
+
+    order_a, order_b = ["a1", "a2", "g"], ["n", "g", "a1"]
+    scores_a = {"a1": 0.9, "a2": 0.8, "g": 0.7}
+    scores_b = {"g": 10.0, "n": 30.0, "a1": 5.0}
+    gains = {"g": 1.0, "n": 0.5}
+
+    base = score_delta(order_a, order_b, gains, k=3, scores_a=scores_a, scores_b=scores_b)
+    scaled = score_delta(
+        order_a, order_b, gains, k=3, scores_a=scores_a, scores_b={d: s / 100 for d, s in scores_b.items()}
+    )
+    as_lists = score_delta(order_a, order_b, gains, k=3)
+
+    assert base == scaled
+    assert base == as_lists, "the score path and the list path describe the same arrangement"
 
 
 def test_explain_names_the_known_queries_when_it_refuses_one(report: EvalReport) -> None:
