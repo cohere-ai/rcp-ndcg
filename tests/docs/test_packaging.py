@@ -630,3 +630,16 @@ def test_the_pydantic_floor_covers_the_config_keys_the_code_uses() -> None:
         assert len(pydantic) == 1, f"{member} declares pydantic {len(pydantic)} times"
         floors = [Version(spec.version) for spec in pydantic[0].specifier if spec.operator == ">="]
         assert floors and min(floors) >= PYDANTIC_211, f"{member} declares {pydantic[0]}"
+
+
+def test_every_member_build_directory_is_ignored() -> None:
+    """An in-tree build (``pip wheel ./rcp-ndcg``) leaves ``build/`` output behind.
+
+    ``/rcp-ndcg-*/build/`` covers the three hyphenated members; the main distribution's directory must be
+    ignored too, or its build output shows up in ``git status`` and in ``git add -A``.
+    """
+    for member in ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test"):
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", f"{member}/build/lib/x.py"], cwd=ROOT, capture_output=True
+        )
+        assert result.returncode == 0, f"{member}/build/ is not ignored"
