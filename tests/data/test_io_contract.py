@@ -748,3 +748,37 @@ def test_a_conflicting_beir_corpus_row_refuses_even_under_last(beir_dir) -> None
     with pytest.raises(DataError, match="appears twice with different content") as caught:
         list(reader.documents())
     assert "cannot replace a row it has already yielded" in str(caught.value.hint)
+
+
+def test_a_requested_qrels_split_never_falls_back_to_another(tmp_path) -> None:
+    """A BEIR dir holding qrels/test.tsv and qrels/dev.tsv.gz: asking for dev must read dev's labels, never
+    fall through to test (a user tuning on dev would otherwise get test-set numbers), and a split the
+    directory does not have must refuse, naming the splits it does have."""
+    import gzip
+
+    root = tmp_path / "beir"
+    (root / "qrels").mkdir(parents=True)
+    (root / "corpus.jsonl").write_text(json.dumps({"_id": "d1", "text": "body"}) + "\n")
+    (root / "queries.jsonl").write_text(json.dumps({"_id": "q1", "text": "query"}) + "\n")
+    (root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n")
+    (root / "qrels" / "dev.tsv.gz").write_bytes(gzip.compress(b"query-id\tcorpus-id\tscore\nq1\td1\t2\n"))
+
+    dev = get_reader("beir", uri=str(root), split="dev")
+    assert dev.qrels() == {"q1": {"d1": 2.0}}, "dev's labels, not test's"
+    assert dev.provenance.split == "dev"
+
+    missing = get_reader("beir", uri=str(root), split="validation")
+    with pytest.raises(MissingInputError, match="validation") as caught:
+        missing.qrels()
+    assert "dev" in str(caught.value.hint) and "test" in str(caught.value.hint)
+
+
+def test_a_root_level_qrels_tsv_is_the_test_split(tmp_path) -> None:
+    """A root ``qrels.tsv`` is the conventional test split; its stem ('qrels') is not a split name."""
+    (tmp_path / "corpus.jsonl").write_text(json.dumps({"_id": "d1", "text": "body"}) + "\n")
+    (tmp_path / "queries.jsonl").write_text(json.dumps({"_id": "q1", "text": "query"}) + "\n")
+    (tmp_path / "qrels.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n")
+
+    reader = get_reader("beir", uri=str(tmp_path))
+    assert reader.qrels() == {"q1": {"d1": 1.0}}
+    assert reader.provenance.split == "test"
