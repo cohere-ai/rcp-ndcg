@@ -1173,6 +1173,18 @@ class TestPlannedWindows:
             _rubric(tmp_path, client, docs={ROWS[0].id: []})
         assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
 
+    def test_a_docs_or_candidates_key_that_names_no_row_is_refused(self, tmp_path: Path) -> None:
+        """A query id in docs= (or, for a row-sequence input, candidates=) that matches no row used to be
+        dropped silently: the pass reported success while a named query was never judged."""
+        q1 = ROWS[0].doc_ids
+        with pytest.raises(DataError, match="nope"):
+            _rubric(tmp_path / "docs", docs={ROWS[0].id: [q1[0]], "nope": [q1[0]]})
+        client = _fake()
+        with pytest.raises(DataError, match="q3"):
+            judge(ROWS, {ROWS[0].id: q1, "q3": q1}, client, stage="rubric", out=tmp_path / "candidates",
+                  schedule=TINY_RUBRIC)  # fmt: skip
+        assert client.usage.requests == 0
+
     def test_a_tournament_query_with_fewer_than_two_candidates_is_refused(self, tmp_path: Path) -> None:
         """A pool of one has no pair to compare; the pass was silent (no record, no warning)."""
         client = _fake()

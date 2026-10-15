@@ -433,6 +433,17 @@ def _queries(
                 hint="merge the rows, or give the second query its own id",
             )
         seen.add(row.id)
+    unknown = sorted(
+        {str(key) for mapping in (candidates, docs) if mapping is not None for key in mapping} - seen
+    )
+    if unknown:
+        # The other direction of the selection: a key that names no row is not judged, so a pass that
+        # dropped it would report success while a query the caller named never reached the judge.
+        raise DataError(
+            f"query {', '.join(map(repr, unknown))} of the candidates or documents to judge is not a query "
+            f"of the rows: nothing would be judged for it",
+            hint="check the query ids against the dataset's queries (a pool may have been cut by --limit or --depth)",
+        )
     queries: list[_Query] = []
     for row in rows:
         if candidates is not None and row.id not in candidates:
