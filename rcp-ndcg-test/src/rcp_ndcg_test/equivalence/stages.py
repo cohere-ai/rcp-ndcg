@@ -964,14 +964,14 @@ def _audit_rerank_span(
                     "shape": shape,
                     "check": "in_budget_cut",
                     "row": row_index,
-                        "document_index": position,
-                        "uncut_request_tokens": original,
-                        "budget_tokens": budget,
-                        "note": "the client changed a document of a row that is not an over-length sample, "
-                        "and the change's uncut request does not exceed its budget: a budget cut may only "
-                        "shorten a pair the budget refuses whole",
-                    }
-                )
+                    "document_index": position,
+                    "uncut_request_tokens": original,
+                    "budget_tokens": budget,
+                    "note": "the client changed a document of a row that is not an over-length sample, "
+                    "and the change's uncut request does not exceed its budget: a budget cut may only "
+                    "shorten a pair the budget refuses whole",
+                }
+            )
     return checked
 
 
