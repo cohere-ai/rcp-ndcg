@@ -7,6 +7,19 @@
       "title": "Dry Run",
       "type": "boolean"
     },
+    "labels": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "(query, document) labels written (corpus shape, after --limit trims); null for a dry run.",
+      "title": "Labels"
+    },
     "limit": {
       "anyOf": [
         {
@@ -23,6 +36,19 @@
     "out": {
       "title": "Out",
       "type": "string"
+    },
+    "queries": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Queries written (corpus shape, after --limit trims); null for a dry run.",
+      "title": "Queries"
     },
     "reader": {
       "title": "Reader",

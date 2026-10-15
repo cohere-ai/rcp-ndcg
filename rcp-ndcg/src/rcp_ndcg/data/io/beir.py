@@ -2,7 +2,9 @@
 
 Corpus-shaped, and the lingua franca of text retrieval evaluation.  Reading it
 is unremarkable; writing it is what lets a RCP-nDCG dataset be evaluated by
-any BEIR-compatible tool without a conversion script.
+any BEIR-compatible tool without a conversion script.  Grades are written as
+integers (BEIR's own loader parses them with ``int()``); a fractional grade is
+refused at write time, because no BEIR-compatible tool reads one.
 
 The one wrinkle worth naming: BEIR qrels are TSV with a header line whose first
 column is ``query-id``, and the sibling ``.tsv`` convention differs between the
@@ -64,7 +66,8 @@ class BeirReader(SourceReader):
 
     Args:
         uri: The dataset directory.
-        split: Which qrels split to read; ``None`` takes the first that exists.
+        split: Which qrels split to read; ``None`` takes the first conventional one that exists. A requested
+            split must exist as ``qrels/<split>.tsv[.gz]``: another split's labels are never served for it.
         duplicates: What a conflicting duplicate does (see :class:`~rcp_ndcg.data.io.base.DuplicatesPolicy`).
         name: Dataset name; defaults to the directory name.
     """
@@ -179,15 +182,42 @@ class BeirReader(SourceReader):
         )
 
     def _qrels_path(self) -> str:
-        candidates = (f"qrels/{self.split}.tsv",) + QRELS_CANDIDATES if self.split else QRELS_CANDIDATES
+        """The labels file of the requested split, never another split's.
+
+        A requested split is looked up as ``qrels/<split>.tsv`` and ``qrels/<split>.tsv.gz`` only: falling
+        through to the conventional list used to return ``qrels/test.tsv`` for ``split='dev'`` (or for any
+        split the directory lacks), so a user tuning on dev silently evaluated test. Without a requested
+        split the first conventional file wins, as documented.
+        """
+        candidates = (f"qrels/{self.split}.tsv", f"qrels/{self.split}.tsv.gz") if self.split else QRELS_CANDIDATES
         for filename in candidates:
             candidate = storage.join(self.uri, filename)
             if storage.exists(candidate):
                 return candidate
+        existing = self._existing_qrels_splits()
+        hint = "a BEIR directory holds its labels in qrels/<split>.tsv (test.tsv, dev.tsv or train.tsv)"
+        if existing:
+            hint = f"the qrels files under {self.uri} name the splits {existing}; read one of them"
         raise MissingInputError(
-            f"no qrels under {self.uri} (looked for {', '.join(candidates)})",
-            hint="a BEIR directory holds its labels in qrels/<split>.tsv (test.tsv, dev.tsv or train.tsv)",
+            f"no qrels under {self.uri}"
+            + (f" for the split {self.split!r}" if self.split else "")
+            + f" (looked for {', '.join(candidates)})",
+            hint=hint,
         )
+
+    def _existing_qrels_splits(self) -> list[str]:
+        """The split names the directory's ``qrels/`` files state, for the missing-split hint (best effort:
+        a listing that fails must not mask the missing-file error)."""
+        try:
+            names = storage.ls(storage.join(self.uri, "qrels"))
+        except Exception:  # noqa: BLE001 - the hint is a nicety; the missing file is the error
+            return []
+        splits = [
+            Path(Path(name).name.removesuffix(".gz")).stem
+            for name in names
+            if Path(name).name.endswith((".tsv", ".tsv.gz"))
+        ]
+        return sorted(set(splits))
 
     @property
     def provenance(self) -> Provenance:
@@ -197,7 +227,7 @@ class BeirReader(SourceReader):
         the label folds; the corpus and query folds are logged as they happen (they are read on demand).
         """
         try:
-            split = Path(self._qrels_path().removesuffix(".gz")).stem
+            split = _split_of_qrels_file(self._qrels_path())
         except MissingInputError:
             split = self.split or "test"
         return Provenance(source_uri=self.uri, subset="default", split=split, duplicates=self._counts)
@@ -246,11 +276,37 @@ class BeirWriter(SinkWriter):
             handle.write("query-id\tcorpus-id\tscore\n")
             for query_id, judged in qrels.items():
                 for doc_id, label in judged.items():
-                    # repr of a builtin float round-trips exactly; no silent 6-digit rounding.
-                    handle.write(f"{query_id}\t{doc_id}\t{float(label)!r}\n")
+                    handle.write(f"{query_id}\t{doc_id}\t{_grade_cell(label, query_id, doc_id)}\n")
 
         logger.info(f"wrote BEIR layout to {uri}: {n_docs} docs, {len(qrels)} judged queries")
         return n_docs
+
+
+def _grade_cell(label: float, query_id: ID, doc_id: ID) -> str:
+    """One qrels score cell: an integral grade as an int, a fractional grade refused.
+
+    BEIR's own loader parses ``int(row[2])``, so ``repr(1.0)`` made every export unreadable by BEIR itself.
+    An integral grade is written as its int; a fractional grade is refused with a hint, because a ``0.7``
+    cell is a non-standard file no BEIR-compatible tool reads (the reader keeps fractional labels; the
+    ``jsonl`` and ``mteb`` writers carry the continuous signal).
+    """
+    value = float(label)
+    if value.is_integer():
+        return str(int(value))
+    raise DataError(
+        f"qrels: query {query_id!r}, document {doc_id!r}: the grade {label!r} is not a whole number, and "
+        "BEIR's own loader parses qrels scores with int()",
+        hint="BEIR qrels are integers: export as `jsonl` (which keeps float grades) or as `mteb` (whose "
+        "gain/theta columns carry the continuous signal)",
+        details={"query_id": str(query_id), "doc_id": str(doc_id), "grade": value},
+    )
+
+
+def _split_of_qrels_file(path: str) -> str:
+    """The split a qrels file's name states: ``qrels/dev.tsv[.gz]`` is dev; a root-level ``qrels.tsv`` is the
+    conventional test split (its own stem, "qrels", is not a split)."""
+    name = Path(path.removesuffix(".gz")).name
+    return "test" if name == "qrels.tsv" else Path(name).stem
 
 
 def _looks_like_header(row: list[str]) -> bool:

@@ -4513,3 +4513,50 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are refused),
   and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine objects no
   longer carry an owner reference with a placeholder uid).
+- **`data convert` carries every table the source has**: `--to mteb` now writes the source's candidate pools
+  (`top_ranked`), its `-excluded` config, the calibrated `gain`/`theta` qrels columns, the subset, the split
+  and the task instruction, through the one reader path (`write_dataset`) -- before, it wrote corpus, queries
+  and qrels only, so a model scored inside mteb ranked the excluded and out-of-pool documents. A writer that
+  cannot express a table refuses with a hint instead of dropping it silently. `--limit` on the corpus shape now
+  trims the labels and queries with the documents, so a smoke conversion loads back; `Conversion` reports the
+  written `queries` and `labels` counts beside `written` (additive schema change, `conversion.v1`).
+- **The BEIR writer writes an integral grade as an integer** (BEIR's own loader parses `int(row[2])`, so
+  `repr(1.0)` made every export, all-integer ones included, unreadable by BEIR itself) and refuses a fractional
+  grade with a hint naming the formats that carry a continuous one; the reader keeps float grades. The BEIR
+  reader serves the requested `split` only: a missing split raises naming the splits the directory has, instead
+  of falling back to `qrels/test.tsv` (a user tuning on dev silently evaluated test), and a root `qrels.tsv` is
+  the test split rather than the split "qrels".
+- **The Hub reader refuses what it must not read and reads what it should**: a media cell that names a path and
+  carries no bytes is refused (a third-party row must not make the reader read any local file or credentialed
+  URI into the media cache), and a struct cell whose suffix names no media type must state one by its magic
+  numbers; a null text cell reads as empty text (pandas' NaN was refused as "not text"); a gains-only qrels
+  table reloads its gains (they were read only beside a non-null theta); the instruction completeness check runs
+  over the queries mteb keeps; the valid card `data_files` forms (a string, a list path) are read; and
+  `load_dataset('hf://org/repo', name=...)` on a single-subset repository honours the name. The MTEB writer
+  writes a document's title verbatim (mteb's join keeps the title's own whitespace) and writes a string task
+  instruction on every query, so a lifted BRIGHT instruction round-trips; a per-side mapping needs a card.
+- **`Rankings.save(format="mteb", dataset=...)` writes one subset**: the coverage check and the written file
+  covered every dataset group of the system and keyed unnamed rows ``default``, so a suite run's predictions
+  passed with another subset's query and carried foreign subsets under their own names. The new ``dataset=``
+  (the task's `hf_subset`) selects the group, keys it by that name, and a system whose rows span several
+  datasets without a selector is refused. Additive keyword-only parameter (`python_api` snapshot).
+- **An `mteb:` identity records the mteb version and the task class**, and only a full commit counts as
+  ``verified``: a task metadata revision of ``main`` was recorded as verified, and an mteb upgrade that
+  changed a custom loader's ids or texts at the same revision was invisible to a resume. A branch resolves
+  through the Hub like every other revision.
+- **`get_tasks(revision=...)` and `tools/republish_mteb.py` read the task definitions at the pinned
+  revision**: they built the task names, splits and prompt from today's `main` while the data was read at the
+  pinned commit, so a re-lay could silently change a pinned run's prompt (republish also ignored its own
+  ``--owner``). The task file and the data now come from the same owner and revision.
+- **`data fetch` parses the data layer's Hub URI grammar**: ``hf://org/repo@rev`` (previously sent to the Hub
+  as a repository id, so its validation error was reported as an internal "this is a bug") and
+  ``hf://org/repo/subset`` now map to ``--revision`` and ``--subset``, with a conflict refused. `data inspect`
+  no longer counts a query whose labels are all zero and that has no pool.
+- **The content-addressed media cache is published atomically and heals**: ``store_media`` wrote with a plain
+  write and skipped an existing target, so a process killed mid-write left a truncated file under a content
+  hash that every later read served; the payload is published atomically and an existing target whose size
+  differs is republished. The frame-directory reader records the *last* number in a frame's file name (the
+  first run made ``clip1_frame_0001`` and ``clip1_frame_0002`` both index 1) and refuses a clip whose numbers
+  do not strictly increase; a QuickTime/MOV whose first ISO-BMFF box is not ``ftyp`` is labelled ``.mov``,
+  never ``.avi``; the image and video cache-size environment variables are parsed by one helper that raises a
+  typed `ConfigError` naming the variable (a malformed value used to crash `import rcp_ndcg`).

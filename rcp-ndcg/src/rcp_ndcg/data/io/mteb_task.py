@@ -29,6 +29,7 @@ from rcp_ndcg_core.records import ID, Document, Query
 from rcp_ndcg.data.io.base import DataShape, Provenance, SourceReader
 from rcp_ndcg.data.io.hub import _encode_media
 from rcp_ndcg.data.media import image_dimensions, store_media
+from rcp_ndcg.data.revisions import is_commit, resolve_revision
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.logging import get_logger
 
@@ -201,7 +202,13 @@ class MtebTaskReader(SourceReader):
 
     # -- provenance --------------------------------------------------------
     def revision_payload(self) -> dict[str, Any]:
-        """The identity payload of the task's pinned dataset revision: ``{"repo", "commit", "verified"}``.
+        """The identity payload of the task's pinned dataset revision.
+
+        ``{"repo", "commit", "verified", "mteb_version", "task"}``: the commit the metadata's revision
+        resolves to (a branch such as ``main`` resolves through the Hub, and only a full commit counts as
+        verified), the installed mteb version and the task class's qualified name. The ids and texts of a
+        custom-loaded task come from mteb's own task code, so the version is part of the identity: an mteb
+        upgrade that changes them at the same revision must change the identity a resume compares.
 
         What :func:`rcp_ndcg.data.revisions.dataset_uri_revision` returns for an ``hf://`` URI, for a task
         whose repository only its metadata names (the task is read without loading its data).
@@ -225,11 +232,15 @@ class MtebTaskReader(SourceReader):
                 hint="a task is named as mteb names it (mteb.get_task); `mteb:<TaskName>[/<subset>][@split]`",
             ) from exc
         dataset = task.metadata.dataset
-        commit = dataset.get("revision")
+        repo = str(dataset.get("path") or task.metadata.name)
+        revision = dataset.get("revision")
+        commit = revision if is_commit(revision) else resolve_revision(repo, revision).commit
         return {
-            "repo": str(dataset.get("path") or task.metadata.name),
+            "repo": repo,
             "commit": commit,
-            "verified": bool(commit),
+            "verified": is_commit(commit),
+            "mteb_version": _mteb_version(),
+            "task": f"{type(task).__module__}.{type(task).__qualname__}",
         }
 
     @property
@@ -302,6 +313,18 @@ def _text_of(row: Mapping[str, Any], *, what: str) -> str:
         hint="mteb's conversation-style queries are not read yet (workstream 10 defers them): read the "
         "turns yourself, or wait for the conversation reader",
     )
+
+
+def _mteb_version() -> str | None:
+    """The installed mteb version, or ``None`` when its distribution metadata is absent (the import worked
+    from a stub, or an unusual install). The version is part of an ``mteb:`` identity: the task's own code
+    produces the ids and texts, so an upgrade must move the identity."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("mteb")
+    except PackageNotFoundError:
+        return None
 
 
 __all__ = ["MtebTaskReader"]

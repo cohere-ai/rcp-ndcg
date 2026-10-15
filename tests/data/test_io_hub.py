@@ -667,3 +667,115 @@ def test_duplicates_last_resolves_a_pool_conflict(hub) -> None:
         assert dataset.candidates["test_query0"] == ["apositive_test_query0_00001"], "the last pool wins"
         assert dataset.provenance.duplicates is not None
         assert dataset.provenance.duplicates.resolved == 1
+
+
+# ---------------------------------------------------------------------------
+# The media-cell refusal (dataio-5), null cells (dataio-8), the kept-query
+# completeness (dataio-9), card data_files forms (dataio-10) and the explicit
+# name on a single-subset repository (dataio-14)
+# ---------------------------------------------------------------------------
+
+
+def test_a_path_only_media_cell_is_refused_never_read(tmp_path: Path) -> None:
+    """A third-party row's ``{"bytes": None, "path": ...}`` cell names a path the reader must not dereference:
+    it could be any local file (an SSH key, a cloud credential file) or a credentialed remote URI, and its
+    bytes would land in the media cache and from there in a judge request or a republished parquet."""
+    from rcp_ndcg.data.io.hub import _encode_media
+
+    secret = tmp_path / "outside-the-repository"
+    secret.write_bytes(b"LOCAL-SECRET-BYTES")
+
+    with pytest.raises(DataError, match="carries no bytes"):
+        _encode_media({"bytes": None, "path": str(secret)}, column="video")
+    assert not (tmp_path / "media-cache").exists(), "the refused cell reaches the media cache nowhere"
+
+
+def test_a_struct_cell_whose_bytes_name_no_media_format_is_refused() -> None:
+    """A path suffix is a claim, not a check: a suffix-less cell used to default to video/mp4 and store any
+    bytes. The payload's own magic numbers must name a media type, as the raw-bytes branch requires."""
+    from rcp_ndcg.data.io.hub import _encode_media
+
+    with pytest.raises(DataError, match="magic number names"):
+        _encode_media({"bytes": b"NOT-A-MEDIA-PAYLOAD", "path": ""}, column="video")
+
+
+def test_a_null_text_cell_reads_as_empty_text(hub) -> None:
+    """pandas turns a null string cell into a float NaN, which the reader used to refuse as "not text": an
+    image-only row (or an Any2Any query table with a null text) failed to load. A null cell is no text."""
+    with hub("vidore-vidore-v3-finance-en") as root:
+        path = root / "english-corpus/test-00000-of-00001.parquet"
+        frame = pd.read_parquet(path)
+        frame["text"] = [None, *(["page text"] * (len(frame) - 1))]
+        frame.to_parquet(path)
+
+        dataset = load_dataset(f"hf://vidore/vidore_v3_finance_en_mteb_format/english@{SHA}")
+
+        document = dataset.corpus["corpus-test-10"]
+        assert document.text == "", "a null text cell is empty text, not a refusal"
+        assert document.as_content.has_media, "the image part still reads"
+
+
+def test_the_instruction_completeness_is_decided_over_the_kept_queries(tmp_path: Path) -> None:
+    """A qrels row whose query has no queries row is never kept (mteb never sees it): it must not make a
+    coherent per-query instruction subset look mixed. The code's own comment says the check runs over the
+    queries mteb keeps; the implementation used to run it over the qrels keys."""
+    from rcp_ndcg.data.io import hub as hub_module
+    from tests.data.hub_stubs import _fake_hub_file, _fake_listing
+
+    root = tmp_path / "repo"
+    (root / "default").mkdir(parents=True)
+    pd.DataFrame({"query-id": ["q1", "q2", "q3"], "corpus-id": ["d1", "d2", "d3"], "score": [1, 1, 1]}).to_parquet(
+        root / "default/qrels.parquet"
+    )
+    pd.DataFrame({"id": ["q1", "q2"], "text": ["one", "two"], "instruction": ["I1", "I2"]}).to_parquet(
+        root / "default/queries.parquet"
+    )
+    pd.DataFrame({"id": ["d1", "d2", "d3"], "text": ["a", "b", "c"]}).to_parquet(root / "default/corpus.parquet")
+
+    with (
+        mock.patch.object(hub_module, "_hub_file", _fake_hub_file(root)),
+        mock.patch.object(hub_module, "_hub_listing", _fake_listing(root)),
+    ):
+        dataset = load_dataset(f"hf://owner/repo/default@{SHA}")
+        assert {q: row.instruction for q, row in dataset.queries.items()} == {"q1": "I1", "q2": "I2"}
+        assert dataset.task_instruction is None, "per-query instructions that differ stay per-query"
+
+
+def test_the_card_data_files_forms_are_normalised(tmp_path: Path) -> None:
+    """HF cards allow a bare string ``data_files`` and a dict whose ``path`` is a list of files. A string used
+    to iterate characters (no entries, a silent fallback to the conventional path); a list became one
+    non-string pattern and reached the download as a filename."""
+    from rcp_ndcg.data.io import hub as hub_module
+    from tests.data.hub_stubs import _fake_hub_file, _fake_listing
+
+    root = tmp_path / "repo"
+    (root / "data").mkdir(parents=True)
+    (root / "README.md").write_text(
+        "---\nconfigs:\n"
+        "- config_name: corpus\n  data_files: data/corpus.parquet\n"
+        "- config_name: queries\n  data_files:\n  - split: test\n    path: [data/q1.parquet, data/q2.parquet]\n"
+        "- config_name: qrels\n  data_files: data/qrels.parquet\n---\n",
+        encoding="utf-8",
+    )
+    pd.DataFrame({"id": ["d1"], "title": ["T"], "text": ["a body"]}).to_parquet(root / "data/corpus.parquet")
+    pd.DataFrame({"id": ["q1"], "text": ["one"]}).to_parquet(root / "data/q1.parquet")
+    pd.DataFrame({"id": ["q2"], "text": ["two"]}).to_parquet(root / "data/q2.parquet")
+    pd.DataFrame({"query-id": ["q1", "q2"], "corpus-id": ["d1", "d1"], "score": [1, 1]}).to_parquet(
+        root / "data/qrels.parquet"
+    )
+
+    with (
+        mock.patch.object(hub_module, "_hub_file", _fake_hub_file(root)),
+        mock.patch.object(hub_module, "_hub_listing", _fake_listing(root)),
+    ):
+        dataset = load_dataset(f"hf://owner/repo/default@{SHA}")
+        assert {q: row.text for q, row in dataset.queries.items()} == {"q1": "one", "q2": "two"}
+        assert set(dataset.corpus) == {"d1"}
+
+
+def test_a_single_subset_repository_honours_an_explicit_name(hub) -> None:
+    """``load_dataset('hf://mteb/nfcorpus@<sha>', name='nf')`` used to raise a bare TypeError ("got multiple
+    values for keyword argument 'name'"): the single-subset branch passed ``name=`` beside the caller's."""
+    with hub("mteb-nfcorpus"):
+        dataset = load_dataset(f"hf://mteb/nfcorpus@{SHA}", name="nf")
+        assert dataset.name == "nf"

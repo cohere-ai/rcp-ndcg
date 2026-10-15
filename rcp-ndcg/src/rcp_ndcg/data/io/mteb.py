@@ -116,6 +116,7 @@ class MtebWriter(SinkWriter):
                 excluded=part.excluded or None,
                 gains=part.gains,
                 thetas=part.thetas,
+                task_instruction=_writable_task_instruction(part.task_instruction, card=card),
                 card=card,
                 subset=subset if subset is not None else part.subset,
                 split=split if split is not None else part.split,
@@ -136,6 +137,7 @@ class MtebWriter(SinkWriter):
                 excluded=part.excluded or None,
                 gains=part.gains,
                 thetas=part.thetas,
+                task_instruction=_writable_task_instruction(part.task_instruction, card=card),
                 subset=part.name,
             )
             prefix = _config_prefix(part.name)
@@ -179,6 +181,7 @@ class MtebWriter(SinkWriter):
         excluded: dict[ID, list[ID]] | None = None,
         gains: dict[ID, dict[ID, float]] | None = None,
         thetas: dict[ID, dict[ID, float]] | None = None,
+        task_instruction: str | None = None,
         card: Mapping[str, Any] | Any | None = None,
         subset: str = DEFAULT_SUBSET,
         split: str = "test",
@@ -200,6 +203,10 @@ class MtebWriter(SinkWriter):
                 ``top_ranked``.
             gains: ``{query_id: {doc_id: gain}}``, the ``gain`` column mteb ignores.
             thetas: ``{query_id: {doc_id: theta}}``, the ``theta`` column mteb ignores.
+            task_instruction: One instruction for the whole task (``Dataset.task_instruction`` as a string):
+                filled on every query, because a uniform per-query column is what the Hub reader lifts back to
+                the task instruction. A per-side mapping cannot ride in the one column; the caller's card is
+                then the only carrier (see :func:`_writable_task_instruction`).
             card: A mteb ``TaskMetadata`` or the fields of one, for the README's card (the ``[mteb]`` extra).
             subset: The subset the configs are prefixed with; ``"default"`` (or ``""``) writes unprefixed
                 names.
@@ -226,6 +233,7 @@ class MtebWriter(SinkWriter):
             excluded=excluded,
             gains=gains,
             thetas=thetas,
+            task_instruction=task_instruction,
             subset=subset,
         )
         _write_configs(tables, uri, split)
@@ -234,10 +242,35 @@ class MtebWriter(SinkWriter):
         return len(corpus)
 
 
+def _writable_task_instruction(task_instruction: Any, *, card: Any) -> str | None:
+    """The task instruction the queries config can carry, from a ``Dataset.task_instruction``.
+
+    A string is written into every query's ``instruction`` column, which the Hub reader lifts back to the task
+    instruction when it is uniform (the BRIGHT case: the instruction is the task's, stored per query). A
+    per-side mapping (mteb's ``TaskMetadata.prompt`` dict) names two sides, which one column cannot hold: it
+    is refused unless the caller's ``card=`` carries the prompt, so nothing is dropped silently.
+    """
+    if task_instruction is None or isinstance(task_instruction, str):
+        return task_instruction
+    if card is not None:
+        return None
+    raise ConfigError(
+        "the dataset's task_instruction is a per-side mapping, which the queries config's one instruction "
+        "column cannot hold",
+        hint="pass card= with the task metadata (mteb's TaskMetadata.prompt carries it), or write the dataset "
+        "without its task instruction",
+        cli_hint="the command line carries no card: convert a dataset whose task_instruction is a string or "
+        "absent, or write the card through the library",
+    )
+
+
 def _title_of(document: Any) -> str:
-    """The document's own ``title``, as the MTEB column holds it (``""`` when the source has none; the text
-    stays the body, and nothing joins them here)."""
-    return (document.title or "").strip()
+    """The document's own ``title``, verbatim (``""`` when the source has none).
+
+    mteb's join is ``(title + ' ' + body).strip()``, so the title's own whitespace is part of the model's
+    text; stripping it here changed the joined text between the source and a republished layout.
+    """
+    return document.title or ""
 
 
 # -- the tables -----------------------------------------------------------------
@@ -347,11 +380,12 @@ def _tables(
     gains: dict[ID, dict[ID, float]] | None,
     thetas: dict[ID, dict[ID, float]] | None,
     prefix: str,
+    task_instruction: str | None = None,
 ) -> dict[str, pa.Table]:
     """The configs of one subset: corpus, queries, qrels, and the pool and exclusions when there are any."""
     tables: dict[str, pa.Table] = {
         f"{prefix}corpus": _corpus_table(corpus),
-        f"{prefix}queries": _queries_table(query_rows),
+        f"{prefix}queries": _queries_table(query_rows, task_instruction),
         f"{prefix}qrels": _qrels_table(qrels, gains, thetas),
     }
     corpus_ids = [_doc_id(document) for document in corpus]
@@ -374,6 +408,7 @@ def _subset_tables(
     gains: dict[ID, dict[ID, float]] | None,
     thetas: dict[ID, dict[ID, float]] | None,
     subset: str,
+    task_instruction: str | None = None,
 ) -> dict[str, pa.Table]:
     """The validated tables of one subset: the writer's checks, then its configs."""
     corpus = list(documents)
@@ -392,7 +427,7 @@ def _subset_tables(
     drops = _pool_of(excluded, set(corpus_ids), query_ids, what="excluded")
     _check_pairs(gains, qrels, "gains")
     _check_pairs(thetas, qrels, "thetas")
-    return _tables(corpus, query_rows, qrels, pools, drops, gains, thetas, _config_prefix(subset))
+    return _tables(corpus, query_rows, qrels, pools, drops, gains, thetas, _config_prefix(subset), task_instruction)
 
 
 def _write_configs(tables: dict[str, pa.Table], uri: str, split: str) -> None:
@@ -435,7 +470,7 @@ def _corpus_table(documents: list[Any]) -> pa.Table:
     return table
 
 
-def _queries_table(queries: list[Any]) -> pa.Table:
+def _queries_table(queries: list[Any], task_instruction: str | None = None) -> pa.Table:
     import pyarrow as pa
 
     images, videos = _media_cells(queries, what="query")
@@ -444,6 +479,22 @@ def _queries_table(queries: list[Any]) -> pa.Table:
         "text": pa.array([str(query.text or "") for query in queries], pa.string()),
     }
     instructions = [query.instruction for query in queries]
+    if task_instruction is not None:
+        # One instruction for the whole task is stored on every query: the Hub reader lifts a uniform column
+        # back to Dataset.task_instruction. A query carrying a different instruction is a conflict, refused
+        # rather than overwritten (a queries config holds one instruction column).
+        conflicting = sorted(
+            str(query.query_id)
+            for query, instruction in zip(queries, instructions, strict=True)
+            if instruction is not None and instruction != task_instruction
+        )
+        if conflicting:
+            raise DataError(
+                f"the task instruction {task_instruction!r} cannot be written beside the per-query "
+                f"instructions of {conflicting[:5]}",
+                hint="clear the queries' own instructions, or write the dataset without its task instruction",
+            )
+        instructions = [task_instruction if instruction is None else instruction for instruction in instructions]
     if any(instruction is not None for instruction in instructions):
         columns["instruction"] = pa.array(
             [instruction if isinstance(instruction, str) else None for instruction in instructions], pa.string()

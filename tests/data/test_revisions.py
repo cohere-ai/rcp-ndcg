@@ -250,6 +250,41 @@ def test_a_revision_that_is_not_exactly_a_commit_is_resolved_not_echoed(hub: Fak
     assert resolved.commit is None and resolved.verified is False
 
 
+def test_the_mteb_identity_records_the_mteb_version_and_only_a_commit_is_verified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ``mteb:`` identity recorded the metadata revision alone: ``main`` counted as verified, and an
+    mteb upgrade that changed a task's ids or texts at the same revision was invisible to a resume."""
+    from rcp_ndcg.data.io import mteb_task as mteb_task_module
+    from rcp_ndcg.data.io.mteb_task import MtebTaskReader
+    from rcp_ndcg.data.revisions import ResolvedRevision
+
+    class FakeTask:
+        class metadata:
+            name = "PublicHealthQARetrieval"
+            dataset = {"path": "mteb/public-health-qa", "revision": "main"}
+
+    module = types.ModuleType("mteb")
+    module.get_task = lambda name: FakeTask()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mteb", module)
+    monkeypatch.setattr(mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, None))
+    monkeypatch.setattr(mteb_task_module, "_mteb_version", lambda: "2.21.6")
+
+    payload = MtebTaskReader("PublicHealthQARetrieval").revision_payload()
+
+    assert payload["repo"] == "mteb/public-health-qa"
+    assert (payload["commit"], payload["verified"]) == (None, False), "a branch is not verified"
+    assert payload["mteb_version"] == "2.21.6"
+    assert payload["task"].endswith("FakeTask"), "the task class's qualified name is part of the identity"
+
+    monkeypatch.setattr(mteb_task_module, "_mteb_version", lambda: "2.22.0")
+    assert MtebTaskReader("PublicHealthQARetrieval").revision_payload() != payload
+
+    monkeypatch.setattr(mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, SHA_A))
+    resolved = MtebTaskReader("PublicHealthQARetrieval").revision_payload()
+    assert (resolved["commit"], resolved["verified"]) == (SHA_A, True)
+
+
 # ---------------------------------------------------------------------------
 # A local source's content: the one home the run and the judgement store share
 # ---------------------------------------------------------------------------

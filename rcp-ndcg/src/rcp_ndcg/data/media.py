@@ -31,6 +31,7 @@ from rcp_ndcg_core.content import Content, MediaRef, VideoPart
 from rcp_ndcg import storage
 from rcp_ndcg.errors import DataError, MissingInputError, RcpNdcgError
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.paths import env_int
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from PIL.Image import Image
@@ -487,8 +488,12 @@ def media_extension(payload: bytes) -> str | None:
             return suffix
     if payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
         return ".webp"
+    if payload.startswith(b"RIFF") and payload[8:12] == b"AVI ":
+        return ".avi"
     if probe_video_header(payload) is not None:
-        return ".mp4" if payload[4:8] == b"ftyp" else ".avi"
+        # ISO BMFF: ftyp-first is MP4; an older QuickTime file starts with moov/mdat/free/wide/skip and is
+        # MOV, never AVI (only a RIFF/AVI payload is AVI).
+        return ".mp4" if payload[4:8] == b"ftyp" else ".mov"
     return None
 
 
@@ -535,8 +540,11 @@ def store_media(
         target = str(MediaResolver().cache_path(MediaRef(uri=f"media{extension}", sha256=digest)))
     else:
         target = storage.join(root, digest[:2], f"{digest}{extension}")
-    if not storage.exists(target):
-        storage.write_bytes(target, payload)
+    # Atomic publish, and a size check on an existing target: a plain write killed halfway left a truncated
+    # file under a content hash, which the resolver's cache hit (verification is on write) then served
+    # forever. A target whose size differs from the payload's is republished, so a torn file heals.
+    if not storage.exists(target) or storage.info(target).get("size") != len(payload):
+        storage.publish_bytes(target, payload)
     return MediaRef(
         uri=target,
         sha256=digest,
@@ -676,7 +684,7 @@ def content_parts_payload(
 #: is hundreds of KB, so the image cache's 512 entries would be gigabytes per worker. A clip still recurs
 #: across the windows of one query, which is what this small cache spans. Override with
 #: ``RCP_NDCG_VIDEO_CACHE_SIZE``.
-VIDEO_CACHE_SIZE = int(os.environ.get("RCP_NDCG_VIDEO_CACHE_SIZE", "16"))
+VIDEO_CACHE_SIZE = env_int("RCP_NDCG_VIDEO_CACHE_SIZE", 16)
 
 
 @lru_cache(maxsize=VIDEO_CACHE_SIZE)

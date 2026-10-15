@@ -541,9 +541,8 @@ def _load_hub(
         commit = resolve_revision(repo, revision).commit or revision
         derived = hub_subsets(repo, commit)
         if len(derived) == 1:
-            reader = get_reader(
-                "hf", uri=f"{repo}/{derived[0]}", revision=revision, name=repo.rsplit("/", 1)[-1], **options
-            )
+            options.setdefault("name", repo.rsplit("/", 1)[-1])
+            reader = get_reader("hf", uri=f"{repo}/{derived[0]}", revision=revision, **options)
             assert isinstance(reader, HubReader)
             return _from_reader(reader, uri=f"hf://{repo}")
         raise ConfigError(

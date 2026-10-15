@@ -41,18 +41,38 @@ def _suite(dataset: str) -> str | None:
 
 
 def _repo_id(dataset: str) -> str | None:
-    """The HuggingFace dataset repository of a suite name or an ``hf://org/repo`` URI."""
+    """The HuggingFace dataset repository of a suite name (an ``hf://`` URI goes through
+    :func:`_hub_locator`)."""
     from rcp_ndcg.data import SUITES
 
     suite = _suite(dataset)
-    if suite is not None:
-        return SUITES[suite].repo
-    if dataset.startswith("hf://"):
-        repo = dataset.removeprefix("hf://").strip("/")
-        if repo.count("/") != 1:
-            raise UsageError(f"{dataset!r} is not hf://<org>/<repo>", hint="e.g. hf://org/name")
-        return repo
-    return None
+    return SUITES[suite].repo if suite is not None else None
+
+
+def _hub_locator(dataset: str) -> tuple[str, str | None, str | None]:
+    """``(repo, subset, revision)`` of an ``hf://<org>/<repo>[/<subset>][@<revision>]`` URI.
+
+    The data layer's own URI grammar (:mod:`rcp_ndcg.data.dataset`, :mod:`rcp_ndcg.data.revisions`): a third
+    path segment is the subset and ``@rev`` the revision. A URI outside the grammar is a UsageError naming
+    the form, never a repository id handed to the Hub (which answered with an untyped HFValidationError,
+    classified as an internal error).
+    """
+    locator = dataset.removeprefix("hf://").strip("/")
+    path, _, revision = locator.partition("@")
+    parts = path.split("/")
+    if len(parts) not in (2, 3) or not all(parts):
+        raise UsageError(
+            f"{dataset!r} is not hf://<org>/<repo>[/<subset>][@<revision>]",
+            hint="e.g. hf://org/name, hf://org/name/subset@main; --subset and --revision name the same parts",
+        )
+    return "/".join(parts[:2]), parts[2] if len(parts) == 3 else None, revision or None
+
+
+def _one_value(what: str, from_uri: str | None, given: str | None) -> str | None:
+    """The one value of *what*: the URI's when only it is given, the flag's when only it is, both when equal."""
+    if from_uri is not None and given is not None and from_uri != given:
+        raise UsageError(f"two {what}s for one dataset: {from_uri!r} in the URI and {given!r}")
+    return from_uri if from_uri is not None else given
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -85,22 +105,27 @@ def data_fetch(request: DataFetchRequest) -> DataFetch:
     if request.dataset == "tiny":
         return _fetch_example(request)
     repo_id = _repo_id(request.dataset)
+    subset, revision = request.subset, request.revision
+    if repo_id is None and request.dataset.startswith("hf://"):
+        repo_id, uri_subset, uri_revision = _hub_locator(request.dataset)
+        subset = _one_value("subset", uri_subset, subset)
+        revision = _one_value("revision", uri_revision, revision)
     if repo_id is None:
         raise UsageError(f"cannot fetch {request.dataset!r}", hint=_FETCH_HELP)
     from huggingface_hub import snapshot_download
 
-    patterns = None if request.subset is None else [f"{request.subset}/*", f"{request.subset}__*/*"]
+    patterns = None if subset is None else [f"{subset}/*", f"{subset}__*/*"]
     path = Path(
         snapshot_download(
-            repo_id, repo_type="dataset", revision=request.revision, allow_patterns=patterns, local_dir=request.out
+            repo_id, repo_type="dataset", revision=revision, allow_patterns=patterns, local_dir=request.out
         )
     )
     files = sum(1 for item in path.rglob("*") if item.is_file() and ".cache" not in item.parts)
     return DataFetch(
         dataset=request.dataset,
         repo_id=repo_id,
-        subset=request.subset,
-        revision=request.revision,
+        subset=subset,
+        revision=revision,
         path=str(path),
         files=files,
     )
@@ -211,7 +236,7 @@ def _dataset_summary(request: DataInspectRequest, dataset: Any) -> DatasetSummar
         kind="dataset",
         subset=dataset.name,
         revision=request.revision,
-        queries=len(set(candidates) | set(positive)),
+        queries=len(set(candidates) | {query for query, docs in positive.items() if docs}),
         judged_documents=sum(len(docs) for docs in gains.values()),
         positive_labels=sum(len(docs) for docs in positive.values()),
         labels=dict(sorted(labels.items())),
@@ -282,6 +307,13 @@ class Conversion(BaseModel):
     writer: str
     shape: Literal["corpus", "ranking"]
     written: int | None = Field(description="Records written; null for a dry run.")
+    queries: int | None = Field(
+        default=None, description="Queries written (corpus shape, after --limit trims); null for a dry run."
+    )
+    labels: int | None = Field(
+        default=None,
+        description="(query, document) labels written (corpus shape, after --limit trims); null for a dry run.",
+    )
     limit: int | None = Field(
         default=None,
         description="The --limit cap the conversion ran under (a smoke conversion); null without it.",
@@ -395,13 +427,14 @@ def data_convert(request: DataConvertRequest) -> Conversion:
     writer = get_writer(request.to)
     shape = _target_shape(request.shape, reader, writer)
     written: int | None = None
+    queries: int | None = None
+    labels: int | None = None
     if not request.dry_run:
         if shape is DataShape.RANKING:
             records = _nonempty(_limited(reader.examples(), request.limit), reader, shape)
             written = writer.write_examples(records, request.out)
         else:
-            records = _nonempty(_limited(reader.documents(), request.limit), reader, shape)
-            written = writer.write_corpus(records, reader.queries(), reader.qrels(), request.out)
+            written, queries, labels = _write_corpus(writer, reader, request, shape)
     return Conversion(
         source=request.source,
         out=request.out,
@@ -409,9 +442,109 @@ def data_convert(request: DataConvertRequest) -> Conversion:
         writer=writer.name,
         shape="ranking" if shape is DataShape.RANKING else "corpus",
         written=written,
+        queries=queries,
+        labels=labels,
         limit=request.limit,
         dry_run=request.dry_run,
     )
+
+
+def _write_corpus(writer: Any, reader: Any, request: DataConvertRequest, shape: Any) -> tuple[int, int, int]:
+    """Write the corpus shape, carrying every table the source has, and return ``(documents, queries, labels)``.
+
+    A writer that exposes ``write_dataset`` (the MTEB layout) gets the Dataset built through the one reader
+    path, so its pools, exclusions, gains, thetas, subset, split and task instruction are written. Any other
+    writer gets the tables its ``write_corpus`` accepts, and a table it cannot express is refused with a hint
+    rather than dropped silently. With ``--limit`` the documents, labels and queries are trimmed together:
+    writing every query and qrel beside N documents names documents the corpus lacks, and the result does not
+    load (``Dataset`` refuses it: qrels name documents that are not in the corpus).
+    """
+    from rcp_ndcg.data.dataset import _from_reader
+
+    documents = list(_limited(reader.documents(), request.limit))
+    records = _nonempty(iter(documents), reader, shape)
+    qrels = reader.qrels()
+    queries = list(reader.queries())
+    if request.limit is not None:
+        kept = {document.doc_id for document in documents}
+        qrels = {q: {d: g for d, g in judged.items() if d in kept} for q, judged in qrels.items()}
+        qrels = {q: judged for q, judged in qrels.items() if judged}
+        queries = [query for query in queries if query.query_id in qrels]
+    if hasattr(writer, "write_dataset"):
+        dataset = (
+            _from_reader(reader, uri=request.source)
+            if request.limit is None
+            else _limited_dataset(reader, documents, queries, qrels)
+        )
+        written = writer.write_dataset(dataset, request.out)
+    else:
+        _refuse_unexpressible_tables(writer, reader)
+        written = writer.write_corpus(records, queries, qrels, request.out)
+    return written, len(queries), sum(len(judged) for judged in qrels.values())
+
+
+def _limited_dataset(reader: Any, documents: list[Any], queries: list[Any], qrels: Any) -> Any:
+    """The Dataset of a ``--limit`` corpus conversion: the N documents with the labels, queries, pools and
+    exclusions trimmed to them (a smoke conversion must not name documents its corpus lacks)."""
+    from rcp_ndcg.data.dataset import Dataset
+
+    kept = {document.doc_id for document in documents}
+    gains = {q: {d: g for d, g in judged.items() if d in kept} for q, judged in (reader.gains() or {}).items()}
+    thetas = {q: {d: t for d, t in judged.items() if d in kept} for q, judged in (reader.thetas() or {}).items()}
+    candidates = {
+        q: [doc_id for doc_id in ids if doc_id in kept] for q, ids in (reader.candidates() or {}).items() if q in qrels
+    }
+    excluded = {q: [doc_id for doc_id in ids if doc_id in kept] for q, ids in reader.excluded().items() if q in qrels}
+    rows = [
+        {
+            "query_id": query_id,
+            "doc_id": doc_id,
+            "grade": grade,
+            "gain": gains.get(query_id, {}).get(doc_id),
+            "theta": thetas.get(query_id, {}).get(doc_id),
+        }
+        for query_id, judged in qrels.items()
+        for doc_id, grade in judged.items()
+    ]
+    provenance = reader.provenance
+    return Dataset.from_records(
+        name=reader.dataset_name,
+        queries=queries,
+        corpus=documents,
+        qrels=rows,
+        candidates=candidates or None,
+        excluded=excluded or None,
+        subset=provenance.subset,
+        split=provenance.split,
+        task=reader.task,
+        task_instruction=reader.task_instruction,
+    )
+
+
+def _refuse_unexpressible_tables(writer: Any, reader: Any) -> None:
+    """Refuse a conversion whose source carries a table the writer's ``write_corpus`` cannot express.
+
+    The tables checked are the ones that change what a model sees or how it is scored -- the exclusions, the
+    calibrated gains and thetas, and the task instruction. A source's candidate lists are not counted: the
+    corpus shape is derived from them (the ranking-to-corpus derivation), so they are consumed, not dropped.
+    """
+    dropped = [
+        name
+        for name, value in (
+            ("excluded", reader.excluded()),
+            ("gains", reader.gains()),
+            ("thetas", reader.thetas()),
+            ("task_instruction", reader.task_instruction),
+        )
+        if value
+    ]
+    if dropped:
+        raise DataError(
+            f"writer {writer.name!r} cannot carry the {', '.join(dropped)} this source has: converting "
+            "would drop them silently",
+            hint="export to `mteb`, whose layout carries pools, exclusions, gains, thetas and the task "
+            "instruction, or trim the source first",
+        )
 
 
 class DataFormatsRequest(BaseModel):

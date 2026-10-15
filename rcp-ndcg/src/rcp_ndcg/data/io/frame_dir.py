@@ -11,8 +11,10 @@ JPEG/PNG frames -- read so that each clip becomes one
 A clip is any directory that directly holds frame images; its id is that
 directory's path relative to the root. Frames are ordered by the numbers in
 their file names (``frame_2`` before ``frame_10``) and ``frame_indices`` records
-each frame's position in that order, so after sampling the prompt still says
-which frames of the clip were shown.
+each frame's number in its file name -- which frame of the source it was sampled
+at, the same rule the class docstring states. A clip whose numbers do not
+strictly increase is refused: they could not say which frame of the source was
+shown.
 
 This is the video shape every OpenAI-compatible endpoint can judge: the sampled
 frames are sent as images, and no video decoder is involved anywhere.
@@ -20,6 +22,7 @@ frames are sent as images, and no video decoder is involved anywhere.
 
 from __future__ import annotations
 
+import itertools
 import re
 from collections.abc import Iterator
 from typing import ClassVar
@@ -52,8 +55,18 @@ class FrameDirReader(ImageDirReader):
 
     def documents(self) -> Iterator[Document]:
         for clip_id, uris in self._clips():
+            indices = [_frame_number(uri) for uri in uris]
+            repeated = [f"{earlier}->{later}" for earlier, later in itertools.pairwise(indices) if later <= earlier]
+            if repeated:
+                raise DataError(
+                    f"the frames of clip {clip_id!r} do not carry strictly increasing numbers "
+                    f"({', '.join(repeated[:5])}); frame_indices could not say which frame of the source "
+                    "was shown",
+                    hint="name each frame after the source frame it was sampled at (000001.jpg, 000002.jpg, "
+                    "...), with the clip name holding no number of its own before the frame's",
+                )
             frames = [self._ref(uri) for uri in uris]
-            part = VideoPart(frames=frames, frame_indices=[_frame_number(uri) for uri in uris])
+            part = VideoPart(frames=frames, frame_indices=indices)
             yield Document(doc_id=clip_id, content=Content.from_parts([part]))
 
     def _clips(self) -> Iterator[tuple[str, list[str]]]:
@@ -72,16 +85,17 @@ class FrameDirReader(ImageDirReader):
 
 
 def _frame_number(uri: str) -> int:
-    """The frame's number in its file name (``000007.jpg`` -> 7): what ``frame_indices`` records.
+    """The frame's number in its file name: the last digit run (``000007.jpg`` -> 7, ``clip1_frame_0007``
+    -> 7, ``img_1080p_000123.png`` -> 123), what ``frame_indices`` records.
 
     Raises:
         DataError: the file name holds no number -- the record could not say which frame it is.
     """
     stem = uri.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-    match = _NUMBER.search(stem)
-    if match is None:
+    numbers = _NUMBER.findall(stem)
+    if not numbers:
         raise DataError(f"{uri}: a frame file name carries no number; frame_indices cannot name the source frame")
-    return int(match.group(1))
+    return int(numbers[-1])
 
 
 __all__ = ["FrameDirReader"]

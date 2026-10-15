@@ -332,13 +332,15 @@ class TestSuites:
         assert error["code"] == "DATA"
         assert {check["code"] for check in error["details"]["checks"]} >= {"GAIN_RANGE", "EXCLUDED_RELEVANT"}
 
-    def test_a_missing_extra_names_the_install_command(self, runner: CliRunner) -> None:
-        try:
-            import huggingface_hub  # noqa: F401
-        except ImportError:
-            pass
-        else:
-            pytest.skip("huggingface_hub is installed")
+    def test_a_missing_extra_names_the_install_command(
+        self, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The old form skipped whenever ``import huggingface_hub`` succeeded, and ``dev`` installs the hf
+        extra, so the test ran nowhere. The import is blocked in the test itself, the way
+        ``tests/eval/mteb/test_pr5516_alignment.py`` blocks mteb."""
+        import sys
+
+        monkeypatch.setitem(sys.modules, "huggingface_hub", None)
 
         result = runner.invoke(data_group, ["fetch", "--dataset", "nanobeir", "--json"])
 
@@ -395,3 +397,124 @@ def test_a_limited_conversion_records_the_limit(runner: CliRunner, ranking_jsonl
     assert json.loads(limited.stdout)["data"]["limit"] == 1
     assert json.loads(full.stdout)["data"]["limit"] is None
     assert json.loads(limited.stdout)["data"]["written"] == 1
+
+
+def test_a_limited_corpus_conversion_trims_its_labels_and_queries(
+    runner: CliRunner, ranking_jsonl: str, tmp_path: Path
+) -> None:
+    """``--limit`` on the corpus shape used to write every query and qrel but only N documents: the output
+    names documents its corpus lacks, and ``load_dataset`` refuses it."""
+    from rcp_ndcg.data import load_dataset
+
+    out = tmp_path / "limited"
+    result = runner.invoke(
+        data_group,
+        [
+            "convert",
+            "--format",
+            "jsonl",
+            "--source",
+            ranking_jsonl,
+            "--out",
+            str(out),
+            "--shape",
+            "corpus",
+            "--limit",
+            "1",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert (data["written"], data["queries"], data["labels"]) == (1, 1, 1)
+    dataset = load_dataset(f"jsonl:{out}")
+    assert set(dataset.corpus) == {"d1"}
+    assert dataset.qrels == {"q1": {"d1": 1.0}}
+    assert set(dataset.queries) == {"q1"}
+
+
+def test_a_mteb_conversion_keeps_the_pools_exclusions_and_gains(runner: CliRunner, tmp_path: Path) -> None:
+    """``data convert --to mteb`` wrote corpus/queries/qrels only: the pool, the exclusions and the
+    gain/theta columns vanished, so a model scored inside mteb ranked excluded and out-of-pool documents."""
+    import pyarrow.parquet as pq
+
+    from tests.data.hub_stubs import SHA, hub_fixture
+
+    out = tmp_path / "mteb"
+    with hub_fixture("rcp-ndcg-nanobeir", tmp_path):
+        result = runner.invoke(
+            data_group,
+            [
+                "convert",
+                "--format",
+                "hf",
+                "--source",
+                f"fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoArguAnaRetrieval@{SHA}",
+                "--to",
+                "mteb",
+                "--out",
+                str(out),
+                "--json",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    configs = sorted({path.parent.name for path in out.rglob("*.parquet")})
+    assert "NanoArguAnaRetrieval-top_ranked" in configs
+    assert "NanoArguAnaRetrieval-excluded" in configs
+    qrels = pq.read_table(out / "NanoArguAnaRetrieval-qrels/train-00000-of-00001.parquet").to_pylist()
+    assert qrels and all(row["gain"] is not None and row["theta"] is not None for row in qrels)
+
+
+def test_a_negative_only_query_is_not_counted_as_a_query(runner: CliRunner, tmp_path: Path) -> None:
+    """``DatasetSummary.queries`` is "Queries with a candidate pool or a positive label": ``_positive`` kept
+    an empty dict for a query whose labels are all zero, and the set union counted its id anyway."""
+    source = tmp_path / "corpus"
+    source.mkdir()
+    (source / "corpus.jsonl").write_text('{"doc_id": "d1", "text": "x"}\n')
+    (source / "queries.jsonl").write_text('{"query_id": "q1", "text": "a"}\n{"query_id": "q2", "text": "b"}\n')
+    (source / "qrels.jsonl").write_text(
+        '{"query_id": "q1", "qrels": {"d1": 1}}\n{"query_id": "q2", "qrels": {"d1": 0}}\n'
+    )
+
+    result = runner.invoke(data_group, ["inspect", "--dataset", f"jsonl:{source}", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["data"]["queries"] == 1
+
+
+def test_fetch_parses_an_hf_uri_with_a_revision_and_a_subset(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``data fetch --dataset hf://org/repo@v1`` sent ``org/repo@v1`` as the repository id: the Hub's
+    HFValidationError was classified as an internal 'this is a bug'. The data layer's URI grammar accepts
+    ``@revision`` and ``/subset``."""
+    import huggingface_hub
+
+    calls: list[dict] = []
+
+    def fake_snapshot_download(repo_id, **kwargs):
+        calls.append({"repo_id": repo_id, **kwargs})
+        target = tmp_path / f"snapshot-{len(calls)}"
+        target.mkdir()
+        (target / "file.txt").write_text("x")
+        return str(target)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot_download)
+
+    result = runner.invoke(data_group, ["fetch", "--dataset", "hf://org/repo@v1", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert calls[0]["repo_id"] == "org/repo" and calls[0]["revision"] == "v1"
+
+    result = runner.invoke(data_group, ["fetch", "--dataset", "hf://org/repo/subset", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert calls[1]["repo_id"] == "org/repo"
+    assert calls[1]["allow_patterns"] == ["subset/*", "subset__*/*"]
+    assert json.loads(result.stdout)["data"]["subset"] == "subset"
+
+    conflict = runner.invoke(data_group, ["fetch", "--dataset", "hf://org/repo@v1", "--revision", "main", "--json"])
+    assert conflict.exit_code == 2
+    assert "two revisions" in json.loads(conflict.stdout)["error"]["message"]

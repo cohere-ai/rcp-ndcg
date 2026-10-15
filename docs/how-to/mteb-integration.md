@@ -132,9 +132,11 @@ has no qrels). A task with a `top_ranked` pool (the reranking view) receives the
 every query keeps at most `top_k` documents, ties by document id descending -- mteb's own tie rule, which the
 task's protocol scores under (the retrieval stack's own selection ties toward the *lower* document id, a
 different, declared rule). A query the run did not rank scores 0, the same semantics our evaluator reports
-an unranked labelled query with. The integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s `qrel_ndcg` under
-the suite's protocol (the tie rules agree; the two differ only in how they round -- mteb rounds its mean to 5
-decimals, the protocol rounds per query). One deliberate divergence: a query whose qrels are all zero scores 0
+an unranked labelled query with. For NanoBEIR and BRIGHT -- the suites whose protocol breaks ties by
+document id descending, mteb's own rule -- the integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s
+`qrel_ndcg`, and for any suite it does when no scores are tied; ViDoRe v3 (`group_mean` ties) and TREC-DL
+(`input_order` ties) break ties differently, so a tied ranking's two numbers differ (the two also differ only
+in how they round -- mteb rounds its mean to 5 decimals, the protocol rounds per query). One deliberate divergence: a query whose qrels are all zero scores 0
 in mteb's mean, while qrel-nDCG is undefined without a positive grade and drops out of our means -- every query
 of the shipped suites carries a positive label, so the two agree there.
 

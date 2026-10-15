@@ -217,6 +217,22 @@ def test_stored_media_is_recorded_under_its_registered_mime_type(resolver, png_b
         store_media(png_bytes, ".xyz")
 
 
+def test_a_torn_media_cache_file_heals_on_the_next_write(resolver, png_bytes) -> None:
+    """store_media wrote the content-addressed cache with a plain write and skipped an existing target, so a
+    kill mid-write left a truncated file that every later read served, and nothing ever repaired it."""
+    from rcp_ndcg.data.media import store_media
+
+    ref = MediaRef(uri="media.png", sha256=sha256_of(png_bytes))
+    target = resolver.cache_path(ref)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(png_bytes[: len(png_bytes) // 2])  # a torn file left by a killed write
+
+    stored = store_media(png_bytes, ".png")
+
+    assert stored.sha256 == ref.sha256
+    assert resolver.bytes_of(stored) == png_bytes, "the torn file is republished, not served"
+
+
 def test_the_resolver_decodes_as_the_engines_do(resolver, tmp_path) -> None:
     """One decoder for every path: transparency on white and the EXIF orientation, as the judge's preparation."""
     clear = tmp_path / "clear.png"

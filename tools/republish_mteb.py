@@ -99,7 +99,7 @@ def republish(
     """
     uri = f"hf://{owner}/{repo}"
     revision = revision or _published_revision(repo)
-    source = _task_source(repo)
+    source = _task_source(repo, owner, revision)
     repo_subsets = list(_repo_subsets(f"{owner}/{repo}", revision))
     _check_subsets(repo, repo_subsets, _data_subsets(source))
     parts = tuple(_load(f"{uri}/{subset}", revision=revision) for subset in repo_subsets)
@@ -155,11 +155,12 @@ def _corpus_entries(repo: str, revision: str | None) -> dict[str, tuple[tuple[st
     return entries
 
 
-def _task_source(repo: str) -> str:
-    """The text of the repository's published ``rcp_ndcg_tasks.py`` (the task definitions, read as data)."""
+def _task_source(repo: str, owner: str, revision: str | None) -> str:
+    """The text of the repository's published ``rcp_ndcg_tasks.py`` at the owner and revision the data is
+    read at (the task definitions, read as data, never executed)."""
     from rcp_ndcg.eval.mteb import _hub_text
 
-    return _hub_text(f"{OWNER}/{repo}", TASK_FILE)
+    return _hub_text(f"{owner}/{repo}", TASK_FILE, revision)
 
 
 def _definitions(source: str, subset: str) -> list[dict[str, Any]]:
@@ -324,19 +325,33 @@ def _validate(part: Dataset, target: Path, *, group: str, cache: dict[str, Any])
     ours = {query_id: query.text for query_id, query in part.queries.items() if query_id in part.qrels}
     if queries != ours:
         raise DataError(f"{part.name}: mteb's loader reads {len(queries)} queries, ours are {len(ours)}")
-    if "instruction" in loaded["queries"].column_names:
-        instructions = dict(zip(loaded["queries"]["id"], loaded["queries"]["instruction"], strict=True))
+    instructions = (
+        dict(zip(loaded["queries"]["id"], loaded["queries"]["instruction"], strict=True))
+        if "instruction" in loaded["queries"].column_names
+        else {}
+    )
+    if isinstance(part.task_instruction, str):
+        # The writer fills a string task instruction on every query (the Hub reader lifts a uniform column
+        # back); a loss here is a lost task frame, so every kept query must carry it.
+        expected_instructions = {query_id: part.task_instruction for query_id in ours}
+    else:
         expected_instructions = {
             query_id: query.instruction
             for query_id, query in part.queries.items()
             if query_id in part.qrels and query.instruction is not None
         }
-        if instructions != expected_instructions:
-            raise DataError(f"{part.name}: mteb's loader reads instructions that differ from the dataset's")
+    if instructions != expected_instructions:
+        raise DataError(f"{part.name}: mteb's loader reads instructions that differ from the dataset's")
     corpus = dict(zip(loaded["corpus"]["id"], loaded["corpus"]["text"], strict=True))
     expected_corpus = {doc_id: document.text for doc_id, document in part.corpus.items()}
     if corpus != expected_corpus:
         raise DataError(f"{part.name}: mteb's loader reads {len(corpus)} documents, ours are {len(expected_corpus)}")
+    if "title" in loaded["corpus"].column_names:
+        titles = dict(zip(loaded["corpus"]["id"], loaded["corpus"]["title"], strict=True))
+        expected_titles = {doc_id: document.title or "" for doc_id, document in part.corpus.items()}
+        if titles != expected_titles:
+            raise DataError(f"{part.name}: mteb's loader reads {len(titles)} titles, ours are {len(expected_titles)}")
+    _validate_written_extras(part, target)
     for column in ("image", "video"):
         if column not in loaded["corpus"].column_names:
             continue
@@ -364,6 +379,44 @@ def _validate(part: Dataset, target: Path, *, group: str, cache: dict[str, Any])
         "qrels": sum(len(docs) for docs in integer_qrels.values()),
         "pool": len(expected_pool) if expected_pool else 0,
     }
+
+
+def _validate_written_extras(part: Dataset, target: Path) -> None:
+    """The extras mteb's own loader drops: the ``gain``/``theta`` qrels columns and the ``-excluded`` config.
+
+    mteb's loader keeps three qrels columns and reads no ``-excluded`` config, so the checks above cannot see
+    them; the written parquet is read directly (the writer's own config and shard names), so a title, gain,
+    theta or exclusion loss cannot pass the owner's pre-push gate.
+    """
+    import pyarrow.parquet as pq
+
+    from rcp_ndcg.data.io.mteb import SHARD, _config_prefix
+
+    prefix = _config_prefix(part.name)
+    rows = pq.read_table(target / f"{prefix}qrels" / SHARD.format(split=part.split)).to_pylist()
+    for column, table in (("gain", part.gains), ("theta", part.thetas)):
+        written = {
+            (str(row["query-id"]), str(row["corpus-id"])): row[column] for row in rows if row.get(column) is not None
+        }
+        expected = {
+            (str(query_id), str(doc_id)): float(value)
+            for query_id, judged in (table or {}).items()
+            for doc_id, value in judged.items()
+        }
+        if written != expected:
+            raise DataError(f"{part.name}: the written qrels' {column} column differs from the dataset's")
+    excluded_path = target / f"{prefix}excluded" / SHARD.format(split=part.split)
+    written_excluded = (
+        {
+            str(row["query-id"]): [str(doc) for doc in row["excluded-corpus-ids"]]
+            for row in pq.read_table(excluded_path).to_pylist()
+        }
+        if excluded_path.is_file()
+        else {}
+    )
+    expected_excluded = {str(q): [str(doc) for doc in ids] for q, ids in part.excluded.items()}
+    if written_excluded != expected_excluded:
+        raise DataError(f"{part.name}: the written -excluded config differs from the dataset's")
 
 
 def _written_media(loaded: dict[str, Any], column: str) -> dict[str, bytes]:

@@ -98,7 +98,7 @@ def test_get_tasks_accepts_the_published_names_and_the_subset_aliases(
     `get_tasks` accepts both spellings (the same task either way), refuses an unknown name naming the
     spellings it has, and derives the retrieval view's published name."""
     pytest.importorskip("mteb")
-    monkeypatch.setattr(mteb_module, "_hub_text", lambda repo, path: _NEW_FORMAT_FILE)
+    monkeypatch.setattr(mteb_module, "_hub_text", lambda repo, path, revision=None: _NEW_FORMAT_FILE)
 
     by_alias = get_tasks("bright", ["aops"])
     by_name = get_tasks("bright", ["BrightAopsRCPReranking"])
@@ -149,3 +149,29 @@ def test_the_published_tasks_pin_the_pr_s_names_splits_and_prompts() -> None:
         assert task.metadata.eval_splits == [split]
         assert task.metadata.prompt
         assert len(task.metadata.dataset["revision"]) == 40  # a pinned commit, not a branch
+
+
+def test_the_task_file_is_read_at_the_requested_revision(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pinned evaluation built its task names, splits and prompt from today's main: after a re-lay, a
+    pinned run silently changed its task prompt or fell back to a config's only split."""
+    from rcp_ndcg.data import SUITES
+    from rcp_ndcg.data.io import hub as hub_module
+
+    sha = "a" * 40
+    source = tmp_path / "rcp_ndcg_tasks.py"
+    source.write_text(_NEW_FORMAT_FILE, encoding="utf-8")
+    seen: list[str | None] = []
+
+    def fake(repo: str, path: str, revision: str | None = None, **_: object):
+        seen.append(revision)
+        return source if path == "rcp_ndcg_tasks.py" else None
+
+    monkeypatch.setattr(hub_module, "_hub_file", fake)
+    monkeypatch.setattr(
+        mteb_module, "_make_task", lambda repo, fields, mode, revision, *, shared_corpus: (repo, revision)
+    )
+
+    tasks = get_tasks("bright", ["aops"], revision=sha)
+
+    assert seen == [sha], "the task file is read at the pinned revision, not main"
+    assert tasks == [(SUITES["bright"].repo, sha)]

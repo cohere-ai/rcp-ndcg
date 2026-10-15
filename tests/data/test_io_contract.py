@@ -470,15 +470,36 @@ def test_encoded_image_bytes_are_stable(tmp_path):
     assert sha256_of(buffer.getvalue()) == first
 
 
-def test_a_fractional_qrels_label_is_kept_as_a_float(beir_dir, tmp_path) -> None:
-    """A continuous label (0.7) is a grade like any other: no floor, no refusal."""
+def test_the_beir_writer_writes_integral_grades_as_integers(tmp_path) -> None:
+    """BEIR's own loader parses qrels scores with ``int(row[2])``; a float repr ('1.0') made every export,
+    all-integer ones included, unreadable by BEIR itself."""
+    from rcp_ndcg_core.records import Document, Query
+
+    out = str(tmp_path / "out")
+    get_writer("beir").write_corpus(
+        [Document(doc_id="1", text="x"), Document(doc_id="2", text="y")],
+        [Query(query_id="q1", query="q")],
+        {"q1": {"1": 1.0, "2": 0.0}},
+        out,
+    )
+
+    rows = [line.split("\t") for line in (Path(out) / "qrels" / "test.tsv").read_text().splitlines()]
+    assert rows[0] == ["query-id", "corpus-id", "score"]
+    assert [int(row[2]) for row in rows[1:]] == [1, 0], "an integral grade is written as an int"
+
+
+def test_a_fractional_qrels_label_is_kept_by_the_reader_and_refused_by_the_writer(beir_dir, tmp_path) -> None:
+    """A continuous label (0.7) is a grade like any other to the reader -- no floor, no refusal -- but BEIR's
+    qrels are integers (its loader casts with int()), so the writer refuses to publish a non-standard file
+    and names the formats that carry a float grade."""
     qrels = Path(beir_dir) / "qrels" / "test.tsv"
     qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t0.7\nq1\td2\t2\n")
     reader = get_reader("beir", uri=beir_dir)
 
     assert reader.qrels() == {"q1": {"d1": 0.7, "d2": 2.0}}
-    get_writer("beir").write_corpus(reader.documents(), reader.queries(), reader.qrels(), str(tmp_path / "out"))
-    assert (tmp_path / "out" / "qrels" / "test.tsv").read_text().splitlines()[1:] == ["q1\td1\t0.7", "q1\td2\t2.0"]
+    with pytest.raises(DataError, match="whole number") as caught:
+        get_writer("beir").write_corpus(reader.documents(), reader.queries(), reader.qrels(), str(tmp_path / "out"))
+    assert "jsonl" in str(caught.value.hint) and "mteb" in str(caught.value.hint)
 
 
 def test_a_non_numeric_qrels_label_is_a_data_error(beir_dir) -> None:
@@ -626,6 +647,27 @@ def test_frame_indices_record_the_source_frames(frame_dir) -> None:
     assert part.frame_indices == [1, 7, 42]
 
 
+def test_a_frame_number_is_the_last_number_in_the_name() -> None:
+    """The first digit run is often part of the clip name (``clip1_frame_0001``), so every frame recorded
+    the same index; the frame's number is the last run in its file name."""
+    from rcp_ndcg.data.io.frame_dir import _frame_number
+
+    assert [_frame_number(name) for name in ("a/clip1_frame_0001.jpg", "a/clip1_frame_0002.jpg")] == [1, 2]
+    assert _frame_number("a/img_1080p_000123.png") == 123
+
+
+def test_a_clip_whose_frame_numbers_do_not_increase_is_refused(tmp_path) -> None:
+    """Frame numbers that repeat or regress cannot say which frame of the source was shown: refused
+    rather than recorded."""
+    clip = tmp_path / "frames" / "clip_a"
+    clip.mkdir(parents=True)
+    PIL.new("RGB", (8, 8)).save(clip / "a_10.jpg")
+    PIL.new("RGB", (8, 8)).save(clip / "b_2.jpg")
+
+    with pytest.raises(DataError, match="strictly increasing"):
+        list(get_reader("frames", uri=str(tmp_path / "frames")).documents())
+
+
 def test_a_headerless_qrels_row_that_is_not_a_header_is_not_eaten(beir_dir) -> None:
     """A headerless file whose first label failed the digit check lost its first row as a "header":
     the same label with a header raised the typed DataError -- two behaviours for one input. Now the
@@ -748,3 +790,37 @@ def test_a_conflicting_beir_corpus_row_refuses_even_under_last(beir_dir) -> None
     with pytest.raises(DataError, match="appears twice with different content") as caught:
         list(reader.documents())
     assert "cannot replace a row it has already yielded" in str(caught.value.hint)
+
+
+def test_a_requested_qrels_split_never_falls_back_to_another(tmp_path) -> None:
+    """A BEIR dir holding qrels/test.tsv and qrels/dev.tsv.gz: asking for dev must read dev's labels, never
+    fall through to test (a user tuning on dev would otherwise get test-set numbers), and a split the
+    directory does not have must refuse, naming the splits it does have."""
+    import gzip
+
+    root = tmp_path / "beir"
+    (root / "qrels").mkdir(parents=True)
+    (root / "corpus.jsonl").write_text(json.dumps({"_id": "d1", "text": "body"}) + "\n")
+    (root / "queries.jsonl").write_text(json.dumps({"_id": "q1", "text": "query"}) + "\n")
+    (root / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n")
+    (root / "qrels" / "dev.tsv.gz").write_bytes(gzip.compress(b"query-id\tcorpus-id\tscore\nq1\td1\t2\n"))
+
+    dev = get_reader("beir", uri=str(root), split="dev")
+    assert dev.qrels() == {"q1": {"d1": 2.0}}, "dev's labels, not test's"
+    assert dev.provenance.split == "dev"
+
+    missing = get_reader("beir", uri=str(root), split="validation")
+    with pytest.raises(MissingInputError, match="validation") as caught:
+        missing.qrels()
+    assert "dev" in str(caught.value.hint) and "test" in str(caught.value.hint)
+
+
+def test_a_root_level_qrels_tsv_is_the_test_split(tmp_path) -> None:
+    """A root ``qrels.tsv`` is the conventional test split; its stem ('qrels') is not a split name."""
+    (tmp_path / "corpus.jsonl").write_text(json.dumps({"_id": "d1", "text": "body"}) + "\n")
+    (tmp_path / "queries.jsonl").write_text(json.dumps({"_id": "q1", "text": "query"}) + "\n")
+    (tmp_path / "qrels.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\t1\n")
+
+    reader = get_reader("beir", uri=str(tmp_path))
+    assert reader.qrels() == {"q1": {"d1": 1.0}}
+    assert reader.provenance.split == "test"
