@@ -1406,6 +1406,9 @@ owner pushes, with the move to a Hugging Face organisation).
   gains `--rrf-k` (the MCP `run_start` tool takes it too), and `--only` names `fuse`. The contract snapshots, the
   exported `run-config.v1.json` and the generated API pages record the step, the source and the flag (regenerate
   as below).
+- **The `image_processor` description names every family**: `judge-config.v1` and `run-config.v1` carry the
+  field's description with all four processor families (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`, `gemma4`); the
+  exported schemas are regenerated, descriptions only, no shape changes.
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
