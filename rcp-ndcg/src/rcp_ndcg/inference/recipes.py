@@ -42,6 +42,25 @@ from typing import Any
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.support.identity import FieldRole, declared_roles
 
+
+def _same_tokenizer(given: str, expected: str) -> bool:
+    """Whether a config's tokenizer spec is provably the recipe's tokenizer content.
+
+    A local copy is compared by the ``tokenizer.json`` digest both specs load to (:func:`tokenizer_identity`,
+    the one tokenizer-identity helper); another Hub name is a different tokenizer whatever its content might
+    be, and a spec that cannot be loaded here is not proven equal -- either way the caller refuses, naming
+    both, rather than letting a run cut and render with a tokenizer the recipe was never validated with.
+    """
+    from rcp_ndcg.data.tokenizer import _local_path, tokenizer_identity
+
+    if _local_path(given) is None:
+        return False  # another Hub name is not the recipe's tokenizer
+    try:
+        return tokenizer_identity(given) == tokenizer_identity(expected)
+    except Exception:  # noqa: BLE001 - any load failure means "not proven equal"
+        return False
+
+
 __all__ = [
     "RECIPE_SCHEMA_VERSIONS",
     "available_recipe_ids",
@@ -247,7 +266,9 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
     declared set, refused naming the set otherwise — not a disagreement with the recipe's declared ``null``.
     One field the recipe leaves out of its client block is still implied, not free: a rerank recipe declares
     its scoring mode at recipe level (``pointwise``/``listwise``) and the loader ties it to ``client.listwise``,
-    so a config's ``listwise`` must agree with that scoring.
+    so a config's ``listwise`` must agree with that scoring. And the loader injects the recipe's checkpoint
+    tokenizer (``<model>@<revision>``): a config's ``tokenizer`` is accepted only when it names the same
+    content (a local copy of the same ``tokenizer.json``), and refused naming both otherwise.
     A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes through unchanged.  Raises
     :class:`~rcp_ndcg.errors.ConfigError`: unknown recipe id (the shipped ids named), a path rcp-ndcg-vllm's
     loader refuses, rcp-ndcg-vllm absent (the install line), an unreadable recipe ``schema_version``
@@ -338,6 +359,20 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
                     hint=f"drop {key} (the client block comes from recipe: {recipe_id}) or name a recipe that "
                     f"declares {given!r}; both values are: config {given!r} vs recipe {expected!r}",
                 )
+        elif key == "tokenizer" and "tokenizer" in client:
+            # The loader injects the recipe's checkpoint tokenizer (``<model>@<revision>``); the field is
+            # RUNTIME by NAME (a local copy of the same tokenizer.json stands in) and CONTENT by digest (the
+            # cut points and special-token renders depend on it), so a differing spec is accepted only when
+            # its content is proven the same.
+            expected = client["tokenizer"]
+            if given != expected and not _same_tokenizer(given, expected):
+                raise ConfigError(
+                    f"tokenizer: {given!r} disagrees with recipe {recipe_id!r}, which declares {expected!r}",
+                    hint="drop tokenizer (the client block comes from the recipe), or point it at a local copy "
+                    "of the same tokenizer.json (the digest is what the cut points and special-token renders "
+                    "depend on)",
+                )
+            merged[key] = given
         else:
             merged[key] = given  # RUNTIME (and the endpoint's own machinery): the config's
     merged.setdefault("recipe", recipe_id)

@@ -77,6 +77,18 @@ def test_an_undeclared_listwise_is_implied_by_the_recipes_scoring() -> None:
     assert expand_role_recipe({"recipe": RECIPE_ID, "listwise": False}, classes=CLASSES)["listwise"] is False
 
 
+def test_a_different_tokenizer_is_refused_naming_both() -> None:
+    """The loader injects the recipe's checkpoint tokenizer (``<model>@<revision>``); ``tokenizer`` is
+    RUNTIME by name and CONTENT by digest, so a config may point it at a copy of the SAME tokenizer.json,
+    but a different tokenizer (cut points and special-token renders change) must be refused."""
+    client = recipe_client_data(RECIPE_ID)
+    with pytest.raises(ConfigError) as excinfo:
+        expand_role_recipe({"recipe": RECIPE_ID, "tokenizer": "other/repo@" + "0" * 40}, classes=CLASSES)
+    message = str(excinfo.value)
+    assert "tokenizer" in message and client["tokenizer"] in message, message
+    assert expand_role_recipe({"recipe": RECIPE_ID}, classes=CLASSES)["tokenizer"] == client["tokenizer"]
+
+
 def test_an_unknown_recipe_id_names_the_shipped_ids() -> None:
     with pytest.raises(ConfigError, match="no shipped recipe") as excinfo:
         expand_role_recipe({"recipe": "nonexistent-recipe"}, classes=CLASSES)

@@ -4429,6 +4429,12 @@ text it sends to the declared budget.
   accepted while the run still recorded the recipe's id. An undeclared `listwise` must now agree with the
   recipe's scoring, or the config is refused naming both.
 
+- **A recipe pointer checks a different `tokenizer`**: the loader injects the recipe's checkpoint tokenizer
+  (`<model>@<revision>`), but `tokenizer` is RUNTIME by name, so `--set tokenizer=<another checkpoint>` was
+  accepted while the run still recorded the recipe's id -- with cut points and special-token renders the
+  recipe was never validated with. A different spec is accepted only when it is a local copy of the same
+  `tokenizer.json` (the digests agree) and refused naming both otherwise.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
