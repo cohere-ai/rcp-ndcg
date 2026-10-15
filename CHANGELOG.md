@@ -93,7 +93,8 @@ that exports it.
   `pass_probabilities`, `count_gain` and `qrel_gain` with the type `Gains`; the scoring protocols `Protocol`,
   `PROTOCOLS`, `score_query` and `aggregate`, with `MetricName` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`). The public
   records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
-  judge call's parsed observation), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
+  judge call's parsed observation; its `generation` names the pool generation of a scheduled window, so a resume
+  retires the later phases of its own pool's fit only), `JudgementSet` (judgements with their families; `JudgementSet.merge` keeps one
   judgement per window, `record_id`: its latest valid one), `Placement` (one document shown in one window),
   `JudgementFamily` (the poolability token of a set of judgements; its `tokenizer` is the SHA-256 of the judge's
   `tokenizer.json`, part of `key` and left out of `rubric_key`), `DocumentEstimate` (a document's estimated
@@ -4423,6 +4424,94 @@ text it sends to the declared budget.
   `schemas/calibration-summary.v1.json` carries them. The float32 L-BFGS stops at its own resolution, not at the
   optimiser's `1e-13` gradient tolerance, and `calibration fit` now logs a warning when that stop is short of the
   MAP instead of presenting it silently; no fitted number moves.
+- **A resumed judging pass retires a generation only when a refused window comes back answered**
+  (`judging-1`, `judging-2`, `judging-3`): a window the endpoint keeps refusing used to make every resume retire
+  and re-ask the whole later phase of its query, and the phase ranges mis-counted a chunked tournament's units.
+  A scheduled judgement now records its pool generation (the digest of the units the pass judges; the
+  `Judgement` schema gains the optional `generation` field), so a `docs=` subset pass's resume never retires a
+  full pass's windows, the tournament ranges count the units `run_tournament` asks, and the later phases are
+  retired only when the re-asked refusal actually returns an answer.
+- **A query id in `docs=`, `windows=` or a row-input `candidates=` that names no row is refused** (`judging-5`):
+  the pass used to skip it silently and report success while the named query was never judged; it now raises a
+  `DataError` naming every unknown key before the store is claimed.
+- **The worked-example guard refuses only a literal echo** (`judging-6`): `parse_window` compared the parsed
+  verdicts, so a genuine answer whose criteria happened to match the example's pattern was refused as the
+  prompt's own example; the whole decoded JSON object (reasoning included) is compared now.
+- **The judgement store's dataset identity covers the query texts the judge read** (`judging-4`): a reader whose
+  queries live in a sidecar (`queries_uri`, the `images:`/`videos:`/`frames:` readers) could have its query file
+  edited without the store noticing, so answers given on the old texts were attributed to the new ones. The
+  formatted query texts now enter the identity, and an edited query file is another dataset, refused like an
+  edited `rows.jsonl`.
+- **A remote non-Hub dataset source is fingerprinted by the objects its reader reads** (`arch-2`):
+  `dataset_content_digest` returned nothing for `jsonl:`/`beir:`/`images:` on `gs://`, `s3://` or `https://`, so
+  run steps and judgement stores keyed on the URI alone and reused work over a replaced object. The one home now
+  fingerprints each remote location from the backend's metadata (an object's size and change stamp, or a
+  streamed SHA-256 when it reports neither; a prefix as its sorted listing) and refuses a location the backend
+  cannot answer for with a typed error and a hint.
+- **A result record's subject identity is the digest the evaluate step scored** (`arch-4`, `retrieval-10`): the
+  export re-read the `evaluation.systems` file at export time, so a rankings file regenerated in place was
+  reported as the run's subject; the identity now comes from the evaluate step's recorded inputs.
+- **A refused calibration save leaves the previous calibration in place** (`robust-4`): `Calibration.save`
+  overwrote the seven files in sequence, so a crash or a mid-save refusal left a mixed calibration that loaded
+  cleanly. Every payload is built and validated first, the layout is staged in a temporary sibling directory
+  and swapped in as a whole.
+- **Examples 04 and 05 judge into their own stores** (`docs-5`): both wrote `./judgements`, so running them in
+  sequence mixed their pools and broke the second (`judgements-rejudge` and `judgements-insert` now).
+- **The embedding store encodes what index/search encode** (`retrieval-2`): `build_store` read the corpus with
+  the default title join and no task instruction and encoded both sides without an instruction, so its vectors
+  -- and every per-k ranking the sweep wrote -- came from other model inputs than a direct per-k run whenever a
+  dataset carried a task instruction or the encoder declared `title: separate`. It now reads the corpus through
+  the index's own rule (`_indexed_corpus`) and passes both instructions to the encoder; the store's record
+  carries the two instructions (``document_instruction`` and ``query_instruction``, both optional) and its
+  identity covers the document-side one, like the index's.
+- **BM25's stop list follows the stemmer's language** (`retrieval-5`): every run tokenized with bm25s' English
+  stop list, so a `stemmer: german` (or French, ...) run dropped English-looking words and kept German function
+  words, unlike mteb's own BM25 for the language. The stop list is now derived from the stemmer (`english` ->
+  `en`, `german` -> `de`, ...; none where bm25s keeps no list), recorded in the index's `meta.json` and read back
+  at search time; `INDEX_BEHAVIOUR_VERSION` moves to `2`, so an index built under the old list is rebuilt.
+- **`retrieval sweep` compares at the first cutoff and defaults to the metrics the dataset can score**
+  (`retrieval-7`): with several `--k` the comparison was built without a cutoff and `compare` refused a report
+  with several cutoffs after the per-k rankings and report were already written; the documented example passed no
+  `--metrics`, so a dataset without released gains (every `beir:` set) hit "RCP-nDCG needs calibrated gains"
+  after the rankings were written. `--metrics` now defaults to `rcp_ndcg` + `qrel_ndcg` only when the dataset
+  carries released gains, else `qrel_ndcg` alone with a logged note, and the comparison is at the first cutoff.
+- **A video container with no video policy is refused whatever the judge's budget settings** (`g-video-5`):
+  a judge with no `context_tokens` (or no tokenizer) never reached the media count, so a `videos:` corpus was
+  sent at the engine's own default sampling -- recorded as `video: null` -- while `--estimate` refused the same
+  pass. The plan, the role clients' request preparation and the count now share one refusal
+  (`refuse_unpolicied_containers`) with the declare-a-policy hint.
+- **A judging pass releases each query's prepared media when it finishes** (`g-video-7`): the per-pass cache
+  held every prepared page and frame of every query -- inlined PNG data URIs -- to the end of the pass,
+  defeating the shared image LRU's one-pool bound and growing peak memory with the number of queries;
+  `run_tournament`/`run_rubric` now drop the finished query's entries.
+- **`judge --estimate` counts the media the pass sends and gates videos too** (`g-video-8`): the window gate
+  counted every raw frame of a frame directory (a 60-frame clip under `num_frames: 4` was refused against a
+  cap the pass accepts), counted a `video_url` part's frames as images, and never checked `max_videos` (a
+  five-container window against `max_videos: 1` was blessed while every window is refused at its first call).
+  It counts each unit as the policy samples it (`sample_video_part`, without preparing bytes) and gates both
+  `max_images` and `max_videos`.
+- **`explain`'s selection/ordering split is scale-free** (`retrieval-3`): the mixed arrangement kept each
+  B-only document's raw B score beside A's raw scores, so the split depended on B's score scale and disagreed
+  with the list path. It is now built from A's own order (A's equal-score classes preserved, a document A
+  lacks below every A-scored one), so a monotone rescaling of either system changes no component.
+- **A pair without variance in its differences is not separated** (`retrieval-6`): scipy returns `t=inf`,
+  `p=0` for a constant nonzero difference, so `compare` reported such a pair significant with `t` serialised
+  as null and `sensitivity` counted it as separated, against both docstrings; `t` and `p_value` are now
+  `None` and the pair is not significant.
+- **A non-finite rerank score is refused at the wire and dropped from a checkpoint** (`retrieval-8`): a NaN
+  `relevance_score` was checkpointed and reused, and `Rankings.from_scores` refuses a non-finite score, so
+  every rerun failed the same way. `RerankAdapter._score` raises `ProviderError` and `_checkpoint_scores`
+  drops a record holding a non-finite value, so the query is scored again.
+- **A remote `retrieval store --out` URI is kept intact** (`retrieval-9`): wrapping it in `Path()` created a
+  stray local `gs:/...` directory and recorded (and printed) the mangled path; the store is written through
+  the storage helper and the record keeps the URI.
+- **A resumed rerank cuts a torn checkpoint tail before appending** (`robust-6`): appending after a partial
+  last line merged the next query's record into the fragment, so that record was lost on the next resume; the
+  one torn-tail repair (`storage.drop_torn_last_line`) now runs before the append.
+- **The judges page states what adding documents to a judged pool costs** (`judging-8`): it promised that
+  only the windows showing them are new; adding to a local source is another dataset (its bytes enter the
+  identity) and growing a pool through `candidates=` redraws every scheduled window into new records that the
+  fit pools with the old ones. The page now says so and points at the insertion-plan route.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 

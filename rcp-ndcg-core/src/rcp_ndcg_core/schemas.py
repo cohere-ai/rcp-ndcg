@@ -408,6 +408,9 @@ class Judgement(BaseModel):
         window_seq: The window's index in the query's schedule (0-based); ``None`` for a planned window (asked
             outside the schedule's phases, e.g. an insertion plan: ``judge(windows=...)``).
         phase: The schedule phase the window belongs to (:data:`Phase`); ``None`` for a planned window.
+        generation: The pool generation of a scheduled window: a digest of the units the pass judges, so a
+            resume recognises the records of its own pool (and retires those of an older fit) even when
+            another pool's windows share its size and sequence numbers; ``None`` for a planned window.
         placements: The documents shown, in prompt order.
         ranking: The judge's stated order as 1-based positions (tournament).
         response: The judge's raw answer text.
@@ -431,6 +434,7 @@ class Judgement(BaseModel):
     family_key: str
     window_seq: int | None = Field(ge=0)
     phase: Phase | None = None
+    generation: str | None = None
     placements: tuple[Placement, ...]
     ranking: tuple[int, ...] | None = None
     response: str | None = None

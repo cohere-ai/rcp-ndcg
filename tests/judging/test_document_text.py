@@ -158,7 +158,8 @@ def test_a_loaded_dataset_without_a_task_instruction_keeps_its_identity_key(tmp_
 
     identity = json.loads((tmp_path / "store" / "identity.json").read_text())
     dataset_identity = identity["stages"]["rubric"]["identity"]["dataset"]
-    assert set(dataset_identity) == {"name", "uri", "revision", "content"}
+    assert set(dataset_identity) == {"name", "uri", "revision", "content", "queries_sha256"}
+    assert len(dataset_identity["queries_sha256"]) == 64, "the query texts the judge read name the dataset too"
     assert set(dataset_identity["content"]) == {"dataset"}, "a beir: directory is named by its listing"
 
 

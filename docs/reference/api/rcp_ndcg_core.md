@@ -125,6 +125,8 @@ class Judgement(pydantic.main.BaseModel)
 
 - `finish_reason: str | None` = None
 
+- `generation: str | None` = None
+
 - `input_tokens: int | None` = None
 
 - `invalid_category: Literal['truncated', 'no_json', 'invalid_json', 'schema', 'incomplete', 'refused', 'superseded'] | None` = None

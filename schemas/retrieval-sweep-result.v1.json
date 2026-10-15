@@ -13,7 +13,7 @@
         }
       ],
       "default": null,
-      "description": "The k-pair comparison (JSON), with two or more k.",
+      "description": "The k-pair comparison (JSON) at the first cutoff, with two or more k.",
       "title": "Comparison"
     },
     "rankings": {

@@ -95,6 +95,8 @@ class EmbeddingStore(pydantic.main.BaseModel)
 
 - `doc_ids: list[str]`
 
+- `document_instruction: str | None` = None
+
 - `dtype: str`
 
 - `full_width: int`
@@ -122,6 +124,8 @@ class EmbeddingStore(pydantic.main.BaseModel)
 - `query_count: int`
 
 - `query_ids: list[str]`
+
+- `query_instruction: str | None` = None
 
 - `recipe: str | None` = None
 

@@ -41,6 +41,19 @@
       "title": "Doc Ids",
       "type": "array"
     },
+    "document_instruction": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The dataset's document-side task instruction, when it declares one (the instruction the corpus was encoded with; part of the identity).",
+      "title": "Document Instruction"
+    },
     "dtype": {
       "description": "The stored dtype (``float32``, or ``float16`` for a late-interaction store in its transfer precision).",
       "minLength": 1,
@@ -168,6 +181,19 @@
       },
       "title": "Query Ids",
       "type": "array"
+    },
+    "query_instruction": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The dataset's query-side task instruction, when it declares one.",
+      "title": "Query Instruction"
     },
     "recipe": {
       "anyOf": [

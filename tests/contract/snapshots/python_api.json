@@ -4694,6 +4694,13 @@
             "required": true,
             "type": "list[str]"
           },
+          "document_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "dtype": {
             "alias": null,
             "default": "<required>",
@@ -4791,6 +4798,13 @@
             "frozen": false,
             "required": true,
             "type": "list[str]"
+          },
+          "query_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "recipe": {
             "alias": null,
@@ -17413,7 +17427,7 @@
       "INDEX_BEHAVIOUR_VERSION": {
         "kind": "constant",
         "type": "str",
-        "value": "1"
+        "value": "2"
       },
       "Index": {
         "bases": [
@@ -17424,7 +17438,7 @@
         "fields": {
           "behaviour_version": {
             "alias": null,
-            "default": "1",
+            "default": "2",
             "frozen": false,
             "required": false,
             "type": "str"
@@ -23619,6 +23633,13 @@
             "type": "str"
           },
           "finish_reason": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "generation": {
             "alias": null,
             "default": null,
             "frozen": false,

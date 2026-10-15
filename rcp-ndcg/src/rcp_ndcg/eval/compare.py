@@ -267,12 +267,19 @@ def _paired(a: Mapping[str, float], b: Mapping[str, float]) -> tuple[np.ndarray,
 
 
 def _paired_t(differences: np.ndarray) -> tuple[float | None, float | None]:
-    """The paired t statistic and two-sided p-value of B - A differences (scipy's); ``None`` where undefined."""
+    """The paired t statistic and two-sided p-value of B - A differences (scipy's); ``None`` where undefined.
+
+    Differences with no variance are undefined for the test whatever their size: scipy returns ``inf`` and a
+    p of 0 for a constant nonzero difference and a NaN pair for an all-zero one, and a pair that counts as
+    separated by the first reading while the docstrings call it not separated is worse than an explicit None.
+    """
     import warnings
 
     from scipy.stats import ttest_1samp
 
     if len(differences) < 2:
+        return None, None
+    if float(np.ptp(differences)) == 0.0:  # no variance: the statistic is undefined, not infinite
         return None, None
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # no variance: scipy returns NaN, reported as None

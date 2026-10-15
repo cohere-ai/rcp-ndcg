@@ -114,7 +114,9 @@ the checkpoint's full width (the configured selection is stripped for that pass)
 ```
 
 The record carries the schema (`rcp-ndcg.embedding-store.v1`), the model, its revision, the recipe, the
-digest of the request-shaping fields (prompts, template, budget, shapes), the tokenizer and its digest, the
+digest of the request-shaping fields (prompts, template, budget, shapes), the dataset's document- and
+query-side task instructions when it declares them (the corpus and query vectors were encoded with them,
+the same inputs `retrieval index`/`search` use), the tokenizer and its digest, the
 text budget, the full width, the stored dtype, the declared MRL kind, set and projection source, and the
 corpus and query ids in stored order. Its identity is the retrieval identity of the full-width encoder plus
 a full-width marker, so a cut store can never be mistaken for a full-width one; the reader refuses vectors
@@ -141,6 +143,12 @@ declares only `mrl_range` needs explicit `--dims`, because a range cannot be enu
 head application and one scoring pass; no model is called again. A per-`k` run through the ordinary
 `retrieval index`/`search` commands computes the same vectors and the same scores -- the sweep is the same
 arithmetic, from one store.
+
+`--k` is repeatable; with two or more cutoffs the comparison is written at the first one (one report holds
+every cutoff). `--metrics` defaults to `rcp_ndcg` and `qrel_ndcg` when the dataset carries released gains,
+and to `qrel_ndcg` alone when it does not (RCP-nDCG needs a calibration, which the sweep does not take yet);
+the command says so in its log. The documented `beir:data/nfcorpus` example is such a dataset, so it scores
+qrel-nDCG alone unless `--metrics rcp_ndcg` is passed with a gains source.
 
 ## Gating every declared k
 

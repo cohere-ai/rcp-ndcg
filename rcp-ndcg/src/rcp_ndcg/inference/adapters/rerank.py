@@ -32,6 +32,7 @@ request bodies exactly as built and cuts nothing.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Sequence
 from typing import Any, ClassVar, NoReturn
@@ -416,7 +417,9 @@ class RerankWire(AdapterBase):
         """One row's relevance score, the ``relevance_score`` vLLM, Infinity, Cohere and Voyage answer.
 
         Raises:
-            ProviderError: The row carries no ``relevance_score``, or the value is not a number.
+            ProviderError: The row carries no ``relevance_score``, the value is not a number, or it is not
+                finite (a NaN or infinity is checkpointed and reused, and a ranking refuses it, so every
+                rerun would fail the same way -- the embeddings wire refuses a non-finite vector likewise).
         """
         raw = row.get("relevance_score")
         if not isinstance(raw, int | float) or isinstance(raw, bool):
@@ -425,7 +428,14 @@ class RerankWire(AdapterBase):
                 retryable=False,
                 details={"server": self._server},
             )
-        return float(raw)
+        score = float(raw)
+        if not math.isfinite(score):
+            raise ProviderError(
+                f"{self._server} returned a non-finite relevance_score: {_short(row)}",
+                retryable=False,
+                details={"server": self._server, "relevance_score": raw},
+            )
+        return score
 
 
 def _reply_message(reply: Reply) -> str:

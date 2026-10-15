@@ -205,6 +205,29 @@ def test_records_from_run_names_an_unknown_system(run_dir: Path) -> None:
         records_from_run(run_dir, systems=["nope"])
 
 
+def test_a_systems_subject_identity_is_the_digest_the_run_scored(tmp_path: Path) -> None:
+    """The export names a system by what the evaluate step read, not by the file at export time: a rankings
+    file regenerated in place after the run must not relabel the run's numbers."""
+    from rcp_ndcg.testing import tiny_rows
+
+    root = tmp_path / "run"
+    rankings = root / "mine.parquet"
+    run_dir = build_run(root)
+    step = RunManifest.load(RunLayout.at(run_dir)).step("evaluate")
+    assert step is not None
+    recorded = {ref.path: ref.sha256 for ref in step.inputs}
+
+    mine = [record for record in records_from_run(run_dir) if record.subject.name == "mine"]
+    assert mine and all(record.subject.identity in recorded.values() for record in mine), (
+        "the subject names the digest the step recorded"
+    )
+
+    rows, _ = tiny_rows()
+    Rankings.from_orders({row.id: list(reversed(row.doc_ids)) for row in rows}, system="mine").save(rankings)
+    again = [record for record in records_from_run(run_dir) if record.subject.name == "mine"]
+    assert [record.subject.identity for record in again] == [record.subject.identity for record in mine]
+
+
 def test_records_from_run_reads_an_explicit_report_file(run_dir: Path, tmp_path: Path) -> None:
     report = EvalReport.model_validate_json((run_dir / "metrics" / "report.json").read_text(encoding="utf-8"))
     other = tmp_path / "report.json"

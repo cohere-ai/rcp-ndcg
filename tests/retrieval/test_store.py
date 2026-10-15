@@ -108,6 +108,23 @@ class TestStoreRoundTrip:
             build_store(dataset, BM25Config(), out=tmp_path / "store")
         assert "vectors" in (caught.value.hint or "")
 
+    def test_a_remote_out_is_written_remotely_and_recorded_unchanged(
+        self, dataset: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A remote ``--out`` URI used to be wrapped in ``Path()``: the store landed in a local directory
+        named ``memory:/...`` and the record (and the CLI's printed path) named the mangled one."""
+        from uuid import uuid4
+
+        monkeypatch.chdir(tmp_path)
+        prefix = f"memory://store-{uuid4().hex}"
+        record = build_store(dataset, _dense(mrl_dim=2), out=prefix)
+
+        assert record.path == prefix
+        assert not (tmp_path / "memory:").exists(), "a remote out is never turned into a local directory"
+        loaded, corpus, queries = load_store(prefix)
+        assert loaded.path == prefix
+        assert corpus.as_matrix().shape == (3, 8) and queries.as_matrix().shape == (2, 8)
+
     def test_a_store_rebuilt_in_place_across_layouts_still_reads(self, dataset: Any, tmp_path: Path) -> None:
         """A late-interaction store then a dense store in one directory leaves the ragged offsets behind;
         the record's layout is what the reader follows, so the stale files are never mistaken for data."""
@@ -190,6 +207,40 @@ class TestSweep:
 
         direct = retrieve(dataset, _late(mrl_dim=2), depth=3, out=tmp_path / "direct")
         assert ranked[0].queries() == direct.queries()
+
+    def test_the_sweep_equals_direct_runs_with_task_instructions_and_a_separate_title(
+        self, dataset: Any, tmp_path: Path
+    ) -> None:
+        """The store must encode what index/search encode: the dataset's document- and query-side task
+        instructions and the encoder's title mode. Without them the stored vectors (and every per-k ranking
+        the sweep writes) come from other model inputs than a direct per-k run."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            query=(Segment(fixed="Query: "), Segment(content="query")),
+            document=(
+                Segment(fixed="Instruct: "),
+                Segment(content="instruction"),
+                Segment(fixed="\nDocument: "),
+                Segment(content="document"),
+            ),
+        )
+        corpus = {
+            doc_id: document.model_copy(update={"title": f"Title {doc_id}"})
+            for doc_id, document in dataset.corpus.items()
+        }
+        dataset = dataset.model_copy(
+            update={"corpus": corpus, "task_instruction": {"query": "q-instr", "document": "d-instr"}}
+        )
+        retriever = _dense(mrl_dim=2, title="separate", instruction="fold", template=template)
+        record = build_store(dataset, retriever, out=tmp_path / "store")
+        _, corpus_vectors, query_vectors = load_store(tmp_path / "store")
+
+        ranked = sweep(record, corpus_vectors, query_vectors, dims=(2,), depth=3)
+
+        direct = retrieve(dataset, retriever, depth=3, out=tmp_path / "direct")
+        assert ranked[0].queries() == direct.queries()
+        assert record.document_instruction == "d-instr" and record.query_instruction == "q-instr"
 
     def test_the_sweep_identity_k_equals_the_direct_full_width_run(self, dataset: Any, tmp_path: Path) -> None:
         """A declared set that keeps the card's full-width member (8 here): sweeping ``k == full_width``
@@ -345,6 +396,63 @@ class TestSweepCommand:
         payload = json.loads(result.stdout)["data"]
         assert payload["systems"] == ["stub@2", "stub@4"]
         assert payload["report"] is None and payload["comparison"] is None
+
+    def test_the_sweep_compares_at_the_first_cutoff_with_several_ks(self, dataset: Any, tmp_path: Path) -> None:
+        """``--k`` is repeatable, but the comparison was built without a cutoff: ``compare`` refuses a report
+        with several cutoffs after the rankings and report were already written."""
+        import json
+
+        from click.testing import CliRunner
+
+        from rcp_ndcg.cli.retrieval import retrieval_group
+
+        store = tmp_path / "store"
+        build_store(dataset, _dense(mrl_dim=2), out=store)
+        out_dir = tmp_path / "out"
+        result = CliRunner().invoke(
+            retrieval_group,
+            [
+                "sweep",
+                "--store",
+                str(store),
+                "--out-dir",
+                str(out_dir),
+                "--dataset",
+                dataset.uri,
+                "--metrics",
+                "qrel_ndcg",
+                "--k",
+                "2",
+                "--k",
+                "4",
+                "--json",
+            ],  # fmt: skip
+        )
+
+        assert result.exit_code == 0, result.output
+        comparison = json.loads((out_dir / "comparison.json").read_text(encoding="utf-8"))
+        assert comparison["k"] == 2, "the comparison is at the first cutoff, as its description says"
+
+    def test_the_sweep_defaults_to_the_metrics_the_dataset_can_score(self, dataset: Any, tmp_path: Path) -> None:
+        """The documented example passes no ``--metrics``, and a BEIR dataset has no released gains: the
+        default used to include rcp_ndcg and refused after writing the per-k rankings."""
+        import json
+
+        from click.testing import CliRunner
+
+        from rcp_ndcg.cli.retrieval import retrieval_group
+
+        store = tmp_path / "store"
+        build_store(dataset, _dense(mrl_dim=2), out=store)
+        out_dir = tmp_path / "out"
+        result = CliRunner().invoke(
+            retrieval_group,
+            ["sweep", "--store", str(store), "--out-dir", str(out_dir), "--dataset", dataset.uri, "--json"],
+        )
+
+        assert result.exit_code == 0, result.output
+        report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+        assert {row["metric"] for row in report["per_query"]} == {"qrel_ndcg"}
 
     def test_the_store_command_reports_a_range(self, dataset: Any, tmp_path: Path) -> None:
         """`retrieval store` maps the record's declaration into its result, range included, so a range

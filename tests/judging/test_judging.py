@@ -15,7 +15,7 @@ from rcp_ndcg_core.schemas import JudgementSet
 from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, IdentityError
-from rcp_ndcg.judging import JudgeClient, JudgeConfig, JudgementStore, RubricSchedule, judge
+from rcp_ndcg.judging import JudgeClient, JudgeConfig, JudgementStore, RubricSchedule, TournamentSchedule, judge
 from rcp_ndcg.judging._fake import _DOC_BLOCK, _answer_text
 from rcp_ndcg.judging._parsing.schema import response_format
 from rcp_ndcg.judging.client import BackendUnavailableError, Completion, CompletionInput
@@ -352,6 +352,76 @@ class TestResume:
         assert subset_stratified and all(j.valid for j in subset_stratified), "a full pass retired a subset's window"
         assert any(j.invalid_category == "superseded" for j in records), "the full pass's own later phase is retired"
 
+    def test_a_refusal_that_stays_refused_does_not_retire_the_later_phases_again(self, tmp_path: Path) -> None:
+        """A refusal the endpoint repeats changes nothing about the fit, so each resume re-asks only that
+        window: the later phases keep their records and no further tombstone is appended."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:02d}" for index in range(20)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = RubricSchedule(window=5, placements_per_doc=2.0)
+        n_random, _ = schedule.windows_for(len(docs))
+        target = {
+            docs[index]
+            for index in _balanced_groups(len(docs), 5, n_random, query_rng(schedule.seed, "dataset", "q"))[0]
+        }
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="rubric", out=tmp_path, schedule=schedule)
+        again = _RefusesOne(ability)
+        judge(rows, None, again, stage="rubric", out=tmp_path, schedule=schedule)
+        judge(rows, None, again, stage="rubric", out=tmp_path, schedule=schedule)
+        assert again.usage.requests == 0, "a resume re-asked windows whose fit had not changed"
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        assert not [j for j in records if j.invalid_category == "superseded"]
+
+    def test_a_docs_subset_resume_never_retires_the_full_passs_generation(self, tmp_path: Path) -> None:
+        """A full pass's stratified window whose documents happen to lie in a later `docs=` subset is still
+        the full pass's generation: the subset pass's resume retires its own windows only."""
+        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+
+        docs = [f"d{index:03d}" for index in range(150)]
+        rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
+        schedule = RubricSchedule()
+
+        def ability(text: str) -> float:
+            return float(text.split()[-1][1:])
+
+        full = judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule)
+        full_ids = {j.record_id for j in full.judgements}
+
+        subset = docs[:140]
+        n_random, _ = schedule.windows_for(len(subset), n_units=len(subset))
+        target = {
+            subset[index]
+            for index in _balanced_groups(
+                len(subset), schedule.window, n_random, query_rng(schedule.seed, "dataset", "q")
+            )[0]
+        }
+
+        class _RefusesOne(FakeJudge):
+            def _answer(self, request: httpx.Request) -> httpx.Response:
+                prompt = json.loads(request.content)["messages"][-1]["content"]
+                if isinstance(prompt, str) and all(doc in prompt for doc in target):
+                    return httpx.Response(400, json={"error": {"message": "prompt too long"}})
+                return super()._answer(request)
+
+        judge(rows, None, _RefusesOne(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": subset})
+        judge(rows, None, FakeJudge(ability), stage="rubric", out=tmp_path, schedule=schedule, docs={"q": subset})
+        records = list(JudgementStore(tmp_path).records("rubric").values())
+        superseded = {j.record_id for j in records if j.invalid_category == "superseded"}
+        assert superseded, "the subset pass retired nothing"
+        assert not (full_ids & superseded), "the subset pass retired the full pass's windows"
+
 
 class TestSubsets:
     def test_a_tournament_subset_gets_the_windows_its_size_gives(self, tmp_path: Path) -> None:
@@ -630,6 +700,60 @@ def test_the_rubric_asks_enough_windows_to_show_every_chunk(tmp_path: Path, word
     assert len(chunks.doc_ids) == 6
     assert len(result.judgements) == 3  # counting documents, the placements would give round(1.0 * 2 / 2) = 1 window
     assert {p.chunk_id for j in result.judgements for p in j.placements} == set(chunks.doc_ids)
+
+
+def test_the_tournament_ranges_count_the_units_a_chunked_pass_asks(word_tokenizer_file: Path) -> None:
+    """The tournament sizes and numbers its windows from the units the pass asks, so a chunked pass's phase
+    ranges count chunks: a resume then recognises its own windows instead of leaving two generations."""
+    from rcp_ndcg.judging.judging import _phase_ranges, _queries
+
+    long = RankingExample(
+        query_id="q",
+        query="tiny query",
+        doc_ids=["a", "b"],
+        docs=["x " * 240 + "tiny document q1-d09", "y " * 240 + "tiny document q1-d00"],
+    )
+    policy = Preprocessing(chunk=ChunkPolicy(max_tokens=100, overlap_tokens=10))
+    _, queries, _ = _queries([long], None, None, policy, tokenizer=load_tokenizer(str(word_tokenizer_file)))
+    (query,) = queries
+    schedule = TournamentSchedule(
+        window=2, random_placements=2.0, stratified_placements=1.0, adaptive_batches=1, adaptive_placements=1.0
+    )
+    n_units = len(query.units)
+    assert n_units == 6
+    n_random, n_stratified, per_batch = schedule.windows_for(n_units)
+    mirror = 2 if schedule.mirror else 1
+    random_end = n_random * mirror
+    stratified_end = random_end + n_stratified * mirror
+    ranges = _phase_ranges("tournament", schedule, query)
+    assert ranges["random"][:2] == (0, random_end)
+    assert ranges["stratified"][:2] == (random_end, stratified_end)
+    assert ranges["adaptive"][:2] == (
+        stratified_end,
+        stratified_end + schedule.adaptive_batches_for(n_units) * per_batch,
+    )
+
+
+def test_growing_a_pool_redraws_the_whole_schedule(tmp_path: Path) -> None:
+    """judges.md: growing a pool through ``candidates=`` gives every scheduled window a new record id (the
+    schedule's counts and balanced draws depend on the pool size), not only the windows that show the new
+    document; the fit then reads the old pool's windows beside the new one's."""
+    from rcp_ndcg.data import load_dataset
+
+    docs = [f"d{index:02d}" for index in range(7)]
+    row = RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])
+    path = tmp_path / "rows.jsonl"
+    path.write_text(_rows_jsonl((row,)), encoding="utf-8")
+    dataset = load_dataset(f"jsonl:{path}")
+    store = tmp_path / "store"
+    schedule = TINY_TOURNAMENT
+    first = judge(dataset, {"q": docs[:6]}, FakeJudge(lambda text: 0.0), stage="tournament", out=store,
+                  schedule=schedule)  # fmt: skip
+    before = {j.record_id for j in first.judgements}
+    second = judge(dataset, {"q": docs}, FakeJudge(lambda text: 0.0), stage="tournament", out=store, schedule=schedule)
+    added = {j.record_id for j in second.judgements} - before
+    showing_new = {j.record_id for j in second.judgements if any(p.doc_id == "d06" for p in j.placements)}
+    assert added and added != showing_new, "the whole schedule is redrawn, not only the new document's windows"
 
 
 class _Recording(FakeJudge):
@@ -1071,6 +1195,18 @@ class TestPlannedWindows:
             _rubric(tmp_path, client, docs={ROWS[0].id: []})
         assert client.usage.requests == 0 and not (tmp_path / "identity.json").exists()
 
+    def test_a_docs_or_candidates_key_that_names_no_row_is_refused(self, tmp_path: Path) -> None:
+        """A query id in docs= (or, for a row-sequence input, candidates=) that matches no row used to be
+        dropped silently: the pass reported success while a named query was never judged."""
+        q1 = ROWS[0].doc_ids
+        with pytest.raises(DataError, match="nope"):
+            _rubric(tmp_path / "docs", docs={ROWS[0].id: [q1[0]], "nope": [q1[0]]})
+        client = _fake()
+        with pytest.raises(DataError, match="q3"):
+            judge(ROWS, {ROWS[0].id: q1, "q3": q1}, client, stage="rubric", out=tmp_path / "candidates",
+                  schedule=TINY_RUBRIC)  # fmt: skip
+        assert client.usage.requests == 0
+
     def test_a_tournament_query_with_fewer_than_two_candidates_is_refused(self, tmp_path: Path) -> None:
         """A pool of one has no pair to compare; the pass was silent (no record, no warning)."""
         client = _fake()
@@ -1137,6 +1273,42 @@ class TestIdentities:
         (entry,) = JudgementStore(tmp_path).identities().values()
         assert entry["identity"]["dataset"]["name"] == "dataset"
         assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
+
+    def test_an_edited_reader_option_query_text_is_refused_by_the_store(self, tmp_path: Path) -> None:
+        """A page-image corpus takes its queries from ``queries_uri``, which is not the dataset location: the
+        query texts enter the store identity, so an edited query file is another dataset -- refused, never
+        reusing answers the judge gave on the old texts."""
+        import PIL.Image
+
+        from rcp_ndcg.data import load_dataset
+
+        root = tmp_path / "corpus"
+        images = root / "images"
+        for doc in ("docA", "docB"):
+            (images / doc).mkdir(parents=True)
+            for page in (1, 2):
+                PIL.Image.new("RGB", (40, 60)).save(images / doc / f"page_{page}.png")
+        queries = root / "queries.jsonl"
+        queries.write_text(json.dumps({"query_id": "q1", "text": "the invoice total"}) + "\n", encoding="utf-8")
+        qrels = root / "qrels.jsonl"
+        qrels.write_text(json.dumps({"query_id": "q1", "qrels": {"docA/page_1": 1}}) + "\n", encoding="utf-8")
+
+        def dataset():
+            return load_dataset(f"images:{images}", queries_uri=str(queries), qrels_uri=str(qrels))
+
+        def client() -> FakeJudge:
+            return FakeJudge(lambda text: 0.0, config=JudgeConfig.fake(0).model_copy(update={"max_images": 10}))
+
+        schedule = RubricSchedule(window=2, placements_per_doc=2.0)
+        judge(dataset(), None, client(), stage="rubric", out=tmp_path / "store", schedule=schedule)
+        assert client().usage.requests == 0  # the same texts resume
+
+        queries.write_text(json.dumps({"query_id": "q1", "text": "a completely different question"}) + "\n",
+                           encoding="utf-8")  # fmt: skip
+        changed = client()
+        with pytest.raises(IdentityError, match="queries_sha256"):
+            judge(dataset(), None, changed, stage="rubric", out=tmp_path / "store", schedule=schedule)
+        assert changed.usage.requests == 0
 
     def test_a_local_dataset_is_named_by_its_content_and_an_edited_file_is_refused(self, tmp_path: Path) -> None:
         """A local source has no revision to pin it: the digest of the file its reader reads enters the store

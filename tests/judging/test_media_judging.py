@@ -426,6 +426,68 @@ class TestJudgingPages:
         assert any(row["doc_id"] == "engine_media_check:not_checked" for row in rows)
 
 
+class TestVideoContainers:
+    def test_a_container_without_a_video_policy_is_refused_without_a_budget(self, tmp_path: Path) -> None:
+        """A judge with no context_tokens (or no tokenizer) used to skip the media count entirely and send a
+        container at the engine's own default sampling, while ``estimate`` refused the same pass; the plan now
+        refuses it whatever the budget settings."""
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))])
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"max_videos": 1})
+
+        with pytest.raises(ConfigError, match="video policy") as caught:
+            judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL)
+        assert "preprocessing.video" in (caught.value.hint or "")
+        assert fake.usage.requests == 0
+
+
+async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_path: Path, pages) -> None:
+    """A judging pass cached every prepared page and frame of every query for the whole pass (the shared
+    image LRU cannot release them while the per-pass dict holds references); the cache is now scoped to one
+    query and released when its run returns."""
+    from rcp_ndcg_core.schemas import JudgementFamily
+
+    from rcp_ndcg.data.census import TextTruncationCensus
+    from rcp_ndcg.data.prepare import MediaCensus
+    from rcp_ndcg.judging.judging import _Pass, _Query, run_rubric
+    from rcp_ndcg.judging.store import JudgementStore
+
+    prompt = load_prompt("rubric_vision")
+    query = _Query(
+        dataset="d",
+        query_id="q1",
+        text="what is the yield curve",
+        units=[f"p{i}" for i in range(len(pages))],
+        contents={f"p{i}": Content.from_parts([ImagePart(ref=ref)]) for i, ref in enumerate(pages)},
+        chunk_mapping=None,
+    )
+    client = FakeJudge()
+    client.config = client.config.model_copy(update={"max_images": len(pages)})
+    run = _Pass(
+        stage="rubric",
+        client=client,
+        prompt=prompt,
+        family=JudgementFamily(
+            stage="rubric", judge_model="fake", prompt_hash=prompt.sha256, criteria=prompt.criteria, parse_version=1
+        ),
+        store=JudgementStore(tmp_path / "store"),
+        existing={},
+        preprocessing=Preprocessing(),
+        census=TextTruncationCensus(),
+        media_census=MediaCensus(),
+        tokenizer=None,
+        schedule_key="schedule",
+        dataset_key="dataset",
+    )
+
+    await run_rubric(query, SMALL, run)
+
+    assert run.prepared == {}, "the finished query's prepared media is released, not held for the whole pass"
+
+
 class TestTheFpsFamilyOnPreprocessing:
     """The engine's fps rule is ported for the qwen3_vl family: an explicit other family is refused, while
     the deferred-processor form (the judge config fills the processor via ``for_processor``) stays valid,

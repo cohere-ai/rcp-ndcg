@@ -3,13 +3,15 @@
 
 Stemming is stated, never inferred from what happens to be installed: :class:`~rcp_ndcg.retrieval.BM25Config`
 names the stemmer language (or none), the index identity records it, and a requested stemmer without PyStemmer is
-a :class:`~rcp_ndcg.errors.DependencyError`. The stemmer is stored beside the model (``meta.json``) and read back
-at search time, so a search uses the index's own stemmer, never whatever happens to be configured.
+a :class:`~rcp_ndcg.errors.DependencyError`. The stemmer **and the stop list it implies** (:func:`stopwords_for`:
+``en`` for no stemmer or the English one, the language's own list where bm25s keeps one, none where it does not)
+are stored beside the model (``meta.json``) and read back at search time, so a search uses the index's own
+tokenization, never whatever happens to be configured.
 
 The search applies the retrieval stack's one tie rule (score descending, then the lower row -- the same rule
 :func:`rcp_ndcg.retrieval.topk.numpy_topk` and :meth:`rcp_ndcg.data.Rankings.top` apply): the model's own
 ``argpartition`` order is never the cut. A query with no indexable term (empty, or only stop words after
-the ``en`` list and the stemmer) is refused, never scored as ``depth`` arbitrary zero-score documents.
+the index's stop list and the stemmer) is refused, never scored as ``depth`` arbitrary zero-score documents.
 
 The index is persisted with bm25s' own format (npz arrays and JSON parameters), never a pickle: an index
 directory comes from ordinary user paths (``retrieval index --out``, ``retrieval search --index``), and
@@ -32,7 +34,23 @@ from rcp_ndcg_core.content import Content
 from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError
 
 STOPWORDS = "en"
-"""The bm25s stop list the corpus is tokenized with."""
+"""The bm25s stop list an unstemmed (or English-stemmed) corpus is tokenized with."""
+
+#: The bm25s stop list each Snowball stemmer language implies (bm25s' own table), or absent when bm25s keeps
+#: none: the stop list follows the stemmer, so a German run drops German function words the way mteb's does.
+_STOPWORDS_FOR: dict[str, str] = {
+    "chinese": "zh",
+    "dutch": "nl",
+    "english": "en",
+    "french": "fr",
+    "german": "de",
+    "italian": "it",
+    "norwegian": "no",
+    "portuguese": "pt",
+    "russian": "ru",
+    "spanish": "es",
+    "swedish": "sv",
+}
 
 _MODEL_PARAMS = "params.index.json"
 """The parameters file of bm25s' own save format (``BM25.save``); the marker of a stored model."""
@@ -76,6 +94,18 @@ def stemmer_for(language: str | None) -> Any:
     return Stemmer.Stemmer(language)
 
 
+def stopwords_for(stemmer: str | None) -> str | None:
+    """The bm25s stop list a Snowball ``stemmer`` language implies, or ``None`` when bm25s keeps none for it.
+
+    No stemmer (or the English one) keeps the ``en`` list, the list the shipped config and mteb's English BM25
+    use. A language bm25s has no list for keeps no stop words: an English list would remove English words from
+    text of another language while keeping that language's own function words, which is neither language's rule.
+    """
+    if stemmer is None:
+        return STOPWORDS
+    return _STOPWORDS_FOR.get(stemmer)
+
+
 def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stemmer: str | None) -> None:
     """Build a BM25 index of ``corpus`` under ``dataset_dir/bm25s/``, stemming with the Snowball ``stemmer``.
 
@@ -93,22 +123,25 @@ def build_bm25_index(corpus: Sequence[Content | str], dataset_dir: Path, *, stem
             stop words): bm25s builds an empty vocabulary and would crash inside itself.
     """
     stemmer_object = stemmer_for(stemmer)
+    stopwords = stopwords_for(stemmer)
     engine = _bm25s()
     target = Path(dataset_dir) / "bm25s"
     Path(dataset_dir).mkdir(parents=True, exist_ok=True)
     texts = [item if isinstance(item, str) else item.text for item in corpus]
-    tokenized = engine.tokenize(texts, stopwords=STOPWORDS, stemmer=stemmer_object, show_progress=False)
+    tokenized = engine.tokenize(texts, stopwords=stopwords, stemmer=stemmer_object, show_progress=False)
     if not any(tokenized.ids):
         raise DataError(
             "the corpus has no indexable tokens: every document is empty, or only stop words after removal",
-            hint="check the corpus texts; BM25 tokenizes with the 'en' stop list and the configured stemmer",
+            hint=f"check the corpus texts; BM25 tokenizes with the {stopwords!r} stop list and the configured stemmer",
         )
     model = engine.BM25()
     model.index(tokenized, show_progress=False)
     built = Path(tempfile.mkdtemp(prefix=".bm25s.", dir=dataset_dir))
     try:
         model.save(str(built), allow_pickle=False)
-        (built / "meta.json").write_text(json.dumps({"stemmer": stemmer}, indent=2), encoding="utf-8")
+        (built / "meta.json").write_text(
+            json.dumps({"stemmer": stemmer, "stopwords": stopwords}, indent=2), encoding="utf-8"
+        )
         if target.exists():
             shutil.rmtree(target)  # one rename replaces the directory (os.replace needs an absent target)
         os.replace(built, target)
@@ -133,8 +166,8 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
     Raises:
         MissingInputError: No stored model under ``dataset_dir`` (one written by the earlier build's pickle
             format is refused with a rebuild hint: it is not loaded, so its code never runs).
-        DataError: A query has no indexable term (empty, or only stop words after the ``en`` list and the
-            stemmer) or matches no document (none of its terms occurs in the corpus): scoring either would
+        DataError: A query has no indexable term (empty, or only stop words after the index's own stop list
+            and stemmer) or matches no document (none of its terms occurs in the corpus): scoring either would
             return ``k`` arbitrary zero-score documents that look like a result.
     """
     bm_dir = Path(dataset_dir) / "bm25s"
@@ -159,7 +192,13 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
             cli_hint="build it with `rcp-ndcg retrieval index`",
         )
     try:
-        stemmer = stemmer_for(json.loads(meta_path.read_text(encoding="utf-8"))["stemmer"])
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        stemmer = stemmer_for(meta["stemmer"])
+        # An index written before the stop list was recorded was built with the English list (the only one
+        # the earlier build used); a new build always records its own.
+        stopwords = meta.get("stopwords", STOPWORDS)
+        if not isinstance(stopwords, str | None):
+            raise TypeError(f"stopwords must be a language code or null, got {stopwords!r}")
     except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
         raise MissingInputError(
             f"the BM25 index's {meta_path} is unreadable or does not name a stemmer",
@@ -173,11 +212,11 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
 
     out = []
     for query in queries:
-        tokens = engine.tokenize(query, stopwords=STOPWORDS, stemmer=stemmer, show_progress=False)
+        tokens = engine.tokenize(query, stopwords=stopwords, stemmer=stemmer, show_progress=False)
         if not any(tokens.ids):
             raise DataError(
                 f"the query {query[:200]!r} has no indexable term: BM25 would score every document 0.0",
-                hint=f"the {STOPWORDS!r} stop list and the index's stemmer leave nothing to score; drop the "
+                hint=f"the {stopwords!r} stop list and the index's stemmer leave nothing to score; drop the "
                 "empty query from the run, or check the text the reader produced for it",
             )
         # Every row, unsorted: the model's own argpartition order is never the cut. Scoring is the same
@@ -202,4 +241,4 @@ def search_bm25(dataset_dir: Path, queries: Sequence[str], *, k: int) -> list[li
     return out
 
 
-__all__ = ["STOPWORDS", "build_bm25_index", "search_bm25", "stemmer_for"]
+__all__ = ["STOPWORDS", "build_bm25_index", "search_bm25", "stemmer_for", "stopwords_for"]

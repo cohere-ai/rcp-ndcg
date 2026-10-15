@@ -324,7 +324,7 @@ class GeminiEmbedding(rcp_ndcg.retrieval.config._ApiSelected, rcp_ndcg.inference
 constant
 
 ```text
-INDEX_BEHAVIOUR_VERSION = '1'
+INDEX_BEHAVIOUR_VERSION = '2'
 ```
 
 ## `Index`
@@ -335,7 +335,7 @@ pydantic_model — A built index: where it is, what it indexes, and its identity
 class Index(pydantic.main.BaseModel)
 ```
 
-- `behaviour_version: str` = '1'
+- `behaviour_version: str` = '2'
 
 - `dataset: str`
 

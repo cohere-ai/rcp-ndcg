@@ -275,6 +275,34 @@ def test_the_prompts_own_worked_example_is_refused_as_an_answer() -> None:
         parse_window("rubric", "q1", Completion(response=json.dumps(rubric)), five, 5, example=rubric)
 
 
+def test_a_genuine_answer_whose_reasoning_differs_from_the_example_parses() -> None:
+    """The guard refuses a literal echo of the prompt's worked example, not a real observation whose verdicts
+    happen to match the example's: the reasoning strings are part of what was answered."""
+    from rcp_ndcg.judging.judging import parse_window
+    from rcp_ndcg.judging.prompts import load_prompt
+
+    rubric = load_prompt("rubric").worked_example
+    assert rubric is not None
+    five = [f"u{i}" for i in range(1, 6)]  # the example names five documents
+    genuine = {
+        doc: {"reasoning": f"my own judgement of {doc} for a query about tax law", "criteria": body["criteria"]}
+        for doc, body in rubric.items()
+    }
+    parsed = parse_window("rubric", "q1", Completion(response=json.dumps(genuine)), five, 5, example=rubric)
+    assert set(parsed.criteria or {}) == set(five)
+
+    tournament = load_prompt("tournament").worked_example
+    assert tournament is not None
+    four = ["u1", "u2", "u3", "u4"]  # the example names four documents
+    genuine_tournament = {**tournament, "reasoning": "my own comparison of these four documents"}
+    parsed_tournament = parse_window(
+        "tournament", "q1", Completion(response=json.dumps(genuine_tournament)), four, 0, example=tournament
+    )
+    assert parsed_tournament.ranking is not None
+    with pytest.raises(UnparseableAnswer, match="worked example"):
+        parse_window("tournament", "q1", Completion(response=json.dumps(tournament)), four, 0, example=tournament)
+
+
 #: LaTeX that is an invalid JSON escape when written raw into a string (``\\u`` followed by a non-hex letter too).
 _LATEX = [
     r"\pi",

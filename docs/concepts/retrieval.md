@@ -32,7 +32,7 @@ A retriever config declares one of three kinds:
 
 | `kind` | What it computes | Fields |
 |---|---|---|
-| `bm25` | sparse term scores | `stemmer`: a Snowball language of PyStemmer (`english`, `german`, ...) or `null`; corpus and queries are stemmed alike, and the stemmer is part of the index identity |
+| `bm25` | sparse term scores | `stemmer`: a Snowball language of PyStemmer (`english`, `german`, ...) or `null`; corpus and queries are stemmed alike, the stop list follows the language (`en`, `de`, ...; none where bm25s keeps no list for it), and the stemmer is part of the index identity |
 | `dense` | one vector per query and document | `encoder`: an embedding endpoint ([embedding endpoints](embeddings.md)) |
 | `late_interaction` | per-token vectors, scored with MaxSim | `encoder`: a pooling endpoint ([late interaction](late-interaction.md)) |
 
@@ -42,7 +42,10 @@ dataloader: a corpus row is indexed as `title + "\n" + body` (both as given), an
 instruction's append alone, never the `Task:` frame. The SCORING is `bm25s` on both sides (mteb's wrapper and
 this package both call it), and for the shipped `stemmer: english` config the tokenisation coincides with
 mteb's `BM25Tokenizer` for `eng` (the bm25s `en` stop list and the English Snowball stemmer; mteb's
-frequency-threshold filtering applies only to languages without a named stop list). The dense and late-interaction paths read **MTEB's retrieval dataloader** rule
+frequency-threshold filtering applies only to languages without a named stop list). A non-English stemmer uses
+that language's own bm25s stop list (`german` -> `de`, `french` -> `fr`, ...), and a language bm25s keeps no
+list for keeps no stop words; the list is recorded in the index's `meta.json` and read back at search time, so
+the English list is never applied to another language. The dense and late-interaction paths read **MTEB's retrieval dataloader** rule
 (`(title + " " + body).strip()`, the body alone without a title), place the task instruction per the encoder
 config's `instruction` mode, and append the per-query instruction as mteb's dataloader does ([data](../data.md)).
 A document-side task instruction reaches an encoder through the template's `instruction` span (the generic

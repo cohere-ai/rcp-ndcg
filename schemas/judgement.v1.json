@@ -95,6 +95,19 @@
       "description": "Why the endpoint stopped generating (``\"stop\"``, ``\"length\"``, ...), when it said.",
       "title": "Finish Reason"
     },
+    "generation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The pool generation of a scheduled window: a digest of the units the pass judges, so a resume recognises the records of its own pool (and retires those of an older fit) even when another pool's windows share its size and sequence numbers; ``None`` for a planned window.",
+      "title": "Generation"
+    },
     "input_tokens": {
       "anyOf": [
         {

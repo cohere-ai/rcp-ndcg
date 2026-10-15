@@ -6,7 +6,7 @@ import warnings
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
@@ -212,6 +212,58 @@ def test_a_window_at_the_max_images_is_estimated() -> None:
     with pytest.raises(CapabilityError, match="max_images: 0"), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         estimate(rows, None, reads_none, stages=["rubric"], windows={"q": [["d0", "d1", "d2"]]})
+
+
+def _video_rows(docs: int, *, frames: int, container: bool) -> list[RankingExample]:
+    """One query whose ``docs`` documents are each a frame directory (``frames`` frames) or a container."""
+
+    def video(index: int) -> Content:
+        if container:
+            ref = MediaRef(uri=f"clip{index}.mp4", mime="video/mp4", num_bytes=64, num_frames=8, fps=4.0)
+            return Content.from_parts([VideoPart(ref=ref)])
+        refs = [MediaRef(uri=f"frame{index}_{i}.jpg", mime="image/jpeg", width=64, height=64) for i in range(frames)]
+        return Content.from_parts([VideoPart(frames=refs, frame_indices=list(range(frames)))])
+
+    return [
+        RankingExample(
+            query_id="q", query="q", doc_ids=[f"d{i}" for i in range(docs)], contents=[video(i) for i in range(docs)]
+        )
+    ]
+
+
+def test_the_estimate_counts_the_sampled_frames_a_frames_policy_sends() -> None:
+    """The gate counted every raw frame of a clip, so a 60-frame directory under ``num_frames: 4`` was
+    refused against a cap the pass's own pre-send gate (which counts the sampled frames) accepts."""
+    from rcp_ndcg.data.preprocess import Preprocessing
+    from rcp_ndcg.data.resolution import VideoPolicy
+
+    rows = _video_rows(5, frames=60, container=False)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=20)
+    policy = Preprocessing(video=VideoPolicy(num_frames=4, wire="frames"))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # the approximation warning
+        projected = estimate(rows, None, hosted, stages=["rubric"], preprocessing=policy)
+
+    assert projected.calls == RubricSchedule.for_modality("video").calls_per_query(5, n_units=5)
+
+
+def test_the_estimate_gates_videos_against_max_videos() -> None:
+    """A ``video_url`` window of five containers was blessed while every window is refused at its first call
+    (the pass's gate checks ``max_videos``); the estimate must check it like the pass does."""
+    from rcp_ndcg.data.preprocess import Preprocessing
+    from rcp_ndcg.data.resolution import VideoPolicy
+
+    rows = _video_rows(5, frames=0, container=True)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_videos=1, context_tokens=272_000)
+    policy = Preprocessing(video=VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True))
+
+    with pytest.raises(CapabilityError, match="max_videos") as caught:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # the approximation warning
+            estimate(rows, None, hosted, stages=["rubric"], preprocessing=policy)
+
+    assert caught.value.details["videos"] == 5 and caught.value.cli_hint == "--set judge.max_videos=5"
 
 
 def test_the_wall_time_is_labelled_a_floor_in_the_assumptions_and_the_schema() -> None:

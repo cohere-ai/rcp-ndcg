@@ -130,6 +130,33 @@ def test_saving_a_non_finite_number_is_a_data_error_not_a_bare_value_error(world
     assert "JSON" in caught.value.message and caught.value.hint
 
 
+def test_a_refused_save_leaves_the_previous_calibration_intact(
+    world: TinyWorld, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A save that refuses partway (a non-finite payload, a crash) must not leave a mixed calibration that
+    loads cleanly: every payload is built and validated first and the layout lands as a whole."""
+    from rcp_ndcg.calibration import fit as fit_module
+
+    before = Calibration.load(world.calibration)
+    target = tmp_path / "calibration"
+    shutil.copytree(world.calibration, target)
+    changed = dataclasses.replace(before, judge_severity={"other-judge": 0.5})
+
+    real = fit_module._write_json
+
+    def refuse_at_diagnostics(path: Path, payload: object) -> None:
+        if path.name == "diagnostics.json":
+            raise DataError("diagnostics.json would hold a value JSON cannot carry: refused by the test")
+        real(path, payload)
+
+    monkeypatch.setattr(fit_module, "_write_json", refuse_at_diagnostics)
+    with pytest.raises(DataError, match="diagnostics.json"):
+        changed.save(target)
+    monkeypatch.undo()
+
+    assert Calibration.load(target) == before, "a refused save left the previous calibration in place"
+
+
 def test_every_line_of_extensions_jsonl_matches_the_extension_record_schema(world: TinyWorld, tmp_path: Path) -> None:
     from rcp_ndcg.calibration import read_judgements, score_documents
 

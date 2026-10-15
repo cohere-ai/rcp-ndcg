@@ -18,7 +18,6 @@ arrive in.
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -55,7 +54,7 @@ from rcp_ndcg.data.text_policy import (
     token_prefix,
 )
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
-from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer
+from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer, decode_answer
 from rcp_ndcg.judging._parsing.schema import response_format as _response_format
 from rcp_ndcg.judging.client import Completion, CompletionInput, JudgeClient, JudgeConfig, RequestRejectedError
 from rcp_ndcg.judging.prompts import PROMPT_FILES, Prompt, load_prompt, shipped_prompt_name
@@ -286,16 +285,19 @@ def _dataset_rows(
 
 
 def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any]:
-    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI, resolved revision and --
-    for a local source -- the content digest of what its reader reads.
+    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI, resolved revision and
+    -- for a local source -- the content digest of what its reader reads, plus the query texts the reader read.
 
     A local URI (a reader scheme whose location is a path, not ``scheme://``) enters with its path absolute and
     normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset, and
     with the digest of the files the reader reads (:func:`rcp_ndcg.data.revisions.dataset_content_digest`, the
     same one home the run steps' identity consumes): a local source has no commit, so an edited ``rows.jsonl``
     is another dataset and the store refuses it instead of reusing answers over texts the judge never saw. The
-    query selection is left out: judging more queries of the same corpus extends the store. The dataset's
-    **task instruction** is in: the model read it, so a pass whose instruction differs is another instrument.
+    query texts enter the identity too (their formatted form, the string the judge reads): a reader whose
+    queries live in a sidecar (``queries_uri``, the ``images:``/``videos:``/``frames:`` readers) is not covered
+    by the location digest, so an edited query file must be another dataset as well. The query *selection* is
+    left out: judging more queries of the same corpus extends the store. The dataset's **task instruction** is
+    in: the model read it, so a pass whose instruction differs is another instrument.
 
     A row-sequence input (no dataset object) has no name or revision to give: it is named by the SHA-256 of
     the rows it judges, so two passes over different row corpora never share a store identity (and, through
@@ -332,6 +334,13 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
     content = dataset_content_digest(source.uri)
     if content:
         payload["content"] = content
+    queries = getattr(source, "queries", None)
+    if queries:
+        instruction_for = getattr(source, "task_instruction_for", None)
+        instruction = instruction_for("query") if instruction_for is not None else None
+        payload["queries_sha256"] = hash_payload(
+            {str(query_id): query.format_query(task_instruction=instruction) for query_id, query in queries.items()}
+        )
     if source.task_instruction is not None:
         # Only a declared instruction is keyed: an absent one is the absence of a declaration, so a dataset
         # that carries none keeps the identity it had (the same rule identity_payload applies).
@@ -433,6 +442,15 @@ def _queries(
                 hint="merge the rows, or give the second query its own id",
             )
         seen.add(row.id)
+    unknown = sorted({str(key) for mapping in (candidates, docs) if mapping is not None for key in mapping} - seen)
+    if unknown:
+        # The other direction of the selection: a key that names no row is not judged, so a pass that
+        # dropped it would report success while a query the caller named never reached the judge.
+        raise DataError(
+            f"query {', '.join(map(repr, unknown))} of the candidates or documents to judge is not a query "
+            f"of the rows: nothing would be judged for it",
+            hint="check the query ids against the dataset's queries (a pool may have been cut by --limit or --depth)",
+        )
     queries: list[_Query] = []
     for row in rows:
         if candidates is not None and row.id not in candidates:
@@ -537,7 +555,8 @@ def _phase_ranges(
     its call in the query's schedule (the tournament asks every random and stratified window with its mirror
     too), so the ranges identify the slots a pass over this query's units will ask -- and therefore the
     records of the pass's own generation; the window size tells a generation of another pool apart where the
-    numbers overlap (a subset pass with a smaller effective window).
+    numbers overlap (a subset pass with a smaller effective window). The tournament counts the units the pass
+    asks (a chunked document contributes one unit per chunk), the same count :func:`run_tournament` uses.
     """
     n_units = len(query.units)
     n_docs = len(document_ids_from_chunks(query.units, query.chunk_mapping))
@@ -545,7 +564,7 @@ def _phase_ranges(
         window = min(schedule.window, n_units)
         n_random, n_stratified = schedule.windows_for(n_docs, n_units=n_units)
         return {"random": (0, n_random, window), "stratified": (n_random, n_random + n_stratified, window)}
-    n_random, n_stratified, per_batch = schedule.windows_for(n_docs)
+    n_random, n_stratified, per_batch = schedule.windows_for(n_units)
     # The tournament numbers a window sequence per CALL: every random and stratified window is asked with its
     # mirror too (the adaptive phase is never mirrored), so the ranges count the calls the schedule makes.
     mirror = 2 if schedule.mirror else 1
@@ -557,33 +576,37 @@ def _phase_ranges(
         "stratified": (random_end, stratified_end, window),
         "adaptive": (
             stratified_end,
-            stratified_end + schedule.adaptive_batches_for(n_docs) * per_batch,
+            stratified_end + schedule.adaptive_batches_for(n_units) * per_batch,
             min(schedule.adaptive_window, n_units),
         ),
     }
 
 
-def _stale_generation(
+def _generation_key(query: _Query) -> str:
+    """16-hex digest of the units a pass judges for one query: the generation its scheduled windows belong to.
+
+    Two passes over one pool share it (a resume), and two pools whose windows can share a size and a sequence
+    number do not (a ``docs=`` subset of the same corpus): a resume retires the later-phase records of its own
+    pool's generation only, whatever another generation's windows look like.
+    """
+    return short(hash_payload({"units": list(query.units)}), 16)
+
+
+def _refused_windows(
     existing: Mapping[str, Judgement],
     queries: Sequence[_Query],
     stage: Stage,
     schedule: TournamentSchedule | RubricSchedule,
-) -> set[str]:
-    """The records a resumed pass retires: the later-phase windows of its own generation whose selection
-    depended on the fit a re-asked refused answer left incomplete.
+) -> dict[tuple[str, str], list[Judgement]]:
+    """The refused windows of this pass's own generation, by query.
 
-    A refused window (invalid, with no answer) is asked again on a resume. Its answer changes the live fit, so
-    the query's later-phase windows can be selected differently; keeping the first fit's records beside the new
-    ones would leave two generations in the store, and the refit reads every valid record. Only the pass's own
-    generation is touched: a record counts only when its phase, sequence and window size fall in this pass's
-    schedule ranges for the query and every unit it showed is one of this pass's units, so a full pass never
-    retires a subset pass's windows (and a subset pass never retires the full pass's). A ``superseded``
-    tombstone is a retired record, not a refusal: it is never re-asked or retired again.
+    A refused window (invalid, with no answer) is asked again on a resume. Only the pass's own generation
+    counts: its pool's generation key, and the phase, sequence and window size of its schedule's ranges for the
+    query, with every unit one of this pass's units. A ``superseded`` tombstone is a retired record, not a
+    refusal: it is never re-asked or retired again.
     """
     in_scope = {(query.dataset, query.query_id): query for query in queries}
-    ranges: dict[tuple[str, str], dict[str, tuple[int, int, int]]] = {
-        key: _phase_ranges(stage, schedule, query) for key, query in in_scope.items()
-    }
+    ranges = {key: _phase_ranges(stage, schedule, query) for key, query in in_scope.items()}
     refused: dict[tuple[str, str], list[Judgement]] = {}
     for record in existing.values():
         if (
@@ -595,8 +618,8 @@ def _stale_generation(
         ):
             continue
         query = in_scope.get((record.dataset, record.query_id))
-        if query is None:
-            continue
+        if query is None or record.generation != _generation_key(query):
+            continue  # another pool's generation: its windows are not this pass's to re-ask or retire
         start, end, window = ranges[(record.dataset, record.query_id)].get(record.phase, (0, 0, 0))
         if not start <= record.window_seq < end:
             continue  # not a slot this pass asks: another pool's or another generation's window
@@ -605,34 +628,28 @@ def _stale_generation(
         if not {placement.unit_id for placement in record.placements} <= set(query.units):
             continue
         refused.setdefault((record.dataset, record.query_id), []).append(record)
-    if not refused:
-        return set()
-    stale: set[str] = set()
-    for key, records in refused.items():
-        query = in_scope[key]
-        query_ranges = ranges[key]
-        units = set(query.units)
-        earliest = min(_PHASE_ORDER[record.phase] for record in records if record.phase is not None)
-        adaptive = [
-            record.window_seq for record in records if record.phase == "adaptive" and record.window_seq is not None
-        ]
-        for record in existing.values():
-            if (record.dataset, record.query_id) != key or record.phase is None or record.window_seq is None:
-                continue
-            if record.invalid_category == "superseded":
-                continue  # already retired; a later resume must not append a second tombstone for it
-            start, end, window = query_ranges.get(record.phase, (0, 0, 0))
-            if not start <= record.window_seq < end:
-                continue  # another pool's or another generation's slot: this pass never replaces it
-            if len(record.placements) != window:
-                continue  # a slot of another pool's generation: a different effective window fills the numbers
-            if not {placement.unit_id for placement in record.placements} <= units:
-                continue
-            if _PHASE_ORDER[record.phase] > earliest or (
-                record.phase == "adaptive" and adaptive and record.window_seq > min(adaptive)
-            ):
-                stale.add(record.record_id)
-    return stale
+    return refused
+
+
+def _later_generation_records(existing: Mapping[str, Judgement], query: _Query, phase: Phase, end: int) -> set[str]:
+    """The records a re-answered refusal retires: this query's generation in the phases not yet asked.
+
+    ``phase`` and ``end`` are the phase a pass has just finished and the first sequence number it has not asked
+    in it. Every record of the generation in a later phase, or at or after ``end`` in ``phase`` itself, was
+    selected by the fit the re-asked refusal just changed; the phases before ``phase`` are already asked.
+    """
+    order = _PHASE_ORDER[phase]
+    generation = _generation_key(query)
+    return {
+        record_id
+        for record_id, record in existing.items()
+        if record.dataset == query.dataset
+        and record.query_id == query.query_id
+        and record.phase is not None
+        and record.window_seq is not None
+        and record.generation == generation
+        and (_PHASE_ORDER[record.phase] > order or (record.phase == phase and record.window_seq >= end))
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -678,7 +695,9 @@ def parse_window(
     ``example`` is the prompt's own worked example (:attr:`~rcp_ndcg.judging.prompts.Prompt.worked_example`),
     when it has one: an answer equal to it is refused -- the example is a template constant that happens to fit
     a window of its size, and a model echoing it (or an injected document block that supplies it) must never be
-    recorded as an observation. A window the example does not fit is unaffected.
+    recorded as an observation. The whole decoded JSON object is compared, reasoning strings included, so only
+    a literal echo is refused: a genuine answer whose verdicts happen to match the example's parses. A window
+    the example does not fit is unaffected.
 
     Raises:
         UnparseableAnswer: the answer is not a complete observation of the window (with its category), or it is
@@ -687,10 +706,10 @@ def parse_window(
     answer = _stage_answer(stage, query_id, completion, units, num_criteria)
     if example is not None:
         try:
-            worked = _stage_answer(stage, query_id, Completion(response=json.dumps(example)), units, num_criteria)
+            given = decode_answer(completion.response)
         except UnparseableAnswer:
-            worked = None
-        if worked is not None and answer == worked:
+            given = None
+        if given is not None and given == dict(example):
             raise UnparseableAnswer(
                 "the answer is the prompt's worked example, not an observation of this window", "schema"
             )
@@ -715,10 +734,13 @@ def window_record(
     completion: Completion | None,
     failure: tuple[str, InvalidCategory] | None,
     recorded_at: datetime,
+    generation: str | None = None,
 ) -> Judgement:
     """The :class:`Judgement` of one window: valid with ``answer``, else invalid with ``failure`` (reason, category).
 
-    ``placements`` are ``(unit_id, doc_id)`` in prompt order.
+    ``placements`` are ``(unit_id, doc_id)`` in prompt order. ``generation`` names the pool generation of a
+    scheduled window (:func:`_generation_key`), so a resume retires the later-phase records of its own pool
+    only; a planned window has none.
     """
     rows = []
     for index, (unit, doc) in enumerate(placements):
@@ -743,6 +765,7 @@ def window_record(
         family_key=family.key,
         window_seq=window_seq,
         phase=phase,
+        generation=generation,
         placements=tuple(rows),
         ranking=answer.ranking if answer is not None else None,
         response=completion.response if completion is not None else None,
@@ -786,6 +809,9 @@ class _Pass:
     cuts: dict[tuple[str, str, int], tuple[str, int, int]] = field(default_factory=dict)
     #: ``(query, unit) -> PreparedContent``: a document as the wire sends it, prepared once per pass.
     prepared: dict[tuple[str, str], PreparedContent] = field(default_factory=dict)
+    #: ``(dataset, query_id) -> refused records``: this pass's own generation's refused windows
+    #: (:func:`_refused_windows`), re-asked as the pass reaches them; an answered one retires the later phases.
+    refused: dict[tuple[str, str], list[Judgement]] = field(default_factory=dict)
 
     @property
     def criteria(self) -> tuple[str, ...]:
@@ -808,6 +834,16 @@ class _Pass:
             cached = prepare_content(query.contents[unit], self.preprocessing.image, self.preprocessing.video)
             self.prepared[key] = cached
         return cached
+
+    def release(self, query: _Query) -> None:
+        """Drop one finished query's prepared media: the cache holds one query's pool at a time.
+
+        Every prepared page and frame is an inlined PNG data URI, and the shared image LRU (sized to one
+        query's pool) cannot release them while this dict holds references; keeping every query's pool for
+        the whole pass made a media corpus' peak memory grow with the number of queries.
+        """
+        for key in [key for key in self.prepared if key[0] == query.query_id]:
+            del self.prepared[key]
 
     def window_tokens(self, query: _Query, window: int) -> int | None:
         """The per-document text budget of a window of ``window`` documents of this query, in tokens.
@@ -902,12 +938,41 @@ class _Pass:
             family=self.family,
             window_seq=seq,
             phase=phase,
+            generation=None if seq is None else _generation_key(query),
             placements=[(unit, query.doc_of(unit)) for unit in units],
             answer=answer,
             completion=completion,
             failure=failure,
             recorded_at=datetime.now(UTC),
         )
+
+    def retire_after_refit(self, query: _Query, phase: Phase, end: int) -> None:
+        """Retire this pass's later-phase windows when a re-asked refusal came back with an answer.
+
+        A refused window is asked again on a resume; while the endpoint keeps refusing it nothing about the fit
+        changes, so the later phases keep their records and the resume is idempotent. When an answer arrives,
+        the fit the later phases were selected from is stale: their records are retired with ``superseded``
+        tombstones and dropped from this pass's reuse map, so the phases still to run select fresh windows and
+        the refit reads one generation. ``phase`` and ``end`` are the phase that has just finished and the
+        first sequence number this pass has not asked in it.
+        """
+        answered = [
+            record
+            for record in self.refused.get((query.dataset, query.query_id), [])
+            if (current := self.existing.get(record.record_id)) is not None and current.valid
+        ]
+        if not answered:
+            return
+        stale = _later_generation_records(self.existing, query, phase, end)
+        if not stale:
+            return
+        self.store.supersede_records(
+            self.stage,
+            {record_id: self.existing[record_id] for record_id in stale},
+            reason="a resumed pass re-asks a refused window and refits",
+        )
+        for record_id in stale:
+            self.existing.pop(record_id, None)
 
     async def ask(
         self, query: _Query, seq: int | None, units: Sequence[str], max_tokens: int | None, phase: Phase | None
@@ -1024,6 +1089,14 @@ def _ingest_tournament(judgement: Judgement, bt: Any, obs_counts: Counter[tuple[
 
 async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass) -> None:
     """Stage A for one query: random, stratified and adaptive windows (see :mod:`rcp_ndcg.judging.schedule`)."""
+    try:
+        await _run_tournament(query, schedule, run)
+    finally:
+        run.release(query)
+
+
+async def _run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass) -> None:
+    """The body of :func:`run_tournament`; the public wrapper releases the query's prepared media."""
     from rcp_ndcg_core.irt import BradleyTerryEstimator
 
     units = query.units
@@ -1050,10 +1123,12 @@ async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass
         max_tokens,
         "random",
     )
+    run.retire_after_refit(query, "random", seq)
     bt.fit_lbfgs()
     theta_prelim = bt.get_scores() or {}
     if n_stratified > 0 and theta_prelim:
         await phase(_stratified_groups(units, theta_prelim, w, n_stratified, rng), max_tokens, "stratified")
+        run.retire_after_refit(query, "stratified", seq)
     bt.fit_lbfgs()
     theta = bt.get_scores() or {}
 
@@ -1073,12 +1148,21 @@ async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass
         for judgement in await run.ask_all(query, seq, windows, max_tokens_adaptive, "adaptive"):
             _ingest_tournament(judgement, bt, obs_counts)
         seq += len(windows)
+        run.retire_after_refit(query, "adaptive", seq)
         bt.fit_lbfgs()
         theta = bt.get_scores() or {}
 
 
 async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> None:
     """Stage B for one query: balanced random windows, then windows stratified by a preliminary Rasch ability."""
+    try:
+        await _run_rubric(query, schedule, run)
+    finally:
+        run.release(query)
+
+
+async def _run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> None:
+    """The body of :func:`run_rubric`; the public wrapper releases the query's prepared media."""
     from rcp_ndcg_core.irt import RaschEstimator
 
     units = query.units
@@ -1104,6 +1188,7 @@ async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> Non
     random_windows = [[units[i] for i in group] for group in _balanced_groups(n, w, n_random, rng)]
     for judgement in await run.ask_all(query, 0, random_windows, max_tokens, "random"):
         ingest(judgement)
+    run.retire_after_refit(query, "random", len(random_windows))
     rasch.fit_lbfgs()
     theta_prelim = rasch.get_scores() or {}
     if n_stratified > 0 and not theta_prelim:
@@ -1113,6 +1198,7 @@ async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> Non
         stratified = _stratified_groups(units, unit_theta, w, n_stratified, rng)
         for judgement in await run.ask_all(query, len(random_windows), stratified, max_tokens, "stratified"):
             ingest(judgement)
+        run.retire_after_refit(query, "stratified", len(random_windows) + len(stratified))
 
 
 def _record_dropped_stratified(query: _Query, windows: int, run: _Pass) -> None:
@@ -1360,6 +1446,11 @@ def _plan(
             f"query {empty[0]!r} has no candidates to judge",
             hint="drop the query, or give its pool at least one candidate",
         )
+    # A judge with no context_tokens or no tokenizer never reaches the media count, so the container would be
+    # sent at the engine's default sampling while the estimate refuses the same pass: the plan refuses it too.
+    from rcp_ndcg.data.resolution import refuse_unpolicied_containers
+
+    refuse_unpolicied_containers([content for query in queries for content in query.contents.values()], effective.video)
     if stage == "tournament":
         thin = [query.query_id for query in queries if len(query.units) < 2]
         if thin:
@@ -1509,34 +1600,30 @@ async def ajudge(
     store.note_engines(stage, await client.probe())
     store.keep_prompt(prompt.text)
     census = _store_census(store.root, plan.loaded)
+    existing = store.records(stage)
+    # A resumed pass that re-asks a refused window refits under the new answer: the windows its first fit
+    # selected for the later phases are retired with appended tombstones (and dropped from this pass's reuse
+    # map), so the fit never reads two generations of one query's schedule and the stage file stays append-only.
+    # The retirement happens when the answer actually arrives (:meth:`_Pass.retire_after_refit`), so a window
+    # the endpoint keeps refusing leaves the later phases alone and a resume stays idempotent. The retirement
+    # is scoped to this pass's own generation (its pool and its schedule's ranges); a planned pass runs no
+    # schedule, so it retires nothing.
+    refused = {} if windows is not None else _refused_windows(existing, queries, stage, plan.schedule)
     run = _Pass(
         stage=stage,
         client=client,
         prompt=prompt,
         family=plan.family,
         store=store,
-        existing=store.records(stage),
+        existing=existing,
         preprocessing=plan.preprocessing,
         census=census,
         media_census=media_census,
         tokenizer=plan.tokenizer,
         schedule_key=schedule_key(plan.schedule),
         dataset_key=plan.dataset_key,
+        refused=refused,
     )
-    # A resumed pass that re-asks a refused window refits under the new answer: the windows its first fit
-    # selected for the later phases are retired with appended tombstones (and dropped from this pass's reuse
-    # map), so the fit never reads two generations of one query's schedule and the stage file stays append-only.
-    # The retirement is scoped to this pass's own generation (its schedule's ranges and its units); a planned
-    # pass runs no schedule, so it retires nothing.
-    stale = set() if windows is not None else _stale_generation(run.existing, queries, stage, plan.schedule)
-    if stale:
-        store.supersede_records(
-            stage,
-            {record_id: run.existing[record_id] for record_id in stale},
-            reason="a resumed pass re-asks a refused window and refits",
-        )
-        for record_id in stale:
-            run.existing.pop(record_id, None)
     logger.info(
         "judging %d queries of %s: %s with %s (%s), store %s",
         len(queries),

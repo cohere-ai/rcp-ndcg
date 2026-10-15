@@ -19,6 +19,7 @@ budget constants only -- such checkpoints are scored again, not resumed).
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 from collections import Counter
@@ -52,11 +53,11 @@ from rcp_ndcg.support.logging import get_logger
 logger = get_logger(__name__)
 
 #: The index's behaviour version.  Bumped deliberately when what an index *is* changes without any config
-#: field changing -- the selection rule, the payload layout, the tie rule -- and never for a release as such:
-#: it enters the index identity, so an index built by other numbers is rebuilt, and a release that changes no
-#: retrieval number does not invalidate every resume and judgement pool.  A judgement's identity is not
-#: versioned here: it is prompt- and model-defined.
-INDEX_BEHAVIOUR_VERSION = "1"
+#: field changing -- the selection rule, the payload layout, the tie rule, the tokenization a stemmer
+#: language implies -- and never for a release as such: it enters the index identity, so an index built by
+#: other numbers is rebuilt, and a release that changes no retrieval number does not invalidate every resume
+#: and judgement pool.  A judgement's identity is not versioned here: it is prompt- and model-defined.
+INDEX_BEHAVIOUR_VERSION = "2"
 
 #: The retrieve step's behaviour version: the numbers a retrieve output was computed with (the index's own
 #: version covers the index; this covers the first-stage selection and the ranking it writes).
@@ -772,8 +773,9 @@ def _checkpoint_scores(ckpt_dir: Path) -> dict[str, dict[str, float]]:
 
     Per *query* rather than per pair: a rerank request is atomic at the query level, so a partially-written query
     has nothing usable to resume from. Records without a key are not reused, and one with a value that is not a
-    number is dropped whole (the reader takes historical and hand-edited files as it finds them; one bad value
-    poisons only its own record, which the rerun then scores again).
+    finite number is dropped whole (the reader takes historical and hand-edited files as it finds them; one bad
+    value poisons only its own record, which the rerun then scores again -- a ranking refuses a non-finite score,
+    so resuming one would replay the identical failure forever).
     """
     by_key: dict[str, dict[str, float]] = {}
     for record in _iter_checkpoint_records(ckpt_dir):
@@ -781,9 +783,12 @@ def _checkpoint_scores(ckpt_dir: Path) -> dict[str, dict[str, float]]:
             scores: dict[str, float] = {}
             for doc_id, score in record["s"].items():
                 try:
-                    scores[str(doc_id)] = float(score)
+                    value = float(score)
                 except (TypeError, ValueError):
                     break
+                if not math.isfinite(value):
+                    break
+                scores[str(doc_id)] = value
             else:
                 by_key[record["k"]] = scores
     return by_key
@@ -855,6 +860,11 @@ def _rerank_examples(
     ckpt_dir = Path(checkpoint_dir) if checkpoint_dir is not None else None
     if ckpt_dir is not None:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
+        # The one torn-tail repair: a crash mid-append leaves a fragment, and appending after it would merge
+        # the next query's record into the fragment, losing that record on the next resume.
+        from rcp_ndcg.storage.census import drop_torn_last_line
+
+        drop_torn_last_line(ckpt_dir / "rank000.jsonl")
     by_key = _checkpoint_scores(ckpt_dir) if ckpt_dir is not None else {}
     if by_key:
         by_key = _reusable_scores(by_key, examples, keys)
