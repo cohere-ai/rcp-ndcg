@@ -42,7 +42,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
-import os
 import threading
 from collections.abc import Sequence
 from functools import lru_cache
@@ -61,6 +60,7 @@ from rcp_ndcg.data.resolution import (
 )
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.paths import env_int
 
 if TYPE_CHECKING:
     from rcp_ndcg.data.tokenizer import TextTokenizer
@@ -74,7 +74,7 @@ PREPARED_MIME = "image/png"
 #: query, so the cache is sized to hold one query's pool: 512 pages, enough for a pool of 500, at roughly 1 to 1.5 MB
 #: per encoded page (about 0.5 to 0.7 GB when full). Override with ``RCP_NDCG_IMAGE_CACHE_SIZE`` for a smaller
 #: machine or a shallower pool.
-IMAGE_CACHE_SIZE = int(os.environ.get("RCP_NDCG_IMAGE_CACHE_SIZE", "512"))
+IMAGE_CACHE_SIZE = env_int("RCP_NDCG_IMAGE_CACHE_SIZE", 512)
 
 #: The census mechanism of a media record (beside the text cuts' ``doc_policy`` and ``window_budget``).
 MEDIA_MECHANISM = "media"

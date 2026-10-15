@@ -35,3 +35,17 @@ def test_import_in_a_clean_directory_creates_nothing_and_reads_no_env_file(tmp_p
     assert version
     assert sorted(path.name for path in cwd.iterdir()) == [".env"]
     assert list(home.iterdir()) == []
+
+
+def test_a_malformed_cache_size_env_is_a_typed_config_error() -> None:
+    """``RCP_NDCG_VIDEO_CACHE_SIZE=16MB`` used to crash ``import rcp_ndcg`` (every CLI command, --help
+    included) with a raw ValueError; the size is parsed through one helper that raises a ConfigError naming
+    the variable."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("RCP_NDCG_")}
+    env.update(RCP_NDCG_VIDEO_CACHE_SIZE="16MB", PYTHONDONTWRITEBYTECODE="1")
+
+    done = subprocess.run([sys.executable, "-c", "import rcp_ndcg"], env=env, capture_output=True, text=True)
+
+    assert done.returncode != 0
+    assert "RCP_NDCG_VIDEO_CACHE_SIZE" in done.stderr
+    assert "ConfigError" in done.stderr and "ValueError" not in done.stderr

@@ -49,11 +49,41 @@ def log_level() -> str:
     return level
 
 
+def env_int(name: str, default: int) -> int:
+    """An integer environment override: ``$<name>`` when set, else *default*.
+
+    The one parser for the package's integer environment variables, so a malformed override is a typed
+    :class:`~rcp_ndcg.errors.ConfigError` naming the variable, never a raw ``ValueError`` (a module-level
+    ``int(os.environ[...])`` used to make ``import rcp_ndcg`` fail, every CLI command included).
+
+    Args:
+        name: The environment variable's name.
+        default: The value when the variable is unset (or blank).
+
+    Returns:
+        The integer value.
+
+    Raises:
+        ConfigError: The value is not an integer.
+    """
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise ConfigError(
+            f"${name} must be an integer, got {raw!r}",
+            hint=f"set {name}=<integer> (e.g. {name}={default}), or unset it",
+        ) from None
+
+
 __all__ = [
     "CACHE_DIR_ENV",
     "LOG_LEVEL_ENV",
     "RUNS_DIR_ENV",
     "cache_dir",
+    "env_int",
     "log_level",
     "runs_dir",
 ]
