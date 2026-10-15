@@ -78,6 +78,31 @@ _DATED_SNAPSHOT_HOSTS = frozenset({"api.openai.com"})
 _DATED_SNAPSHOT = re.compile(r"-\d{4}-\d{2}-\d{2}$")
 
 
+#: The one content override a recipe judge accepts (decision 13(a)): the documented thinking switch
+#: (``chat_template_kwargs.enable_thinking``), which the Gemma 4 and Qwen judges carry in ``extra_body``.
+_THINKING_SWITCH = "enable_thinking"
+
+
+def _without_thinking_switch(extra_body: Any) -> Any:
+    """``extra_body`` with the one named exception removed: ``chat_template_kwargs.enable_thinking``.
+
+    The comparison form of the exception: the recipe's own ``extra_body`` must survive, so the switch is
+    dropped from both sides before they are compared and the config's full value is kept afterwards.  Any
+    other difference (a changed ``top_p``, a dropped sampling block) stays a content disagreement.
+    """
+    if not isinstance(extra_body, dict):
+        return extra_body
+    body = dict(extra_body)
+    kwargs = body.get("chat_template_kwargs")
+    if isinstance(kwargs, dict) and _THINKING_SWITCH in kwargs:
+        rest = {key: value for key, value in kwargs.items() if key != _THINKING_SWITCH}
+        if rest:
+            body["chat_template_kwargs"] = rest
+        else:
+            body.pop("chat_template_kwargs")
+    return body
+
+
 class JudgeConfig(Endpoint):
     """One judge: an OpenAI-compatible :class:`~rcp_ndcg.inference.endpoint.Endpoint` with sampling settings.
 
@@ -162,6 +187,54 @@ class JudgeConfig(Endpoint):
     image_processor: ImageProcessor | None = None
     tokenizer: str | None = Field(default=None, min_length=1)
     allow_floating_model: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _recipe_block_comes_from_the_recipe(cls, data: Any) -> Any:
+        """A mapping that names a recipe takes its client block from it (decision 17 for judges).
+
+        The judge routes validated a hand-written mapping straight into this class, so ``recipe: <id>`` could
+        ride beside content that dropped the recipe's whole client block (g-judges-1), and ``--set
+        judge.<content>`` could overwrite the expanded block while the shipped recipe id stayed recorded
+        (g-decisions-1).  The mapping form now expands through the one recipe mechanism: every CONTENT field
+        must equal the recipe's or the config is refused naming both values.  Two fields stay the run's:
+
+        * ``model`` -- the served model name the engine answers under (the T4 driver serves every judge under
+          its slot name, and ``--judge-model`` is documented for a recipe judge), so it is kept as given and
+          the rest of the block is filled from the recipe;
+        * ``extra_body`` -- the one named content exception, the ``chat_template_kwargs.enable_thinking``
+          switch (decision 13(a)): the recipe's own extra_body must travel with it, anything else disagrees.
+
+        ``recipe`` is replaced by the recipe's identity (its shipped id, or ``unshipped:sha256:<hex>`` for a
+        file of the operator's own); an already-expanded identity pointer is left alone.
+        """
+        if not isinstance(data, dict):
+            return data
+        recipe = data.get("recipe")
+        if not isinstance(recipe, str) or not recipe:
+            return data
+        from rcp_ndcg.errors import ConfigError
+        from rcp_ndcg.inference.recipes import _IDENTITY_POINTER, expand_role_recipe
+
+        if _IDENTITY_POINTER.fullmatch(recipe):
+            return data  # an already-expanded block (a recorded run config): the pointer is the identity
+        data = dict(data)
+        served_model = data.pop("model", None)
+        given_extra_body = data.pop("extra_body", None)
+        expanded = expand_role_recipe(data, classes={"judge": cls})
+        if given_extra_body is not None:
+            declared = expanded.get("extra_body") or {}
+            if _without_thinking_switch(given_extra_body) != declared:
+                raise ConfigError(
+                    f"extra_body: {given_extra_body!r} disagrees with recipe {recipe!r}, which declares {declared!r}",
+                    hint="drop extra_body (the client block comes from the recipe) or keep the recipe's own "
+                    "values; the one allowed change is the chat_template_kwargs.enable_thinking switch, and "
+                    "the recipe's own extra_body must travel with it",
+                )
+            expanded["extra_body"] = given_extra_body
+        if served_model is not None:
+            expanded["model"] = served_model
+        return expanded
 
     # base_url's trailing-slash stripping, the empty-URL refusal and the replica-list rules are
     # :class:`~rcp_ndcg.inference.endpoint.Endpoint`'s (and its ``urls`` property is): a judge is an endpoint,

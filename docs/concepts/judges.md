@@ -36,7 +36,12 @@ identity. The text-formatting rule (`TEXT_FORMATTING_VERSION`) enters too: it is
 
 ### Three ways to name a judge
 
-Every way ends in the same `JudgeConfig`; only the source of the `client` block differs.
+Every way ends in the same `JudgeConfig`; only the source of the `client` block differs. A mapping that
+names a recipe (`recipe: <id>`) takes its whole client block from the recipe, and a CONTENT field set
+explicitly must equal the recipe's or the config is refused naming both values. Two
+run-level fields are the exceptions: `model` (the served model name the engine answers under) and
+`extra_body`'s `chat_template_kwargs.enable_thinking` switch -- the recipe's own `extra_body` must travel
+with the switch.
 
 1. **A shipped judge recipe** — `--judge gpt-oss-120b`, or `--judge recipe:gpt-oss-120b`, or `judge:
    recipe:gpt-oss-120b` in a run config. The recipes are `rcp-ndcg-vllm`'s package data: the ten judges of the
