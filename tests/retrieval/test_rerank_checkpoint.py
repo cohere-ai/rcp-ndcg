@@ -232,6 +232,40 @@ def test_a_record_with_an_unparseable_score_is_dropped_not_a_crash(tmp_path: Any
     assert len(scored[0].scores or []) == 3, "the record was dropped and the query scored"
 
 
+def test_a_non_finite_checkpoint_score_is_dropped_not_reused(tmp_path: Any) -> None:
+    """A NaN that reached a checkpoint (a served reranker, a hand-edited file) must not be reused: a ranking
+    refuses a non-finite score, so resuming it would replay the identical failure on every rerun."""
+    example = _examples()[0]
+    config = _config()
+    key = _checkpoint_key(config, example)
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    (ckpt / "rank000.jsonl").write_text(
+        json.dumps({"q": "q1", "k": key, "s": {"d1": float("nan"), "d2": 0.5, "d3": 0.25}}) + "\n"
+    )
+
+    assert retrieval_api._checkpoint_scores(ckpt) == {}, "a non-finite score poisons its own record"
+    scored = retrieval_api._rerank_examples([example], config, checkpoint_dir=ckpt)
+    assert len(scored[0].scores or []) == 3
+
+
+def test_a_torn_tail_is_cut_before_the_next_record_is_appended(tmp_path: Any) -> None:
+    """A crash mid-append leaves a torn last line; a resumed rerank appending straight after it merges the
+    next query's record into the fragment, so that record is lost on the next resume. The tail is cut first."""
+    examples = _examples()
+    config = _config()
+    keys = [_checkpoint_key(config, example) for example in examples]
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    (ckpt / "rank000.jsonl").write_text('{"q": "q1", "k": "k1", "s": {"d1": 0.5}}\n{"q": "q2", "k": "k2", "s": {"d4"')
+
+    retrieval_api._rerank_examples(examples, config, checkpoint_dir=ckpt)
+
+    assert set(retrieval_api._checkpoint_scores(ckpt)) >= set(keys), (
+        "the record appended after a torn fragment must survive the next read"
+    )
+
+
 def test_another_reranker_or_a_deeper_pool_is_scored_again(tmp_path: Any) -> None:
     """The checkpoint once reused reranker A's scores for reranker B, and crashed on a deeper rerun."""
     ckpt = tmp_path / "shared"

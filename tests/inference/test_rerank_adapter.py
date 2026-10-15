@@ -291,6 +291,16 @@ class TestAnswerShapes:
 
         assert adapter.interpret(_request("a", "b"), [reply]).scores == (-3.75, 12.5)
 
+    def test_a_non_finite_score_is_refused_at_the_wire(self) -> None:
+        """A NaN relevance_score is checkpointed and reused, and a ranking refuses it, so every rerun fails
+        the same way; the embeddings wire refuses a non-finite vector and the rerank wire refuses a score."""
+        adapter = RerankAdapter(_config())
+        reply = _reply(200, {"results": [{"index": 0, "relevance_score": float("nan")}]})
+
+        with pytest.raises(ProviderError, match="non-finite") as caught:
+            adapter.interpret(_request("a"), [reply])
+        assert caught.value.retryable is False
+
     def test_chunked_replies_merge_in_document_order(self) -> None:
         adapter = RerankAdapter(_config(batch_size=2))
         request = _request("d0", "d1", "d2")
