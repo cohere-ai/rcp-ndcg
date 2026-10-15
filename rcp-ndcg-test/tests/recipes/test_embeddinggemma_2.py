@@ -16,7 +16,6 @@ import hashlib
 import importlib.util
 import io
 import json
-import math
 import re
 import shutil
 import sys
@@ -164,59 +163,6 @@ def _reference_module() -> Any:
     finally:
         sys.dont_write_bytecode = bytecode
     return module
-
-
-def _card_aspect_ratio_preserving_size(
-    height: int, width: int, patch_size: int, max_patches: int, pooling_kernel_size: int
-) -> tuple[int, int]:
-    """transformers 5.19.0's ``get_aspect_ratio_preserving_size`` (``models/gemma4/
-    image_processing_gemma4.py`` and its PIL sibling, the function the checkpoint's Gemma 4 image processor
-    resizes with): the card's own rule, transcribed the way :func:`_processor_sampled_indices` transcribes
-    the video processor's ``sample_frames``."""
-    target_px = max_patches * (patch_size**2)
-    factor = math.sqrt(target_px / (height * width))
-    side_mult = pooling_kernel_size * patch_size
-    target_height = int(math.floor(factor * height / side_mult)) * side_mult
-    target_width = int(math.floor(factor * width / side_mult)) * side_mult
-    if target_height == 0 and target_width == 0:
-        raise ValueError(f"a {height}x{width} image resizes to 0x0")
-    max_side = (max_patches // pooling_kernel_size**2) * side_mult
-    if target_height == 0:
-        target_height = side_mult
-        target_width = min(int(math.floor(width / height)) * side_mult, max_side)
-    elif target_width == 0:
-        target_width = side_mult
-        target_height = min(int(math.floor(height / width)) * side_mult, max_side)
-    if target_height * target_width > target_px:
-        raise ValueError(f"{height}x{width} -> {target_height}x{target_width} exceeds {max_patches} patches")
-    return target_height, target_width
-
-
-def _card_image_processor(monkeypatch: pytest.MonkeyPatch, rule: Any = None) -> Any:
-    """A stand-in for the checkpoint's Gemma 4 image processor (transformers 5.19.0's
-    ``Gemma4ImageProcessorPil``/``Gemma4ImageProcessor``): its geometry attributes and, in its own module,
-    the card's resize rule the reference reads there.
-
-    The reference takes the rule from the loaded image processor's own module (the card defines
-    ``get_aspect_ratio_preserving_size`` beside the class), so the stand-in carries a module holding it; the
-    real processor is the wave's confirmation, this is the CPU stand-in (``rule`` overrides it, for the test
-    that shows the reference follows the loaded processor's rule)."""
-    from PIL import Image
-
-    module = types.ModuleType("gemma4_image_processing_stand_in")
-    module.get_aspect_ratio_preserving_size = rule or _card_aspect_ratio_preserving_size
-    monkeypatch.setitem(sys.modules, module.__name__, module)
-    return type(
-        "Gemma4ImageProcessorPil",
-        (),
-        {
-            "__module__": module.__name__,
-            "patch_size": 16,
-            "pooling_kernel_size": 3,
-            "max_soft_tokens": 280,
-            "resample": Image.Resampling.BICUBIC,
-        },
-    )()
 
 
 def _processor_sampled_indices(
@@ -479,18 +425,16 @@ def test_the_reference_geometry_and_frame_sampling_match_the_checkpoint() -> Non
     assert module.gemma4_resize(16, 16, max_soft_tokens=280) == (768, 768)
     assert module.gemma4_resize(3508, 2480, max_soft_tokens=280) == (912, 672)
     assert module.gemma4_resize(1080, 1920, max_soft_tokens=280) == (576, 1056)
-    assert module.gemma4_fixed_point(4096, 576, max_soft_tokens=280) == (2160, 288)
-    assert module.gemma4_fixed_point(20, 3000, max_soft_tokens=280) == (48, 13344)
     assert module._sampled_frames({"duration_s": 4.0, "num_frames": 32, "fps": 8.0}, 60.0, 32) == 32
     assert module._sampled_frames({"duration_s": 10.0, "num_frames": 300, "fps": 30.0}, 60.0, 32) == 32
     assert module._sampled_frames({"duration_s": 0.25, "num_frames": 8, "fps": 32.0}, 60.0, 32) == 15
 
 
 def test_the_reference_geometry_matches_the_product_over_a_size_grid() -> None:
-    """The reference's Gemma 4 resize and fixed point are faithful ports of the product's: over a size grid
-    the two copies agree exactly. (The duplication is deliberate -- the reference environment never imports
-    the product -- and this test is its cross-check.)"""
-    from rcp_ndcg.data.resolution import gemma4_fixed_point, gemma4_resize
+    """The reference's Gemma 4 resize is a faithful port of the product's: over a size grid the two
+    copies agree exactly. (The duplication is deliberate -- the reference environment never imports the
+    product -- and this test is its cross-check.)"""
+    from rcp_ndcg.data.resolution import gemma4_resize
 
     module = _reference_module()
     for height in range(16, 2048, 97):
@@ -498,24 +442,51 @@ def test_the_reference_geometry_matches_the_product_over_a_size_grid() -> None:
             assert module.gemma4_resize(height, width, max_soft_tokens=280) == gemma4_resize(
                 height, width, max_soft_tokens=280
             ), f"resize diverged at {height}x{width}"
-            assert module.gemma4_fixed_point(height, width, max_soft_tokens=280) == gemma4_fixed_point(
-                height, width, max_soft_tokens=280
-            ), f"fixed point diverged at {height}x{width}"
 
 
-def test_the_reference_embed_input_is_the_image_the_client_sends(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The reference's embed mode hands the card's processor the pixels the served path sends.
+def test_the_reference_media_side_is_the_cards_one_pass_resize() -> None:
+    """g-ref-vl-1 (owner decision 9a): the card's ``SentenceTransformer.encode`` hands the RAW image to
+    the Gemma 4 processor, which resizes it ONCE -- it does not iterate to a fixed point.  The
+    reference's media mode reports that one-pass grid, so a 336x200 thumbnail is 1008x576 = 252 pooled
+    patches plus the two vision markers = 254 tokens, not the 1056x576 / 266 the client's fixed-point
+    preparation used to produce."""
+    from PIL import Image
 
-    The engine's processor runs on the client's prepared bytes: the product prepares the Gemma 4 resize's
-    fixed point (Pillow BICUBIC, ``rcp_ndcg.data.prepare.prepare_image``) and the processor's own resize is
-    then the identity on it. The reference used to hand the processor the RAW image, whose single pass lands
-    on a different grid for the two extreme-aspect rows -- 576x4096 -> 2112x288 (266 tokens) against the
-    client's 2160x288 (272), and 3000x20 -> 48x9792 (206) against 48x13344 (280) -- which is the wave's
-    0.9941-0.9963 cosine. The reference prepares the fixed point now, with the rule read from the loaded
-    processor's own module, so its input is pixel-identical to the client's prepared image; a small image
-    still scales up per the card (a 16x16 icon to 768x768, 258 tokens)."""
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (336, 200), (10, 20, 30)).save(buffer, format="PNG")
+    entry = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    side = module.media_side(
+        "caption",
+        [entry],
+        prompt=DOC_PROMPT,
+        image_budget=280,
+        video_fps=60.0,
+        video_max_frames=32,
+    )
+    assert side["media"] == [{"kind": "image", "width": 1008, "height": 576, "tokens": 254}]
+
+
+def test_the_reference_hands_the_card_processor_the_raw_image(tmp_path: Path) -> None:
+    """g-ref-vl-1 (owner decision 9a): the embed mode hands the card's processor the decoded RAW image
+    (the card's own input); the processor's single pass is the card's resize.  A pre-resized fixed-point
+    image would make the processor's resize a no-op on the wrong grid."""
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    module = _reference_module()
+    entry = image_entry("thumbnail", 336, 200)
+    side = module.side_input("", [entry], work=tmp_path, clip_name="document-0-0")
+    assert side[0]["content"][0]["image"].size == (336, 200)
+
+
+def test_the_reference_embed_input_is_the_image_the_client_sends(tmp_path: Path) -> None:
+    """g-ref-vl-1 (owner decision 9a): the reference and the client send the same RAW pixels.
+
+    The card's processor resizes the raw image once; the client sends the decoded image unchanged and the
+    engine's processor applies that one-pass resize, so the reference's raw input is pixel-identical to
+    the client's prepared image.  The one-pass grids are the ones the finding measured: 576x4096 ->
+    2112x288 (264 patches + 2 = 266 tokens), 3000x20 -> 48x9792 (204 + 2 = 206), 16x16 -> 768x768
+    (256 + 2 = 258); the old fixed point was 2160x288 / 48x13344."""
     from PIL import Image, ImageChops
     from rcp_ndcg_core.content import MediaRef
     from rcp_ndcg_test.observe.media_set import image_entry
@@ -524,29 +495,21 @@ def test_the_reference_embed_input_is_the_image_the_client_sends(
     from rcp_ndcg.data.resolution import ImagePolicy
 
     module = _reference_module()
-    processor = _card_image_processor(monkeypatch)
     policy = ImagePolicy(processor="gemma4", max_soft_tokens=280)
     for name, width, height, tokens in (
-        ("tall_receipt", 576, 4096, 272),
-        ("extreme_aspect", 3000, 20, 280),
+        ("tall_receipt", 576, 4096, 266),
+        ("extreme_aspect", 3000, 20, 206),
         ("tiny", 16, 16, 258),
     ):
         entry = image_entry(name, width, height)
-        side = module.side_input(
-            "",
-            [entry],
-            work=tmp_path,
-            clip_name=f"document-0-{name}",
-            image_processor=processor,
-            image_budget=280,
-        )
+        side = module.side_input("", [entry], work=tmp_path, clip_name=f"document-0-{name}")
         prepared = side[0]["content"][0]["image"]
         client = prepare_image(
             MediaRef(uri=entry["uri"], sha256=entry["sha256"], mime=entry["mime"], width=width, height=height),
             policy,
         )
         client_image = Image.open(io.BytesIO(base64.b64decode(client.sent.uri.split(",", 1)[1]))).convert("RGB")
-        assert prepared.size == client_image.size, (
+        assert prepared.size == client_image.size == (width, height), (
             f"{name}: the reference sends {prepared.size}, the client {client_image.size}"
         )
         assert ImageChops.difference(prepared, client_image).getbbox() is None, (
@@ -555,21 +518,26 @@ def test_the_reference_embed_input_is_the_image_the_client_sends(
         assert policy.image_tokens(prepared.height, prepared.width) + 2 == tokens, name
 
 
-def test_the_reference_takes_the_image_rule_from_the_loaded_processor(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The resize rule is the loaded processor's own, never a port of it: a stand-in whose rule keeps the
-    image unchanged leaves the reference's embed input at the raw size (the reference's own
-    ``gemma4_fixed_point`` port is not consulted)."""
+def test_the_reference_never_reports_the_old_fixed_point(tmp_path: Path) -> None:
+    """g-ref-vl-1 (owner decision 9a): the media mode reports the card's ONE-PASS grid, never the fixed
+    point the old client preparation used; the two extreme rows are exactly where they differ."""
     from rcp_ndcg_test.observe.media_set import image_entry
 
     module = _reference_module()
-    processor = _card_image_processor(monkeypatch, rule=lambda **kwargs: (kwargs["height"], kwargs["width"]))
-    entry = image_entry("tall_receipt", 576, 4096)
-    side = module.side_input(
-        "", [entry], work=tmp_path, clip_name="document-0-0", image_processor=processor, image_budget=280
-    )
-    assert side[0]["content"][0]["image"].size == (576, 4096)
+    for name, width, height, expected in (
+        ("tall_receipt", 576, 4096, {"kind": "image", "width": 288, "height": 2112, "tokens": 266}),
+        ("extreme_aspect", 3000, 20, {"kind": "image", "width": 9792, "height": 48, "tokens": 206}),
+    ):
+        entry = image_entry(name, width, height)
+        side = module.media_side(
+            "caption",
+            [entry],
+            prompt=DOC_PROMPT,
+            image_budget=280,
+            video_fps=60.0,
+            video_max_frames=32,
+        )
+        assert side["media"] == [expected], name
 
 
 def test_the_tokenizer_is_the_pinned_revision_bytes() -> None:
@@ -699,21 +667,14 @@ def test_the_family_yaml_is_the_only_recipe_file() -> None:
     assert names == ["family.yaml", "reference.in", "reference.lock", "reference.py"]
 
 
-def _fake_model_module(processor: Any) -> Any:
-    """The one module of a fake ``SentenceTransformer`` that carries the checkpoint's processor: the input
-    module of the card's Transformer -> Pooling -> Normalize pipeline, where the reference reads the image
-    processor from (``SentenceTransformer`` is the module sequence its ``encode`` walks)."""
-    return types.SimpleNamespace(processor=types.SimpleNamespace(image_processor=processor))
-
-
 def test_the_reference_reads_media_rows_into_the_cards_own_inputs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The reference's media path reads the harness's ``media`` entries into the card's own ST inputs: a
     text-only side is its text (the card prepends the declared prompt), a media side is a one-user-turn
     conversation with the parts in order (the prompt rides the card's own system message), an inline image
-    is a loaded PIL image PREPARED at the card's fixed point (a 16x16 icon scales up to the card's 768x768),
-    and a container is written to a scratch file the checkpoint's processor reads at the recipe's declared
+    is a loaded PIL image handed to the card's processor RAW (the card resizes it once), and a container is
+    written to a scratch file the checkpoint's processor reads at the recipe's declared
     video pin. No model weights: the row reading, the preparation and the pin are the plumbing."""
     import base64
     import io
@@ -722,23 +683,21 @@ def test_the_reference_reads_media_rows_into_the_cards_own_inputs(
     from rcp_ndcg_test.observe.media_set import video_entry
 
     module = _reference_module()
-    processor = _card_image_processor(monkeypatch)
     buffer = io.BytesIO()
     Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
     image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
     clip = video_entry("icon", 64, 64, 64)
-    sides = {"image_processor": processor, "image_budget": 280}
-    assert module.side_input("the body", [], work=tmp_path, clip_name="query-0", **sides) == "the body"
-    conversation = module.side_input("the body", [image], work=tmp_path, clip_name="query-1", **sides)
+    assert module.side_input("the body", [], work=tmp_path, clip_name="query-0") == "the body"
+    conversation = module.side_input("the body", [image], work=tmp_path, clip_name="query-1")
     assert conversation[0]["role"] == "user"
     assert conversation[0]["content"][0]["type"] == "image"
-    assert conversation[0]["content"][0]["image"].size == (768, 768), "the card's fixed point of a 16x16 icon"
+    assert conversation[0]["content"][0]["image"].size == (16, 16), "the card's processor gets the raw image"
     assert conversation[0]["content"][1] == {"type": "text", "text": "the body"}
     interleaved = module.side_input(
-        "", [{"kind": "text", "text": "lead "}, image], work=tmp_path, clip_name="document-0-0", **sides
+        "", [{"kind": "text", "text": "lead "}, image], work=tmp_path, clip_name="document-0-0"
     )
     assert [part["type"] for part in interleaved[0]["content"]] == ["text", "image"]
-    video = module.side_input("", [clip], work=tmp_path, clip_name="document-0-1", **sides)
+    video = module.side_input("", [clip], work=tmp_path, clip_name="document-0-1")
     video_path = Path(video[0]["content"][0]["video"])
     assert video_path.is_file()
     assert video_path.read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
@@ -771,7 +730,6 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
     sentence-transformers records the ``encode`` call."""
     import base64
     import sys
-    import types
 
     import numpy as np
     from rcp_ndcg_test.observe.media_set import video_entry
@@ -791,7 +749,6 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
         "video": {"fps": 60.0, "max_frames": 32, "overflow_strategy": "uniform"}
     }
 
-    processor = _card_image_processor(monkeypatch)
     calls: list[dict[str, Any]] = []
     seen: dict[str, Any] = {}
 
@@ -813,10 +770,6 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
 
         def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
             self.model = model
-
-        def __iter__(self) -> Any:
-            """The card's module sequence: its input module carries the checkpoint's processor."""
-            return iter([_fake_model_module(processor)])
 
         def encode(self, sides: list[Any], **kwargs: Any) -> Any:
             calls.append({"sides": sides, **kwargs})
@@ -869,7 +822,6 @@ def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
     the prompt-prefixed text -- and runs the card's own module stack; a media side keeps the card's
     ``encode`` and its validation. No weights: a fake sentence-transformers mirrors the refusal and
     records both paths."""
-    import types
 
     import torch
     from PIL import Image
@@ -877,7 +829,6 @@ def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
     module = _reference_module()
     recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
     spelling = "a caption carrying the placeholder " + IMAGE_SPELLING + " with no image"
-    processor = _card_image_processor(monkeypatch)
 
     calls: dict[str, list[dict[str, Any]]] = {"tokenize": [], "encode": [], "forward": []}
 
@@ -895,10 +846,6 @@ def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
 
         def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
             self.tokenizer = FakeTokenizer()
-
-        def __iter__(self) -> Any:
-            """The card's module sequence: its input module carries the checkpoint's processor."""
-            return iter([_fake_model_module(processor)])
 
         def encode(self, sides: list[Any], **kwargs: Any) -> Any:
             calls["encode"].append({"sides": sides, **kwargs})
@@ -951,6 +898,6 @@ def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
     assert len(media_calls) == 1, calls["encode"]
     assert media_calls[0]["prompt_name"] == "Document"
     assert [part["type"] for part in media_calls[0]["sides"][0][0]["content"]] == ["image", "text"]
-    assert media_calls[0]["sides"][0][0]["content"][0]["image"].size == (768, 768), (
-        "the embed mode hands the processor the prepared image, never the raw bytes"
+    assert media_calls[0]["sides"][0][0]["content"][0]["image"].size == (16, 16), (
+        "the embed mode hands the processor the RAW image, which resizes it once"
     )

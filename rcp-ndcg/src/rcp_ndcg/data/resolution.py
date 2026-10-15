@@ -810,6 +810,11 @@ class ImagePolicy(BaseModel):
     def target_size(self, height: int, width: int) -> tuple[int, int]:
         """The ``(height, width)`` the client sends: the processor's resize under this budget, else unchanged.
 
+        A ``gemma4`` policy sends the decoded image UNCHANGED: the card's pipeline hands the processor the
+        raw image and the processor resizes it once, so the engine (which runs that processor) produces the
+        card's grid only from the raw bytes.  :meth:`image_tokens` counts that one-pass output.  A fixed
+        point preparation would make the engine's own resize a no-op on a grid the card never produces.
+
         Raises:
             DataError: the image is one a stock engine serving this processor refuses or would resize again:
                 an input whose aspect ratio is above 200 (the processor refuses it outright), a resized size
@@ -823,7 +828,7 @@ class ImagePolicy(BaseModel):
         geometry = PROCESSORS[self.processor]
         if geometry.resize == "gemma4":
             assert self.max_soft_tokens is not None
-            return gemma4_fixed_point(height, width, max_soft_tokens=self.max_soft_tokens)
+            return height, width
         assert self.min_px is not None and self.max_px is not None
         try:
             target = smart_resize(height, width, factor=geometry.factor, min_pixels=self.min_px, max_pixels=self.max_px)
@@ -874,15 +879,20 @@ class ImagePolicy(BaseModel):
     def image_tokens(self, height: int, width: int) -> int:
         """How many tokens one image of this size costs under this policy.
 
+        A ``gemma4`` policy counts the card's processor's ONE-PASS output of the raw image (the grid the
+        engine consumes, since :meth:`target_size` sends the raw bytes).
+
         Raises:
             ConfigError: the policy is native or its processor is unknown: the engine decides the geometry, and a
                 guess would silently corrupt a budget estimate.
         """
         factor = self._factor("count tokens")
-        target_h, target_w = self.target_size(height, width)
         assert self.processor is not None
         if PROCESSORS[self.processor].resize == "gemma4":
+            assert self.max_soft_tokens is not None
+            target_h, target_w = gemma4_resize(height, width, max_soft_tokens=self.max_soft_tokens)
             return (target_h // _GEMMA4_PATCH) * (target_w // _GEMMA4_PATCH) // _GEMMA4_POOLING**2
+        target_h, target_w = self.target_size(height, width)
         return (target_h // factor) * (target_w // factor)
 
     @property
