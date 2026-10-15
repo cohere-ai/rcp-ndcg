@@ -1409,6 +1409,12 @@ owner pushes, with the move to a Hugging Face organisation).
   gains `--rrf-k` (the MCP `run_start` tool takes it too), and `--only` names `fuse`. The contract snapshots, the
   exported `run-config.v1.json` and the generated API pages record the step, the source and the flag (regenerate
   as below).
+- **`rcp-ndcg.eval-score.v1` describes the fields of `eval score --json`**: `EvalScoreResult`'s wrap serializer
+  returns `dict[str, Any]`, and pydantic took that return type for the serialization-mode schema, so the exported
+  schema (and the `eval_score` MCP tool's `outputSchema`) had one property, `schema`, with
+  `additionalProperties: true` -- no summary, per_dataset, per_query, protocol, warnings, inputs or out. The
+  model answers the schema request with its validation-mode schema now, so the exported contract lists every
+  field, while the runtime output still drops the null ones (regenerate as below).
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
@@ -4512,6 +4518,135 @@ text it sends to the declared budget.
   only the windows showing them are new; adding to a local source is another dataset (its bytes enter the
   identity) and growing a pool through `candidates=` redraws every scheduled window into new records that the
   fit pools with the old ones. The page now says so and points at the insertion-plan route.
+- **A 429 or 408 no longer refuses a request that is merely rate-limited**: the rejection rule ("the replica
+  served other requests, so this failure is this request's") now applies only to a connection failure, a timeout
+  or a 5xx. A 408 or 429 stays on the outage path: the replica is set aside for the server's `Retry-After` when
+  it gives one (otherwise the backoff, jittered so the parked requests do not all return at once), and the
+  request parks and retries until `wait_on_outage_s`. A rate-limited hosted endpoint at the default concurrency
+  used to abort a whole corpus encode or rerank pass with a non-retryable `RequestRejectedError`.
+
+- **A schemeless or mistyped `base_url` is a typed `ConfigError`, not a 30-minute outage**: `localhost:8000/v1`
+  or `htp://...` reached httpx as an unsupported protocol, which the transport treated as unavailable --
+  retried, the replica set aside and the request parked for `wait_on_outage_s` (1800 s by default) before
+  failing with a hint that pointed the wrong way. `Endpoint` now requires `http://`, `https://` or `fake://`
+  and names the URL through `safe_url` (credentials never enter the message), and the transport maps httpx's
+  `UnsupportedProtocol`/`InvalidURL` to the same `ConfigError` instead of the outage path.
+
+- **One corpus encode is no longer quadratic before the first request**: the shared preparation pipeline
+  resolved each item's media-token reservation with a linear `list.index` over the kept positions, and rebuilt
+  `set(omitted)`/`set(dropped)` inside per-item conditions (the pooling and rerank omission paths did the
+  same). Each is one dict lookup or one hoisted set now: a 40k-document encode spent 6.3 s of single-threaded
+  CPU before any request, extrapolating to hours for the multi-million-document BEIR corpora, where a GPU
+  engine sat idle.
+
+- **A late-interaction corpus encode reassembles its batches in one pass**: the pooling client folded the
+  gathered chunks with `Embeddings.concat` pairwise, and each call re-concatenated the whole accumulated
+  buffer, so N batches copied about N^2/2 chunk sizes (and peak memory doubled at the end) after every
+  request had returned. One `np.concatenate` with cumulative offsets builds the same buffer; the single-chunk
+  case still returns the chunk itself.
+
+- **The request grouping counts a frame-sampled video the way the wire sends it**: `_request_groups` counted
+  each `VideoPart` as one video, while the messages lowering sends its sampled frames as one `image_url` block
+  each and `_gate_media_calls` counts those blocks. Two 8-frame videos with `max_images: 8` were packed into
+  one request and then refused with a `CapabilityError`, instead of splitting at the caps; the grouping now
+  uses `adapters.chat.media_counts`, the one lowering rule.
+
+- **A failed request keeps its chained cause through `RoleClient.gather`**: the fan-out re-raised the one
+  failure with `from group.__cause__` (the task group's `None`), which overwrote the redacted HTTP detail the
+  transport chains under `BackendUnavailableError`/`RequestRejectedError` and hid the group's context. The
+  failure is now re-raised as itself, cause intact.
+
+- **A malformed `RCP_NDCG_MAX_VIDEO_BYTES` no longer crashes every import of the package**: the variable was
+  parsed with a bare `int()` at import time, so `RCP_NDCG_MAX_VIDEO_BYTES=64MB` made every CLI command (even
+  `rcp-ndcg --help`) and every `import rcp_ndcg` die with an untyped `ValueError`. It is parsed at the video
+  guard now: a malformed value is a typed `ConfigError` naming the variable and the integer-bytes form.
+
+- **The media allowance reserves the framed instruction**: `_fit_media_per_item` computed its allowance as
+  `shape_max_tokens - fixed_overhead(..., instruction="")` while the text fit passed the call's instruction,
+  so media costing between the two thresholds were kept by the media fit and then refused by `fit` with a
+  `ConfigError` -- the opposite of the method's documented promise. The instruction now reaches the allowance
+  through `_stage_media`, so both thresholds are the same function of the same inputs.
+
+- **`on_overflow: chunk` no longer loses text when a chunk's render is trimmed**: the chunk boundaries were
+  fixed before the render check, so a chunk whose full render was over the cap was trimmed after the fact and
+  the next chunk still started from the untrimmed end (the trimmed tail -- including the document's end on the
+  last chunk -- was sent in no chunk, and the census could not show it). The render check now runs inside
+  `split_into_chunks` through a `fits` callback, so a piece ends a token earlier before the next chunk's start
+  is computed and the chunks still cover the text. A single-token piece the frame's join still pushes over the
+  cap is cut and its uncovered tail recorded as its own cut row.
+
+- **An untemplated rerank pair budget is measured as the engine reads it**: `fit` counted an untemplated pair
+  as the single sequence `query + document`, so the tokenizer's pair post-processor (one separator more than
+  the single sequence) and the spans' join were invisible; a pair cut to exactly `max_tokens` reached a
+  cross-encoder 1-2 tokens over (and at `max_tokens = max_model_len`, vLLM refused it).
+  `TextTokenizer.count_pair` encodes the pair the engine's way, and `fixed_overhead`, `rendered_pair_tokens`
+  and `fit`'s pair checks and cuts use it for a template-less config; every shipped reranker recipe declares a
+  template and is unchanged.
+
+- **The qwen3_vl unsized-container bound is a true ceiling again**: the bound divided the per-clip pixel
+  ceiling by `temporal_patch * factor^2`, i.e. it assumed the resize's temporal bar equals the frames rendered.
+  For an odd sampled frame count the bar is one frame shorter than the `ceil(n / temporal_patch)` groups the
+  engine renders, so the bound could sit up to 1.5x below the exact count (75 frames at 30 fps sampled at
+  2 fps: bound 12,326 against an exact 18,470), and a role client reserving media from it under-reserved. The
+  bound is now per group (`ceiling // (t_bar * factor^2)`, `t_bar` the resize's own bar) times the groups.
+
+- **A pair cut by both `document_max_tokens` and the budget records both mechanisms**: the cap's
+  `document_share` row used to be replaced by the budget cut's `budget_cut` when the capped pair still
+  overflowed, so the processing record could not tell that the checkpoint's own document cap had bound. The
+  cap's row is recorded beside the budget row now, and `processing_records` names both.
+
+- **`judge --candidates` applies the stack's one tie rule**: the CLI sorted each pool by `(score, doc_id)`
+  descending, so tied scores at the depth cut went to the HIGHER document id -- against `Rankings.top` and the
+  run pipeline's order (score descending, then the lower id). On the same rankings file and depth the command
+  judged a different set of documents than `run start` does. The pools now go through `Rankings.top(depth)`
+  and the one `rcp_ndcg.data.rankings.ordered_documents` helper, which the run pipeline also uses.
+
+- **`doctor --endpoint` sends the profile's key and probes the right URL**: the probe sent no credential
+  header, so a correctly keyed OpenAI endpoint always reported `fail`; it appended `/models` after the query
+  string, mangling a signed gateway URL; and a 401 was reported as a failure even when no key had been sent.
+  The probe now authenticates by the transport's own rule (a shipped hosted profile's variables travel only
+  to that profile's default host), joins `/models` onto the path with the query kept, reports a keyless 401 as
+  `missing` ("reachable; needs a key"), and lists each vendor's alternative variable names (COHERE_API_KEY,
+  GOOGLE_API_KEY) beside the primary ones.
+
+- **A report written by `eval score --out` can be read back from the same URI**: `compare`/`explain --report`
+  and `results export --report` read it with `Path().is_file()`, which collapsed `memory://r.json` to
+  `memory:/r.json` and failed `MISSING_INPUT`; they read through `storage` now. In the other direction,
+  `calibration fit|score|insert --out gs://...` (and `retrieval sweep --out-dir`) silently created a local
+  `./gs:/...` tree and reported success; those paths now go through `storage.local_dir` and are refused with
+  the mirror hint, as the judging commands already were.
+
+- **The exit-code table names where the anchor report is**: exit 11's row pointed agents at
+  `data.extension.anchor_report`, but a failure envelope carries no `data` -- the report is in
+  `error.details.anchor_report` (the `--dry-run` row also now says which two commands write or restore
+  something before doing nothing else).
+
+- **A recipe pointer implies `listwise` from its scoring mode**: a rerank recipe declares
+  `scoring: pointwise|listwise` at recipe level and the loader ties it to `client.listwise`, but the recipe's
+  client block leaves `listwise` out when it is pointwise, so `--set listwise=true` on a pointwise recipe was
+  accepted while the run still recorded the recipe's id. An undeclared `listwise` must now agree with the
+  recipe's scoring, or the config is refused naming both.
+
+- **A recipe pointer checks a different `tokenizer`**: the loader injects the recipe's checkpoint tokenizer
+  (`<model>@<revision>`), but `tokenizer` is RUNTIME by name, so `--set tokenizer=<another checkpoint>` was
+  accepted while the run still recorded the recipe's id -- with cut points and special-token renders the
+  recipe was never validated with. A different spec is accepted only when it is a local copy of the same
+  `tokenizer.json` (the digests agree) and refused naming both otherwise.
+
+- **The Qwen2-VL families refuse a `video_url` container**: their engine video backend (vLLM v0.31.0's
+  `Qwen2VLVideoBackend`) samples by fps and ignores `num_frames`, so a pinned policy counted a temporal grid
+  (ceil(num_frames / temporal_patch) groups at the family's per-frame budget) the engine never renders -- the
+  window budget under-reserved media and the recorded instrument named a frame count the model never saw.
+  A container for `qwen2_vl`/`qwen2_5_vl` is now refused under either rule (the family's fps rule is not
+  ported here), with a hint to send `wire: frames` or serve a `qwen3_vl` checkpoint; the "32 frames
+  elsewhere" text in the policy and the preprocessing page is corrected too.
+
+- **The media fit drops a frame-sampled video whole**: `fit_media_to_budget` treated every prepared frame as
+  an independent item, so an over-budget frames video lost its most expensive frames one by one -- a clip
+  shortened to its first frames is a different instrument from the declared `num_frames`, and the client's
+  recount of the fitted contents then refused it with a `VideoPolicyError` blaming the corpus (so
+  `on_overflow: cut` never worked for an overflowing frames video). A video part's consecutive prepared
+  frames are now one atomic unit: the clip is kept or dropped whole, every frame's drop recorded.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 
@@ -4718,3 +4853,21 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   do not strictly increase; a QuickTime/MOV whose first ISO-BMFF box is not ``ftyp`` is labelled ``.mov``,
   never ``.avi``; the image and video cache-size environment variables are parsed by one helper that raises a
   typed `ConfigError` naming the variable (a malformed value used to crash `import rcp_ndcg`).
+- **A config validation error never echoes a secret**: `details.errors[].input` copied pydantic's raw input
+  unredacted, so a refused `runner.options.env` token, a credential-bearing `base_url` in a sibling error and a
+  credentialed `RCP_NDCG_ENGINES` URL list rode out in `--json` output, CI logs and MCP tool results -- the same
+  contract that refuses the value in the first place. One redactor now replaces the value under a secret-looking
+  key (or under an `env` mapping) with `<redacted>` and passes every string, nested included, through
+  `redact_urls`; `no_control_characters` names the character and its position instead of `repr(value)`, so a
+  mirror URI's presigned signature cannot ride out in the message either.
+- **A URL's credentials never reach a CLI error or `doctor` output**: `run resume --engine` echoed a refused
+  spec raw (the message reaches `--json` output, stderr and `--log-file`), `redact_urls` stopped a URL at
+  whitespace or a quote so a comma-joined replica list leaked every URL after the first, and `doctor
+  --endpoint` put the raw target -- userinfo and query included -- into the check detail. The spec is redacted,
+  `_URL_IN_TEXT` stops at a comma, and the doctor detail names the URL through `safe_url` and redacts the
+  exception's own text.
+- **A connection string is refused by value, not only by name**: the secret-name heuristic missed
+  `AZURE_STORAGE_CONNECTION_STRING` (adlfs's standard credential variable for the supported `az://` backend),
+  so its `AccountKey=` was written to `run.yaml`, the manifest and the mirror. `*CONNECTION_STRING*`, `*CONN_STR*`
+  and `*_DSN` now count as secret-looking names, and a value carrying `AccountKey=`, `SharedAccessSignature=`
+  or a `sig=` parameter is refused in a config and redacted on the recording path whatever its name.

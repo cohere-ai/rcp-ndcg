@@ -1655,8 +1655,9 @@ class TestRemoteInputs:
 
 def test_the_rankings_first_stage_orders_a_tied_pair_by_the_lower_id() -> None:
     """A9: a `from: rankings` run's pool order applies the retrieval stack's one tie rule (score descending,
-    then the lower document id), the same one `Rankings.top` and the first stage's cut apply."""
-    from rcp_ndcg.runs.pipeline import _order
+    then the lower document id), the same one `Rankings.top` and the first stage's cut apply -- now the one
+    helper `rcp_ndcg.data.rankings.ordered_documents`."""
+    from rcp_ndcg.data.rankings import ordered_documents
 
-    assert _order({"d2": 1.0, "d1": 1.0}) == ["d1", "d2"]
-    assert _order({"d1": 0.5, "d2": 1.0}) == ["d2", "d1"]
+    assert ordered_documents({"d2": 1.0, "d1": 1.0}) == ["d1", "d2"]
+    assert ordered_documents({"d1": 0.5, "d2": 1.0}) == ["d2", "d1"]

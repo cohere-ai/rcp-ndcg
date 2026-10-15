@@ -19,9 +19,9 @@ import pytest
 from rcp_ndcg_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.clients.pool import PoolingClient
+from rcp_ndcg.inference.clients.pool import PoolingClient, _concat_all
 from rcp_ndcg.inference.config import PoolingEndpoint
-from rcp_ndcg.inference.types import EncodeRole
+from rcp_ndcg.inference.types import Embeddings, EncodeRole
 from tests.inference import _budget
 from tests.inference._pooling import PoolingServer, RecordingSender, server_sender
 
@@ -1088,3 +1088,96 @@ def _media_chunk_client(sender: Any) -> PoolingClient:
         ),
         sender=sender,
     )
+
+
+class TestConcatAll:
+    def test_the_chunks_reassemble_in_one_pass(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``_concat_all`` builds the buffer once: the pairwise fold called ``Embeddings.concat`` per chunk,
+        and each call re-concatenated the whole accumulated buffer, so a late-interaction corpus encode
+        copied O(N^2) bytes after every request had returned."""
+        fold = Embeddings.concat
+        calls = 0
+
+        def counting(self: Embeddings, other: Embeddings) -> Embeddings:
+            nonlocal calls
+            calls += 1
+            return fold(self, other)
+
+        chunks = [Embeddings.ragged([np.full((2 + index, 3), float(index), dtype=np.float32)]) for index in range(6)]
+        expected = chunks[0]
+        for chunk in chunks[1:]:
+            expected = fold(expected, chunk)
+        monkeypatch.setattr(Embeddings, "concat", counting)
+        result = _concat_all(chunks)
+        assert calls <= 1  # one fold for the whole buffer, never one per chunk
+        assert result.num_items == expected.num_items == 6
+        assert np.array_equal(result.vectors, expected.vectors)
+        assert result.offsets is not None and np.array_equal(result.offsets, expected.offsets)
+
+
+class TestMediaAllowance:
+    def test_the_media_allowance_reserves_the_framed_instruction(
+        self, tokenizer_json: str, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``_fit_media_per_item``'s allowance is the threshold the text fit measures
+        (``fixed_overhead(..., instruction=...)``): a framed instruction's tokens are reserved, or the media
+        fit keeps media that ``fit`` then refuses with a ``ConfigError``."""
+        from rcp_ndcg_core.content import ImagePart, MediaRef, TextPart
+
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+        from rcp_ndcg.data.text_budget import fixed_overhead
+
+        image = tmp_path / "page.png"
+        image.write_bytes(_png_bytes())
+        client = PoolingClient(
+            PoolingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="colqwen",
+                dim=2,
+                tokenizer=tokenizer_json,
+                max_tokens=100,
+                instruction="fold",
+                template=TemplateSpec(
+                    document=(
+                        Segment(fixed="Instruct: "),
+                        Segment(content="instruction"),
+                        Segment(fixed="\nDoc: "),
+                        Segment(content="document"),
+                        Segment(fixed="</doc>"),
+                    ),
+                    add_special_tokens=False,
+                ),
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=4,
+            ),
+            sender=RecordingSender(lambda request: httpx.Response(200, json={})),
+        )
+        captured: dict[str, Any] = {}
+
+        def fit_media(
+            self: Any,
+            contents: Any,
+            *,
+            doc_ids: Any,
+            prepared: Any = None,
+            allowance: Any = None,
+            changes: Any = None,
+        ) -> Any:
+            captured["allowance"] = allowance
+            return list(contents), 0
+
+        monkeypatch.setattr(PoolingClient, "_fit_media_for_request", fit_media)
+        instruction = "answer the question using the page text"
+        content = Content.from_parts(
+            [TextPart(text="the body"), ImagePart(ref=MediaRef(uri=image.as_uri(), mime="image/png"))]
+        )
+        client._prepare_rows([content], side="document", shape="document", instruction=instruction)
+        assert client.text_budget is not None and client._tokenizer is not None
+        expected = client.text_budget.shape_max_tokens("document") - fixed_overhead(
+            client.text_budget, client._tokenizer, "document", instruction=instruction
+        )
+        assert captured["allowance"] == expected
+        without = client.text_budget.shape_max_tokens("document") - fixed_overhead(
+            client.text_budget, client._tokenizer, "document"
+        )
+        assert captured["allowance"] < without  # the instruction's tokens are reserved

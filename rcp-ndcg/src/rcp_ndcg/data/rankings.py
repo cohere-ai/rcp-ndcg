@@ -702,4 +702,20 @@ def _json_record_rows(record: Mapping[str, Any], where: str) -> list[dict[str, A
     return [{**common, "doc_id": d, "score": s} for d, s in pairs]
 
 
-__all__ = ["DEFAULT_SYSTEM", "RankingRow", "Rankings", "RankingsFormat", "load_rankings", "no_rankings_error"]
+def ordered_documents(scores: Mapping[str, float]) -> list[str]:
+    """Document ids best first: score descending, then the lower document id -- the retrieval stack's one tie
+    rule, the same one :meth:`Rankings.top` applies. The first-stage top-k, the BM25 cut, the candidate cut
+    and a fusion must select and order an equal-score class the same way, so every caller sorts here.
+    """
+    return sorted(scores, key=lambda doc: (-scores[doc], doc))
+
+
+__all__ = [
+    "DEFAULT_SYSTEM",
+    "RankingRow",
+    "Rankings",
+    "RankingsFormat",
+    "load_rankings",
+    "no_rankings_error",
+    "ordered_documents",
+]

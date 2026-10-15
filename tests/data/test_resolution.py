@@ -220,70 +220,20 @@ class TestContentMediaTokens:
         per_frame = policy.image_tokens(480, 640) + VISION_WRAPPER_TOKENS
         assert content_media_tokens(content, policy).tokens == 3 * per_frame
 
-    def test_a_probed_container_counts_the_temporal_grid_not_one_token_run_per_frame(self):
-        """A container is patchified in time: 8 frames merge into ceil(8/2) = 4 grid steps, not 8
-        token runs (measured against the real Qwen2.5-VL video processor: 4,784 patches). The per-frame
-        geometry is the family's checkpoint budget, which for 720x1280 keeps 728x1288."""
-        clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=300)
-
-        assert (
-            content_media_tokens(
-                Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(8, "video_url", engine_video_pinning=True)
-            ).tokens
-            == 4 * 1196 + VISION_WRAPPER_TOKENS
-        )
-
-    def test_a_container_count_does_not_follow_the_declared_image_budget(self):
-        """The container is sent unchanged: the client's pixel budget never reaches the engine, which
-        sizes video frames by the checkpoint's own per-frame budget (stock vLLM's accounting). A tight
-        declared budget must not shrink the count of a container the client does not resize."""
-        clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=300)
-        tight = ImagePolicy(min_px=4 * 28 * 28, max_px=256 * 28 * 28, processor="qwen2_5_vl")
-        wide = ImagePolicy(min_px=4 * 28 * 28, max_px=1280 * 28 * 28, processor="qwen2_5_vl")
-
-        for policy in (tight, wide):
-            assert (
-                content_media_tokens(
-                    Content.from_parts([VideoPart(ref=clip)]),
-                    policy,
-                    _video(8, "video_url", engine_video_pinning=True),
-                ).tokens
-                == 4 * 1196 + VISION_WRAPPER_TOKENS
-            )
-
-    def test_a_large_container_frame_is_counted_at_the_engine_budget(self):
-        """A 2000x2000 frame under a declared budget of 1,003,520px would shrink to 980x980 -- but the
-        engine keeps it whole (its video budget is the checkpoint's 12,845,056px), and the count says so."""
-        clip = MediaRef(uri="gs://v/a.mp4", width=2000, height=2000, num_frames=300)
-
-        assert (
-            content_media_tokens(
-                Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(8, "video_url", engine_video_pinning=True)
-            ).tokens
-            == 4 * 5041 + VISION_WRAPPER_TOKENS
-        )
-
-    def test_a_long_container_counts_the_same_temporal_grid(self):
-        """128 frames of 720x1280 under qwen2_vl: 64 merged steps of one frame's token run."""
-        clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=600)
-
-        assert (
-            content_media_tokens(
-                Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(128, "video_url", engine_video_pinning=True)
-            ).tokens
-            == 64 * 1196 + VISION_WRAPPER_TOKENS
-        )
-
-    def test_an_odd_frame_count_is_padded_to_the_temporal_patch(self):
-        """The patchify pads an odd clip by repeating its last frame: 9 frames cost ceil(9/2) = 5 steps."""
-        clip = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=300)
-
-        assert (
-            content_media_tokens(
-                Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(9, "video_url", engine_video_pinning=True)
-            ).tokens
-            == 5 * 1196 + VISION_WRAPPER_TOKENS
-        )
+    @pytest.mark.parametrize("processor", ["qwen2_vl", "qwen2_5_vl"])
+    def test_qwen2_families_refuse_a_pinned_num_frames_container(self, processor: str):
+        """The Qwen2-VL families' engine video backend (vLLM v0.31.0's ``Qwen2VLVideoBackend``) samples by
+        fps and ignores ``num_frames``, so a pinned policy names a layout the engine never renders; and the
+        family's fps rule is not ported here (only qwen3_vl's is), so a container cannot be counted for this
+        family at all. Refusing beats counting a different instrument."""
+        clip = MediaRef(uri="gs://v/a.mp4", width=3072, height=2048, num_frames=75, fps=30.0, duration_s=2.5)
+        unsized = MediaRef(uri="gs://v/a.mp4", num_frames=300)
+        image = ImagePolicy(min_px=65536, max_px=1003520, processor=processor)
+        video = _video(8, "video_url", engine_video_pinning=True)
+        for ref in (clip, unsized):
+            with pytest.raises(ConfigError, match="num_frames") as refused:
+                content_media_tokens(Content.from_parts([VideoPart(ref=ref)]), image, video)
+            assert "fps" in str(refused.value)
 
     def test_a_single_frame_container_is_refused(self):
         """A single frame is an image: the declared container instrument merges frames in time, which
@@ -366,16 +316,16 @@ class TestContentMediaTokens:
             )
         assert "num_frames" in str(refused.value)
 
-    def test_an_unsized_container_is_bounded_by_the_frame_budget_not_one_image(self):
-        """Counted at the declared image budget, a clip understates its cost: the engine's own video
-        budget bounds each frame (the checkpoint's 12,845,056px is 16,384 merged tokens)."""
-        clip = MediaRef(uri="gs://v/a.mp4", num_frames=300)
-
-        count = content_media_tokens(
-            Content.from_parts([VideoPart(ref=clip)]), QWEN, _video(8, "video_url", engine_video_pinning=True)
-        )
-
-        assert count == (4 * 16384 + VISION_WRAPPER_TOKENS, 1)
+    @pytest.mark.parametrize("processor", ["qwen2_vl", "qwen2_5_vl"])
+    def test_qwen2_families_refuse_the_fps_rule_too(self, processor: str):
+        """The family's engine backend is fps-driven, but its fps rule is not ported here (only
+        qwen3_vl's is): the count refuses rather than measuring the qwen3 rule against a Qwen2 layout."""
+        clip = MediaRef(uri="gs://v/a.mp4", num_frames=300, fps=30.0)
+        image = ImagePolicy(min_px=65536, max_px=1003520, processor=processor)
+        video = _video(None, "video_url", fps=2.0, engine_video_pinning=True)
+        with pytest.raises(ConfigError, match="qwen3_vl") as refused:
+            content_media_tokens(Content.from_parts([VideoPart(ref=clip)]), image, video)
+        assert "fps" in str(refused.value)
 
     def test_an_unsized_qwen3_vl_container_is_bounded_by_the_clip_budget(self):
         """The per-clip budget bounds the whole clip's patch tokens -- 25,165,824px over a temporal patch
@@ -390,7 +340,24 @@ class TestContentMediaTokens:
             _video(None, "video_url", fps=2.0, engine_video_pinning=True),
         )
 
-        assert count == (VISION_WRAPPER_TOKENS + 25165824 // (2 * 32 * 32) + 75 * (2 + 10), 1)
+        # 150 sampled frames, even: the resize's temporal bar is the 150 frames themselves, so the bound is
+        # 75 groups x floor(25165824 / (150 * 32^2)) = 75 x 163 patch tokens.
+        assert count == (VISION_WRAPPER_TOKENS + 75 * (25165824 // (150 * 32 * 32)) + 75 * (2 + 10), 1)
+
+    def test_an_unsized_qwen3_vl_bound_is_a_true_ceiling_for_odd_frame_counts(self):
+        """The resize enforces the per-clip ceiling over ``round(n / 2) * 2`` frames, but the engine renders
+        ``ceil(n / 2)`` temporal groups: for an odd n the resize's temporal bar is one frame short of the
+        groups rendered, so a bound derived from the whole-clip ceiling undercounts by up to 1.5x. The bound
+        is per group -- ``ceiling // (t_bar * factor^2)``, with ``t_bar`` the resize's own bar -- times the
+        groups."""
+        image = ImagePolicy(min_px=65536, max_px=1003520, processor="qwen3_vl")
+        video = _video(None, "video_url", fps=2.0, engine_video_pinning=True)
+        base = dict(uri="/x/clip.mp4", mime="video/mp4", num_frames=75, fps=30.0, duration_s=2.5)
+        exact = content_media_tokens(
+            Content.from_parts([VideoPart(ref=MediaRef(width=3072, height=2048, **base))]), image, video
+        ).tokens
+        bound = content_media_tokens(Content.from_parts([VideoPart(ref=MediaRef(**base))]), image, video).tokens
+        assert bound >= exact, f"the bound {bound} is below the exact count {exact}"
 
     def test_a_container_without_a_frame_policy_is_refused(self):
         """The engine's default sampling would decide the cost; nothing here knows it."""

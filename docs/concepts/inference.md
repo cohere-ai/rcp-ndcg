@@ -17,7 +17,7 @@ runtime fields that never enter an identity.
 | Field | Meaning |
 |---|---|
 | `api` | the wire adapter (below); each role's config sets its default |
-| `base_url` | the endpoint (`.../v1`), one URL or a list of replica URLs of the same served model; `None` for a hosted API whose URL its profile resolves |
+| `base_url` | the endpoint (`.../v1`), one URL or a list of replica URLs of the same served model; the scheme must be `http://`, `https://` or `fake://` (a schemeless or mistyped URL is a typed `ConfigError`, not an outage); `None` for a hosted API whose URL its profile resolves |
 | `model` | the served model name, sent as the request's `model` |
 | `revision` | the checkpoint commit the served weights resolved to; recorded in identities |
 | `api_key_env` | the environment variable that holds the key; `None` (the default) uses the adapter profile's own variables -- but only when the request goes to the profile's own default host. Any other `base_url` receives a key only from an explicit `api_key_env` ([the credential rule](../reference/cli.md#credentials)); an unset variable a config named is a `CredentialsError` naming it |
@@ -117,7 +117,10 @@ plus a large model's load); `wait_on_outage_s: null` is the explicit "wait indef
 `step_budget_s` bounds the step on top: the transport checks it before each request and after every park, so a
 step over budget stops with `StepBudgetExceededError` instead of working through a long outage
 ([runs](runs.md)). A request that keeps failing on a replica
-that answers other requests is that request's failure: it is refused (`RequestRejectedError`).
+that answers other requests is that request's failure: it is refused (`RequestRejectedError`). A 408 or 429 is
+never that: it is the endpoint's load, and stays on the outage path -- the replica is set aside for the
+server's `Retry-After` when it gives one (otherwise the backoff, jittered so parked requests do not all return
+at once), and the request parks and retries instead of a rate-limited window aborting a whole encode.
 
 ## Third-party adapters (C2)
 

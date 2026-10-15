@@ -246,7 +246,9 @@ def fit_media_to_budget(
        and the item cannot shrink.  A soft-token policy (``gemma4``) has no pixel floor: its budget is the
        checkpoint's own processor budget, so nothing shrinks and whole items drop at step 3.
     3. What still does not fit is dropped, most expensive first (ties keep the earlier part), until the
-       remaining media fit. Items are dropped whole: tokens are never cut inside a vision block.
+       remaining media fit. Items are dropped whole: tokens are never cut inside a vision block, and a
+       video part's prepared frames (consecutive ``kind: frame`` items) are ONE unit -- a clip is kept or
+       dropped whole, never shortened below the declared ``num_frames``.
 
     Args:
         media: The request's prepared media (:func:`prepare_content` or :func:`prepare_request` returns them).
@@ -311,16 +313,28 @@ def fit_media_to_budget(
             return MediaFit(shrunk, tokens, [], tuple(item.sent for item in shrunk))
         items = shrunk
     costs = [count([item]) for item in items]
-    keep = list(range(len(items)))
+    # The fit's atomic units: one per image or container, and one per RUN of consecutive frame items. A
+    # video part's prepared frames are consecutive in the media list (the role clients fit one content's
+    # media per call), so a clip is kept or dropped whole -- a fitted part never carries fewer frames than
+    # the declared ``num_frames``, whose recount refuses it.
+    groups: list[list[int]] = []
+    for index, item in enumerate(items):
+        if item.kind == "frame" and groups and items[groups[-1][-1]].kind == "frame":
+            groups[-1].append(index)
+        else:
+            groups.append([index])
+    group_costs = [sum(costs[index] for index in group) for group in groups]
+    keep_groups = list(range(len(groups)))
     dropped: list[PreparedMedia] = []
-    # drop whole items, most expensive first (ties keep the earlier part), until the rest fit
-    while keep and sum(costs[index] for index in keep) > text_budget_tokens:
-        dearest = max(keep, key=lambda index: (costs[index], index))
-        keep.remove(dearest)
-        dropped.append(items[dearest])
-    kept = [items[index] for index in keep]
+    # drop whole groups, most expensive first (ties keep the earlier part), until the rest fit
+    while keep_groups and sum(group_costs[group] for group in keep_groups) > text_budget_tokens:
+        dearest = max(keep_groups, key=lambda group: (group_costs[group], group))
+        keep_groups.remove(dearest)
+        dropped.extend(items[index] for index in groups[dearest])
+    keep = {index for group in keep_groups for index in groups[group]}
+    kept = [items[index] for index in range(len(items)) if index in keep]
     decisions = tuple(items[index].sent if index in keep else None for index in range(len(items)))
-    return MediaFit(kept, sum(costs[index] for index in keep), dropped, decisions)
+    return MediaFit(kept, sum(costs[index] for index in sorted(keep)), dropped, decisions)
 
 
 def _content(items: Sequence[PreparedMedia]) -> Content:

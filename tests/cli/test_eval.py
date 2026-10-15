@@ -402,6 +402,26 @@ def test_explain_report_re_scores_the_systems_the_report_scored(scored: dict) ->
     assert [system["system"] for system in narrowed["data"]["systems"]] == ["forward"]
 
 
+def test_a_report_written_to_a_remote_uri_reads_back(dataset: str, tmp_path: Path) -> None:
+    """``eval score --out`` accepts any storage URI, but ``compare --report`` read it with ``Path()``, which
+    collapsed ``memory://r.json`` to ``memory:/r.json`` and failed ``MISSING_INPUT``: a file the command
+    wrote could not be read by the commands its help names."""
+    rankings = tmp_path / "run.parquet"
+    Rankings.concat(
+        [
+            Rankings.from_scores({"q1": {"a": 1.0, "b": 0.5, "c": 0.0}}, system="mine"),
+            Rankings.from_scores({"q1": {"a": 0.0, "b": 0.5, "c": 1.0}}, system="other"),
+        ]
+    ).save(rankings)
+    scored = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg",
+        "--out", "memory://r.json",
+    )  # fmt: skip
+    assert scored["exit_code"] == 0, scored
+    compared = _invoke("compare", "--report", "memory://r.json", "--metric", "qrel_ndcg", "--bootstrap", "10")
+    assert compared["exit_code"] == 0, compared
+
+
 def test_score_json_is_lean_and_the_full_report_goes_to_out(scored: dict) -> None:
     """The per-query rows (539 KB on NanoBEIR) stay out of stdout unless asked for; --out holds everything."""
     data = scored["document"]["data"]

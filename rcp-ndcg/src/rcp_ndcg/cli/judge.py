@@ -181,6 +181,7 @@ class JudgeReport(BaseModel):
 
 def _pools(request: JudgeRequest, dataset: Any) -> dict[str, list[str]]:
     from rcp_ndcg.data import load_rankings
+    from rcp_ndcg.data.rankings import ordered_documents
 
     if request.candidates is not None:
         rankings = load_rankings(request.candidates)
@@ -190,8 +191,11 @@ def _pools(request: JudgeRequest, dataset: Any) -> dict[str, list[str]]:
                 f"{request.candidates} holds systems {rankings.systems}; pass --system",
                 hint="judge one system's pools: --system NAME",
             )
+        # The library's own tie rule and depth cut, then the same rule orders each pool: sorting here with
+        # (score, doc_id) descending picked the higher tied id, against Rankings.top and the run pipeline.
+        rankings = rankings.top(request.depth)
         queries = rankings.queries(system=system, dataset=dataset.name)
-        pools = {q: sorted(s, key=lambda d: (s[d], d), reverse=True) for q, s in queries.items()}
+        pools = {q: ordered_documents(scores) for q, scores in queries.items()}
     elif dataset.candidates is not None:
         pools = {q: list(pool) for q, pool in dataset.candidates.items()}
     else:

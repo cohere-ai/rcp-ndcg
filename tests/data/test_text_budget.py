@@ -31,11 +31,12 @@ from rcp_ndcg.data.preprocess import (
 from rcp_ndcg.data.templates import Segment, TemplateSpec
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import check_declarations, identity_payload
-from tests._tokenizers import framed_bpe_tokenizer, spaced_special_tokenizer, word_tokenizer
+from tests._tokenizers import bert_like_tokenizer, framed_bpe_tokenizer, spaced_special_tokenizer, word_tokenizer
 
 FRAMED = framed_bpe_tokenizer()
 WORDS = word_tokenizer()
 SPACED = spaced_special_tokenizer()
+BERT = bert_like_tokenizer()
 
 #: The two special tokens the framed fixture adds: a template's suffix anchor and the post-processor's,
 #: written in templates by name and resolved to these literals from the tokenizer's added tokens.
@@ -511,6 +512,20 @@ class TestPairSplit:
         equal = TextBudget(tokenizer="t", max_tokens=40, query_max_tokens=40)
         assert equal.query_max_tokens == 40
 
+    def test_untemplated_pair_counts_the_engine_pair_encoding(self) -> None:
+        """An untemplated pair is measured as the engine encodes it -- the tokenizer's pair post-processor
+        (one more separator than the single sequence) and the two spans' join -- never as the single
+        sequence ``query + document``, which lets the fit pass a pair the engine reads over budget."""
+        budget = TextBudget(tokenizer=BERT.name, max_tokens=12, query_max_tokens=4)
+        result = fit(
+            [("relevant query ", "the evidence of the answer is in the page one two three four five")],
+            shape="pair",
+            budget=budget,
+            tokenizer=BERT,
+        )
+        ((query, document),) = result.contents
+        assert len(BERT.backend.encode(query, document, add_special_tokens=True).ids) <= 12
+
 
 class TestDocumentCap:
     """``document_max_tokens`` (H3): a checkpoint that cuts each document itself (jina-reranker-v3 reads 2048
@@ -552,7 +567,23 @@ class TestDocumentCap:
         )
         assert result.contents[0] == (self.SHORT_QUERY, "the page") and len(census) == 0
 
+    def test_a_capped_document_the_budget_still_cuts_names_both_causes(self) -> None:
+        """The document cap bound first and the pair still overflowed: the budget then cut the rest, and the
+        record names both mechanisms -- the cap's ``document_share`` is not replaced by ``budget_cut``."""
+        budget = TextBudget(tokenizer=WORDS.name, max_tokens=10, query_max_tokens=3, document_max_tokens=6)
+        result = fit(
+            [("one two three four five six ", "the a of to and in is it evidence query")],
+            shape="pair",
+            budget=budget,
+            tokenizer=WORDS,
+        )
+        (record,) = processing_records("rerank", "pair", cuts=result.cuts)
+        assert "document_share" in record.mechanisms
+        assert "budget_cut" in record.mechanisms
+
     def test_a_pair_the_capped_document_still_overflows_is_cut_by_the_budget(self) -> None:
+        """The cap bound the document and the pair still overflowed: the budget cuts the rest, and both
+        mechanisms are recorded -- the cap's ``document_share`` row and the ``budget_cut`` row."""
         census = TextTruncationCensus()
         query = " ".join(["the"] * 40)
         result = fit(
@@ -564,7 +595,7 @@ class TestDocumentCap:
         )
         assert len(engine_ids(result.texts[0], pair_template(), "pair")) <= 64
         assert FRAMED.count(result.contents[0][1]) <= 8
-        assert [cut.cause for cut in census.cuts()] == ["budget_cut"]
+        assert [cut.cause for cut in census.cuts()] == ["document_share", "budget_cut"]
 
     def test_the_cap_is_validated_and_enters_the_identity(self) -> None:
         with pytest.raises(ValueError, match="document_max_tokens"):
@@ -658,6 +689,26 @@ class TestChunking:
         )
         with pytest.raises(TextBudgetExceededError, match="never"):
             fit([LONG], shape="query", budget=chunked, tokenizer=FRAMED)
+
+    def test_chunk_trim_never_loses_text(self) -> None:
+        """A chunk whose full render is over the cap hands the trimmed tail to the next chunk: the chunker
+        verifies the render inside its own shrink loop, so the boundaries move with the trim and the chunks
+        still cover the document (the last one reaches its end)."""
+        spec = TemplateSpec(
+            document=(Segment(fixed="<doc>"), Segment(content="document"), Segment(fixed="</doc>")),
+            add_special_tokens=False,
+        )
+        budget = TextBudget(
+            tokenizer=WORDS.name,
+            max_tokens=9,
+            template=spec,
+            on_overflow="chunk",
+            chunk=ChunkPolicy(max_tokens=4, overlap_tokens=0),
+        )
+        doc = "one two three four five one two three four five one two"
+        result = fit([doc], shape="document", budget=budget, tokenizer=WORDS)
+        assert sum(len(chunk.split()) for chunk in result.contents) >= len(doc.split())
+        assert result.contents[-1].endswith("two")
 
 
 # ---------------------------------------------------------------------------------------------------------------

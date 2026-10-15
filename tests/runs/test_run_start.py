@@ -474,6 +474,18 @@ class TestTheEngineFlag:
         )
         assert code == 2 and "--engine apply to a resume in this process" in error["message"]
 
+    def test_the_flag_never_echoes_url_credentials(self, finished: Path) -> None:
+        """The refused spec is echoed redacted, and a comma-joined replica list is redacted URL by URL: the
+        message reaches --json output, stderr and --log-file."""
+        for spec in (
+            "https://user:SECRET@gw.example.com/v1",
+            "judge=https://user:SECRET@gw.example.com/v1,https://user:SECRET@gw.example.com/v1/",
+        ):
+            result = CliRunner().invoke(cli, ["run", "resume", "--run", str(finished), "--engine", spec, "--json"])
+            assert result.exit_code == 2, result.output
+            assert "SECRET" not in result.stdout, spec
+            assert "SECRET" not in result.stderr, spec
+
 
 def test_a_judge_recipe_in_the_encoder_slot_is_a_config_error(data: Path, tmp_path: Path) -> None:
     """A recipe of the wrong role reaches the retrieval encoder through the run config: the refusal is the

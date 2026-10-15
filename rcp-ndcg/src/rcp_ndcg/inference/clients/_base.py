@@ -64,6 +64,7 @@ from rcp_ndcg.data.text_budget import (
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
+from rcp_ndcg.inference.adapters.chat import media_counts
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
 from rcp_ndcg.inference.types import Call, Reply, TokenCount, Usage
@@ -553,6 +554,7 @@ class RoleClient[C: Endpoint]:
         shape: RequestShape,
         doc_ids: Sequence[str],
         changes: dict[str, list[ChangeMechanism]] | None = None,
+        instruction: str | None = None,
     ) -> tuple[list[Content], list[int]]:
         """The media fit of a request whose wire carries ONE item per budget (the pooling items, the
         embeddings inputs): each item's media fitted on its own, sliced from the one preparation
@@ -565,6 +567,10 @@ class RoleClient[C: Endpoint]:
             request: The request's one preparation (:meth:`_prepare_request`).
             shape: The items' request shape (``query`` or ``document``).
             doc_ids: One census doc_id per item, for the drop rows.
+            changes: Where the fit notes a resize or drop per doc_id.
+            instruction: The run-level instruction, where the template declares an ``instruction`` span (or
+                the config sends it as a request field): it is part of the fixed overhead the text fit
+                reserves, so the allowance must include it too.
 
         Returns:
             ``(contents, media_tokens)``: per item, the content to send and its media token count after
@@ -572,7 +578,11 @@ class RoleClient[C: Endpoint]:
         """
         if self._budget is None or not request.media:
             return list(request.contents), [0] * len(request.contents)
-        allowance = max(self._budget.shape_max_tokens(shape) - fixed_overhead(self._budget, self._tokenizer, shape), 0)
+        allowance = max(
+            self._budget.shape_max_tokens(shape)
+            - fixed_overhead(self._budget, self._tokenizer, shape, instruction=instruction or ""),
+            0,
+        )
         fitted = [
             self._fit_media_for_request(
                 one.contents, doc_ids=[doc_id], prepared=one, allowance=allowance, changes=changes
@@ -1094,6 +1104,7 @@ class RoleClient[C: Endpoint]:
         shape: RequestShape,
         positions: Sequence[int],
         changes: dict[str, list[ChangeMechanism]],
+        instruction: str | None = None,
     ) -> tuple[list[Content], list[int]]:
         """The ``media`` stage (shared default): one preparation of the request's kept contents (nothing is
         fetched for an item the empty stage omitted), then the media fit per wire item, every drop recorded.
@@ -1104,6 +1115,8 @@ class RoleClient[C: Endpoint]:
             shape: The request shape the items are fitted as.
             positions: Each content's original input index.
             changes: Where the fit notes, per input id, a ``media_resize`` or ``media_drop``.
+            instruction: The run-level instruction, so the media allowance reserves its tokens exactly as
+                the text fit does.
 
         Returns:
             ``(contents, media_tokens)``: the fitted contents (in the given order) and, PER GIVEN CONTENT,
@@ -1114,7 +1127,7 @@ class RoleClient[C: Endpoint]:
             return list(contents), [0] * len(contents)
         doc_ids = [str(position) for position in positions]
         request = self._prepare_request(list(contents), doc_ids=doc_ids)
-        return self._fit_media_per_item(request, shape=shape, doc_ids=doc_ids, changes=changes)
+        return self._fit_media_per_item(request, shape=shape, doc_ids=doc_ids, changes=changes, instruction=instruction)
 
     def _stage_budget(
         self,
@@ -1209,12 +1222,14 @@ class RoleClient[C: Endpoint]:
         # the budget dropped is empty -- exactly like an empty text document -- so the same empty policy
         # applies to the fitted contents (the media stage's contract; the policy never sees a framed
         # non-empty turn where the sent content is empty).
-        kept_positions = [index for index in range(len(prepared)) if index not in set(omitted)]
+        omitted_set = set(omitted)
+        kept_positions = [index for index in range(len(prepared)) if index not in omitted_set]
         fitted, media_tokens = self._stage_media(
             kept,
             shape=shape,
             positions=kept_positions,
             changes=changes,
+            instruction=instruction,
         )
         # The media stage's output is what is sent (the prepared media in place); the empty policy fires
         # again only when the media fit emptied something: a document whose every media item was dropped is
@@ -1232,16 +1247,17 @@ class RoleClient[C: Endpoint]:
                 merged = changes.setdefault(original, [])
                 merged.extend(mechanism for mechanism in applied if mechanism not in merged)
             dropped_empty = [kept_positions[index] for index in dropped_empty_kept]
-        dropped = sorted(set(omitted) | set(dropped_empty))
-        positions = [index for index in range(len(prepared)) if index not in set(dropped)]
+        dropped = sorted(omitted_set | set(dropped_empty))
+        dropped_set = set(dropped)
+        positions = [index for index in range(len(prepared)) if index not in dropped_set]
         # render + budget (shared): the fixed frame reserved, the content spans cut to what remains, the
-        # template re-attached, every cut recorded.
+        # template re-attached, every cut recorded. The media-token reservation maps each kept position to
+        # its slot through one dict: a ``list.index`` per item made a whole-corpus encode quadratic.
+        kept_index = {position: index for index, position in enumerate(kept_positions)}
         kept, cuts, result = self._stage_budget(
             kept,
             shape=shape,
-            media_tokens=[media_tokens[kept_positions.index(position)] for position in positions]
-            if kept_positions
-            else [],
+            media_tokens=[media_tokens[kept_index[position]] for position in positions] if kept_positions else [],
             positions=positions,
             instruction=instruction,
             changes=changes,
@@ -1278,8 +1294,10 @@ class RoleClient[C: Endpoint]:
 
         The caps are what ONE wire request carries (:meth:`_gate_media_calls`), so the client that packs the
         requests splits at them: a VL encoder whose endpoint accepts one image per request sends one image
-        per request rather than packing a media batch past its own declaration. A text-only batch is grouped
-        by ``size`` alone -- the packing is unchanged where no media is involved.
+        per request rather than packing a media batch past its own declaration. The count is the wire's own
+        (:func:`~rcp_ndcg.inference.adapters.chat.media_counts`): a frame-sampled video counts one image per
+        frame, a container one video. A text-only batch is grouped by ``size`` alone -- the packing is
+        unchanged where no media is involved.
         """
         max_images = getattr(self.config, "max_images", 0)
         max_videos = getattr(self.config, "max_videos", 0)
@@ -1287,8 +1305,8 @@ class RoleClient[C: Endpoint]:
         current: list[Content] = []
         images = videos = 0
         for item in items:
-            item_images = sum(1 for part in item.parts if isinstance(part, ImagePart))
-            item_videos = sum(1 for part in item.parts if isinstance(part, VideoPart))
+            counts = media_counts(item)
+            item_images, item_videos = counts.images, counts.videos
             if current and (
                 len(current) >= size or images + item_images > max_images or videos + item_videos > max_videos
             ):
@@ -1339,7 +1357,8 @@ class RoleClient[C: Endpoint]:
                 created = [group.create_task(task) for task in tasks]
         except BaseExceptionGroup as group:
             if len(group.exceptions) == 1:
-                raise group.exceptions[0] from group.__cause__
+                exc = group.exceptions[0]
+                raise exc  # noqa: B904 -- as itself: ``from group.__cause__`` would overwrite its own cause
             raise
         return [task.result() for task in created]
 

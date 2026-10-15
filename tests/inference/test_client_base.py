@@ -9,6 +9,7 @@ the sync bridge (one rule: a non-transport sender must provide ``run``), and the
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import Any, ClassVar
 
 import pytest
@@ -1076,3 +1077,72 @@ def test_a_config_missing_a_budget_field_is_refused_not_defaulted(tokenizer_json
     with pytest.raises(ConfigError, match="on_overflow") as caught:
         client._resolve_budget()
     assert "on_overflow" in (caught.value.hint or ""), "the hint names the missing field"
+
+
+class TestPrepareScaling:
+    def test_the_media_reservation_never_scans_the_kept_positions_per_item(self, tokenizer_json: str) -> None:
+        """``_prepare_rows`` maps each kept position through one dict, not ``list.index`` per item: a linear
+        scan per item made a whole-corpus encode quadratic (hours for a BEIR-size corpus) before any request
+        was sent."""
+        client = EmbeddingClient(
+            EmbeddingEndpoint(api="openai_embeddings", model="m", tokenizer=tokenizer_json, max_tokens=8192),
+            sender=RecordingSender(),
+        )
+
+        def index_calls(items: int) -> int:
+            calls = 0
+
+            def profiler(frame: Any, event: str, arg: Any) -> None:
+                nonlocal calls
+                if event == "c_call" and getattr(arg, "__qualname__", "") == "list.index":
+                    calls += 1
+
+            sys.setprofile(profiler)
+            try:
+                client._prepare([Content.from_text(f"doc {index}") for index in range(items)], EncodeRole.DOCUMENT)
+            finally:
+                sys.setprofile(None)
+            return calls
+
+        assert index_calls(64) == index_calls(8)  # a per-item scan would be 64 against 8
+
+
+class TestRequestGroupMediaCaps:
+    def test_a_frame_sampled_video_counts_its_frames_as_images(self, tokenizer_json: str) -> None:
+        """The grouping counts what the wire lowers -- a frame-sampled video as one image block per frame
+        (``adapters.chat.media_counts``'s rule) -- so two 8-frame videos with ``max_images: 8`` split into
+        two requests instead of one the media gate refuses with ``CapabilityError``."""
+        from rcp_ndcg_core.content import MediaRef, TextPart, VideoPart
+
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                api="openai_embeddings",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                max_images=8,
+                max_videos=2,
+            ),
+            sender=RecordingSender(),
+        )
+        frames = [MediaRef(uri=f"data:image/png;base64,{index}") for index in range(8)]
+        item = Content.from_parts([TextPart(text="doc"), VideoPart(frames=frames)])
+        groups = client._request_groups([item, item], 32)
+        assert [len(group) for group in groups] == [1, 1]
+
+
+def test_gather_keeps_the_single_failures_own_cause() -> None:
+    """``gather`` re-raises the one failure as itself: ``raise exc from group.__cause__`` overwrote the
+    redacted cause the transport chains on (the HTTP detail a traceback should show) with the group's own
+    ``None`` and hid the group's context."""
+
+    async def failing() -> None:
+        try:
+            raise ValueError("HTTP 503 upstream detail")
+        except ValueError as cause:
+            raise RequestRejectedError("refused") from cause
+
+    with pytest.raises(RequestRejectedError) as caught:
+        asyncio.run(RoleClient.gather([failing()]))
+    assert isinstance(caught.value.__cause__, ValueError)
+    assert "HTTP 503" in str(caught.value.__cause__)

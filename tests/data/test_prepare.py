@@ -475,17 +475,35 @@ class TestFitMediaToBudget:
     def test_a_container_cannot_shrink_so_it_is_dropped_whole(self, tmp_path: Path):
         clip = tmp_path / "clip.mp4"
         clip.write_bytes(b"\x00" * 64)
-        container = MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300)
-        video = VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True)
-        # A qwen2_vl family: the qwen3_vl backend ignores a pinned num_frames (the count refuses it).
-        policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
+        container = MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300, fps=30.0)
+        video = VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True)
+        # qwen3_vl: the family whose fps rule (and so a container count) is ported; the container cannot
+        # shrink, so an over-budget one is dropped whole (the Qwen2-VL families refuse a container count).
+        policy = ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl")
         prepared = prepare_content(Content.from_parts([VideoPart(ref=container)]), policy, video)
 
-        fit = fit_media_to_budget(
-            prepared.media, image=policy, video=video, text_budget_tokens=4 * policy.max_image_tokens
-        )
+        fit = fit_media_to_budget(prepared.media, image=policy, video=video, text_budget_tokens=4)
 
         assert fit.media == [] and [item.kind for item in fit.dropped] == ["video"]
+
+    def test_media_fit_drops_a_frames_video_whole(self, tmp_path: Path):
+        """A video part is one atomic unit: its frames are kept or dropped together, so the fitted contents
+        never carry a clip shortened below the declared ``num_frames`` -- the recount of such a part refuses
+        with a ``VideoPolicyError`` blaming the corpus, and a shortened clip is a different instrument from
+        the declared one."""
+        policy = ImagePolicy(min_px=640 * 480, max_px=1280 * 32 * 32, processor="qwen3_vl")
+        frames = [_png(tmp_path / f"f{index}.png", (640, 480), color=(index, index, index)) for index in range(8)]
+        content = Content.from_parts([VideoPart(frames=frames, frame_indices=list(range(8)))])
+        video = VideoPolicy(num_frames=8, wire="frames")
+        request = prepare_request([content], policy, video)
+        assert len(request.media) == 8
+        per_frame = content_media_tokens(Content.from_parts([ImagePart(ref=request.media[0].sent)]), policy).tokens
+
+        fit = fit_media_to_budget(request.media, image=policy, video=video, text_budget_tokens=3 * per_frame)
+
+        assert fit.dropped_positions == tuple(range(8)), fit.dropped_positions
+        fitted = apply_media_fit(request.contents, fit)
+        assert content_media_tokens(fitted[0], policy, video).tokens == 0
 
     def test_a_soft_token_policy_has_no_pixel_floor_so_items_drop_whole(self, tmp_path: Path):
         """A gemma4 policy's budget is a soft-token count, not a pixel range: there is no smaller prepared

@@ -193,6 +193,7 @@ def token_prefix(
     tokenizer: TextTokenizer,
     *,
     rendered: Callable[[str], str] | None = None,
+    count_rendered: Callable[[str], int] | None = None,
     add_special_tokens: bool = False,
 ) -> str:
     """A prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries and counts at most
@@ -206,13 +207,16 @@ def token_prefix(
     re-tokenizes into fewer tokens than it has boundaries is not sought, so the cut can stop a few characters short
     of the longest prefix that would fit. With ``add_special_tokens`` the count is the engine's (the tokenizer's
     post-processor tokens included), which is how a served request's budget is verified against what the engine
-    actually reads.
+    actually reads. ``count_rendered`` is for a render that is not a string -- an untemplated PAIR, which the
+    engine encodes as a pair (:meth:`~rcp_ndcg.data.tokenizer.TextTokenizer.count_pair`), not as one sequence.
 
     Args:
         text: The document text.
         max_tokens: The budget, in tokens.
         tokenizer: The judge's tokenizer.
         rendered: How the text appears to the judge, when that is not the text itself.
+        count_rendered: How many tokens the engine reads for a candidate prefix, when that is not a string
+            count (a pair encoding); it takes precedence over ``rendered``/``add_special_tokens``.
         add_special_tokens: Count as the engine does, the post-processor's tokens included.
 
     Returns:
@@ -220,6 +224,8 @@ def token_prefix(
     """
 
     def count(piece: str) -> int:
+        if count_rendered is not None:
+            return count_rendered(piece)
         return tokenizer.count(
             rendered(piece) if rendered is not None else piece, add_special_tokens=add_special_tokens
         )
@@ -338,7 +344,13 @@ CHUNK_ID_SEPARATOR = "#"
 ``chunk_mapping`` is the authority for which document a chunk belongs to."""
 
 
-def split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) -> list[str]:
+def split_into_chunks(
+    text: str,
+    policy: ChunkPolicy,
+    tokenizer: TextTokenizer,
+    *,
+    fits: Callable[[str], bool] | None = None,
+) -> list[str]:
     """Split *text* into consecutive, overlapping chunks of at most ``policy.max_tokens`` tokens.
 
     The chunks are windows over the document's own tokens, located with the tokenizer's offset mapping, so each
@@ -351,6 +363,11 @@ def split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) 
     byte-level tokens) makes a chunk over the cap. One boundary caveat, declared here: a multi-byte character that
     a token boundary splits in two repeats -- its leading bytes end one chunk and the whole character opens the
     next -- so an ASCII-free corpus can see a character twice at a chunk edge (duplication only, never loss).
+
+    ``fits`` is the caller's own acceptance test on the rendered chunk (the text-budget fit's render check): a
+    piece that fits ``max_tokens`` but fails ``fits`` ends a token earlier too, *before* the next chunk's start
+    is computed, so the boundary moves with the trim and the chunks still cover the text. It is not consulted
+    for the one-token floor (the piece cannot shrink further; the caller decides what to do with it).
 
     Returns:
         The chunk texts in document order; ``[text]`` when *text* fits in one chunk.
@@ -367,9 +384,15 @@ def split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) 
         while True:
             piece = text[begin : len(text) if end == n else offsets[end - 1][1]]
             excess = tokenizer.count(piece) - policy.max_tokens
-            if excess <= 0 or end - start <= 1:
-                break
-            end = max(end - excess, start + 1)
+            if end - start <= 1:
+                break  # one document token is the floor
+            if excess > 0:
+                end = max(end - excess, start + 1)
+                continue
+            if fits is not None and not fits(piece):
+                end -= 1
+                continue
+            break
         chunks.append(piece)
         if end == n:
             return chunks

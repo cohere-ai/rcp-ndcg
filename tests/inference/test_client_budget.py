@@ -1725,8 +1725,10 @@ class TestVideoContainerFit:
     def _policies() -> tuple[ImagePolicy, Any]:
         from rcp_ndcg.data.resolution import VideoPolicy
 
-        return ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl"), VideoPolicy(
-            num_frames=4, wire="video_url", engine_video_pinning=True
+        # qwen3_vl: the family whose fps rule (and so a container count) is ported; the Qwen2-VL families
+        # refuse a container count (their engine backend is fps-driven and their rule is not ported).
+        return ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl"), VideoPolicy(
+            fps=2.0, wire="video_url", engine_video_pinning=True
         )
 
     @staticmethod
@@ -1747,6 +1749,7 @@ class TestVideoContainerFit:
                         width=64,
                         height=64,
                         num_frames=64,
+                        fps=30.0,
                     ),
                 )
             ]

@@ -341,7 +341,7 @@ read_census_rows(path: str | Path) -> Iterator[dict[str, Any]]
 
 ## `rendered_pair_tokens`
 
-function — The token count of one pair's assembled render, exactly as :func:`fit` verifies a fitted pair (the shape's ``add_special_tokens`` flag applied) plus the instruction's own tokens when the config sends it as a request field the template does not render (:data:`TextBudget.instruction_field`). A rerank client checks every shipped pair against the budget with this -- the same measure the fit cut to, so a pair the fit verified passes here.
+function — The token count of one pair's assembled render, exactly as :func:`fit` verifies a fitted pair (the shape's ``add_special_tokens`` flag applied) plus the instruction's own tokens when the config sends it as a request field the template does not render (:data:`TextBudget.instruction_field`). A rerank client checks every shipped pair against the budget with this -- the same measure the fit cut to, so a pair the fit verified passes here. Without a template the pair is measured through the tokenizer's own pair encoding (:meth:`~rcp_ndcg.data.tokenizer.TextTokenizer.count_pair`), the way the engine reads it.
 
 ```text
 rendered_pair_tokens(budget: TextBudget, tokenizer: TextTokenizer, *, query: str, document: str, instruction: str = '') -> int
@@ -368,7 +368,7 @@ require_tokenizer(tokenizer: TextTokenizer | None, what: str) -> TextTokenizer
 function — Split *text* into consecutive, overlapping chunks of at most ``policy.max_tokens`` tokens.
 
 ```text
-split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) -> list[str]
+split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer, *, fits: Callable[[str], bool] | None = None) -> list[str]
 ```
 
 ## `token_prefix`
@@ -376,5 +376,5 @@ split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) -> l
 function — A prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries and counts at most ``max_tokens``: the longest such prefix the search finds.
 
 ```text
-token_prefix(text: str, max_tokens: int, tokenizer: TextTokenizer, *, rendered: Callable[[str], str] | None = None, add_special_tokens: bool = False) -> str
+token_prefix(text: str, max_tokens: int, tokenizer: TextTokenizer, *, rendered: Callable[[str], str] | None = None, count_rendered: Callable[[str], int] | None = None, add_special_tokens: bool = False) -> str
 ```

@@ -85,6 +85,10 @@ class ProcessorGeometry(NamedTuple):
         per_frame_wrapper: Whether the engine renders one vision start/end wrapper pair per frame (``gemma4``:
             the video prompt is one ``boi + video_token*n + eoi`` block per frame, with no temporal patch)
             rather than one wrapper for the whole container.
+        video_fps_only: Whether the family's engine video backend samples a container by fps and IGNORES
+            ``num_frames`` (vLLM v0.31.0's ``Qwen2VLVideoBackend`` for ``qwen2_vl``/``qwen2_5_vl``), so a
+            pinned policy names a layout the engine never renders and a container cannot be counted for the
+            family until its fps rule is ported.
     """
 
     factor: int
@@ -94,6 +98,7 @@ class ProcessorGeometry(NamedTuple):
     video_min_pixels: int | None = None
     video_max_pixels: int | None = None
     video_pixels_per_clip: bool = False
+    video_fps_only: bool = False
     video_timestamp_tokens: int = 0
     resize: Literal["qwen", "gemma4"] = "qwen"
     soft_tokens: int | None = None
@@ -103,22 +108,26 @@ class ProcessorGeometry(NamedTuple):
 
 PROCESSORS: dict[str, ProcessorGeometry] = {
     # Qwen2-VL checkpoints: patch 14 x merge 2 and {min,max}_pixels 3136..12845056 in preprocessor_config.json,
-    # which vLLM applies. A container's frames are sized by that same checkpoint budget per frame (vLLM's
-    # video accounting passes the image processor's size, qwen2_vl.py:1014 @ d0d6e5f3a).
+    # which vLLM applies. The engine's video backend (vLLM v0.31.0's Qwen2VLVideoBackend, registered for the
+    # Qwen2VLVideoProcessor) samples by fps and ignores num_frames; the per-frame budget below is what that
+    # backend sizes a frame with, but the frame count is fps-driven and its rule is not ported here.
     "qwen2_vl": ProcessorGeometry(
         factor=28,
         min_pixels=56 * 56,
         max_pixels=28 * 28 * 16384,
         video_min_pixels=56 * 56,
         video_max_pixels=12845056,
+        video_fps_only=True,
     ),
-    # Qwen2.5-VL checkpoints: the same processor and budget, which vLLM applies as shipped.
+    # Qwen2.5-VL checkpoints: the same processor and budget, which vLLM applies as shipped (the same
+    # fps-driven Qwen2VLVideoBackend).
     "qwen2_5_vl": ProcessorGeometry(
         factor=28,
         min_pixels=56 * 56,
         max_pixels=28 * 28 * 16384,
         video_min_pixels=56 * 56,
         video_max_pixels=28 * 28 * 16384,
+        video_fps_only=True,
     ),
     # Qwen3-VL, Qwen3.5-397B and Qwen3.6-27B checkpoints: patch 16 x merge 2 and size {shortest_edge: 65536,
     # longest_edge: 16777216} in preprocessor_config.json, which vLLM applies as shipped. The video
@@ -187,9 +196,9 @@ class VideoPolicy(BaseModel):
     ``video_url`` (engine-sampled, an opt-in for models with a native video encoder):
     the container is sent unchanged and the engine decodes and samples it (Qwen-VL
     towers then merge frame pairs in time and see timestamps). A stock engine samples
-    its own default -- the checkpoint's processor fps on the Qwen3-VL backend, whose
-    loader is fps-driven and ignores ``num_frames``; the default loader's 32 frames
-    elsewhere -- so ``video_url`` is refused unless
+    its own default -- the checkpoint's own processor rate on the Qwen-VL backends,
+    whose loaders are fps-driven and ignore ``num_frames``; the default loader's own
+    count elsewhere -- so ``video_url`` is refused unless
     :attr:`engine_video_pinning` declares the engine pinned -- to a uniform
     :attr:`num_frames`, or to the engine's own fps rule (:attr:`fps`, the vLLM v0.31.0
     ``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped
@@ -320,10 +329,11 @@ class VideoPolicy(BaseModel):
         if not self.engine_video_pinning:
             raise ValueError(
                 "`wire: video_url` sends the container for the engine to sample, so the frame count is the "
-                "engine's own default (the checkpoint's processor fps on the Qwen3-VL backend, whose loader "
-                "ignores `num_frames`; 32 frames on the default vLLM loader elsewhere), not the declared "
-                "one. Declare `engine_video_pinning: true` and serve the engine pinned to the same sampling "
-                "(`--media-io-kwargs` on vLLM), or declare `wire: frames`, which the client samples itself."
+                "engine's own default (the checkpoint's own processor rate on the Qwen-VL backends, whose "
+                "loaders are fps-driven and ignore `num_frames`; the default vLLM loader's own count "
+                "elsewhere), not the declared one. Declare `engine_video_pinning: true` and serve the engine "
+                "pinned to the same sampling (`--media-io-kwargs` on vLLM), or declare `wire: frames`, which "
+                "the client samples itself."
             )
         return self
 
@@ -1165,7 +1175,10 @@ def content_media_tokens(
     the checkpoint's own tokenizer); without one the family's declared per-group bound is used and the
     count is a bound. The client passes its loaded tokenizer, so the count it gates with is exact. A pinned
     ``num_frames`` policy on that family is REFUSED: the Qwen3-VL backend samples by fps and ignores
-    ``num_frames``, so the pin would name a layout the engine never renders.
+    ``num_frames``, so the pin would name a layout the engine never renders. The Qwen2-VL families
+    (``qwen2_vl``, ``qwen2_5_vl``) are REFUSED for a container under either rule: their engine backend
+    (vLLM v0.31.0's ``Qwen2VLVideoBackend``) is fps-driven too and its fps rule is not ported here, so no
+    declaration can be counted honestly -- send frames instead.
 
     Videos are counted as shown (:func:`sample_video_part`, which refuses clips shorter than the frame
     budget), and ``bounded`` counts the references counted at a bound.
@@ -1219,9 +1232,9 @@ def _container_tokens(
     is the family's own video budget (:data:`PROCESSORS`), never the image policy's -- the container is
     sent unchanged, so the client's pixel budget never reaches the engine:
 
-    * the Qwen2-VL families size each frame independently by the checkpoint's per-frame budget -- stock
-      vLLM's accounting, which passes the image processor's size for videos (qwen2_vl.py:1014 @
-      d0d6e5f3a) -- under one vision block for the whole clip.
+    * the Qwen2-VL families (``qwen2_vl``, ``qwen2_5_vl``) are refused: their engine backend (vLLM
+      v0.31.0's ``Qwen2VLVideoBackend``) samples by fps and ignores ``num_frames``, and its fps rule is
+      not ported here, so a pinned policy would count a layout the engine never renders.
     * ``qwen3_vl`` constrains the whole clip (a clip-level budget that shrinks per-frame resolution as the
       frame count grows) and renders one timestamp line and one vision block per temporal group, inside the
       chat template's own vision pair around the video placeholder. The timestamp lines are counted exactly
@@ -1272,18 +1285,36 @@ def _container_tokens(
                 + sum(ts + VISION_WRAPPER_TOKENS + tokens for ts, tokens in zip(timestamps, group_tokens, strict=True)),
                 timestamp_bound,
             )
-        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens (each merged token
-        # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp.
-        clip_bound = clip_max_pixels // (geometry.temporal_patch * geometry.factor**2)
+        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens, PER GROUP. The
+        # resize enforces the ceiling over ``t_bar = round(n / temporal_patch) * temporal_patch`` frames
+        # (smart_resize's own bar), while the engine renders ``ceil(n / temporal_patch)`` groups -- one more
+        # for an odd n -- so the whole-clip figure ``ceiling // (temporal_patch * factor^2)`` is not an
+        # upper bound: each group may keep up to ``ceiling // (t_bar * factor^2)`` merged tokens. n = 1 has
+        # t_bar 0 (no temporal shrink: one frame keeps the whole ceiling), bounded by the ceiling itself.
+        groups = len(timestamps)
+        t_bar = round(frames / geometry.temporal_patch) * geometry.temporal_patch
+        per_group_bound = clip_max_pixels // (max(t_bar, 1) * geometry.factor**2)
         if video.engine_video_pruning:
-            group_tokens = _pruned_group_tokens(clip_bound // len(timestamps), len(timestamps), video)
+            group_tokens = _pruned_group_tokens(per_group_bound, groups, video)
             patch_total = sum(group_tokens)
         else:
-            group_tokens = [clip_bound // len(timestamps)] * len(timestamps)
-            patch_total = clip_bound
+            patch_total = groups * per_group_bound
         return (
             VISION_WRAPPER_TOKENS + patch_total + sum(ts + VISION_WRAPPER_TOKENS for ts in timestamps),
             1,
+        )
+    if geometry.video_fps_only and video.num_frames is not None:
+        # This family's engine video backend samples by fps and IGNORES num_frames (vLLM v0.31.0's
+        # Qwen2VLVideoBackend for qwen2_vl/qwen2_5_vl), and its fps rule is not ported here (only
+        # qwen3_vl's is): a pinned policy would count a layout the engine never renders, so a container
+        # cannot be counted for this family at all.
+        raise ConfigError(
+            f"cannot count the container {ref.uri}: the {image.processor} engine video backend samples by fps "
+            "and ignores num_frames (vLLM v0.31.0's Qwen2VLVideoBackend), so a pinned `num_frames` names a "
+            "layout the engine never renders; and the family's fps rule is not ported here (only the qwen3_vl "
+            "family's is), so a container cannot be counted for this family.",
+            hint="send frames instead (`video_policy: {num_frames: N, wire: frames}`, client-sampled and "
+            "exact), or serve a qwen3_vl checkpoint whose fps rule is ported",
         )
     if video.num_frames is None:
         raise ConfigError(

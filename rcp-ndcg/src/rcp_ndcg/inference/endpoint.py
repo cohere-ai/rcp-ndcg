@@ -22,6 +22,28 @@ from rcp_ndcg.support.urls import safe_url
 #: An environment variable name: a letter or underscore, then letters, digits or underscores.
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+#: The schemes an endpoint's ``base_url`` may use: the HTTP wire, or the offline fakes.
+_BASE_URL_SCHEMES = frozenset({"http", "https", FAKE_SCHEME.rstrip(":/")})
+
+
+def _checked_base_url(url: str) -> str:
+    """``url`` without its trailing slashes, refused as a typed error unless its scheme is usable.
+
+    A schemeless (``localhost:8000/v1``) or mistyped (``htp://...``) URL would reach httpx as an unsupported
+    protocol and be treated as an outage -- retried, set aside and parked for ``wait_on_outage_s`` (1800 s by
+    default) before failing. It is a config error: name it through :func:`safe_url` (the URL may carry
+    credentials) and raise immediately.
+    """
+    stripped = url.rstrip("/")
+    scheme, separator, _ = stripped.partition("://")
+    if not separator or scheme.lower() not in _BASE_URL_SCHEMES:
+        raise ConfigError(
+            f"base_url {safe_url(stripped)} has no usable scheme: give http://host:port[/path], https://..., "
+            f"or {FAKE_SCHEME} for the offline fakes",
+            hint="a schemeless or mistyped URL would otherwise be retried and parked as an outage",
+        )
+    return stripped
+
 
 class Endpoint(BaseModel):
     """A served model and how to reach it.
@@ -32,7 +54,9 @@ class Endpoint(BaseModel):
             its default. Content: which service computes the numbers.
         base_url: The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API.
             One URL, or a list of replica URLs of the same served model (each request goes to the live replica
-            with the fewest in flight; the offline fakes are one URL, never a list). A role that reaches
+            with the fewest in flight; the offline fakes are one URL, never a list). The scheme must be
+            ``http://``, ``https://`` or ``fake://``: a schemeless or mistyped URL is refused with a typed
+            ``ConfigError`` rather than retried and parked as an outage. A role that reaches
             replicas over several URLs lists them in its own config (the judge: one URL or a replica list).
         model: The served model name, sent as the request's ``model``.
         revision: The checkpoint commit the served weights resolved to; recorded in identities, so two
@@ -100,10 +124,10 @@ class Endpoint(BaseModel):
         if isinstance(value, str):
             if not value:
                 raise ValueError("base_url: give one URL or a non-empty list of replica URLs")
-            return value.rstrip("/")
+            return _checked_base_url(value)
         if not value:
             raise ValueError("base_url: give one URL or a non-empty list of replica URLs")
-        urls = [url.rstrip("/") for url in value]
+        urls = [_checked_base_url(url) for url in value]
         # Typed refusals, never a ValueError: pydantic would render the raw input (credentials embedded in a
         # URL included) into the ValidationError's text; the message names the URLs through safe_url.
         if len(set(urls)) < len(urls):

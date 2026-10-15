@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import random
 import threading
 import time
 from collections.abc import Coroutine, Mapping, Sequence
@@ -34,6 +35,7 @@ from typing import Any, ClassVar, Protocol, Self, TypeVar, runtime_checkable
 import httpx
 
 from rcp_ndcg.errors import (
+    UNAVAILABLE_STATUSES,
     BackendUnavailableError,
     ConfigError,
     CredentialsError,
@@ -159,9 +161,20 @@ def _redacted(exc: BaseException) -> _RedactedFailure:
 
 class _Unavailable(Exception):
     """One attempt failed the way the shared status map calls unavailable: a connection error, a timeout, or an
-    HTTP 408, 429 or 5xx reply. Retried on the replica up to ``max_retries``, then the replica is set aside."""
+    HTTP 408, 429 or 5xx reply. Retried on the replica up to ``max_retries``, then the replica is set aside.
 
-    def __init__(self, describe: str, *, cause: BaseException | None = None, retry_after: float | None = None) -> None:
+    A 408 or 429 is a :attr:`load_failure`: it says the endpoint is under load, not that this request is bad,
+    so the rejection rule never applies to it -- it stays on the outage path.
+    """
+
+    def __init__(
+        self,
+        describe: str,
+        *,
+        cause: BaseException | None = None,
+        retry_after: float | None = None,
+        load_failure: bool = False,
+    ) -> None:
         super().__init__(describe)
         self.describe = describe
         """What happened, for a message: ``ConnectError: refused`` or ``HTTP 503: <body>`` (never a header)."""
@@ -169,6 +182,9 @@ class _Unavailable(Exception):
         """The underlying exception, chained into the errors the transport raises."""
         self.retry_after = retry_after
         """The server's ``Retry-After``, when the failed reply carried one."""
+        self.load_failure = load_failure
+        """Whether the failure is the endpoint's load (HTTP 408 or 429), not this request's: the rejection
+        rule (a replica that served others is up) is never applied to it."""
 
 
 async def _sleep(seconds: float) -> None:
@@ -200,6 +216,20 @@ def _retry_after(headers: Mapping[str, str]) -> float | None:
 def _body_text(response: httpx.Response) -> str:
     """The response body as text for an error message, cut to 500 characters (a header value is never in it)."""
     return response.text[:500]
+
+
+def _malformed_url(url: str, exc: BaseException) -> ConfigError:
+    """The typed error for an unusable base URL: a config error, not the outage path.
+
+    httpx's ``UnsupportedProtocol`` (a schemeless or mistyped scheme) and ``InvalidURL`` say the URL itself
+    is wrong, so retrying it, setting the replica aside and parking for ``wait_on_outage_s`` cannot help; the
+    message names the URL through :func:`safe_url` (it may carry credentials) and the hint says what a
+    ``base_url`` must look like.
+    """
+    return ConfigError(
+        f"base_url {safe_url(url)} cannot be used: {describe_failure(exc)}",
+        hint="give base_url as http://host:port[/path] or https://..., or fake:// for the offline fakes",
+    )
 
 
 def _reply(response: httpx.Response, *, url: str | None = None) -> Reply:
@@ -245,7 +275,8 @@ class Transport:
       holds a concurrency slot), then ``BackendUnavailableError`` whose message states how long the endpoint
       was unavailable;
     * **the rejection rule** -- a replica that served other requests since this request first failed there is
-      up, and this failure belongs to this request: ``RequestRejectedError``.
+      up, and this failure belongs to this request: ``RequestRejectedError``. A connection failure, timeout or
+      5xx can say that; a 408 or 429 cannot (it is the endpoint's load), so those stay on the outage path.
     """
 
     #: First time a replica is set aside after it failed (seconds); doubles up to the maximum. The judge's
@@ -374,9 +405,10 @@ class Transport:
                     replies = await self._send_on(replica, calls, headers[replica.url])
                 except _Unavailable as exc:
                     index = self._replicas.index(replica)
-                    if index in failed_at and replica.successes > failed_at[index]:
+                    if not exc.load_failure and index in failed_at and replica.successes > failed_at[index]:
                         # Other requests got through on this replica since this one first failed there: the
-                        # replica is up, and this failure belongs to this request.
+                        # replica is up, and this failure belongs to this request. Never a 408 or 429: those
+                        # are the endpoint's load, and stay on the outage path (park and retry).
                         raise RequestRejectedError(
                             f"the endpoint refused this request after serving others ({exc.describe})"
                         ) from exc.cause
@@ -413,9 +445,17 @@ class Transport:
         """One call, once, to one replica; the shared status map decides reply or error."""
         headers = {**base_headers, **call.headers}
         path = call.path if call.path.startswith("/") else f"/{call.path}"
-        request = self._client().build_request(call.method, self._url(replica, path), json=call.json, headers=headers)
+        try:
+            request = self._client().build_request(
+                call.method, self._url(replica, path), json=call.json, headers=headers
+            )
+        except httpx.InvalidURL as exc:
+            raise _malformed_url(replica.url, exc) from None
         try:
             response = await self._client().send(request)
+        except (httpx.UnsupportedProtocol, httpx.InvalidURL) as exc:
+            # The URL, not the endpoint: a config error now, never an outage parked out for 30 minutes.
+            raise _malformed_url(replica.url, exc) from None
         except httpx.TransportError as exc:
             raise _Unavailable(describe_failure(exc), cause=_redacted(exc)) from None
         status = response.status_code
@@ -425,7 +465,10 @@ class Transport:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:  # always: every unavailable status is an error status
                 raise _Unavailable(
-                    f"HTTP {status}: {text}", cause=_redacted(exc), retry_after=_retry_after(response.headers)
+                    f"HTTP {status}: {text}",
+                    cause=_redacted(exc),
+                    retry_after=_retry_after(response.headers),
+                    load_failure=status in UNAVAILABLE_STATUSES,
                 ) from None
             raise AssertionError(f"unreachable: HTTP {status} is an error status")
         error = status_error(
@@ -528,15 +571,26 @@ class Transport:
         return min(live, key=lambda replica: (replica.in_flight, replica.sent)) if live else None
 
     def _set_aside(self, replica: _Replica, exc: _Unavailable) -> None:
-        """Take ``replica`` out of rotation after it failed, for a backoff that doubles while it keeps failing."""
+        """Take ``replica`` out of rotation after it failed, for a backoff that doubles while it keeps failing.
+
+        A ``Retry-After`` on the failure is the wait the server asks for, so it is the set-aside window: the
+        endpoint knows when it can serve again. Without one, a load failure's wait is jittered over the second
+        half of the backoff, so the requests parked on a rate-limited replica do not all return at one instant.
+        """
         self._last_error = exc.cause or exc
         self._last_describe = exc.describe
         now = time.monotonic()
         if replica.down_until > now:
             return  # already set aside, by a request sent before it went down
-        wait = replica.backoff or self.BACKOFF_S
+        base = replica.backoff or self.BACKOFF_S
+        if exc.retry_after is not None:
+            wait = exc.retry_after
+        elif exc.load_failure:
+            wait = base * (0.5 + random.random() / 2)
+        else:
+            wait = base
         replica.down_until = now + wait
-        replica.backoff = min(wait * 2, self.MAX_BACKOFF_S)
+        replica.backoff = min(base * 2, self.MAX_BACKOFF_S)
         others = sum(other.down_until <= now for other in self._replicas)
         logger.warning(
             "%s unavailable (%s); not sending to it for %.0fs%s",

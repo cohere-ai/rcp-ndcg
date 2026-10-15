@@ -33,9 +33,9 @@ def safe_url(url: str) -> str:
     return f"{scheme}://{authority}/{path}" if path else f"{scheme}://{authority}"
 
 
-#: A URL inside free text (an exception's message): a scheme, ``://``, then everything up to whitespace or a
-#: quote.
-_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s'\"<>]+")
+#: A URL inside free text (an exception's message): a scheme, ``://``, then everything up to whitespace, a
+#: quote or a comma (a comma-joined URL list is several URLs, each redacted on its own).
+_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s'\"<>,]+")
 
 
 def redact_urls(text: str) -> str:

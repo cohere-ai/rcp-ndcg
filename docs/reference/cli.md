@@ -91,7 +91,7 @@ the form its wire speaks -- `.../v1` for `api: openai_embeddings`, the engine's 
 | `--depth INT`, `--limit INT` | candidate depth; the first N — queries on `judge tournament\|rubric`, records on `data convert`, runs on `run list` |
 | `--rrf-k INT` | `run start`: the fusion's RRF constant k in 1 / (k + rank) (sets `candidates.fuse.rrf_k`); the systems to fuse stay the config's ([the fuse step](../concepts/runs.md#runs-and-job-runners)) |
 | `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time (a floor); call no judge; refuse (exit 8) a window carrying more images than the judge's `max_images` |
-| `--dry-run` | print the plan; no side effects; refuses what the real command would refuse |
+| `--dry-run` | print the plan; `calibration insert --dry-run --out` writes the plan file, and `run resume --dry-run` restores from `--mirror` (or the run's mirror) first; otherwise no side effects; refuses what the real command would refuse |
 | `--force` | judge into a store of another identity; the old records are moved aside |
 | `--strict` | `calibration fit`: refuse (exit 12) a query with invalid windows (more than 5% in a stage, or an adaptive one) or a document whose tournament windows are all invalid, instead of warning |
 | `--runner NAME`, `--detach` | `local`, `slurm`, `kubernetes`, or an installed runner; return at once and follow with `run status` |
@@ -108,7 +108,7 @@ Environment variables:
 | `RCP_NDCG_MEDIA_CACHE` | where resolved media is cached; default `media/` under the package cache |
 | `RCP_NDCG_RUNS_DIR` | where runs are created when no `--runs-dir` names a directory |
 | `RCP_NDCG_LOG_LEVEL` | the log level when no `-v` or `-q` is given |
-| `RCP_NDCG_MAX_VIDEO_BYTES` | the largest video inlined into a judge request (default 64 MiB) |
+| `RCP_NDCG_MAX_VIDEO_BYTES` | the largest video inlined into a judge request, as an integer number of bytes (default 64 MiB = 67108864); a malformed value is refused with a typed error at the guard, not at import |
 | `RCP_NDCG_IMAGE_CACHE_SIZE`, `RCP_NDCG_VIDEO_CACHE_SIZE` | prepared images kept in memory per worker while media is prepared, and encoded video containers while a container is inlined into a request |
 | `RCP_NDCG_ENGINES` | the engine overlay a job's phase hands its coordinator: JSON `{"<role>": {"urls": [...], "wait_on_outage_s": 900}, ...}`; applied at run time only, never recorded, and never settable through a job's `runner.options.env` (the phase overlay owns it) ([runs](../concepts/runs.md#starting-the-engines-with-the-run)) |
 
@@ -171,7 +171,7 @@ to fetch; `rcp-ndcg schema show <name>` prints the schema.
 | 8 | `CAPABILITY` | the judge or endpoint cannot take what a request carries: an answer schema it refuses (serve with the reasoning parser, or set `decoding: free`), images or videos beyond its `max_images` / `max_videos`, a window whose media exceed its context, media for a text-only encoder; raised by the first such request |
 | 9 | `INTERRUPTED` | SIGINT or SIGTERM stopped the command, or a run step exceeded its `step_budget_s`; the state on disk is consistent; resume |
 | 10 | `DEPENDENCY` | a missing extra; the hint is the exact install command |
-| 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, an insertion whose anchor check failed (`data.extension.anchor_report`); the hint names the differing fields and the way out (a new output directory or run; `--force` where the command has it) |
+| 11 | `IDENTITY` | refusing to mix: resume with a changed config, judgements from another family, an insertion whose anchor check failed (the report is in `error.details.anchor_report`: `ok`, the ability and gain shifts, the tolerance and `documents_checked`; a failure envelope carries no `data`); the hint names the way out (a new output directory or run; `--force` where the command has it) |
 | 12 | `DATA` | input that would produce wrong numbers or does not parse: malformed or non-finite rankings, qrels or gains, gains that match no labelled query, ids that do not join, a document over its text cap with `on_overflow: fail`, a new document the evidence cannot identify, a query with invalid windows under `--strict`, a damaged mirror |
 
 Code 7 is retired: no command returns it, and it is not reused.
