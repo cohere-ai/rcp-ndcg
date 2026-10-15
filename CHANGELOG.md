@@ -72,6 +72,10 @@ incompatibly, independently of the package version. All four distributions carry
   stage-1 captured heads carried it too), and the header's pairs line always printed `?`. The document and
   the captured heads now carry the recorder's placeholder host (`http://engine`, the path kept; one home in
   `record.placeholder_url`, which also handles a URL with no path), and `pairs` names the pairs file.
+- **Harness: the fake-engine docs name the emulator route** (testpkg-8): the docs said no model-level fake
+  ships while 12 verified emulators ship; they now say `target='fake'` covers the registered fakes and name
+  the `fake://vllm-0.31.0/<recipe>` engine-target route the committed corpora's emulators reach a run
+  through once registered, and `fake_engine_for`'s hint names it too.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
