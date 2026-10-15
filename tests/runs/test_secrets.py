@@ -318,6 +318,23 @@ def test_the_restore_log_redacts_credentials(tmp_path: Path, caplog: pytest.LogC
     assert "key:secret" not in caplog.text
 
 
+def test_the_foreign_run_refusal_redacts_the_mirror_uri(tmp_path: Path) -> None:
+    """security-5 (folded into cli-3): the foreign-run error printed the raw mirror URI, which may carry
+    credentials; ``Mirror.__init__`` promises they never reach a log line or an exception message."""
+    from rcp_ndcg import storage
+    from rcp_ndcg.errors import DataError
+
+    remote = "memory://key:secret@mirror/run"
+    (tmp_path / "run").mkdir()
+    (tmp_path / "run" / "manifest.json").write_text('{"run_id": "other"}', encoding="utf-8")
+    storage.write_bytes(f"{remote}/manifest.json", b'{"run_id": "mine"}')
+
+    with pytest.raises(DataError, match="holds the run") as caught:
+        Mirror(tmp_path / "run", remote).restore()
+    assert "key:secret" not in str(caught.value)
+    assert "memory://mirror/run" in str(caught.value)
+
+
 def test_a_restore_temp_with_an_old_mode_does_not_leak_it(tmp_path: Path) -> None:
     """The restore temp path is predictable; a stale one from a killed restore must not hand its 0644 to the
     restored record (``O_CREAT``'s mode applies only when it creates the file)."""

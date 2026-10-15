@@ -231,6 +231,24 @@ class TestStatus:
         _ok("run", "resume", "--run", started["run_dir"], "--mirror", remote, "--dry-run")
         assert Run(started["run_dir"]).manifest.status.value == "completed"
 
+    def test_a_second_run_sharing_a_mirror_prefix_is_refused_before_the_staging_flush(
+        self, data: Path, tmp_path: Path, scheduler
+    ) -> None:
+        """runs-6: the submit-time flush had no foreign-run check, so a second run of the same config
+        overwrote the first run's manifest on the mirror."""
+        remote = "memory://mirror/shared"
+        storage.filesystem("memory://").pipe("/data/rows.jsonl", data.read_bytes())
+        config = _config(data, tmp_path, mirror=remote, runner={"name": "pod"})
+        rows = yaml.safe_load(config.read_text())
+        config.write_text(yaml.safe_dump({**rows, "dataset": "jsonl:memory://data/rows.jsonl"}), encoding="utf-8")
+        first = _submit(config, tmp_path, "pod")
+
+        code, error = _invoke("run", "start", str(config), "--runs-dir", str(tmp_path / "runs"), "--runner", "pod")
+        assert code == 12, error
+        assert "holds the run" in error["message"]
+        manifest = json.loads(storage.read_text(f"{remote}/manifest.json"))
+        assert manifest["run_id"] == Path(first["run_dir"]).name
+
     def test_a_submission_that_fails_leaves_a_failed_run_saying_why(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

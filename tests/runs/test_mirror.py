@@ -97,6 +97,54 @@ def test_a_rewritten_store_is_refused_rather_than_mirrored_over(tmp_path: Path) 
         Mirror(tmp_path, REMOTE).flush()
 
 
+def test_a_superseded_store_refuses_the_whole_flush_before_uploading(tmp_path: Path) -> None:
+    """robust-1/runs-5: the flush must check every append-only file before it uploads anything, so a
+    superseded store never leaves the mirror holding the new ``identity.json`` beside the old parts."""
+    store = tmp_path / "store"
+    store.mkdir()
+    (store / "identity.json").write_text('{"identity": "OLD"}', encoding="utf-8")
+    (store / "tournament.jsonl").write_bytes(b'{"window": 0}\n')
+    Mirror(store, REMOTE).flush()
+    assert storage.read_text(f"{REMOTE}/identity.json") == '{"identity": "OLD"}'
+
+    # The store is superseded (--force with a changed identity): the old file moves aside, the identity is
+    # rewritten and the new generation starts a shorter file.
+    (store / "superseded").mkdir()
+    (store / "tournament.jsonl").rename(store / "superseded" / "old.jsonl")
+    (store / "identity.json").write_text('{"identity": "NEW"}', encoding="utf-8")
+    (store / "tournament.jsonl").write_bytes(b'{"n": 1}\n')
+
+    with pytest.raises(DataError, match="no longer extends"):
+        Mirror(store, REMOTE).flush()
+    assert storage.read_text(f"{REMOTE}/identity.json") == '{"identity": "OLD"}'
+
+
+def test_restore_refuses_a_local_file_that_is_not_a_prefix_of_the_parts(tmp_path: Path) -> None:
+    """robust-1: restore must not replace a superseded generation's shorter file with the old parts."""
+    storage.write_bytes(f"{REMOTE}/tournament.jsonl.parts/000000000000-000000000013", b'{"window": 0}\n')
+    local = tmp_path / "store"
+    local.mkdir()
+    (local / "tournament.jsonl").write_bytes(b'{"n": 1}\n')
+
+    with pytest.raises(DataError, match="prefix"):
+        restore(local, REMOTE)
+    assert (local / "tournament.jsonl").read_bytes() == b'{"n": 1}\n'
+
+
+def test_restore_refuses_keys_escaping_the_run(tmp_path: Path) -> None:
+    """security-3: an object store allows keys with '..' segments; restoring one must not write outside the
+    run directory (a shared or compromised mirror prefix could overwrite any file of the user)."""
+    from fsspec.implementations.memory import MemoryFile
+
+    fs = storage.filesystem("memory://")
+    fs.pipe_file("/mirror/run/manifest.json", b'{"run_id": "run"}')
+    fs.store["/mirror/run/../../escape.txt"] = MemoryFile(fs, "/mirror/run/../../escape.txt", b"x")
+
+    with pytest.raises(DataError, match="escapes"):
+        restore(tmp_path / "run", "memory://mirror/run")
+    assert not (tmp_path / "escape.txt").exists()
+
+
 def test_a_run_whose_node_vanished_resumes_from_its_mirror_asking_only_the_missing_windows(
     data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

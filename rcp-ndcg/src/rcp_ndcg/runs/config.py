@@ -331,8 +331,9 @@ class RunConfig(BaseModel):
         calibration: How the calibrate step fits.
         evaluation: What the evaluate step scores.
         preprocessing: The text policy, chunking and image policy the judging steps apply.
-        mirror: Any fsspec URI (e.g. ``s3://bucket/runs``) the run directory is mirrored to while it runs, and
-            restored from on resume (:mod:`rcp_ndcg.runs.mirror`).
+        mirror: Any fsspec URI (e.g. ``s3://bucket/runs/<run-id>``) the run directory is mirrored to while it
+            runs, and restored from on resume (:mod:`rcp_ndcg.runs.mirror`). The mirror is run-scoped: point
+            each run at its own prefix, since a flush refuses a prefix that holds another run's manifest.
         mirror_interval_s: Seconds between two uploads of the mirror.
         step_budget_s: Wall-clock budget of each step, seconds, checked at the request seams (before a
             transport request and after every park, and before a judging phase's windows): a step over budget
@@ -626,8 +627,19 @@ class RunConfig(BaseModel):
     @field_validator("mirror")
     @classmethod
     def _safe_mirror(cls, value: str | None) -> str | None:
-        """No control character reaches the job's argv (the mirror URI is rendered into every job script)."""
-        return None if value is None else no_control_characters(value)
+        """No control character reaches the job's argv (the mirror URI is rendered into every job script).
+
+        An empty string is refused: it is not a mirror, and resolving it would silently mirror to (and restore
+        from) the current working directory.
+        """
+        if value is None:
+            return None
+        if not value.strip():
+            raise ValueError(
+                "mirror: '' is not a mirror URI (an empty value resolves to the working directory): use null "
+                "to run without a mirror"
+            )
+        return no_control_characters(value)
 
     def resolved(self) -> dict[str, Any]:
         """The config as JSON-ready data: the live form, credentials and all.

@@ -108,6 +108,15 @@ class TestValidation:
         with pytest.raises(ValidationError):
             RunConfig(dataset=DATASET, judge="fake", step_budget_s=0)
 
+    def test_an_empty_mirror_is_refused_rather_than_defaulted_to_the_cwd(self) -> None:
+        """runs-9: ``--set mirror=`` turned into '', which resolved to the current working directory and
+        mirrored the run there (and restored the cwd tree into the run)."""
+        assert RunConfig(dataset=DATASET, judge="fake").mirror is None
+        with pytest.raises(ValidationError, match="mirror"):
+            RunConfig.model_validate({"dataset": DATASET, "judge": "fake", "mirror": ""})
+        with pytest.raises(ConfigError, match="mirror"):
+            RunConfig.from_data({"dataset": DATASET, "judge": "fake"}, overrides=["mirror="])
+
 
 class TestServe:
     """``serve:`` names one engine per role; a served role must name a config the engine can serve."""
