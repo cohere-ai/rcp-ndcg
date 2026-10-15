@@ -56,6 +56,12 @@ incompatibly, independently of the package version. All four distributions carry
   declared and ignored, so a caller serving a recipe under an alias got 404s pointing away from it; the
   alias is now the endpoint config's `model` (`recipe_config`/`role_client` carry it), and the recipe id
   when none is given.
+- **Harness: the stored-reference key covers the serve block and the unmanaged interpreter** (testpkg-3):
+  the reference receives the whole resolved recipe through `--recipe`, and its media arms read
+  `serve.mm_processor_kwargs`/`serve.extra_args`, but the key carried no `serve` field; with no environment
+  lock (the equivalence CLI's case) it also carried no interpreter identity, so an upgraded reference venv
+  reused stale outputs. The key now carries `serve.<field>` and, when `lock_sha256` is `None`, the reference
+  interpreter's real path; `REFERENCE_FINGERPRINT_SCHEMA` is `rcp-ref-fp/3`, so old entries never collide.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does

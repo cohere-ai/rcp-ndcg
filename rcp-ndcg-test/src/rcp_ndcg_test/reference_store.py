@@ -7,8 +7,11 @@ content-addressed key so a wave computes only the missing or stale ones and stag
 against the stored reference.
 
 The key is :func:`reference_fingerprint`: the SHA-256 of the named inputs the brief fixes -- the family's
-reference hash, the variant revision, the pairs-file hash, the reference environment's lock hash, the
-device and the dtype -- plus the model, the role's mode, the reference block's own facts and the client
+reference hash, the variant revision, the pairs-file hash, the reference environment's lock hash (or, when
+there is none, the reference interpreter's real path), the device and the dtype -- plus the model, the
+role's mode, the reference block's own facts, the resolved recipe's ``serve`` block (the reference
+receives the whole resolved recipe through ``--recipe``; its media arms read ``serve.mm_processor_kwargs``
+and ``serve.extra_args``) and the client
 fields the reference renders from (the request-classified fields, :data:`CLIENT_FIELDS`; a query-prompt or
 template change re-renders the reference, so it must move the key).  Staleness
 reuses the observation corpora's mechanism, one home (:mod:`rcp_ndcg_test.fingerprint`): a store entry
@@ -54,10 +57,13 @@ __all__ = [
     "store_path",
 ]
 
-REFERENCE_FINGERPRINT_SCHEMA = "rcp-ref-fp/2"
+REFERENCE_FINGERPRINT_SCHEMA = "rcp-ref-fp/3"
 """The reference-output key rule's version: changing the input set is a new schema, so old and new
-entries never collide in one key.  Version 2 adds the client render inputs (``client.<field>``): an entry
-keyed without them could hold a reference rendered from a different client block."""
+entries never collide in one key.  Version 2 added the client render inputs (``client.<field>``): an entry
+keyed without them could hold a reference rendered from a different client block.  Version 3 adds the
+``serve`` block the reference contract hands over (``serve.mm_processor_kwargs``, ``serve.extra_args``,
+...: the media references read them) and, when no environment lock applies, the reference interpreter's
+real path -- the CLI passes no lock, and an upgraded reference venv reused the old outputs otherwise."""
 
 _MANIFEST = "manifest.json"
 _OUTPUT = "output.json"
@@ -106,6 +112,8 @@ def reference_fingerprint_inputs(
     mode: str,
     reference: dict[str, Any] | None = None,
     client: dict[str, Any] | None = None,
+    serve: dict[str, Any] | None = None,
+    reference_python: str | None = None,
 ) -> dict[str, str]:
     """Every named input of a stored reference output's key.
 
@@ -113,10 +121,13 @@ def reference_fingerprint_inputs(
     pairs the reference receives, the reference environment's lock hash (``None`` when the reference
     runs outside a family environment), the device and dtype, the model id, the reference mode
     (``score`` or ``embed``), the resolved recipe's ``reference`` block (its score scale, known
-    deviations, ... -- whatever shapes the output) and the resolved recipe's ``client`` block (only the
+    deviations, ... -- whatever shapes the output), the resolved recipe's ``client`` block (only the
     request-classified fields are keyed, named ``client.<field>``, because the reference renders from
-    them; the MRL selection is excluded).  Output: the flat map, dotted names to canonical
-    strings.  Units: none.
+    them; the MRL selection is excluded), the resolved recipe's ``serve`` block (the reference receives the
+    whole resolved recipe through ``--recipe`` and its media arms read ``serve.mm_processor_kwargs`` and
+    ``serve.extra_args``) and the reference interpreter (keyed by its real path only when ``lock_sha256``
+    is ``None``: a locked environment is identified by its lock, an unmanaged one by the interpreter).
+    Output: the flat map, dotted names to canonical strings.  Units: none.
     """
     inputs: dict[str, str] = {
         "reference_schema": REFERENCE_FINGERPRINT_SCHEMA,
@@ -134,6 +145,10 @@ def reference_fingerprint_inputs(
     for field, value in sorted((client or {}).items()):
         if CLIENT_FIELDS.get(field) == "request" and field not in _STORE_CLIENT_EXCLUSIONS:
             inputs[f"client.{field}"] = _canonical(value)
+    for field, value in sorted((serve or {}).items()):
+        inputs[f"serve.{field}"] = _canonical(value)
+    if lock_sha256 is None and reference_python:
+        inputs["reference_python"] = str(Path(reference_python).resolve())
     return inputs
 
 

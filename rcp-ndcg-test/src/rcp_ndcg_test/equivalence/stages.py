@@ -2132,6 +2132,8 @@ def _reference_outputs(
                 mode=mode,
                 reference=reference_of(recipe).model_dump(mode="json"),
                 client=recipe.client,
+                serve=recipe.serve.model_dump(mode="json"),
+                reference_python=reference_python,
             )
             stored, changed = load_stored(store, key)
             if stored is not None:

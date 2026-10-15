@@ -96,11 +96,14 @@ declares `reference.device: cuda` in its recipe file, and a CPU reference run fo
 way out (a pod that cannot spare the GPU fails that recipe early, never silently on CPU).
 
 Stage 2's reference outputs are **stored**: keyed by the family reference hash, the
-variant revision, the pairs-file hash, the environment lock hash, the device and the dtype, under
+variant revision, the pairs-file hash, the environment lock hash (or, when no lock applies, the reference
+interpreter's real path), the device and the dtype, the resolved recipe's `serve` block and the client
+render fields, under
 `<out>/references` (or `--reference-store <dir>` from a previous wave). A wave computes only the missing
 or stale entries; `equivalence.json` records `reference_outputs` (`computed` or `reused`, the fingerprint
 and the inputs that moved) and `reference_environment` (the family, its lock hash and the venv's freeze).
-A changed pairs file, revision, lock or dtype invalidates; an unchanged one reuses.  Media rows ride the
+A changed pairs file, revision, lock, dtype, serve pin, client render field or unmanaged interpreter
+invalidates; an unchanged one reuses.  Media rows ride the
 same comparison: the five media families' references (qwen3-vl-embedding, qwen3-vl-reranker,
 topk-embed-v1, pplx-embed-v2-late, embeddinggemma-2) read the harness's `media` field in their embed and
 score modes -- an inline image as a loaded PIL image, a container at the recipe's declared video pin
