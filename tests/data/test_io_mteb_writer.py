@@ -71,9 +71,7 @@ def test_a_per_side_task_instruction_needs_a_card(tmp_path: Path) -> None:
 def test_a_documents_title_is_written_verbatim(tmp_path: Path) -> None:
     """A title's own whitespace is part of the model's text: mteb joins ``(title + ' ' + body).strip()``, so
     stripping the title at write time changed the joined text between the source and a republished layout."""
-    dataset = a_dataset(
-        corpus=[{"doc_id": "d1", "title": "Foo ", "text": "body"}, {"doc_id": "d2", "text": "other"}]
-    )
+    dataset = a_dataset(corpus=[{"doc_id": "d1", "title": "Foo ", "text": "body"}, {"doc_id": "d2", "text": "other"}])
     out = tmp_path / "layout"
 
     MtebWriter().write_dataset(dataset, str(out))

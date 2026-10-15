@@ -497,9 +497,7 @@ def _save_mteb_predictions(
             continue
         # the cap of mteb's own top_k (retrieval.py: top_k = 1000), ties by document id descending
         capped = rank_by_score(docs, ties="doc_id_desc")[:MTEB_MAX_DOCS]
-        file.setdefault(subset_key, {}).setdefault(split, {})[query_id] = {
-            doc_id: docs[doc_id] for doc_id in capped
-        }
+        file.setdefault(subset_key, {}).setdefault(split, {})[query_id] = {doc_id: docs[doc_id] for doc_id in capped}
     if dropped:
         logger.info(
             f"mteb predictions: dropped the scores of {dropped} queries without qrels "

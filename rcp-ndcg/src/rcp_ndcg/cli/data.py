@@ -492,15 +492,9 @@ def _limited_dataset(reader: Any, documents: list[Any], queries: list[Any], qrel
     gains = {q: {d: g for d, g in judged.items() if d in kept} for q, judged in (reader.gains() or {}).items()}
     thetas = {q: {d: t for d, t in judged.items() if d in kept} for q, judged in (reader.thetas() or {}).items()}
     candidates = {
-        q: [doc_id for doc_id in ids if doc_id in kept]
-        for q, ids in (reader.candidates() or {}).items()
-        if q in qrels
+        q: [doc_id for doc_id in ids if doc_id in kept] for q, ids in (reader.candidates() or {}).items() if q in qrels
     }
-    excluded = {
-        q: [doc_id for doc_id in ids if doc_id in kept]
-        for q, ids in reader.excluded().items()
-        if q in qrels
-    }
+    excluded = {q: [doc_id for doc_id in ids if doc_id in kept] for q, ids in reader.excluded().items() if q in qrels}
     rows = [
         {
             "query_id": query_id,

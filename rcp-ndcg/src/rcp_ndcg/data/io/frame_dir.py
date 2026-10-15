@@ -56,11 +56,7 @@ class FrameDirReader(ImageDirReader):
     def documents(self) -> Iterator[Document]:
         for clip_id, uris in self._clips():
             indices = [_frame_number(uri) for uri in uris]
-            repeated = [
-                f"{earlier}->{later}"
-                for earlier, later in itertools.pairwise(indices)
-                if later <= earlier
-            ]
+            repeated = [f"{earlier}->{later}" for earlier, later in itertools.pairwise(indices) if later <= earlier]
             if repeated:
                 raise DataError(
                     f"the frames of clip {clip_id!r} do not carry strictly increasing numbers "

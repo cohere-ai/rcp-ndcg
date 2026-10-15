@@ -199,7 +199,8 @@ class BeirReader(SourceReader):
         if existing:
             hint = f"the qrels files under {self.uri} name the splits {existing}; read one of them"
         raise MissingInputError(
-            f"no qrels under {self.uri}" + (f" for the split {self.split!r}" if self.split else "")
+            f"no qrels under {self.uri}"
+            + (f" for the split {self.split!r}" if self.split else "")
             + f" (looked for {', '.join(candidates)})",
             hint=hint,
         )

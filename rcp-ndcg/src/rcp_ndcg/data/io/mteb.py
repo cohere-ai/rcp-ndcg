@@ -425,9 +425,7 @@ def _subset_tables(
     drops = _pool_of(excluded, set(corpus_ids), query_ids, what="excluded")
     _check_pairs(gains, qrels, "gains")
     _check_pairs(thetas, qrels, "thetas")
-    return _tables(
-        corpus, query_rows, qrels, pools, drops, gains, thetas, _config_prefix(subset), task_instruction
-    )
+    return _tables(corpus, query_rows, qrels, pools, drops, gains, thetas, _config_prefix(subset), task_instruction)
 
 
 def _write_configs(tables: dict[str, pa.Table], uri: str, split: str) -> None:

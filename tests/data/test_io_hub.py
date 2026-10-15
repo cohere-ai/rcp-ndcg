@@ -724,9 +724,9 @@ def test_the_instruction_completeness_is_decided_over_the_kept_queries(tmp_path:
 
     root = tmp_path / "repo"
     (root / "default").mkdir(parents=True)
-    pd.DataFrame(
-        {"query-id": ["q1", "q2", "q3"], "corpus-id": ["d1", "d2", "d3"], "score": [1, 1, 1]}
-    ).to_parquet(root / "default/qrels.parquet")
+    pd.DataFrame({"query-id": ["q1", "q2", "q3"], "corpus-id": ["d1", "d2", "d3"], "score": [1, 1, 1]}).to_parquet(
+        root / "default/qrels.parquet"
+    )
     pd.DataFrame({"id": ["q1", "q2"], "text": ["one", "two"], "instruction": ["I1", "I2"]}).to_parquet(
         root / "default/queries.parquet"
     )

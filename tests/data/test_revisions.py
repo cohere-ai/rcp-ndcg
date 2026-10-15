@@ -267,9 +267,7 @@ def test_the_mteb_identity_records_the_mteb_version_and_only_a_commit_is_verifie
     module = types.ModuleType("mteb")
     module.get_task = lambda name: FakeTask()  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "mteb", module)
-    monkeypatch.setattr(
-        mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, None)
-    )
+    monkeypatch.setattr(mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, None))
     monkeypatch.setattr(mteb_task_module, "_mteb_version", lambda: "2.21.6")
 
     payload = MtebTaskReader("PublicHealthQARetrieval").revision_payload()
@@ -282,9 +280,7 @@ def test_the_mteb_identity_records_the_mteb_version_and_only_a_commit_is_verifie
     monkeypatch.setattr(mteb_task_module, "_mteb_version", lambda: "2.22.0")
     assert MtebTaskReader("PublicHealthQARetrieval").revision_payload() != payload
 
-    monkeypatch.setattr(
-        mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, SHA_A)
-    )
+    monkeypatch.setattr(mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, SHA_A))
     resolved = MtebTaskReader("PublicHealthQARetrieval").revision_payload()
     assert (resolved["commit"], resolved["verified"]) == (SHA_A, True)
 

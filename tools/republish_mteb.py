@@ -396,9 +396,7 @@ def _validate_written_extras(part: Dataset, target: Path) -> None:
     rows = pq.read_table(target / f"{prefix}qrels" / SHARD.format(split=part.split)).to_pylist()
     for column, table in (("gain", part.gains), ("theta", part.thetas)):
         written = {
-            (str(row["query-id"]), str(row["corpus-id"])): row[column]
-            for row in rows
-            if row.get(column) is not None
+            (str(row["query-id"]), str(row["corpus-id"])): row[column] for row in rows if row.get(column) is not None
         }
         expected = {
             (str(query_id), str(doc_id)): float(value)
