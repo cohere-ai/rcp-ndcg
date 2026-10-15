@@ -138,8 +138,8 @@ class JudgeRequest(JudgeSource, DatasetInput):
     )
     estimate: bool = Field(
         default=False,
-        description="Print calls, tokens and wall time of the pass into an empty store; judge nothing. "
-        "Refuses what the pass would refuse (another identity in --out).",
+        description="Print calls, tokens and wall time (a floor) of the pass into an empty store; judge nothing. "
+        "Refuses what the pass would refuse (another identity in --out, a window over the judge's max_images).",
     )
     force: bool = Field(default=False, description="Supersede judgements of another identity in --out.")
     mirror: str | None = Field(
@@ -343,7 +343,7 @@ def _text(report: JudgeReport) -> str:
             f"~{e.input_tokens:,} input + ~{e.output_tokens:,} output tokens"
         )
         lines.append(f"  {e.assumptions[0]}")
-        lines.append(f"  about {e.wall_s:,.0f} s at the judge's concurrency")
+        lines.append(f"  at least {e.wall_s:,.0f} s at the judge's concurrency")
     lines.append(f"  store {report.out}: {report.stored} windows of this stage before")
     if report.mode == "judged":
         lines.append(f"  {report.judgements} judgements ({report.valid} valid) for these queries now")

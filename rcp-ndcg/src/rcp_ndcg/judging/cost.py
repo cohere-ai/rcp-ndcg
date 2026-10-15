@@ -15,6 +15,12 @@ that declares none and whose pass sends documents whole.
 The request count is a range: every window asks once, and an unparseable answer or a
 refused request is retried up to :data:`~rcp_ndcg.judging.judging.MAX_ATTEMPTS`
 times, each attempt re-sending the prompt (``requests_min``..``requests_max``).
+
+The wall time is a floor, not a projection: it is a per-call constant at the judge's
+concurrency, with no term for what a call carries, and the assumptions say so. And a
+judged window carrying more images than the judge's ``max_images`` is refused (the
+pass's own pre-send gate), so an estimate never blesses a pass whose first call the
+endpoint would reject.
 """
 
 from __future__ import annotations
@@ -27,6 +33,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from rcp_ndcg.errors import CapabilityError
+from rcp_ndcg.inference.adapters.chat import media_counts
 from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule, schedule_for
 from rcp_ndcg.judging.tokens import APPROXIMATION_NOTE, IMAGE_APPROXIMATION_NOTE, approx_media_tokens, approx_tokens
 
@@ -69,7 +77,8 @@ class CostEstimate(BaseModel):
         input_tokens: Prompt tokens (exact or approximate: ``input_token_count``) at one attempt per window;
             retries can take it towards ``requests_max`` times this count.
         output_tokens: Completion tokens (approximate), at one attempt per window.
-        wall_s: Wall time in seconds at the judge's concurrency (approximate).
+        wall_s: Wall time in seconds at the judge's concurrency: a floor, not a projection -- the per-call
+            constant has no term for the tokens or images a call carries.
         stages: Per stage.
         input_token_count: ``"exact"`` when the text was counted with the judge's tokenizer, ``"approximate"``
             when it was estimated from characters (the judge names no tokenizer).
@@ -88,6 +97,50 @@ class CostEstimate(BaseModel):
     stages: dict[str, StageEstimate]
     input_token_count: Literal["exact", "approximate"]
     assumptions: list[str]
+
+
+def _check_window_images(
+    query: Any,
+    planned: Sequence[Sequence[str]] | None,
+    window: int,
+    images: Mapping[str, int],
+    config: JudgeConfig,
+) -> None:
+    """Refuse a window carrying more images than the judge declares it reads (the pass's own pre-send gate).
+
+    A planned pass knows its windows: every planned window of this size is counted. A scheduled pass picks the
+    window's documents itself, so the gate counts the most images any window of this size could carry (the
+    ``window`` documents with the most images).
+
+    Raises:
+        CapabilityError: the window carries more images than ``max_images``, or any image when the judge is
+            declared to read none: the pass's first call of that window would be refused.
+    """
+    if planned is not None:
+        carried = max((sum(images[unit] for unit in rows) for rows in planned if len(rows) == window), default=0)
+    else:
+        carried = sum(sorted(images.values(), reverse=True)[:window])
+    if carried <= config.max_images:
+        return
+    cap = config.max_images
+    reads_none = not cap
+    raise CapabilityError(
+        f"query {query.query_id!r}: a window of {window} documents carries {carried} images and "
+        + (
+            "the judge is not declared to read any (max_images: 0)"
+            if reads_none
+            else f"the endpoint accepts {cap} per request (max_images)"
+        )
+        + ": the first call of this window would be refused",
+        hint=(
+            "declare max_images for a checkpoint that reads images, or judge the text side of the corpus"
+            if reads_none
+            else f"raise max_images to at least {carried} on the judge config (and the server's per-request "
+            "media limit with it), or judge a smaller window"
+        ),
+        cli_hint=f"--set judge.max_images={carried}",
+        details={"query_id": query.query_id, "window": window, "images": carried, "max_images": cap},
+    )
 
 
 def estimate(
@@ -127,6 +180,8 @@ def estimate(
             ``context_tokens`` and a ``tokenizer``); the pass refuses the same. Without a text budget their tokens
             are approximated instead, and the assumptions say so. A rubric schedule whose settings cannot show
             every unit (``n_random * w < n_units``) is refused as the pass refuses it.
+        CapabilityError: a judged window carries more images than the judge's ``max_images`` (or any when the
+            judge is declared to read none): the pass's own pre-send gate, raised here before any call.
     """
     from rcp_ndcg.data.postprocess import document_ids_from_chunks
     from rcp_ndcg.judging._templates import rendered_text
@@ -212,6 +267,8 @@ def estimate(
             else:
                 documents = len(document_ids_from_chunks(query.units, query.chunk_mapping))
                 groups = [(schedule.calls_per_query(documents, n_units=n), min(schedule.window, n))]
+            # The per-unit image counts the pass's own pre-send gate compares against ``max_images``.
+            images_per_unit = {unit: media_counts(query.contents[unit]).images for unit in query.units}
             budgeted = tokenizer is not None and config.context_tokens is not None
             counted_media = _media_tokens(
                 query.contents.values(), effective, strict=budgeted, marker_tokens=marker, tokenizer=tokenizer
@@ -226,6 +283,7 @@ def estimate(
             for n_calls, w in groups:
                 if n_calls == 0:
                     continue
+                _check_window_images(query, unique_planned, w, images_per_unit, config)
                 if tokenizer is not None:
                     overhead = prompt_overhead_tokens(prompt, stage, query.text, w, tokenizer)
                     cap = window_tokens(config, w, overhead_tokens=overhead, media_tokens_per_doc=media)
@@ -283,7 +341,8 @@ def estimate(
         + " and ".join(per_window[stage] for stage in per_stage)
         + (f", capped at max_output_tokens={config.max_output_tokens}" if config.max_output_tokens else "")
         + "; a model that reasons before answering emits more",
-        f"wall time assumes {seconds_per_call:g} s per call at concurrency {config.concurrency}",
+        f"wall time is a floor: {seconds_per_call:g} s per call at concurrency {config.concurrency}, with no "
+        "term for the tokens or images a call carries",
         f"an unparseable or refused answer is retried up to {MAX_ATTEMPTS} attempts, so requests and tokens "
         f"can reach {MAX_ATTEMPTS}x the one-attempt count (requests_min..requests_max)",
     ]

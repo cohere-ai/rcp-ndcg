@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,8 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
 from rcp_ndcg_core.records import RankingExample
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.judging import JudgeConfig, RubricSchedule, TournamentSchedule, estimate, judge
+from rcp_ndcg.errors import CapabilityError, ConfigError
+from rcp_ndcg.judging import CostEstimate, JudgeConfig, RubricSchedule, TournamentSchedule, estimate, judge
 from rcp_ndcg.judging.client import Completion, CompletionInput
 from rcp_ndcg.judging.judging import CHAT_TEMPLATE_TOKENS
 from rcp_ndcg.judging.tokens import APPROX_TOKENS_PER_IMAGE, APPROXIMATION_NOTE, IMAGE_APPROXIMATION_NOTE
@@ -149,6 +150,109 @@ def test_the_estimate_counts_each_planned_window_at_its_own_size(tmp_path: Path,
     words = load_tokenizer(str(word_tokenizer_file))
     assert projected.calls == len(fake.requests) == 3  # the repeated window is asked once
     assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
+
+
+def _image_rows(images_per_doc: int, docs: int = 3) -> list[RankingExample]:
+    """One query whose ``docs`` documents each carry ``images_per_doc`` images."""
+
+    def page(index: int) -> Content:
+        refs = [ImagePart(ref=MediaRef(uri=f"p{index}-{k}.png")) for k in range(images_per_doc)]
+        return Content.from_parts([TextPart(text=f"page {index}"), *refs])
+
+    return [
+        RankingExample(
+            query_id="q",
+            query="q",
+            doc_ids=[f"d{index}" for index in range(docs)],
+            contents=[page(index) for index in range(docs)],
+        )
+    ]
+
+
+def test_a_planned_window_over_the_max_images_is_refused_as_the_pass_refuses_it() -> None:
+    """The estimate is a pre-flight of the pass: a window carrying more images than the judge's
+    ``max_images`` is refused with the pass's own :class:`CapabilityError` -- naming the cap, the window and
+    the fix -- instead of projecting a pass whose first call the endpoint would refuse. The measured run
+    needed 150 images in one window against a shipped cap of 10."""
+    rows = _image_rows(50)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=10, context_tokens=272_000)
+
+    with pytest.raises(CapabilityError) as caught:
+        estimate(rows, None, hosted, stages=["rubric"], windows={"q": [["d0", "d1", "d2"]]})
+
+    error = caught.value
+    assert error.details == {"query_id": "q", "window": 3, "images": 150, "max_images": 10}
+    assert "150" in error.message and "10" in error.message and "q" in error.message
+    assert "max_images" in (error.hint or "")
+    assert error.cli_hint == "--set judge.max_images=150"
+
+
+def test_a_scheduled_window_over_the_max_images_is_refused() -> None:
+    """Without a plan the schedule picks the window's documents, so the gate checks the most images any
+    window of that size could carry (the rubric's image window is three documents here, 150 images)."""
+    rows = _image_rows(50)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=10, context_tokens=272_000)
+
+    with pytest.raises(CapabilityError, match="150 images"):
+        estimate(rows, None, hosted, stages=["rubric"])
+
+
+def test_a_window_at_the_max_images_is_estimated() -> None:
+    """The cap is inclusive: a window carrying exactly ``max_images`` images is the pass's own limit, not a
+    refusal, and a judge declared to read none refuses any window carrying an image."""
+    from rcp_ndcg.errors import RcpNdcgWarning
+
+    rows = _image_rows(50)
+    at_cap = JudgeConfig(base_url="http://h/v1", model="m", max_images=150, context_tokens=272_000)
+    with pytest.warns(RcpNdcgWarning):
+        projected = estimate(rows, None, at_cap, stages=["rubric"], windows={"q": [["d0", "d1", "d2"]]})
+    assert projected.calls == 1
+
+    reads_none = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=272_000)
+    with pytest.raises(CapabilityError, match="max_images: 0"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        estimate(rows, None, reads_none, stages=["rubric"], windows={"q": [["d0", "d1", "d2"]]})
+
+
+def test_the_wall_time_is_labelled_a_floor_in_the_assumptions_and_the_schema() -> None:
+    """The wall time has no term for what a call carries (a 150-image window took 18.9x the projection on
+    the measured run), so the estimate calls it a floor in the assumptions and in the schema's docstring
+    rather than printing a number that reads as an expectation."""
+    import math
+
+    from rcp_ndcg.judging.cost import SECONDS_PER_CALL
+    from rcp_ndcg.schemas import show
+
+    rows, _ = tiny_rows()
+    projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m", concurrency=4))
+
+    assert any("floor" in note and "wall" in note for note in projected.assumptions)
+    assert projected.wall_s == math.ceil(projected.calls / 4) * SECONDS_PER_CALL
+    assert "floor" in show("cost-estimate")["properties"]["wall_s"]["description"]
+    assert "floor" in (CostEstimate.__doc__ or "")
+
+
+def test_the_text_only_numbers_do_not_move(word_tokenizer_file: Path) -> None:
+    """Pin the text-only arithmetic the media gate and the floor label must not touch.
+
+    The measured run's 5,719 + 2,660 calls and 154,506,135 input tokens came from a cluster corpus outside
+    this repository; what is reproducible here is the same path on a fixed plan, frozen below, plus the
+    paper's own per-query counts at a pool of 150. Any change to the text counting moves them.
+    """
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(
+        base_url="http://h/v1", model="m", concurrency=4, tokenizer=str(word_tokenizer_file), max_images=0
+    )
+    projected = estimate(rows, None, judge_cfg)
+
+    assert (projected.calls, projected.input_tokens, projected.output_tokens, projected.wall_s) == (
+        53,
+        85_277,
+        15_120,
+        280.0,
+    )
+    assert projected.input_token_count == "exact"
+    assert (TournamentSchedule().calls_per_query(150), RubricSchedule().calls_per_query(150)) == (216, 100)
 
 
 def _pages(images_per_page: int) -> list[RankingExample]:

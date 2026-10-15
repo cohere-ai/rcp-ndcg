@@ -84,7 +84,7 @@ those now (the run `partial`, exit 0), and a later `run resume --run <dir>` runs
 ## Invariants
 
 - **Estimate before judging.** Run `--estimate` first, show the user `calls`, the request range
-  (`requests_min`..`requests_max`, retries included), the tokens and `wall_s`, then run; input counts are
+  (`requests_min`..`requests_max`, retries included), the tokens and `wall_s` (a floor, not an expectation; a window over `max_images` is refused), then run; input counts are
   exact with a tokenizer, approximate otherwise (2 characters per token), and `input_token_count` says which.
 - **Never pool judgements across families.** A family is the judge model, revision and tokenizer, the prompt,
   criteria, parse version, preprocessing and document-reading rule (title join, text-formatting version);

@@ -290,7 +290,12 @@ counted exactly with the judge's tokenizer, or approximated at 2.0 characters pe
 unparseable answer or a refused request is retried up to three attempts, each re-sending the prompt, so requests
 (and tokens) can reach three times the one-attempt count. For a judge without an `image_processor`, images are
 approximated at 1,000 tokens
-each, stated in the assumptions and warned about (`APPROXIMATE_IMAGE_TOKENS`). The assumptions name only the stages
+each, stated in the assumptions and warned about (`APPROXIMATE_IMAGE_TOKENS`). The wall time is a **floor**: a
+per-call constant at the judge's concurrency with no term for what a call carries, as the assumptions say (the
+CHANGELOG records the measured 150-image window that took 18.9x the projection). The estimate refuses a judged
+window carrying more images than the judge's `max_images` (exit 8, the pass's own pre-send gate: its first real call
+would be refused), naming the cap, the window and `--set judge.max_images=...`; a planned pass counts its windows
+exactly, a scheduled one the most images any window of that size could carry. The assumptions name only the stages
 estimated. A run whose candidates come from retrieval can be estimated before it retrieves: each query's pool is then
 assumed to hold `candidates.depth` documents, and the assumptions say so.
 

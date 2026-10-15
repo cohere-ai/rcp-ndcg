@@ -205,7 +205,8 @@ class RunStartRequest(RunJudgeFields):
     )
     estimate: bool = Field(
         default=False,
-        description="Print the judging steps' calls, tokens and time; run nothing. Refuses what the run would refuse.",
+        description="Print the judging steps' calls, tokens and time (a floor); run nothing. Refuses what the run "
+        "would refuse.",
     )
     dry_run: bool = Field(
         default=False,
@@ -286,7 +287,7 @@ def _start_text(result: RunStartResult) -> str:
                 f"~{stage.output_tokens:>11,} output"
             )
         lines += ["", f"  {'total':<12} {e.calls:>9,} calls  ~{e.input_tokens:>12,} input  ~{e.output_tokens:>11,} "
-                  "output", f"  about {e.wall_s:,.0f} s", "", "Assumptions:"]  # fmt: skip
+                  "output", f"  at least {e.wall_s:,.0f} s", "", "Assumptions:"]  # fmt: skip
         return "\n".join(lines + [f"  - {item}" for item in e.assumptions])
     if result.plan is not None:
         lines = [f"Plan for {result.run_id or 'a new run'}", ""]
