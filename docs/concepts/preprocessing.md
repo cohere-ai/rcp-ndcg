@@ -283,7 +283,10 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   `num_frames` policy is refused at count time: the backend would ignore the pin, so the declared policy
   would name a layout the engine never renders (declare `fps`). The policy refuses a
   single-frame container (the declared instrument merges frames in time, which needs a temporal pair; a
-  single frame is an image), including a clip whose fps sampling realises one frame. Run
+  single frame is an image), including a clip whose fps sampling realises one frame. A container with no
+  `video` policy at all is refused before anything is spent -- by a judging pass (whatever the judge's
+  `context_tokens` or tokenizer settings), by the role clients' request preparation and by `--estimate`
+  alike -- because the engine's own default sampling is nobody's instrument. Run
   `engine_media_check` once against a prepared probe when a serving setup
   changes (below); a mismatch says the engine's media handling is not the one the counted tokens describe.
   An `fps` pin has two halves on an engine whose video loader samples the whole clip and reports the frames

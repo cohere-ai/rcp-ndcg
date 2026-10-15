@@ -28,7 +28,8 @@ The client prepares every image itself (:mod:`rcp_ndcg.data.prepare`), so a stoc
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Self
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, NoReturn, Self
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -1101,6 +1102,42 @@ def _check_frame_count(where: str, available: int | None, frame_policy: VideoPol
         )
 
 
+def refuse_container_without_policy(uri: str) -> NoReturn:
+    """Refuse one video container whose request declares no video policy (the rule's one message).
+
+    Raises:
+        ConfigError: always; the engine's own default sampling is nobody's instrument.
+    """
+    raise ConfigError(
+        f"{uri} is a video container, but no video policy is declared: the engine's own default sampling "
+        "would decide how many frames the judge sees",
+        hint="declare preprocessing.video: {num_frames: N, wire: video_url}",
+    )
+
+
+def refuse_unpolicied_containers(contents: Iterable[Content], video: VideoPolicy | None) -> None:
+    """Refuse a video container with no video policy, whatever a caller's budget settings are.
+
+    The one home of the rule :func:`content_media_tokens` applies when it counts: the engine's own default
+    sampling is nobody's instrument, so a pass that would send the container -- a judge with no
+    ``context_tokens`` or no tokenizer, whose window budget never reaches the count -- refuses it before
+    spending anything, as the estimate path already does.
+
+    Args:
+        contents: The contents a request or a pass would send.
+        video: The effective video policy, or ``None``.
+
+    Raises:
+        ConfigError: a content holds a container part and ``video`` is ``None``.
+    """
+    if video is not None:
+        return
+    for content in contents:
+        for part in content.parts:
+            if isinstance(part, VideoPart) and part.ref is not None:
+                refuse_container_without_policy(part.ref.uri)
+
+
 def content_media_tokens(
     content: Content,
     image: ImagePolicy,
@@ -1191,11 +1228,7 @@ def _container_tokens(
       when ``tokenizer`` is given, else at the family's declared bound (and the count is a bound).
     """
     if video is None:
-        raise ConfigError(
-            f"{ref.uri} is a video container, but no video policy is declared, so the engine's default sampling "
-            "would decide how many frames the judge sees. Declare `preprocessing.video: {num_frames: N, wire: "
-            "video_url}`."
-        )
+        refuse_container_without_policy(ref.uri)
     if image.processor is None:
         raise ConfigError(
             f"cannot count the tokens of the container {ref.uri}: the image policy is native or its processor "
@@ -1427,6 +1460,8 @@ __all__ = [
     "gemma4_fixed_point",
     "gemma4_resize",
     "qwen3_vl_video_frame_indices",
+    "refuse_container_without_policy",
+    "refuse_unpolicied_containers",
     "sample_video_part",
     "smart_resize",
     "uniform_frame_indices",

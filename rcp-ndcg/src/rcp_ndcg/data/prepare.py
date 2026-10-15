@@ -57,6 +57,7 @@ from rcp_ndcg.data.resolution import (
     MediaTokenCount,
     VideoPolicy,
     content_media_tokens,
+    refuse_unpolicied_containers,
     sample_video_part,
 )
 from rcp_ndcg.errors import DataError
@@ -476,8 +477,10 @@ def prepare_request(
     Raises:
         VideoPolicyError: the video policy refuses a clip.
         MediaError: an image cannot be fetched or decoded.
-        ConfigError: media whose token cost cannot be counted (a native policy, or no processor family).
+        ConfigError: media whose token cost cannot be counted (a native policy, or no processor family), or a
+            video container with no video policy (the engine's own default sampling is nobody's instrument).
     """
+    refuse_unpolicied_containers(contents, video)
     prepared = [prepare_content(content, image, video) for content in contents]
     media = [item for one in prepared for item in one.media]
     per_content: list[MediaTokenCount] = []

@@ -426,6 +426,24 @@ class TestJudgingPages:
         assert any(row["doc_id"] == "engine_media_check:not_checked" for row in rows)
 
 
+class TestVideoContainers:
+    def test_a_container_without_a_video_policy_is_refused_without_a_budget(self, tmp_path: Path) -> None:
+        """A judge with no context_tokens (or no tokenizer) used to skip the media count entirely and send a
+        container at the engine's own default sampling, while ``estimate`` refused the same pass; the plan now
+        refuses it whatever the budget settings."""
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))])
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"max_videos": 1})
+
+        with pytest.raises(ConfigError, match="video policy") as caught:
+            judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL)
+        assert "preprocessing.video" in (caught.value.hint or "")
+        assert fake.usage.requests == 0
+
+
 class TestTheFpsFamilyOnPreprocessing:
     """The engine's fps rule is ported for the qwen3_vl family: an explicit other family is refused, while
     the deferred-processor form (the judge config fills the processor via ``for_processor``) stays valid,

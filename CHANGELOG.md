@@ -4366,6 +4366,11 @@ text it sends to the declared budget.
   `--metrics`, so a dataset without released gains (every `beir:` set) hit "RCP-nDCG needs calibrated gains"
   after the rankings were written. `--metrics` now defaults to `rcp_ndcg` + `qrel_ndcg` only when the dataset
   carries released gains, else `qrel_ndcg` alone with a logged note, and the comparison is at the first cutoff.
+- **A video container with no video policy is refused whatever the judge's budget settings** (`g-video-5`):
+  a judge with no `context_tokens` (or no tokenizer) never reached the media count, so a `videos:` corpus was
+  sent at the engine's own default sampling -- recorded as `video: null` -- while `--estimate` refused the same
+  pass. The plan, the role clients' request preparation and the count now share one refusal
+  (`refuse_unpolicied_containers`) with the declare-a-policy hint.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 

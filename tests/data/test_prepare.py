@@ -311,6 +311,17 @@ class TestPrepareRequest:
         assert prepared.tokens == (0, 0)
         assert prepared.media == []
 
+    def test_a_container_without_a_video_policy_is_refused(self, tmp_path: Path):
+        """A role request carrying a container and no video policy used to be sent at the engine's own
+        default sampling: the request is refused by name, as the judging pass refuses the same content."""
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))])
+
+        with pytest.raises(ConfigError, match="video policy") as caught:
+            prepare_request([content], self.POLICY, None)
+        assert "default sampling" in str(caught.value), "the engine's sampling is nobody's instrument"
+
     def test_an_unrecorded_size_is_recovered_by_preparation(self, tmp_path: Path):
         """Preparation decodes the image, so the sent reference carries the size and the count is exact."""
         page = _png(tmp_path / "p.png", (1700, 2200))
