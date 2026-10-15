@@ -22,7 +22,7 @@ A corpus is one directory:
   :func:`verification_records`): which verifier checked the corpus, when, with which tolerances, and the
   result. It is not part of the recording, so no integrity hash covers it.
 
-A **repository subset** (``tests/contract/engines/<engine>-<version>/<recipe>/<fingerprint>/``) carries
+A **repository subset** (``rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<fingerprint>/``) carries
 ``records.jsonl.gz`` (a stratified sample), the full corpus's ``manifest.json`` (byte for byte, or the tracked
 redacted view of it when the recording carried private infrastructure: the manifest's ``engine.redacted``
 entry names the field, the reason and the original's digest), its

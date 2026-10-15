@@ -17,7 +17,7 @@ Two commands, one library:
 Run from a checkout of the repository::
 
     python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
-        --corpora-root tests/contract/engines/vllm-0.31.0
+        --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0
     python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 """
 
@@ -186,7 +186,23 @@ def changed_recipes(recipes_root: str | Path, corpora_root: str | Path) -> dict[
     Returns:
         ``{recipe_id: recipe_state}`` -- a recipe that does not load is reported ``unloadable`` with its
         error and no changed inputs (one failing recipe never stops the selection), never fatal.
+
+    Raises:
+        HarnessError: ``corpora_root`` does not exist or holds no corpus manifest.  A missing root once
+        scanned as empty and reported every recipe ``new`` with exit 0 -- a clean ``nothing changed`` read
+        as no corpora at all (g-observe-10); a root the caller named wrongly is a refusal, not a result.
     """
+    root = Path(corpora_root)
+    if not root.is_dir():
+        raise HarnessError(
+            f"--corpora-root {root} does not exist (the committed corpora live under "
+            "rcp-ndcg-test/corpora/<engine>-<version>)"
+        )
+    if not any(root.rglob("manifest.json")):
+        raise HarnessError(
+            f"--corpora-root {root} holds no corpus manifest (the committed corpora live under "
+            "rcp-ndcg-test/corpora/<engine>-<version>)"
+        )
     states: dict[str, dict[str, Any]] = {}
     for directory in sorted(Path(recipes_root).iterdir()):
         if not (directory / "family.yaml").is_file():
