@@ -4321,6 +4321,14 @@ text it sends to the declared budget.
   previously 404ed with vLLM's "model does not exist"; the configs' budgets and copied blocks are
   unchanged.
 
+- **A judge's output cap floors the engine's context**: vLLM v0.31.0 reserves the request's completion
+  out of `--max-model-len` (its input budget is `max_model_len - max_output_tokens`), so a judge recipe
+  whose `serve.max_model_len` is at or below its client's `max_output_tokens` serves an engine that
+  rejects every request. The recipe loader and `serve` now refuse that pair, naming both numbers. The
+  judges that declare `context_tokens` keep the existing floor (the context must admit the whole window),
+  and every shipped judge's cap (16384 or 8192) sits far below its context (262144 or 131072), so no
+  serve argv moves.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

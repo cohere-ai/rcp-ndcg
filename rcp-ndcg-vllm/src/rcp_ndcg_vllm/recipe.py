@@ -774,6 +774,13 @@ class Recipe(BaseModel):
                 f"client.context_tokens ({context_tokens}) must not exceed engine.max_model_len "
                 f"({self.serve.max_model_len}): the engine would 400 a window the client sized as admissible"
             )
+        output_cap = _output_cap(self)
+        if output_cap is not None and output_cap >= self.serve.max_model_len:
+            raise ValueError(
+                f"client.max_output_tokens ({output_cap}) must be below serve.max_model_len "
+                f"({self.serve.max_model_len}): the engine reserves the completion from the context, "
+                "so a context at or below the cap admits no prompt"
+            )
         if self.role in ("embed", "multi_vector") and client.get("template") is not None:
             # An embed or multi-vector recipe's client CAN fill an instruction span (its encode takes the task
             # instruction and the fit renders the span): the client must declare the policy, or the span would
@@ -1437,6 +1444,20 @@ def _client_budgets(recipe: Recipe) -> dict[str, int]:
     return budgets
 
 
+def _output_cap(recipe: Recipe) -> int | None:
+    """The judge's completion cap (``client.max_output_tokens``), or ``None`` for a role without one.
+
+    The cap is a floor of its own: the engine reserves the completion out of ``--max-model-len`` (vLLM
+    v0.31.0's input budget is ``max_model_len - max_output_tokens``), so a context at or below the cap
+    admits no prompt at all.  A judge that declares no ``context_tokens`` (documents sent whole) would
+    otherwise have no floor here.
+    """
+    if recipe.role != "judge":
+        return None
+    value = recipe.client.get("max_output_tokens")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[str, Any] | None) -> dict[str, Any]:
     """The effective deployment values: the recipe's own, the run's ``port``, the declared defaults, the overrides.
 
@@ -1467,6 +1488,13 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
                 f"serve.max_model_len {values['serve.max_model_len']} is below the client's largest token budget "
                 f"{budgets[largest]} (client.{largest}): the engine would reject admissible prompts"
             )
+    output_cap = _output_cap(recipe)
+    if output_cap is not None and values["serve.max_model_len"] <= output_cap:
+        raise RecipeError(
+            f"serve.max_model_len {values['serve.max_model_len']} must exceed the judge's max_output_tokens "
+            f"{output_cap} (client.max_output_tokens): the engine reserves the completion from the context, "
+            "so a context at or below the cap admits no prompt"
+        )
     return values
 
 
