@@ -18,7 +18,6 @@ arrive in.
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -55,7 +54,7 @@ from rcp_ndcg.data.text_policy import (
     token_prefix,
 )
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
-from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer
+from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer, decode_answer
 from rcp_ndcg.judging._parsing.schema import response_format as _response_format
 from rcp_ndcg.judging.client import Completion, CompletionInput, JudgeClient, JudgeConfig, RequestRejectedError
 from rcp_ndcg.judging.prompts import PROMPT_FILES, Prompt, load_prompt, shipped_prompt_name
@@ -688,7 +687,9 @@ def parse_window(
     ``example`` is the prompt's own worked example (:attr:`~rcp_ndcg.judging.prompts.Prompt.worked_example`),
     when it has one: an answer equal to it is refused -- the example is a template constant that happens to fit
     a window of its size, and a model echoing it (or an injected document block that supplies it) must never be
-    recorded as an observation. A window the example does not fit is unaffected.
+    recorded as an observation. The whole decoded JSON object is compared, reasoning strings included, so only
+    a literal echo is refused: a genuine answer whose verdicts happen to match the example's parses. A window
+    the example does not fit is unaffected.
 
     Raises:
         UnparseableAnswer: the answer is not a complete observation of the window (with its category), or it is
@@ -697,10 +698,10 @@ def parse_window(
     answer = _stage_answer(stage, query_id, completion, units, num_criteria)
     if example is not None:
         try:
-            worked = _stage_answer(stage, query_id, Completion(response=json.dumps(example)), units, num_criteria)
+            given = decode_answer(completion.response)
         except UnparseableAnswer:
-            worked = None
-        if worked is not None and answer == worked:
+            given = None
+        if given is not None and given == dict(example):
             raise UnparseableAnswer(
                 "the answer is the prompt's worked example, not an observation of this window", "schema"
             )
