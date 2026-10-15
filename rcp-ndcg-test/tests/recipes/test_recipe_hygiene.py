@@ -91,6 +91,14 @@ SERVICE_LINK_CARRIERS = frozenset(
 #: injected link variables and nothing else, so it can be held across the whole tracked tree.
 SERVICE_LINK = re.compile(r"_SERVICE_HOST\b|_SERVICE_PORT\b|VLLM_SERVICE_")
 
+#: The real cluster subnet and the real Service-host assignment shape, split into fragments so this module's
+#: own source -- which must name the shape -- does not carry the literal it forbids.
+_REAL_CLUSTER_SUBNET = re.compile(r"10\." r"156\.")
+_REAL_SERVICE_HOST = re.compile(r"(?:VLLM_SERVICE_[A-Z0-9_]+|KUBERNETES)_SERVICE_HOST=10\.")
+
+#: The trees that hold tests: a fixture is as published as the code it exercises.
+TEST_TREES = ("tests", "rcp-ndcg-test/tests", "rcp-ndcg-vllm/tests")
+
 
 #: The per-column media fields the harness retired in favour of one ``media`` field (W2). Every family's
 #: ``reference.py`` refuses them, because a row carrying one would otherwise be encoded or scored as text --
@@ -195,11 +203,32 @@ def _corpus_text(path: Path) -> str:
 
 def test_the_service_link_pattern_matches_the_injected_shape() -> None:
     """The tree-wide guard's pattern still matches what it exists to catch, so it cannot rot unnoticed."""
-    assert SERVICE_LINK.search("VLLM_SERVICE_DOTS_OCR_EMB_FLO_SERVICE_HOST=10.156.11.117")
-    assert SERVICE_LINK.search("VLLM_SERVICE_QWEN35_397B_A17B_FP8_EMB_FLO_SERVICE_PORT")
-    assert SERVICE_LINK.search("KUBERNETES_SERVICE_HOST=10.156.0.1")  # the pod's own API-server link
+    assert SERVICE_LINK.search("VLLM_SERVICE_EXAMPLE_EMB_SERVICE_HOST=192.0.2.10")  # a synthetic address
+    assert SERVICE_LINK.search("VLLM_SERVICE_EXAMPLE_EMB_SERVICE_PORT")
+    assert SERVICE_LINK.search("KUBERNETES_SERVICE_HOST=192.0.2.1")  # the pod's own API-server link
     assert not SERVICE_LINK.search("VLLM_BUILD_COMMIT=db9527a46873454610df6dbedf79a36d6bf1a7f6")
     assert not SERVICE_LINK.search("RCP_NDCG_VLLM_PATCHES=pooling-full-context")
+
+
+def test_no_test_file_names_a_real_cluster_host() -> None:
+    """No test file names a real cluster host: the cluster's ``10.<subnet>.`` addresses, or a
+    ``VLLM_SERVICE_*_SERVICE_HOST`` bound to a private address.
+
+    The guard's own fixture was the leak: :func:`test_the_service_link_pattern_matches_the_injected_shape` used
+    the pod's real Service names and addresses as the shape to match (review finding security-2), and a test
+    fixture is as published as the code it exercises. The scan covers every tracked test file, this module
+    included; the patterns are split so this module's own source does not carry the literal it forbids.
+    """
+    root = _repository_root()
+    listed = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], check=True, capture_output=True).stdout
+    hits = [
+        f"{name}:{number}: {line.strip()[:140]}"
+        for name in listed.decode("utf-8").split("\0")
+        if name and any(name == tree or name.startswith(f"{tree}/") for tree in TEST_TREES)
+        for number, line in enumerate((root / name).read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
+        if _REAL_CLUSTER_SUBNET.search(line) or _REAL_SERVICE_HOST.search(line)
+    ]
+    assert not hits, "a real cluster host literal in the test tree:\n" + "\n".join(hits)
 
 
 def test_no_tracked_file_outside_the_corpora_names_a_service_link() -> None:
