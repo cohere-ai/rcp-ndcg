@@ -68,7 +68,7 @@ notes: >-
   Serving: the reasoning parser qwen3 keeps the model's thinking in its own channel so the answer schema
   constrains the answer, not the reasoning. limit_mm_per_prompt matches the client's max_images (without it each
   modality defaults to 999 at vLLM v0.31.0). The client declares no video (max_videos 0), and the paper's judge
-  read ViDoRe v3 as OCR TEXT rather than page images (owner decision 14(i), 2026-10-15): the image path this
+  read ViDoRe v3 as OCR TEXT rather than page images: the image path this
   recipe enables is a capability, not the paper's run.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper's 0.85 was its own
   SGLang setting). Weights 251.1 GB (11 safetensors shards, index metadata.total_size at the pin).

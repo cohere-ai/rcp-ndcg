@@ -245,7 +245,7 @@ def media_side(
         placement.append("image")
         width, height = _image_size(entry)
         # The card's processor resizes the raw image ONCE; the engine's processor does the same, so this is
-        # the grid the model consumes (g-ref-vl-1 decision 9(a)).
+        # the grid the model consumes.
         target_height, target_width = gemma4_resize(height, width, max_soft_tokens=image_budget)
         patches = (target_height // _GEMMA4_PATCH) * (target_width // _GEMMA4_PATCH)
         tokens = patches // _GEMMA4_POOLING**2 + 2

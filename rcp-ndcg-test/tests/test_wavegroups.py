@@ -62,19 +62,24 @@ def test_write_groups_writes_one_list_per_image(tmp_path: Path) -> None:
         assert (tmp_path / "wave-lists" / name).read_text(encoding="utf-8") == groups[image][0] + "\n"
 
 
-def test_the_real_catalog_has_exactly_two_engine_images() -> None:
-    """The brief's two-image wave: the released image plus embeddinggemma-2's digest-pinned nightly."""
+def test_the_real_catalog_is_one_engine_image() -> None:
+    """Every shipped recipe now runs the released image: embeddinggemma-2's record names
+    `vllm/vllm-openai:v0.31.0` too, because the pieces its digest-pinned nightly carried were backported into
+    the released engine (owner decision 8, 2026-10-15), so the wave is one job rather than two.
+
+    A digest-pinned image still groups on its own: the second assertion holds that property, which is what the
+    grouping exists for, without pinning the catalog to a digest nobody ships any more.
+    """
     ids = [
         line.strip()
         for line in WAVE_LIST.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.startswith("#")
     ]
     groups = wg.group_ids(ids)
-    assert len(groups) == 2, groups
-    nightly = next(image for image in groups if "@sha256:" in image)
-    assert groups[nightly] == ["embeddinggemma-2"]
-    released = next(image for image in groups if "@sha256:" not in image)
-    assert "embeddinggemma-2" not in groups[released]
+    assert len(groups) == 1, groups
+    (image,) = groups
+    assert "@sha256:" not in image, image
+    assert "embeddinggemma-2" in groups[image]
     assert sum(len(group) for group in groups.values()) == len(ids)
 
 
