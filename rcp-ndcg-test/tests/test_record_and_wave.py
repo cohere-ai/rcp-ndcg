@@ -111,13 +111,15 @@ def test_record_exchanges_carry_the_product_shape(tmp_path: Path) -> None:
 
 
 def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
-    """One recipe on one slot with the stub engine: serve, smoke, equivalence."""
+    """One recipe on one slot with the stub engine: serve, smoke, equivalence; the wave document carries
+    the tested RC's identity (name, commit, manifest sha256 -- decision 16 / g-rcjobs-7)."""
     out = tmp_path / "wave"
     pairs_dir = tmp_path / "pairs"
     pairs_dir.mkdir()
     (pairs_dir / "fixture-embed.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in sample_pairs()[:1]), encoding="utf-8"
     )
+    manifest_sha256 = "a" * 64
     document = run_wave(
         ["fixture-embed"],
         RECIPES,
@@ -127,12 +129,22 @@ def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
         reference_python=REFERENCE_PYTHON,
         vllm_cmd=f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'} --tokenizer {TOKENIZER}",
         port_base=0,
+        rc_name="rc0-20261015",
+        rc_commit="abc123",
+        rc_manifest_sha256=manifest_sha256,
     )
     by_id = {row["recipe"]: row for row in document["recipes"]}
     assert by_id["fixture-embed"]["state"] == "verified"
     assert (out / "fixture-embed" / "serve.log").is_file()
     assert (out / "fixture-embed" / "status.json").is_file()
     assert (out / "wave.json").is_file()
+    assert document["rc"] == {
+        "name": "rc0-20261015",
+        "commit": "abc123",
+        "manifest_sha256": manifest_sha256,
+    }, document["rc"]
+    markdown = (out / "WAVE.md").read_text(encoding="utf-8")
+    assert "rc0-20261015" in markdown and "abc123" in markdown and manifest_sha256 in markdown
     equivalence = json.loads((out / "fixture-embed" / "equivalence.json").read_text(encoding="utf-8"))
     assert equivalence["reference_outputs"]["state"] == "computed"  # the store is under <out>/references
     assert equivalence["reference_environment"]["family"] == "fixture-embed"
