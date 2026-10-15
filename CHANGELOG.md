@@ -4357,6 +4357,12 @@ text it sends to the declared budget.
   `rcp-ndcg --help`) and every `import rcp_ndcg` die with an untyped `ValueError`. It is parsed at the video
   guard now: a malformed value is a typed `ConfigError` naming the variable and the integer-bytes form.
 
+- **The media allowance reserves the framed instruction**: `_fit_media_per_item` computed its allowance as
+  `shape_max_tokens - fixed_overhead(..., instruction="")` while the text fit passed the call's instruction,
+  so media costing between the two thresholds were kept by the media fit and then refused by `fit` with a
+  `ConfigError` -- the opposite of the method's documented promise. The instruction now reaches the allowance
+  through `_stage_media`, so both thresholds are the same function of the same inputs.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

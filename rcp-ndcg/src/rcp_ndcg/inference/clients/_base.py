@@ -554,6 +554,7 @@ class RoleClient[C: Endpoint]:
         shape: RequestShape,
         doc_ids: Sequence[str],
         changes: dict[str, list[ChangeMechanism]] | None = None,
+        instruction: str | None = None,
     ) -> tuple[list[Content], list[int]]:
         """The media fit of a request whose wire carries ONE item per budget (the pooling items, the
         embeddings inputs): each item's media fitted on its own, sliced from the one preparation
@@ -566,6 +567,10 @@ class RoleClient[C: Endpoint]:
             request: The request's one preparation (:meth:`_prepare_request`).
             shape: The items' request shape (``query`` or ``document``).
             doc_ids: One census doc_id per item, for the drop rows.
+            changes: Where the fit notes a resize or drop per doc_id.
+            instruction: The run-level instruction, where the template declares an ``instruction`` span (or
+                the config sends it as a request field): it is part of the fixed overhead the text fit
+                reserves, so the allowance must include it too.
 
         Returns:
             ``(contents, media_tokens)``: per item, the content to send and its media token count after
@@ -573,7 +578,11 @@ class RoleClient[C: Endpoint]:
         """
         if self._budget is None or not request.media:
             return list(request.contents), [0] * len(request.contents)
-        allowance = max(self._budget.shape_max_tokens(shape) - fixed_overhead(self._budget, self._tokenizer, shape), 0)
+        allowance = max(
+            self._budget.shape_max_tokens(shape)
+            - fixed_overhead(self._budget, self._tokenizer, shape, instruction=instruction or ""),
+            0,
+        )
         fitted = [
             self._fit_media_for_request(
                 one.contents, doc_ids=[doc_id], prepared=one, allowance=allowance, changes=changes
@@ -1095,6 +1104,7 @@ class RoleClient[C: Endpoint]:
         shape: RequestShape,
         positions: Sequence[int],
         changes: dict[str, list[ChangeMechanism]],
+        instruction: str | None = None,
     ) -> tuple[list[Content], list[int]]:
         """The ``media`` stage (shared default): one preparation of the request's kept contents (nothing is
         fetched for an item the empty stage omitted), then the media fit per wire item, every drop recorded.
@@ -1105,6 +1115,8 @@ class RoleClient[C: Endpoint]:
             shape: The request shape the items are fitted as.
             positions: Each content's original input index.
             changes: Where the fit notes, per input id, a ``media_resize`` or ``media_drop``.
+            instruction: The run-level instruction, so the media allowance reserves its tokens exactly as
+                the text fit does.
 
         Returns:
             ``(contents, media_tokens)``: the fitted contents (in the given order) and, PER GIVEN CONTENT,
@@ -1115,7 +1127,9 @@ class RoleClient[C: Endpoint]:
             return list(contents), [0] * len(contents)
         doc_ids = [str(position) for position in positions]
         request = self._prepare_request(list(contents), doc_ids=doc_ids)
-        return self._fit_media_per_item(request, shape=shape, doc_ids=doc_ids, changes=changes)
+        return self._fit_media_per_item(
+            request, shape=shape, doc_ids=doc_ids, changes=changes, instruction=instruction
+        )
 
     def _stage_budget(
         self,
@@ -1217,6 +1231,7 @@ class RoleClient[C: Endpoint]:
             shape=shape,
             positions=kept_positions,
             changes=changes,
+            instruction=instruction,
         )
         # The media stage's output is what is sent (the prepared media in place); the empty policy fires
         # again only when the media fit emptied something: a document whose every media item was dropped is

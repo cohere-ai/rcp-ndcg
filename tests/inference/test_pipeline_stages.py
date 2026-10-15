@@ -63,9 +63,11 @@ class _RecordingClient(EmbeddingClient):
         self._record("empty")
         return super()._apply_empty_documents(contents, changes=changes, prefix=prefix)
 
-    def _stage_media(self, contents, *, shape, positions, changes):  # noqa: ANN001, ANN202
+    def _stage_media(self, contents, *, shape, positions, changes, instruction=None):  # noqa: ANN001, ANN202
         self._record("media")
-        return super()._stage_media(contents, shape=shape, positions=positions, changes=changes)
+        return super()._stage_media(
+            contents, shape=shape, positions=positions, changes=changes, instruction=instruction
+        )
 
     def _stage_budget(self, contents, *, shape, media_tokens, positions, instruction=None, changes):  # noqa: ANN001, ANN202
         self._record("render")
@@ -270,9 +272,11 @@ class TestPoolAndRerankComposeTheSameOrder:
                 recorded.append("empty")
                 return super()._apply_empty_documents(contents, changes=changes, prefix=prefix)
 
-            def _stage_media(self, contents, *, shape, positions, changes):  # noqa: ANN001, ANN202
+            def _stage_media(self, contents, *, shape, positions, changes, instruction=None):  # noqa: ANN001, ANN202
                 recorded.append("media")
-                return super()._stage_media(contents, shape=shape, positions=positions, changes=changes)
+                return super()._stage_media(
+                    contents, shape=shape, positions=positions, changes=changes, instruction=instruction
+                )
 
             def _stage_budget(self, contents, *, shape, media_tokens, positions, instruction=None, changes):  # noqa: ANN001, ANN202
                 recorded.append("render")
