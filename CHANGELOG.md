@@ -167,6 +167,25 @@ incompatibly, independently of the package version. All four distributions carry
   `plugin_sha256.rcp_ndcg_vllm.models.topk.config`): the replays skip them, and each declaration must fail
   the staleness gate naming exactly those inputs. This is the pre-release state: the GPU re-recording wave
   empties the list before the tag (`RCP_NDCG_RELEASE=1` enforces it).
+- **Reported Bradley-Terry standard errors use the joint fit's information referent** (core-1, owner decision 3):
+  a fitted document's SE was `1 / sqrt(own Fisher information + l2)` while the joint fit minimises
+  `sum(w*BCE)/W + 0.5*l2*||theta||^2` -- a per-document ridge of `l2*W` in sum units -- so the fitted SE did not
+  match the conditional insertion's fixed `l2*W` ridge. `BradleyTerryEstimator`, the inserted document's SE and
+  information and the insertion's `se_target` predicate now all use `info + l2*W`, `W` the fit's total comparison
+  weight. Reported standard errors move: an inserted document's information is larger by `l2*W` (smaller SE, an
+  easier `se_target` at the same evidence), and a document with no comparison now reports the ridge's
+  `1 / sqrt(l2 * W)`, not `1 / sqrt(l2)`, so `calibration fit`/`calibration insert` artifacts carry different
+  `theta_se` columns.
+- **The rubric-only fit integrates in the ability prior's units** (core-2, owner decision 4): `Criteria2PL.fit`
+  and `eap` integrated `theta ~ N(0, ability_sd)` on the fixed absolute grid `[-18, 10]`, so a non-default
+  `Priors.ability_sd` truncated the prior and moved the fitted gains (about 0.02 at `ability_sd=4`) although the
+  MML model is invariant under `theta -> theta/s, gamma -> gamma*s, beta -> beta/s`. The fit now optimises in
+  standardised units and every integral scales the grid by `prior_sd`, so the reported items, abilities and gains
+  are invariant under `Priors.ability_sd`. Fits with the default `ability_sd=1` are unchanged; fits with
+  `ability_sd != 1` move.
+- **Public surface**: the `calibration-coverage.v1` and `calibration-summary.v1` schemas'
+  `no_tournament_evidence_documents` description now states the joint standard-error referent
+  (`1 / sqrt(bt_l2 * W)`); both exported schemas are regenerated. No field, type or schema version changes.
 
 ## 0.0.1 — 2026-10-14
 
@@ -4560,7 +4579,8 @@ text it sends to the declared budget.
   document in the joint fit (a two-window document at a paper-sized query: theta 2.78 against 2.07), and its
   calibrated gain was inflated against the documents it is ranked with. The conditional ridge is now `l2*W`, so
   inserted abilities and the gains of `calibration insert` move toward the joint fit; the Bradley-Terry fit
-  itself, the fitted documents and the reported standard errors are unchanged.
+  itself and the fitted thetas are unchanged, while the reported standard errors moved with the owner's decision
+  on their referent (see the Unreleased `core-1` entry).
 
 - **`score_document` and `score_documents` integrate the ability prior in standardised units**: the posterior
   was integrated on the fixed absolute grid `[-18, 10]` even when the prior's sd was not about 1. A rubric-only
@@ -4569,8 +4589,9 @@ text it sends to the declared budget.
   error came out too low -- an all-pass document scored 8.03 against its own fit's 9.92 -- and `calibration
   score`/`extend` gave it a lower gain than identical evidence received in the fit. The items are now scaled by
   the prior's sd, the score is taken in standardised units and theta, SE and information are mapped back; the
-  gains of rubric-only calibrations whose scale is not 1 move toward the fit's own evidence. The rubric-only
-  fit itself and the tournament fit are unchanged.
+  gains of rubric-only calibrations whose scale is not 1 move toward the fit's own evidence. The tournament fit
+  is unchanged; the rubric-only fit itself moved for `Priors.ability_sd != 1` (see the Unreleased `core-2`
+  entry).
 
 - **`FitDiagnostics` reports the tournament fit's optimiser state**: `tournament_iterations`, `tournament_max_grad`
   (the largest absolute gradient over the per-query scale and offset parameters, in sum units) and

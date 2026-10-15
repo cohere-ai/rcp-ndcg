@@ -100,6 +100,8 @@ def incident_information(
     comparisons: list[Comparison],
     theta: dict[str, float],
     l2_reg: float,
+    *,
+    weight_total: float,
 ) -> float:
     """Fisher information incident to ``doc_id``'s ability, opponents frozen.
 
@@ -107,7 +109,9 @@ def incident_information(
     ``p = sigmoid(theta_doc - theta_other)``. Per-document referent: sums ONLY
     comparisons facing ``doc_id`` -- pairs among opponents inform the
     opponents, not the inserted document.
-    Includes the ``+l2_reg`` ridge term.
+    Includes the joint fit's ridge term ``l2_reg * weight_total``: the BT fit minimises
+    ``sum(w*BCE)/W + 0.5*l2*||theta||^2``, which is a ridge of ``l2*W`` per document once the loss
+    is written in sum units, and the reported SEs use the same referent as the conditional MAP.
     """
     info = 0.0
     for a, b, wt, _sl in comparisons:
@@ -118,7 +122,7 @@ def incident_information(
             diff = theta[doc_id] - theta[other]
             p = sigmoid(diff)
             info += wt * p * (1.0 - p)
-    return info + l2_reg
+    return info + l2_reg * weight_total
 
 
 def conditional_insert_theta(
@@ -136,8 +140,9 @@ def conditional_insert_theta(
     total of the joint Bradley-Terry fit the frozen thetas come from. The BT estimator minimises
     ``sum(w*BCE)/W + 0.5*l2*||theta||^2``, i.e. a ridge of ``l2*W`` on every theta once its loss is
     written in these sum units, so the conditional estimate is commensurate with the frozen ones.
-    Minimised by bounded 1-D optimisation; the returned information is the observed information at
-    the optimum (the SE's denominator, per-document referent).
+    Minimised by bounded 1-D optimisation; the returned information is
+    ``sum_incident w*p*(1-p) + l2*W`` -- the observed information of the conditional MAP, the same
+    referent the joint fit's reported standard errors use.
 
     Regression guard baked into this function's contract: when the inserted
     document LOSES a comparison, the soft label flips (``1 - sl``) and the
@@ -184,7 +189,7 @@ def conditional_insert_theta(
         minimize_scalar(neg_loss, bounds=(-THETA_BOUND, THETA_BOUND), method="bounded", options={"xatol": 1e-7}),
     )
     theta_hat = float(res.x)
-    info = incident_information(doc_id, incident, {**theta_fixed, doc_id: theta_hat}, l2_reg)
+    info = incident_information(doc_id, incident, {**theta_fixed, doc_id: theta_hat}, l2_reg, weight_total=weight_total)
     return theta_hat, info
 
 
@@ -272,7 +277,8 @@ def insert_document(
         l2_reg: ridge on the inserted theta: the Bradley-Terry penalty of the fit the thetas come from
             (default ``Priors().bt_l2``, the calibration's own; pass ``calibration.identity.priors.bt_l2``).
             The conditional loss is in sum units, so it is scaled by the comparison-weight total of
-            ``existing_comparisons + new_comparisons``, the same normaliser the joint fit divides by.
+            ``existing_comparisons + new_comparisons``, the same normaliser the joint fit divides by, and the
+            reported SE uses the same ``info + l2*W`` referent as :class:`BradleyTerryEstimator`.
         se_target: the SE the evidence must certify (the information predicate); finite and > 0 (logits).
         min_opponents: distinct opponents required (the connectivity predicate).
 

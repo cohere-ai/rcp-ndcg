@@ -71,6 +71,36 @@ def test_the_mode_is_resolved_by_the_caller() -> None:
         fit_calibration(verdicts, mode="auto", bt_scores=bt_scores)  # type: ignore[arg-type]
 
 
+def test_the_rubric_only_fit_is_invariant_under_the_ability_prior_sd() -> None:
+    """``Priors.ability_sd`` is a unit choice: the MML model is invariant under ``theta -> theta/s``,
+    ``gamma -> gamma*s``, ``beta -> beta/s``, so the reported items and the gains must not move when
+    only ``ability_sd`` changes. The fixed absolute quadrature grid broke that (gains moved 0.02 at
+    ``ability_sd=4``)."""
+    from rcp_ndcg_core.gain import gain
+
+    rng = np.random.default_rng(2)
+    beta_true = np.linspace(-1.0, 1.0, 5)
+    verdicts: dict[str, list[tuple[str, dict[str, int]]]] = {}
+    for q in range(20):
+        rows = []
+        for d in range(30):
+            theta = float(rng.normal())
+            p = 1.0 / (1.0 + np.exp(-1.5 * (theta - beta_true)))
+            for _ in range(3):
+                rows.append((f"d{d:02d}", {f"C{k + 1}": int(rng.random() < p[k]) for k in range(5)}))
+        verdicts[f"q{q:02d}"] = rows
+
+    one = fit_calibration(verdicts, mode="rubric_only", priors=Priors(ability_sd=1.0))
+    four = fit_calibration(verdicts, mode="rubric_only", priors=Priors(ability_sd=4.0))
+    items = {"gamma": list(one.items.gamma), "beta": list(one.items.beta)}
+    assert list(four.items.gamma) == pytest.approx(items["gamma"], abs=1e-6)
+    assert list(four.items.beta) == pytest.approx(items["beta"], abs=1e-6)
+    max_shift = max(
+        abs(gain(four.thetas[q][d], items) - gain(one.thetas[q][d], items)) for q in one.thetas for d in one.thetas[q]
+    )
+    assert max_shift < 1e-3, max_shift
+
+
 def test_the_rubric_only_fit_reports_the_common_convention() -> None:
     """sum(gamma) == K and mean(beta) == 0, abilities on that scale with posterior SDs."""
     _, verdicts = _observations(num_queries=10, num_docs=40)

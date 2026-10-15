@@ -101,10 +101,13 @@ class BradleyTerryEstimator(BaseScoredModel):
         h_diag = torch.zeros(self.n_docs)
         h_diag.index_add_(0, winners, contrib)
         h_diag.index_add_(0, losers, contrib)
-        # Per-document information referent: a document's SE is
-        # ``1 / sqrt(sum of weight*p*(1-p) over the comparisons it took part in + l2_reg)``,
-        # independent of how many unrelated comparisons the fit holds.
-        h_diag = h_diag + self.l2_reg
+        # Joint-fit information referent: a document's SE is
+        # ``1 / sqrt(sum of weight*p*(1-p) over the comparisons it took part in + l2_reg * W)``,
+        # with W the fit's total comparison weight. The BT fit minimises
+        # ``sum(w*BCE)/W + 0.5*l2*||theta||^2``, so in sum units its per-document ridge is ``l2*W``;
+        # the insertion (``_insertion.incident_information``) reports the same referent, so inserted
+        # and fitted documents are commensurate.
+        h_diag = h_diag + self.l2_reg * float(weights.sum())
         self.theta_se = 1.0 / torch.sqrt(torch.clamp(h_diag, min=1e-9))
 
 
