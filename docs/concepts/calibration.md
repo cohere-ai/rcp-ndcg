@@ -25,8 +25,11 @@ $$
 $$
 
 The offset $\alpha_j$ fixes the Bradley-Terry constant of query $j$ on the shared scale, and $\tau_j$ sets
-its spread, so that a one-logit difference in ability has the same meaning on every query. Because
-$\tau_j > 0$, sorting a query's documents by $\tilde\theta_{ij}$ reproduces their Stage A order. A document
+its spread, so that a one-logit difference in ability has the same meaning on every query. That holds while the
+rubric evidence identifies $\tau_j$: on a query whose passing documents are exactly the Bradley-Terry top $m$,
+the likelihood does not bound $\tau_j$ and the $\mathcal{N}(1,1)$ prior sets it, so that query's spread follows
+the Bradley-Terry spread rather than its rubric answers. Because $\tau_j > 0$, sorting a query's documents by
+$\tilde\theta_{ij}$ reproduces their Stage A order. A document
 with $\tilde\theta_{ij} = \beta_c$ passes criterion $c$ with probability one half on every query. The gain of
 RCP-nDCG, $g(\tilde\theta) = \sum_c \gamma_c\,\sigma(\gamma_c(\tilde\theta - \beta_c)) / \sum_c \gamma_c$, is
 defined on this scale ([the metric](metric.md)).
