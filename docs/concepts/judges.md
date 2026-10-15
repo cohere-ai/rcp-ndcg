@@ -255,18 +255,24 @@ reproducible from the store after its file moves or changes.
   (a file's bytes; a directory's sorted listing of names, sizes and mtimes --
   `rcp_ndcg.data.revisions.dataset_content_digest`, the same digest the run steps' identity carries), so editing
   the documents of a local dataset after judging it is refused as another dataset instead of pairing the stored
-  answers with texts the judge never saw. Adding
-  documents is fine: only windows that show them are new.
+  answers with texts the judge never saw. Adding documents to a local source is therefore a new dataset too (its
+  bytes changed). Growing a pool through `candidates=` instead redraws the whole schedule: `windows_for` and the
+  balanced draws depend on the pool size, so every random, stratified and adaptive window gets a new record id,
+  not only the windows that show the new documents, and the fit reads the old pool's windows beside the new
+  one's. The supported route for a new document is an insertion plan (`select_opponents` with
+  `judge(windows=...)`, then `insert_documents`), or a fresh store.
 - **Concurrent writers.** The store is reader-safe by design and safe to overlap: two passes claiming two
   stages, or appending records of the same stage, serialize on an advisory lock on the store directory, and the
   identity file and each prompt's text are published through the one atomic temp-file-and-rename helper
   (`rcp_ndcg.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
   or census row is skipped with a warning and asked or recorded again). A resumed pass that re-asks a refused
-  window refits under the new answer: the later-phase windows its first fit selected are retired with an
-  appended ``superseded`` tombstone and asked again, so the fit never reads two generations of one query's
-  schedule (and the stage file stays append-only, as the mirror's immutable parts require). The retirement is
-  scoped to the pass's own generation -- its schedule's window sequences (per call: the tournament's mirrors
-  are in), their window sizes and its units -- so a full pass never
+  window refits under the new answer: when the answer arrives, the later-phase windows its first fit selected
+  are retired with an appended ``superseded`` tombstone and asked again, so the fit never reads two generations
+  of one query's schedule (and the stage file stays append-only, as the mirror's immutable parts require); a
+  window the endpoint keeps refusing leaves the later phases alone, so a resume that changes nothing is
+  idempotent. The retirement is
+  scoped to the pass's own generation -- its pool's generation key (a digest of the units the pass judges) and
+  its schedule's window sequences (per call: the tournament's mirrors are in) and window sizes -- so a full pass never
   retires a subset pass's windows and a subset pass never retires the full pass's; a planned pass with
   `windows=` runs no schedule and retires nothing. The calibration's coverage does not count a tombstone as an
   invalid window, and `run status` counts the live records.

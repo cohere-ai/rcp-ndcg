@@ -734,6 +734,28 @@ def test_the_tournament_ranges_count_the_units_a_chunked_pass_asks(word_tokenize
     )
 
 
+def test_growing_a_pool_redraws_the_whole_schedule(tmp_path: Path) -> None:
+    """judges.md: growing a pool through ``candidates=`` gives every scheduled window a new record id (the
+    schedule's counts and balanced draws depend on the pool size), not only the windows that show the new
+    document; the fit then reads the old pool's windows beside the new one's."""
+    from rcp_ndcg.data import load_dataset
+
+    docs = [f"d{index:02d}" for index in range(7)]
+    row = RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])
+    path = tmp_path / "rows.jsonl"
+    path.write_text(_rows_jsonl((row,)), encoding="utf-8")
+    dataset = load_dataset(f"jsonl:{path}")
+    store = tmp_path / "store"
+    schedule = TINY_TOURNAMENT
+    first = judge(dataset, {"q": docs[:6]}, FakeJudge(lambda text: 0.0), stage="tournament", out=store,
+                  schedule=schedule)  # fmt: skip
+    before = {j.record_id for j in first.judgements}
+    second = judge(dataset, {"q": docs}, FakeJudge(lambda text: 0.0), stage="tournament", out=store, schedule=schedule)
+    added = {j.record_id for j in second.judgements} - before
+    showing_new = {j.record_id for j in second.judgements if any(p.doc_id == "d06" for p in j.placements)}
+    assert added and added != showing_new, "the whole schedule is redrawn, not only the new document's windows"
+
+
 class _Recording(FakeJudge):
     """The fake judge, keeping every request it answers."""
 
