@@ -27,6 +27,11 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **A token-budget flag is not a credential** (security-6): `_credential_flag` matched its markers as
+  substrings, so `command: [vllm, serve, m, --max-num-batched-tokens, 8192]` — the flag this package maps
+  `serve.max_num_batched_tokens` to, and a form `docs/concepts/runs.md` shows hand-written — was refused with
+  "passes a credential as '--max-num-batched-tokens'". The markers now match whole words: that flag passes
+  while `--api-key`, `--hf-token`, `--token` and `--secret` are still refused.
 - **A directory where a report belongs is `MISSING_INPUT` again, not `INTERNAL`** (cli-5): `eval compare
   --report`, `eval explain --report` and `results export --report` read the file through `storage.read_text`,
   which raises `IsADirectoryError` for a directory. Only `FileNotFoundError` was caught, so `--report /tmp`

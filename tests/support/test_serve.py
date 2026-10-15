@@ -210,6 +210,14 @@ class TestTheEngineCommand:
         engine = ServeConfig(command=("vllm", "serve", "m", "--tokenizer", "org/tok", "--tokenizer-mode", "auto"))
         assert engine.command[-2:] == ("--tokenizer-mode", "auto")
 
+    def test_a_token_budget_flag_is_not_a_credential(self) -> None:
+        """``--max-num-batched-tokens`` is the flag the repository itself maps ``serve.max_num_batched_tokens``
+        to (``docs/how-to/serve-a-model.md``), and ``docs/concepts/runs.md`` shows hand-written ``command:
+        [vllm, serve, ...]`` forms. A substring marker refused it -- "passes a credential as
+        '--max-num-batched-tokens'" -- so a valid, documented serve command broke with the wrong message."""
+        engine = ServeConfig(command=("vllm", "serve", "m", "--max-num-batched-tokens", "8192"))
+        assert engine.command[-2:] == ("--max-num-batched-tokens", "8192")
+
 
 class TestParseEnginesEnv:
     """``RCP_NDCG_ENGINES`` carries the current phase's engines to the coordinator."""

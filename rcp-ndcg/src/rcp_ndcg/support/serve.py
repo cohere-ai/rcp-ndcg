@@ -72,13 +72,18 @@ def _command_flag(command: Sequence[str], name: str, *aliases: str) -> int | Non
 def _credential_flag(word: str) -> bool:
     """Whether an argv word is a credential-bearing flag: ``--api-key``, ``--hf-token``, ``--flag=value`` too.
 
-    ``--tokenizer`` and ``--tokenizer-mode`` name a model, not a credential, so the engine's tokenizer flags are
-    not refused.
+    The markers are matched as whole words, never as substrings: ``--max-num-batched-tokens`` is the
+    token-budget flag this package itself maps ``serve.max_num_batched_tokens`` to, and a substring rule
+    refused it as a credential. ``--tokenizer`` and ``--tokenizer-mode`` name a model, not a credential, so
+    the engine's tokenizer flags are not refused.
     """
     flag = word.partition("=")[0].lower()
-    if not flag.startswith("--") or flag.startswith("--tokenizer"):
+    if not flag.startswith("--"):
         return False
-    return any(marker in flag for marker in ("token", "key", "secret"))
+    words = flag.lstrip("-").replace("_", "-").split("-")
+    if words[0].startswith("tokenizer"):
+        return False
+    return any(word in ("token", "key", "secret") for word in words)
 
 
 class ServeConfig(BaseModel):
