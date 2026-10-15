@@ -4379,6 +4379,13 @@ text it sends to the declared budget.
   and `fit`'s pair checks and cuts use it for a template-less config; every shipped reranker recipe declares a
   template and is unchanged.
 
+- **The qwen3_vl unsized-container bound is a true ceiling again**: the bound divided the per-clip pixel
+  ceiling by `temporal_patch * factor^2`, i.e. it assumed the resize's temporal bar equals the frames rendered.
+  For an odd sampled frame count the bar is one frame shorter than the `ceil(n / temporal_patch)` groups the
+  engine renders, so the bound could sit up to 1.5x below the exact count (75 frames at 30 fps sampled at
+  2 fps: bound 12,326 against an exact 18,470), and a role client reserving media from it under-reserved. The
+  bound is now per group (`ceiling // (t_bar * factor^2)`, `t_bar` the resize's own bar) times the groups.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

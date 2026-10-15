@@ -1239,15 +1239,20 @@ def _container_tokens(
                 + sum(ts + VISION_WRAPPER_TOKENS + tokens for ts, tokens in zip(timestamps, group_tokens, strict=True)),
                 timestamp_bound,
             )
-        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens (each merged token
-        # covers temporal_patch x factor^2 pixels), plus each group's wrapper and timestamp.
-        clip_bound = clip_max_pixels // (geometry.temporal_patch * geometry.factor**2)
+        # no recorded size: the per-clip ceiling bounds the whole clip's patch tokens, PER GROUP. The
+        # resize enforces the ceiling over ``t_bar = round(n / temporal_patch) * temporal_patch`` frames
+        # (smart_resize's own bar), while the engine renders ``ceil(n / temporal_patch)`` groups -- one more
+        # for an odd n -- so the whole-clip figure ``ceiling // (temporal_patch * factor^2)`` is not an
+        # upper bound: each group may keep up to ``ceiling // (t_bar * factor^2)`` merged tokens. n = 1 has
+        # t_bar 0 (no temporal shrink: one frame keeps the whole ceiling), bounded by the ceiling itself.
+        groups = len(timestamps)
+        t_bar = round(frames / geometry.temporal_patch) * geometry.temporal_patch
+        per_group_bound = clip_max_pixels // (max(t_bar, 1) * geometry.factor**2)
         if video.engine_video_pruning:
-            group_tokens = _pruned_group_tokens(clip_bound // len(timestamps), len(timestamps), video)
+            group_tokens = _pruned_group_tokens(per_group_bound, groups, video)
             patch_total = sum(group_tokens)
         else:
-            group_tokens = [clip_bound // len(timestamps)] * len(timestamps)
-            patch_total = clip_bound
+            patch_total = groups * per_group_bound
         return (
             VISION_WRAPPER_TOKENS + patch_total + sum(ts + VISION_WRAPPER_TOKENS for ts in timestamps),
             1,
