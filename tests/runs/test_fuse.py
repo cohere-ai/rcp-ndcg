@@ -9,10 +9,14 @@ the rule; ``retrieval fuse`` calls it too).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+import yaml
+from click.testing import CliRunner
 
+from rcp_ndcg.cli.main import cli
 from rcp_ndcg.data import Rankings, load_rankings
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
 from rcp_ndcg.retrieval import fuse
@@ -265,3 +269,34 @@ class TestTheRefusals:
         with pytest.raises(DataError, match="holds 2 systems"):
             pipeline.run()
         assert not Path(pipeline.layout.candidates).exists()
+
+
+def test_run_start_rrf_k_sets_the_fusions_constant(data: Path, tmp_path: Path) -> None:
+    systems = _orders()
+    locations = _files(tmp_path, systems)
+    config = tmp_path / "run.yaml"
+    config.write_text(yaml.safe_dump(_fused_config(data, locations).resolved()), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli, ["run", "start", str(config), "--rrf-k", "10", "--runs-dir", str(tmp_path / "runs"), "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    run_dir = Path(json.loads(result.stdout)["data"]["run_dir"])
+    recorded = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert recorded["config"]["candidates"]["fuse"]["rrf_k"] == 10
+    expected = fuse(
+        [Rankings.from_orders(systems[name], system=name) for name in systems],
+        rrf_k=10,
+        depth=150,
+    )
+    assert load_rankings(run_dir / "candidates.parquet").queries() == expected.queries(system="rrf")
+
+
+def test_run_start_rrf_k_without_a_fused_config_is_a_usage_error(data: Path, tmp_path: Path) -> None:
+    config = tmp_path / "run.yaml"
+    config.write_text(yaml.safe_dump(tiny_config(data).resolved()), encoding="utf-8")
+
+    result = CliRunner().invoke(cli, ["run", "start", str(config), "--rrf-k", "10", "--json"])
+
+    assert result.exit_code == 2, result.output
+    assert "candidates.fuse" in result.stdout

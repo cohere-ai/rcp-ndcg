@@ -117,6 +117,7 @@ TOOLS: tuple[Tool, ...] = (
             "label",
             "runs_dir",
             "mirror",
+            "rrf_k",
         ),
     ),  # fmt: skip
     Tool("run_cancel", "run cancel", destructive=True),
