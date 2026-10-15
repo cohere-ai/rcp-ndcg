@@ -105,6 +105,12 @@ class FitDiagnostics(BaseModel):
         skipped_queries: Queries whose observations the fit skipped: a query absent from ``bt_scores``
             (tournament mode). Its rows count in ``skipped_observations`` too.
         n_queries: Queries with a fitted scale map (tournament mode).
+        tournament_iterations: The optimiser's iteration count (tournament mode).
+        tournament_max_grad: The largest absolute gradient over the per-query scale and offset parameters,
+            in sum units (tournament mode): the float32 optimiser stops at its own resolution, not at the
+            optimiser's ``1e-13`` tolerance.
+        tournament_converged: Whether the tournament fit stopped before the iteration cap with that
+            gradient at or below the convergence threshold (tournament mode).
         n_documents: Documents fitted (rubric-only mode).
         mean_placements: Placements per document (rubric-only mode).
         max_item_weight: The largest criterion's share of the gain weight (rubric-only mode).
@@ -122,6 +128,9 @@ class FitDiagnostics(BaseModel):
     skipped_observations: int = 0
     skipped_queries: int = 0
     n_queries: int | None = None
+    tournament_iterations: int | None = None
+    tournament_max_grad: float | None = None
+    tournament_converged: bool | None = None
     n_documents: int | None = None
     mean_placements: float | None = None
     max_item_weight: float | None = None
@@ -269,6 +278,9 @@ def _fit_tournament(
         skipped_observations=skipped_observations,
         skipped_queries=skipped_queries,
         n_queries=len(queries),
+        tournament_iterations=engine.n_iter,
+        tournament_max_grad=engine.max_grad_sum,
+        tournament_converged=engine.converged,
     )
     return CalibrationFit("tournament", items, queries, thetas, diagnostics, judge_severity=engine.get_judge_severity())
 

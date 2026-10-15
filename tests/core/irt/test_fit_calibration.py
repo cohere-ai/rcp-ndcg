@@ -121,3 +121,14 @@ def test_the_tournament_fit_reports_what_it_skipped() -> None:
     assert fit.diagnostics.n_observations == 10
     assert fit.diagnostics.skipped_observations == 2
     assert fit.diagnostics.skipped_queries == 1
+
+
+def test_the_tournament_fit_reports_its_optimiser_state() -> None:
+    """The fit stops at float32 resolution, not at the optimiser's tolerance (1e-13 cannot trigger in
+    float32): the diagnostics must report the iterations, the final sum-unit gradient and the status."""
+    bt_scores, verdicts = _observations(num_queries=3, num_docs=20)
+    diagnostics = fit_calibration(verdicts, mode="tournament", bt_scores=bt_scores).diagnostics
+
+    assert diagnostics.tournament_iterations is not None and diagnostics.tournament_iterations >= 0
+    assert diagnostics.tournament_max_grad is not None and diagnostics.tournament_max_grad >= 0.0
+    assert diagnostics.tournament_converged in (True, False)

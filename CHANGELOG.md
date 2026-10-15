@@ -4348,6 +4348,13 @@ text it sends to the declared budget.
   gains of rubric-only calibrations whose scale is not 1 move toward the fit's own evidence. The rubric-only
   fit itself and the tournament fit are unchanged.
 
+- **`FitDiagnostics` reports the tournament fit's optimiser state**: `tournament_iterations`, `tournament_max_grad`
+  (the largest absolute gradient over the per-query scale and offset parameters, in sum units) and
+  `tournament_converged` are new nullable fields, tournament mode only, so
+  `schemas/calibration-summary.v1.json` carries them. The float32 L-BFGS stops at its own resolution, not at the
+  optimiser's `1e-13` gradient tolerance, and `calibration fit` now logs a warning when that stop is short of the
+  MAP instead of presenting it silently; no fitted number moves.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

@@ -25203,6 +25203,27 @@
             "frozen": false,
             "required": false,
             "type": "int"
+          },
+          "tournament_converged": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "bool | None"
+          },
+          "tournament_iterations": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "int | None"
+          },
+          "tournament_max_grad": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "float | None"
           }
         },
         "frozen": true,

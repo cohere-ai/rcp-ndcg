@@ -264,3 +264,19 @@ def test_the_calibration_tables_come_out_as_frames_with_gains(fitted: Calibratio
     assert len(fitted.to_pandas("queries")) == len(fitted.queries)
     assert fitted.to_pandas("items")["criterion"].tolist() == [f"C{c}" for c in range(1, 6)]
     assert repr(fitted).startswith("Calibration(mode=tournament, 1 datasets, 2 queries, ")
+
+
+def test_a_tournament_fit_that_stops_short_of_the_map_warns(
+    judgements: JudgementSet, world: TinyWorld, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The float32 optimiser stops at its own resolution, not at the 1e-13 tolerance: the fit must say so
+    rather than present the stop as the MAP. The threshold is forced so the branch is exercised on the
+    tiny world (a paper-sized fit reaches it on its own)."""
+    import logging
+
+    from rcp_ndcg_core.irt import _tournament_2pl
+
+    monkeypatch.setattr(_tournament_2pl, "CONVERGED_GRAD_SUM", 1e-9)
+    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.calibration.fit"):
+        calibrate(_fit_only(judgements, world))
+    assert any("stopped short of the MAP" in record.message for record in caplog.records), caplog.text

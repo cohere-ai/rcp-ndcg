@@ -729,6 +729,13 @@ def calibrate(
             "the gains are not calibrated probabilities",
             fit.diagnostics.ordinal_reason,
         )
+    if fit.diagnostics.tournament_converged is False:
+        logger.warning(
+            "the tournament fit stopped short of the MAP after %s iterations (max |grad| %.3g in sum "
+            "units): weakly identified queries can sit away from their MAP",
+            fit.diagnostics.tournament_iterations,
+            fit.diagnostics.tournament_max_grad,
+        )
     families = {**tournament_families, **rubric_families} if resolved == "tournament" else rubric_families
     return Calibration(
         mode=resolved,
