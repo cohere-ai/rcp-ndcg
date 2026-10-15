@@ -4715,8 +4715,8 @@
     {
       "recipe": "jina-reranker-v3",
       "path": "jina-reranker-v3.jsonl",
-      "sha256": "c19fd6d89dabd17d1a47c66f3501dfdb672d9cf183867e5daeaf72ba52427242",
-      "bytes": 59493,
+      "sha256": "5112afa2e51d448799c73d6367ab9c018565e20554077ee4943f940a3d40367b",
+      "bytes": 53877,
       "rows": 24,
       "strata": {
         "media:image:tiny": {
@@ -4852,12 +4852,12 @@
         },
         "length:at_90": {
           "present": true,
-          "content_tokens": 2703,
+          "content_tokens": 1839,
           "overhead_tokens": 147
         },
         "length:at_budget": {
           "present": true,
-          "content_tokens": 3004,
+          "content_tokens": 2044,
           "overhead_tokens": 147
         },
         "length:over_cap": {

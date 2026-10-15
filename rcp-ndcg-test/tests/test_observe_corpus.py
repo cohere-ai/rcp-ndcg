@@ -392,6 +392,48 @@ def test_a_near_tie_flip_does_not_inflate_the_measured_tolerance() -> None:
     assert summary["derived"]["measured"] is True
 
 
+def test_the_committed_nondeterminism_is_the_one_the_current_measurement_derives() -> None:
+    """g-observe-1: the shipped reports must be the measurement this code derives, never left at a
+    tolerance a near-tie flip inflated.  The committed qwen3-reranker-8b report derived abs 3.0 / rel 1.5
+    from the recorded rank flips although the real score noise is ~0.012, so its conformance, consistency
+    and duplicate-key gates could not fail; the finding's own red test asserted its tolerance is below 1.0.
+    Every committed corpus whose repository subset holds its whole recording is re-measured here; a corpus
+    stored as a sample defers to its full corpus, whose report is copied byte for byte and cannot be
+    recomputed from the sample."""
+    from rcp_ndcg_test.corpus import load_corpus
+    from rcp_ndcg_test.engines import corpus_tolerance, find_corpora
+    from rcp_ndcg_test.observe.corpus import declared_kept_counts
+
+    root = Path(__file__).resolve().parents[1] / "corpora"
+    checked = 0
+    for directory in find_corpora(root):
+        corpus = load_corpus(directory)
+        sampling = (corpus.subset_index or {}).get("sampling") or {}
+        if sampling.get("rows") != sampling.get("of_rows"):
+            continue  # a sample: its report is the full corpus's, copied byte for byte
+        block = corpus.manifest["recipe"]
+        kept_of = (
+            (lambda record, block=block: declared_kept_counts(record, block))
+            if block.get("document_skip_engine_side") and block.get("document_skip_token_ids")
+            else None
+        )
+        fresh = summarise_nondeterminism(
+            corpus.records,
+            dim=block.get("declared_dim"),
+            kept_of=kept_of,
+            outputs=str(block.get("outputs") or "per_token"),
+        )
+        assert fresh == corpus.nondeterminism, (
+            f"{block['id']}: the committed nondeterminism report is not what the current measurement derives "
+            f"(committed {corpus_tolerance(corpus)} vs fresh "
+            f"{fresh['derived']['abs_tolerance']}/{fresh['derived']['rel_tolerance']})"
+        )
+        checked += 1
+    assert checked, "no committed corpus holds its whole recording: the guard would be vacuous"
+    eight_b = load_corpus(next(directory for directory in find_corpora(root, recipe_id="qwen3-reranker-8b")))
+    assert corpus_tolerance(eight_b)[0] < 1.0, corpus_tolerance(eight_b)
+
+
 # --- section 4: provenance ------------------------------------------------------------------------------------
 
 
