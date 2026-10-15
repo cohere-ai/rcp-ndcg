@@ -39,6 +39,11 @@ incompatibly, independently of the package version. All four distributions carry
 - **`rcp-ndcg-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
   alone starts an engine without the recipe's declared patches (`RCP_NDCG_VLLM_PATCHES` is set only by the
   console), so the dry run now prints the variable beside the identity and the overrides; the how-to says so.
+- **The `serve.plugin` presence check runs in the engine's interpreter** (vllm-3): the console now resolves
+  the interpreter the `vllm` executable's shebang names and probes the distribution there, so a `vllm` on
+  `PATH` from another environment (a pipx/uv-tool install) is refused before it starts when that environment
+  lacks the wheel; an executable with no readable shebang falls back to the console's own environment, the
+  documented one-interpreter install.
 
 ## 0.0.1 — 2026-10-14
 

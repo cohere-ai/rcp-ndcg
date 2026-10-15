@@ -26,7 +26,8 @@ the engine environment's patch opt-in (`RCP_NDCG_VLLM_PATCHES`, empty for a reci
 exits, to inspect what would run. The argv alone is not the engine command for a patched recipe: the patches
 are inert unless the engine process carries the variable, so run `rcp-ndcg-vllm serve` itself (or export the
 printed value) rather than pasting the argv alone. A checkpoint that needs its model plugin is refused with the
-exact install line.
+exact install line. The check runs in the interpreter the `vllm` executable's shebang names, so a `vllm` from
+another environment is judged by its own environment (the wheel must be installed there too).
 
 Two options when the image does not carry the wheel: bake it into your image (image preparation), or install
 it inline where the engine command runs:

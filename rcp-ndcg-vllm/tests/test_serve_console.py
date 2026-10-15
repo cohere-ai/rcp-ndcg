@@ -627,6 +627,70 @@ def test_an_io_processor_plugin_is_config_resolved_not_installed_by_name(tmp_pat
     assert run_console(["serve", str(directory), "--dry-run"]) == 0
 
 
+def test_the_plugin_check_probes_the_engines_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``vllm`` on PATH from another environment decides the engine's imports: the presence check runs in
+    the engine interpreter the script's shebang names, not in the console's, so a foreign engine without the
+    plugin is refused before it starts."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    foreign_python = tmp_path / "foreign-python"
+    foreign_python.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    foreign_python.chmod(0o755)
+    vllm = tmp_path / "vllm"
+    vllm.write_text(f"#!{foreign_python}\n", encoding="utf-8")
+    vllm.chmod(0o755)
+    monkeypatch.setattr(serve_module.shutil, "which", lambda name: str(vllm) if name == "vllm" else None)
+    monkeypatch.setattr(serve_module.os, "execvp", lambda *_args: pytest.fail("the engine must not start"))
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_console(["serve", "harrier-oss-v1-27b"])
+    message = str(excinfo.value)
+    assert "does not carry" in message and "install it first: pip install --no-deps" in message
+
+
+def test_the_plugin_check_passes_when_the_engines_interpreter_carries_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The console's own environment is not the one that counts: an engine script pointing at an interpreter
+    that carries the distribution proceeds to exec."""
+    import sys
+
+    import rcp_ndcg_vllm.serve as serve_module
+
+    vllm = tmp_path / "vllm"
+    vllm.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+    vllm.chmod(0o755)
+    monkeypatch.setattr(serve_module.shutil, "which", lambda name: str(vllm) if name == "vllm" else None)
+
+    def _exec(*_args: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(serve_module.os, "execvp", _exec)
+    with pytest.raises(SystemExit):
+        run_console(["serve", "harrier-oss-v1-27b"])
+
+
+def test_the_plugin_check_falls_back_to_this_interpreter_without_a_shebang(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An executable with no readable interpreter (a binary) leaves the check where it was: the console's own
+    environment, the documented one-interpreter install."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    vllm = tmp_path / "vllm"
+    vllm.write_bytes(b"\x7fELF not really an executable")
+    monkeypatch.setattr(serve_module.shutil, "which", lambda name: str(vllm) if name == "vllm" else None)
+
+    def _exec(*_args: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(serve_module.os, "execvp", _exec)
+    with pytest.raises(SystemExit):
+        run_console(["serve", "harrier-oss-v1-27b"])
+
+
 def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
