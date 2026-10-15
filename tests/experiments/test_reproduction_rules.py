@@ -273,3 +273,18 @@ def test_paper_values_cover_the_three_leaderboard_tables(experiment):
             table = lb[suite][metric]
             assert len(table) == 14
             assert all(len(cells) == n_datasets + 1 for cells in table.values())
+
+
+def test_the_data_directory_knob_is_the_environment_variable(experiment, monkeypatch, tmp_path) -> None:
+    """``fetch_data.py --data-dir`` moves its own download; the checks resolve ``RCP_EXPERIMENTS_DATA``.
+
+    The README promised that ``--data-dir`` moved the data directory, so a reader who ran it saw
+    ``run_all.py`` download the corpus again into the checkout (or fail offline).
+    """
+    fetch_data = experiment("fetch_data")
+    monkeypatch.setenv("RCP_EXPERIMENTS_DATA", str(tmp_path))
+    assert fetch_data.local_path("repo", "file.parquet") == tmp_path / "repo" / "file.parquet"
+
+    readme = (ROOT / "experiments" / "README.md").read_text(encoding="utf-8")
+    assert "`RCP_EXPERIMENTS_DATA` or `fetch_data.py --data-dir` moves the data directory" not in readme
+    assert "`RCP_EXPERIMENTS_DATA` moves the data directory for the checks" in readme

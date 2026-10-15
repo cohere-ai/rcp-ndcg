@@ -20,8 +20,9 @@ python experiments/run_all.py                    # all checks, about one minute 
 ```
 
 Each script also runs on its own (`python experiments/leaderboards.py --suite bright`, and so on) and fetches
-the files it needs if they are missing. `RCP_EXPERIMENTS_DATA` or `fetch_data.py --data-dir` moves the data
-directory. The dataset revisions are pinned in `fetch_data.py`.
+the files it needs if they are missing. `RCP_EXPERIMENTS_DATA` moves the data directory for the checks;
+`fetch_data.py --data-dir` moves only its own download (the checks resolve the environment variable, else
+`experiments/data`). The dataset revisions are pinned in `fetch_data.py`.
 
 ## What is reproduced
 
