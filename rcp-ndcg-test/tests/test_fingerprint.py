@@ -368,6 +368,29 @@ def test_the_plugin_module_hash_is_the_modules_source_bytes(tmp_path: Path) -> N
     assert fingerprint_inputs(recipe)[f"plugin_sha256.{module}"] == f"sha256:{digest}"
 
 
+def test_the_plugin_module_hashes_never_import_the_fold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolving the plugin modules must not execute a package ``__init__``: importing the embeddinggemma-2
+    fold installs the folded modules and needs transformers' gemma4 modules and torchvision, absent from the
+    documented ``gated`` install (B2).  A transformers that resolves but cannot provide the fold's imports
+    is enough to catch the import."""
+    import importlib.machinery
+    import sys
+    import types
+
+    from rcp_ndcg_test.fingerprint import plugin_module_hashes
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    fake = types.ModuleType("transformers")
+    fake.__spec__ = importlib.machinery.ModuleSpec("transformers", loader=None)
+    monkeypatch.setitem(sys.modules, "transformers", fake)
+    monkeypatch.delitem(sys.modules, "rcp_ndcg_vllm.models.embedding_gemma2.fold", raising=False)
+
+    hashes = plugin_module_hashes(resolve_recipe("embeddinggemma-2"))
+    assert "rcp_ndcg_vllm.models.embedding_gemma2.fold" in hashes
+    assert "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2" in hashes
+    assert "rcp_ndcg_vllm.models.embedding_gemma2.fold" not in sys.modules
+
+
 def test_editing_one_plugin_module_moves_exactly_the_recipes_that_use_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

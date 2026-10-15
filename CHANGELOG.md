@@ -27,6 +27,14 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **The behaviour fingerprint resolves plugin modules without importing package `__init__` files** (B2):
+  `importlib.util.find_spec` imported every parent package, and the embeddinggemma-2 fold's `__init__`
+  installs the folded transformers modules at import time -- which needs transformers' gemma4 modules and
+  torchvision. In the documented `gated` install (`rcp-ndcg[mteb]` plus `rcp-ndcg-test`, no torchvision)
+  the embeddinggemma-2 golden failed with `ModuleNotFoundError: No module named 'torchvision'`, and where
+  torchvision was present the hash computation mutated the process. The module's source is now resolved by
+  walking the top-level package's search location; the hashes are unchanged.
+
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
   not carry the `pooling-full-context` patch now refuses `serve.max_num_batched_tokens` below

@@ -223,25 +223,65 @@ def sha256_digest(data: bytes) -> str:
     return f"sha256:{hashlib.sha256(data).hexdigest()}"
 
 
+def _module_source(module: str) -> Path | None:
+    """The source file of a dotted module, resolved without executing any package ``__init__``.
+
+    ``importlib.util.find_spec`` imports every parent package, and one of the shipped plugin's parents
+    (the embeddinggemma-2 fold) installs the folded transformers modules at import time -- which needs
+    transformers' gemma4 modules and torchvision, absent from the documented ``gated`` install.  The
+    top-level package is already imported (the callers import the recipe package), so its search location
+    is walked by name instead: ``<root>/a/b.py`` or ``<root>/a/b/__init__.py``.  ``None`` when the walk
+    resolves no unique file (an unknown module, a compiled leaf, a zip install).
+    """
+    parts = module.split(".")
+    top = importlib.util.find_spec(parts[0])
+    if top is None:
+        return None
+    if len(parts) == 1:
+        origin = top.origin
+        return Path(origin) if origin is not None else None
+    if not top.submodule_search_locations:
+        return None
+    candidates = [Path(location) for location in top.submodule_search_locations]
+    last = len(parts) - 1
+    for index, part in enumerate(parts[1:], start=1):
+        found_files: list[Path] = []
+        found_dirs: list[Path] = []
+        for directory in candidates:
+            module_file = directory / f"{part}.py"
+            package_init = directory / part / "__init__.py"
+            if module_file.is_file():
+                found_files.append(module_file)
+            if package_init.is_file():
+                found_files.append(package_init)
+                found_dirs.append(directory / part)
+        if index == last:
+            return found_files[0] if len(found_files) == 1 else None
+        candidates = found_dirs
+        if not candidates:
+            return None
+    return None
+
+
 def _module_sha256(module: str) -> str:
     """``sha256:<hex>`` of one plugin module's source bytes, resolved without importing it.
 
-    The model modules import vLLM/torch by design, so the leaf is never imported here:
-    ``importlib.util.find_spec`` only imports the parent packages (which import clean), and the source file
-    is read from the spec's origin.  The hash covers the code the engine runs, so a plugin fix that changes
-    no recipe field still moves the fingerprint (``rcp-fp/4``).
+    The model modules import vLLM/torch by design, so nothing here is imported: the source file is
+    resolved by walking the top-level package's search location (:func:`_module_source`), never through
+    ``importlib.util.find_spec``, whose parent-package imports would execute the embeddinggemma-2 fold's
+    ``__init__``.  The hash covers the code the engine runs, so a plugin fix that changes no recipe field
+    still moves the fingerprint (``rcp-fp/4``).
 
     Raises:
         HarnessError: the module cannot be resolved to a readable source file (the message names it).
     """
-    spec = importlib.util.find_spec(module)
-    origin = None if spec is None else spec.origin
-    if origin is None or not Path(origin).is_file():
+    source = _module_source(module)
+    if source is None or not source.is_file():
         raise HarnessError(
             f"the plugin module {module!r} cannot be resolved to a source file; a recipe's "
             "serve.plugin_architectures and serve.patches must name the modules the engine runs"
         )
-    return sha256_digest(Path(origin).read_bytes())
+    return sha256_digest(source.read_bytes())
 
 
 def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
