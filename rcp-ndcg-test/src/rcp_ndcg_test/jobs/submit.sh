@@ -491,7 +491,13 @@ done
 
 if $ECHO_ONLY; then
   if $SCRATCH_OUT_DIR; then
-    rmdir "$OUT_DIR" 2>/dev/null || true  # the plan wrote nothing into the scratch dir
+    # The plan wrote the token wrapper (and, for a grouped wave, the fetched recipes) into the scratch dir,
+    # so it must be removed recursively -- but only when it is exactly the mktemp path this run made: the
+    # pattern check is the guard against ever removing an operator's directory or a glob.
+    case "$OUT_DIR" in
+      "${TMPDIR:-/tmp}"/rcp-submit.??????) rm -r -- "$OUT_DIR" ;;
+      *) echo "submit.sh: not removing $OUT_DIR: it is not a mktemp rcp-submit.XXXXXX path under ${TMPDIR:-/tmp}" >&2 ;;
+    esac
   fi
   echo "submit.sh: KJOBS=echo printed the plan; nothing was submitted"
 else

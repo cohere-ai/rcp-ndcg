@@ -76,6 +76,11 @@ incompatibly, independently of the package version. All four distributions carry
   ships while 12 verified emulators ship; they now say `target='fake'` covers the registered fakes and name
   the `fake://vllm-0.31.0/<recipe>` engine-target route the committed corpora's emulators reach a run
   through once registered, and `fake_engine_for`'s hint names it too.
+- **Harness: the submit.sh dry run removes its scratch directory** (testpkg-10): the plan writes the token
+  wrapper (and a grouped wave's fetched recipes) into the mktemp dir, so the `rmdir` always failed and
+  every `KJOBS=echo` run left a `rcp-submit.*` behind; the cleanup now removes the directory recursively
+  after a check that it is exactly the mktemp path (never a glob, never an operator's directory), and the
+  comment says what it removes.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
