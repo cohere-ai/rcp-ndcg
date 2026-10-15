@@ -1949,14 +1949,16 @@ A minor correction to the paper is forthcoming. Details and all numbers are in
   written, so a typo in `--set dataset=...` or a Hub error no longer leaves the run `running` with the failed
   override recorded, as the `run resume` help already promised.
 - **A resubmission lets an explicit `--set runner.options.*` win over the last job's record**: the recorded
-  options are merged under the options the config declares (a value equal to the runner's own default is not
-  a declaration), so a changed partition, account, QoS or `log_dir` reaches the job instead of being silently
-  overridden; the documented reuse of the last job's options stands for everything the config does not set.
+  options are merged under the options the config declares (a key the `--set` names counts as a declaration
+  even when its value equals the runner's own default), so a changed partition, account, QoS or `log_dir`
+  reaches the job instead of being silently overridden; the documented reuse of the last job's options stands
+  for everything the config does not set.
 - **`run cancel` records a run it stopped as `cancelled`**: the cancel intent is marked before the job is
   signalled, so the coordinator's `SIGTERM` handler keeps `CANCELLED` instead of recording `FAILED` (the
   canceller had not marked yet); a `FAILED` manifest whose failing step error is the interrupt is also
-  recorded cancelled, and a newer mirror manifest from a pod that recorded the interrupt as a failure no
-  longer overrides the host's `cancelled`.
+  recorded cancelled, a newer mirror manifest from a pod that recorded the interrupt as a failure no
+  longer overrides the host's `cancelled`, and a stop the runner refused takes the mark back (the job may
+  still be live).
 - **The identity-refusal hint names a remedy that works**: it no longer suggests moving
   `judgements/<stage>.jsonl` aside (the store's `identity.json` keeps the claim, and a mirror restores the
   file); it names a new run, and a new mirror URI for a mirrored run.

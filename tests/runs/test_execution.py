@@ -70,13 +70,26 @@ class _PodScheduler(_Scheduler):
     run_root = "/scratch/runs"
 
 
+class _TypedScheduler(_Scheduler):
+    """A runner whose options are typed (the slurm runner's), not a plugin's free-form mapping.
+
+    Only a typed runner's options are compared to the runner's defaults (runs-2's general case).
+    """
+
+    def __init__(self, **options) -> None:
+        from rcp_ndcg.runners.slurm import SlurmOptions
+
+        self.options = SlurmOptions(**options)
+        _Scheduler.options_seen.append(dict(options))
+
+
 @pytest.fixture
 def scheduler(monkeypatch: pytest.MonkeyPatch) -> type[_Scheduler]:
     _Scheduler.submitted, _Scheduler.cancelled, _Scheduler.state = [], [], "pending"
     _Scheduler.options_seen = []
     _Scheduler.reason = None
     _Scheduler.note_error = None
-    runners = {"sched": _Scheduler, "pod": _PodScheduler}
+    runners = {"sched": _Scheduler, "pod": _PodScheduler, "tsched": _TypedScheduler}
 
     def get_runner(name, **options):
         return runners[name](**options)
@@ -489,6 +502,40 @@ class TestResubmission:
         assert Run(started["run_dir"]).manifest.config["runner"]["options"]["partition"] == "b"
         assert Run(started["run_dir"]).jobs()["options"]["partition"] == "b", "the record holds the effective options"
 
+    @pytest.mark.parametrize(
+        ("key", "recorded", "default", "override"),
+        [
+            ("container_runtime", "apptainer", "none", "runner.options.container_runtime=none"),
+            ("setup", ["module load cuda"], [], "runner.options.setup=[]"),
+        ],
+    )
+    def test_a_resumed_set_back_to_a_runners_default_is_recorded(
+        self, data: Path, tmp_path: Path, scheduler, key: str, recorded: object, default: object, override: str
+    ) -> None:
+        """runs-2 (general case): a typed runner's resolved ``run.yaml`` carries every option, so a ``--set``
+        back to the runner's default was indistinguishable from a default and the recorded value silently won."""
+        started = _submit(
+            _config(data, tmp_path, runner={"name": "tsched", "options": {key: recorded}}),
+            tmp_path,
+            "tsched",
+        )
+        scheduler.state = "failed"
+        _ok("run", "resume", "--run", started["run_dir"], "--runner", "tsched", "--set", override)
+
+        assert scheduler.options_seen[-1][key] == default
+        record = Run(started["run_dir"]).jobs()
+        assert record["options"][key] == default, "the record names what the --set declared"
+
+    def test_a_default_valued_option_the_set_names_is_a_declaration(self) -> None:
+        """runs-2: the filter drops a resolved default, but a key the resume's ``--set`` names is a declaration
+        whatever its value (the local runner's ``detach`` is the documented case)."""
+        from rcp_ndcg.runs.execution import _declared_runner_options
+
+        assert _declared_runner_options("local", {"detach": False, "log_dir": None, "cwd": None}) == {}
+        assert _declared_runner_options(
+            "local", {"detach": False, "log_dir": None, "cwd": None}, declared={"detach"}
+        ) == {"detach": False}
+
     def test_a_run_whose_job_failed_is_submitted_again_with_its_runner(
         self, data: Path, tmp_path: Path, scheduler
     ) -> None:
@@ -593,6 +640,68 @@ class TestCancel:
 
         assert state["status"] == "cancelled"
         assert [step for step in state["steps"] if step["name"] == "tournament"][0]["status"] == "cancelled"
+
+    def test_a_cancel_the_runner_refuses_does_not_record_the_run_cancelled(
+        self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """runs-7: the cancel intent was marked in the manifest before the stop, so a ``backend.cancel`` that
+        raised (a scheduler that refused, a process group that survived SIGKILL) left a live job recorded
+        cancelled, and ``run status`` reported a stopped run that was not stopped."""
+        from rcp_ndcg.runners.base import RunnerError
+        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
+
+        started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
+        run = Run(started["run_dir"])
+        manifest = run.manifest
+        manifest.status = RunStatus.RUNNING
+        manifest.start_step("tournament", identity={})
+        manifest.save(run.layout)
+        scheduler.state = "running"
+
+        def refuse(self, handle: str) -> None:
+            raise RunnerError("the scheduler refused to stop the job")
+
+        monkeypatch.setattr(_Scheduler, "cancel", refuse)
+        code, error = _invoke("run", "cancel", "--run", started["run_dir"])
+
+        assert code == 6 and "refused" in error["message"]
+        manifest = Run(started["run_dir"]).manifest
+        assert manifest.status is RunStatus.RUNNING, "a live job must not be recorded cancelled"
+        assert manifest.step("tournament").status is StepStatus.RUNNING
+
+    def test_a_failed_stop_keeps_the_coordinators_own_interrupt_record(
+        self, data: Path, tmp_path: Path, scheduler, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """runs-7: taking the pre-signal mark back must not clobber the coordinator's own record of the
+        interrupt when it saw the mark and stopped itself before the runner's cancel failed."""
+        from rcp_ndcg.runners.base import RunnerError
+        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
+        from rcp_ndcg.runs.pipeline import INTERRUPT_ERROR
+
+        started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
+        run = Run(started["run_dir"])
+        manifest = run.manifest
+        manifest.status = RunStatus.RUNNING
+        manifest.start_step("tournament", identity={})
+        manifest.save(run.layout)
+        scheduler.state = "running"
+
+        def stop_and_refuse(self, handle: str) -> None:
+            # What the coordinator writes when it handles SIGTERM after the canceller's mark: the run and the
+            # step are cancelled, with the interrupt as the step's error.
+            recorded = Run(started["run_dir"]).manifest
+            recorded.status = RunStatus.CANCELLED
+            recorded.finish_step("tournament", status=StepStatus.CANCELLED, error=INTERRUPT_ERROR)
+            recorded.save(run.layout)
+            raise RunnerError("the scheduler refused to confirm the stop")
+
+        monkeypatch.setattr(_Scheduler, "cancel", stop_and_refuse)
+        code, error = _invoke("run", "cancel", "--run", started["run_dir"])
+
+        assert code == 6 and "refused" in error["message"]
+        manifest = Run(started["run_dir"]).manifest
+        assert manifest.status is RunStatus.CANCELLED
+        assert manifest.step("tournament").status is StepStatus.CANCELLED
 
     def test_cancel_of_a_handle_less_record_says_it_may_be_live(self, data: Path, tmp_path: Path, scheduler) -> None:
         """A record with no handle was reported as 'never submitted ... the run is not running' -- a claim the

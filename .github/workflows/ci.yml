@@ -243,6 +243,11 @@ jobs:
       - run: uv venv "$RUNNER_TEMP/models" --python 3.12
       - run: uv pip install --python "$RUNNER_TEMP/models/bin/python" pytest pyyaml pydantic numpy transformers
       - run: uv pip install --python "$RUNNER_TEMP/models/bin/python" torch --index-url https://download.pytorch.org/whl/cpu
+      # The wheel-contract fixtures build the wheel with `uv build --offline` and fail the job when that cannot
+      # run (CI must not skip the freeze and recipe checks). The isolated build resolves its build requirements
+      # (`setuptools>=77` and `wheel`, rcp-ndcg-vllm/pyproject.toml's build-system requires) from the uv cache;
+      # the lock holds no `wheel` and setup-uv prunes cached wheels before saving, so fetch them here.
+      - run: uv pip install --python "$RUNNER_TEMP/models/bin/python" "setuptools>=77" wheel
       - run: '"$RUNNER_TEMP/models/bin/python" -m pytest rcp-ndcg-vllm/tests/models rcp-ndcg-vllm/tests/test_no_torch.py -q'
 
   test-pkg:
