@@ -103,7 +103,7 @@
   "tokenizer": "topk-io/topk-embed-v1-xsmall@210ebf2a25fb7128480f9b9c8f228e8d65c433a7"
  },
  "fingerprint": {
-  "fingerprint": "01c4e57b03430f8307848d0beb8dbe07cac0cc0a33ca0837d5f389b0710c70ae",
+  "fingerprint": "595a71a4e2155f8895ab8ce256e1b5f2b16817cb7512cad97cfe2e8f61f206c2",
   "inputs": {
    "client.api": "vllm_pooling",
    "client.batch_size": "32",
@@ -129,15 +129,15 @@
    "model": "topk-io/topk-embed-v1-xsmall",
    "plugin_sha256.rcp_ndcg_vllm.models": "sha256:cd90979e6cbf9def6287355fbbfb51d01b835de7be427b8e555f5e6e5f35db0b",
    "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:46213ea54e56222971038b7e595e83dfc9bcbe55cbc31f65762ce15cb0e5be39",
-   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:a4e1804063afd79065b65520c2b753b099042e297679b8e91e3af78f4cbf592a",
+   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:62f25dfcadcbdc797e7b81c15bbd867aa3e53d8064ed41bc3a0e9e6a7e7a5b96",
    "plugin_sha256.rcp_ndcg_vllm.models.keep_pooler": "sha256:ea455e2d934a7bdbddfdf302b4cb4113320c8be4592707c32c4fc491d7168e67",
    "plugin_sha256.rcp_ndcg_vllm.models.keep_rule": "sha256:d489415b7c29f913e5611dc12093c74eb21a76ea31086fdc58e4f5ec331c0f89",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
-   "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:942cdfeb17a6267c8c24ce67b934948299c940a5fb1f4b320f5f2aeedb52a479",
    "plugin_sha256.rcp_ndcg_vllm.models.token_pooler": "sha256:d61542d51b5d2bc0d7966e39ec8fa410dbaac4321d3c63193388bd133662a437",
    "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
-   "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:5aa592de667c9de2528a572ec0265e43e433abe500c696cb4b6539aacda6cbca",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:9e5cafe3eb26b0357184158c443c60a01dffec385cc5db6b9d932e8e1499df48",
    "plugin_sha256.rcp_ndcg_vllm.models.topk.model": "sha256:94f6878a0e7d8f6c72da88cc3af9971c1a84bacefb25efd8b8ae931c42b74dc9",
    "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:780c032d726428061f3e204d8a7cc2208a46292cfefd764104c7cc5e2eb0ed6d",
    "plugin_sha256.rcp_ndcg_vllm.models.topk.weights": "sha256:acebc123b572751fc1219c5caa92f5b2ed4590a89cd3a45e027794ec3d144b79",
