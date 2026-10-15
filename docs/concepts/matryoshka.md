@@ -144,6 +144,12 @@ head application and one scoring pass; no model is called again. A per-`k` run t
 `retrieval index`/`search` commands computes the same vectors and the same scores -- the sweep is the same
 arithmetic, from one store.
 
+`--k` is repeatable; with two or more cutoffs the comparison is written at the first one (one report holds
+every cutoff). `--metrics` defaults to `rcp_ndcg` and `qrel_ndcg` when the dataset carries released gains,
+and to `qrel_ndcg` alone when it does not (RCP-nDCG needs a calibration, which the sweep does not take yet);
+the command says so in its log. The documented `beir:data/nfcorpus` example is such a dataset, so it scores
+qrel-nDCG alone unless `--metrics rcp_ndcg` is passed with a gains source.
+
 ## Gating every declared k
 
 The equivalence harness (`rcp-ndcg-test`) gates every declared dimension from one full-width run: stage 2

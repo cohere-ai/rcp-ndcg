@@ -4360,6 +4360,12 @@ text it sends to the declared budget.
   words, unlike mteb's own BM25 for the language. The stop list is now derived from the stemmer (`english` ->
   `en`, `german` -> `de`, ...; none where bm25s keeps no list), recorded in the index's `meta.json` and read back
   at search time; `INDEX_BEHAVIOUR_VERSION` moves to `2`, so an index built under the old list is rebuilt.
+- **`retrieval sweep` compares at the first cutoff and defaults to the metrics the dataset can score**
+  (`retrieval-7`): with several `--k` the comparison was built without a cutoff and `compare` refused a report
+  with several cutoffs after the per-k rankings and report were already written; the documented example passed no
+  `--metrics`, so a dataset without released gains (every `beir:` set) hit "RCP-nDCG needs calibrated gains"
+  after the rankings were written. `--metrics` now defaults to `rcp_ndcg` + `qrel_ndcg` only when the dataset
+  carries released gains, else `qrel_ndcg` alone with a logged note, and the comparison is at the first cutoff.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 

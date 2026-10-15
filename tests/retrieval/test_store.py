@@ -397,6 +397,51 @@ class TestSweepCommand:
         assert payload["systems"] == ["stub@2", "stub@4"]
         assert payload["report"] is None and payload["comparison"] is None
 
+    def test_the_sweep_compares_at_the_first_cutoff_with_several_ks(self, dataset: Any, tmp_path: Path) -> None:
+        """``--k`` is repeatable, but the comparison was built without a cutoff: ``compare`` refuses a report
+        with several cutoffs after the rankings and report were already written."""
+        import json
+
+        from click.testing import CliRunner
+
+        from rcp_ndcg.cli.retrieval import retrieval_group
+
+        store = tmp_path / "store"
+        build_store(dataset, _dense(mrl_dim=2), out=store)
+        out_dir = tmp_path / "out"
+        result = CliRunner().invoke(
+            retrieval_group,
+            [
+                "sweep", "--store", str(store), "--out-dir", str(out_dir),
+                "--dataset", dataset.uri, "--metrics", "qrel_ndcg", "--k", "2", "--k", "4", "--json",
+            ],  # fmt: skip
+        )
+
+        assert result.exit_code == 0, result.output
+        comparison = json.loads((out_dir / "comparison.json").read_text(encoding="utf-8"))
+        assert comparison["k"] == 2, "the comparison is at the first cutoff, as its description says"
+
+    def test_the_sweep_defaults_to_the_metrics_the_dataset_can_score(self, dataset: Any, tmp_path: Path) -> None:
+        """The documented example passes no ``--metrics``, and a BEIR dataset has no released gains: the
+        default used to include rcp_ndcg and refused after writing the per-k rankings."""
+        import json
+
+        from click.testing import CliRunner
+
+        from rcp_ndcg.cli.retrieval import retrieval_group
+
+        store = tmp_path / "store"
+        build_store(dataset, _dense(mrl_dim=2), out=store)
+        out_dir = tmp_path / "out"
+        result = CliRunner().invoke(
+            retrieval_group,
+            ["sweep", "--store", str(store), "--out-dir", str(out_dir), "--dataset", dataset.uri, "--json"],
+        )
+
+        assert result.exit_code == 0, result.output
+        report = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+        assert {row["metric"] for row in report["per_query"]} == {"qrel_ndcg"}
+
     def test_the_store_command_reports_a_range(self, dataset: Any, tmp_path: Path) -> None:
         """`retrieval store` maps the record's declaration into its result, range included, so a range
         store's refusal of the default sweep is visible from the command output."""

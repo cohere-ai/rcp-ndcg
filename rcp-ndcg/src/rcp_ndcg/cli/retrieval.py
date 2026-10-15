@@ -266,8 +266,10 @@ class RetrievalSweepRequest(BaseModel):
     revision: str | None = Field(default=None, description="The Hub revision of the data.")
     depth: int = Field(default=150, ge=1, description="Documents scored per query.")
     k: list[int] = Field(default_factory=lambda: [10], description="Evaluation cutoffs (repeatable).")
-    metrics: list[Literal["rcp_ndcg", "qrel_ndcg"]] = Field(
-        default_factory=lambda: ["rcp_ndcg", "qrel_ndcg"], description="Metrics to score (repeatable)."
+    metrics: list[Literal["rcp_ndcg", "qrel_ndcg"]] | None = Field(
+        default=None,
+        description="Metrics to score (repeatable); default: rcp_ndcg and qrel_ndcg when the dataset has "
+        "released gains, else qrel_ndcg alone (RCP-nDCG needs a calibration, which the sweep does not take).",
     )
     bootstrap: int = Field(default=1000, ge=0, description="Bootstrap resamples of the report and comparison.")
     seed: int = Field(default=0, description="The bootstrap seed.")
@@ -280,7 +282,9 @@ class RetrievalSweepResult(BaseModel):
     systems: list[str] = Field(description="The per-k systems, in sweep order (``<model>@<k>``).")
     rankings: list[str] = Field(description="The per-k rankings files, in the same order.")
     report: str | None = Field(default=None, description="The evaluation report (JSON), when a dataset was given.")
-    comparison: str | None = Field(default=None, description="The k-pair comparison (JSON), with two or more k.")
+    comparison: str | None = Field(
+        default=None, description="The k-pair comparison (JSON) at the first cutoff, with two or more k."
+    )
 
 
 def _safe_name(system: str) -> str:
@@ -307,13 +311,25 @@ def retrieval_sweep(request: RetrievalSweepRequest) -> RetrievalSweepResult:
     if request.dataset is not None:
         from rcp_ndcg.data import load_dataset
         from rcp_ndcg.eval import compare, evaluate
+        from rcp_ndcg.support.logging import get_logger
 
         dataset = load_dataset(request.dataset, subset=request.subset, revision=request.revision)
+        metrics = list(request.metrics) if request.metrics else None
+        if metrics is None:
+            # The documented example names no metrics, and a BEIR dataset has no released gains: scoring
+            # rcp_ndcg would refuse the command after the per-k rankings were already written.
+            metrics = ["rcp_ndcg", "qrel_ndcg"] if dataset.gains else ["qrel_ndcg"]
+            if not dataset.gains:
+                get_logger(__name__).warning(
+                    "%s has no released gains: scoring qrel_ndcg alone (RCP-nDCG needs calibrated gains, which "
+                    "`retrieval sweep` does not take yet)",
+                    dataset.name,
+                )
         report = evaluate(
             Rankings.concat(ranked),
             dataset=dataset,
             k=request.k,
-            metrics=request.metrics,
+            metrics=metrics,
             bootstrap=request.bootstrap,
             seed=request.seed,
         )
@@ -321,7 +337,10 @@ def retrieval_sweep(request: RetrievalSweepRequest) -> RetrievalSweepResult:
         report_file.write_text(report.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
         report_path = str(report_file)
         if len(ranked) >= 2:
-            comparison = compare(report, metric=request.metrics[0], bootstrap=request.bootstrap, seed=request.seed)
+            # One report holds every cutoff; the comparison is at the first one (its description says so).
+            comparison = compare(
+                report, metric=metrics[0], k=request.k[0], bootstrap=request.bootstrap, seed=request.seed
+            )
             comparison_file = out_dir / "comparison.json"
             comparison_file.write_text(comparison.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
             comparison_path = str(comparison_file)

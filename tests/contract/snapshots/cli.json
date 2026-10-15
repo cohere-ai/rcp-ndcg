@@ -3873,10 +3873,7 @@
         }
       },
       "metrics": {
-        "default": [
-          "rcp_ndcg",
-          "qrel_ndcg"
-        ],
+        "default": [],
         "envvar": null,
         "help": null,
         "hidden": false,
