@@ -78,14 +78,27 @@
         },
         "from": {
           "default": "dataset",
-          "description": "``\"dataset\"`` (the dataset's own pools, else its judged documents), ``\"rankings\"`` (a rankings file of load_rankings) or ``\"retrieval\"`` (first-stage retrieval). Written ``from:`` in YAML.",
+          "description": "``\"dataset\"`` (the dataset's own pools, else its judged documents), ``\"rankings\"`` (a rankings file of load_rankings), ``\"retrieval\"`` (first-stage retrieval) or ``\"fuse\"`` (the RRF of ``fuse.systems``). Written ``from:`` in YAML.",
           "enum": [
             "dataset",
             "rankings",
-            "retrieval"
+            "retrieval",
+            "fuse"
           ],
           "title": "From",
           "type": "string"
+        },
+        "fuse": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FuseConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The systems and parameters of the fusion, for ``from: fuse`` (the ``fuse`` step)."
         },
         "rankings": {
           "anyOf": [
@@ -1206,6 +1219,32 @@
         }
       },
       "title": "EvaluationOptions",
+      "type": "object"
+    },
+    "FuseConfig": {
+      "additionalProperties": false,
+      "description": "The systems a run fuses with reciprocal rank fusion, and the fusion's parameters.",
+      "properties": {
+        "rrf_k": {
+          "default": 60,
+          "description": "The RRF constant ``k`` in ``1 / (k + rank)``, ranks from 1 (the paper's 60).",
+          "minimum": 1,
+          "title": "Rrf K",
+          "type": "integer"
+        },
+        "systems": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "``{name: location}`` of the systems to fuse, at least two. A location is a rankings file (``rcp-ndcg retrieval search`` output, another run's rankings, ...), or ``<file>#<system>`` for one system of a file that holds several (the selector EvaluationOptions uses).",
+          "title": "Systems",
+          "type": "object"
+        }
+      },
+      "required": [
+        "systems"
+      ],
+      "title": "FuseConfig",
       "type": "object"
     },
     "GeminiEmbedding": {
@@ -7306,6 +7345,7 @@
       "default": {
         "depth": 150,
         "from": "dataset",
+        "fuse": null,
         "rankings": null,
         "rerank": null,
         "retrieval": null,
@@ -7484,6 +7524,7 @@
       "items": {
         "enum": [
           "retrieve",
+          "fuse",
           "rerank",
           "tournament",
           "rubric",

@@ -2403,7 +2403,7 @@
           },
           "candidates": {
             "alias": null,
-            "default": "CandidatesConfig(source='dataset', rankings=None, system=None, retrieval=None, rerank=None, depth=150)",
+            "default": "CandidatesConfig(source='dataset', rankings=None, system=None, retrieval=None, rerank=None, fuse=None, depth=150)",
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.runs.config.CandidatesConfig"
@@ -2504,7 +2504,7 @@
             "default": "<factory RunConfig.<lambda>>",
             "frozen": false,
             "required": false,
-            "type": "list[Literal['retrieve', 'rerank', 'tournament', 'rubric', 'calibrate', 'evaluate']]"
+            "type": "list[Literal['retrieve', 'fuse', 'rerank', 'tournament', 'rubric', 'calibrate', 'evaluate']]"
           },
           "tournament": {
             "alias": null,
@@ -22056,7 +22056,7 @@
           },
           "candidates": {
             "alias": null,
-            "default": "CandidatesConfig(source='dataset', rankings=None, system=None, retrieval=None, rerank=None, depth=150)",
+            "default": "CandidatesConfig(source='dataset', rankings=None, system=None, retrieval=None, rerank=None, fuse=None, depth=150)",
             "frozen": false,
             "required": false,
             "type": "rcp_ndcg.runs.config.CandidatesConfig"
@@ -22157,7 +22157,7 @@
             "default": "<factory RunConfig.<lambda>>",
             "frozen": false,
             "required": false,
-            "type": "list[Literal['retrieve', 'rerank', 'tournament', 'rubric', 'calibrate', 'evaluate']]"
+            "type": "list[Literal['retrieve', 'fuse', 'rerank', 'tournament', 'rubric', 'calibrate', 'evaluate']]"
           },
           "tournament": {
             "alias": null,
@@ -22707,6 +22707,7 @@
         "type": "tuple",
         "value": [
           "retrieve",
+          "fuse",
           "rerank",
           "tournament",
           "rubric",
@@ -22718,6 +22719,7 @@
         "kind": "literal_alias",
         "values": [
           "retrieve",
+          "fuse",
           "rerank",
           "tournament",
           "rubric",

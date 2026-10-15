@@ -485,7 +485,7 @@ class RunConfig(pydantic.main.BaseModel)
 
 - `calibration: rcp_ndcg.runs.config.CalibrationOptions` = "CalibrationOptions(mode='auto', judges='single', priors=Priors(sigma_tau=1.0, sigma_alpha=2.0, l2_gamma=0.0001, l2_beta=0.0001, ability_sd=1.0, bt_l2=0.0001))"
 
-- `candidates: rcp_ndcg.runs.config.CandidatesConfig` = "CandidatesConfig(source='dataset', rankings=None, system=None, retrieval=None, rerank=None, depth=150)"
+- `candidates: rcp_ndcg.runs.config.CandidatesConfig` = "CandidatesConfig(source='dataset', rankings=None, system=None, retrieval=None, rerank=None, fuse=None, depth=150)"
 
 - `dataset: rcp_ndcg.runs.config.DatasetSource`
 
@@ -513,7 +513,7 @@ class RunConfig(pydantic.main.BaseModel)
 
 - `step_budget_s: float | None` = None
 
-- `steps: list[Literal['retrieve', 'rerank', 'tournament', 'rubric', 'calibrate', 'evaluate']]` = '<factory RunConfig.<lambda>>'
+- `steps: list[Literal['retrieve', 'fuse', 'rerank', 'tournament', 'rubric', 'calibrate', 'evaluate']]` = '<factory RunConfig.<lambda>>'
 
 - `tournament: rcp_ndcg.judging.schedule.TournamentSchedule | None` = None
 

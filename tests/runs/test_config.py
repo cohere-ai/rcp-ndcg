@@ -316,6 +316,40 @@ class TestJudge:
         overridden = RunConfig.load(path, overrides=["dataset=jsonl:other.jsonl"])
         assert overridden.dataset.uri == "jsonl:other.jsonl", "--set paths stay relative to the working directory"
 
+    def test_a_fuse_systems_path_is_relative_to_the_config_file(self, tmp_path: Path) -> None:
+        """A fused run's systems are paths like any other config input: relative to the file that names them,
+        with the ``#<system>`` selector kept."""
+        (tmp_path / "cfg").mkdir()
+        path = _write(
+            tmp_path / "cfg" / "run.yaml",
+            {
+                "dataset": "jsonl:rows.jsonl",
+                "judge": "fake",
+                "candidates": {"from": "fuse", "fuse": {"systems": {"a": "a.jsonl", "b": "b.jsonl#s"}}},
+                "steps": ["fuse"],
+            },
+        )
+        assert RunConfig.load(path).candidates.fuse.systems == {
+            "a": str(tmp_path / "cfg" / "a.jsonl"),
+            "b": str(tmp_path / "cfg" / "b.jsonl#s"),
+        }
+
+    def test_local_inputs_lists_the_fusion_systems(self) -> None:
+        """A job that does not see this host's files must refuse a fused run whose systems are local paths."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": {
+                    "from": "fuse",
+                    "fuse": {"systems": {"here": "/host/a.jsonl", "remote": "s3://bucket/b.jsonl#s"}},
+                },
+                "steps": ["fuse"],
+            }
+        )
+        assert "candidates.fuse.systems.here: /host/a.jsonl" in config.local_inputs()
+        assert not [item for item in config.local_inputs() if "remote" in item]
+
     def test_a_shipped_judge_by_name_takes_overrides_from_any_directory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
