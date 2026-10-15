@@ -22,7 +22,12 @@ A **local** source (``jsonl:rows.jsonl``, a ``beir:`` directory, ...) has no rev
 its content instead: :func:`dataset_content_digest` digests the files the reader reads -- a file's bytes, a
 directory's sorted listing -- so editing the file in place makes every step that read it stale and refuses the
 judgement store that holds the old bytes. :func:`dataset_local_locations` lists the locations a source's reader
-reads without reading them. A remote source carries its resolved commit and pays no content digest.
+reads without reading them. A **remote** non-Hub source (``jsonl:gs://bucket/rows.jsonl``, ``beir:s3://bucket/corpus``,
+``images:https://...``) has no commit either, so the same function fingerprints the objects its reader reads from
+the backend's own metadata: an object's size and change stamp (its etag/generation, else its mtime), or a streamed
+SHA-256 when the backend reports neither; a prefix is its sorted listing. A remote location the backend cannot
+answer for is refused -- an identity keyed on the URI alone would reuse work over bytes nobody checked. A Hub,
+``suite:`` or ``mteb:`` source carries its resolved commit and pays no content digest.
 """
 
 from __future__ import annotations
@@ -37,11 +42,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from rcp_ndcg.errors import RcpNdcgWarning
+from rcp_ndcg.errors import DataError, RcpNdcgWarning
 from rcp_ndcg.storage.artifacts import artifact_ref
 from rcp_ndcg.storage.uri import is_remote
 from rcp_ndcg.support.identity import hash_strings
 from rcp_ndcg.support.logging import get_logger
+from rcp_ndcg.support.urls import safe_url
 
 logger = get_logger(__name__)
 
@@ -313,25 +319,116 @@ def dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) 
 
 
 def dataset_content_digest(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]:
-    """``{name: digest}`` of the local files a dataset URI's reader reads (empty for a remote or unreadable one).
+    """``{name: digest}`` of the files a dataset URI's reader reads (empty for a source with a resolved commit).
 
-    The one home of a local dataset source's content identity, consumed by the run steps' identity
+    The one home of a dataset source's content identity, consumed by the run steps' identity
     (:meth:`rcp_ndcg.runs.config.DatasetSource.identity`) and by the judgement store's dataset identity alike.
-    The names are :func:`dataset_local_locations`'s, so an identity can say which location moved. Remote
-    sources have a resolved commit and pay no download here.
+    The names are :func:`dataset_local_locations`'s, so an identity can say which location moved. A local
+    location digests as its bytes (a file) or its sorted listing (a directory); a remote non-Hub location is
+    fingerprinted from the backend's metadata -- an object's size and change stamp, or a streamed SHA-256 when
+    the backend reports neither, and a prefix as its sorted listing -- so a replaced object at the same URI
+    moves the digest like an edited file. A Hub, ``suite:`` or ``mteb:`` source has a resolved commit and pays
+    no digest here.
 
     Args:
         uri: The dataset URI a :class:`~rcp_ndcg.data.Dataset` was loaded from.
         options: The reader options it was loaded with (``qrels_uri``, ``queries_uri``, ...).
 
     Returns:
-        ``{name: sha256}`` for every readable local location; empty when the source is remote or unreadable.
+        ``{name: sha256}`` for every location; empty when the source has a resolved commit.
+
+    Raises:
+        DataError: a remote location the backend cannot answer for (missing, unreachable, or no backend
+            installed): nothing there can name the bytes, and keying on the URI alone would reuse work over
+            bytes nobody checked.
     """
     return {
         name: digest
-        for name, location in dataset_local_locations(uri, options).items()
-        if (digest := _local_source_digest(location)) is not None
+        for name, location in _dataset_locations(uri, options).items()
+        if (digest := _source_digest(location)) is not None
     }
+
+
+def _dataset_locations(uri: str, options: Mapping[str, Any] | None) -> dict[str, str]:
+    """``{name: location}`` of every location a dataset URI's reader reads: local paths and remote objects alike."""
+    locations = dataset_local_locations(uri, options)
+    scheme, sep, rest = uri.partition(":")
+    if sep and scheme in _LOCAL_SCHEMES and rest and is_remote(rest):
+        locations["dataset"] = rest
+    for key, value in (options or {}).items():
+        if key.endswith("_uri") and isinstance(value, str) and is_remote(value):
+            locations[f"dataset.options.{key}"] = value
+    return locations
+
+
+def _source_digest(location: str) -> str | None:
+    """The digest of one dataset location: its bytes (local) or its backend fingerprint (remote).
+
+    ``None`` for a local path that cannot be read (the reader reports that); a remote location raises instead
+    (:func:`_remote_source_digest`).
+    """
+    if is_remote(location):
+        return _remote_source_digest(location)
+    return _local_source_digest(location)
+
+
+def _remote_source_digest(location: str) -> str:
+    """The content fingerprint of one remote dataset location, from the backend's own metadata.
+
+    A single object is its size and change stamp (the backend's etag/generation, else its mtime), or a streamed
+    SHA-256 when the backend reports neither. A prefix is its sorted listing of relative names, sizes and
+    change stamps -- the remote form of the local directory rule. The lookup asks the backend once per location
+    per identity computation; a run computes the identity of a source a few times, not once per document.
+
+    Raises:
+        DataError: the backend cannot be reached, has no implementation installed, or answers for neither an
+            object nor a prefix there.
+    """
+    from rcp_ndcg import storage
+
+    info: dict[str, Any] | None
+    try:
+        info = storage.info(location)
+    except Exception:  # noqa: BLE001 - a prefix (or a missing object) is answered by the listing below
+        info = None
+    if info is not None and info.get("type") != "directory":
+        return _remote_object_digest(location, info)
+    try:
+        entries = [entry for entry in storage.ls(location, recursive=True) if entry.rstrip("/") != location.rstrip("/")]
+    except Exception as exc:  # noqa: BLE001 - one typed refusal for every backend failure
+        raise _unfingerprinted(location, exc) from exc
+    if entries:
+        rows = []
+        for entry in entries:
+            rows.append(
+                f"{storage.relative(entry, location)}\0{_remote_object_digest(entry, storage.info(entry))}"
+            )
+        return hash_strings(sorted(rows))
+    if info is not None:  # a directory the backend reports with no files under it
+        return hash_strings([])
+    raise _unfingerprinted(location, None)
+
+
+def _remote_object_digest(location: str, info: Mapping[str, Any]) -> str:
+    """One remote object's fingerprint: its size and change stamp, or a streamed SHA-256 when it has neither."""
+    from rcp_ndcg.data.media import _change_stamp
+
+    stamp = _change_stamp(info)
+    if stamp is None:
+        return artifact_ref(location).sha256
+    return f"{info.get('size')}\0{stamp}"
+
+
+def _unfingerprinted(location: str, exc: Exception | None) -> DataError:
+    """The typed refusal of a remote dataset location whose content cannot be named."""
+    detail = "the backend reported neither an object nor a prefix there"
+    if exc is not None:
+        detail = f"{type(exc).__name__}: {exc}"
+    return DataError(
+        f"the remote dataset location {safe_url(location)!r} cannot be fingerprinted: {detail}",
+        hint="check the URI and the credentials for its backend; an identity cannot name bytes it cannot read, "
+        "so a resume or a judgement store would otherwise reuse work over an unchecked object",
+    )
 
 
 __all__ = [

@@ -13,6 +13,7 @@ import os
 import sys
 import types
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -257,7 +258,8 @@ def test_a_revision_that_is_not_exactly_a_commit_is_resolved_not_echoed(hub: Fak
 
 class TestTheLocalDatasetContentDigest:
     """A local source has no commit: :func:`dataset_content_digest` names it by what its reader reads, in a
-    deterministic order, and a remote source pays nothing."""
+    deterministic order. A remote non-Hub object has no commit either, so the backend's own metadata names it;
+    a remote location the backend cannot answer for is refused."""
 
     def test_a_file_digests_as_its_bytes_and_an_edit_moves_the_digest(self, tmp_path: Path) -> None:
         from rcp_ndcg.data.revisions import dataset_content_digest
@@ -294,8 +296,8 @@ class TestTheLocalDatasetContentDigest:
     def test_a_remote_source_and_a_local_reader_option(self, tmp_path: Path) -> None:
         from rcp_ndcg.data.revisions import dataset_content_digest, dataset_local_locations
 
-        for remote in ("hf://org/repo", "suite:bright", "mteb:NanoNFCorpus", "jsonl:s3://bucket/rows.jsonl"):
-            assert dataset_content_digest(remote) == {}, remote
+        for committed in ("hf://org/repo", "suite:bright", "mteb:NanoNFCorpus"):
+            assert dataset_content_digest(committed) == {}, committed
 
         qrels = tmp_path / "qrels.jsonl"
         qrels.write_text("{}\n", encoding="utf-8")
@@ -307,5 +309,40 @@ class TestTheLocalDatasetContentDigest:
             "dataset": "/no-such-dir",
             "dataset.options.qrels_uri": str(qrels),
         }
+
+    def test_a_remote_object_is_fingerprinted_and_a_replaced_one_moves_the_digest(self) -> None:
+        """A remote non-Hub source has no commit to pin it: the object's own metadata (or its bytes, when the
+        backend reports neither a size nor a change stamp) names it, so a replaced object at the same URI is
+        another dataset."""
+        import fsspec
+
+        from rcp_ndcg.data.revisions import dataset_content_digest
+
+        root = f"rev-{uuid4().hex}"
+        fs = fsspec.filesystem("memory")
+        try:
+            fs.pipe(f"/{root}/rows.jsonl", b'{"query_id": "q", "docs": ["a"]}\n')
+            before = dataset_content_digest(f"jsonl:memory://{root}/rows.jsonl")
+            assert set(before) == {"dataset"}
+            fs.pipe(f"/{root}/rows.jsonl", b'{"query_id": "q", "docs": ["a longer body"]}\n')
+            assert dataset_content_digest(f"jsonl:memory://{root}/rows.jsonl") != before
+
+            # A remote directory is its sorted listing, the remote form of the local rule.
+            fs.pipe(f"/{root}/corpus/a.jsonl", b"a\n")
+            fs.pipe(f"/{root}/corpus/b.jsonl", b"b\n")
+            directory = dataset_content_digest(f"beir:memory://{root}")
+            fs.pipe(f"/{root}/corpus/c.jsonl", b"c\n")
+            assert dataset_content_digest(f"beir:memory://{root}") != directory
+        finally:
+            fs.rm(f"/{root}", recursive=True)
+
+    def test_a_remote_location_that_cannot_be_fingerprinted_is_refused(self) -> None:
+        """An unreachable or missing remote location has no content identity to record: keying on the URI
+        alone would reuse work over bytes nobody checked, so the identity refuses with a hint."""
+        from rcp_ndcg.data.revisions import dataset_content_digest
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="fingerprint"):
+            dataset_content_digest(f"jsonl:memory://rev-{uuid4().hex}/missing.jsonl")
 
     resolve_revision.cache_clear()
