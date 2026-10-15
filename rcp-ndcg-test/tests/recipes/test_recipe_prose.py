@@ -117,3 +117,18 @@ def test_the_stale_text_reference_claims_are_gone() -> None:
         if stale in text:
             offenders.append(f"{relative}: still claims {stale!r}")
     assert not offenders, "\n".join(offenders)
+
+
+def test_the_flash_next_variant_note_names_its_real_quantisation() -> None:
+    """The qwen3.8-flash-next-nvfp4 checkpoint's ``hf_quant_config.json`` declares quant_algo
+    MIXED_PRECISION (the family's own sources line says so), and vLLM v0.31.0's override loop replaces a
+    declared ``--quantization modelopt_fp4`` with ``modelopt_mixed`` before the mismatch check: the
+    declared flag is inert and the engine runs modelopt_mixed.  The variant note must say so, never claim
+    auto-detection maps the checkpoint's NVFP4 quant_algo to the same method, and the family note must not
+    attribute the KV dtype to a paper that never ran this model."""
+    family = yaml.safe_load((RECIPES / "qwen3.8-flash-next" / "family.yaml").read_text(encoding="utf-8"))
+    variant = next(item for item in family["variants"] if item["id"] == "qwen3.8-flash-next-nvfp4")
+    note = _normalised(variant["notes"])
+    assert "MIXED_PRECISION" in note and "modelopt_mixed" in note, "the note names the engine's real method"
+    assert "NVFP4 quant_algo to the same method" not in note
+    assert "the paper set none" not in _normalised(family["notes"]), "the paper never ran this model"

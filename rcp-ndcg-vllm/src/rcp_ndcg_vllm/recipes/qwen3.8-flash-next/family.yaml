@@ -57,8 +57,8 @@ notes: >-
   is 262 144), decoding json_schema, image_processor qwen3_vl, max_images 10. The visual run's slot used
   concurrency 128; the recipe carries 256 and the slot value is runtime tuning.
   Serving: --reasoning-parser qwen3, --max-model-len 131072, limit_mm_per_prompt {"image": 10}. No
-  --kv-cache-dtype for either variant: the paper set none and the NVFP4 checkpoint's kv_cache_quant_algo is
-  null, so both serve BF16 KV.
+  --kv-cache-dtype for either variant: the NVFP4 checkpoint's kv_cache_quant_algo is null (and the paper
+  never ran this model), so both serve BF16 KV.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default). Both variants share the KV
   shape: 12 full-attention layers x 2 x 2 KV heads x 256 head_dim x 2 B = 24 576 B/token across ranks; the
   linear-attention recurrent state is 36 layers x 48 value heads x 128 x 128 x 4 B ~113 MB/sequence.
@@ -98,9 +98,14 @@ variants:
       serve:
         extra_args: [--quantization, modelopt_fp4, --reasoning-parser, qwen3]
     notes: >-
-      The scenarios' candidate. `--quantization modelopt_fp4` is declared (auto-detection would map the
-      checkpoint's NVFP4 quant_algo to the same method) and the checkpoint excludes its linear-attention,
-      hyper-connection, gate, embed and lm_head modules from quantisation. B200: TP1 (resources.gpus 1);
+      The scenarios' candidate. `--quantization modelopt_fp4` is declared but INERT: the checkpoint's
+      hf_quant_config.json declares quant_algo MIXED_PRECISION, so vLLM v0.31.0's override loop replaces
+      the declared value with modelopt_mixed before its mismatch check
+      (model_executor/layers/quantization/modelopt.py:760 matches only an algo containing NVFP4/FP4;
+      :1572-1573 answers modelopt_mixed for MIXED_PRECISION; config/model.py:1382-1403 assigns the
+      override), and the engine runs modelopt_mixed -- the card's own `--quantization modelopt` names the
+      same auto-detection. The checkpoint excludes its linear-attention, hyper-connection, gate, embed and
+      lm_head modules from quantisation. B200: TP1 (resources.gpus 1);
       H100: `--set resources.gpus=2` (the family note's arithmetic).
     sources:
       - "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4/tree/fc694b54fb0174e0913e6adf86691ef85a4ead47 (config.json, hf_quant_config.json, preprocessor_config.json, model.safetensors.index.json read at the pin)"

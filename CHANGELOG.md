@@ -4379,6 +4379,15 @@ text it sends to the declared budget.
   refused. `media` is now listed, as the embeddinggemma-2 sibling does. Stage 1 hands the reference text
   rows only, so no gate is affected today and no output moves.
 
+- **The qwen3.8-flash-next-nvfp4 note names its real quantisation**: the checkpoint's
+  `hf_quant_config.json` declares quant_algo MIXED_PRECISION, so vLLM v0.31.0's override loop replaces the
+  declared `--quantization modelopt_fp4` with `modelopt_mixed` before its mismatch check -- the flag is
+  inert and the engine runs modelopt_mixed (the card's own `--quantization modelopt` names the same
+  auto-detection). The variant note had claimed auto-detection mapped the checkpoint's NVFP4 quant_algo to
+  the same method, and the family note attributed the BF16 KV dtype to "the paper set none" for a model
+  the paper never ran. The declared flag stays (it is inert; changing it would move the behaviour
+  fingerprint for no engine-side difference), and no serve argv moves.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
