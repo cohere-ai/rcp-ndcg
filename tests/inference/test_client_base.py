@@ -1131,3 +1131,20 @@ class TestRequestGroupMediaCaps:
         item = Content.from_parts([TextPart(text="doc"), VideoPart(frames=frames)])
         groups = client._request_groups([item, item], 32)
         assert [len(group) for group in groups] == [1, 1]
+
+
+def test_gather_keeps_the_single_failures_own_cause() -> None:
+    """``gather`` re-raises the one failure as itself: ``raise exc from group.__cause__`` overwrote the
+    redacted cause the transport chains on (the HTTP detail a traceback should show) with the group's own
+    ``None`` and hid the group's context."""
+
+    async def failing() -> None:
+        try:
+            raise ValueError("HTTP 503 upstream detail")
+        except ValueError as cause:
+            raise RequestRejectedError("refused") from cause
+
+    with pytest.raises(RequestRejectedError) as caught:
+        asyncio.run(RoleClient.gather([failing()]))
+    assert isinstance(caught.value.__cause__, ValueError)
+    assert "HTTP 503" in str(caught.value.__cause__)

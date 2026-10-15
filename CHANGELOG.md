@@ -4347,6 +4347,11 @@ text it sends to the declared budget.
   one request and then refused with a `CapabilityError`, instead of splitting at the caps; the grouping now
   uses `adapters.chat.media_counts`, the one lowering rule.
 
+- **A failed request keeps its chained cause through `RoleClient.gather`**: the fan-out re-raised the one
+  failure with `from group.__cause__` (the task group's `None`), which overwrote the redacted HTTP detail the
+  transport chains under `BackendUnavailableError`/`RequestRejectedError` and hid the group's context. The
+  failure is now re-raised as itself, cause intact.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

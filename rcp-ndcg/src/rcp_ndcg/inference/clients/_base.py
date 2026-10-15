@@ -1346,7 +1346,8 @@ class RoleClient[C: Endpoint]:
                 created = [group.create_task(task) for task in tasks]
         except BaseExceptionGroup as group:
             if len(group.exceptions) == 1:
-                raise group.exceptions[0] from group.__cause__
+                exc = group.exceptions[0]
+                raise exc  # noqa: B904 -- as itself: ``from group.__cause__`` would overwrite its own cause
             raise
         return [task.result() for task in created]
 
