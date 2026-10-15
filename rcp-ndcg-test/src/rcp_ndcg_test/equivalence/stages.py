@@ -943,29 +943,33 @@ def _audit_rerank_span(
                 }
             )
     if not over_length:
-        # No cut on an in-budget pair: a changed document of a real pairs row must have been over the pair
-        # budget, and the change record's own measurement is the evidence (the uncut request it reports
-        # must exceed the budget it measured against).  A change with no record cannot be cleared: the
-        # audit fails closed.
+        # No cut on an in-budget pair: a changed document of a real pairs row must have been cut by the pair
+        # budget, and the change record's own measurement is the evidence (the uncut request it reports must
+        # exceed the budget it measured against).  A declared substitution (empty_doc) or a declared cap or
+        # media change is not a pair-budget cut and is not gated here; a change with no record cannot be
+        # cleared: the audit fails closed.
         records = {record.get("input_id"): record for record in entry.get("changes", [])}
         for position, changed in enumerate(shape_body.get("documents_changed") or []):
             if not changed:
                 continue
             record = records.get(str(position))
+            if record is not None and "budget_cut" not in (record.get("mechanisms") or []):
+                continue
             original = None if record is None else record.get("original_request_tokens")
             budget = None if record is None else record.get("budget_tokens")
-            if record is None or original is None or budget is None or original <= budget:
-                failures.append(
-                    {
-                        "shape": shape,
-                        "check": "in_budget_cut",
-                        "row": row_index,
+            if original is not None and budget is not None and original > budget:
+                continue  # the pair was over budget: the cut was the budget's
+            failures.append(
+                {
+                    "shape": shape,
+                    "check": "in_budget_cut",
+                    "row": row_index,
                         "document_index": position,
                         "uncut_request_tokens": original,
                         "budget_tokens": budget,
                         "note": "the client changed a document of a row that is not an over-length sample, "
-                        "and the change's uncut request does not exceed its budget: a cut may only shorten "
-                        "a pair the budget refuses whole",
+                        "and the change's uncut request does not exceed its budget: a budget cut may only "
+                        "shorten a pair the budget refuses whole",
                     }
                 )
     return checked

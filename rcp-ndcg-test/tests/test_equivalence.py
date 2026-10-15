@@ -1528,7 +1528,9 @@ def test_the_rerank_anchor_audit_fails_a_cut_on_an_in_budget_pair() -> None:
     recipe = load("fixture-rerank-pointwise")
     tokenizer = tokenizer_of(recipe)
 
-    def probe(*, over_length: bool, original: int, budget: int) -> dict[str, Any]:
+    def probe(
+        *, over_length: bool, original: int | None, budget: int | None, mechanisms: tuple[str, ...] = ("budget_cut",)
+    ) -> dict[str, Any]:
         return {
             "rows": [
                 {
@@ -1537,7 +1539,7 @@ def test_the_rerank_anchor_audit_fails_a_cut_on_an_in_budget_pair() -> None:
                     "changes": [
                         {
                             "input_id": "0",
-                            "mechanisms": ["budget_cut"],
+                            "mechanisms": list(mechanisms),
                             "original_request_tokens": original,
                             "budget_tokens": budget,
                         }
@@ -1563,6 +1565,12 @@ def test_the_rerank_anchor_audit_fails_a_cut_on_an_in_budget_pair() -> None:
     assert over_budget["passed"] is True, over_budget["failures"]
     injected = stages_module._anchor_check(recipe, probe(over_length=True, original=100, budget=160), tokenizer)
     assert injected["passed"] is True, injected["failures"]
+    # A declared substitution (an empty document sent as the recipe's placeholder) is not a pair-budget cut:
+    # it carries no measurement and must not fail the audit.
+    substituted = stages_module._anchor_check(
+        recipe, probe(over_length=False, original=None, budget=None, mechanisms=("empty_doc",)), tokenizer
+    )
+    assert substituted["passed"] is True, substituted["failures"]
 
 
 def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:
