@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 from rcp_ndcg_core.irt import fit_bradley_terry
 from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
 from rcp_ndcg_core.irt._rasch import RaschEstimator
+
+torch = pytest.importorskip("torch")
 
 CHAIN = [("a", "b", 1.0, 1.0), ("b", "c", 1.0, 1.0), ("a", "c", 1.0, 1.0)]
 
@@ -14,6 +17,30 @@ def test_abilities_follow_the_comparisons_and_are_centred() -> None:
     scores = fit_bradley_terry(CHAIN * 5, l2=1e-4)
     assert scores["a"] > scores["b"] > scores["c"]
     assert sum(scores.values()) == pytest.approx(0.0, abs=1e-5)
+
+
+def test_the_bradley_terry_fit_does_not_depend_on_the_thread_count() -> None:
+    """Above torch's 32768-element reduction grain the float32 sum order follows the core count.
+
+    The calibration refits Bradley-Terry for every query and calibrated abilities are
+    ``tau * theta_bt + alpha``, so a thread-dependent fit moves calibrated numbers across machines.
+    """
+    rng = np.random.default_rng(0)
+    docs = [f"d{i:03d}" for i in range(100)]
+    pairs = (rng.choice(len(docs), size=2, replace=False) for _ in range(40000))
+    comparisons = [
+        (docs[a], docs[b], float(rng.choice([0.5, 1.0])), float(rng.random())) for a, b in pairs
+    ]
+    before = torch.get_num_threads()
+    try:
+        torch.set_num_threads(1)
+        one = fit_bradley_terry(comparisons, l2=1e-4, doc_ids=docs)
+        torch.set_num_threads(4)
+        four = fit_bradley_terry(comparisons, l2=1e-4, doc_ids=docs)
+        assert torch.get_num_threads() == 4, "the fit restores the caller's thread count"
+    finally:
+        torch.set_num_threads(before)
+    assert [one[d].hex() for d in docs] == [four[d].hex() for d in docs]
 
 
 def test_a_larger_penalty_compresses_the_range() -> None:

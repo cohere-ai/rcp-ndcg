@@ -81,9 +81,15 @@ class BaseScoredModel(nn.Module):
             total.backward()
             return total
 
-        optimizer.step(closure)
+        # Intra-op threads split float32 reductions differently per thread count; one thread makes
+        # identical inputs give identical fits on any machine (the same pin as the tournament fit).
+        threads = torch.get_num_threads()
+        torch.set_num_threads(1)
+        try:
+            optimizer.step(closure)
+        finally:
+            torch.set_num_threads(threads)
         self._compute_standard_errors()
-
     def _compute_standard_errors(self) -> None:
         self.theta_se = None
 
