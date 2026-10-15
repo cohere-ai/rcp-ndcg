@@ -18,9 +18,9 @@ times, each attempt re-sending the prompt (``requests_min``..``requests_max``).
 
 The wall time is a floor, not a projection: it is a per-call constant at the judge's
 concurrency, with no term for what a call carries, and the assumptions say so. And a
-judged window carrying more images than the judge's ``max_images`` is refused (the
-pass's own pre-send gate), so an estimate never blesses a pass whose first call the
-endpoint would reject.
+judged window carrying more images than the judge's ``max_images`` (or more videos than ``max_videos``) is
+refused (the pass's own pre-send gate, counting the frames a frame policy samples), so an estimate never
+blesses a pass whose first call the endpoint would reject.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from rcp_ndcg_core.content import Content, VideoPart
 
 from rcp_ndcg.errors import CapabilityError
 from rcp_ndcg.inference.adapters.chat import media_counts
@@ -99,48 +100,69 @@ class CostEstimate(BaseModel):
     assumptions: list[str]
 
 
-def _check_window_images(
+def _check_window_media(
     query: Any,
     planned: Sequence[Sequence[str]] | None,
     window: int,
-    images: Mapping[str, int],
+    per_unit: Mapping[str, int],
     config: JudgeConfig,
+    *,
+    kind: Literal["images", "videos"],
 ) -> None:
-    """Refuse a window carrying more images than the judge declares it reads (the pass's own pre-send gate).
+    """Refuse a window carrying more media than the judge declares it reads (the pass's own pre-send gate).
 
     A planned pass knows its windows: every planned window of this size is counted. A scheduled pass picks the
-    window's documents itself, so the gate counts the most images any window of this size could carry (the
-    ``window`` documents with the most images).
+    window's documents itself, so the gate counts the most media any window of this size could carry (the
+    ``window`` documents with the most). ``kind`` names the gate (``images`` against ``max_images``,
+    ``videos`` against ``max_videos``); the per-unit counts are the pass's own (:func:`_unit_media_counts`:
+    the frames a frame policy samples, one video per container).
 
     Raises:
-        CapabilityError: the window carries more images than ``max_images``, or any image when the judge is
-            declared to read none: the pass's first call of that window would be refused.
+        CapabilityError: the window carries more than the limit, or any when the judge is declared to read
+            none: the pass's first call of that window would be refused.
     """
+    limit = config.max_images if kind == "images" else config.max_videos
     if planned is not None:
-        carried = max((sum(images[unit] for unit in rows) for rows in planned if len(rows) == window), default=0)
+        carried = max((sum(per_unit[unit] for unit in rows) for rows in planned if len(rows) == window), default=0)
     else:
-        carried = sum(sorted(images.values(), reverse=True)[:window])
-    if carried <= config.max_images:
+        carried = sum(sorted(per_unit.values(), reverse=True)[:window])
+    if carried <= limit:
         return
-    cap = config.max_images
-    reads_none = not cap
+    reads_none = not limit
     raise CapabilityError(
-        f"query {query.query_id!r}: a window of {window} documents carries {carried} images and "
+        f"query {query.query_id!r}: a window of {window} documents carries {carried} {kind} and "
         + (
-            "the judge is not declared to read any (max_images: 0)"
+            f"the judge is not declared to read any (max_{kind}: 0)"
             if reads_none
-            else f"the endpoint accepts {cap} per request (max_images)"
+            else f"the endpoint accepts {limit} per request (max_{kind})"
         )
         + ": the first call of this window would be refused",
         hint=(
-            "declare max_images for a checkpoint that reads images, or judge the text side of the corpus"
+            f"declare max_{kind} for a checkpoint that reads {kind}, or judge the text side of the corpus"
             if reads_none
-            else f"raise max_images to at least {carried} on the judge config (and the server's per-request "
+            else f"raise max_{kind} to at least {carried} on the judge config (and the server's per-request "
             "media limit with it), or judge a smaller window"
         ),
-        cli_hint=f"--set judge.max_images={carried}",
-        details={"query_id": query.query_id, "window": window, "images": carried, "max_images": cap},
+        cli_hint=f"--set judge.max_{kind}={carried}",
+        details={"query_id": query.query_id, "window": window, kind: carried, f"max_{kind}": limit},
     )
+
+
+def _unit_media_counts(content: Any, video: Any) -> tuple[int, int]:
+    """``(images, videos)`` one unit lowers to under the pass's own gate, as the video policy samples it.
+
+    The pass's gate counts the prepared content (:func:`media_counts`): a ``wire: frames`` clip is its
+    sampled frames, a container one video. This counts the same thing without preparing -- no bytes are
+    fetched -- so the estimate's gate and the pass's gate agree on the window they describe.
+    """
+    from rcp_ndcg.data.resolution import sample_video_part
+
+    images = videos = 0
+    for part in content.parts:
+        shown = sample_video_part(part, video) if isinstance(part, VideoPart) else part
+        counts = media_counts(Content.from_parts([shown]))
+        images, videos = images + counts.images, videos + counts.videos
+    return images, videos
 
 
 def estimate(
@@ -180,8 +202,9 @@ def estimate(
             ``context_tokens`` and a ``tokenizer``); the pass refuses the same. Without a text budget their tokens
             are approximated instead, and the assumptions say so. A rubric schedule whose settings cannot show
             every unit (``n_random * w < n_units``) is refused as the pass refuses it.
-        CapabilityError: a judged window carries more images than the judge's ``max_images`` (or any when the
-            judge is declared to read none): the pass's own pre-send gate, raised here before any call.
+        CapabilityError: a judged window carries more images than the judge's ``max_images``, or more videos
+            than ``max_videos`` (or any when the judge is declared to read none): the pass's own pre-send
+            gate, raised here before any call.
     """
     from rcp_ndcg.data.postprocess import document_ids_from_chunks
     from rcp_ndcg.judging._templates import rendered_text
@@ -267,8 +290,11 @@ def estimate(
             else:
                 documents = len(document_ids_from_chunks(query.units, query.chunk_mapping))
                 groups = [(schedule.calls_per_query(documents, n_units=n), min(schedule.window, n))]
-            # The per-unit image counts the pass's own pre-send gate compares against ``max_images``.
-            images_per_unit = {unit: media_counts(query.contents[unit]).images for unit in query.units}
+            # The per-unit media counts the pass's own pre-send gate compares against max_images/max_videos:
+            # the frames a frame policy samples, one video per container, counted without preparing bytes.
+            per_unit = {unit: _unit_media_counts(query.contents[unit], effective.video) for unit in query.units}
+            images_per_unit = {unit: counts[0] for unit, counts in per_unit.items()}
+            videos_per_unit = {unit: counts[1] for unit, counts in per_unit.items()}
             budgeted = tokenizer is not None and config.context_tokens is not None
             counted_media = _media_tokens(
                 query.contents.values(), effective, strict=budgeted, marker_tokens=marker, tokenizer=tokenizer
@@ -283,7 +309,8 @@ def estimate(
             for n_calls, w in groups:
                 if n_calls == 0:
                     continue
-                _check_window_images(query, unique_planned, w, images_per_unit, config)
+                _check_window_media(query, unique_planned, w, images_per_unit, config, kind="images")
+                _check_window_media(query, unique_planned, w, videos_per_unit, config, kind="videos")
                 if tokenizer is not None:
                     overhead = prompt_overhead_tokens(prompt, stage, query.text, w, tokenizer)
                     cap = window_tokens(config, w, overhead_tokens=overhead, media_tokens_per_doc=media)

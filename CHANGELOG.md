@@ -4375,6 +4375,12 @@ text it sends to the declared budget.
   held every prepared page and frame of every query -- inlined PNG data URIs -- to the end of the pass,
   defeating the shared image LRU's one-pool bound and growing peak memory with the number of queries;
   `run_tournament`/`run_rubric` now drop the finished query's entries.
+- **`judge --estimate` counts the media the pass sends and gates videos too** (`g-video-8`): the window gate
+  counted every raw frame of a frame directory (a 60-frame clip under `num_frames: 4` was refused against a
+  cap the pass accepts), counted a `video_url` part's frames as images, and never checked `max_videos` (a
+  five-container window against `max_videos: 1` was blessed while every window is refused at its first call).
+  It counts each unit as the policy samples it (`sample_video_part`, without preparing bytes) and gates both
+  `max_images` and `max_videos`.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 
