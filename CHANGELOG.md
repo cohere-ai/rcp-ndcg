@@ -4363,6 +4363,14 @@ text it sends to the declared budget.
   `ConfigError` -- the opposite of the method's documented promise. The instruction now reaches the allowance
   through `_stage_media`, so both thresholds are the same function of the same inputs.
 
+- **`on_overflow: chunk` no longer loses text when a chunk's render is trimmed**: the chunk boundaries were
+  fixed before the render check, so a chunk whose full render was over the cap was trimmed after the fact and
+  the next chunk still started from the untrimmed end (the trimmed tail -- including the document's end on the
+  last chunk -- was sent in no chunk, and the census could not show it). The render check now runs inside
+  `split_into_chunks` through a `fits` callback, so a piece ends a token earlier before the next chunk's start
+  is computed and the chunks still cover the text. A single-token piece the frame's join still pushes over the
+  cap is cut and its uncovered tail recorded as its own cut row.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

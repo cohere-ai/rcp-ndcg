@@ -659,6 +659,26 @@ class TestChunking:
         with pytest.raises(TextBudgetExceededError, match="never"):
             fit([LONG], shape="query", budget=chunked, tokenizer=FRAMED)
 
+    def test_chunk_trim_never_loses_text(self) -> None:
+        """A chunk whose full render is over the cap hands the trimmed tail to the next chunk: the chunker
+        verifies the render inside its own shrink loop, so the boundaries move with the trim and the chunks
+        still cover the document (the last one reaches its end)."""
+        spec = TemplateSpec(
+            document=(Segment(fixed="<doc>"), Segment(content="document"), Segment(fixed="</doc>")),
+            add_special_tokens=False,
+        )
+        budget = TextBudget(
+            tokenizer=WORDS.name,
+            max_tokens=9,
+            template=spec,
+            on_overflow="chunk",
+            chunk=ChunkPolicy(max_tokens=4, overlap_tokens=0),
+        )
+        doc = "one two three four five one two three four five one two"
+        result = fit([doc], shape="document", budget=budget, tokenizer=WORDS)
+        assert sum(len(chunk.split()) for chunk in result.contents) >= len(doc.split())
+        assert result.contents[-1].endswith("two")
+
 
 # ---------------------------------------------------------------------------------------------------------------
 # Fail, cut and census

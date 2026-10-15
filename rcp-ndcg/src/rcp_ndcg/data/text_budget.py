@@ -961,9 +961,15 @@ def fit(
                 )
             cuts.append(cut)
 
-    def _chunks(content: str, room: int, query: str, cap: int) -> list[str]:
+    def _chunks(content: str, room: int, query: str, cap: int) -> tuple[list[str], list[tuple[int, str]]]:
         """The document's chunks under the declared geometry, each guaranteed to render under the budget:
-        the whole template is re-attached per chunk, so the frame and its anchors survive every one."""
+        the whole template is re-attached per chunk, so the frame and its anchors survive every one.
+
+        The render check runs inside the chunker (``fits``): a piece whose full render is over the cap ends
+        a token earlier, so the next chunk starts from the trimmed end and the chunks still cover the text.
+        Only the one-token floor cannot shrink further; there the piece is cut and its uncovered tail is
+        returned for the caller to record as its own row.
+        """
         assert budget.chunk is not None  # validated with on_overflow
         if budget.chunk.max_tokens > room:
             raise ConfigError(
@@ -971,14 +977,18 @@ def fit(
                 f"left under the budget of {shape_budget}: every chunk carries the full template",
                 hint="lower chunk.max_tokens, raise max_tokens, or (for a pair) set query_max_tokens",
             )
-        pieces = split_into_chunks(content, budget.chunk, tokenizer)
+
+        def fits(piece: str) -> bool:
+            return tokenizer.count(assemble(query, piece), add_special_tokens=flag) <= cap
+
+        pieces = split_into_chunks(content, budget.chunk, tokenizer, fits=fits)
+        losses: list[tuple[int, str]] = []
         for index, piece in enumerate(pieces):
-            # A slice can re-tokenize longer on its own than it did in place (a byte-level join can inflate
-            # where the frame meets it); trim it until the render fits. The trimmed tail is counted: the
-            # chunk's own census row records the trimmed kept size against the whole input.
-            if tokenizer.count(assemble(query, piece), add_special_tokens=flag) > cap:
-                pieces[index] = _cut_span(piece, span="document", other=query, cap=cap)
-        return pieces
+            if not fits(piece):  # the one-token floor: the frame's join inflates past the cap
+                kept = _cut_span(piece, span="document", other=query, cap=cap)
+                losses.append((index, piece[len(kept) :]))
+                pieces[index] = kept
+        return pieces, losses
 
     for index, item in enumerate(items):
         input_id = names[index]
@@ -1091,7 +1101,16 @@ def fit(
                     part_pairs=_pair_part_pairs(index, q_final, d_final),
                 )
             else:
-                pieces = _chunks(document, room, q_final, cap)
+                pieces, losses = _chunks(document, room, q_final, cap)
+                for k, uncovered in losses:
+                    loss_id = input_id if len(pieces) == 1 else f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
+                    _record(
+                        doc_id=loss_id,
+                        original=uncovered,
+                        kept="",
+                        aggregation=budget.aggregation,
+                        request_tokens=request_tokens,
+                    )
                 if len(pieces) == 1:
                     # One piece is the whole document: one request, its own id, no chunking (as
                     # chunk_ranking_example keeps an unsplit document).
@@ -1132,7 +1151,16 @@ def fit(
                     hint=_budget_hint("raise", "or shorten the query"),
                 )
             assert isinstance(item, str)  # a pair chunked above; this branch is single-text only
-            pieces = _chunks(item, cap - frame, "", cap)
+            pieces, losses = _chunks(item, cap - frame, "", cap)
+            for k, uncovered in losses:
+                loss_id = input_id if len(pieces) == 1 else f"{input_id}{CHUNK_ID_SEPARATOR}{k}"
+                _record(
+                    doc_id=loss_id,
+                    original=uncovered,
+                    kept="",
+                    aggregation=budget.aggregation,
+                    request_tokens=request_tokens,
+                )
             if len(pieces) == 1:
                 if (
                     tokenizer.count(assemble("", pieces[0]), add_special_tokens=flag) > cap

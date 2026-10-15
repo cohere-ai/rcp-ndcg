@@ -338,7 +338,13 @@ CHUNK_ID_SEPARATOR = "#"
 ``chunk_mapping`` is the authority for which document a chunk belongs to."""
 
 
-def split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) -> list[str]:
+def split_into_chunks(
+    text: str,
+    policy: ChunkPolicy,
+    tokenizer: TextTokenizer,
+    *,
+    fits: Callable[[str], bool] | None = None,
+) -> list[str]:
     """Split *text* into consecutive, overlapping chunks of at most ``policy.max_tokens`` tokens.
 
     The chunks are windows over the document's own tokens, located with the tokenizer's offset mapping, so each
@@ -351,6 +357,11 @@ def split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) 
     byte-level tokens) makes a chunk over the cap. One boundary caveat, declared here: a multi-byte character that
     a token boundary splits in two repeats -- its leading bytes end one chunk and the whole character opens the
     next -- so an ASCII-free corpus can see a character twice at a chunk edge (duplication only, never loss).
+
+    ``fits`` is the caller's own acceptance test on the rendered chunk (the text-budget fit's render check): a
+    piece that fits ``max_tokens`` but fails ``fits`` ends a token earlier too, *before* the next chunk's start
+    is computed, so the boundary moves with the trim and the chunks still cover the text. It is not consulted
+    for the one-token floor (the piece cannot shrink further; the caller decides what to do with it).
 
     Returns:
         The chunk texts in document order; ``[text]`` when *text* fits in one chunk.
@@ -367,9 +378,15 @@ def split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) 
         while True:
             piece = text[begin : len(text) if end == n else offsets[end - 1][1]]
             excess = tokenizer.count(piece) - policy.max_tokens
-            if excess <= 0 or end - start <= 1:
-                break
-            end = max(end - excess, start + 1)
+            if end - start <= 1:
+                break  # one document token is the floor
+            if excess > 0:
+                end = max(end - excess, start + 1)
+                continue
+            if fits is not None and not fits(piece):
+                end -= 1
+                continue
+            break
         chunks.append(piece)
         if end == n:
             return chunks
