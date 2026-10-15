@@ -401,7 +401,8 @@ def _engine_overlays(specs: list[str]) -> dict[EngineRole, EngineURLs]:
         role = role.strip()
         if not sep or role not in _ENGINE_ROLES:
             raise UsageError(
-                f"--engine {spec!r} is not <role>=<url>[,<url>] with role one of {', '.join(_ENGINE_ROLES)}",
+                f"--engine {redact_urls(spec)!r} is not <role>=<url>[,<url>] with role one of "
+                f"{', '.join(_ENGINE_ROLES)}",
                 hint="e.g. --engine judge=http://127.0.0.1:8000/v1,http://127.0.0.1:8001/v1",
                 cli_hint="e.g. --engine judge=http://127.0.0.1:8000/v1,http://127.0.0.1:8001/v1",
             )

@@ -50,3 +50,18 @@ def test_doctor_checks_every_module_the_error_map_names_under_its_extra() -> Non
     )
     assert set(_EXTRAS["hf"]) == {"huggingface_hub", "tokenizers"}
     assert "vllm" not in _EXTRAS
+
+
+def test_doctor_never_echoes_url_credentials(monkeypatch) -> None:
+    """The probed URL's userinfo and query stay out of the check detail: the report reaches --json output and
+    gets pasted into issues."""
+    import httpx
+
+    def refused(*args: object, **kwargs: object) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "get", refused)
+    result = CliRunner().invoke(doctor_cmd, ["--endpoint", "http://user:SECRET@127.0.0.1:9/v1?key=QKEY", "--json"])
+    assert result.exit_code == 0, result.output
+    assert "SECRET" not in result.stdout
+    assert "QKEY" not in result.stdout

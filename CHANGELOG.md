@@ -4840,3 +4840,9 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   key (or under an `env` mapping) with `<redacted>` and passes every string, nested included, through
   `redact_urls`; `no_control_characters` names the character and its position instead of `repr(value)`, so a
   mirror URI's presigned signature cannot ride out in the message either.
+- **A URL's credentials never reach a CLI error or `doctor` output**: `run resume --engine` echoed a refused
+  spec raw (the message reaches `--json` output, stderr and `--log-file`), `redact_urls` stopped a URL at
+  whitespace or a quote so a comma-joined replica list leaked every URL after the first, and `doctor
+  --endpoint` put the raw target -- userinfo and query included -- into the check detail. The spec is redacted,
+  `_URL_IN_TEXT` stops at a comma, and the doctor detail names the URL through `safe_url` and redacts the
+  exception's own text.

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import EXTRA_FOR_MODULE
 from rcp_ndcg.support.paths import cache_dir, runs_dir
+from rcp_ndcg.support.urls import redact_urls, safe_url
 
 #: extra -> the imports that prove it is installed (from the one table, :data:`rcp_ndcg.errors.EXTRA_FOR_MODULE`).
 _EXTRAS: dict[str, tuple[str, ...]] = {
@@ -80,21 +81,26 @@ def _probe(url: str, timeout_s: float) -> Check:
     import httpx
 
     target = url.rstrip("/") + "/models"
+    # The detail names the URL through safe_url (userinfo, query and fragment stripped): the report reaches
+    # --json output and gets pasted into issues. The probe itself uses the full URL.
+    shown = safe_url(target)
     try:
         response = httpx.get(target, timeout=timeout_s)
     except httpx.HTTPError as exc:
-        return Check(name="endpoint", status="fail", detail=f"{target}: {type(exc).__name__}: {exc}")
+        reason = redact_urls(f"{type(exc).__name__}: {exc}")
+        return Check(name="endpoint", status="fail", detail=f"{shown}: {reason}")
     if response.status_code in (401, 403):
-        detail = f"{target}: HTTP {response.status_code} (check the API key)"
-        return Check(name="endpoint", status="fail", detail=detail)
+        return Check(
+            name="endpoint", status="fail", detail=f"{shown}: HTTP {response.status_code} (check the API key)"
+        )
     if response.status_code >= 400:
-        return Check(name="endpoint", status="fail", detail=f"{target}: HTTP {response.status_code}")
+        return Check(name="endpoint", status="fail", detail=f"{shown}: HTTP {response.status_code}")
     try:
         models = [str(row.get("id")) for row in response.json().get("data", [])]
     except (ValueError, AttributeError):
         models = []
     served = ", ".join(models) or "no models listed"
-    return Check(name="endpoint", status="ok", detail=f"{target}: serving {served}")
+    return Check(name="endpoint", status="ok", detail=f"{shown}: serving {served}")
 
 
 def _text(report: DoctorReport) -> str:
