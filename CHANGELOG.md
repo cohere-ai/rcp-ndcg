@@ -4418,6 +4418,11 @@ text it sends to the declared budget.
   `./gs:/...` tree and reported success; those paths now go through `storage.local_dir` and are refused with
   the mirror hint, as the judging commands already were.
 
+- **The exit-code table names where the anchor report is**: exit 11's row pointed agents at
+  `data.extension.anchor_report`, but a failure envelope carries no `data` -- the report is in
+  `error.details.anchor_report` (the `--dry-run` row also now says which two commands write or restore
+  something before doing nothing else).
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

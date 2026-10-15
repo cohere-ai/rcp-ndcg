@@ -37,3 +37,11 @@ def test_no_retired_or_internal_names(path: Path) -> None:
     checks = FORBIDDEN + ([] if path.name == "CHANGELOG.md" else FORBIDDEN_IN_USER_FACING_PAGES)
     hits = [f"{rx.pattern}: {why}" for rx, why in checks if rx.search(text)]
     assert hits == []
+
+
+def test_the_exit_code_table_names_where_the_anchor_report_is() -> None:
+    """Exit 11's anchor report is in ``error.details.anchor_report`` (a failure envelope carries no ``data``);
+    the table pointed agents at ``data.extension.anchor_report``, a path that never exists on a failure."""
+    page = (ROOT / "docs/reference/cli.md").read_text(encoding="utf-8")
+    assert "error.details.anchor_report" in page
+    assert "data.extension.anchor_report" not in page

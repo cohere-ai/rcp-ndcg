@@ -39,6 +39,48 @@ def test_the_plan_switch_is_dry_run_and_plan_is_the_plan_file() -> None:
     assert tournament["--plan"].type == "text"
 
 
+def test_an_anchor_failure_reports_the_report_in_error_details(tmp_path: Path) -> None:
+    """Exit 11's anchor report is at ``error.details.anchor_report`` (a failure envelope carries no ``data``):
+    re-judging the calibration's own windows under another seed moves the refit past a zero tolerance."""
+    rows = [json.loads(line) for line in ROWS.read_text(encoding="utf-8").splitlines()]
+    pools = tmp_path / "pools.jsonl"
+    Rankings.from_orders({r["query_id"]: [d for d in r["doc_ids"] if d != "q1-d1"] for r in rows}, system="p").save(
+        pools
+    )
+    store, calibration = str(tmp_path / "store"), str(tmp_path / "calibration")
+    dataset = ["--dataset", f"jsonl:{ROWS}", "--judge", "fake"]
+    rubric = [
+        "--set", "schedule.window=4",
+        "--set", "schedule.placements_per_doc=4.0",
+        "--set", "schedule.random_share=0.5",
+    ]  # fmt: skip
+    _json("judge", "tournament", *dataset, "--candidates", str(pools), *SCHEDULE, "--out", store)
+    _json("judge", "rubric", *dataset, "--candidates", str(pools), *rubric, "--out", store)
+    _json("calibration", "fit", "--judgements", store, "--out", calibration)
+    # The anchor refits the calibration's own fitted windows; another seed's windows are a different set of
+    # comparisons, so the refit moves and a zero tolerance refuses.
+    _json(
+        "judge", "tournament", *dataset, "--candidates", str(pools), *SCHEDULE,
+        "--set", "schedule.seed=7", "--force", "--out", store,
+    )  # fmt: skip
+    plan_file = tmp_path / "plan.json"
+    _json(
+        "calibration", "insert", "--calibration", calibration, "--judgements", store, "--dry-run",
+        "--query", "q1", "--doc", "q1-d1", "--n", "6", "--out", str(plan_file),
+    )  # fmt: skip
+    _json("judge", "tournament", *dataset, "--plan", str(plan_file), "--out", store)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "calibration", "insert", "--calibration", calibration, "--judgements", store,
+            "--se-target", "3.0", "--max-gain-shift", "0", "--out", str(tmp_path / "extended"), "--json",
+        ],  # fmt: skip
+    )
+    assert result.exit_code == 11, result.output
+    report = json.loads(result.stdout)["error"]["details"]["anchor_report"]
+    assert report["ok"] is False and report["max_gain_shift"] == 0 and report["documents_checked"] > 0
+
+
 def test_a_new_document_is_inserted_by_judging_exactly_the_planned_windows_into_the_store(tmp_path: Path) -> None:
     rows = [json.loads(line) for line in ROWS.read_text(encoding="utf-8").splitlines()]
     pools = tmp_path / "pools.jsonl"
