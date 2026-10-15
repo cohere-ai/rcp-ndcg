@@ -4592,7 +4592,10 @@ text it sends to the declared budget.
 - **A judging pass releases each query's prepared media when it finishes** (`g-video-7`): the per-pass cache
   held every prepared page and frame of every query -- inlined PNG data URIs -- to the end of the pass,
   defeating the shared image LRU's one-pool bound and growing peak memory with the number of queries;
-  `run_tournament`/`run_rubric` now drop the finished query's entries.
+  `run_tournament`, `run_rubric` and the `judge(windows=...)` path now drop the finished query's entries.
+  The peak before the first answer is bounded too: the window budget prepares a query's pool synchronously
+  before its first await, so a pass that started every query at once held one pool per query -- a media pass
+  now runs one query at a time.
 - **`judge --estimate` counts the media the pass sends and gates videos too** (`g-video-8`): the window gate
   counted every raw frame of a frame directory (a 60-frame clip under `num_frames: 4` was refused against a
   cap the pass accepts), counted a `video_url` part's frames as images, and never checked `max_videos` (a

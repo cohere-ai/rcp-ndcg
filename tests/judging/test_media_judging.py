@@ -511,6 +511,85 @@ class TestVideoContainers:
         assert fake.usage.requests == 0
 
 
+def test_a_media_pass_bounds_prepared_media_to_one_query_s_pool(tmp_path: Path, pages, monkeypatch) -> None:
+    """Every prepared page and frame is an inlined PNG data URI; the shared image LRU is sized to one
+    query's pool, but a pass that starts every query before its first answer used to hold one pool per
+    query (the window budget prepared each pool synchronously, before the first await). The pass now runs
+    one media query at a time, so the prepared dict never holds more than one query's pool."""
+    from rcp_ndcg.judging.judging import _Pass
+
+    observed: list[int] = []
+    original = _Pass.ask_all
+
+    async def spy(self: _Pass, *args, **kwargs):
+        observed.append(len(self.prepared))
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(_Pass, "ask_all", spy)
+    rows = [
+        RankingExample(
+            query_id=f"q{index}",
+            query="what is the yield curve",
+            doc_ids=[f"p{page}" for page in range(len(pages))],
+            contents=[Content.from_parts([ImagePart(ref=ref)]) for ref in pages],
+        )
+        for index in (1, 2)
+    ]
+    fake = FakeJudge()
+    fake.config = fake.config.model_copy(update={"max_images": len(pages), "context_tokens": 100_000})
+
+    judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL)
+
+    assert observed, "the pass asked"
+    peak = max(observed)
+    assert peak <= len(pages), f"prepared media peaked at {peak} entries; one query's pool is {len(pages)}"
+
+
+async def test_run_planned_releases_a_query_s_prepared_media(tmp_path: Path, pages) -> None:
+    """The ``judge(windows=...)`` path (calibration insert/rejudge) prepared every query's media and never
+    released it: after the pass returned, every pool was still resident. It releases like the two stage
+    workers do."""
+    from rcp_ndcg_core.schemas import JudgementFamily
+
+    from rcp_ndcg.data.census import TextTruncationCensus
+    from rcp_ndcg.data.prepare import MediaCensus
+    from rcp_ndcg.judging.judging import _Pass, _Query, run_planned
+    from rcp_ndcg.judging.store import JudgementStore
+
+    prompt = load_prompt("rubric_vision")
+    units = [f"p{i}" for i in range(len(pages))]
+    query = _Query(
+        dataset="d",
+        query_id="q1",
+        text="what is the yield curve",
+        units=units,
+        contents={unit: Content.from_parts([ImagePart(ref=ref)]) for unit, ref in zip(units, pages, strict=True)},
+        chunk_mapping=None,
+    )
+    client = FakeJudge()
+    client.config = client.config.model_copy(update={"max_images": len(pages)})
+    run = _Pass(
+        stage="rubric",
+        client=client,
+        prompt=prompt,
+        family=JudgementFamily(
+            stage="rubric", judge_model="fake", prompt_hash=prompt.sha256, criteria=prompt.criteria, parse_version=1
+        ),
+        store=JudgementStore(tmp_path / "store"),
+        existing={},
+        preprocessing=Preprocessing(),
+        census=TextTruncationCensus(),
+        media_census=MediaCensus(),
+        tokenizer=None,
+        schedule_key="schedule",
+        dataset_key="dataset",
+    )
+
+    await run_planned(query, [units], run, mirror=False)
+
+    assert run.prepared == {}, "a planned pass releases the query's prepared media when it returns"
+
+
 async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_path: Path, pages) -> None:
     """A judging pass cached every prepared page and frame of every query for the whole pass (the shared
     image LRU cannot release them while the per-pass dict holds references); the cache is now scoped to one

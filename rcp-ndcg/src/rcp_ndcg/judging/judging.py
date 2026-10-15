@@ -1201,6 +1201,22 @@ async def _run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> No
         run.retire_after_refit(query, "stratified", len(random_windows) + len(stratified))
 
 
+def _media_query_gate(queries: Sequence[_Query]) -> asyncio.Semaphore | None:
+    """A one-slot gate when any query carries media, else ``None``.
+
+    Every prepared page and frame is an inlined PNG data URI, and one query's pool can hold hundreds of
+    them (the shared image LRU is sized to one pool, :data:`~rcp_ndcg.data.prepare.IMAGE_CACHE_SIZE`). A
+    pass that starts every query before its first answer holds one pool per query -- the window budget
+    prepares each query's pool synchronously, before its first await -- so a media pass runs one query at a
+    time; text queries keep the full concurrency.
+    """
+    for query in queries:
+        for content in query.contents.values():
+            if any(isinstance(part, ImagePart | VideoPart) for part in content.parts):
+                return asyncio.Semaphore(1)
+    return None
+
+
 def _record_dropped_stratified(query: _Query, windows: int, run: _Pass) -> None:
     """Warn and record a stratified phase the random phase left nothing to stratify: the preliminary ability
     is empty, so the tier windows cannot be selected and the schedule's calls are not asked.
@@ -1243,13 +1259,17 @@ async def run_planned(query: _Query, windows: Sequence[Sequence[str]], run: _Pas
     The windows are recorded with ``phase`` and ``window_seq`` ``None`` and keyed by their documents in order (and
     the schedule), not by their place in the command: asking the same window again, in any plan or grouping,
     reuses it. Each window is rendered at its own size's text budget (the budget is a function of the window, so
-    a plan's longest window no longer decides what a short one shows).
+    a plan's longest window no longer decides what a short one shows). The query's prepared media are released
+    when it returns, like the two stage workers.
     """
-    asked = [list(order) for window in windows for order in ((window, window[::-1]) if mirror else (window,))]
-    asked = list({tuple(window): window for window in asked}.values())  # a window listed twice is asked once
-    for size in sorted({len(window) for window in asked}):
-        of_size = [window for window in asked if len(window) == size]
-        await run.ask_all(query, None, of_size, run.window_tokens(query, size), None)
+    try:
+        asked = [list(order) for window in windows for order in ((window, window[::-1]) if mirror else (window,))]
+        asked = list({tuple(window): window for window in asked}.values())  # a window listed twice is asked once
+        for size in sorted({len(window) for window in asked}):
+            of_size = [window for window in asked if len(window) == size]
+            await run.ask_all(query, None, of_size, run.window_tokens(query, size), None)
+    finally:
+        run.release(query)
 
 
 # ---------------------------------------------------------------------------
@@ -1642,6 +1662,14 @@ async def ajudge(
     else:
         worker = run_tournament if stage == "tournament" else run_rubric
         jobs = [worker(query, plan.schedule, run) for query in queries]  # type: ignore[arg-type]
+    gate = _media_query_gate(queries)
+    if gate is not None:
+
+        async def bounded(job: Any) -> None:
+            async with gate:
+                await job
+
+        jobs = [bounded(job) for job in jobs]
     outcomes = await asyncio.gather(*jobs, return_exceptions=True)
     failures = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
     store.note_engines(stage, client.engines)  # now with the fingerprints the answers carried
