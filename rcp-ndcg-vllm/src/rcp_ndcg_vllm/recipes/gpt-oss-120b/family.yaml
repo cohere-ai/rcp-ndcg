@@ -38,10 +38,11 @@ serve:
 client:
   api: chat
   # The checkpoint's own generation defaults, read from its generation_config.json at the pinned revision
-  # (2026-10-10 owner decision, superseding the paper's run-level sampling): the config declares no sampling
-  # parameters (bos/eos/pad and do_sample only), so the recipe sends temperature 0.0 -- greedy, the
-  # config-without-sampling-parameters rule -- and no top_p/top_k. max_output_tokens stays 8192.
-  temperature: 0.0
+  # (2026-10-15 owner decision 14(iii), superseding the 2026-10-10 greedy reading): the config declares
+  # `do_sample: true` and no temperature, so the HF-default rule is the checkpoint's own sampling default --
+  # temperature 1.0 -- and no top_p/top_k. The paper's greedy 0.0 is not reproduced: pedantic reproducibility
+  # is not required, and a checkpoint that asks to sample is followed. max_output_tokens stays 8192.
+  temperature: 1.0
   max_output_tokens: 8192
   context_tokens: 131072
   concurrency: 256
@@ -50,13 +51,14 @@ notes: >-
   The paper's second judge. Client block: max_output_tokens 8192, context_tokens 131072
   (the checkpoint's own maximum via YARN factor 32, and the engine's --max-model-len), concurrency 256,
   decoding json_schema. Text-only: no image_processor, no max_images.
-  Sampling (2026-10-10 owner decision, superseding the paper's run-level sampling): the checkpoint's own
-  generation_config.json at the pinned revision declares no sampling parameters -- only bos_token_id,
-  eos_token_id, pad_token_id, do_sample and transformers_version -- so the recipe sends temperature 0.0
-  (greedy; the config-without-sampling-parameters rule) and no top_p/top_k. The paper's gpt-oss clients also
-  declared `temperature: 0.0` (configs/model/gpt_oss_120b/client.yaml and client.pool.yaml), so the temperature
-  matches the paper's runs; the paper's second-judge runs drove the pooled client with the tournament's
-  `max_response_tokens: 12288` where this recipe keeps the preset's 8192 (a DECLARED DIVERGENCE, recorded).
+  Sampling (2026-10-15 owner decision 14(iii), superseding the 2026-10-10 greedy reading): the checkpoint's own
+  generation_config.json at the pinned revision declares `do_sample: true` and no temperature, so the HF-default
+  rule follows the checkpoint's own sampling default -- temperature 1.0 -- and no top_p/top_k. The paper's
+  gpt-oss clients declared `temperature: 0.0` (configs/model/gpt_oss_120b/client.yaml and client.pool.yaml), so
+  this deliberately does NOT reproduce the paper's sampling: the owner's call is that pedantic reproducibility
+  is not required and the checkpoint's own request to sample is followed. The paper's second-judge runs drove
+  the pooled client with the tournament's `max_response_tokens: 12288` where this recipe keeps the preset's 8192
+  (a DECLARED DIVERGENCE, recorded).
   temperature and max_output_tokens are CONTENT fields of the judgement family, so this sampling change
   re-keys the family (the owner accepted the re-key): a judgement recorded before it never pools with one
   recorded after.

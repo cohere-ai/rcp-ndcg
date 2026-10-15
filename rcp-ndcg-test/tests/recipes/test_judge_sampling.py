@@ -20,13 +20,15 @@ import pytest
 from rcp_ndcg_vllm.recipe import iter_recipes
 
 #: Every shipped judge variant's sampling, from its checkpoint's own generation_config.json at the
-#: pinned revision (fetched 2026-10-10). ``top_p``/``top_k`` are None where the config declares no
-#: sampling parameters: the recipe then sends temperature 0.0 (greedy) and no top_p/top_k.
+#: pinned revision (fetched 2026-10-10; the gpt-oss row corrected 2026-10-15 under owner decision 14(iii)).
+#: ``top_p``/``top_k`` are None where the config declares none: the recipe then follows the HF default,
+#: temperature 1.0, and sends no top_p/top_k. A config that declares ``do_sample: true`` asks to sample --
+#: that is the checkpoint's own default, and reproducing the paper's greedy 0.0 instead is not required.
 JUDGE_SAMPLING: dict[str, dict[str, object]] = {
     "gpt-oss-120b": {
         "model": "openai/gpt-oss-120b",
         "revision": "b5c939de8f754692c1647ca79fbf85e8c1e70f8a",
-        "temperature": 0.0,  # the config declares no sampling parameters: greedy
+        "temperature": 1.0,  # do_sample: true and no temperature: the HF default (owner decision 14(iii))
         "top_p": None,
         "top_k": None,
         "max_output_tokens": 8192,
