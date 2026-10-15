@@ -287,6 +287,23 @@ class Resources(BaseModel):
     gpus: int = Field(ge=1)
 
 
+_SERVE_ARGV_FLAG_FIELDS: Mapping[str, str] = {
+    # The flags serve_argv renders that no FIELD_ROLES entry names (its DEPLOYMENT flags come from there):
+    # extra_args may not repeat one. The value is the schema field (or the run's own knob) to use instead.
+    "--revision": "the recipe's revision (a different revision is a variant row)",
+    "--served-model-name": "the console's --served-model-name (the run owns it)",
+    "--runner": "serve.runner",
+    "--convert": "serve.convert",
+    "--dtype": "serve.dtype",
+    "--trust-remote-code": "serve.trust_remote_code",
+    "--hf-overrides": "serve.hf_overrides",
+    "--chat-template": "serve.chat_template",
+    "--pooler-config": "serve.pooler_config",
+    "--mm-processor-kwargs": "serve.mm_processor_kwargs",
+    "--limit-mm-per-prompt": "serve.limit_mm_per_prompt",
+}
+
+
 class ServeConfig(BaseModel):
     """Everything rendered into the ``vllm serve`` argv — nothing implicit.
 
@@ -348,7 +365,10 @@ class ServeConfig(BaseModel):
         default=None, description="vLLM --limit-mm-per-prompt, the per-request media caps"
     )
     extra_args: list[str] = Field(
-        default_factory=list, description="further vllm serve flags, verbatim (one argv element per item)"
+        default_factory=list,
+        description="further vllm serve flags, verbatim (one argv element per item); a flag serve_argv already "
+        "renders (--revision, --max-model-len, --max-num-seqs, ...) is refused, because the engine keeps the "
+        "last occurrence and would silently override the rendered value",
     )
 
     @field_validator("chat_template")
@@ -404,6 +424,27 @@ class ServeConfig(BaseModel):
                 f"patches names {unknown_patches}, which rcp_ndcg_vllm.patches.PATCH_NAMES does not ship "
                 f"(known: {', '.join(PATCH_NAMES)})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _extra_args_do_not_repeat_a_rendered_flag(self) -> ServeConfig:
+        """``extra_args`` carries flags the schema has no field for, never a second copy of one it renders.
+
+        ``serve_argv`` appends ``extra_args`` after the rendered deployment tail, and the engine's argparse
+        keeps the last occurrence: a duplicate silently overrides a ``--set`` value, the ``serve.max_model_len``
+        budget check or even ``--revision``.  A flag the recipe already renders is refused by name, with the
+        schema field to use instead -- a DEPLOYMENT field takes ``--set``, a content field is a variant row.
+        """
+        rendered = {spec.flag: path for path, spec in FIELD_ROLES.items() if spec.flag is not None}
+        rendered.update(_SERVE_ARGV_FLAG_FIELDS)
+        for element in self.extra_args:
+            flag = element.split("=", 1)[0].strip()
+            field = rendered.get(flag)
+            if field is not None:
+                raise ValueError(
+                    f"serve.extra_args carries {flag}, which serve_argv renders itself: use {field} instead "
+                    "(a deployment field takes --set, a content field is a variant row)"
+                )
         return self
 
 

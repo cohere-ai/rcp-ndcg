@@ -49,6 +49,10 @@ incompatibly, independently of the package version. All four distributions carry
   (PEP 503-normalised), so it is no longer refused as missing, the architecture check applies to the
   underscore spelling, text with no requirement name is refused naming the accepted forms, and the install
   hint quotes the spec for the shell.
+- **`serve.extra_args` may not repeat a flag `serve_argv` renders** (vllm-5): a duplicate lands after the
+  rendered value and the engine's last-wins parsing silently overrides a `--set` value, the
+  `serve.max_model_len` budget check or even `--revision`; the schema now refuses one by name, with the field
+  to use instead (`schema/recipe.schema.json` and `schema/family.schema.json` carry the field note).
 
 ## 0.0.1 — 2026-10-14
 

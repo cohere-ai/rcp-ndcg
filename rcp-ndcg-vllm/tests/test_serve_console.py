@@ -730,6 +730,31 @@ def test_the_missing_plugin_hint_quotes_the_spec(
     assert "pip install --no-deps 'some-other-plugin>=1.0'" in str(excinfo.value)
 
 
+def test_extra_args_may_not_repeat_a_flag_serve_argv_renders(tmp_path: Path) -> None:
+    """``extra_args`` is for flags the schema has no field for: a duplicate lands after the rendered value and
+    the engine's last-wins parsing silently overrides ``--set``, the budget check or ``--revision``.  The
+    refusal names the flag and the schema field to use instead."""
+    directory = _write_family(
+        tmp_path,
+        family="colliding",
+        serve_extra='  extra_args: ["--max-model-len", "1024", "--revision", "main"]',
+    )
+    with pytest.raises(RecipeError) as excinfo:
+        load_recipe(directory)
+    message = str(excinfo.value)
+    assert "--max-model-len" in message and "serve.max_model_len" in message
+    assert "extra_args" in message
+
+
+def test_extra_args_keep_the_flags_the_schema_has_no_field_for() -> None:
+    """The shipped extra flags (quantization, the KV-cache dtype, the media-io kwargs) are not rendered by
+    ``serve_argv`` and stay verbatim."""
+    recipe = load_recipe("gemma-4-31b-it-nvfp4")
+    assert recipe.serve.extra_args, "the fixture recipe carries verbatim extra flags"
+    argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
+    assert "--quantization" in argv
+
+
 def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
