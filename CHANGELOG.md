@@ -4315,6 +4315,40 @@ text it sends to the declared budget.
   procedure is in [use verified fake engines](docs/how-to/use-verified-fake-engines.md), and
   `test_no_committed_corpus_names_private_infrastructure` holds the committed bytes to it.
 
+- **A resumed judging pass retires a generation only when a refused window comes back answered**
+  (`judging-1`, `judging-2`, `judging-3`): a window the endpoint keeps refusing used to make every resume retire
+  and re-ask the whole later phase of its query, and the phase ranges mis-counted a chunked tournament's units.
+  A scheduled judgement now records its pool generation (the digest of the units the pass judges; the
+  `Judgement` schema gains the optional `generation` field), so a `docs=` subset pass's resume never retires a
+  full pass's windows, the tournament ranges count the units `run_tournament` asks, and the later phases are
+  retired only when the re-asked refusal actually returns an answer.
+- **A query id in `docs=`, `windows=` or a row-input `candidates=` that names no row is refused** (`judging-5`):
+  the pass used to skip it silently and report success while the named query was never judged; it now raises a
+  `DataError` naming every unknown key before the store is claimed.
+- **The worked-example guard refuses only a literal echo** (`judging-6`): `parse_window` compared the parsed
+  verdicts, so a genuine answer whose criteria happened to match the example's pattern was refused as the
+  prompt's own example; the whole decoded JSON object (reasoning included) is compared now.
+- **The judgement store's dataset identity covers the query texts the judge read** (`judging-4`): a reader whose
+  queries live in a sidecar (`queries_uri`, the `images:`/`videos:`/`frames:` readers) could have its query file
+  edited without the store noticing, so answers given on the old texts were attributed to the new ones. The
+  formatted query texts now enter the identity, and an edited query file is another dataset, refused like an
+  edited `rows.jsonl`.
+- **A remote non-Hub dataset source is fingerprinted by the objects its reader reads** (`arch-2`):
+  `dataset_content_digest` returned nothing for `jsonl:`/`beir:`/`images:` on `gs://`, `s3://` or `https://`, so
+  run steps and judgement stores keyed on the URI alone and reused work over a replaced object. The one home now
+  fingerprints each remote location from the backend's metadata (an object's size and change stamp, or a
+  streamed SHA-256 when it reports neither; a prefix as its sorted listing) and refuses a location the backend
+  cannot answer for with a typed error and a hint.
+- **A result record's subject identity is the digest the evaluate step scored** (`arch-4`, `retrieval-10`): the
+  export re-read the `evaluation.systems` file at export time, so a rankings file regenerated in place was
+  reported as the run's subject; the identity now comes from the evaluate step's recorded inputs.
+- **A refused calibration save leaves the previous calibration in place** (`robust-4`): `Calibration.save`
+  overwrote the seven files in sequence, so a crash or a mid-save refusal left a mixed calibration that loaded
+  cleanly. Every payload is built and validated first, the layout is staged in a temporary sibling directory
+  and swapped in as a whole.
+- **Examples 04 and 05 judge into their own stores** (`docs-5`): both wrote `./judgements`, so running them in
+  sequence mixed their pools and broke the second (`judgements-rejudge` and `judgements-insert` now).
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
