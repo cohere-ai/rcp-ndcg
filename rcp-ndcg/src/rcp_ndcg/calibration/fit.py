@@ -590,8 +590,8 @@ def calibrate(
     calibration's ``diagnostics`` and ``coverage``), or with ``strict`` a refusal.
 
     A document whose tournament windows are all invalid carries no comparison: the Bradley-Terry fit gives it the
-    query's mean ability (the paper's number; the ridge's standard error only when the query has other
-    comparisons), and the fit reports the documents as ``NO_VALID_TOURNAMENT_EVIDENCE``
+    query's mean ability (the paper's number; the joint ridge's standard error ``1 / sqrt(bt_l2 * W)`` only when
+    the query has other comparisons), and the fit reports the documents as ``NO_VALID_TOURNAMENT_EVIDENCE``
     (``coverage.no_tournament_evidence_documents``), or refuses them with ``strict``.
 
     Args:

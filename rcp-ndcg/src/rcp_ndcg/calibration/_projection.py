@@ -287,7 +287,8 @@ def bradley_terry(
     showed; a document judged in chunks takes its best chunk's ability (and that
     chunk's standard error). A document with no comparison at all takes the mean
     ability (:func:`no_tournament_evidence` names it): its standard error is the
-    ridge's ``1 / sqrt(l2)`` when the query has other comparisons, and ``None``
+    ridge's ``1 / sqrt(l2 * W)`` (W the fit's total comparison weight) when the
+    query has other comparisons, and ``None``
     when it has none, since then no information matrix was formed.
     """
     from rcp_ndcg_core.irt import BradleyTerryEstimator

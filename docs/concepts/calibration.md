@@ -110,12 +110,13 @@ calibration/
 `theta_se` is a standard error in logits, when one is known (a row with none leaves the column empty). A
 rubric-only document's is the posterior standard deviation of its ability; a tournament document's is its
 Bradley-Terry standard error mapped onto the calibrated scale by the query's `tau`. The Bradley-Terry one is the
-**diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2)`:
-it is a per-document information referent that ignores the covariance between documents, so it is comparable
-across documents of one fit but is not a full-information standard error. A document a fitted query never
-compared carries no information of its own: its SE is the ridge's `1 / sqrt(bt_l2)` when the query has other
-comparisons, and missing when it has none (`coverage.json` lists those documents under
-`no_tournament_evidence_documents`).
+**diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2 * W)`,
+where `W` is the fit's total comparison weight. That is the same `info + l2*W` referent the insertion reports
+(`calibration insert`), so an inserted document's SE is commensurate with the fitted documents'. It ignores the
+covariance between documents, so it is comparable across documents of one fit but is not a full-information
+standard error. A document a fitted query never compared carries no information of its own: its SE is the ridge's
+`1 / sqrt(bt_l2 * W)` when the query has other comparisons, and missing when it has none (`coverage.json` lists
+those documents under `no_tournament_evidence_documents`).
 
 `diagnostics.json` reports how well the predicted pass probabilities match the observed answers. The expected
 calibration error (ECE) is the size-weighted mean gap between predicted probabilities and observed pass rates in

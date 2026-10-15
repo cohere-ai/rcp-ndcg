@@ -98,8 +98,8 @@ class TestConditionalInsertion:
         # And it tracks the generating truth.
         assert abs(result.theta - true[doc]) < 2.0 * result.se
 
-    def test_reported_se_uses_per_document_information(self) -> None:
-        """The SE referent is d*'s own incident information, not the fit's size."""
+    def test_reported_se_uses_the_joint_fit_referent(self) -> None:
+        """The SE referent is d*'s own incident information plus the fit's ridge ``l2*W``."""
         docs, _true, comparisons = _dense_world()
         doc = "d15"
         existing_comps = [c for c in comparisons if doc not in (c[0], c[1])]
@@ -111,40 +111,73 @@ class TestConditionalInsertion:
         from rcp_ndcg_core.irt import Priors
         from rcp_ndcg_core.irt._insertion import incident_information
 
-        # Its default ridge is the calibration's Bradley-Terry penalty.
-        expected = 1.0 / np.sqrt(incident_information(doc, new_comps, {**thetas, doc: result.theta}, Priors().bt_l2))
+        # Its default ridge is the calibration's Bradley-Terry penalty, scaled by the fit's weight total.
+        weight_total = sum(weight for _a, _b, weight, _sl in existing_comps + new_comps)
+        expected = 1.0 / np.sqrt(
+            incident_information(
+                doc, new_comps, {**thetas, doc: result.theta}, Priors().bt_l2, weight_total=weight_total
+            )
+        )
         assert abs(result.se - expected) < 1e-9
+
+
+def test_inserted_se_matches_the_joint_fit_referent() -> None:
+    """The inserted SE is ``1/sqrt(own Fisher information + l2*W)``, W the fit's total comparison
+    weight: the same referent :class:`BradleyTerryEstimator` reports for every fitted document."""
+    from rcp_ndcg_core.gain import sigmoid
+    from rcp_ndcg_core.irt import Priors
+
+    docs, _true, comparisons = _dense_world()
+    doc = "d15"
+    existing_comps = [c for c in comparisons if doc not in (c[0], c[1])]
+    new_comps = [c for c in comparisons if doc in (c[0], c[1])]
+    thetas = _fit_bt([d for d in docs if d != doc], existing_comps)
+    result = insert_document(
+        doc, new_comparisons=new_comps, existing_thetas=thetas, existing_comparisons=existing_comps
+    )
+    own_info = sum(
+        weight * (p := sigmoid(result.theta - thetas[b if a == doc else a])) * (1.0 - p)
+        for a, b, weight, _sl in new_comps
+    )
+    total_weight = sum(weight for _a, _b, weight, _sl in existing_comps + new_comps)
+    want_info = own_info + Priors().bt_l2 * total_weight
+    assert abs(result.information - want_info) < 1e-9, (result.information, want_info)
+    assert abs(result.se - 1.0 / np.sqrt(want_info)) < 1e-9, (result.se, want_info)
 
 
 class TestInformationReferent:
     """The insertion SE's ridge term, pinned against hand-written values (not the function under test)."""
 
     def test_incident_information_matches_the_hand_written_referent(self) -> None:
-        """Fixed thetas, no fit: the referent is ``sum w*p*(1-p)`` over incident comparisons + l2.
+        """Fixed thetas, no fit: the referent is ``sum w*p*(1-p)`` over incident comparisons + l2*W.
 
         theta_d = theta_a = theta_c = 0 and theta_b = ln(3), so the three incident
         comparisons contribute 2*1/4, 1*3/16 and 4*1/4 = 1.6875, and the non-incident
-        pair (a, b) contributes nothing. With l2 = 0.3125 the total is exactly 2.
+        pair (a, b) contributes nothing. With l2 = 0.3125 and W = 4 the ridge term is 1.25,
+        so the total is 2.9375; the old per-document referent (+l2 alone) gave 2.0.
         """
         from rcp_ndcg_core.irt._insertion import incident_information
 
         theta = {"d": 0.0, "a": 0.0, "b": math.log(3.0), "c": 0.0}
         comps = [("d", "a", 2.0, 0.9), ("b", "d", 1.0, 0.8), ("c", "d", 4.0, 0.6), ("a", "b", 9.0, 0.5)]
-        assert incident_information("d", comps, theta, 0.3125) == pytest.approx(2.0, abs=1e-12)
-        assert incident_information("d", comps, theta, 0.0) == pytest.approx(1.6875, abs=1e-12)
+        assert incident_information("d", comps, theta, 0.3125, weight_total=4.0) == pytest.approx(2.9375, abs=1e-12)
+        assert incident_information("d", comps, theta, 0.0, weight_total=4.0) == pytest.approx(1.6875, abs=1e-12)
+        # W = 1 is the old number only because the ridge term is exactly l2 there.
+        assert incident_information("d", comps, theta, 0.3125, weight_total=1.0) == pytest.approx(2.0, abs=1e-12)
 
     def test_conditional_insert_theta_reports_the_hand_computed_information(self) -> None:
-        """One comparison with soft label 0.5: dL/dt = w(p - 0.5) + l2*t has its optimum at t = 0,
+        """One comparison with soft label 0.5: dL/dt = w(p - 0.5) + l2*W*t has its optimum at t = 0,
 
-        so the returned information is ``w * 1/4 + l2`` = 1.0 -- a dropped ridge returns 0.5.
+        so the returned information is ``w * 1/4 + l2*W`` = 0.5 + 0.5*4 = 2.5 -- the per-document
+        referent (a dropped ``*W``) returns 1.0.
         """
         from rcp_ndcg_core.irt._insertion import conditional_insert_theta
 
         theta_hat, info = conditional_insert_theta(
-            "d", [("a", "d", 2.0, 0.5)], {"a": 0.0}, l2_reg=0.5, weight_total=1.0
+            "d", [("a", "d", 2.0, 0.5)], {"a": 0.0}, l2_reg=0.5, weight_total=4.0
         )
         assert abs(theta_hat) < 1e-6, theta_hat
-        assert abs(info - 1.0) < 1e-6, info
+        assert abs(info - 2.5) < 1e-6, info
 
 
 class TestConditionalRidge:

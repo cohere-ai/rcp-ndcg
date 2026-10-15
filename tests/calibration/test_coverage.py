@@ -179,11 +179,16 @@ def test_a_document_with_only_invalid_tournament_windows_is_listed_and_warned(tm
     loaded = Calibration.load(fitted.save(tmp_path / "cal"))
     assert loaded.coverage.no_tournament_evidence_documents == ["d||q/x"]
     assert loaded.warnings == fitted.warnings
-    # The paper's numbers are kept: the document gets the query mean ability and the ridge's SE, not a refusal.
+    # The paper's numbers are kept: the document gets the query mean ability and the joint fit's
+    # ridge SE (``1 / sqrt(l2 * W)``, W the fit's total comparison weight), not a refusal.
+    from rcp_ndcg.calibration._projection import tournament_comparisons
+
     row = next(row for row in fitted.thetas if row.doc_id == "x")
     assert row.source == "fit"
     assert row.theta == pytest.approx(fitted.queries["d||q"].alpha, abs=1e-4)
-    assert row.theta_se == pytest.approx(fitted.queries["d||q"].tau / math.sqrt(fitted.identity.priors.bt_l2), rel=1e-6)
+    weight_total = sum(weight for _w, _l, weight, _s in tournament_comparisons(judgements)["d||q"])
+    ridge = fitted.identity.priors.bt_l2 * weight_total
+    assert row.theta_se == pytest.approx(fitted.queries["d||q"].tau / math.sqrt(ridge), rel=1e-6)
 
 
 def test_a_strict_fit_refuses_a_document_without_valid_tournament_evidence() -> None:

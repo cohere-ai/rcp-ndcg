@@ -77,6 +77,33 @@ class TestOracle:
         assert Criteria2PL(ORACLE_GAMMA, ORACLE_BETA).item_params == ORACLE_ITEMS
 
 
+class TestPriorSdInvariance:
+    """``prior_sd`` is a unit choice, not a model change.
+
+    ``theta ~ N(0, s)`` with ``gamma*(theta - beta)`` is the same model as ``u = theta / s ~ N(0, 1)``
+    with ``(gamma*s)*(u - beta/s)``, so the fit must be invariant under it: the items and the EAP
+    must map by the same rescaling for every ``s``. The fixed absolute quadrature grid broke that.
+    """
+
+    def test_the_fit_and_eap_are_invariant_under_prior_sd(self) -> None:
+        rng = np.random.default_rng(5)
+        n_docs = 1500
+        beta_true = np.linspace(-1.0, 1.0, 5)
+        gamma_true = np.array([2.0, 2.5, 3.0, 3.5, 4.0])
+        theta = rng.normal(0.0, 1.0, size=n_docs)
+        n = np.full(n_docs, 3.0)
+        p = 1.0 / (1.0 + np.exp(-(gamma_true[None, :] * (theta[:, None] - beta_true[None, :]))))
+        S = rng.binomial(3, p).astype(float)
+        one = Criteria2PL.fit(n, S, prior_sd=1.0)
+        four = Criteria2PL.fit(n, S, prior_sd=4.0)
+        np.testing.assert_allclose(four.gamma, one.gamma / 4.0, rtol=1e-9)
+        np.testing.assert_allclose(four.beta, one.beta * 4.0, rtol=1e-9, atol=1e-9)
+        theta_one, sd_one = one.eap(n, S)
+        theta_four, sd_four = four.eap(n, S)
+        np.testing.assert_allclose(theta_four, theta_one * 4.0, rtol=1e-9, atol=1e-9)
+        np.testing.assert_allclose(sd_four, sd_one * 4.0, rtol=1e-9, atol=1e-9)
+
+
 class TestFit:
     def test_fit_recovers_a_known_difficulty_ordering(self) -> None:
         """Synthetic data with known beta: recovers order AND absolute values.

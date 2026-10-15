@@ -38,8 +38,11 @@ from rcp_ndcg_core.gain import sigmoid
 from rcp_ndcg_core.schemas import DocumentEstimate, EstimateFlags
 
 #: Quadrature grid for the marginal likelihood and the posterior integrals:
-#: 561 points on [-18, 10] (spacing 0.05). It covers the calibrated-ability scale
-#: of tournament fits and item difficulties well above 5 logits.
+#: 561 points on [-18, 10] (spacing 0.05), in units of the ability prior's sd. Every integral scales
+#: the grid by ``prior_sd``, so the prior's support is always the same 561 points in prior SDs: a
+#: prior whose sd is far from 1 is integrated on the same standardised support instead of being
+#: truncated at an absolute edge. It covers the calibrated-ability scale of tournament fits and item
+#: difficulties well above 5 logits.
 QUAD = np.linspace(-18.0, 10.0, 561)
 
 #: Prior standard deviation on ability (logits).
@@ -57,10 +60,10 @@ MIN_FRAC_PASSING_ANY = 0.02
 DEFAULT_SE_TARGET = 0.5
 
 
-def _moments(posterior: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Mean and standard deviation of each row of a ``(D, len(QUAD))`` posterior over the grid :data:`QUAD`."""
-    mean = posterior @ QUAD
-    sd = np.sqrt(np.einsum("dq,dq->d", posterior, (QUAD[None, :] - mean[:, None]) ** 2))
+def _moments(posterior: np.ndarray, grid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Mean and standard deviation of each row of a ``(D, len(grid))`` posterior over ``grid``."""
+    mean = posterior @ grid
+    sd = np.sqrt(np.einsum("dq,dq->d", posterior, (grid[None, :] - mean[:, None]) ** 2))
     return mean, sd
 
 
@@ -176,7 +179,9 @@ class Criteria2PL:
         Args:
             n: ``(D,)`` placement counts per document.
             S: ``(D, K)`` per-criterion pass counts, ``0 <= s_k <= n``.
-            prior_sd: Gaussian prior sd on ability (1.0 is empirically best); finite and > 0.
+            prior_sd: Gaussian prior sd on ability (1.0 is empirically best); finite and > 0. It is a
+                unit choice: the fit integrates in standardised units, so the reported items and gains
+                are invariant under it.
 
         Returns:
             A fitted :class:`Criteria2PL`. Check ``.diagnostics.ordinal_only``
@@ -195,7 +200,11 @@ class Criteria2PL:
         n_items = S_arr.shape[1]
         lo, hi = float(np.log(DEFAULT_GAMMA_BOUNDS[0])), float(np.log(DEFAULT_GAMMA_BOUNDS[1]))
 
-        prior = np.exp(-0.5 * (QUAD / prior_sd) ** 2)
+        # Fit in standardised units u = theta / prior_sd, where the prior is N(0, 1) on the fixed grid
+        # QUAD: gamma_std = gamma * prior_sd, beta_std = beta / prior_sd. The model is the same for
+        # every prior_sd -- the quadrature grid is a unit choice -- so the fit must be invariant under
+        # it; the fixed absolute grid truncated the prior for sd far from 1 and moved the fitted gains.
+        prior = np.exp(-0.5 * QUAD**2)
         prior /= prior.sum()
 
         # Collapsing to unique (n, s) patterns makes the likelihood cheap and exact.
@@ -206,19 +215,19 @@ class Criteria2PL:
         weighted_n = counts * n_u  # (U,): c_u * n_u
 
         def neg_log_lik(params: np.ndarray) -> tuple[float, np.ndarray]:
-            """Negative marginal log-likelihood and its exact gradient in (log gamma, beta).
+            """Negative marginal log-likelihood and its exact gradient in (log gamma_std, beta_std).
 
-            With ``z_kq = gamma_k (q - beta_k)``, ``p_kq = sigmoid(z_kq)`` clipped to
+            With ``z_kq = gamma_std_k (q - beta_std_k)``, ``p_kq = sigmoid(z_kq)`` clipped to
             ``[1e-9, 1 - 1e-9]`` and ``w_uq`` the posterior weight of grid point ``q``
             for pattern ``u``, the derivative of the log-likelihood in ``z_kq`` is
             ``sum_u c_u w_uq (s_uk - n_u p_kq)`` (zero where the clip binds), so
-            ``d/d log gamma_k = sum_q G_kq z_kq`` and ``d/d beta_k = -gamma_k sum_q G_kq``.
+            ``d/d log gamma_std_k = sum_q G_kq z_kq`` and ``d/d beta_std_k = -gamma_std_k sum_q G_kq``.
             An analytic gradient keeps the optimiser's path independent of the CPU's
             rounding, which a finite-difference gradient amplifies.
             """
-            gamma = np.exp(params[:n_items])
-            beta = params[n_items:]
-            z = gamma[:, None] * (QUAD[None, :] - beta[:, None])
+            gamma_std = np.exp(params[:n_items])
+            beta_std = params[n_items:]
+            z = gamma_std[:, None] * (QUAD[None, :] - beta_std[:, None])
             raw = sigmoid(z)
             p = np.clip(raw, 1e-9, 1 - 1e-9)
             ll = (s_u[:, :, None] * np.log(p)[None] + (n_u[:, None, None] - s_u[:, :, None]) * np.log(1 - p)[None]).sum(
@@ -231,14 +240,18 @@ class Criteria2PL:
             weights = unnormalised / total[:, None]  # (U, Q) posterior over the grid
             g = weighted_s.T @ weights - p * (weighted_n @ weights)[None, :]  # (K, Q)
             g = np.where((raw > 1e-9) & (raw < 1 - 1e-9), g, 0.0)
-            grad = np.concatenate([-(g * z).sum(1), gamma * g.sum(1)])
+            grad = np.concatenate([-(g * z).sum(1), gamma_std * g.sum(1)])
             return -float((counts * marginal).sum()), grad
 
         x0 = np.concatenate([np.zeros(n_items), np.linspace(1.0, 4.0, n_items)])
         bounds = [(lo, hi)] * n_items + [(-10.0, 10.0)] * n_items
         result = minimize(neg_log_lik, x0, jac=True, method="L-BFGS-B", bounds=bounds, options={"maxiter": 800})
-        gamma = np.exp(result.x[:n_items])
-        beta = result.x[n_items:]
+        gamma_std = np.exp(result.x[:n_items])
+        beta_std = result.x[n_items:]
+        # Back to the reported units: the fit is invariant under prior_sd, so this map carries the
+        # whole prior_sd dependence and the items (and gains) do not move with it.
+        gamma = gamma_std / prior_sd
+        beta = beta_std * prior_sd
 
         weights = gamma / gamma.sum()
         max_weight = float(weights.max())
@@ -252,7 +265,7 @@ class Criteria2PL:
 
         fitted = cls(gamma, beta, prior_sd=prior_sd)
 
-        gamma_saturated = bool((gamma >= DEFAULT_GAMMA_BOUNDS[1] * 0.999).all())
+        gamma_saturated = bool((gamma_std >= DEFAULT_GAMMA_BOUNDS[1] * 0.999).all())
         frac_passing = float((S_arr.sum(axis=1) > 0).mean())
 
         reasons: list[str] = []
@@ -299,11 +312,14 @@ class Criteria2PL:
         """``(D, len(QUAD))`` posterior of each document from groups of evidence, each with a logit offset.
 
         ``n`` is ``(D, G)`` placements, ``S`` is ``(D, G, K)`` pass counts and ``offsets`` is ``(G,)``: in
-        group ``g`` the logit of criterion ``k`` is ``gamma_k * (theta - beta_k) - offsets[g]``.
+        group ``g`` the logit of criterion ``k`` is ``gamma_k * (theta - beta_k) - offsets[g]``. The grid
+        is :data:`QUAD` scaled by this instance's ``prior_sd`` (standardised units), so a wide prior is
+        not truncated at the absolute edge of the fixed grid.
         """
-        prior = np.exp(-0.5 * (QUAD / self.prior_sd) ** 2)
+        grid = QUAD * self.prior_sd
+        prior = np.exp(-0.5 * QUAD**2)
         prior /= prior.sum()
-        logits = self.gamma[None, :, None] * (QUAD[None, None, :] - self.beta[None, :, None]) - offsets[:, None, None]
+        logits = self.gamma[None, :, None] * (grid[None, None, :] - self.beta[None, :, None]) - offsets[:, None, None]
         p = np.clip(sigmoid(logits), 1e-9, 1 - 1e-9)
         terms = S[..., None] * np.log(p)[None] + (n[:, :, None, None] - S[..., None]) * np.log(1 - p)[None]
         ll = terms.sum(2).sum(1)  # criteria first, then groups: one group sums exactly as a plain posterior
@@ -314,7 +330,7 @@ class Criteria2PL:
 
     def eap(self, n: np.ndarray, S: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """``(theta, sd)`` per document: the posterior mean ability and the posterior standard deviation."""
-        return _moments(self.posterior(n, S))
+        return _moments(self.posterior(n, S), QUAD * self.prior_sd)
 
     def score_document(self, n, S, *, se_target: float = DEFAULT_SE_TARGET, offsets=None) -> DocumentEstimate:
         """Score ONE document from its own criterion responses, items held fixed.
@@ -374,7 +390,7 @@ class Criteria2PL:
         else:
             degenerate = None
 
-        means, sds = _moments(self._posterior(counts[None, :], passes[None, :, :], shift))
+        means, sds = _moments(self._posterior(counts[None, :], passes[None, :, :], shift), QUAD * self.prior_sd)
         theta, se = float(means[0]), float(sds[0])
 
         # Observed Fisher information of this document's own data at the EAP,
