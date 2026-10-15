@@ -1446,11 +1446,14 @@ def _plan(
             f"query {empty[0]!r} has no candidates to judge",
             hint="drop the query, or give its pool at least one candidate",
         )
-    # A judge with no context_tokens or no tokenizer never reaches the media count, so the container would be
-    # sent at the engine's default sampling while the estimate refuses the same pass: the plan refuses it too.
-    from rcp_ndcg.data.resolution import refuse_unpolicied_containers
+    # A judge with no context_tokens or no tokenizer never reaches the media count, so a container the count
+    # refuses would be sent while the estimate refuses the same pass: the plan refuses both the container
+    # with no video policy and the one whose family has no ported frame-count rule.
+    from rcp_ndcg.data.resolution import refuse_uncountable_containers, refuse_unpolicied_containers
 
-    refuse_unpolicied_containers([content for query in queries for content in query.contents.values()], effective.video)
+    pass_contents = [content for query in queries for content in query.contents.values()]
+    refuse_unpolicied_containers(pass_contents, effective.video)
+    refuse_uncountable_containers(pass_contents, effective.image, effective.video)
     if stage == "tournament":
         thin = [query.query_id for query in queries if len(query.units) < 2]
         if thin:

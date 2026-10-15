@@ -443,6 +443,73 @@ class TestVideoContainers:
         assert "preprocessing.video" in (caught.value.hint or "")
         assert fake.usage.requests == 0
 
+    def test_a_pinned_qwen2_container_is_refused_whatever_the_budget_settings(self, tmp_path: Path) -> None:
+        """A qwen2_vl/qwen2_5_vl judge with a pinned ``video_url`` container: the family's engine backend
+        samples by fps and ignores ``num_frames``, and its fps rule is not ported here, so no declaration can
+        be counted honestly. The count refuses it, but a pass with no ``context_tokens`` or no tokenizer
+        never reaches that count -- it swallowed the refusal and sent the container while the store recorded
+        ``num_frames: 8`` -- so the plan refuses it now, before any request."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts(
+            [
+                VideoPart(
+                    ref=MediaRef(
+                        uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300, fps=30.0, duration_s=10.0
+                    )
+                )
+            ]
+        )
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"image_processor": "qwen2_5_vl", "max_videos": 1})
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=1003520, processor="qwen2_5_vl"),
+            video=VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True),
+        )
+
+        with pytest.raises(ConfigError, match="num_frames") as caught:
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL,
+                preprocessing=preprocessing,
+            )  # fmt: skip
+        assert "frames" in (caught.value.hint or "")
+        assert fake.usage.requests == 0
+
+    def test_an_fps_qwen2_container_is_refused_before_the_pass(self, tmp_path: Path) -> None:
+        """The engine's fps rule is ported for the qwen3_vl family only: a judge whose processor resolves to
+        a qwen2 family is refused before any request, whatever the budget settings."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts(
+            [
+                VideoPart(
+                    ref=MediaRef(
+                        uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300, fps=30.0, duration_s=10.0
+                    )
+                )
+            ]
+        )
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"image_processor": "qwen2_5_vl", "max_videos": 1})
+        # The deferred form: the judge's image_processor fills the policy's processor at plan time.
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=1003520),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+
+        with pytest.raises(ConfigError, match="qwen3_vl"):
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL,
+                preprocessing=preprocessing,
+            )  # fmt: skip
+        assert fake.usage.requests == 0
+
 
 async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_path: Path, pages) -> None:
     """A judging pass cached every prepared page and frame of every query for the whole pass (the shared

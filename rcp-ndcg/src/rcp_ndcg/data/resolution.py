@@ -1148,6 +1148,49 @@ def refuse_unpolicied_containers(contents: Iterable[Content], video: VideoPolicy
                 refuse_container_without_policy(part.ref.uri)
 
 
+def refuse_uncountable_containers(
+    contents: Iterable[Content], image: ImagePolicy | None, video: VideoPolicy | None
+) -> None:
+    """Refuse a video container the resolved processor family cannot count, whatever the budget settings are.
+
+    The Qwen2-VL families (``qwen2_vl``, ``qwen2_5_vl``) send their containers to an engine video backend
+    (vLLM v0.31.0's ``Qwen2VLVideoBackend``) that samples by fps and ignores ``num_frames``, and their fps
+    rule is not ported here, so no container declaration can be counted honestly.
+    :func:`content_media_tokens` refuses such a container when it counts, but a judging pass with no
+    ``context_tokens`` or no tokenizer never reaches that count: this is the one home of the rule for the
+    plan path, as :func:`refuse_unpolicied_containers` is for the missing-policy rule.
+
+    Args:
+        contents: The contents a pass would send.
+        image: The effective image policy (its ``processor`` names the family), or ``None``.
+        video: The effective video policy, or ``None``.
+
+    Raises:
+        ConfigError: a content holds a container part, the wire sends containers, and the family's engine
+            video backend is fps-driven with no ported fps rule.
+    """
+    if video is None or video.wire != "video_url" or image is None or image.processor is None:
+        return
+    if not PROCESSORS[image.processor].video_fps_only:
+        return
+    for content in contents:
+        for part in content.parts:
+            if not isinstance(part, VideoPart) or part.ref is None:
+                continue
+            if video.num_frames is not None:
+                detail = "so a pinned `num_frames` names a layout the engine never renders"
+            else:
+                detail = f"so the declared `fps` ({video.fps:g}) would count a layout the engine never renders"
+            raise ConfigError(
+                f"cannot count the container {part.ref.uri}: the {image.processor} engine video backend "
+                f"samples by fps and ignores num_frames (vLLM v0.31.0's Qwen2VLVideoBackend), {detail}; and "
+                "the family's fps rule is not ported here (only the qwen3_vl family's is), so a container "
+                "cannot be counted for this family.",
+                hint="send frames instead (`video_policy: {num_frames: N, wire: frames}`, client-sampled and "
+                "exact), or serve a qwen3_vl checkpoint whose fps rule is ported",
+            )
+
+
 def content_media_tokens(
     content: Content,
     image: ImagePolicy,
@@ -1534,6 +1577,7 @@ __all__ = [
     "gemma4_resize",
     "qwen3_vl_video_frame_indices",
     "refuse_container_without_policy",
+    "refuse_uncountable_containers",
     "refuse_unpolicied_containers",
     "sample_video_part",
     "smart_resize",
