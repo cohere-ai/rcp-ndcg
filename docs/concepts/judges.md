@@ -137,7 +137,9 @@ A recipe's flags (the quantisation, the KV-cache dtype, the reasoning parser, th
 the port, the scheduling knobs), and `--set resources.gpus=<n>` is the documented H100 shape where a recipe's
 notes name one. The client side still declares `max_images`/`max_videos` (`--set judge.max_images=10`), which the
 engine's `--limit-mm-per-prompt` must allow. A `video_url` corpus, whose containers the engine decodes, also
-counts videos in the limit (`{"video": 1}`), and its policy refuses to run unless the judging config declares
+counts videos in the limit, and the limit must admit a whole window: the shipped video schedules put 5
+documents in a request (the tournament's adaptive window too), so both the client's `max_videos` and the
+engine's `--limit-mm-per-prompt` need at least 5 (`{"video": 5}`), and its policy refuses to run unless the judging config declares
 `engine_video_pinning: true` -- the engine must be pinned to the video policy's own sampling: a uniform
 `num_frames` (`--media-io-kwargs '{"video": {"num_frames": 8}}'` on vLLM) or the engine's rate, `fps`
 (`--media-io-kwargs '{"video": {"fps": 2}}'`; the Qwen3-VL video backend samples by fps and ignores
