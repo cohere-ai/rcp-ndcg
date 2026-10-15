@@ -4403,6 +4403,14 @@ text it sends to the declared budget.
   judged a different set of documents than `run start` does. The pools now go through `Rankings.top(depth)`
   and the one `rcp_ndcg.data.rankings.ordered_documents` helper, which the run pipeline also uses.
 
+- **`doctor --endpoint` sends the profile's key and probes the right URL**: the probe sent no credential
+  header, so a correctly keyed OpenAI endpoint always reported `fail`; it appended `/models` after the query
+  string, mangling a signed gateway URL; and a 401 was reported as a failure even when no key had been sent.
+  The probe now authenticates by the transport's own rule (a shipped hosted profile's variables travel only
+  to that profile's default host), joins `/models` onto the path with the query kept, reports a keyless 401 as
+  `missing` ("reachable; needs a key"), and lists each vendor's alternative variable names (COHERE_API_KEY,
+  GOOGLE_API_KEY) beside the primary ones.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

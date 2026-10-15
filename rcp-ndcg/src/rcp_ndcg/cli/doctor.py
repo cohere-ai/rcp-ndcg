@@ -29,7 +29,17 @@ _EXTRAS: dict[str, tuple[str, ...]] = {
 
 #: Credential variables the shipped configs and hosted backends read (the hosted judge, the Cohere and Voyage
 #: rerankers and embedders, the Gemini embedder, gated Hub datasets). Only whether they are set is reported.
-_CREDENTIALS = ("OPENAI_API_KEY", "CO_API_KEY", "VOYAGE_API_KEY", "GEMINI_API_KEY", "HF_TOKEN")
+#: Each vendor's alternative names are listed too (the adapters accept them), so a working setup does not show
+#: 'missing'.
+_CREDENTIALS = (
+    "OPENAI_API_KEY",
+    "CO_API_KEY",
+    "COHERE_API_KEY",
+    "VOYAGE_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "HF_TOKEN",
+)
 
 Status = Literal["ok", "missing", "fail"]
 
@@ -38,7 +48,9 @@ class DoctorRequest(BaseModel):
     endpoint: str | None = Field(
         default=None,
         description="An OpenAI-compatible base URL (.../v1) to probe with GET /models: any role's endpoint "
-        "(a judge, a served encoder or reranker).",
+        "(a judge, a served encoder or reranker). The probe authenticates with the shipped hosted profile's "
+        "own key variable when the host is that profile's default (e.g. OPENAI_API_KEY for api.openai.com), "
+        "and reports a 401 without a key as reachable-needs-a-key, never a failure.",
     )
     timeout_s: float = Field(default=5.0, gt=0, description="Seconds to wait for --endpoint.")
 
@@ -77,21 +89,80 @@ def _installed(module: str) -> bool:
         return False
 
 
+def _models_url(url: str) -> str:
+    """The probe URL: ``/models`` joined onto the PATH, with the query kept after it (``http://h/v1?sig=x`` ->
+    ``http://h/v1/models?sig=x``). Appending to the string put ``/models`` after the query, which mangled a
+    signed gateway URL."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/") + "/models", parts.query, ""))
+
+
+def _probe_auth(url: str) -> tuple[dict[str, str], tuple[str, ...]]:
+    """The headers to probe ``url`` with, by the transport's own credential rule.
+
+    The shipped adapters' declared facts are the one home: a hosted profile's variables travel only to the
+    profile's own default host, and a host no profile owns gets no header (the probe then reports a 401 as
+    reachable-but-needs-a-key, never as a failure).
+
+    Returns:
+        ``(headers, variables)``: the credential header to send (empty when no key is set, or the host is no
+        shipped profile's) and the variables that would authenticate the host, for the detail.
+    """
+    from rcp_ndcg.inference import AuthProfile
+    from rcp_ndcg.inference.adapters import embeddings as _shipped_embeddings  # noqa: F401  # registers them
+    from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter, known_adapters
+
+    roles: tuple[AdapterRole, ...] = ("judge", "embed", "rerank", "multi_vector")
+    for role in roles:
+        for name in known_adapters(role):
+            adapter = get_adapter(name, role=role)
+            default = getattr(adapter, "DEFAULT_BASE_URL", None)
+            if default is None:
+                continue
+            profile = AuthProfile(
+                variables=tuple(getattr(adapter, "API_KEY_ENV", ())),
+                required=bool(getattr(adapter, "KEY_REQUIRED", False)),
+                header=getattr(adapter, "AUTH_HEADER", None),
+                homes=(default,),
+            )
+            if not profile.applies_to(url):
+                continue
+            value = next((os.environ[var] for var in profile.variables if os.environ.get(var)), None)
+            if value is None:
+                return {}, profile.variables
+            if profile.header is not None:
+                return {profile.header: value}, profile.variables
+            return {"Authorization": f"Bearer {value}"}, profile.variables
+    return {}, ()
+
+
 def _probe(url: str, timeout_s: float) -> Check:
     import httpx
 
-    target = url.rstrip("/") + "/models"
+    target = _models_url(url)
     # The detail names the URL through safe_url (userinfo, query and fragment stripped): the report reaches
     # --json output and gets pasted into issues. The probe itself uses the full URL.
     shown = safe_url(target)
+    headers, variables = _probe_auth(url)
     try:
-        response = httpx.get(target, timeout=timeout_s)
+        response = httpx.get(target, timeout=timeout_s, headers=headers)
     except httpx.HTTPError as exc:
         reason = redact_urls(f"{type(exc).__name__}: {exc}")
         return Check(name="endpoint", status="fail", detail=f"{shown}: {reason}")
     if response.status_code in (401, 403):
+        if not headers:
+            named = " or ".join(variables) if variables else "the endpoint's own API key variable"
+            return Check(
+                name="endpoint",
+                status="missing",
+                detail=f"{shown}: HTTP {response.status_code} (reachable; needs a key: set {named})",
+            )
         return Check(
-            name="endpoint", status="fail", detail=f"{shown}: HTTP {response.status_code} (check the API key)"
+            name="endpoint",
+            status="fail",
+            detail=f"{shown}: HTTP {response.status_code} (the key from the environment was refused)",
         )
     if response.status_code >= 400:
         return Check(name="endpoint", status="fail", detail=f"{shown}: HTTP {response.status_code}")

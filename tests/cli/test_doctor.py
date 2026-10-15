@@ -65,3 +65,67 @@ def test_doctor_never_echoes_url_credentials(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     assert "SECRET" not in result.stdout
     assert "QKEY" not in result.stdout
+
+
+def _endpoint_check(result) -> dict:
+    report = json.loads(result.stdout)["data"]
+    return next(check for check in report["checks"] if check["name"] == "endpoint")
+
+
+def test_doctor_sends_a_profiles_key_to_its_own_host(monkeypatch) -> None:
+    """The probe sent no Authorization header, so a correctly keyed OpenAI endpoint always reported fail."""
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def get(url: str, **kwargs: object) -> httpx.Response:
+        request = httpx.Request("GET", url, headers=kwargs.get("headers"))  # type: ignore[arg-type]
+        seen.append(request)
+        if request.headers.get("authorization") != "Bearer sk-test":
+            return httpx.Response(401, json={"error": {"message": "no key"}})
+        return httpx.Response(200, json={"data": [{"id": "gpt-4o"}]})
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(httpx, "get", get)
+    result = CliRunner().invoke(doctor_cmd, ["--endpoint", "https://api.openai.com/v1", "--json"])
+    check = _endpoint_check(result)
+    assert check["status"] == "ok", check
+
+
+def test_doctor_joins_models_onto_the_path_and_keeps_the_query(monkeypatch) -> None:
+    """Appending ``/models`` to the string put it after the query, mangling a signed gateway URL."""
+    import httpx
+
+    seen: list[str] = []
+
+    def get(url: str, **kwargs: object) -> httpx.Response:
+        seen.append(url)
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr(httpx, "get", get)
+    result = CliRunner().invoke(doctor_cmd, ["--endpoint", "http://h/v1?sig=x", "--json"])
+    assert result.exit_code == 0, result.output
+    assert seen == ["http://h/v1/models?sig=x"]
+
+
+def test_doctor_reports_a_keyless_401_as_reachable(monkeypatch) -> None:
+    """A 401 with no key sent is 'reachable, needs a key', not a failed endpoint: the hint itself assumed a
+    key had been sent."""
+    import httpx
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(httpx, "get", lambda *args, **kwargs: httpx.Response(401, json={"error": {}}))
+    result = CliRunner().invoke(doctor_cmd, ["--endpoint", "https://api.openai.com/v1", "--json"])
+    check = _endpoint_check(result)
+    assert check["status"] != "fail", check
+    assert "key" in check["detail"], check
+
+
+def test_doctor_reports_the_alternative_key_variables() -> None:
+    """The credential check listed one variable per vendor while the adapters accept an alternative (a
+    working setup showed 'missing')."""
+    from rcp_ndcg.inference.adapters.embeddings import CohereEmbeddings, GeminiEmbeddings
+
+    reported = _reported_variables()
+    assert set(CohereEmbeddings.API_KEY_ENV) <= reported
+    assert set(GeminiEmbeddings.API_KEY_ENV) <= reported
