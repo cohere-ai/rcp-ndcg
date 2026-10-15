@@ -4331,6 +4331,16 @@ text it sends to the declared budget.
   inserted abilities and the gains of `calibration insert` move toward the joint fit; the Bradley-Terry fit
   itself, the fitted documents and the reported standard errors are unchanged.
 
+- **`score_document` and `score_documents` integrate the ability prior in standardised units**: the posterior
+  was integrated on the fixed absolute grid `[-18, 10]` even when the prior's sd was not about 1. A rubric-only
+  fit reports its ability prior as `N(shift, scale * ability_sd)` with `scale = sum(gamma) / K` (about 6 for
+  strongly correlated criteria), so a strong document's posterior was truncated and its ability and standard
+  error came out too low -- an all-pass document scored 8.03 against its own fit's 9.92 -- and `calibration
+  score`/`extend` gave it a lower gain than identical evidence received in the fit. The items are now scaled by
+  the prior's sd, the score is taken in standardised units and theta, SE and information are mapped back; the
+  gains of rubric-only calibrations whose scale is not 1 move toward the fit's own evidence. The rubric-only
+  fit itself and the tournament fit are unchanged.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

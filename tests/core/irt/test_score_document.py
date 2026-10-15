@@ -229,6 +229,48 @@ def test_the_prior_mean_translates_the_score() -> None:
         assert other.se == pytest.approx(base.se, abs=1e-9)
 
 
+def _rubric_only_observations(
+    num_queries: int = 30, num_docs: int = 20, placements: int = 3, gamma: float = 6.0, seed: int = 0
+) -> dict[str, list[tuple[str, dict[str, int]]]]:
+    """Rubric verdicts with strongly correlated criteria (true gamma 6, five items)."""
+    rng = np.random.default_rng(seed)
+    beta = np.linspace(-1.0, 1.0, K)
+    observations: dict[str, list[tuple[str, dict[str, int]]]] = {}
+    for q in range(num_queries):
+        rows: list[tuple[str, dict[str, int]]] = []
+        for d in range(num_docs):
+            theta = float(rng.normal())
+            p = 1.0 / (1.0 + np.exp(-gamma * (theta - beta)))
+            for _ in range(placements):
+                rows.append((f"d{d:02d}", {f"C{k + 1}": int(rng.random() < p[k]) for k in range(K)}))
+        observations[f"q{q:02d}"] = rows
+    return observations
+
+
+class TestStandardisedIntegration:
+    """A prior with sd far from 1 must not be integrated on the fixed absolute grid.
+
+    ``_fit_rubric_only`` reports the ability prior as ``N(shift, scale * ability_sd)`` with
+    ``scale = sum(gamma) / K``; strongly correlated criteria make that scale about 6, so the grid's
+    upper edge of 10 sits under two prior SDs above the mean and truncates a strong document.
+    """
+
+    def test_scoring_reproduces_the_fit_it_came_from_at_a_wide_prior(self) -> None:
+        from rcp_ndcg_core.irt import fit_calibration
+
+        observations = _rubric_only_observations()
+        fit = fit_calibration(observations, mode="rubric_only")
+        prior = fit.diagnostics.ability_prior
+        assert prior is not None and prior.sd > 3.0, prior  # the wide-prior branch this pins
+        for query_id, rows in observations.items():
+            for doc_id in {row[0] for row in rows}:
+                own = [row for row in rows if row[0] == doc_id]
+                passes = np.sum([[row[1][f"C{k + 1}"] for k in range(K)] for row in own], axis=0)
+                scored = score_document(fit.items, len(own), passes, prior_mean=prior.mean, prior_sd=prior.sd)
+                assert scored.theta == pytest.approx(fit.thetas[query_id][doc_id], abs=1e-6)
+                assert scored.se == pytest.approx(fit.theta_se[query_id][doc_id], abs=1e-6)
+
+
 class TestSeveralJudges:
     """A pooled calibration's judges each answer with their severity subtracted from every logit."""
 
