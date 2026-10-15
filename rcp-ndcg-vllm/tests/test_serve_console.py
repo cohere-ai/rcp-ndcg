@@ -304,6 +304,55 @@ def test_the_largest_budget_is_the_largest_of_the_clients_declared_budgets(tmp_p
     assert "8192" in message and "9000" in message and "document_max_tokens" in message
 
 
+def test_a_chunk_below_max_model_len_is_refused_when_a_full_prompt_is_admissible() -> None:
+    """A pooling recipe whose client budget reaches ``serve.max_model_len`` and that does not carry the
+    pooling-full-context patch must not be served with a smaller chunk: an exactly-full prompt is chunked,
+    and the v0.31.0 scheduler never finishes its last token.  Both numbers and the patch are named."""
+    recipe = load_recipe("octen-embedding-8b")  # client.max_tokens 8192 == serve.max_model_len 8192
+    with pytest.raises(RecipeError) as excinfo:
+        serve_argv(
+            recipe,
+            port=8000,
+            served_model_name=recipe.id,
+            deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
+        )
+    message = str(excinfo.value)
+    assert "max_num_batched_tokens" in message and "4096" in message and "8192" in message
+    assert "pooling-full-context" in message
+
+
+def test_a_chunk_at_max_model_len_or_a_patch_carrier_or_a_smaller_budget_is_allowed() -> None:
+    """The refusal is exactly the hang: the chunk may equal ``max_model_len``; a recipe that opts into
+    pooling-full-context may chunk; and a recipe whose largest budget is below ``max_model_len`` never sends
+    an at-budget prompt (the documented qwen3-reranker example keeps working)."""
+    recipe = load_recipe("octen-embedding-8b")
+    at_the_edge = serve_argv(
+        recipe,
+        port=8000,
+        served_model_name=recipe.id,
+        deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=8192"]),
+    )
+    assert _flag_value(at_the_edge, "--max-num-batched-tokens") == "8192"
+
+    carrier = load_recipe("harrier-oss-v1-27b")  # patches: [pooling-full-context]
+    patched = serve_argv(
+        carrier,
+        port=8000,
+        served_model_name=carrier.id,
+        deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
+    )
+    assert _flag_value(patched, "--max-num-batched-tokens") == "4096"
+
+    below = load_recipe(SHIPPED)  # qwen3-reranker-0.6b: largest budget 8192 < serve.max_model_len 10000
+    documented = serve_argv(
+        below,
+        port=8000,
+        served_model_name=below.id,
+        deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
+    )
+    assert _flag_value(documented, "--max-num-batched-tokens") == "4096"
+
+
 def test_the_dry_run_prints_the_argv_the_identity_and_the_applied_overrides(capsys: pytest.CaptureFixture[str]) -> None:
     code = run_console(["serve", SHIPPED, "--dry-run", "--set", "serve.max_num_seqs=64"])
     assert code == 0

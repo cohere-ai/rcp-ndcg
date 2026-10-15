@@ -23,6 +23,20 @@ Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped onl
 incompatibly, independently of the package version. All four distributions carry the tag version; `rcp-ndcg` pins
 `rcp-ndcg-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
 
+## Unreleased
+
+### Fixed
+
+- **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
+  (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
+  not carry the `pooling-full-context` patch now refuses `serve.max_num_batched_tokens` below
+  `serve.max_model_len`, naming both numbers and the patch. On the pinned vLLM v0.31.0 the engine chunks an
+  exactly-full prompt and the scheduler never schedules its last token, so the request hangs and holds the
+  engine slot. The refusal covers the seven recipes that reach this state (ctxl-2b, octen x3,
+  qwen3-vl-embedding x2, zerank-2); a recipe that carries the patch, a recipe whose budget stays below
+  `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk equal to `serve.max_model_len` are
+  unaffected.
+
 ## 0.0.1 — 2026-10-14
 
 ### Overview

@@ -84,7 +84,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 
 from .errors import RecipeError
 from .models import ARCHITECTURE_MODULES
-from .patches import PATCH_NAMES
+from .patches import PATCH_NAMES, pooling_full_context
 
 __all__ = [
     "FIELD_ROLES",
@@ -564,7 +564,11 @@ class FieldSpec:
 
 FIELD_ROLES: Mapping[str, FieldSpec] = {
     # The deployment fields, in argv order. Each is a resource, scheduling or address knob of the engine: it
-    # cannot change what the model returns, so an operator may set it at serve time.
+    # cannot change what the model returns, so an operator may set it at serve time. One of them can change
+    # whether a request finishes at all: _deployment_values refuses serve.max_num_batched_tokens below
+    # serve.max_model_len when the client's largest budget reaches it and the recipe does not carry the
+    # pooling-full-context patch (an exactly-full prompt is then chunked, and the v0.31.0 scheduler never
+    # schedules its last token -- the request hangs; the values it would return are the same).
     "serve.host": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--host", str, position="head", default="0.0.0.0"),
     "serve.port": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--port", int, low=0, high=65535, position="head"),
     "resources.gpus": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--tensor-parallel-size", int, low=1, position="head"),
@@ -1441,9 +1445,12 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
     """The effective deployment values: the recipe's own, the run's ``port``, the declared defaults, the overrides.
 
     Raises:
-        RecipeError: a value that is not a DEPLOYMENT field or does not fit it, no port to serve on, or a
+        RecipeError: a value that is not a DEPLOYMENT field or does not fit it, no port to serve on, a
             ``serve.max_model_len`` below the client's largest token budget (the engine would reject admissible
-            prompts, so both numbers are named).
+            prompts, so both numbers are named), or a ``serve.max_num_batched_tokens`` below a
+            ``serve.max_model_len`` that the client's largest budget reaches exactly on a pooling recipe
+            without the pooling-full-context patch (the engine would chunk an at-budget prompt and the
+            v0.31.0 scheduler would never finish it).
     """
     values: dict[str, Any] = {}
     for path, spec in deployment_fields().items():
@@ -1466,6 +1473,21 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
             raise RecipeError(
                 f"serve.max_model_len {values['serve.max_model_len']} is below the client's largest token budget "
                 f"{budgets[largest]} (client.{largest}): the engine would reject admissible prompts"
+            )
+        chunk = values["serve.max_num_batched_tokens"]
+        if (
+            chunk is not None
+            and chunk < values["serve.max_model_len"]
+            and values["serve.max_model_len"] == budgets[largest]
+            and recipe.serve.runner == "pooling"
+            and pooling_full_context.PATCH_NAME not in recipe.serve.patches
+        ):
+            raise RecipeError(
+                f"serve.max_num_batched_tokens {chunk} is below serve.max_model_len "
+                f"{values['serve.max_model_len']}, which the client's largest token budget ({budgets[largest]}) "
+                f"reaches exactly: the engine chunks an at-budget prompt, and the v0.31.0 scheduler never "
+                f"finishes its last token (the hang {pooling_full_context.PATCH_NAME!r} fixes). Serve with "
+                f"serve.max_num_batched_tokens at least serve.max_model_len, or a recipe that carries the patch"
             )
     return values
 
@@ -1985,8 +2007,10 @@ def serve_argv(
     plugin architectures the fingerprint keys, and the last is rendered into the engine's environment by the
     ``rcp-ndcg-vllm serve`` console.  Raises :class:`RecipeError` when the recipe sets
     ``serve.chat_template`` but was not loaded from a directory (the template's absolute path is needed), when
-    a deployment value is not a DEPLOYMENT field or does not fit it, when no port is resolvable, or when
-    ``serve.max_model_len`` falls below the client's largest token budget.
+    a deployment value is not a DEPLOYMENT field or does not fit it, when no port is resolvable, when
+    ``serve.max_model_len`` falls below the client's largest token budget, or when
+    ``serve.max_num_batched_tokens`` falls below a ``serve.max_model_len`` that budget reaches exactly on a
+    pooling recipe without the pooling-full-context patch.
     """
     values = _deployment_values(recipe, port=port, deployment=deployment)
     argv = [

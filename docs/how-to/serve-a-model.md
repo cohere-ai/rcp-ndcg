@@ -55,7 +55,7 @@ rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8000 \
 | `resources.gpus` | `--tensor-parallel-size` | the recipe's per-variant GPU count, overridden |
 | `serve.gpu_memory_utilization` | `--gpu-memory-utilization` | a finite fraction above 0 and at most 1 (the engine's own default until set) |
 | `serve.max_num_seqs` | `--max-num-seqs` | |
-| `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | |
+| `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | at or above `serve.max_model_len` when the client's largest budget reaches it and the recipe carries no `pooling-full-context` patch, see below |
 | `serve.host` | `--host` | the interface the engine listens on (`0.0.0.0` by default) |
 | `serve.port` | `--port` | wins over the console's `--port`; 0-65535 (0: the engine binds an ephemeral port) |
 | `serve.max_model_len` | `--max-model-len` | at or above the client's largest token budget, see below |
@@ -75,6 +75,14 @@ applied overrides beside the argv, and a real serve logs them. A corpus manifest
 was started with verbatim (`engine.serve_argv`), so an engine started with overrides is recorded with them;
 the GPU waves serve the recipes as shipped, with no overrides. `--port` (the run's own spelling of
 `serve.port`) and `--set serve.port` are checked the same way; `--set serve.port` wins when both are given.
+
+`serve.max_num_batched_tokens` is refused, with both numbers and the patch's name, when it falls below a
+`serve.max_model_len` that the client's largest token budget reaches exactly, on a pooling recipe that does not
+declare `serve.patches: [pooling-full-context]`: an exactly-full prompt is then chunked, and the pinned
+v0.31.0 scheduler never schedules its last token, so the request hangs and holds the engine slot. A recipe
+whose client budget stays below `serve.max_model_len` (the `qwen3-reranker` family: 8192 against 10000) never
+sends such a prompt, and a recipe that carries the patch finishes it; both may chunk freely. The patch is a
+content field, so the serve-time remedy is `--set serve.max_num_batched_tokens=<at least serve.max_model_len>`.
 
 ## 3. Your own recipe file: a path instead of an id
 
