@@ -130,3 +130,17 @@ def test_two_new_documents_of_one_query_are_inserted_one_after_the_other(tmp_pat
     # enters the second insertion's anchor or opponents.
     assert any(skipped.endswith("/q1-d1") for skipped in second["skipped"]), second["skipped"]
     assert second["anchor_report"]["documents_checked"] == first["anchor_report"]["documents_checked"]
+
+
+def test_calibration_fit_refuses_a_remote_out_uri(tmp_path: Path, monkeypatch) -> None:
+    """``calibration fit --out gs://...`` created a local ``./gs:/...`` tree and reported success; a
+    calibration is a local directory a mirror carries to the bucket, so the path is refused with the hint."""
+    from rcp_ndcg.testing import build_tiny_world
+
+    world = build_tiny_world(tmp_path / "world")
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        cli, ["calibration", "fit", "--judgements", str(world.judgements), "--out", "gs://bucket/cal", "--json"]
+    )
+    assert result.exit_code == 3, result.output
+    assert not (tmp_path / "gs:").exists()

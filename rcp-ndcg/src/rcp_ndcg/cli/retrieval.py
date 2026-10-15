@@ -18,7 +18,6 @@ dimension (``--dims`` selects a subset; the per-k rankings name the system ``<mo
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any, Literal
 
 import click
@@ -291,11 +290,12 @@ def _safe_name(system: str) -> str:
 @command("retrieval sweep", request=RetrievalSweepRequest, result=RetrievalSweepResult, read_only=False)
 def retrieval_sweep(request: RetrievalSweepRequest) -> RetrievalSweepResult:
     """Apply the declared MRL head per k to a full-width store and score every cut (one forward pass)."""
+    from rcp_ndcg import storage
     from rcp_ndcg.retrieval import load_store, sweep
 
     record, corpus, queries = load_store(request.store)
     ranked = sweep(record, corpus, queries, dims=request.dims or None, depth=request.depth)
-    out_dir = Path(request.out_dir)
+    out_dir = storage.local_dir(request.out_dir, "a retrieval sweep (--out-dir)")
     out_dir.mkdir(parents=True, exist_ok=True)
     paths: list[str] = []
     for rows in ranked:

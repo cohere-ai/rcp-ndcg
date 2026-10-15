@@ -40,6 +40,14 @@ def _calibration_dir(path: str) -> Path:
     raise MissingInputError(f"{path} holds no calibration", hint="run `rcp-ndcg calibration fit` first")
 
 
+def _local_out(path: str) -> Path:
+    """``--out`` as a local path: a calibration is a local directory a mirror carries to the bucket, and a
+    remote URI written through ``Path()`` silently created a ``./gs:/...`` tree instead."""
+    from rcp_ndcg import storage
+
+    return storage.local_dir(path, "a calibration (--out)")
+
+
 def _load(path: str) -> Any:
     from rcp_ndcg.calibration import Calibration
 
@@ -163,7 +171,7 @@ def calibration_fit(request: CalibrationFitRequest) -> CalibrationSummary:
         judged_bt_l2=judged_bt_l2(*stores),
         strict=request.strict,
     )
-    fitted.save(request.out)
+    fitted.save(str(_local_out(request.out)))
     return summary(fitted, request.out)
 
 
@@ -209,7 +217,7 @@ def calibration_score(request: CalibrationScoreRequest) -> ExtensionResult:
         read_judgements(_judgement_store(request.judgements)),
         se_target=request.se_target,
     )
-    calibration.extended(extension).save(request.out)
+    calibration.extended(extension).save(str(_local_out(request.out)))
     return ExtensionResult(out=request.out, extension=extension)
 
 
@@ -308,7 +316,7 @@ def calibration_insert(request: CalibrationInsertRequest) -> InsertResult:
             capped=opponents < request.n,
         )
         if request.out is not None:
-            Path(request.out).write_text(planned.model_dump_json(indent=2) + "\n", encoding="utf-8")
+            _local_out(request.out).write_text(planned.model_dump_json(indent=2) + "\n", encoding="utf-8")
         return InsertResult(plan=planned, out=request.out)
     if request.judgements is None or request.out is None:
         raise UsageError(
@@ -322,7 +330,7 @@ def calibration_insert(request: CalibrationInsertRequest) -> InsertResult:
         se_target=request.se_target,
         min_opponents=request.min_opponents,
     )
-    calibration.extended(extension).save(request.out)
+    calibration.extended(extension).save(str(_local_out(request.out)))
     return InsertResult(out=request.out, extension=extension)
 
 

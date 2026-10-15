@@ -329,10 +329,13 @@ class EvalCompareRequest(BaseModel):
 
 
 def _load_report(path: str) -> EvalReport:
-    report_path = Path(path)
-    if not report_path.is_file():
-        raise MissingInputError(f"no report at {report_path}", hint="write one with `rcp-ndcg eval score --out`")
-    return EvalReport.model_validate(json.loads(report_path.read_text(encoding="utf-8")))
+    from rcp_ndcg import storage
+
+    try:
+        payload = storage.read_text(path)
+    except FileNotFoundError:
+        raise MissingInputError(f"no report at {path}", hint="write one with `rcp-ndcg eval score --out`") from None
+    return EvalReport.model_validate(json.loads(payload))
 
 
 def _compare_text(comparison: Comparison) -> str:

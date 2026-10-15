@@ -4411,6 +4411,13 @@ text it sends to the declared budget.
   `missing` ("reachable; needs a key"), and lists each vendor's alternative variable names (COHERE_API_KEY,
   GOOGLE_API_KEY) beside the primary ones.
 
+- **A report written by `eval score --out` can be read back from the same URI**: `compare`/`explain --report`
+  and `results export --report` read it with `Path().is_file()`, which collapsed `memory://r.json` to
+  `memory:/r.json` and failed `MISSING_INPUT`; they read through `storage` now. In the other direction,
+  `calibration fit|score|insert --out gs://...` (and `retrieval sweep --out-dir`) silently created a local
+  `./gs:/...` tree and reported success; those paths now go through `storage.local_dir` and are refused with
+  the mirror hint, as the judging commands already were.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

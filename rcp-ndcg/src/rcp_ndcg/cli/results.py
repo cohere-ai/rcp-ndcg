@@ -13,8 +13,6 @@ like the dataset readers and job runners.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 from pydantic import BaseModel, Field
 
@@ -78,12 +76,14 @@ class ResultsExport(BaseModel):
 
 def _report_records(path: str, systems: list[str]) -> list[ResultRecord]:
     """Records from a report file: the dataset comes from the report's recorded inputs, never a default."""
+    from rcp_ndcg import storage
     from rcp_ndcg.eval import EvalReport
 
-    report_path = Path(path)
-    if not report_path.is_file():
-        raise MissingInputError(f"no report at {report_path}", hint="write one with `rcp-ndcg eval score --out`")
-    report = EvalReport.model_validate_json(report_path.read_text(encoding="utf-8"))
+    try:
+        payload = storage.read_text(path)
+    except FileNotFoundError:
+        raise MissingInputError(f"no report at {path}", hint="write one with `rcp-ndcg eval score --out`") from None
+    report = EvalReport.model_validate_json(payload)
     if report.inputs is None:
         raise DataError(
             "the report records no inputs: it does not say which dataset it scored",
@@ -111,7 +111,7 @@ def _report_records(path: str, systems: list[str]) -> list[ResultRecord]:
         ResultArtifact(
             role="report",
             uri=path,
-            sha256=artifact_ref(report_path).sha256,
+            sha256=artifact_ref(path).sha256,
             schema_name="rcp-ndcg.eval-report.v1",
         )
     ]
