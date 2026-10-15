@@ -4778,3 +4778,28 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   `load_dataset('hf://org/repo', name=...)` on a single-subset repository honours the name. The MTEB writer
   writes a document's title verbatim (mteb's join keeps the title's own whitespace) and writes a string task
   instruction on every query, so a lifted BRIGHT instruction round-trips; a per-side mapping needs a card.
+- **`Rankings.save(format="mteb", dataset=...)` writes one subset**: the coverage check and the written file
+  covered every dataset group of the system and keyed unnamed rows ``default``, so a suite run's predictions
+  passed with another subset's query and carried foreign subsets under their own names. The new ``dataset=``
+  (the task's `hf_subset`) selects the group, keys it by that name, and a system whose rows span several
+  datasets without a selector is refused. Additive keyword-only parameter (`python_api` snapshot).
+- **An `mteb:` identity records the mteb version and the task class**, and only a full commit counts as
+  ``verified``: a task metadata revision of ``main`` was recorded as verified, and an mteb upgrade that
+  changed a custom loader's ids or texts at the same revision was invisible to a resume. A branch resolves
+  through the Hub like every other revision.
+- **`get_tasks(revision=...)` and `tools/republish_mteb.py` read the task definitions at the pinned
+  revision**: they built the task names, splits and prompt from today's `main` while the data was read at the
+  pinned commit, so a re-lay could silently change a pinned run's prompt (republish also ignored its own
+  ``--owner``). The task file and the data now come from the same owner and revision.
+- **`data fetch` parses the data layer's Hub URI grammar**: ``hf://org/repo@rev`` (previously sent to the Hub
+  as a repository id, so its validation error was reported as an internal "this is a bug") and
+  ``hf://org/repo/subset`` now map to ``--revision`` and ``--subset``, with a conflict refused. `data inspect`
+  no longer counts a query whose labels are all zero and that has no pool.
+- **The content-addressed media cache is published atomically and heals**: ``store_media`` wrote with a plain
+  write and skipped an existing target, so a process killed mid-write left a truncated file under a content
+  hash that every later read served; the payload is published atomically and an existing target whose size
+  differs is republished. The frame-directory reader records the *last* number in a frame's file name (the
+  first run made ``clip1_frame_0001`` and ``clip1_frame_0002`` both index 1) and refuses a clip whose numbers
+  do not strictly increase; a QuickTime/MOV whose first ISO-BMFF box is not ``ftyp`` is labelled ``.mov``,
+  never ``.avi``; the image and video cache-size environment variables are parsed by one helper that raises a
+  typed `ConfigError` naming the variable (a malformed value used to crash `import rcp_ndcg`).
