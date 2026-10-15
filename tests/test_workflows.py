@@ -27,3 +27,23 @@ def test_the_release_workflow_checks_the_citation_version() -> None:
     scripts = "\n".join(str(step.get("run", "")) for step in document["jobs"]["build"]["steps"])
     assert "CITATION.cff" in scripts, "the release workflow must check CITATION.cff"
     assert "GITHUB_REF_NAME#v" in scripts, "the check compares the file with the tag"
+
+
+def _ci() -> tuple[Path, dict]:
+    ci = next(path for path in _WORKFLOWS if path.name == "ci.yml")
+    return ci, yaml.safe_load(ci.read_text(encoding="utf-8"))
+
+
+def test_the_test_pkg_job_does_not_combine_quiet_and_verbose() -> None:
+    """g-ci-2: ``-q`` and ``-v`` count into pytest's one verbosity, so ``-q -v`` nets to the default and
+    prints no test names: the 474fdec crash diagnostic cannot name the crashing test (the cause is fixed in
+    observe.requests.main).  The command must not combine them again, and no comment may cite the removed
+    ``bin/gate`` script."""
+    ci, document = _ci()
+    commands = [str(step.get("run", "")) for step in document["jobs"]["test-pkg"]["steps"]]
+    pytest_commands = [command for command in commands if "pytest" in command]
+    assert pytest_commands, "the test-pkg job runs pytest"
+    for command in pytest_commands:
+        flags = command.split()
+        assert not ("-q" in flags and "-v" in flags), f"-q and -v cancel out: {command}"
+    assert "bin/gate" not in ci.read_text(encoding="utf-8"), "bin/gate does not exist in the repository"

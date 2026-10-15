@@ -250,12 +250,9 @@ jobs:
       - run: .github/scripts/cpu-env.sh dev
       # The per-test SIGALRM guard of rcp-ndcg-test/tests/conftest.py: a hang fails its own test here rather
       # than holding the job (faulthandler_timeout only dumps a traceback; it never aborts).
-      - run: uv run --no-sync pytest rcp-ndcg-test/tests -q -v
+      - run: uv run --no-sync pytest rcp-ndcg-test/tests -q
         env:
           RCP_NDCG_TEST_TIMEOUT: "300"
-          # A hard crash (SIGSEGV) prints no traceback without this; the local gate already runs the
-          # same suite with it (bin/gate's test-pkg step). Diagnostic: the job crashed at ~95% twice.
-          PYTHONFAULTHANDLER: "1"
       - name: the tests left the checkout clean
         run: |
           git status --porcelain --untracked-files=all
