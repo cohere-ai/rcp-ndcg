@@ -470,15 +470,36 @@ def test_encoded_image_bytes_are_stable(tmp_path):
     assert sha256_of(buffer.getvalue()) == first
 
 
-def test_a_fractional_qrels_label_is_kept_as_a_float(beir_dir, tmp_path) -> None:
-    """A continuous label (0.7) is a grade like any other: no floor, no refusal."""
+def test_the_beir_writer_writes_integral_grades_as_integers(tmp_path) -> None:
+    """BEIR's own loader parses qrels scores with ``int(row[2])``; a float repr ('1.0') made every export,
+    all-integer ones included, unreadable by BEIR itself."""
+    from rcp_ndcg_core.records import Document, Query
+
+    out = str(tmp_path / "out")
+    get_writer("beir").write_corpus(
+        [Document(doc_id="1", text="x"), Document(doc_id="2", text="y")],
+        [Query(query_id="q1", query="q")],
+        {"q1": {"1": 1.0, "2": 0.0}},
+        out,
+    )
+
+    rows = [line.split("\t") for line in (Path(out) / "qrels" / "test.tsv").read_text().splitlines()]
+    assert rows[0] == ["query-id", "corpus-id", "score"]
+    assert [int(row[2]) for row in rows[1:]] == [1, 0], "an integral grade is written as an int"
+
+
+def test_a_fractional_qrels_label_is_kept_by_the_reader_and_refused_by_the_writer(beir_dir, tmp_path) -> None:
+    """A continuous label (0.7) is a grade like any other to the reader -- no floor, no refusal -- but BEIR's
+    qrels are integers (its loader casts with int()), so the writer refuses to publish a non-standard file
+    and names the formats that carry a float grade."""
     qrels = Path(beir_dir) / "qrels" / "test.tsv"
     qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t0.7\nq1\td2\t2\n")
     reader = get_reader("beir", uri=beir_dir)
 
     assert reader.qrels() == {"q1": {"d1": 0.7, "d2": 2.0}}
-    get_writer("beir").write_corpus(reader.documents(), reader.queries(), reader.qrels(), str(tmp_path / "out"))
-    assert (tmp_path / "out" / "qrels" / "test.tsv").read_text().splitlines()[1:] == ["q1\td1\t0.7", "q1\td2\t2.0"]
+    with pytest.raises(DataError, match="whole number") as caught:
+        get_writer("beir").write_corpus(reader.documents(), reader.queries(), reader.qrels(), str(tmp_path / "out"))
+    assert "jsonl" in str(caught.value.hint) and "mteb" in str(caught.value.hint)
 
 
 def test_a_non_numeric_qrels_label_is_a_data_error(beir_dir) -> None:

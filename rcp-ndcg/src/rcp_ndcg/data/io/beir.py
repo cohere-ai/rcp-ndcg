@@ -2,7 +2,9 @@
 
 Corpus-shaped, and the lingua franca of text retrieval evaluation.  Reading it
 is unremarkable; writing it is what lets a RCP-nDCG dataset be evaluated by
-any BEIR-compatible tool without a conversion script.
+any BEIR-compatible tool without a conversion script.  Grades are written as
+integers (BEIR's own loader parses them with ``int()``); a fractional grade is
+refused at write time, because no BEIR-compatible tool reads one.
 
 The one wrinkle worth naming: BEIR qrels are TSV with a header line whose first
 column is ``query-id``, and the sibling ``.tsv`` convention differs between the
@@ -273,11 +275,30 @@ class BeirWriter(SinkWriter):
             handle.write("query-id\tcorpus-id\tscore\n")
             for query_id, judged in qrels.items():
                 for doc_id, label in judged.items():
-                    # repr of a builtin float round-trips exactly; no silent 6-digit rounding.
-                    handle.write(f"{query_id}\t{doc_id}\t{float(label)!r}\n")
+                    handle.write(f"{query_id}\t{doc_id}\t{_grade_cell(label, query_id, doc_id)}\n")
 
         logger.info(f"wrote BEIR layout to {uri}: {n_docs} docs, {len(qrels)} judged queries")
         return n_docs
+
+
+def _grade_cell(label: float, query_id: ID, doc_id: ID) -> str:
+    """One qrels score cell: an integral grade as an int, a fractional grade refused.
+
+    BEIR's own loader parses ``int(row[2])``, so ``repr(1.0)`` made every export unreadable by BEIR itself.
+    An integral grade is written as its int; a fractional grade is refused with a hint, because a ``0.7``
+    cell is a non-standard file no BEIR-compatible tool reads (the reader keeps fractional labels; the
+    ``jsonl`` and ``mteb`` writers carry the continuous signal).
+    """
+    value = float(label)
+    if value.is_integer():
+        return str(int(value))
+    raise DataError(
+        f"qrels: query {query_id!r}, document {doc_id!r}: the grade {label!r} is not a whole number, and "
+        "BEIR's own loader parses qrels scores with int()",
+        hint="BEIR qrels are integers: export as `jsonl` (which keeps float grades) or as `mteb` (whose "
+        "gain/theta columns carry the continuous signal)",
+        details={"query_id": str(query_id), "doc_id": str(doc_id), "grade": value},
+    )
 
 
 def _split_of_qrels_file(path: str) -> str:
