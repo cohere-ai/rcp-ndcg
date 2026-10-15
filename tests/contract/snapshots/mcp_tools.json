@@ -136,6 +136,7 @@
           "items": {
             "enum": [
               "retrieve",
+              "fuse",
               "rerank",
               "tournament",
               "rubric",
@@ -682,6 +683,7 @@
           "items": {
             "enum": [
               "retrieve",
+              "fuse",
               "rerank",
               "tournament",
               "rubric",
@@ -692,6 +694,20 @@
           },
           "title": "Only",
           "type": "array"
+        },
+        "rrf_k": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The fusion's RRF constant k in 1 / (k + rank) (sets candidates.fuse.rrf_k); the systems to fuse stay the config's.",
+          "title": "Rrf K"
         },
         "runner": {
           "anyOf": [

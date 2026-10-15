@@ -175,6 +175,23 @@ def test_the_candidates_and_rerank_endpoint_urls_are_redacted() -> None:
     assert payload["retrieval"]["encoder"]["base_url"] == ["https://user:pw@enc/v1"]
 
 
+def test_a_credentialed_fusion_system_uri_is_recorded_redacted() -> None:
+    """A fused run's system locations are URIs: a gateway's userinfo must not reach the mirrored run.yaml."""
+    config = _config(
+        candidates={
+            "from": "fuse",
+            "fuse": {"systems": {"a": "s3://key:secret@bucket/a.jsonl", "b": "gs://key:secret@bucket/b.jsonl#s"}},
+        },
+        steps=["fuse"],
+    )
+    recorded = config.recorded()
+    assert recorded["candidates"]["fuse"]["systems"] == {
+        "a": "s3://bucket/a.jsonl",
+        "b": "gs://bucket/b.jsonl#s",
+    }
+    assert "key:secret" not in json.dumps(recorded)
+
+
 def test_a_credentialed_dataset_reader_option_is_recorded_redacted() -> None:
     config = _config(dataset={"uri": "jsonl:rows.jsonl", "options": {"qrels_uri": "s3://key:secret@bucket/q.jsonl"}})
     assert config.recorded()["dataset"]["options"]["qrels_uri"] == "s3://bucket/q.jsonl"

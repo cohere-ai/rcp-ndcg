@@ -4336,6 +4336,7 @@
         "type": {
           "choices": [
             "retrieve",
+            "fuse",
             "rerank",
             "tournament",
             "rubric",
@@ -4669,6 +4670,7 @@
         "type": {
           "choices": [
             "retrieve",
+            "fuse",
             "rerank",
             "tournament",
             "rubric",
@@ -4676,6 +4678,24 @@
             "evaluate"
           ],
           "name": "choice"
+        }
+      },
+      "rrf_k": {
+        "default": null,
+        "envvar": null,
+        "help": null,
+        "hidden": false,
+        "is_flag": false,
+        "multiple": false,
+        "nargs": 1,
+        "opts": [
+          "--rrf-k"
+        ],
+        "param_type_name": "option",
+        "required": false,
+        "secondary_opts": [],
+        "type": {
+          "name": "integer"
         }
       },
       "runner": {

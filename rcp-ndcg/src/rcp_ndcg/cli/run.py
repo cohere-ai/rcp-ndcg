@@ -140,7 +140,7 @@ def run_show(request: RunShowRequest) -> RunSummary:
 # start and resume
 # ----------------------------------------------------------------------------------------------------------------
 
-Step = Literal["retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
+Step = Literal["retrieve", "fuse", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
 
 
 _MIRROR_HELP = (
@@ -194,6 +194,12 @@ class RunStartRequest(RunJudgeFields):
     mirror: str | None = Field(default=None, description=_MIRROR_HELP)
     only: list[Step] = Field(
         default_factory=list, description="Give the new run only these steps (repeatable; its config's steps)."
+    )
+    rrf_k: int | None = Field(
+        default=None,
+        ge=1,
+        description="The fusion's RRF constant k in 1 / (k + rank) (sets candidates.fuse.rrf_k); the systems to "
+        "fuse stay the config's.",
     )
     runner: str | None = Field(
         default=None, description="Hand the run to a job runner: local, slurm, kubernetes or an installed plugin."
@@ -335,13 +341,21 @@ _START = {"result": RunStartResult, "output_schema": "rcp-ndcg.run-start.v1", "t
     **_START,
 )
 def run_start(request: RunStartRequest) -> RunStartResult:
-    """Run a config end to end (retrieve, rerank, tournament, rubric, calibrate, evaluate), here or on a runner."""
+    """Run a config end to end (retrieve, fuse, rerank, tournament, rubric, calibrate, evaluate), here or on a
+    runner."""
     from rcp_ndcg.runs.run import prepare
 
     mirror = [f"mirror={request.mirror}"] if request.mirror else []
+    rrf = [f"candidates.fuse.rrf_k={request.rrf_k}"] if request.rrf_k is not None else []
+    if request.rrf_k is not None and not _declares_a_fusion(request):
+        raise UsageError(
+            "--rrf-k sets the RRF constant of a fused run (candidates.fuse.rrf_k), and this config declares no "
+            "candidates.fuse",
+            hint="add candidates: {from: fuse, fuse: {systems: {s1: ..., s2: ...}}} to the config, or drop --rrf-k",
+        )
     pipeline = prepare(
         request.config,
-        overrides=[*request.judge_overrides(), *request.set, *mirror],
+        overrides=[*request.judge_overrides(), *rrf, *request.set, *mirror],
         runs_dir=request.runs_dir,
         label=request.label,
         steps=request.only or None,
@@ -357,6 +371,18 @@ def run_start(request: RunStartRequest) -> RunStartResult:
 
         refuse_serving_here(pipeline.config)
     return _finish(pipeline, request, resume=True, runner=runner)
+
+
+def _declares_a_fusion(request: RunStartRequest) -> bool:
+    """Whether the config (with the request's other overrides) declares ``candidates.fuse``.
+
+    ``--rrf-k`` only tunes a fusion the config already declares: its systems are config data, not a flag, so a
+    config without the block is refused as the flag misuse it is rather than as a missing ``systems``.
+    """
+    from rcp_ndcg.runs import RunConfig
+
+    declared = RunConfig.load(request.config, overrides=[*request.judge_overrides(), *request.set])
+    return declared.candidates.fuse is not None
 
 
 _ENGINE_ROLES = ("judge", "encoder", "reranker")

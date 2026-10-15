@@ -8,7 +8,7 @@ your command on the node).
 
 ## Runs and job runners
 
-A run config names the dataset, the candidates, the judge and the steps (`retrieve`, `rerank`, `tournament`,
+A run config names the dataset, the candidates, the judge and the steps (`retrieve`, `fuse`, `rerank`, `tournament`,
 `rubric`, `calibrate`, `evaluate`). `rcp-ndcg run start my_run.yaml` runs them into `runs/<run_id>/`, whose
 `manifest.json` records every step's identity, inputs, outputs and usage (judge calls and tokens). Resuming (`rcp-ndcg run resume --run
 runs/<run_id>`) reuses every step whose identity is unchanged (a judging step's identity includes the prompt's
@@ -23,6 +23,15 @@ judgement stores it reads, whose content already covers the formatting), and `rc
 state of each
 step. Estimate a run with `--estimate` before you start it.
 
+A run's `fuse` step performs the fusion itself: `candidates: {from: fuse, fuse: {systems: {s1: <rankings file>,
+s2: <file>#<system>}, rrf_k: 60}}` fuses the named systems' rankings -- at least two, each a rankings file or one
+system of a file that holds several (`<file>#<system>`) -- with reciprocal rank fusion (`rcp_ndcg.retrieval.fuse`,
+the same arithmetic `rcp-ndcg retrieval fuse` calls), and the run's candidate pools are the fused order. The
+step's record in `manifest.json` names the systems, the constant and the depth, so a reader sees that the fusion
+happened. A declared fusion that cannot be performed is refused with a typed error -- a system's rankings file
+that is not there, a system that was not retrieved into its file, a file of several systems with no `#<system>`
+selector, or a fusion of fewer than two systems -- never a silent ranking by one system.
+
 `step_budget_s:` (seconds, default `null`) gives every step a wall-clock budget. The transport checks it before
 each request and after every park, and the judging pass before each phase's windows; a step over budget stops
 with `StepBudgetExceededError` (exit code 9), the judgement store keeps every record it wrote, and a resume
@@ -33,9 +42,9 @@ resume succeeds. A resume that fails or is refused leaves `run.yaml`, the record
 the run's status as they were; a step it re-ran before failing is redone by the next resume. Once a judging step has
 started a stage under the changed config, its store holds judgements of that config, so the change stays and the
 run is `failed` until a resume finishes it. `run resume --only STEP` runs just those steps now and never changes the
-run's recorded `steps`. `--only rerank` regenerates a missing first stage with the configured `retrieve` step (a
-restore that left no `work/`, which the mirror skips): the documented path is not wedged by it, and a later resume
-records the retrieve step it ran on the way.
+run's recorded `steps`. `--only rerank` regenerates a missing first stage with the configured `retrieve` step (or
+the `fuse` step of a fused run; a restore that left no `work/`, which the mirror skips): the documented path is
+not wedged by it, and a later resume records the retrieve step it ran on the way.
 
 The steps run on this machine by default. `rcp-ndcg run start my_run.yaml --runner slurm` (or `kubernetes`) submits
 the run as one job instead, which runs `rcp-ndcg run resume` on the scheduler (`run resume` always runs the run in

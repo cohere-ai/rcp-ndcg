@@ -4,6 +4,14 @@ The first stage builds each query's candidate pool and the second re-scores it. 
 steps do both before the judging (`candidates: {from: retrieval, retrieval: ..., rerank: ..., depth: 50}`);
 outside a run, the retrieval commands write a rankings file that every scoring protocol reads directly.
 
+A run can also fuse several systems as its first stage: `candidates: {from: fuse, fuse: {systems: {s1: <rankings
+file>, s2: <file>#<system>}, rrf_k: 60}}` makes the run's `fuse` step write the RRF of the named systems as its
+candidate pools -- the same `rcp_ndcg.retrieval.fuse` arithmetic as `rcp-ndcg retrieval fuse`, over rankings files
+(`retrieval search` outputs, another run's rankings, ...) rather than over documents, so the fusion is
+modality-free. A system that cannot be read (a missing file, a system that was not retrieved into its file, a
+multi-system file with no `#<system>` selector) or a fusion of fewer than two systems is a typed refusal, never a
+silent ranking by one system ([runs](runs.md#runs-and-job-runners)).
+
 ## What retrieval contributes
 
 `rcp-ndcg retrieval index` (`rcp_ndcg.retrieval.index`) builds an index of a dataset's corpus;

@@ -1395,6 +1395,17 @@ owner pushes, with the move to a Hugging Face organisation).
   (`16Gi` by default; a Kubernetes memory quantity with a binary unit -- `Ki`/`Mi`/`Gi`/`Ti` -- refused
   otherwise). The rendered Job and engine-StatefulSet manifests carry it, so a runaway engine fails its pod
   instead of exhausting the node; a phase that runs several engines in one container raises it.
+- **A run's candidates can be a fusion, as a `fuse` step**: `candidates.from: fuse` names the systems to fuse
+  (`candidates.fuse.systems`, at least two; a rankings file, or `<file>#<system>` for one system of a file that
+  holds several) and the RRF constant (`candidates.fuse.rrf_k`, default 60). The `fuse` step writes the RRF of
+  those systems as the run's candidate pools -- `rcp_ndcg.retrieval.fuse`, the same arithmetic `rcp-ndcg retrieval
+  fuse` calls, over rankings rather than documents, so the fusion is modality-free -- and the step's record names
+  the systems, the constant and the depth. A declared fusion that cannot be performed is a typed error (a
+  system's rankings file that is not there, a system that was not retrieved into its file, a multi-system file
+  with no `#<system>` selector, or fewer than two systems), never a silent ranking by one system. `run start`
+  gains `--rrf-k` (the MCP `run_start` tool takes it too), and `--only` names `fuse`. The contract snapshots, the
+  exported `run-config.v1.json` and the generated API pages record the step, the source and the flag (regenerate
+  as below).
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed

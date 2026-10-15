@@ -39,6 +39,7 @@ from rcp_ndcg.runs.config import (
     RunConfig,
     redact_candidates_payload,
     redact_evaluation_payload,
+    redact_fuse_payload,
 )
 from rcp_ndcg.runs.layout import RunLayout, new_run_id
 from rcp_ndcg.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
@@ -249,6 +250,9 @@ class Pipeline:
         retrieved = Path(self.layout.candidates).exists()
         if self.config.candidates.source == "retrieval" and not retrieved:
             return self._assumed_pools(), True
+        if self.config.candidates.source == "fuse" and not retrieved:
+            # The systems are rankings files, so the estimate reads and fuses them: exact, and no step is run.
+            return self._fused_pools(), False
         if self.config.candidates.source == "rankings" and not retrieved:
             depth = self.config.candidates.depth
             return {query: pool[:depth] for query, pool in self._limited(self._supplied_pools()).items()}, False
@@ -462,6 +466,17 @@ class Pipeline:
                 "output": self.layout.relative(self._first_stage),
                 "behaviour_version": RETRIEVE_BEHAVIOUR_VERSION,
             }
+        if step == "fuse":
+            # The fusion's content: the systems (their names and locations), the constant and the depth. The
+            # systems' files' hashes are the step's inputs, so an edited ranking re-keys it.
+            fusion = config.candidates.fuse
+            assert fusion is not None  # validated: the fuse step needs candidates.from: fuse
+            return {
+                **dataset,
+                "fusion": redact_fuse_payload(identity_payload(fusion)),
+                "depth": config.candidates.depth,
+                "output": self.layout.relative(self._first_stage),
+            }
         if step == "rerank":
             reranker = config.candidates.rerank
             if reranker is None:
@@ -516,6 +531,10 @@ class Pipeline:
         paths: list[str] = []
         if step == "retrieve" and self.config.candidates.source == "rankings":
             paths = [str(self.config.candidates.rankings)]
+        elif step == "fuse":
+            fusion = self.config.candidates.fuse
+            assert fusion is not None  # validated: the fuse step needs candidates.from: fuse
+            paths = [location.partition("#")[0] for location in fusion.systems.values()]
         elif step == "rerank":
             if self.config.candidates.source == "rankings" and "retrieve" not in self.config.steps:
                 # The rerank step reads the rankings file itself on this shape (see _step_rerank).
@@ -558,6 +577,73 @@ class Pipeline:
         _write_rankings(output, first)
         return [artifact_ref(output, layout=self.layout)], None
 
+    def _step_fuse(self) -> tuple[list[ArtifactRef], Usage | None]:
+        """Fuse the configured systems' rankings into the first stage.
+
+        The arithmetic is :func:`rcp_ndcg.retrieval.fuse`, the same code path as ``retrieval fuse``: RRF over
+        every system of every input, no documents read, so the fusion is modality-free.
+        """
+        output = self._first_stage
+        _write_rankings(output, self._fused_rankings())
+        return [artifact_ref(output, layout=self.layout)], None
+
+    def _fused_rankings(self) -> Rankings:
+        """The run's systems' rankings fused with RRF (what the fuse step writes, and the estimate's pools).
+
+        Raises:
+            MissingInputError: A system's rankings file is not there.
+            DataError: A file holds no such system, or a system ranks no query of this run's dataset: fusing it
+                would silently contribute nothing and the result would look like a real fusion.
+        """
+        from rcp_ndcg.retrieval import fuse
+
+        fusion = self.config.candidates.fuse
+        assert fusion is not None  # validated: candidates.from: fuse needs the block, and the step needs the source
+        systems = [self._fuse_system(name, location) for name, location in fusion.systems.items()]
+        return fuse(systems, rrf_k=fusion.rrf_k, depth=self.config.candidates.depth, system=FUSED)
+
+    def _fuse_system(self, name: str, location: str) -> Rankings:
+        """One system's rankings, under the run's own name for it: a rankings file, or ``<file>#<system>``."""
+        from rcp_ndcg.data import load_rankings
+
+        path, _, system = location.partition("#")
+        if not Path(path).exists():
+            raise MissingInputError(
+                f"the fuse step needs the rankings of system {name!r} at {path}, and it does not exist",
+                hint=f"write it (rcp-ndcg retrieval search --out {path}) and point candidates.fuse.systems.{name} "
+                "at it",
+            )
+        supplied = load_rankings(path)
+        if system and system not in supplied.systems:
+            raise DataError(
+                f"the fuse step's system {name!r} names {path}#{system}, and {path} holds {supplied.systems}: "
+                f"the system {system!r} was not retrieved into it",
+                hint="name one of the systems the file holds, so the fusion is of the systems you mean",
+            )
+        if not system:
+            if len(supplied.systems) != 1:
+                raise DataError(
+                    f"candidates.fuse.systems.{name}: {path} holds {len(supplied.systems)} systems "
+                    f"{supplied.systems}; name the one to fuse",
+                    hint=f"write candidates.fuse.systems.{name}: {path}#<one of {supplied.systems}>",
+                )
+            system = supplied.systems[0]
+        scores = supplied.queries(system=system, dataset=self.dataset.name)
+        if not scores:
+            raise DataError(
+                f"the fuse step's system {name!r} ranks no query of {self.dataset.name!r}: fusing it would "
+                "silently contribute nothing",
+                hint="check that the system was retrieved over this run's dataset",
+            )
+        return Rankings.from_scores(scores, system=name)
+
+    def _fused_pools(self) -> dict[str, list[str]]:
+        """Each query's pool from the fused systems, before the fuse step has written the candidates file."""
+        fused = self._fused_rankings()
+        pools = {query: _order(scores) for query, scores in fused.queries().items()}
+        depth = self.config.candidates.depth
+        return {query: pool[:depth] for query, pool in self._limited(pools).items()}
+
     def _supplied_pools(self) -> dict[str, list[str]]:
         """Each query's pool, best first, from the rankings file of a ``from: rankings`` run (its one system)."""
         from rcp_ndcg.data import load_rankings
@@ -578,12 +664,13 @@ class Pipeline:
             # read from it, never from a work/first_stage.parquet an earlier config in this run dir left.
             first = Rankings.from_orders(self._supplied_pools(), system=CANDIDATES)
         else:
-            if not Path(self._first_stage).exists() and "retrieve" in self.config.steps:
+            writer = "fuse" if self.config.candidates.source == "fuse" else "retrieve"
+            if not Path(self._first_stage).exists() and writer in self.config.steps:
                 # `run resume --only rerank` after a restore that left no work/ (the mirror skips it): the
-                # configured retrieve step regenerates the first stage, instead of dying with "rankings file
-                # not found" and wedging the documented --only path.
-                logger.info("[run] rerank: the first stage is missing; regenerating it with the retrieve step")
-                self._step_retrieve()
+                # configured step that writes the first stage (retrieve, or fuse) regenerates it, instead of
+                # dying with "rankings file not found" and wedging the documented --only path.
+                logger.info("[run] rerank: the first stage is missing; regenerating it with the %s step", writer)
+                getattr(self, f"_step_{writer}")()
             first = _read_rankings(self._first_stage)
         pools = self._limited(first.queries())
         depth = max((len(pool) for pool in pools.values()), default=1)
@@ -801,7 +888,11 @@ class Pipeline:
             pools = self._supplied_pools()
         elif not Path(path).exists():
             if self.config.candidates.source != "dataset":
-                writer = "rerank" if "rerank" in self.config.steps else "retrieve"
+                writer = (
+                    "rerank"
+                    if "rerank" in self.config.steps
+                    else ("fuse" if self.config.candidates.source == "fuse" else "retrieve")
+                )
                 raise MissingInputError(
                     f"{path} does not exist yet: the candidates come from {self.config.candidates.source}",
                     hint=f"run the {writer} step first",
@@ -953,6 +1044,8 @@ def _windows_stored(store: Path) -> int:
 
 #: The system name of a run's candidate pools in its rankings files.
 CANDIDATES = "candidates"
+#: The system name of a run's fused candidate pools in its rankings files (the ``fuse`` step's output).
+FUSED = "rrf"
 #: The system name of the judge's calibrated abilities in a run's evaluation.
 JUDGE = "judge"
 #: The reference systems every run scores beside the user's own: the pool order and the judge's abilities.

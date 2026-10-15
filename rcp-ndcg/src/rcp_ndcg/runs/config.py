@@ -52,8 +52,8 @@ from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, ServeByRole, ServeCo
 from rcp_ndcg.support.urls import safe_url
 
 #: The steps of a run, in the order they run.
-StepName = Literal["retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
-STEPS: tuple[StepName, ...] = ("retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate")
+StepName = Literal["retrieve", "fuse", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
+STEPS: tuple[StepName, ...] = ("retrieve", "fuse", "rerank", "tournament", "rubric", "calibrate", "evaluate")
 
 #: Steps that call the judge.
 JUDGE_STEPS: frozenset[str] = frozenset({"tournament", "rubric"})
@@ -127,6 +127,34 @@ class DatasetSource(BaseModel):
         return dataset_content_digest(self.uri, self.options)
 
 
+class FuseConfig(BaseModel):
+    """The systems a run fuses with reciprocal rank fusion, and the fusion's parameters.
+
+    Attributes:
+        systems: ``{name: location}`` of the systems to fuse, at least two. A location is a rankings file
+            (``rcp-ndcg retrieval search`` output, another run's rankings, ...), or ``<file>#<system>`` for one
+            system of a file that holds several (the selector :class:`EvaluationOptions` uses).
+        rrf_k: The RRF constant ``k`` in ``1 / (k + rank)``, ranks from 1 (the paper's 60).
+    """
+
+    model_config = _FORBID
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"systems": _CONTENT, "rrf_k": _CONTENT}
+
+    systems: dict[str, str]
+    rrf_k: int = Field(default=60, ge=1)
+
+    @model_validator(mode="after")
+    def _at_least_two_systems(self) -> Self:
+        """A fusion of one system is not a fusion: the ranking would silently be that system's own."""
+        if len(self.systems) < 2:
+            raise ValueError(
+                f"a fusion needs at least two systems to fuse, and this one names {len(self.systems)} "
+                f"({', '.join(self.systems) or 'none'}): ranking by one system is not a fusion"
+            )
+        return self
+
+
 class CandidatesConfig(BaseModel):
     """Where each query's candidate pool comes from.
 
@@ -136,12 +164,13 @@ class CandidatesConfig(BaseModel):
 
     Attributes:
         source: ``"dataset"`` (the dataset's own pools, else its judged documents), ``"rankings"`` (a rankings
-            file of :func:`~rcp_ndcg.data.load_rankings`) or ``"retrieval"`` (first-stage retrieval). Written
-            ``from:`` in YAML.
+            file of :func:`~rcp_ndcg.data.load_rankings`), ``"retrieval"`` (first-stage retrieval) or ``"fuse"``
+            (the RRF of ``fuse.systems``). Written ``from:`` in YAML.
         rankings: The rankings file, for ``from: rankings``.
         system: The system of a rankings file that holds several.
         retrieval: The retriever (:data:`~rcp_ndcg.retrieval.RetrieverConfig`), for ``from: retrieval``.
         rerank: A reranker applied to the pools (the ``rerank`` step).
+        fuse: The systems and parameters of the fusion, for ``from: fuse`` (the ``fuse`` step).
         depth: Candidates per query kept for judging.
     """
 
@@ -153,14 +182,16 @@ class CandidatesConfig(BaseModel):
         "system": _CONTENT,
         "retrieval": _CONTENT,
         "rerank": _CONTENT,
+        "fuse": _CONTENT,
         "depth": _CONTENT,
     }
 
-    source: Literal["dataset", "rankings", "retrieval"] = Field(default="dataset", alias="from")
+    source: Literal["dataset", "rankings", "retrieval", "fuse"] = Field(default="dataset", alias="from")
     rankings: str | None = None
     system: str | None = None
     retrieval: RetrieverConfig | None = None
     rerank: RerankerConfig | None = None
+    fuse: FuseConfig | None = None
     depth: int = Field(default=150, ge=1)
 
     @model_validator(mode="after")
@@ -169,6 +200,24 @@ class CandidatesConfig(BaseModel):
             raise ValueError("candidates.from: rankings needs candidates.rankings (a rankings file)")
         if self.source == "retrieval" and self.retrieval is None:
             raise ValueError("candidates.from: retrieval needs candidates.retrieval (a retriever config)")
+        if self.source == "fuse" and self.fuse is None:
+            raise ValueError("candidates.from: fuse needs candidates.fuse (the systems to fuse and the RRF constant)")
+        if self.fuse is not None and self.source != "fuse":
+            raise ValueError(
+                f"candidates.fuse is the fusion a from: fuse run's candidates come from, and this run is from: "
+                f"{self.source}: set candidates.from: fuse, or drop candidates.fuse"
+            )
+        if self.source == "fuse":
+            unused = sorted(
+                name
+                for name, value in (("rankings", self.rankings), ("system", self.system), ("retrieval", self.retrieval))
+                if value is not None
+            )
+            if unused:
+                raise ValueError(
+                    f"candidates.from: fuse ranks by the fused systems, and candidates.{unused[0]} is not used by "
+                    "it: drop it, or set candidates.from to the source that reads it"
+                )
         return self
 
 
@@ -494,8 +543,15 @@ class RunConfig(BaseModel):
 
     @model_validator(mode="after")
     def _steps_have_their_inputs(self) -> Self:
-        if "retrieve" in self.steps and self.candidates.source == "dataset":
+        if "retrieve" in self.steps and self.candidates.source in ("dataset", "fuse"):
             raise ValueError("the retrieve step needs candidates.from: retrieval or rankings")
+        if "fuse" in self.steps and self.candidates.source != "fuse":
+            raise ValueError("the fuse step needs candidates.from: fuse (the systems to fuse and the RRF constant)")
+        if self.candidates.source == "fuse" and "fuse" not in self.steps:
+            raise ValueError(
+                "candidates.from: fuse needs the fuse step: nothing else writes the fused candidates "
+                "(add fuse to steps, before rerank; `run start --only` must name it too)"
+            )
         if "rerank" in self.steps and self.candidates.rerank is None:
             raise ValueError("the rerank step needs candidates.rerank (the reranker's settings)")
         if "rerank" in self.steps and "retrieve" not in self.steps and self.candidates.source == "retrieval":
@@ -625,6 +681,8 @@ class RunConfig(BaseModel):
         for name, location in dataset_local_locations(self.dataset.uri, self.dataset.options).items():
             local(name, location)
         local("candidates.rankings", self.candidates.rankings)
+        for name, location in (self.candidates.fuse.systems if self.candidates.fuse is not None else {}).items():
+            local(f"candidates.fuse.systems.{name}", location.partition("#")[0])
         for name, location in self.evaluation.systems.items():
             local(f"evaluation.systems.{name}", location.partition("#")[0])
         if (
@@ -674,9 +732,21 @@ def redact_dataset_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def safe_systems_location(location: str) -> str:
-    """safe_url for an evaluation system's location: its ``#<system>`` selector is semantic, not a credential."""
+    """safe_url for a system's location: its ``#<system>`` selector is semantic, not a credential."""
     path, separator, system = location.partition("#")
     return safe_url(path) + (separator + system if separator else "")
+
+
+def redact_fuse_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a fusion identity payload with every system's URI redacted (the selector kept)."""
+    data = dict(payload)
+    systems = data.get("systems")
+    if isinstance(systems, dict):
+        data["systems"] = {
+            name: safe_systems_location(location) if isinstance(location, str) else location
+            for name, location in systems.items()
+        }
+    return data
 
 
 def redact_endpoint_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -695,10 +765,14 @@ def redact_endpoint_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def redact_candidates_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """A copy of a candidates identity payload with the rankings URI and the role endpoints' URLs redacted."""
+    """A copy of a candidates identity payload with the rankings URI, the fusion systems' URIs and the role
+    endpoints' URLs redacted."""
     data = dict(payload)
     if isinstance(data.get("rankings"), str):
         data["rankings"] = safe_url(data["rankings"])
+    fuse = data.get("fuse")
+    if isinstance(fuse, dict):
+        data["fuse"] = redact_fuse_payload(fuse)
     retrieval = data.get("retrieval")
     if isinstance(retrieval, dict):
         retrieval = dict(retrieval)
@@ -828,8 +902,15 @@ def _relative_to(data: dict[str, Any], base: Path) -> dict[str, Any]:
         options = {k: local(v) if k.endswith("_uri") else v for k, v in (dataset.get("options") or {}).items()}
         data["dataset"] = {**dataset, "uri": uri(dataset.get("uri")), **({"options": options} if options else {})}
     candidates = data.get("candidates")
-    if isinstance(candidates, dict) and candidates.get("rankings"):
-        data["candidates"] = {**candidates, "rankings": local(candidates["rankings"])}
+    if isinstance(candidates, dict):
+        updates: dict[str, Any] = {}
+        if candidates.get("rankings"):
+            updates["rankings"] = local(candidates["rankings"])
+        fuse = candidates.get("fuse")
+        if isinstance(fuse, dict) and isinstance(fuse.get("systems"), dict):
+            updates["fuse"] = {**fuse, "systems": {k: local(v) for k, v in fuse["systems"].items()}}
+        if updates:
+            data["candidates"] = {**candidates, **updates}
     evaluation = data.get("evaluation")
     if isinstance(evaluation, dict) and isinstance(evaluation.get("systems"), dict):
         data["evaluation"] = {**evaluation, "systems": {k: local(v) for k, v in evaluation["systems"].items()}}
@@ -876,6 +957,7 @@ __all__ = [
     "CandidatesConfig",
     "DatasetSource",
     "EvaluationOptions",
+    "FuseConfig",
     "KubernetesRunnerConfig",
     "LocalRunnerConfig",
     "PluginRunnerConfig",

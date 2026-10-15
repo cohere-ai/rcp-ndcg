@@ -87,6 +87,7 @@ which installs with the package, and the stemmer is part of the index identity.
 | `--include-reference` | `eval compare --run` and `results export --run`: also include the run's reference systems `candidates` and `judge` |
 | `--sink NAME` | `results export`: the sink to write to (`jsonl`, `parquet`, `null`, or an installed `rcp_ndcg.results` entry point); see `rcp-ndcg results sinks` |
 | `--depth INT`, `--limit INT` | candidate depth; the first N — queries on `judge tournament\|rubric`, records on `data convert`, runs on `run list` |
+| `--rrf-k INT` | `run start`: the fusion's RRF constant k in 1 / (k + rank) (sets `candidates.fuse.rrf_k`); the systems to fuse stay the config's ([the fuse step](../concepts/runs.md#runs-and-job-runners)) |
 | `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time; call no judge |
 | `--dry-run` | print the plan; no side effects; refuses what the real command would refuse |
 | `--force` | judge into a store of another identity; the old records are moved aside |
