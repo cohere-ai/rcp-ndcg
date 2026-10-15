@@ -298,6 +298,21 @@ class TestValidation:
         with pytest.raises(ValueError, match="prior_sd must be finite and > 0"):
             Criteria2PL(ORACLE_GAMMA, ORACLE_BETA, prior_sd=-1.0)
 
+    def test_a_prior_sd_too_wide_for_the_fixed_grid_is_refused(self) -> None:
+        """The QUAD grid is fixed at [-18, 10]; a prior whose mass spills past the +10 edge is
+        truncated silently. For prior_sd=20 the truncated prior is nearly flat on the grid, so a
+        document with no data scores near the grid's centre (about -4) instead of the prior mean 0
+        -- a bias no error names. The fit and the direct constructor must refuse it; a prior the
+        grid can host (3.0) still fits."""
+        truncated = np.exp(-0.5 * (QUAD / 20.0) ** 2)
+        truncated /= truncated.sum()
+        assert abs(float(truncated @ QUAD)) > 1.0, "the harm: the truncated prior's mean is far from 0"
+        with pytest.raises(ValueError, match="quadrature grid"):
+            Criteria2PL.fit(np.array([2.0, 2.0]), np.array([[1.0, 0.0], [0.0, 1.0]]), prior_sd=20.0)
+        with pytest.raises(ValueError, match="quadrature grid"):
+            Criteria2PL(ORACLE_GAMMA, ORACLE_BETA, prior_sd=4.0)
+        assert Criteria2PL(ORACLE_GAMMA, ORACLE_BETA, prior_sd=3.0).prior_sd == 3.0
+
     def test_a_fit_with_exactly_two_criteria_is_accepted(self) -> None:
         """The identifiability floor is K >= 2: exactly two criteria sit on the accepted side of the
         boundary (one criterion cannot identify a 2PL; two can). The data is the module's own oracle

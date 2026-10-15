@@ -180,6 +180,13 @@ class TestValidation:
             with pytest.raises(ValueError, match="prior_sd must be finite and > 0"):
                 _score(3, [2, 2, 1], prior_sd=prior_sd)
 
+    def test_a_wide_prior_is_accepted_because_the_public_scorer_rescales_it(self) -> None:
+        """``score_document`` integrates a prior N(mu, sd) in standardised units on the fixed grid
+        (gamma scaled by sd, difficulties shifted and scaled), so unlike the fixed-grid
+        ``Criteria2PL`` path it must keep accepting a prior_sd the grid could not host directly."""
+        score = _score(3, [2, 2, 1, 1, 0], prior_sd=20.0)
+        assert np.isfinite(score.theta) and np.isfinite(score.se)
+
     def test_a_nonsensical_se_target_is_refused(self) -> None:
         """``se_target`` is squared into the precision predicate: 0.0 raised a bare
         ``ZeroDivisionError: float division by zero`` from inside the predicate, NaN made the

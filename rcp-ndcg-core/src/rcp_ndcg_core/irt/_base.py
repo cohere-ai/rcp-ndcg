@@ -11,7 +11,11 @@ import torch.optim as optim
 
 
 class BaseScoredModel(nn.Module):
-    """An ability ``theta`` per document (zero-mean), an L2 penalty, and an L-BFGS fit.
+    """An ability ``theta`` per document (mean-centred by the base :attr:`theta`), an L2 penalty, and
+    an L-BFGS fit.
+
+    :class:`~rcp_ndcg_core.irt._rasch.RaschEstimator` overrides :attr:`theta` with the raw parameters
+    (its ``beta`` is the mean-centred one), so ``theta`` is not mean-zero there.
 
     ``l2_reg`` defaults to the paper's Stage A Bradley-Terry ridge (1e-4, ``Priors.bt_l2``); a caller
     with a fitted calibration's own penalty passes it explicitly. ``doc_ids`` must be unique: the index

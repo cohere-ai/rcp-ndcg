@@ -19,6 +19,25 @@ def test_abilities_follow_the_comparisons_and_are_centred() -> None:
     assert sum(scores.values()) == pytest.approx(0.0, abs=1e-5)
 
 
+def test_the_base_docstring_matches_the_rasch_raw_theta_override() -> None:
+    """The base ``theta`` is mean-centred, but ``RaschEstimator`` overrides it with the raw
+    parameters (its ``beta`` is the centred one). The base class docstring claimed every ability is
+    "zero-mean"; a reader of ``RaschEstimator.theta`` was told the opposite of what the property
+    returns, so the docstring must name the estimator that overrides it."""
+    from rcp_ndcg_core.irt._base import BaseScoredModel
+
+    doc = BaseScoredModel.__doc__ or ""
+    assert "RaschEstimator" in doc, "the base docstring must name the estimator that overrides theta"
+
+    base = BradleyTerryEstimator(doc_ids=["a", "b", "c"])
+    base.theta_raw.data = torch.tensor([0.0, 2.0, 4.0])
+    assert torch.allclose(base.theta, torch.tensor([-2.0, 0.0, 2.0]))
+    rasch = RaschEstimator(doc_ids=["a", "b", "c"], num_criteria=2)
+    rasch.theta_raw.data = torch.tensor([0.0, 2.0, 4.0])
+    assert torch.allclose(rasch.theta, torch.tensor([0.0, 2.0, 4.0]))
+    assert torch.allclose(rasch.beta, torch.zeros(2))
+
+
 def test_the_bradley_terry_fit_does_not_depend_on_the_thread_count() -> None:
     """Above torch's 32768-element reduction grain the float32 sum order follows the core count.
 
