@@ -40,11 +40,13 @@ change what is served.
 **Adding a size to an existing family** is one row plus its pins plus its tests:
 
 1. Append a `variants` row: `id`, `model`, `revision`, and the whitelisted per-size `overrides` only
-   (`resources`, `serve.max_model_len`/`hf_overrides`/`mm_processor_kwargs`/`limit_mm_per_prompt`,
+   (`resources`, `serve.max_model_len`/`dtype`/`hf_overrides`/`mm_processor_kwargs`/`limit_mm_per_prompt`/
+   `extra_args`/`patches`,
    `client.max_tokens`/`query_max_tokens`/`document_max_tokens`/`dim`/`dimensions`/`mrl_kind`/`mrl_dims`/
    `mrl_range`/`mrl_projection`/`batch_size`/`max_images`/
    `max_videos`, and `gates` -- the size's measured stage-2 bound where it differs from the family's; plus the
-   per-size `notes`, `sources` and `status`). Anything else that differs is refused with a
+   per-size `notes`, `sources`, `status` and `licence` (when the family's checkpoints are licensed
+   differently)). Anything else that differs is refused with a
    typed error naming the field: the shared blocks are the family's contract, so a size that behaves differently
    is its own family. A size's Matryoshka head is a per-size fact (the card's set changes with the width):
    declare `mrl_kind` (`truncation`, `projection` or `none`) with the card's `mrl_dims`/`mrl_range` -- and,
@@ -267,12 +269,14 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
 
 ## Choosing how vLLM serves a model
 
-The serving path is chosen per model — flags alone, a chat template, pooler settings, or a plugin — and the
-decision tree lives in this section once the survey of model families lands; for now, a recipe's `serve` section
+The serving path is chosen per model — flags alone, a chat template, pooler settings, or a plugin. A recipe's
+`serve` section
 renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `vllm.general_plugins` package when
-no flag can express the model's scoring (both ship in rcp-ndcg-vllm's folded models, which register
-perplexity-ai/pplx-embed-v2-context-9b-preview's per-chunk pooling head and its late-interaction sibling
-pplx-embed-v2-late-0.6b on the stock image; its README carries the client contracts). A recipe that names a
+no flag can express the model's scoring. The wheel's folded models register every shipped plugin on the stock
+image: `topk-embed-v1-small`/`-xsmall` (`TopkEmbedModel`), pplx-embed-v1's config-only `PplxV1Config`, the
+pplx-embed-v2-context-9b-preview per-chunk pooling head (`PplxContextualModel`) and its late-interaction
+sibling pplx-embed-v2-late-0.6b (`Qwen3_5Model`), and embeddinggemma-2's
+`EmbeddingGemma2Config`/`EmbeddingGemma2Model` backport; the README carries the client contracts. A recipe that names a
 plugin also declares `plugin_architectures` — the architectures its engine registers (empty for a
 patch-only carrier, whose patch modules are keyed anyway) — because the behaviour
 fingerprint keys the plugin code by hashing exactly those modules (`plugin_sha256.<module>`, plus the shared
@@ -290,7 +294,7 @@ same call the role clients make, with the recipe's real budget — audited again
 
 ```python
 # The template block of a last-token-pooling embedder, as segments:
-#   [{text: "doc: "}, {content: document}, {text: "<end>"}], anchor: last.
+#   [{fixed: "doc: "}, {content: document}, {fixed: "<end>"}], anchor: last.
 prefix_ids = [1, 2]          # token ids of the "doc: " fixed head, measured with the recipe tokenizer
 suffix_ids = [9]             # the end token: the anchor the model pools from
 content_ids = [3, 4, 5, 6, 7, 8]  # the document, already tokenised

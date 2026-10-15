@@ -91,6 +91,14 @@ def prose(text: str, *, keep_inline_code: bool = False) -> str:
     return "\n".join(out)
 
 
+def paragraph(text: str, start: str) -> str:
+    """The blank-line-separated paragraph whose text contains ``start`` (the docs' one way to quote a claim)."""
+    for block in text.split("\n\n"):
+        if start in block:
+            return block
+    raise AssertionError(f"no paragraph contains {start!r}")
+
+
 def links(text: str) -> list[str]:
     """The link targets of a Markdown text, outside code."""
     return _LINK.findall(prose(text))

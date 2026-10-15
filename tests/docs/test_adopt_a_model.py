@@ -9,17 +9,9 @@ from __future__ import annotations
 import pytest
 from rcp_ndcg_vllm.recipe import iter_recipes, resolve_recipe
 
-from tests.docs._markdown import ROOT
+from tests.docs._markdown import ROOT, paragraph
 
 PAGE = ROOT / "docs" / "how-to" / "adopt-a-model.md"
-
-
-def _paragraph(text: str, start: str) -> str:
-    """The blank-line-separated paragraph whose text contains ``start``."""
-    for block in text.split("\n\n"):
-        if start in block:
-            return block
-    raise AssertionError(f"no paragraph contains {start!r}")
 
 
 def _sampling(recipe) -> tuple:  # noqa: ANN001 - a resolved Recipe's client is a plain mapping
@@ -29,7 +21,7 @@ def _sampling(recipe) -> tuple:  # noqa: ANN001 - a resolved Recipe's client is 
 
 def test_the_judge_sampling_doctrine_is_the_recipes_rule() -> None:
     """The page's sampling bullet states the rule the ten judge recipes follow, not a fixed default triple."""
-    bullet = _paragraph(PAGE.read_text(encoding="utf-8"), "**Sampling is declared, not inherited.**")
+    bullet = paragraph(PAGE.read_text(encoding="utf-8"), "**Sampling is declared, not inherited.**")
     judges = [recipe for recipe in iter_recipes() if recipe.role == "judge"]
     assert len(judges) == 10
     assert len({_sampling(recipe) for recipe in judges}) >= 3, "a fixed default triple would misdescribe these"
@@ -40,7 +32,7 @@ def test_the_judge_sampling_doctrine_is_the_recipes_rule() -> None:
 @pytest.mark.parametrize("recipe_id", ["pplx-embed-v2-late-9b"])
 def test_the_gate_override_doctrine_matches_the_loader(recipe_id: str) -> None:
     """A set per-size gate replaces the family's or the published default; the page says so."""
-    bullet = _paragraph(PAGE.read_text(encoding="utf-8"), "**A measured bound.**")
+    bullet = paragraph(PAGE.read_text(encoding="utf-8"), "**A measured bound.**")
     assert "never loosen" not in bullet, "the loader replaces in either direction; it has no tighten-only rule"
     assert "replaces" in bullet
     assert resolve_recipe(recipe_id).gates.vec_min_cosine == 0.978  # the shipped override replaces the default
@@ -49,8 +41,8 @@ def test_the_gate_override_doctrine_matches_the_loader(recipe_id: str) -> None:
 def test_the_late_interaction_wire_matches_the_recipes() -> None:
     """The wire bullets name the shapes the shipped embedders and late-interaction recipes declare."""
     text = PAGE.read_text(encoding="utf-8")
-    dense = _paragraph(text, "One vector per text")
-    late = _paragraph(text, "One L2-normalized vector per kept token")
+    dense = paragraph(text, "One vector per text")
+    late = paragraph(text, "One L2-normalized vector per kept token")
     shapes = {
         recipe.client.get("request_shape") or "text" for recipe in iter_recipes() if recipe.role == "multi_vector"
     }
