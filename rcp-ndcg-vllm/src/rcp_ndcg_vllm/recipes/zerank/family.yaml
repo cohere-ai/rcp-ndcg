@@ -69,9 +69,9 @@ client:
                              # DECLARED content normalisation (TemplateSpec.normalize), applied by fit
                              # before measuring and shipped on the wire -- never a jinja trim filter in
                              # the template file
-  instruction: none          # the family takes no instruction parameter; the reference raises on one. A
-                             # dataset task text, when a run passes one, is dropped on the served path and
-                             # in the reference alike (the paper pipeline never passed one)
+  instruction: none          # the family takes no instruction parameter; the reference ignores one too. A
+                             # dataset task text, when a run passes one, is DROPPED by declaration on the
+                             # served path and in the reference alike (the paper pipeline never passed one)
   on_overflow: cut
   empty_doc: send            # the paper sends an empty document as the empty string; no omit rule
   empty_query: send          # declared: the product's default is `refuse`, but the

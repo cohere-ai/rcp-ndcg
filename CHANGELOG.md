@@ -4329,6 +4329,14 @@ text it sends to the declared budget.
   and every shipped judge's cap (16384 or 8192) sits far below its context (262144 or 131072), so no
   serve argv moves.
 
+- **The recipe comments no longer promise a refusal for `instruction: none`**: the product drops a
+  dataset task instruction by declaration (the client returns the prepared content; only an undeclared
+  mode raises), but eleven family comments said "refused, never silently folded". Each comment now states
+  the drop, the five families whose frame carries no card instruction (octen-embedding, pplx-embed-v1,
+  pplx-embed-v2-context, zembed-1 and jina-embeddings-v5-text) no longer claim one is baked in, and
+  zerank's "the reference raises on one" is corrected to the reference ignoring it. No recipe field moves
+  (the comments are not part of the resolved contract).
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

@@ -147,8 +147,8 @@ client:
                    # prompt-only render "[D] " (one kept token, the prefix id
                    # 248078, which is no skiplist word), and the client's send
                    # renders the same frame around empty content
-  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
-                     # instruction is refused, never silently folded
+  instruction: none  # the card's own instruction is part of the fixed frame; a dataset
+                     # task instruction is DROPPED by declaration, never folded
   normalize: true  # the server L2-normalizes per token (PoolerNormalize; the
                    # token_embed task's use_activation defaults true at the
                    # pinned engine); normalizing again client-side is a no-op

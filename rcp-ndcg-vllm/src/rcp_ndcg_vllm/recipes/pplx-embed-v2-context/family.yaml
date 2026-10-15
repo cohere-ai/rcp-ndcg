@@ -88,8 +88,8 @@ client:
     add_special_tokens: true  # the pooling route's engine default; this tokenizer's post-processor appends nothing (measured)
   on_overflow: cut
   empty_doc: send  # the model's own empty-chunk branch pools to the zero vector
-  instruction: none  # the card's own instruction is baked into the fixed frame; a dataset task
-                     # instruction is refused, never silently folded
+  instruction: none  # the model's frame is fixed; a dataset task instruction is DROPPED
+                     # by declaration, never folded
   normalize: true
   embed_dtype: float16  # the owner's Q11 decision; int8-valued vectors survive the cast exactly
   dim: 2048

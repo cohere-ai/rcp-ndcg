@@ -37,8 +37,8 @@ client:
     add_special_tokens: true # the /v1/embeddings route adds the post-processor tokens; the budget reserves them
   on_overflow: cut
   empty_doc: send            # the paper embeds an empty document as the bare "- " prefix
-  instruction: none          # the card's own instruction is baked into the fixed frame; a dataset
-                             # task instruction is refused, never silently folded
+  instruction: none          # the model's frame is fixed; a dataset task instruction is DROPPED
+                             # by declaration, never folded
   normalize: true            # the engine's embed pooler already L2-normalises; the client's is idempotent
   # No MRL head: the three cards contain no Matryoshka/MRL/projection sentence, and each config.json
   # declares neither is_matryoshka nor matryoshka_dimensions -- declared explicitly so a run never
