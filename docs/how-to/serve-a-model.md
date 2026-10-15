@@ -144,9 +144,9 @@ template's anchors preserved, and every cut is recorded -- never an engine-side 
 ([text budgets](../concepts/text-budgets.md)).
 
 ```bash
-rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFact --retriever retriever.yaml --out index/
-rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFact --retriever retriever.yaml --out rankings.parquet
-rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir
+rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out index/
+rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out rankings.parquet
+rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir --subset NanoSciFactRetrieval
 ```
 
 The command line also takes the shorthand `--retriever recipe:qwen3-embedding-0.6b` (and `--reranker

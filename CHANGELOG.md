@@ -53,6 +53,11 @@ incompatibly, independently of the package version. All four distributions carry
   rendered value and the engine's last-wins parsing silently overrides a `--set` value, the
   `serve.max_model_len` budget check or even `--revision`; the schema now refuses one by name, with the field
   to use instead (`schema/recipe.schema.json` and `schema/family.schema.json` carry the field note).
+- **The quickstart and serve-a-model flow name the real NanoBEIR subset** (docs-1): the three flows used
+  `--subset NanoSciFact`, which is not a subset of `suite:nanobeir` (`NanoSciFactRetrieval` is), and the
+  following `eval score --suite nanobeir` carried no `--subset`, so the other twelve subsets would have
+  scored 0 and the headline mean come out about 1/13 of the subset's value. A docs test now checks every
+  documented `--subset` against `rcp_ndcg.data.SUITES` and requires a following `eval score` to carry it.
 
 ## 0.0.1 — 2026-10-14
 

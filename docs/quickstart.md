@@ -106,11 +106,11 @@ encoder:
 ```
 
 ```bash
-rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFact --retriever recipe-retriever.yaml --out index/
-rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFact --retriever recipe-retriever.yaml --out rankings.parquet
-rcp-ndcg retrieval rerank --dataset suite:nanobeir --subset NanoSciFact --rankings rankings.parquet \
+rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever recipe-retriever.yaml --out index/
+rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever recipe-retriever.yaml --out rankings.parquet
+rcp-ndcg retrieval rerank --dataset suite:nanobeir --subset NanoSciFactRetrieval --rankings rankings.parquet \
     --reranker recipe:qwen3-reranker-0.6b --out rankings-reranked.parquet
-rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir
+rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir --subset NanoSciFactRetrieval
 ```
 
 (one suite subset, as here; `--retriever recipe:<id>` / `--reranker recipe:<id>` are shorthands whose URL comes from
