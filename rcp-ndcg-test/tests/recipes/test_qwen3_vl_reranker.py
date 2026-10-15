@@ -779,3 +779,23 @@ def test_the_score_mode_reads_the_harness_media_field_and_refuses_the_retired_co
             module.side_payload("", entries)
     with pytest.raises(SystemExit):
         module._refuse_old_media_columns(0, {"query_image": "data:image/png;base64,AA=="})
+
+
+def test_the_video_refusal_names_the_sibling_recipes_actual_policy() -> None:
+    """The family refuses video (``input: [text, image]``) and points at the ``qwen3-vl-embedding``
+    family's one video policy. That policy is the engine's fps rule at fps 2
+    (``client.video_policy``), pinned with ``--media-io-kwargs`` -- a pinned ``num_frames`` would be
+    inert on the Qwen3-VL backend -- so the refusal, the module docstring and the notes must not
+    name the superseded 64 uniformly spaced frames."""
+    sibling = yaml.safe_load((default_recipes_root() / "qwen3-vl-embedding" / "family.yaml").read_text("utf-8"))
+    policy = sibling["client"]["video_policy"]
+    assert policy["fps"] == 2 and "num_frames" not in policy, "the sibling policy is the engine's fps rule"
+
+    module = _reference_module()
+    with pytest.raises(SystemExit) as excinfo:
+        module._content_parts("", "", video="a clip")
+    message = str(excinfo.value)
+    assert "64 uniformly spaced" not in message
+    assert "fps 2" in message and "--media-io-kwargs" in message
+    assert "64 uniformly spaced" not in (RECIPE_DIR / "reference.py").read_text(encoding="utf-8")
+    assert "64 uniformly spaced" not in (RECIPE_DIR / "family.yaml").read_text(encoding="utf-8")

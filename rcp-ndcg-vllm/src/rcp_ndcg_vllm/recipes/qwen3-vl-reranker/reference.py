@@ -58,9 +58,10 @@ Deviations from the card's script, all declared:
   in both modes. It keeps the assistant tail (the anchor) and cuts differently from the client:
   the recipe's declared ``over_cap_cut_differs`` (over-cap pairs are reported non-gating).
 - The card's video branch (fps 1 / max_frames 64 containers, ``total_pixels`` frame arrays) is
-  refused, not mirrored: the recipe declares ``input: [text, image]``, and the family's ONE video
-  policy (64 uniformly spaced frames per clip -- the ``qwen3-vl-embedding`` family's
-  ``client.video_policy``) supersedes the card's container sampler. A video-bearing row is a loud
+  refused, not mirrored: the recipe declares ``input: [text, image]``, and the ``qwen3-vl-embedding``
+  family's ONE video policy (the engine's fps rule at fps 2, the container sent as ``video_url`` and
+  the engine pinned with ``--media-io-kwargs``) supersedes the card's container sampler. A
+  video-bearing row is a loud
   error in every mode, never a silent sampling at either rule. A media row's ``media`` field rides
   the card's per-document message builder in ``score`` only (:func:`side_payload`); ``render``
   refuses it (its contract is the text spans the client ships).
@@ -126,8 +127,8 @@ def _content_parts(prefix: str, text: str, image: Any = None, video: Any = None)
     if video:
         raise SystemExit(
             "a side carries a video, and this recipe declares input [text, image] -- video is out "
-            "of its serving form. The family's one video policy (64 uniformly spaced frames per "
-            "clip, the container as video_url under a pinned engine) lives in the "
+            "of its serving form. The family's one video policy (the engine's fps rule at fps 2, "
+            "the container as video_url and the engine pinned with --media-io-kwargs) lives in the "
             "qwen3-vl-embedding family recipe; drop the video or hold the row for that recipe"
         )
     if image:

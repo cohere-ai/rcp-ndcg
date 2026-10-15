@@ -4358,6 +4358,14 @@ text it sends to the declared budget.
   plugin claims and paper citations to the code; the octen and zembed-1 goldens moved for the
   `sources`/`notes` edits.
 
+- **The qwen3-vl-reranker family names the real video policy**: its module docstring, its video refusal
+  and its notes said "64 uniformly spaced frames per clip", but the sibling `qwen3-vl-embedding`
+  recipe's ONE policy is the engine's fps rule at fps 2 (the container sent as `video_url`, the engine
+  pinned with `--media-io-kwargs`); a pinned `num_frames` is inert on the Qwen3-VL backend, and the
+  engine's 98/458 against the client's old 512/1952 frame count is the measured evidence. The reranker
+  still refuses every video row, so no output moves; the qwen3-vl-reranker goldens moved for the notes
+  edit.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
