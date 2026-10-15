@@ -38,6 +38,26 @@ def _modules() -> list[Path]:
     return sorted(path for path in SRC.rglob("*.py") if "__pycache__" not in path.parts)
 
 
+#: Renamed modules the judging unification left behind in comments and docstrings: a citation must name
+#: the live module, or it sends a reader to code that is not in the tree.
+_RENAMED_CITATIONS = (
+    (re.compile(r"(?<![\w.])llm\._fake\b"), "the fake judge lives in rcp_ndcg.judging._fake"),
+    (re.compile(r"(?<![\w.])rcp_ndcg_vllm\.observe\b"), "the observer lives in rcp_ndcg_test.observe"),
+    (re.compile(r"(?<![\w./-])llm/client\.py\b"), "the judge client lives in rcp_ndcg/judging/client.py"),
+)
+
+
+def _citation_files() -> list[Path]:
+    """The files a cross-reference may live in: the source trees and the manifests' comments."""
+    root = Path(__file__).resolve().parents[1]
+    return sorted(
+        path
+        for folder in (SRC, root / "rcp-ndcg-vllm/src", root / "rcp-ndcg-test/src")
+        for path in folder.rglob("*.py")
+        if "__pycache__" not in path.parts
+    ) + [root / "tests/conftest.py", root / "rcp-ndcg/pyproject.toml"]
+
+
 def test_no_module_under_src_imports_a_model_framework() -> None:
     """No torch, transformers, accelerate or vllm import anywhere under ``rcp-ndcg/src/rcp_ndcg/``."""
     offenders = []
@@ -67,3 +87,11 @@ def test_nothing_under_src_names_the_deleted_modules() -> None:
         text = path.read_text(encoding="utf-8")
         for name in _DELETED:
             assert name not in text, f"{path}: {name}"
+
+
+def test_no_citation_names_a_renamed_module() -> None:
+    """The unification moved the fake judge, the observer and the judge client: old citations must be gone."""
+    for path in _citation_files():
+        text = path.read_text(encoding="utf-8")
+        for pattern, why in _RENAMED_CITATIONS:
+            assert not pattern.search(text), f"{path}: {why}"

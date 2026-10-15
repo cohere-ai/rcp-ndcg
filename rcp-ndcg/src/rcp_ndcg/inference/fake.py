@@ -56,7 +56,7 @@ DEFAULT_DIM = 64
 def fake_uniform(*parts: object) -> float:
     """A deterministic draw in [0, 1) from *parts* (the same on every machine and in every call order).
 
-    The one draw every fake reads (the fake judge's ``llm._fake`` imports it under its old name), so a tiny
+    The one draw every fake reads (the fake judge's ``rcp_ndcg.judging._fake`` imports it under its old name), so a tiny
     run's rerank, judge and calibration agree.
     """
     digest = hashlib.sha256("|".join(str(part) for part in parts).encode("utf-8")).digest()

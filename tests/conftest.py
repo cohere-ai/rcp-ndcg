@@ -340,7 +340,7 @@ def write_mjpeg_avi(path: Path, *, frames: int = 12, fps: int = 4, size: tuple[i
     samples frame *i* can be checked against it. Pillow is the only dependency.
     (Second writer by intent: this one serves the root distribution's data-I/O
     tests, which cannot import the serving package; the pairs generator's own
-    writer is ``rcp_ndcg_vllm.observe.media_set.mjpeg_avi`` -- keep both headers
+    writer is ``rcp_ndcg_test.observe.media_set.mjpeg_avi`` -- keep both headers
     BITMAPINFOHEADER-exact (strf's 40 bytes) when changing either.)
     """
     import io
