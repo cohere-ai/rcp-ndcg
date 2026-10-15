@@ -38,6 +38,7 @@ TOPK_PROBE_PY = JOBS / "topk_probe.py"
 TOPK_PROBE_COSINES = JOBS / "wave-cosines-topk-small.json"
 WAVE0_HOST = JOBS / "wave0_host.py"
 CHECK_DEPS_INSTALL = JOBS.parents[3] / "rcp-ndcg-vllm" / "tests" / "models" / "check_no_deps_install.py"
+REPO = Path(__file__).resolve().parents[2]
 
 SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH)
 
@@ -2026,20 +2027,65 @@ def _check_pins(
 ) -> subprocess.CompletedProcess[str]:
     """Source rc_build.sh and run ``check_pins`` on a scratch checkout with the given manifests."""
     checkout = tmp_path / "checkout"
-    (checkout / "rcp-ndcg").mkdir(parents=True)
-    (checkout / "rcp-ndcg-vllm").mkdir(parents=True)
-    (checkout / "rcp-ndcg" / "pyproject.toml").write_text(
-        '[project]\nname = "rcp-ndcg"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n", encoding="utf-8"
+    for member in ("rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-core", "rcp-ndcg-test"):
+        (checkout / member).mkdir(parents=True, exist_ok=True)
+
+    def _write(path: Path, text: str) -> None:
+        """Create the fixture file once: a test may edit it and call again to re-run the check."""
+        if not path.is_file():
+            path.write_text(text, encoding="utf-8")
+
+    _write(
+        checkout / "rcp-ndcg" / "pyproject.toml",
+        '[project]\nname = "rcp-ndcg"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n",
     )
-    (checkout / "rcp-ndcg-vllm" / "pyproject.toml").write_text(
+    _write(
+        checkout / "rcp-ndcg-vllm" / "pyproject.toml",
         '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
-        encoding="utf-8",
     )
+    for member in ("rcp-ndcg-core", "rcp-ndcg-test"):
+        _write(checkout / member / "pyproject.toml", f'[project]\nname = "{member}"\nversion = "0.0.1"\n')
+    _write(checkout / "CITATION.cff", "cff-version: 1.2.0\nversion: 0.0.1\n")
+    scripts = checkout / ".github" / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    checker = REPO / ".github" / "scripts" / "check_release.py"
+    _write(scripts / "check_release.py", checker.read_text(encoding="utf-8"))
     return subprocess.run(
         ["bash", "-c", f'source "{RC_BUILD}" && check_pins "$1" 0.0.1', "bash", str(checkout)],
         capture_output=True,
         text=True,
     )
+
+
+def test_rc_build_release_check_refuses_a_stale_citation_or_manifest(tmp_path: Path) -> None:
+    """g-rcjobs-5(a): rc_build runs release.yml's four-manifest and CITATION.cff checks (one home,
+    .github/scripts/check_release.py).  A commit whose citation or one workspace manifest carried another
+    version used to pass every node gate and then fail the tag -- with a new commit, so the tested RC was
+    not the published one."""
+    completed = _check_pins(tmp_path)
+    assert completed.returncode == 0, completed.stderr
+    (tmp_path / "checkout" / "CITATION.cff").write_text("cff-version: 1.2.0\nversion: 0.0.2\n", encoding="utf-8")
+    stale_citation = _check_pins(tmp_path)
+    assert stale_citation.returncode != 0
+    assert "CITATION.cff" in stale_citation.stderr and "0.0.2" in stale_citation.stderr
+    (tmp_path / "checkout" / "CITATION.cff").write_text("cff-version: 1.2.0\nversion: 0.0.1\n", encoding="utf-8")
+    (tmp_path / "checkout" / "rcp-ndcg-test" / "pyproject.toml").write_text(
+        '[project]\nname = "rcp-ndcg-test"\nversion = "0.0.2"\n', encoding="utf-8"
+    )
+    stale_manifest = _check_pins(tmp_path)
+    assert stale_manifest.returncode != 0
+    assert "rcp-ndcg-test/pyproject.toml" in stale_manifest.stderr
+
+
+def test_rc_build_runs_the_release_checks_and_smokes_from_one_home() -> None:
+    """g-rcjobs-5(b,e): the constraints check is ``.github/scripts/check_constraints.py`` (semantic, the
+    one CI and the release run -- not a textual diff a newer uv re-serialisation fails), and the three
+    wheel smokes release.yml runs (core alone, vllm alone) run here too, not only the rcp-ndcg smoke."""
+    script = RC_BUILD.read_text(encoding="utf-8")
+    assert ".github/scripts/check_constraints.py" in script
+    assert "diff <(grep -v '^#'" not in script  # the textual diff is gone
+    assert "smoke-core" in script and "smoke-vllm" in script
+    assert "assert len(recipes) == 44" in script
 
 
 def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:

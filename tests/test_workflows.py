@@ -20,13 +20,17 @@ def test_the_workflow_parses_and_names_its_jobs(workflow: Path) -> None:
 
 
 def test_the_release_workflow_checks_the_citation_version() -> None:
-    """``CITATION.cff`` carries the release's version and no workflow checked it: a tag could ship a citation
-    naming another release. The build job reads the file and compares its ``version:`` with the tag."""
+    """``CITATION.cff`` carries the release's version and nothing checked it: a tag could ship a citation
+    naming another release. The build job runs ``.github/scripts/check_release.py`` (the same checks
+    ``rc_build.sh`` runs, one home), which reads the file and compares its ``version:`` with the tag."""
     release = next(path for path in _WORKFLOWS if path.name == "release.yml")
     document = yaml.safe_load(release.read_text(encoding="utf-8"))
     scripts = "\n".join(str(step.get("run", "")) for step in document["jobs"]["build"]["steps"])
-    assert "CITATION.cff" in scripts, "the release workflow must check CITATION.cff"
-    assert "GITHUB_REF_NAME#v" in scripts, "the check compares the file with the tag"
+    assert "check_release.py" in scripts, "the release workflow must run the shared release checks"
+    assert "GITHUB_REF_NAME#v" in scripts, "the check compares the tree with the tag"
+    checker = Path(__file__).resolve().parents[1] / ".github" / "scripts" / "check_release.py"
+    text = checker.read_text(encoding="utf-8")
+    assert "CITATION.cff" in text and "version:" in text, "the shared check reads the citation"
 
 
 def _ci() -> tuple[Path, dict]:

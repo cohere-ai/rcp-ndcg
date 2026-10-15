@@ -163,47 +163,12 @@ stage_tree() {
   fi
 }
 
-# check_pins SRC VERSION: the release.yml pin checks.  rcp-ndcg pins rcp-ndcg-core exactly; the lean
-# rcp-ndcg-vllm names NO sibling package (decision 18: there is no lockstep version pin between the two),
-# read with tomllib over every dependency scope -- never by matching TOML text.
+# check_pins SRC VERSION: the release checks, one home in .github/scripts/check_release.py -- the four
+# manifests, CITATION.cff, the core pin (every scope, read with tomllib, never by matching TOML text) and
+# decision 18's vllm rule: the lean package names NO workspace sibling.
 check_pins() {
   local src="$1" version="$2"
-  grep -qx "  \"rcp-ndcg-core==${version}\"," "$src/rcp-ndcg/pyproject.toml" || {
-    echo "rc_build: rcp-ndcg does not pin rcp-ndcg-core==${version}" >&2
-    return 1
-  }
-  python3 - "$src/rcp-ndcg-vllm/pyproject.toml" <<'PYEOF' || return 1
-import re
-import sys
-import tomllib
-from pathlib import Path
-
-# name, optional [extras], then the specifier: "rcp-ndcg[calibrate]==0.0.1" -> ("rcp-ndcg", "==0.0.1")
-requirement_re = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$")
-
-def canonical(name: str) -> str:
-    return re.sub(r"[-_.]+", "-", name).lower()
-
-manifest = Path(sys.argv[1])
-project = tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]
-declared = list(project.get("dependencies", []))
-for extra in project.get("optional-dependencies", {}).values():
-    declared += extra
-# Every OTHER distribution of this workspace (the manifest's own name is rcp-ndcg-vllm, never a sibling).
-WORKSPACE_SIBLINGS = {"rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-test"}
-siblings = []
-for requirement in declared:
-    match = requirement_re.match(requirement.split(";", 1)[0])
-    if match is not None and canonical(match.group(1)) in WORKSPACE_SIBLINGS:
-        siblings.append(requirement.strip())
-if siblings:
-    print(
-        f"rc_build: {manifest} must name no sibling package (decision 18: no lockstep version pin between "
-        f"rcp-ndcg and rcp-ndcg-vllm), found {siblings}",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
-PYEOF
+  python3 "$src/.github/scripts/check_release.py" "$version" --root "$src" --refuse-vllm-sibling
 }
 
 # refuse_existing_stage: the stage name must be fresh.  A recursive copy into an existing prefix merges
@@ -276,13 +241,10 @@ test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || {
 }
 check_pins "$SRC" "$VERSION" || exit 1
 
-echo "rc_build: checking requirements-constraints.txt against the lock"
-command_line="$(sed -n '2s/^#    //p' requirements-constraints.txt)"
-[[ -n "$command_line" ]] || { echo "rc_build: requirements-constraints.txt carries no export command" >&2; exit 1; }
-export_command="${command_line/ -o requirements-constraints.txt/ --no-header -o $WORK/exported.txt}"
-(cd "$SRC" && eval "$export_command")
-diff <(grep -v '^#' requirements-constraints.txt) <(grep -v '^#' "$WORK/exported.txt") || {
-  echo "rc_build: requirements-constraints.txt is not the lock's export (regenerate it)" >&2
+echo "rc_build: checking requirements-constraints.txt against the lock (check_constraints.py, the one home"
+echo "  CI and the release run)"
+python3 "$SRC/.github/scripts/check_constraints.py" || {
+  echo "rc_build: requirements-constraints.txt is not the lock's export (regenerate it with --write)" >&2
   exit 1
 }
 
@@ -425,6 +387,8 @@ print(f"rc_build: hashed the local rcp-ndcg pin in {patched} staged reference lo
 PYEOF
 
 # A fresh-venv install from the wheelhouse alone: the candidate installs and answers (release smoke).
+# The same three wheel smokes release.yml runs, so a broken entry point or missing package data fails
+# here, on the node gate, instead of at the tag (g-rcjobs-5(e)).
 echo "rc_build: fresh-venv install smoke from the wheelhouse"
 uv venv "$WORK/smoke" --python 3.12
 uv pip install --python "$WORK/smoke/bin/python" --no-index \
@@ -433,6 +397,30 @@ uv pip install --python "$WORK/smoke/bin/python" --no-index \
   "rcp-ndcg==${VERSION}"
 "$WORK/smoke/bin/rcp-ndcg" --version
 "$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
+echo "rc_build: core wheel smoke (installs alone and computes the metric)"
+uv venv "$WORK/smoke-core" --python 3.12
+uv pip install --python "$WORK/smoke-core/bin/python" stage/"$RC_NAME"/dist/rcp_ndcg_core-*.whl
+"$WORK/smoke-core/bin/python" - <<'PYEOF'
+from rcp_ndcg_core import PROTOCOLS, gain, ndcg, score_query
+
+items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
+gains = {d: gain(t, items) for d, t in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}
+scores = {"d1": 0.9, "d2": 0.7, "d3": 0.2}
+assert abs(ndcg(scores, gains, k=10) - score_query(scores, gains, protocol=PROTOCOLS["plain"])) < 1e-12
+assert "torch" not in __import__("sys").modules, "rcp_ndcg_core imported torch"
+print("rcp_ndcg_core wheel alone:", ndcg(scores, gains, k=10))
+PYEOF
+echo "rc_build: vllm wheel smoke (installs alone, lists every recipe, dry-runs serve)"
+uv venv "$WORK/smoke-vllm" --python 3.12
+uv pip install --python "$WORK/smoke-vllm/bin/python" stage/"$RC_NAME"/dist/rcp_ndcg_vllm-*.whl
+"$WORK/smoke-vllm/bin/python" - <<'PYEOF'
+from rcp_ndcg_vllm.recipe import iter_recipes
+
+recipes = list(iter_recipes())
+assert len(recipes) == 44, len(recipes)
+print("rcp_ndcg_vllm wheel alone:", len(recipes), "recipes")
+PYEOF
+"$WORK/smoke-vllm/bin/rcp-ndcg-vllm" serve embeddinggemma-2 --dry-run
 
 python3 - "$SRC" "$RC_NAME" "$VERSION" "$WORK/dl/bin/python" <<'PYEOF'
 """Write manifest.json: the commit, the version and the SHA-256 of every staged file."""
