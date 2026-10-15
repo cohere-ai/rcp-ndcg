@@ -251,3 +251,17 @@ def test_export_uses_the_null_sink_without_an_out(report_path: Path, monkeypatch
 
     assert document["ok"] is True
     assert document["data"]["records"] > 0
+
+
+def test_a_directory_where_a_report_belongs_is_a_missing_input(tmp_path: Path) -> None:
+    """A directory is an ordinary user mistake, not a bug: MISSING_INPUT exit 4, never INTERNAL exit 1.
+
+    ``_report_records`` reads through ``storage.read_text``, which raises ``IsADirectoryError`` for a
+    directory; uncaught it surfaced as INTERNAL exit 1 where the pre-fix tree answered MISSING_INPUT.
+    """
+    result = CliRunner().invoke(
+        results_group, ["export", "--report", str(tmp_path), "--out", str(tmp_path / "records.jsonl")]
+    )
+
+    assert result.exit_code == 4, result.output + result.stderr
+    assert "no report at" in result.stderr

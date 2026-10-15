@@ -27,6 +27,12 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **A directory where a report belongs is `MISSING_INPUT` again, not `INTERNAL`** (cli-5): `eval compare
+  --report`, `eval explain --report` and `results export --report` read the file through `storage.read_text`,
+  which raises `IsADirectoryError` for a directory. Only `FileNotFoundError` was caught, so `--report /tmp`
+  answered `INTERNAL` exit 1 ("this is a bug: please report it") where the documented answer is
+  `MISSING_INPUT` exit 4 ("no report at /tmp"). Both call sites now catch `IsADirectoryError` and
+  `NotADirectoryError` alongside `FileNotFoundError`.
 - **The behaviour fingerprint resolves plugin modules without importing package `__init__` files** (B2):
   `importlib.util.find_spec` imported every parent package, and the embeddinggemma-2 fold's `__init__`
   installs the folded transformers modules at import time -- which needs transformers' gemma4 modules and

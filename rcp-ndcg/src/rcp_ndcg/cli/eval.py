@@ -333,7 +333,9 @@ def _load_report(path: str) -> EvalReport:
 
     try:
         payload = storage.read_text(path)
-    except FileNotFoundError:
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        # A directory, or a path through a non-directory, is the same user mistake as a missing file:
+        # MISSING_INPUT, never INTERNAL (storage.read_text raises the builtin for both).
         raise MissingInputError(f"no report at {path}", hint="write one with `rcp-ndcg eval score --out`") from None
     return EvalReport.model_validate(json.loads(payload))
 

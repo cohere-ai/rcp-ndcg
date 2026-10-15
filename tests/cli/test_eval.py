@@ -569,3 +569,16 @@ def test_explain_report_refuses_an_unknown_system(scored: dict) -> None:
     assert document["exit_code"] == 2, document
     assert document["error"]["code"] == "USAGE"
     assert "nobody" in document["error"]["message"] and "forward" in document["error"]["message"]
+
+
+def test_a_directory_where_a_report_belongs_is_a_missing_input(tmp_path: Path) -> None:
+    """A directory is an ordinary user mistake, not a bug: MISSING_INPUT exit 4, never INTERNAL exit 1.
+
+    The memory:// collapse replaced ``Path(path).is_file()`` with ``storage.read_text``, which raises
+    ``IsADirectoryError`` for a directory. Uncaught it surfaced as INTERNAL exit 1 ("this is a bug") where
+    the pre-fix tree answered MISSING_INPUT exit 4 with "no report at <path>".
+    """
+    result = CliRunner().invoke(eval_group, ["compare", "--report", str(tmp_path)])
+
+    assert result.exit_code == 4, result.output + result.stderr
+    assert "no report at" in result.stderr
