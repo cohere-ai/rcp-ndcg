@@ -2265,7 +2265,9 @@ def test_the_topk_probe_wrapper_forwards_the_dtypes(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     gcs = tmp_path / "gcs.sh"
-    gcs.write_text("upload_tree() { :; }\n", encoding="utf-8")
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     # A gcloud that succeeds shadows the real one: the transfer is not this test's subject.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -2274,13 +2276,14 @@ def test_the_topk_probe_wrapper_forwards_the_dtypes(tmp_path: Path) -> None:
     gcloud.chmod(0o755)
     base_env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
-        "RCP_GCS_AUTH_FILE": "/nonexistent",
+        "RCP_GCS_AUTH_FILE": str(auth),
         "RCP_BOOTSTRAP_SH": str(bootstrap),
         "RCP_TOPK_PROBE_PY": str(probe_py),
         "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
         "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
         "RCP_TOPK_REVISION": "0" * 40,
         "RCP_GCS_HELPER_SH": str(gcs),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
     }
     for extra, expected in (
         ({}, "--dtype bfloat16 --reference-dtype bfloat16"),
@@ -2341,7 +2344,9 @@ def test_the_topk_probe_wrapper_forwards_the_gdn_backend(tmp_path: Path) -> None
         encoding="utf-8",
     )
     gcs = tmp_path / "gcs.sh"
-    gcs.write_text("upload_tree() { :; }\n", encoding="utf-8")
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gcloud = bin_dir / "gcloud"
@@ -2349,13 +2354,14 @@ def test_the_topk_probe_wrapper_forwards_the_gdn_backend(tmp_path: Path) -> None
     gcloud.chmod(0o755)
     base_env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
-        "RCP_GCS_AUTH_FILE": "/nonexistent",
+        "RCP_GCS_AUTH_FILE": str(auth),
         "RCP_BOOTSTRAP_SH": str(bootstrap),
         "RCP_TOPK_PROBE_PY": str(probe_py),
         "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
         "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
         "RCP_TOPK_REVISION": "0" * 40,
         "RCP_GCS_HELPER_SH": str(gcs),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
     }
     for extra in ({}, {"RCP_TOPK_GDN_BACKEND": "triton"}, {"RCP_TOPK_GDN_BACKEND": "cutedsl"}):
         calls.unlink(missing_ok=True)
@@ -2377,6 +2383,135 @@ def test_the_topk_probe_wrapper_forwards_the_gdn_backend(tmp_path: Path) -> None
 
 
 # --- topk_probe.py: the engine-side accessor and the image's API contract ---------------------------------
+
+
+def _topk_probe_harness(
+    tmp_path: Path, *, auth_body: str, probe_exit: int = 0
+) -> tuple[dict[str, str], Path, Path, Path]:
+    """The topk wrapper's minimal node: a stage with one recipe and its pairs, a stub bootstrap that leaves
+    the reference venv, a stub probe that writes its report, a stub auth script and a stub gcs.sh."""
+    stage = tmp_path / "stage"
+    (stage / "recipes" / "topk-embed-v1").mkdir(parents=True)
+    (stage / "recipes" / "topk-embed-v1" / "family.yaml").write_text("id: topk-embed-v1\n", encoding="utf-8")
+    (stage / "pairs").mkdir()
+    (stage / "pairs" / "topk-embed-v1-small.jsonl").write_text("", encoding="utf-8")
+    calls = tmp_path / "calls.log"
+    probe_py = tmp_path / "topk_probe.py"
+    probe_py.write_text(
+        "import pathlib, sys\n"
+        f"open({str(calls)!r}, 'a', encoding='utf-8').write(' '.join(sys.argv[1:]) + chr(10))\n"
+        "if '--check-engine' not in sys.argv:\n"
+        "    out = pathlib.Path(sys.argv[sys.argv.index('--out') + 1])\n"
+        "    out.mkdir(parents=True, exist_ok=True)\n"
+        "    (out / 'probe-report.md').write_text('stub', encoding='utf-8')\n"
+        f"    raise SystemExit({probe_exit})\n",
+        encoding="utf-8",
+    )
+    bootstrap = tmp_path / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'state=""\n'
+        'while (($#)); do [[ "$1" == "--state" ]] && { state="$2"; shift 2; continue; }; shift; done\n'
+        'mkdir -p "$state/reference/topk-embed-v1/bin"\n'
+        "printf '#!/bin/sh\\n' > \"$state/reference/topk-embed-v1/bin/python\"\n"
+        'chmod +x "$state/reference/topk-embed-v1/bin/python"\n',
+        encoding="utf-8",
+    )
+    auth = tmp_path / "auth.sh"
+    auth.write_text(auth_body, encoding="utf-8")
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_BOOTSTRAP_SH": str(bootstrap),
+        "RCP_TOPK_PROBE_PY": str(probe_py),
+        "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
+        "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
+        "RCP_TOPK_REVISION": "0" * 40,
+        "RCP_GCS_HELPER_SH": str(gcs),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+        "GCS_PY": "/bin/false",
+    }
+    return env, calls, stage, tmp_path / "out"
+
+
+def test_the_topk_probe_executes_the_auth_script_and_never_prints_it(tmp_path: Path) -> None:
+    """g-rcjobs-4: the mounted auth script is executed, never sourced: a sourced ``exit 0`` would end the
+    job green before anything ran, and its output (a credential line) would reach the log.  A missing auth
+    script fails the job, as it does in every sibling script."""
+    env, calls, stage, out = _topk_probe_harness(
+        tmp_path, auth_body="#!/usr/bin/env bash\necho SECRET-LINE\nexit 0\n"
+    )
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert calls.read_text(encoding="utf-8").splitlines()[0] == "--check-engine"  # the job ran past the auth
+    assert "SECRET-LINE" not in completed.stdout + completed.stderr
+    env["RCP_GCS_AUTH_FILE"] = str(tmp_path / "missing.sh")
+    missing = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
+    )
+    assert missing.returncode == 1, missing.stdout + missing.stderr
+    assert "auth script" in missing.stderr
+
+
+def test_the_topk_probe_upload_goes_through_the_gcs_helper_dispatch(tmp_path: Path) -> None:
+    """g-rcjobs-1: the stock image ships neither gcloud nor gsutil, and the upload's old fallback called
+    ``upload_tree``, which gcs.sh does not define: the probe's only artefacts were lost.  With the real
+    gcs.sh mounted and no CLI on PATH, the python helper must receive ``cp <state>/probe <out> dir``."""
+    env, _, stage, _ = _topk_probe_harness(tmp_path, auth_body="#!/usr/bin/env bash\nexit 0\n")
+    recorded = tmp_path / "gcs-calls.jsonl"
+    stub_python = tmp_path / "python-stub"
+    stub_python.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        f"open({str(recorded)!r}, 'a', encoding='utf-8').write(json.dumps(sys.argv[1:]) + chr(10))\n",
+        encoding="utf-8",
+    )
+    stub_python.chmod(0o755)
+    # A PATH with the commands the wrapper needs and no gcloud/gsutil (the stock image's shape).
+    hermetic = tmp_path / "bin"
+    hermetic.mkdir()
+    for name in ("bash", "env", "python3", "mktemp", "rm", "mkdir", "chmod", "tail", "sleep"):
+        target = shutil.which(name)
+        assert target is not None
+        (hermetic / name).symlink_to(target)
+    env |= {
+        "PATH": str(hermetic),
+        "RCP_GCLOUD_SDK_DIRS": "",
+        "RCP_GCS_HELPER_SH": str(JOBS / "gcs.sh"),
+        "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
+        "GCS_PY": str(stub_python),
+    }
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), "gs://YOUR-BUCKET/waves"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    invocations = [json.loads(line) for line in recorded.read_text(encoding="utf-8").splitlines()]
+    copies = [args for args in invocations if args[0].endswith("gcs.py") and args[1] == "cp"]
+    assert copies, invocations
+    assert copies[-1][2].endswith("/probe")
+    assert copies[-1][3:] == ["gs://YOUR-BUCKET/waves/topk-probe", "dir"]
+
+
+def test_a_crashed_topk_probe_is_a_failed_job_even_with_a_partial_report(tmp_path: Path) -> None:
+    """g-rcjobs-13: the probe rewrites its report after every row, so a crash later still leaves a file; the
+    wrapper must exit non-zero after uploading it, never print DONE for a crashed probe."""
+    env, _, stage, out = _topk_probe_harness(
+        tmp_path, auth_body="#!/usr/bin/env bash\nexit 0\n", probe_exit=3
+    )
+    completed = subprocess.run(
+        ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
+    )
+    assert completed.returncode == 3, completed.stdout + completed.stderr
+    assert "FAILED" in completed.stderr
 
 
 def _probe_module():
@@ -2542,6 +2677,10 @@ def test_the_topk_probe_wrapper_checks_the_engine_api_before_loading_weights(tmp
         'chmod +x "$state/reference/topk-embed-v1/bin/python"\n',
         encoding="utf-8",
     )
+    auth = tmp_path / "auth.sh"
+    auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    gcs = tmp_path / "gcs.sh"
+    gcs.write_text("gcs_sdk_on_path() { :; }\ngcs_cp() { :; }\n", encoding="utf-8")
     completed = subprocess.run(
         [
             "bash",
@@ -2553,12 +2692,14 @@ def test_the_topk_probe_wrapper_checks_the_engine_api_before_loading_weights(tmp
         text=True,
         env={
             "PATH": "/usr/bin:/bin",
-            "RCP_GCS_AUTH_FILE": "/nonexistent",
+            "RCP_GCS_AUTH_FILE": str(auth),
             "RCP_BOOTSTRAP_SH": str(bootstrap),
             "RCP_TOPK_PROBE_PY": str(probe_py),
             "RCP_TOPK_WAVE_COSINES": str(TOPK_PROBE_COSINES),
             "RCP_TOPK_MODEL": "topk-io/topk-embed-v1-small",
             "RCP_TOPK_REVISION": "0" * 40,
+            "RCP_GCS_HELPER_SH": str(gcs),
+            "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
         },
     )
     assert completed.returncode == 1, completed.stdout + completed.stderr
