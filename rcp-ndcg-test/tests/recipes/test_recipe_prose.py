@@ -132,3 +132,31 @@ def test_the_flash_next_variant_note_names_its_real_quantisation() -> None:
     assert "MIXED_PRECISION" in note and "modelopt_mixed" in note, "the note names the engine's real method"
     assert "NVFP4 quant_algo to the same method" not in note
     assert "the paper set none" not in _normalised(family["notes"]), "the paper never ran this model"
+
+
+def test_the_octen_per_size_measurements_are_recorded_and_no_longer_provisional() -> None:
+    """The family bound 0.993 was measured on the 8B; the notes promised a per-size gate for the
+    0.6b/4b sizes once the wave measured them. The wave did (min cosine 0.9995311 and 0.9993266,
+    rc0-202610130615's r2 equivalence run) and both clear the family bound, so the family floor stays
+    their declared floor; the notes must record the measurements and the decision, not promise a
+    PROVISIONAL per-size override that never landed."""
+    family = yaml.safe_load((RECIPES / "octen-embedding" / "family.yaml").read_text(encoding="utf-8"))
+    for variant_id, measured in (("octen-embedding-0.6b", "0.9995311"), ("octen-embedding-4b", "0.9993266")):
+        variant = next(item for item in family["variants"] if item["id"] == variant_id)
+        note = _normalised(variant["notes"])
+        assert measured in note, f"{variant_id}: the wave's measured minimum {measured} is not recorded"
+        assert "PROVISIONAL" not in note and "then declares its own floor" not in note, (
+            f"{variant_id}: the note still promises a provisional per-size gate"
+        )
+    text = _normalised((RECIPES / "octen-embedding" / "family.yaml").read_text(encoding="utf-8"))
+    assert "provisional" not in text.lower(), "the family note still calls a bound provisional"
+
+
+def test_the_topk_run_count_matches_the_status_record() -> None:
+    """The topk notes said the gate had run eleven times through rc0-202610131205-record, while the
+    status comment above them describes the twelfth run, the rc0-202610140620 re-verification; the
+    count must include it."""
+    text = _normalised((RECIPES / "topk-embed-v1" / "family.yaml").read_text(encoding="utf-8"))
+    assert "the wave has run, twelve times" in text
+    assert "rc0-202610140620" in text
+    assert "eleven times" not in text
