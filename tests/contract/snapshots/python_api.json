@@ -6541,6 +6541,44 @@
               }
             ]
           },
+          "count_pair": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "query"
+              },
+              {
+                "annotation": "str",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "document"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "add_special_tokens"
+              },
+              {
+                "annotation": "bool",
+                "default": false,
+                "kind": "keyword_only",
+                "name": "split_special_tokens"
+              },
+              {
+                "returns": "int"
+              }
+            ]
+          },
           "from_backend": {
             "kind": "classmethod",
             "signature": [
@@ -8424,6 +8462,12 @@
             "name": "tokenizer"
           },
           {
+            "annotation": "Callable[[str], bool] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "fits"
+          },
+          {
             "returns": "list[str]"
           }
         ]
@@ -8455,6 +8499,12 @@
             "default": null,
             "kind": "keyword_only",
             "name": "rendered"
+          },
+          {
+            "annotation": "Callable[[str], int] | None",
+            "default": null,
+            "kind": "keyword_only",
+            "name": "count_rendered"
           },
           {
             "annotation": "bool",

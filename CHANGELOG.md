@@ -1406,6 +1406,12 @@ owner pushes, with the move to a Hugging Face organisation).
   gains `--rrf-k` (the MCP `run_start` tool takes it too), and `--only` names `fuse`. The contract snapshots, the
   exported `run-config.v1.json` and the generated API pages record the step, the source and the flag (regenerate
   as below).
+- **`rcp-ndcg.eval-score.v1` describes the fields of `eval score --json`**: `EvalScoreResult`'s wrap serializer
+  returns `dict[str, Any]`, and pydantic took that return type for the serialization-mode schema, so the exported
+  schema (and the `eval_score` MCP tool's `outputSchema`) had one property, `schema`, with
+  `additionalProperties: true` -- no summary, per_dataset, per_query, protocol, warnings, inputs or out. The
+  model answers the schema request with its validation-mode schema now, so the exported contract lists every
+  field, while the runtime output still drops the null ones (regenerate as below).
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed

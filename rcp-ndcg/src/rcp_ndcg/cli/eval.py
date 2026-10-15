@@ -112,6 +112,18 @@ class EvalScoreResult(BaseModel):
     def _present_fields_only(self, handler: Any) -> dict[str, Any]:
         return {key: value for key, value in handler(self).items() if value is not None}
 
+    @classmethod
+    def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """The validation-mode schema, not the serialization one: the wrap serializer's ``dict[str, Any]``
+        return type is what pydantic takes for the serialization-mode schema, which made the exported
+        ``rcp-ndcg.eval-score.v1`` an open object with one property (``schema``) and no fields -- an empty
+        contract for the output of the main ``--json`` command and of the ``eval_score`` MCP tool. The
+        declared fields (nullable, with their defaults) are the contract; the runtime output still drops the
+        None ones (:meth:`_present_fields_only`).
+        """
+        kwargs["mode"] = "validation"
+        return super().model_json_schema(*args, **kwargs)
+
 
 _DEFAULT_FIELDS = ("protocol", "gains_source", "metrics", "k", "summary", "per_dataset", "warnings", "inputs", "out")
 

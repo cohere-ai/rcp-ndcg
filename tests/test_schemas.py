@@ -152,3 +152,32 @@ def test_a_written_run_config_and_the_docs_runner_examples_validate_against_the_
             RunConfig.model_validate(data)  # the loader `run start` uses: a documented example must load today
     typo = {"name": "slurm", "options": {"partitoin": "gpu"}}
     assert problems(schema["properties"]["runner"], typo, root=schema) != []
+
+
+def test_the_eval_score_schema_describes_the_results_fields() -> None:
+    """``EvalScoreResult``'s wrap serializer returns ``dict[str, Any]``, and pydantic takes that return type
+    for the serialization-mode schema: the exported ``rcp-ndcg.eval-score.v1`` (and the ``eval_score`` MCP
+    tool's outputSchema) described one property, ``schema``, with ``additionalProperties: true`` -- an empty
+    contract for the output of the main ``--json`` command."""
+    from rcp_ndcg_core.protocol import Protocol
+
+    from rcp_ndcg.cli.eval import EvalScoreResult
+
+    schema = schemas.show("eval-score")
+    assert {
+        "protocol",
+        "gains_source",
+        "metrics",
+        "k",
+        "summary",
+        "per_dataset",
+        "per_query",
+        "warnings",
+        "inputs",
+        "out",
+    } <= set(schema["properties"])
+    data = {
+        "schema": "rcp-ndcg.eval-score.v1",
+        **EvalScoreResult(protocol=Protocol(name="plain", ties="doc_id_desc"), k=[10]).model_dump(mode="json"),
+    }
+    assert problems({**schema, "additionalProperties": False}, data) == []
