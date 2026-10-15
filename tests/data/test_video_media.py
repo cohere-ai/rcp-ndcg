@@ -41,6 +41,20 @@ class TestProbe:
 
         assert probe_video_header(path.read_bytes()) is None
 
+    def test_an_isobmff_without_ftyp_is_not_labelled_avi(self, tmp_path: Path):
+        """Older QuickTime .mov files commonly start with a ``wide`` or ``mdat`` box; ``media_extension``
+        returned ``.avi`` (video/x-msvideo) for any ISO-BMFF payload that is not ftyp-first."""
+        from rcp_ndcg.data.media import media_extension
+
+        path = write_mp4_header(tmp_path / "a.mp4", frames=3, timescale=1000, duration=1000, size=(32, 16))
+        payload = path.read_bytes()
+        assert payload[4:8] == b"ftyp"
+
+        wide_first = payload.replace(b"ftyp", b"wide", 1)
+
+        assert media_extension(payload) == ".mp4"
+        assert media_extension(wide_first) == ".mov", "an ISO-BMFF container that is not ftyp-first is MOV"
+
     @pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="needs ffmpeg")
     @pytest.mark.parametrize("suffix", [".mp4", ".mov"])
     def test_the_probe_agrees_with_ffprobe_on_a_real_encode(self, tmp_path: Path, video_clip, suffix: str):
