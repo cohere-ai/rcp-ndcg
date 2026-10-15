@@ -261,7 +261,8 @@ jobs:
   recipe-tests:
     name: recipe tests (public Hub)
     runs-on: ubuntu-latest
-    # A bound beyond the per-test faulthandler dump below: a hung recipe test cannot hold the queue.
+    # A bound beyond the per-test SIGALRM guard below (RCP_NDCG_TEST_TIMEOUT): a hung recipe test cannot
+    # hold the queue.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -287,7 +288,7 @@ jobs:
           export RCP_NDCG_VLLM_TOKENIZER_CACHE="$HOME/.cache/rcp-ndcg-vllm-tokenizers"
           export HF_HUB_CACHE="$RCP_NDCG_VLLM_TOKENIZER_CACHE/hub"
           export RCP_NDCG_TEST_TIMEOUT=300
-          uv run --no-sync pytest rcp-ndcg-test/tests/recipes -q -n 4 -p no:cacheprovider -o faulthandler_timeout=120
+          uv run --no-sync pytest rcp-ndcg-test/tests/recipes -q -n 4 -p no:cacheprovider
       - name: the tests left the checkout clean
         run: |
           git status --porcelain --untracked-files=all

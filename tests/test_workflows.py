@@ -47,3 +47,13 @@ def test_the_test_pkg_job_does_not_combine_quiet_and_verbose() -> None:
         flags = command.split()
         assert not ("-q" in flags and "-v" in flags), f"-q and -v cancel out: {command}"
     assert "bin/gate" not in ci.read_text(encoding="utf-8"), "bin/gate does not exist in the repository"
+
+
+def test_the_recipe_tests_job_relies_on_the_sigalrm_guard_not_faulthandler_timeout() -> None:
+    """g-ci-3: pytest's ``faulthandler_timeout`` dump walks thread stacks without the GIL and can crash an
+    xdist worker instead of reporting a slow test; the suite's own SIGALRM guard (RCP_NDCG_TEST_TIMEOUT)
+    fails the test on the main thread instead, so the recipe-tests job must not arm the dump."""
+    _, document = _ci()
+    commands = "\n".join(str(step.get("run", "")) for step in document["jobs"]["recipe-tests"]["steps"])
+    assert "faulthandler_timeout" not in commands
+    assert "RCP_NDCG_TEST_TIMEOUT" in commands, "the per-test SIGALRM guard covers the job"
