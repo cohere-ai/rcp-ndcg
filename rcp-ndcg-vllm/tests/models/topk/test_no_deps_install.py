@@ -2,8 +2,9 @@
 
 Builds the wheel the way the release does (``uv build``; skipped with a clear
 reason where no builder exists), then runs
-``tests/models/check_no_deps_install.py`` — the same script the GPU wave wraps
-around the real engine-environment install.  The rejection tests forge
+``tests/models/check_no_deps_install.py`` — the full fresh-venv check, whose
+``--pure-python`` half the node's bootstrap runs on the staged wheel before
+installing it (decision 16).  The rejection tests forge
 broken wheels (declared dependency, compiled artifact, platform tag) into
 tmp_path and require the check to fail loudly: the freeze delta alone cannot
 catch a declared dependency, because ``--no-deps`` never installs one.

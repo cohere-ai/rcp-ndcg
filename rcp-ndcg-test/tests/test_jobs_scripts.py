@@ -37,6 +37,7 @@ TOPK_PROBE_SH = JOBS / "topk_probe.sh"
 TOPK_PROBE_PY = JOBS / "topk_probe.py"
 TOPK_PROBE_COSINES = JOBS / "wave-cosines-topk-small.json"
 WAVE0_HOST = JOBS / "wave0_host.py"
+CHECK_DEPS_INSTALL = JOBS.parents[3] / "rcp-ndcg-vllm" / "tests" / "models" / "check_no_deps_install.py"
 
 SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH)
 
@@ -78,7 +79,7 @@ def test_bootstrap_freeze_guard_passes_an_unchanged_environment(bootstrap_functi
     allowed = tmp_path / "allowed"
     before.write_text("pkg-a==1.0\npkg-b==2.0\n", encoding="utf-8")
     shutil.copy(before, after)
-    allowed.write_text("my-plugin\n", encoding="utf-8")
+    allowed.write_text("", encoding="utf-8")  # no plugin declared: an unchanged freeze is the whole contract
     completed = subprocess.run(
         [
             "bash",
@@ -93,6 +94,36 @@ def test_bootstrap_freeze_guard_passes_an_unchanged_environment(bootstrap_functi
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_bootstrap_freeze_guard_requires_every_declared_plugin_to_appear(
+    bootstrap_functions: str, tmp_path: Path
+) -> None:
+    """g-rcjobs-9: the guard's other direction.  A declared plugin that pip reported installed but that never
+    appears in the freeze is a refusal, not a pass: the node would otherwise run a plugin the recording's
+    freeze key does not cover (and ``--no-deps`` would have left its dependencies missing)."""
+    before = tmp_path / "before"
+    after = tmp_path / "after"
+    allowed = tmp_path / "allowed"
+    before.write_text("pkg-a==1.0\npkg-b==2.0\n", encoding="utf-8")
+    shutil.copy(before, after)
+    allowed.write_text("my-plugin\n", encoding="utf-8")
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{bootstrap_functions}" && freeze_diff_guard "$1" "$2" "$3"',
+            "bash",
+            str(before),
+            str(after),
+            str(allowed),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 1
+    assert "did not gain every declared plugin" in completed.stderr
+    assert "my-plugin" in completed.stderr
 
 
 def test_bootstrap_freeze_guard_fires_beyond_the_plugin(bootstrap_functions: str, tmp_path: Path) -> None:
@@ -221,14 +252,18 @@ def _install_plugin_wheels(
     fail_spec: str = "",
     extra: tuple[str, ...] = (),
     wheels: tuple[str, ...] = (),
+    wheel_bytes: dict[str, bytes] | None = None,
+    check_deps_py: Path | None = None,
     installed: str = "0.0.1",
 ) -> subprocess.CompletedProcess[str]:
     """Run bootstrap's install_plugin_wheels (its functions, by sourcing) with a fake engine python.
 
     ``extra`` names EXTRA_DIRS entries staged under ``<stage>/extra/<name>/``; a name ending in ``/wheelhouse``
-    stages that entry with a wheelhouse directory, any other name without one.  ``wheels`` names stub wheel
-    files to write under the stage (relative paths), so a test can stage several versions.  ``installed`` is
-    the version the fake engine environment reports for ``rcp-ndcg-vllm`` after the install."""
+    stages that entry with a wheelhouse directory, any other name without one.  ``wheels`` names wheel files
+    to write under the stage (relative paths), so a test can stage several versions; ``wheel_bytes`` overrides
+    a file's bytes (a forged wheel).  ``check_deps_py`` is the declared-dependency check the bootstrap runs
+    (default: a stub that accepts).  ``installed`` is the version the fake engine environment reports for
+    ``rcp-ndcg-vllm`` after the install."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
     for entry in extra:
@@ -236,7 +271,7 @@ def _install_plugin_wheels(
     for relative in wheels:
         path = stage / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"stub wheel")
+        path.write_bytes((wheel_bytes or {}).get(relative, b"stub wheel"))
     recipes = tmp_path / "recipes"
     recipes.mkdir()
     specs_file = tmp_path / "specs.txt"
@@ -244,6 +279,8 @@ def _install_plugin_wheels(
     allowed = tmp_path / "allowed.txt"
     failed = tmp_path / "failed.txt"
     fake = _fake_engine_python(tmp_path, fail_spec=fail_spec)
+    stub_check = tmp_path / "check_no_deps_install_stub.py"
+    stub_check.write_text("import sys\n\nsys.exit(0)\n", encoding="utf-8")
     completed = subprocess.run(
         [
             "bash",
@@ -253,9 +290,43 @@ def _install_plugin_wheels(
         ],
         capture_output=True,
         text=True,
-        env={**os.environ, "FAKE_PLUGIN_VERSION": installed},
+        env={
+            **os.environ,
+            "FAKE_PLUGIN_VERSION": installed,
+            "RCP_CHECK_DEPS_PY": str(check_deps_py or stub_check),
+        },
     )
     return completed
+
+
+def test_bootstrap_refuses_a_plugin_wheel_that_declares_an_unshipped_dependency(tmp_path: Path) -> None:
+    """g-rcjobs-9: decision 16's declared-dependency check runs on the node: the staged rcp-ndcg-vllm
+    wheel passes ``check_no_deps_install.assert_pure_python`` before the install, so a wheel declaring
+    torch (which ``--no-deps`` would leave missing on the stock image) is refused with its exact name."""
+    import io
+    import zipfile
+
+    wheel = "wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("rcp_ndcg_vllm/__init__.py", "")
+        archive.writestr("rcp_ndcg_vllm-0.0.1.dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
+        archive.writestr(
+            "rcp_ndcg_vllm-0.0.1.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: rcp-ndcg-vllm\nVersion: 0.0.1\nRequires-Dist: torch>=2.0\n",
+        )
+    completed = _install_plugin_wheels(
+        tmp_path,
+        "rcp-ndcg-vllm\n",
+        wheels=(wheel,),
+        wheel_bytes={wheel: buffer.getvalue()},
+        check_deps_py=CHECK_DEPS_INSTALL,
+    )
+    assert completed.returncode == 0, completed.stderr  # the loop carries on; the job never dies here
+    assert "declared-dependency check" in completed.stderr
+    assert "torch" in completed.stderr
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-ndcg-vllm"
+    assert not (tmp_path / "engine-python.log").exists(), "the wheel was refused before any install"
 
 
 def test_bootstrap_pins_the_shipped_plugin_install_to_the_staged_wheel(tmp_path: Path) -> None:
@@ -929,6 +1000,8 @@ def test_submit_prints_the_expected_argv(tmp_path: Path, monkeypatch: pytest.Mon
     assert f"files.bootstrap.from_file={JOBS / 'bootstrap.sh'}" in words
     assert f"files.report.from_file={REPORT_PY}" in words
     assert f"files.refdeps.from_file={JOBS / 'reference_deps.py'}" in words  # the reference completion helper
+    # The node's declared-dependency check: bootstrap runs it on the staged plugin wheel (g-rcjobs-9).
+    assert f"files.checkdeps.from_file={CHECK_DEPS_INSTALL}" in words
     assert f"files.gcsauth.from_file={tmp_path / 'gcs_auth.sh'}" in words
     config_flag = words[words.index("-f") + 1]
     assert config_flag == str(tmp_path / "config.yaml")  # RCP_KJOBS_CONFIG, not a default path

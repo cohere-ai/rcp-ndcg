@@ -145,6 +145,17 @@ case "$(basename "$HERE")" in
   *) TOPK_PROBE_SH="$HERE/jobs/topk_probe.sh" ;;
 esac
 case "$(basename "$HERE")" in
+  jobs) check_deps_dir="$HERE/../../../../rcp-ndcg-vllm/tests/models" ;;
+  *) check_deps_dir="$HERE/../rcp-ndcg-vllm/tests/models" ;;
+esac
+CHECK_DEPS_INSTALL_PY="$check_deps_dir/check_no_deps_install.py"
+[[ -f "$CHECK_DEPS_INSTALL_PY" ]] || {
+  echo "submit.sh: no declared-dependency check at $CHECK_DEPS_INSTALL_PY (the checkout's" \
+    "rcp-ndcg-vllm/tests/models/check_no_deps_install.py; bootstrap.sh runs it on the staged plugin wheel)" >&2
+  exit 2
+}
+CHECK_DEPS_INSTALL_PY="$(cd "$check_deps_dir" && pwd)/check_no_deps_install.py"
+case "$(basename "$HERE")" in
   jobs) TOPK_PROBE_PY="$HERE/topk_probe.py" ;;
   *) TOPK_PROBE_PY="$HERE/jobs/topk_probe.py" ;;
 esac
@@ -459,6 +470,8 @@ for plan_row in "${PLAN[@]}"; do
   args+=(
     "files.report.from_file=$HERE/report.py" "files.report.mount_path=/etc/rcp/files/report/report.py"
     "files.refdeps.from_file=$HERE/reference_deps.py" "files.refdeps.mount_path=/etc/rcp/files/refdeps/reference_deps.py"
+    "files.checkdeps.from_file=$CHECK_DEPS_INSTALL_PY" \
+      "files.checkdeps.mount_path=/etc/rcp/files/checkdeps/check_no_deps_install.py"
     "files.gcshelper.from_file=$HERE/gcs.sh" "files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh"
     "files.gcspy.from_file=$HERE/gcs.py" "files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py"
     "files.gcsauth.from_file=$RCP_GCS_AUTH_FILE" "files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh"

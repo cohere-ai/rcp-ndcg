@@ -188,9 +188,11 @@ wheel_version_of() {
 }
 
 # freeze_diff_guard BEFORE AFTER ALLOWED: fails when the freeze changed beyond the allowed names
-# (anything added, removed or upgraded whose canonical name is not one of the declared plugin wheels).
+# (anything added, removed or upgraded whose canonical name is not one of the declared plugin wheels),
+# and when a declared plugin never appeared in the added set (pip reported it installed; the engine
+# environment does not have it -- the declared-dependency regression class of g-rcjobs-9).
 freeze_diff_guard() {
-  local before="$1" after="$2" allowed="$3" changed
+  local before="$1" after="$2" allowed="$3" changed added missing
   changed="$(
     { comm -13 <(sort -u "$before") <(sort -u "$after"); comm -23 <(sort -u "$before") <(sort -u "$after"); } \
       | awk '{ line = tolower($0); sub(/ @ .*/, "", line); gsub(/[-_.]+/, "-", line); sub(/==.*/, "", line); print line }' \
@@ -199,6 +201,36 @@ freeze_diff_guard() {
   if [[ -n "$changed" ]]; then
     echo "bootstrap: the engine environment changed beyond the declared plugins" >&2
     echo "  changed: $changed" >&2
+    return 1
+  fi
+  added="$(
+    comm -13 <(sort -u "$before") <(sort -u "$after") \
+      | awk '{ line = tolower($0); sub(/ @ .*/, "", line); gsub(/[-_.]+/, "-", line); sub(/==.*/, "", line); print line }' \
+      | sort -u
+  )"
+  missing="$(comm -23 <(sort -u "$allowed") <(printf '%s\n' "$added" | grep -v '^$') || true)"
+  if [[ -n "$missing" ]]; then
+    echo "bootstrap: the engine environment did not gain every declared plugin" >&2
+    echo "  missing: $missing" >&2
+    return 1
+  fi
+  return 0
+}
+
+# plugin_pure_python WHEEL: the staged shipped-plugin wheel must be pure Python and declare nothing the
+# stock image does not ship -- decision 16's declared-dependency side, check_no_deps_install.py's
+# assert_pure_python (the freeze delta alone cannot catch it: --no-deps never installs a dependency).
+# The check script is stdlib-only and mounted beside bootstrap.sh; a missing mount refuses the wheel.
+plugin_pure_python() {
+  local wheel="$1" error
+  local check="${RCP_CHECK_DEPS_PY:-/etc/rcp/files/checkdeps/check_no_deps_install.py}"
+  if [[ ! -f "$check" ]]; then
+    echo "bootstrap: no declared-dependency check at $check (set RCP_CHECK_DEPS_PY);" \
+      "refusing the staged plugin wheel $wheel" >&2
+    return 1
+  fi
+  if ! error="$(python3 "$check" --pure-python "$wheel" 2>&1)"; then
+    echo "bootstrap: the staged plugin wheel $wheel failed the declared-dependency check: $error" >&2
     return 1
   fi
   return 0
@@ -234,6 +266,11 @@ install_plugin_wheels() {
       fi
     done
     if [[ -n "$plugin_path" ]]; then
+      # The wheel the engine will run: decision 16's declared-dependency check first (g-rcjobs-9).
+      if [[ "$(freeze_name_of "$plugin")" == "rcp-ndcg-vllm" ]] && ! plugin_pure_python "$plugin_path"; then
+        printf '%s\n' "$plugin" >>"$failed_file"
+        continue
+      fi
       if ! "$ENGINE_PYTHON" -m pip install --quiet --no-deps "$plugin_path"; then
         echo "bootstrap: the recipe's plugin $plugin could not be installed from $plugin_path;" \
           "the recipes that name it will fail (with the exact name)" >&2
@@ -247,6 +284,11 @@ install_plugin_wheels() {
       # pinned: a spec that carries a version (or extras) is installed as named, as its author asked.
       if [[ "$plugin" == "rcp-ndcg-vllm" ]] && plugin_path="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
         echo "bootstrap: the recipe's plugin $plugin installs from the staged wheel $plugin_path" >&2
+        # Decision 16's declared-dependency check on the exact wheel about to be installed (g-rcjobs-9).
+        if ! plugin_pure_python "$plugin_path"; then
+          printf '%s\n' "$plugin" >>"$failed_file"
+          continue
+        fi
       else
         plugin_path=""
       fi
