@@ -1395,6 +1395,60 @@ def test_a_zero_vector_pair_is_an_agreement_not_a_cosine_failure() -> None:
     assert stages_module._vector_summary(recipe, per_vector, gates)["passed"] is False
 
 
+def test_an_over_cap_count_mismatch_is_reported_not_gated_when_declared() -> None:
+    """testpkg-2: the per-text count mismatch was appended to ``per_vector`` before the over-cap exemption,
+    so a declared ``over_cap_cut_differs`` recipe failed stage 2 on exactly the text the deviation declares
+    non-gating, and the row was missing from the over_cap table.  Declared: report the mismatch with both
+    counts and gate nothing.  Undeclared: keep the gating row and name it in the table."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    recipe = load("fixture-multi-vector")
+    gates = resolve_gates(recipe)
+    served = [[[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]]
+    reference = [[[1.0, 0.0], [0.0, 1.0]]]
+
+    per_vector: list[dict[str, Any]] = []
+    over_cap: list[dict[str, Any]] = []
+    stages_module._compare_shape(
+        recipe,
+        served,
+        reference,
+        0,
+        "document",
+        per_vector,
+        gates,
+        cut_flags=[True],
+        deviation=True,
+        over_cap=over_cap,
+    )
+    assert per_vector == []
+    assert len(over_cap) == 1
+    assert over_cap[0]["n_vectors"] == 3 and over_cap[0]["n_reference_vectors"] == 2, over_cap[0]
+
+    per_vector = []
+    over_cap = []
+    stages_module._compare_shape(
+        recipe,
+        served,
+        reference,
+        0,
+        "document",
+        per_vector,
+        gates,
+        cut_flags=[True],
+        deviation=False,
+        over_cap=over_cap,
+    )
+    assert len(per_vector) == 1 and per_vector[0]["within"] is False
+    assert len(over_cap) == 1
+
+    # the remaining in-cap rows still gate and pass
+    per_vector = []
+    stages_module._compare_shape(recipe, [[[1.0, 0.0]]], [[1.0, 0.0]], 1, "document", per_vector, gates)
+    assert stages_module._vector_summary(recipe, per_vector, gates)["passed"] is True
+
+
 def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
     """A served vector whose width differs from the reference's is a named gate failure carrying both
     widths -- never a ValueError out of the cosine (MRL's declared dimension makes this live: a served

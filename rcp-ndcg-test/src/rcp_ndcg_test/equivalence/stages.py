@@ -2584,13 +2584,29 @@ def _compare_shape(
             else [reference_item]
         )
         if len(served_matrix) != len(expected_matrix):
+            note = f"the engine returned {len(served_matrix)} vector(s), the reference {len(expected_matrix)}"
+            if over and over_cap is not None:
+                # The count mismatch is an over-cap difference like any other: the declared deviation
+                # reports it in the table (both counts) instead of gating it; undeclared, the gating row
+                # stays and the table names it too, as the cosine path does.
+                over_cap.append(
+                    {
+                        "referent": f"row {row_index} {role} {index}",
+                        "query": str((row or {}).get("query", ""))[:_SNIPPET],
+                        "n_vectors": len(served_matrix),
+                        "n_reference_vectors": len(expected_matrix),
+                        "note": note,
+                    }
+                )
+                if deviation:
+                    continue
             per_vector.append(
                 {
                     "referent": f"row {row_index} {role} {index} count",
                     "cosine": None,
                     "within": False,
                     "over_cap": over,
-                    "note": f"the engine returned {len(served_matrix)} vector(s), the reference {len(expected_matrix)}",
+                    "note": note,
                 }
             )
             continue
