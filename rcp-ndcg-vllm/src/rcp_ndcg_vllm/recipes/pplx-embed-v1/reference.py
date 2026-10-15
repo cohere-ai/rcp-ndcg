@@ -195,8 +195,9 @@ def _load_encoder(model: str, revision: str, device: str) -> Any:
     (``trust_remote_code=True``: the repo's ``configuration.py``/``modeling.py`` and
     ``st_quantize.py`` are the checkpoint's own code), its module classes are asserted
     against :data:`EXPECTED_MODULES` (a changed pipeline fails here, loudly), and the
-    encoder is rebuilt from the modules before the quantiser. The served engine returns
-    the pooled float vector, so the reference compares like with like; the quantiser's
+    encoder is rebuilt from the modules before the quantiser -- on the same ``device``, never
+    re-decided (sentence-transformers resolves ``device=None`` to ``get_device_name()``). The served
+    engine returns the pooled float vector, so the reference compares like with like; the quantiser's
     int8 view is a storage format (see the module docstring).
     """
     from sentence_transformers import SentenceTransformer
@@ -209,7 +210,7 @@ def _load_encoder(model: str, revision: str, device: str) -> Any:
             f"got {names}; the reference's float-encoder contract (stop before the storage quantiser) "
             "does not match this revision"
         )
-    return SentenceTransformer(modules=list(full)[:-1])
+    return SentenceTransformer(modules=list(full)[:-1], device=device)
 
 
 def _vector(values: Any) -> list[float]:

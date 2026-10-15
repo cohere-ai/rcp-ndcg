@@ -4337,6 +4337,14 @@ text it sends to the declared budget.
   zerank's "the reference raises on one" is corrected to the reference ignoring it. No recipe field moves
   (the comments are not part of the resolved contract).
 
+- **The pplx-embed-v1 reference keeps its declared `--device`**: the card's pipeline is rebuilt from its
+  modules before the trailing storage quantiser, and the rebuild passed no device, so
+  sentence-transformers resolved `device=None` to `get_device_name()` and moved the fp32 encoder to
+  cuda:0 whenever a GPU was visible -- a `--device cpu` run on a wave node (no reference GPU reserved)
+  then ran on the engine's GPU, OOMing or producing stage-2 numerics from a device the report did not
+  name. The rebuild now takes the same device the full pipeline was loaded with. The `reference` block is
+  out of the behaviour fingerprint, so no corpus re-record is needed.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
