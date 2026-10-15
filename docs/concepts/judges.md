@@ -27,7 +27,7 @@ verbatim.
 | `headers_env` | extra headers (e.g. a gateway key), each value read from its environment variable at send time, never from a config, and never logged ([the inference layer](inference.md)) |
 | `decoding` | `json_schema`: each request carries the stage's answer schema as `response_format`, and the family records `decoding: json_schema`; an endpoint that refuses the schema fails the pass with exit code 8. `free` (the default): the judge answers in free text |
 | `max_images`, `max_videos` | what the served model accepts per request; 0 (the default) means it reads none |
-| `image_processor` | the model's image processor family (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); the client sizes every image as it does ([preprocessing](preprocessing.md)) |
+| `image_processor` | the model's image processor family (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`, `gemma4`); the client sizes every image as it does ([preprocessing](preprocessing.md)) |
 | `allow_floating_model` | accept an undated model alias on the OpenAI API (`gpt-5`); by default only a dated snapshot (`gpt-5-2025-08-07`) is accepted, since an alias moves between snapshots and its judgements are not reproducible |
 | `wait_on_outage_s` | how long a request waits while every replica is down, counted from its first failed send (time queued behind `concurrency` never counts); the default is 1800 s (an engine restart plus a large model's load), and `None` waits indefinitely, except in a job that starts the judge's engine, where the wait is that engine's `outage_timeout_s` |
 

@@ -111,7 +111,8 @@ class JudgeConfig(Endpoint):
         max_videos: Video containers the served model accepts per request; 0 (the default) means it reads none.
             There is no "unlimited": a multimodal judge declares its limits, which the server's per-request
             media limits must allow, and which are the ceiling a window's media is checked against.
-        image_processor: The served model's image processor family (``qwen2_vl``, ``qwen2_5_vl``, ``qwen3_vl``;
+        image_processor: The served model's image processor family (``qwen2_vl``, ``qwen2_5_vl``, ``qwen3_vl``,
+            ``gemma4``;
             :data:`~rcp_ndcg.data.resolution.PROCESSORS`). The client resizes every image and video frame exactly
             as that processor would, within the pass's pixel budget, so the engine needs no media flags. ``None``
             (the default): the family is unknown, and images are sent unchanged, as stored.
