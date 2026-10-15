@@ -2,7 +2,7 @@
 
 The scenarios drive the product (R30): a scenario materializes a product ``RunConfig`` (its validators
 decide), and the phased job script is the product's SLURM rendering.  These tests pin the materialization
-and the rendering -- the latter as a golden file (GPU-VALIDATION.md, T4's offline counterparts).
+and the rendering -- the latter as a golden file (docs/how-to/validate-a-recipe.md, T4's offline counterparts).
 Everything here runs on CPU with no engine and no network beyond loading the recipe files.
 """
 

@@ -1,4 +1,4 @@
-"""The T4 phased supervision re-run, offline (GPU-VALIDATION.md T4's offline counterpart).
+"""The T4 phased supervision re-run, offline (docs/how-to/validate-a-recipe.md T4's offline counterpart).
 
 The end-to-end scenarios run the run's phased job script in the pod, engines and coordinators under one
 supervision block per phase (``rcp_ndcg.runners.script.supervise``).  This test re-runs that supervision on

@@ -13,7 +13,7 @@
 # measured 77 s per warm restart, 185 s for the T0 smoke's cold boot).  e2e.recovers_outage_s refuses a
 # scenario whose numbers cannot recover, at the start instead of an hour in.
 #
-# Judge (owner, GPU-VALIDATION.md, "Judges for T4"): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
+# Judge (the owner's T4 choice, docs/how-to/release-candidates.md): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
 # commit (https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8), checked 2026-10-07.  The judge is the
 # driver's run-scoped engine and stays up while the phases run, so it gets its own device slice -- device
 # 1 -- while the encoder and reranker phases reuse device 0.  A judge on the phases' device starves them

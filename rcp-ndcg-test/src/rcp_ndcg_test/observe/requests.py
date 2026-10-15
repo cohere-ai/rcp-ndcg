@@ -137,8 +137,8 @@ document over the cap is excluded WHOLE and recorded with its id (nothing is eve
 pairs file); the corpus request set keeps the over-cap ladder separately."""
 
 GENERATION_SUITES: tuple[str, ...] = ("nanobeir", "bright")
-"""The source suites the pairs generator materializes at generation time (GPU-VALIDATION.md T2's pairs:
-NanoBEIR and BRIGHT, plus ViDoRe for the media recipes once loadable).  TREC DL's full MS MARCO-passage
+"""The source suites the pairs generator materializes at generation time (the T2 pairs of
+docs/how-to/validate-a-recipe.md: NanoBEIR and BRIGHT, plus ViDoRe for the media recipes once loadable).  TREC DL's full MS MARCO-passage
 corpus and ViDoRe's per-page images exceed a generation-time load (the diagnosis of the operator's
 stall); the corpus request set samples those two on the node, and ``--suites`` names them for a run
 with the memory available there."""
@@ -150,7 +150,7 @@ template's boundaries can land a token or two either side of the exact target, a
 "exactly at the budget" row must fit without a cut."""
 
 _CHAR_CAP = 500_000
-"""The per-row padding cap (characters): the pairs files stay inside GPU-VALIDATION.md item 7's 2 MB
+"""The per-row padding cap (characters): the pairs files stay inside the harness's 2 MB
 per recipe even for a recipe whose budget alone would exceed it.  Rows the cap shortens are recorded
 stratum-by-stratum in the manifest as ``at_90: absent`` (the corpus request set carries the full
 ladder)."""
@@ -560,15 +560,15 @@ def _length_rows(
             strata[f"length:{stratum}"] = {
                 "present": False,
                 "reason": f"the padded row (~{row_target * 10} characters) would exceed the {_CHAR_CAP}-character "
-                "file-size cap (GPU-VALIDATION.md item 7); the corpus request set carries the full ladder",
+                "file-size cap; the corpus request set carries the full ladder",
             }
             continue
         text = _pad_to_tokens(tokenizer, f"{stratum} document", row_target)
         if len(text) > _CHAR_CAP:
             strata[f"length:{stratum}"] = {
                 "present": False,
-                "reason": f"the padded row would exceed the {_CHAR_CAP}-character file-size cap (GPU-VALIDATION.md "
-                "item 7); the corpus request set carries the full ladder",
+                "reason": f"the padded row would exceed the {_CHAR_CAP}-character file-size cap; "
+                "the corpus request set carries the full ladder",
             }
             continue
         rows.append(
@@ -1317,7 +1317,7 @@ def _validate_and_prune(
     validation["over_length_per_shape"] = 2
     validation["over_length_note"] = (
         "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the "
-        "node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
     )
     return (
         RecipePlan(

@@ -1,4 +1,5 @@
-"""T4 end to end: the run scenarios of GPU-VALIDATION.md, driven inside the pod (not pytest).
+"""T4 end to end: the run scenarios of the GPU validation (docs/how-to/validate-a-recipe.md), driven
+inside the pod (not pytest).
 
 One scenario is one declarative ``scenarios/<id>.yaml`` (the :class:`Scenario` schema below): the run
 config the product runs (its dataset, pools, steps and judge), the engines the run starts by role, and
@@ -46,7 +47,8 @@ Scenarios (``scenarios/``):
   and ``wait_on_outage_s`` are runtime fields and never reach an identity);
 * ``vidore`` -- one ViDoRe v3 subset through a served VL encoder and a served VL judge, media budgets on.
 
-The judge models and their revisions are the owner's (GPU-VALIDATION.md, "Judges for T4"): the four-phase
+The judge models and their revisions are the owner's choice (docs/how-to/release-candidates.md,
+"The T4 scenario wave"): the four-phase
 and visual runs take ``nvidia/Qwen3.8-Flash-Next-NVFP4`` when a T0 smoke proves vLLM v0.31.0 serves it on
 this node, else their ``fallback`` (``Qwen/Qwen3.8-Flash-Next-FP8``); the outage and identity runs take
 ``Qwen/Qwen3.8-27B-FP8``.  Every scenario names its engines verbatim (``judge.command``: the user's
@@ -282,7 +284,7 @@ class JudgeEngine(BaseModel):
             (the T4 driver serves every judge under the slot name ``judge``).
         recipe: The shipped judge recipe id to serve.
         fallback_recipe: The recipe served when the primary's T0 smoke fails on this node
-            (GPU-VALIDATION.md, "Judges for T4": the NVFP4 candidate falls back to FP8).
+            (the owner's T4 choice: the NVFP4 candidate falls back to FP8).
         config: Runtime :class:`~rcp_ndcg.judging.client.JudgeConfig` fields on top of the recipe's client
             block (``concurrency``, ``wait_on_outage_s``, ...); a CONTENT field here is refused (decision
             17: the recipe is the source of the client block).
@@ -995,7 +997,7 @@ def t0_smoke(
     completion_body: Mapping[str, Any],
     timeout_s: float,
 ) -> dict[str, Any]:
-    """T0 smoke for a judge candidate (GPU-VALIDATION.md's T0 row): boot, ``GET /v1/models``, one request.
+    """T0 smoke for a judge candidate (docs/how-to/validate-a-recipe.md's T0 row): boot, ``GET /v1/models``, one request.
 
     Inputs: the engine to boot, its base URL (``.../v1``), the name the command serves and the body of the
     one chat completion to send.  Output: a report dict (``state``: ``verified`` or ``failed``, what
@@ -1485,7 +1487,7 @@ def _pick_judge(
 ) -> tuple[ManagedEngine | None, JudgeCandidate | None, dict[str, Any]]:
     """The judge engine of this scenario: the T0 smoke's winner (the primary recipe or its fallback).
 
-    GPU-VALIDATION.md's "Judges for T4": the four-phase run takes the NVFP4 candidate when vLLM v0.31.0
+    The owner's T4 judge choice: the four-phase run takes the NVFP4 candidate when vLLM v0.31.0
     serves it (the source says it parses the checkpoint's ``hf_quant_config.json`` and serves
     ``Qwen4ExpForConditionalGeneration``; the T0 smoke proves this node does), else the FP8 fallback.  A
     ``mode: outage`` judge is started fresh here as the driver's run-scoped engine.
@@ -1758,7 +1760,7 @@ def _run_outage(
 ) -> None:
     """``mode: outage``: the run's judge engine is killed mid-tournament.
 
-    Two sub-runs (both stages of GPU-VALIDATION.md's outage scenario) and a resume:
+    Two sub-runs (both stages of the outage scenario, docs/how-to/release-candidates.md) and a resume:
 
     * **recovers** -- the killed judge restarts after a short outage; the run parks through it and finishes;
     * **expires** -- the killed judge stays down past the role's ``wait_on_outage_s``; the run fails with

@@ -1,5 +1,5 @@
-"""Verified fake engines built from observation corpora (GPU-VALIDATION.md, "the GPU run is also the test
-suite's audit", items 2-4, 7 and 8).
+"""Verified fake engines built from observation corpora (docs/how-to/use-verified-fake-engines.md and
+docs/reference/gpu-validation.md).
 
 One emulator per (engine, version, recipe, behaviour fingerprint), selected as
 ``fake://<engine>-<version>/<recipe>`` (e.g. ``fake://vllm-0.31.0/qwen3-embedding-0.6b``):
@@ -1210,7 +1210,7 @@ class VllmEmulator:
     answer_log: list[str] = field(default_factory=list)
     """The provenance of every composed model-output reply (``/embeddings``, ``/pooling``, ``/rerank``;
     errors and ``/models`` ``/tokenize`` carry no model output and are not logged): what tells a
-    numbers-asserting test whether its inputs were observed (GPU-VALIDATION item 2)."""
+    numbers-asserting test whether its inputs were observed (docs/how-to/use-verified-fake-engines.md)."""
 
     # -- construction ---------------------------------------------------------
 
@@ -1321,7 +1321,7 @@ class VllmEmulator:
     # -- verification guards ---------------------------------------------------
 
     def require_verified_for(self, recipe_id: str, revision: str, fingerprint: str, engine_version: str) -> None:
-        """Refuse another engine version or recipe revision (GPU-VALIDATION.md item 3).
+        """Refuse another engine version or recipe revision (docs/how-to/use-verified-fake-engines.md).
 
         Raises:
             ConfigError: any named target differs from the stored verification; the message names the

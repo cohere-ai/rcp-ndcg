@@ -1,4 +1,4 @@
-"""The negative controls (GPU-VALIDATION.md, "The GPU run is also the test suite's audit", item 5).
+"""The negative controls (docs/how-to/release-candidates.md).
 
 Seven deliberate breakages per recipe -- (a) the chat template removed, (b) an engine-side right cut of the
 rendered prompt, (c) ``use_activation`` flipped, (d) the wrong pooling, (e) float32 decoded as float16,
@@ -50,7 +50,7 @@ class ControlSpec:
     """One deliberate breakage.
 
     Attributes:
-        letter: The control's ``(a)``-``(g)`` label from GPU-VALIDATION.md item 5.
+        letter: The control's ``(a)``-``(g)`` label (docs/how-to/release-candidates.md).
         name: The variant's infix (a recipe variant's id becomes ``<recipe>.<name>``).
         description: What breaks and which gate must catch it.
         derive: ``derive(recipe) -> (kind, change, reason)``: ``kind`` is ``recipe`` (``change``: the
@@ -374,5 +374,5 @@ def controls_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "rows": details,
         "inapplicable": inapplicable,
         "referent": "every applicable negative control must fail its gates; a passing control means the gates "
-        "cannot see its breakage (GPU-VALIDATION.md item 5)",
+        "cannot see its breakage (docs/how-to/release-candidates.md)",
     }

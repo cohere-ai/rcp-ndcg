@@ -1,4 +1,4 @@
-"""The mutations (GPU-VALIDATION.md item 5): every gate is shown able to fail.
+"""The mutations (docs/how-to/release-candidates.md): every gate is shown able to fail.
 
 Change one emulated behaviour -- the over-length threshold by one token, the result ordering -- and
 conformance goes red naming the record; edit a recipe's template and the staleness check fails naming

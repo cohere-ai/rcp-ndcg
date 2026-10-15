@@ -1,4 +1,4 @@
-"""The recipe **behaviour fingerprint** (GPU-VALIDATION.md item 8): the SHA-256 of everything that can change
+"""The recipe **behaviour fingerprint** (docs/reference/gpu-validation.md): the SHA-256 of everything that can change
 what the model returns.
 
 One function, defined here once and reused by the observation-corpus writer, the wave runner's
@@ -162,7 +162,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "max_retries": "transport",
     "wait_on_outage_s": "transport",
 }
-"""Every client config field of the three role configs, classified (GPU-VALIDATION.md item 8 keys "the
+"""Every client config field of the three role configs, classified (docs/reference/gpu-validation.md keys "the
 client fields that shape the request"). Only ``request`` fields are fingerprint inputs: they change the
 request bytes, and with them what the model returns. ``post_processing`` fields act on the reply on the
 client -- they never move the replay fingerprint (the engine's output is unchanged), but they do change
@@ -419,7 +419,7 @@ def load_recipe_tokenizer(recipe: Recipe) -> TextTokenizer:
 def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = None) -> dict[str, str]:
     """Every fingerprint input of ``recipe``, **named**, with its canonical value.
 
-    The inputs (GPU-VALIDATION.md item 8, extended by ``rcp-fp/4``): ``model`` and ``revision`` (the
+    The inputs (docs/reference/gpu-validation.md, extended by ``rcp-fp/4``): ``model`` and ``revision`` (the
     checkpoint); the engine image and its version floor (``engine.image``, ``engine.min_version`` -- a
     vLLM/transformers change can move the engine's processing without moving any recipe field); one
     ``serve.<field>`` per field of the ``serve`` block (``model_dump`` on the frozen schema -- overrides,

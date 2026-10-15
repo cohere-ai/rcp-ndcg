@@ -42,6 +42,13 @@ _GS_HOST = re.compile(r"gs://([^/\s`\"')\\]+)")
 #: citation of the same design id is the same id. The scan skips :data:`SCAFFOLDING` (see the module docstring).
 DESIGN_AND_LANE_IDS = re.compile(r"\bRFC[- ]?\d{3,4}\b|\blane/", re.IGNORECASE)
 
+#: The retired internal validation spec's id: the file is gone, its content folded into the public pages
+#: (``docs/reference/gpu-validation.md``, ``docs/how-to/validate-a-recipe.md`` and the fake-engines and
+#: release-candidate pages), so a citation of it is a source a reader cannot resolve. Case-sensitive on
+#: purpose: the live public page's lowercase ``gpu-validation.md`` name is not the retired id. Split so this
+#: module's own source does not carry the literal it forbids.
+INTERNAL_SPEC_IDS = re.compile(r"GPU-" r"VALIDATION")
+
 #: The internal design-id shorthand the docs wording guard forbids in Markdown, in the non-Markdown homes
 #: the release publishes: the shipped recipe files (package data of ``rcp-ndcg-vllm``) and the generated
 #: schemas (``rcp-ndcg-vllm/schema/`` and the root ``schemas/``). ``tests/docs/test_wording.py`` owns the
@@ -127,7 +134,8 @@ def _shipped_files(root: Path) -> list[Path]:
 
 
 def test_no_shipped_file_cites_an_internal_design_or_lane_id() -> None:
-    """No tracked file outside the scaffolding cites the internal design document or a lane branch.
+    """No tracked file outside the scaffolding cites the internal design document, a lane branch or
+    the retired validation spec.
 
     ``handover/`` and ``experiments/`` are scaffolding, deleted at release; the docs wording test covers
     Markdown and the gate's public-names step operator paths, so this scan is the one home for the rest of the
@@ -138,7 +146,7 @@ def test_no_shipped_file_cites_an_internal_design_or_lane_id() -> None:
         f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
         for path in _shipped_files(root)
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1)
-        if DESIGN_AND_LANE_IDS.search(line)
+        if DESIGN_AND_LANE_IDS.search(line) or INTERNAL_SPEC_IDS.search(line)
     ]
     assert not hits, "internal design or lane ids in the shipped tree:\n" + "\n".join(hits)
 

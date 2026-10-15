@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# T4 end to end: the run scenarios of GPU-VALIDATION.md as a harness stage driven inside the pod
+# T4 end to end: the run scenarios of the GPU validation (docs/how-to/validate-a-recipe.md) as a harness
+# stage driven inside the pod
 # (rcp_ndcg_test.e2e; not pytest).  The operator submits this like a recipe wave (jobs/submit.sh
 # --script e2e); no lane submits a job.
 #

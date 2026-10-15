@@ -8,7 +8,7 @@ normalisation comparisons apply and the credential scan.  This module writes cor
 whether one is accepted.
 
 A corpus is keyed by engine + version and the recipe's **behaviour fingerprint**
-(:func:`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VALIDATION.md item 8): the full corpus lives at
+(:func:`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, docs/reference/gpu-validation.md): the full corpus lives at
 :func:`corpus_path` (``observations/<engine>-<version>/<recipe>/<fingerprint>/<recorded-at>/``, never
 overwritten) and its repository subset at ``rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<fingerprint>/``.
 
@@ -106,7 +106,7 @@ IGNORED with 200 on the role routes, an over-length prompt is refused with 400 a
 
 
 def corpus_key(engine_version: str, recipe_id: str, fingerprint: str) -> str:
-    """The corpus key: ``vllm-<version>/<recipe>/<fingerprint>`` (GPU-VALIDATION.md item 8)."""
+    """The corpus key: ``vllm-<version>/<recipe>/<fingerprint>`` (docs/reference/gpu-validation.md)."""
     return f"vllm-{engine_version}/{recipe_id}/{fingerprint}"
 
 

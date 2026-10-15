@@ -1,7 +1,7 @@
 """The recipe behaviour fingerprint: stable, named inputs, and nothing that cannot change a model output.
 
 ``rcp_ndcg_test.fingerprint.behaviour_fingerprint`` keys the model layer of the observation corpora
-(GPU-VALIDATION.md item 8): it is the SHA-256 of everything that can change what the model returns -- model id
+(docs/reference/gpu-validation.md): it is the SHA-256 of everything that can change what the model returns -- model id
 and revision, the ``serve`` block, the template file's bytes, the tokenizer's ``tokenizer.json`` SHA-256 and
 the client fields that shape the request. Recipe identity and harness metadata (``id``, ``notes``,
 ``status``, ``reference``, ``gates``) are out, and so are rcp-ndcg's internals: refactoring the package never

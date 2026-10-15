@@ -513,7 +513,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -1015,7 +1015,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -1517,7 +1517,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -2184,7 +2184,7 @@
         "media_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -2692,7 +2692,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -3207,7 +3207,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -3715,7 +3715,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -4212,7 +4212,7 @@
         "render_check": "passed",
         "pruned_rows": 1,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -4709,7 +4709,7 @@
         "render_check": "passed",
         "pruned_rows": 1,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -5197,7 +5197,7 @@
         "render_check": "passed",
         "pruned_rows": 1,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -5705,7 +5705,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -6213,7 +6213,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -6721,7 +6721,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -7218,7 +7218,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -7715,7 +7715,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -7863,11 +7863,11 @@
         },
         "length:at_90": {
           "present": false,
-          "reason": "the padded row (~1179580 characters) would exceed the 500000-character file-size cap (GPU-VALIDATION.md item 7); the corpus request set carries the full ladder"
+          "reason": "the padded row (~1179580 characters) would exceed the 500000-character file-size cap; the corpus request set carries the full ladder"
         },
         "length:at_budget": {
           "present": false,
-          "reason": "the padded row (~1310650 characters) would exceed the 500000-character file-size cap (GPU-VALIDATION.md item 7); the corpus request set carries the full ladder"
+          "reason": "the padded row (~1310650 characters) would exceed the 500000-character file-size cap; the corpus request set carries the full ladder"
         },
         "length:over_cap": {
           "present": true,
@@ -8802,7 +8802,7 @@
         "media_check": "passed",
         "pruned_rows": 2,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -9405,7 +9405,7 @@
         "media_check": "passed",
         "pruned_rows": 2,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -9913,7 +9913,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -10421,7 +10421,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -10929,7 +10929,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -11431,7 +11431,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -11933,7 +11933,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -12435,7 +12435,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -13102,7 +13102,7 @@
         "media_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -13769,7 +13769,7 @@
         "media_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -14397,7 +14397,7 @@
         "media_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -15025,7 +15025,7 @@
         "media_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -15573,7 +15573,7 @@
         "media_check": "passed",
         "pruned_rows": 5,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -16154,7 +16154,7 @@
         "media_check": "passed",
         "pruned_rows": 3,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -16662,7 +16662,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -17164,7 +17164,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -17666,7 +17666,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     },
     {
@@ -18168,7 +18168,7 @@
         "render_check": "passed",
         "pruned_rows": 0,
         "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (GPU-VALIDATION.md T2)"
+        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
       }
     }
   ],

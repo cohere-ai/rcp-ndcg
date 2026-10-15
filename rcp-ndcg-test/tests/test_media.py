@@ -1,5 +1,5 @@
 """The media stage: what the served client sends for image inputs against what the reference consumes, and the
-engine's own media count -- so a vision-language recipe's media equivalence can fail (GPU-VALIDATION.md item 5:
+engine's own media count -- so a vision-language recipe's media equivalence can fail (docs/how-to/release-candidates.md:
 control (f), an unpinned pixel budget, is caught here).
 
 ``fixture-vl-embed`` is a vision embedder on the ``messages`` route whose pixel budget (784..200704 px) is pinned

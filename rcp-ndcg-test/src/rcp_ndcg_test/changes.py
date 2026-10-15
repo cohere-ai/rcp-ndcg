@@ -50,7 +50,7 @@ __all__ = [
 
 class StaleCorpusError(HarnessError):
     """No committed corpus carries the recipe's current behaviour fingerprint: the message names the
-    fingerprint inputs that moved against every recorded corpus of the recipe (GPU-VALIDATION item 8:
+    fingerprint inputs that moved against every recorded corpus of the recipe (docs/reference/gpu-validation.md:
     staleness is a failure that names what changed, never a silent pass)."""
 
 

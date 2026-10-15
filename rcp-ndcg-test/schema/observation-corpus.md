@@ -69,7 +69,7 @@ keeps passing replay until the wave replaces it.
 
 Written at `observations/vllm-<version>/<recipe>/<fingerprint>/<recorded-at>/` under the wave's output
 (`observe.corpus.corpus_path`; a new recording is a new path), keyed by the engine version and the recipe's
-behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, GPU-VALIDATION.md item 8).
+behaviour fingerprint (`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, docs/reference/gpu-validation.md).
 
 - `records.jsonl` -- one `RECORD_SCHEMA = 1` record per exchange: `exchange_id` (the SHA-256 of the canonical
   request: method, path, body), `sequence`, `repetition` (`same_process_1`, `same_process_2`,

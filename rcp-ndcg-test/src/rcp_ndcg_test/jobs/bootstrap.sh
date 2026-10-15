@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The node bootstrap: the stock image's three environments (GPU-VALIDATION.md, "the out-of-the-box image,
-# separate environments"), built from one staged release candidate, then optionally the wave.
+# The node bootstrap: the stock image's three environments (docs/how-to/release-candidates.md, "The three
+# environments on the node"), built from one staged release candidate, then optionally the wave.
 #
 #   bootstrap.sh envs <STAGE_URI> --state <DIR> [--recipes <dir> --wave-list <file>]
 #   bootstrap.sh wave <STAGE_URI> <OUT_URI> --wave <NAME>
