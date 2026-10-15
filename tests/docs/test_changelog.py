@@ -17,9 +17,7 @@ def test_no_change_appears_twice_in_the_release_notes() -> None:
 
 def test_the_text_limits_section_keeps_only_its_prose() -> None:
     lines = CHANGELOG.read_text(encoding="utf-8").splitlines()
-    start = next(
-        index for index, line in enumerate(lines) if line.startswith("### Changed from the paper's code")
-    )
+    start = next(index for index, line in enumerate(lines) if line.startswith("### Changed from the paper's code"))
     body: list[str] = []
     for line in lines[start + 1 :]:
         if line.startswith("#"):

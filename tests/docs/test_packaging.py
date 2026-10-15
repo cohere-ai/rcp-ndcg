@@ -748,7 +748,5 @@ def test_every_network_marked_test_file_runs_in_a_network_enabled_job() -> None:
         parent = path.rsplit("/", 1)[0]
         return re.search(rf"(?<![\w./-]){re.escape(parent)}(?![\w./-])", run) is not None
 
-    uncovered = [
-        path for path in marked if not any(named_by(run, path) for run in enabled_runs)
-    ]
+    uncovered = [path for path in marked if not any(named_by(run, path) for run in enabled_runs)]
     assert not uncovered, f"network-marked test files that no network-enabled CI job opens: {uncovered}"

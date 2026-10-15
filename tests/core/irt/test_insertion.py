@@ -166,9 +166,7 @@ class TestConditionalRidge:
         full = fit_bradley_terry(comparisons, l2=1e-4, doc_ids=[*docs, "X"])
         frozen = {d: full[d] for d in docs}
         weight_total = sum(weight for _a, _b, weight, _sl in existing + incident)
-        theta_hat, _info = conditional_insert_theta(
-            "X", incident, frozen, l2_reg=1e-4, weight_total=weight_total
-        )
+        theta_hat, _info = conditional_insert_theta("X", incident, frozen, l2_reg=1e-4, weight_total=weight_total)
         assert abs(theta_hat - full["X"]) < 1e-2, (theta_hat, full["X"])
 
     def test_insert_document_scales_the_ridge_like_the_joint_fit(self) -> None:

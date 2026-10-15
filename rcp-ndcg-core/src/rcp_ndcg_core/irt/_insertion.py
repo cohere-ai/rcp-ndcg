@@ -315,9 +315,7 @@ def insert_document(
     opponents_ok = len(opponents) >= min_opponents
 
     # --- conditional MAP with every opponent frozen ---
-    weight_total = sum(wt for _a, _b, wt, _sl in existing_comparisons) + sum(
-        wt for _a, _b, wt, _sl in new_comparisons
-    )
+    weight_total = sum(wt for _a, _b, wt, _sl in existing_comparisons) + sum(wt for _a, _b, wt, _sl in new_comparisons)
     theta_hat, info = conditional_insert_theta(
         doc_id, new_comparisons, existing_thetas, l2_reg, weight_total=weight_total
     )

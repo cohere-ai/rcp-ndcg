@@ -304,9 +304,7 @@ def _task_base() -> type:
                     elif f"{hf_subset}-excluded" in configs:
                         # the full corpus minus each query's excluded documents
                         excluded_rows = load_dataset(path, f"{hf_subset}-excluded", split=split, revision=rev)
-                        excluded = {
-                            row["query-id"]: set(row["excluded-corpus-ids"]) for row in excluded_rows.to_list()
-                        }
+                        excluded = {row["query-id"]: set(row["excluded-corpus-ids"]) for row in excluded_rows.to_list()}
                         ids = list(data["corpus"]["id"])
                         data["top_ranked"] = {
                             q: [d for d in ids if d not in excluded[q]] if q in excluded else ids

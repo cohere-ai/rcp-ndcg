@@ -28,9 +28,7 @@ def test_the_bradley_terry_fit_does_not_depend_on_the_thread_count() -> None:
     rng = np.random.default_rng(0)
     docs = [f"d{i:03d}" for i in range(100)]
     pairs = (rng.choice(len(docs), size=2, replace=False) for _ in range(40000))
-    comparisons = [
-        (docs[a], docs[b], float(rng.choice([0.5, 1.0])), float(rng.random())) for a, b in pairs
-    ]
+    comparisons = [(docs[a], docs[b], float(rng.choice([0.5, 1.0])), float(rng.random())) for a, b in pairs]
     before = torch.get_num_threads()
     try:
         torch.set_num_threads(1)

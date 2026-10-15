@@ -90,6 +90,7 @@ class BaseScoredModel(nn.Module):
         finally:
             torch.set_num_threads(threads)
         self._compute_standard_errors()
+
     def _compute_standard_errors(self) -> None:
         self.theta_se = None
 

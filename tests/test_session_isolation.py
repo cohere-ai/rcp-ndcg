@@ -9,7 +9,7 @@ from pathlib import Path
 
 from tests.conftest import ROOT
 
-PROBE = '''\
+PROBE = """\
 import os
 from pathlib import Path
 
@@ -19,7 +19,7 @@ def test_cache_dirs_are_the_session_scratch() -> None:
     assert "rcp-ndcg-tests-" in cache.as_posix(), cache
     assert "RCP_NDCG_MEDIA_CACHE" not in os.environ
     assert "RCP_NDCG_RUNS_DIR" not in os.environ
-'''
+"""
 
 
 def test_an_exported_cache_dir_does_not_escape_the_session_scratch(tmp_path: Path) -> None:
