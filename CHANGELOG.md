@@ -36,6 +36,9 @@ incompatibly, independently of the package version. All four distributions carry
   qwen3-vl-embedding x2, zerank-2); a recipe that carries the patch, a recipe whose budget stays below
   `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk equal to `serve.max_model_len` are
   unaffected.
+- **`rcp-ndcg-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
+  alone starts an engine without the recipe's declared patches (`RCP_NDCG_VLLM_PATCHES` is set only by the
+  console), so the dry run now prints the variable beside the identity and the overrides; the how-to says so.
 
 ## 0.0.1 — 2026-10-14
 

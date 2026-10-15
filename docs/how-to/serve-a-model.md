@@ -21,9 +21,12 @@ rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000
 `rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
 builds the `vllm serve`
 argv from the recipe's package data -- the chat template file path, the media flags, the pooler config -- and
-runs it. `--dry-run` prints the argv (one shell-quoted line), the recipe's identity and the applied overrides,
-and exits, to inspect what would run. A checkpoint that needs its model plugin is refused with the exact
-install line.
+runs it. `--dry-run` prints the argv (one shell-quoted line), the recipe's identity, the applied overrides and
+the engine environment's patch opt-in (`RCP_NDCG_VLLM_PATCHES`, empty for a recipe that declares none), and
+exits, to inspect what would run. The argv alone is not the engine command for a patched recipe: the patches
+are inert unless the engine process carries the variable, so run `rcp-ndcg-vllm serve` itself (or export the
+printed value) rather than pasting the argv alone. A checkpoint that needs its model plugin is refused with the
+exact install line.
 
 Two options when the image does not carry the wheel: bake it into your image (image preparation), or install
 it inline where the engine command runs:

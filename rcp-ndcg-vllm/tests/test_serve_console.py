@@ -353,6 +353,21 @@ def test_a_chunk_at_max_model_len_or_a_patch_carrier_or_a_smaller_budget_is_allo
     assert _flag_value(documented, "--max-num-batched-tokens") == "4096"
 
 
+def test_the_dry_run_shows_the_engine_environment_a_patched_recipe_needs(capsys: pytest.CaptureFixture[str]) -> None:
+    """The argv alone is not the engine command for a patched recipe: the dry run also prints the patch
+    opt-in the console would set, so a copied argv cannot silently run without pooling-full-context."""
+    assert run_console(["serve", "harrier-oss-v1-27b", "--dry-run"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "RCP_NDCG_VLLM_PATCHES=pooling-full-context" in lines[3]
+    assert lines[0].startswith("vllm serve ")
+
+
+def test_the_dry_run_shows_an_empty_patch_opt_in(capsys: pytest.CaptureFixture[str]) -> None:
+    """A recipe that opts into no patch prints the empty value a real serve clears the environment to."""
+    assert run_console(["serve", SHIPPED, "--dry-run"]) == 0
+    assert capsys.readouterr().out.splitlines()[3] == "engine environment: RCP_NDCG_VLLM_PATCHES="
+
+
 def test_the_dry_run_prints_the_argv_the_identity_and_the_applied_overrides(capsys: pytest.CaptureFixture[str]) -> None:
     code = run_console(["serve", SHIPPED, "--dry-run", "--set", "serve.max_num_seqs=64"])
     assert code == 0

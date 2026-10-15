@@ -4,9 +4,9 @@ command of the lean serving package.
 It builds the exact ``vllm serve`` argv of the recipe (the template path from the package data, the media
 flags, the pooler config) with :func:`~rcp_ndcg_vllm.recipe.serve_argv` and execs it — the engine image
 runs this instead of a hand-written command line (``serve: {command: ["rcp-ndcg-vllm", "serve", "<id>"]}`` in a
-run config). ``--dry-run`` prints the argv, the recipe's identity and the applied deployment overrides instead;
-a real serve logs the identity and the overrides on stderr before exec (the argv is the engine's own record,
-which the corpus provenance keeps).
+run config). ``--dry-run`` prints the argv, the recipe's identity, the applied deployment overrides and the
+engine environment's patch opt-in instead; a real serve logs the identity and the overrides on stderr before
+exec (the argv is the engine's own record, which the corpus provenance keeps).
 
 ``<recipe>`` is a shipped recipe id, or a **family directory of the operator's own** (``./my-family/``, with
 ``--variant <id>`` when it declares more than one size): such a recipe loads through the same schema, is marked
@@ -103,6 +103,17 @@ def _served_lines(recipe: Recipe, overrides: dict[str, object]) -> list[str]:
     return [f"identity: {recipe.identity}", f"deployment overrides: {_overrides_text(overrides)}"]
 
 
+def _patch_environment_text(recipe: Recipe) -> str:
+    """The engine environment a serve sets for the recipe's declared patches, as one ``NAME=value`` line.
+
+    ``--dry-run`` prints it beside the argv: the argv alone is not the engine command for a patched recipe
+    (the patch modules are inert unless the engine process carries the opt-in).
+    """
+    from .patches import PATCHES_ENV, patches_env_value
+
+    return f"{PATCHES_ENV}={patches_env_value(recipe.serve.patches)}"
+
+
 def _render_patch_environment(recipe: Recipe) -> None:
     """Set the engine's patch opt-in from the recipe's declared ``serve.patches``.
 
@@ -130,8 +141,8 @@ def run_console(argv: list[str] | None = None) -> int:
     Inputs: the console argv (default :data:`sys.argv`).  Outputs: the exit status — 0 from ``--dry-run`` and
     never from a real serve (:func:`os.execvp` replaces this process); 2 for usage, 1 for a bad recipe, a
     refused deployment override or a missing plugin, each message on stderr.  ``--dry-run`` prints the argv
-    first (one shell-quoted line), then the identity and the applied overrides; a real serve logs those two
-    lines on stderr.
+    first (one shell-quoted line), then the identity, the applied overrides and the engine environment's patch
+    opt-in; a real serve logs those record lines on stderr and sets the variable before exec.
     """
     args = build_parser().parse_args(argv)
 
@@ -153,6 +164,7 @@ def run_console(argv: list[str] | None = None) -> int:
         print(shlex.join(command))
         for line in _served_lines(recipe, overrides):
             print(line)
+        print(f"engine environment: {_patch_environment_text(recipe)}")
         return 0
     print(f"rcp-ndcg-vllm: serving {recipe.id}", file=sys.stderr)
     for line in _served_lines(recipe, overrides):
