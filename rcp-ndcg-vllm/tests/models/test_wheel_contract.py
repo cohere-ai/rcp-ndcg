@@ -13,6 +13,7 @@ interpreter; the full fresh-venv install of the published wheels is CI's ``wheel
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import zipfile
@@ -34,10 +35,16 @@ def built_wheel(tmp_path_factory: pytest.TempPathFactory) -> Path:
     out = tmp_path / "dist"
     result = subprocess.run(["uv", "build", "--offline", "-o", str(out), str(tree)], capture_output=True, text=True)
     if result.returncode != 0:
-        pytest.skip(f"uv build failed in this environment: {result.stderr[-300:]}")
+        message = f"uv build failed in this environment: {result.stderr[-300:]}"
+        if os.environ.get("CI"):
+            pytest.fail(message)
+        pytest.skip(message)
     wheel = out / WHEEL_NAME
     if not wheel.exists():
-        pytest.skip(f"uv build produced no {WHEEL_NAME}: {result.stdout[-300:]}")
+        message = f"uv build produced no {WHEEL_NAME}: {result.stdout[-300:]}"
+        if os.environ.get("CI"):
+            pytest.fail(message)
+        pytest.skip(message)
     return wheel
 
 

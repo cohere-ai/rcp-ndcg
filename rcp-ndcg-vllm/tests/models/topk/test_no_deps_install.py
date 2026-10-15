@@ -11,6 +11,7 @@ catch a declared dependency, because ``--no-deps`` never installs one.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -33,8 +34,8 @@ def _build_wheel(out_dir: Path) -> Path:
     build intermediates), so the setuptools backend's ``build/`` and ``src/*.egg-info`` land in the copy
     and the checkout is never written or cleaned (tests write only to tmp_path).  ``--offline`` keeps the
     build from reaching for a package index (there is no network in tests), and a build that cannot run
-    offline in this environment skips with the builder's own reason -- the same discipline as
-    ``test_wheel_contract.py``; the GPU wave builds the wheel itself.
+    offline in this environment skips with the builder's own reason -- except under CI, where a skip would
+    hide the freeze check, so the build must succeed there; the GPU wave builds the wheel itself.
     """
     uv = shutil.which("uv")
     if uv is None:
@@ -54,7 +55,10 @@ def _build_wheel(out_dir: Path) -> Path:
         cwd=str(source),
     )
     if result.returncode != 0:
-        pytest.skip(f"uv build failed in this environment: {result.stderr[-300:]}")
+        message = f"uv build failed in this environment: {result.stderr[-300:]}"
+        if os.environ.get("CI"):
+            pytest.fail(message)
+        pytest.skip(message)
     wheels = list(wheelhouse.glob("*.whl"))
     assert len(wheels) == 1, f"expected exactly one wheel, got {wheels}"
     return wheels[0]

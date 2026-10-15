@@ -203,7 +203,15 @@ jobs:
           assert len(recipes) == 44, len(recipes)
           print("rcp_ndcg_vllm wheel alone:", len(recipes), "recipes")
           PY
-          "$RUNNER_TEMP/wheel-vllm/bin/rcp-ndcg-vllm" serve embeddinggemma-2 --dry-run
+          # Release gate 2 (AGENTS.md): the --no-deps install must leave pip freeze unchanged in the
+          # stock image, and must declare nothing the image does not ship.
+          python3 rcp-ndcg-vllm/tests/models/check_no_deps_install.py dist/rcp_ndcg_vllm-*.whl
+          # Release gate 3 (AGENTS.md): every recipe must dry-run from the installed wheel, so a
+          # template.jinja or package-data path that resolves only in the checkout fails here.
+          for id in $("$RUNNER_TEMP/wheel-vllm/bin/python" -c \
+            'from rcp_ndcg_vllm.recipe import iter_recipes; print(" ".join(r.id for r in iter_recipes()))'); do
+            "$RUNNER_TEMP/wheel-vllm/bin/rcp-ndcg-vllm" serve "$id" --dry-run >/dev/null
+          done
       - name: the rcp-ndcg wheel installs (its core pin from dist/) and works
         run: |
           uv venv "$RUNNER_TEMP/wheel-rcp" --python 3.12

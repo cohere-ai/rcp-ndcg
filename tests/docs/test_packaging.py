@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -656,3 +657,49 @@ def test_every_member_build_directory_is_ignored() -> None:
             ["git", "check-ignore", "-q", f"{member}/build/lib/x.py"], cwd=ROOT, capture_output=True
         )
         assert result.returncode == 0, f"{member}/build/ is not ignored"
+
+
+def test_the_wheel_smoke_gates_run_the_freeze_check_and_every_dry_run() -> None:
+    """AGENTS.md's release gates: the ``--no-deps`` freeze check and a dry-run of every recipe, from a wheel.
+
+    The CI tests standing in for them build the wheel with ``uv build --offline`` and turned a failed
+    build into a skip, so both gates reported green without running. The freeze check and the
+    every-recipe dry-run must be steps of the tag pipeline and of CI's wheel-smoke job.
+    """
+    for name in ("release.yml", "ci.yml"):
+        workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
+        runs = [str(step.get("run", "")) for job in workflow["jobs"].values() for step in job.get("steps", [])]
+        assert any("check_no_deps_install.py" in run and "dist/rcp_ndcg_vllm-*.whl" in run for run in runs), (
+            f"{name}: no step runs the --no-deps freeze check on the built rcp-ndcg-vllm wheel"
+        )
+        assert any("iter_recipes()" in run and "--dry-run" in run and "for " in run for run in runs), (
+            f"{name}: no step dry-runs every recipe from the built wheel"
+        )
+
+
+def test_the_wheel_build_fixture_fails_in_ci_instead_of_skipping(tmp_path: Path) -> None:
+    """A wheel build that fails offline must fail CI, not skip the freeze and recipe checks away.
+
+    The fixture is exercised with an empty uv cache and no network, which is the vllm-plugins job's
+    situation: the build cannot resolve its build requirements there, and in CI that must be an error.
+    """
+    env = {**os.environ, "CI": "1", "UV_OFFLINE": "1", "UV_CACHE_DIR": str(tmp_path / "empty-uv-cache")}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "rcp-ndcg-vllm/tests/models/test_wheel_contract.py"
+            "::test_the_wheel_is_pure_python_and_declares_only_the_image_deps",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode != 0, result.stdout
+    assert "skipped" not in result.stdout
