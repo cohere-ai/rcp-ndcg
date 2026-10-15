@@ -435,7 +435,9 @@ src, rc_name, version, dl_python = sys.argv[1:5]
 stage = Path("stage") / rc_name
 files = []
 for path in sorted(stage.rglob("*")):
-    if path.is_file() and path.name != "manifest.json":
+    # Only the manifest at the stage root is excluded: a nested manifest (pairs/manifest.json, a corpus's own)
+    # is a staged file like any other and must appear here, or a node installing from this tree cannot verify it.
+    if path.is_file() and path != stage / "manifest.json":
         files.append(
             {
                 "path": str(path.relative_to(stage)),

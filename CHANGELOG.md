@@ -27,6 +27,10 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **The release-candidate manifest lists every staged file, nested manifests included** (the rc_build manifest
+  writer): it excluded any file *named* `manifest.json`, which dropped `pairs/manifest.json` - a staged file the
+  node installs and must be able to verify. Only the manifest at the stage root is excluded now, so the record
+  and the tree agree.
 - **`rcp-ndcg-vllm` declares the licences its wheel actually carries** (release-3, owner decision 2): the
   manifest said `Apache-2.0` while the wheel bundles ContextualAI's `ctxl-rerank-v2-instruct-multilingual`
   reference and template (CC-BY-NC-SA-4.0), Jina AI's `jina-reranker-v3` reference (CC-BY-NC-4.0) and
