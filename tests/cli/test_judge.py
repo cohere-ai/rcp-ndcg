@@ -101,6 +101,15 @@ def test_judge_check_refuses_a_non_judge_override() -> None:
     assert code == 2 and "only judge." in text
 
 
+def test_a_recipe_of_another_role_is_refused_with_a_grammatical_message() -> None:
+    """The wrong-role refusal reads "a embed recipe": the message must name the role without an
+    article rule ("a recipe of role 'embed'"), so every role's message reads correctly."""
+    code, text = _invoke("check", "--judge", "octen-embedding-8b", "--json")
+    assert code == 3, text
+    message = json.loads(text)["error"]["message"]
+    assert "a recipe of role 'embed'" in message, message
+
+
 def test_the_estimate_of_docs_counts_only_those_documents(dataset: str, tmp_path: Path) -> None:
     args = ("rubric", "--dataset", dataset, "--judge", "fake", "--docs", "q2:q2-d10", "--docs", "q2:q2-d11")
     args += ("--out", str(tmp_path / "s"), "--json")
