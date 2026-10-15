@@ -45,7 +45,7 @@ serve:
   # to the first release that carries the commit.
   patches: [pooling-full-context]
 client:
-#   recipe: "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based contextual chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); the role-prefix frame (by name in the template); token-id wire; 262142-token right cuts client-side"
+#   recipe: "vLLM v0.31.0 pooling runner; plugin-registered PplxContextualModel (Qwen3_5-based contextual chunk model: span-mean per chunk, int8 tanh head, bidirectional attention); the role-prefix frame (by name in the template); token-id wire; 131070-token right cuts client-side"
   api: vllm_pooling
   request_shape: token_ids  # the plugin's contract: the model reads the reference's id-level render
   document_split_special_tokens: true  # the reference's document parse (transformers'
@@ -91,7 +91,9 @@ client:
   instruction: none  # the model's frame is fixed; a dataset task instruction is DROPPED
                      # by declaration, never folded
   normalize: true
-  embed_dtype: float16  # the owner's Q11 decision; int8-valued vectors survive the cast exactly
+  embed_dtype: float16  # the owner's Q11 decision; the cast is exact for the int8 head values, but the
+                        # wire carries L2-normalised floats (the plugin's request-level activation),
+                        # which fp16 does not preserve exactly
   dim: 2048
   # The card's MRL declaration: "trained with Matryoshka losses at 1024 and 2048
   # dimensions. To use 1024-dimensional embeddings, take the first 1024 values of each unnormalized

@@ -20,8 +20,9 @@ standalone defaults, and the CLI reads the variant's own ``model``/``revision`` 
   queries are encoded as they are. The paper defines NO query instruction: the
   ``"Instruct: ...\nQuery:"`` prompt in the checkpoint's ``config_sentence_transformers.json`` is
   NOT part of the paper's recipe, and neither is its single-space document prompt.
-- ``experiments/paper/retrieval/octen.yaml:9-11``: ``pooling: last``, ``doc_prompt: "- "``,
-  ``batch_size: 32``.
+- ``experiments/paper/retrieval/octen.yaml:22``: ``batch_size: 32``, the paper's request packing.
+  The ``"- "`` document frame is this module's :data:`DOCUMENT_PREFIX`, declared by the recipe's
+  template; the paper config's ``pooling``/``doc_prompt`` keys left it when the mapping form landed.
 
 Differences from the model card (the paper wins):
 - the card's sentence-transformers config carries a Qwen3-style query instruction and a ``" "``
@@ -76,10 +77,10 @@ REVISION = "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
 #: standalone defaults; every served variant is loaded through the resolved recipe's own pair.
 
 MAX_LENGTH = 8192  # tokens per text; longer texts are truncated on the right (reference/octen.py:33)
-DOCUMENT_PREFIX = "- "  # prepended to documents only (octen.yaml:10; reference/octen.py:151-152)
+DOCUMENT_PREFIX = "- "  # prepended to documents only (reference/octen.py:151-152; declared by the recipe's template)
 DTYPE = "bfloat16"  # reference/octen.py:55; also the checkpoint's config.json "dtype"
 PAD_SIDE = "left"  # reference/octen.py:54 -- the last position of every row is a real token
-BATCH_SIZE = 32  # octen.yaml:11
+BATCH_SIZE = 32  # octen.yaml:22
 
 #: The request shapes the recipe's template declares, with the role each is embedded as.
 SHAPES: dict[str, str] = {"query": "query", "document": "document"}

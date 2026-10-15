@@ -2,7 +2,7 @@
 # family: ctxl-rerank-v2-instruct-multilingual
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 3e4fe7361b2dcdb44999c692c5d6bc1be68215e61ae1802cd0910703233b9783
+# reference-in-sha256: de72a1eba83bb488fe78c30f8dc33330c5f625b36658516a01940ddb6a8a9a0e
 # own-torch: false
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.0)
 #

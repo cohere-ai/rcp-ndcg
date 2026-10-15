@@ -36,7 +36,7 @@ Modes and outputs (written to ``--out``):
   262144 tokens (``query_length``/``document_length`` in config.json; the raise at
   ``:126-133``) -- "split the document into context windows". So a row over that
   limit has no card output at all (embed mode raises), while the client cuts it to
-  its 262142-token budget; the render of such a row is the uncut prompt and stage 1
+  its 131070-token budget; the render of such a row is the uncut prompt and stage 1
   reports it as a mismatch. The pairs files keep every text under the limit. Runs
   on the stdlib plus PyYAML (the recipe's declared shapes), so it runs in any
   interpreter that has both.

@@ -4345,6 +4345,19 @@ text it sends to the declared budget.
   name. The rebuild now takes the same device the full pipeline was loaded with. The `reference` block is
   out of the behaviour fingerprint, so no corpus re-record is needed.
 
+- **The text references' stale prose is corrected**: the review's sweep found claims the code no longer
+  matched. ctxl's reference called the pipeline's dtype bfloat16 while it loads the engine's served dtype
+  (float32 for 1b/2b), and `reference.in` cited the removed `serve.hf_overrides head_dtype: model`;
+  qwen3-reranker's score docstring said "flash attention 2 on CUDA" while it loads the recipe's declared
+  `attn_implementation` (sdpa); pplx-embed-v2-context quoted a 262142-token client budget while the client
+  declares 131070, and claimed int8-valued vectors survive the fp16 wire cast exactly while the served
+  head L2-normalises; zembed-1's notes claimed the unmodified image with no plugin while its serve block
+  carries the `rcp-ndcg-vllm` patch wheel; and the octen family cited `octen.yaml:9-11` for keys the
+  mapping form removed (the `"- "` document frame is the recipe's template, `batch_size: 32` is at :22).
+  A new cross-family test (`rcp-ndcg-test/tests/recipes/test_recipe_prose.py`) holds quoted client budgets,
+  plugin claims and paper citations to the code; the octen and zembed-1 goldens moved for the
+  `sources`/`notes` edits.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

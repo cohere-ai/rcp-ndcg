@@ -100,7 +100,8 @@ sources:
   - "vllm/entrypoints/pooling/embed/io_processor.py:530-536 - /v2/embed with input_type renders chat messages through the checkpoint's chat template; this recipe never routes there (verified at both revisions)"
 notes: |
   Serving: vllm serve zeroentropy/zembed-1-embedding --runner pooling --convert embed
-  --max-model-len 32768, on the unmodified vllm/vllm-openai:v0.31.0 image, no plugin.
+  --max-model-len 32768, on the stock vllm/vllm-openai:v0.31.0 image with the rcp-ndcg-vllm plugin
+  wheel (the pooling-full-context patch; no custom image).
   1. Runner/convert are explicit for robustness: at v0.31.0 a bare serve already resolves this
      checkpoint to pooling + embed, because the sentence-transformers modules.json wins over the
      generative Qwen3ForCausalLM architecture and convert falls through to embed for a pooling

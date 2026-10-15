@@ -10,7 +10,8 @@
 # The paper's own file pinned torch 2.9.1 and flash-attn 2.8.3; the reference no longer needs the
 # compiled extra -- it declares reference.attn_implementation: sdpa (GPU-E1: the stock reference
 # environment has no flash-attn; the follow-up measured sdpa references: 6b verified, 2b/1b in the
-# precision class closed by serve.hf_overrides head_dtype: model). `render` mode is pure string work
+# precision class closed by the 2026-10-10 fp32-head decision: no head_dtype override, the reference
+# loads the engine's served dtype). `render` mode is pure string work
 # (no tokenizer, no torch import), so stage 1 of the equivalence check runs on CPU without the weights.
 
 torch>=2.0

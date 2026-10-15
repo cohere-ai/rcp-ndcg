@@ -176,8 +176,9 @@ def score_rows(rows: list[dict], recipe: dict, tokenizer_spec: str, device: str)
     """One yes-probability per document per row (``--mode score``), the paper's ``QwenOGRerank.predict``.
 
     Loads the checkpoint exactly as the paper code does (``AutoTokenizer`` with
-    ``padding_side="left"``, ``AutoModelForCausalLM`` at the paper's bfloat16, flash
-    attention 2 on CUDA), batches at the variant's paper batch size, pads left to the batch
+    ``padding_side="left"``, ``AutoModelForCausalLM`` at the paper's bfloat16, the recipe's
+    declared ``attn_implementation`` -- sdpa here, never flash attention 2: the stock reference
+    environment has no flash-attn), batches at the variant's paper batch size, pads left to the batch
     max and reads ``log_softmax([no, yes])[yes].exp()`` at the last position.
     """
     import torch
