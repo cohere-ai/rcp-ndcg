@@ -42,6 +42,31 @@ def test_every_recipe_backed_case_validates_with_its_recipe() -> None:
         assert bundle.cases, f"recipe {recipe.id} has a case directory that loaded no cases"
 
 
+def test_every_case_note_names_the_recipes_declared_deviation() -> None:
+    """g-cases-9: the qwen3-reranker and qwen3-vl-reranker long_over/mixed-lengths notes claimed
+    'known_deviations empty' or '[anchor_drop_over_cap]' while every one of those recipes declares
+    [over_cap_cut_differs]; a note that names a deviation must name the recipe's own."""
+    from rcp_ndcg_test.cases import load_cases
+    from rcp_ndcg_vllm.recipe import iter_recipes
+
+    for recipe in iter_recipes():
+        if not (CASES / recipe.id).is_dir():
+            continue
+        bundle = load_cases(CASES, recipe, check_lengths=False)
+        declared = list(recipe.reference.known_deviations) if recipe.reference is not None else []
+        for case in bundle.cases:
+            normalized = " ".join((case.notes or "").split())
+            if "known_deviations" not in normalized:
+                continue
+            if declared:
+                assert "known_deviations empty" not in normalized, f"{case.id}: the recipe declares {declared}"
+            for name in ("anchor_drop_over_cap", "over_cap_cut_differs", "media_approximation"):
+                if name in declared:
+                    assert f"known_deviations [{name}]" in normalized, f"{case.id}: must name [{name}]"
+                else:
+                    assert f"known_deviations [{name}]" not in normalized, f"{case.id}: must not name [{name}]"
+
+
 @pytest.mark.network
 @pytest.mark.skipif(not os.environ.get("RCP_NDCG_NETWORK_TESTS"), reason="set RCP_NDCG_NETWORK_TESTS=1 (HF Hub)")
 def test_every_long_input_measures_its_stratum() -> None:

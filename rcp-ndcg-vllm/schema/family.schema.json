@@ -402,7 +402,7 @@
           "title": "Limit Mm Per Prompt"
         },
         "extra_args": {
-          "description": "further vllm serve flags, verbatim (one argv element per item)",
+          "description": "further vllm serve flags, verbatim (one argv element per item); a flag serve_argv already renders (--revision, --max-model-len, --max-num-seqs, ...) is refused, because the engine keeps the last occurrence and would silently override the rendered value",
           "items": {
             "type": "string"
           },

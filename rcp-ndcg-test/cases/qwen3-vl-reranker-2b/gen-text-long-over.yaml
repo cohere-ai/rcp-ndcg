@@ -34,7 +34,4 @@ notes: 'Whole rendered prompt over the recipe''s 8192-token budget, so the clien
   add_special_tokens=True). deterministic filler: a fixed 201-word list shuffled once with random.Random(20261007)
   and repeated cyclically, trimmed so the full rendered prompt measures 9100 tokens with the recipe tokenizer
   at 4bd860ac4f15ad1897a214615cccc700f8f71818 (add_special_tokens=True). First sentences are on-topic;
-  the filler is synthetic seeded word-list text. NON-GATING by the recipe''s known_deviations [anchor_drop_over_cap]:
-  the reference''s truncation (keep specials, re-append the last 5 ids) and the client''s offset-based
-  cut keep different content, so reference and engine scores are recorded side by side and are expected
-  to differ; the case checks the cut path and anchor survival, not score equality. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'
+  the filler is synthetic seeded word-list text. The recipe''s reference.known_deviations [over_cap_cut_differs]: the reference''s truncation (keep specials, re-append the last 5 ids) and the client''s offset-based cut keep different content, so reference and engine scores are recorded side by side and are expected to differ. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).'

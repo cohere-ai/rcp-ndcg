@@ -15,9 +15,12 @@ request. What a recipe-level fake must answer:
   the ids the recipe's tokenizer produces for the prompt, so anything that cross-checks the client's
   ``fit`` against the engine can do so offline.
 
-The registry maps recipe ids to fakes. **No model-level fake ships yet**: the verified emulators are
-built from the GPU recordings later (the fake-engines lane; the product's hash-based ``fake://`` fakes
-stay in the product). What ships today is one test fake for the packaged fixture recipe
+The registry maps recipe ids to fakes. ``target='fake'`` covers the **registered** fakes; the committed
+corpora's **verified emulators** (one per engine version, recipe and behaviour fingerprint,
+:mod:`rcp_ndcg_test.engines`) are built and registered by the harness's own conformance wiring
+(``tests._engines``) and reach a run as an **engine target** through a
+``fake://vllm-0.31.0/<recipe>`` URL once registered (the product's ``rcp_ndcg.fake_transports``
+entry point routes it). What ships in this registry is one test fake for the packaged fixture recipe
 (:class:`FakeEmbedEngine`, recipe ``fake-embed``), so the runner is exercised end to end on CPU. A test
 fake is a deterministic surrogate, clearly marked -- a test that asserts numbers may only do so against
 inputs whose answer it recorded.
@@ -179,15 +182,18 @@ def fake_engine_for(recipe_id: str) -> FakeEngine:
     """The fake registered for ``recipe_id``.
 
     Raises:
-        ConformanceError: none is -- the hint names the registry call. Model-level fakes do not exist
-            yet (they are built from the GPU recordings later).
+        ConformanceError: none is -- the hint names the registry call, the live-engine target and the
+            ``fake://vllm-0.31.0/<recipe>`` route a committed corpus's verified emulator reaches a run
+            through once registered.
     """
     engine = _REGISTRY.get(recipe_id)
     if engine is None:
         raise ConformanceError(
             f"no fake engine is registered for recipe {recipe_id!r} (registered: "
             f"{', '.join(registered_fake_engines()) or 'none'}); register one with "
-            "rcp_ndcg_test.fakes.register_fake_engine, or run the suite against a live engine"
+            "rcp_ndcg_test.fakes.register_fake_engine, run the suite against a live engine "
+            "(target='engine', base_url=...), or -- for a committed corpus -- against its verified emulator "
+            "through base_url='fake://vllm-0.31.0/<recipe>' once that emulator is registered"
         )
     return engine
 

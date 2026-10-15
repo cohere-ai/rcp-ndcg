@@ -179,9 +179,11 @@ tokenizer, template and `max_tokens` in its adaptation (the snapshot & send) ste
 `rcp_ndcg_test.fakes` is the seam a recipe-level fake implements: the protocol
 (`recipe_id`, `name`, `handle(method, path, body) -> FakeReply`) and the registry by recipe id. A fake
 must answer the role's route(s) plus `GET /models` and `POST /tokenize` (the engine's tokenization ground
-truth, so anything that cross-checks the client's `fit` can do it offline). No model-level fake ships
-yet — the verified emulators are built from the GPU recordings later. What ships is one registered test
-fake for the packaged fixture recipe (`fake-embed`: recipe, tokenizer and cases under
+truth, so anything that cross-checks the client's `fit` can do it offline). The committed corpora's
+verified emulators (one per engine version, recipe and behaviour fingerprint, `rcp_ndcg_test.engines`) are
+built and registered by the harness's own conformance wiring (`tests._engines`) and reach a run as an
+engine target through a `fake://vllm-0.31.0/<recipe>` URL once registered; the fake registry itself ships
+one registered test fake for the packaged fixture recipe (`fake-embed`: recipe, tokenizer and cases under
 `rcp_ndcg_test/fixtures/`, all in the wheel), registered on import; the package's own tests rebuild
 deterministic pool and rerank test fakes for its `fake-pool` and `fake-rerank` fixture recipes
 (`tests/fakes_fixture.py`):

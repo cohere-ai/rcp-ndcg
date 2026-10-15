@@ -21,6 +21,7 @@ runs the path and compares nothing; a tolerance breach is a failure carrying the
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -531,11 +532,15 @@ def _compare_abs(case: Case, matrix: Any, bound: float) -> CaseResult:
 
 
 def _compare_spearman(case: Case, matrix: Any, threshold: float) -> CaseResult:
-    """Every row's rank correlation against the expected row, bounded from below."""
+    """Every row's rank correlation against the expected row, bounded from below.
+
+    A constant row (a degenerate output) gives a NaN correlation, which is never a pass: the worst-row
+    tracking selects it wherever it sits (``rho < worst[0]`` alone never replaced a finite minimum).
+    """
     worst: tuple[float, int] | None = None
     for index, (got_row, want_row) in enumerate(zip(matrix, case.expected.values, strict=True)):
         rho = spearman(got_row, want_row)
-        if worst is None or rho < worst[0]:
+        if worst is None or math.isnan(rho) or rho < worst[0]:
             worst = (rho, index)
     if worst is None:  # pragma: no cover - the load requires at least one query
         raise ConformanceError(f"case {case.id} holds no queries")

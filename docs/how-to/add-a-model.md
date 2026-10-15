@@ -142,7 +142,9 @@ serve:                           # everything rendered into `vllm serve` argv; n
                                  # behaviour fingerprint keys their modules); a plugin with none is a
                                  # patch-only carrier, keyed by its patch names
   patches: []                    # engine patch names this recipe opts into; serve renders them into RCP_NDCG_VLLM_PATCHES
-  extra_args: []                 # further flags, verbatim (one argv element per item)
+  extra_args: []                 # further flags, verbatim (one argv element per item); never a flag
+                                 # serve_argv renders (--revision, --max-model-len, ...): the engine keeps the
+                                 # last occurrence, so a duplicate would silently override the rendered value
 client:                          # the product's endpoint config for the role; the product validates it at load
   api: rerank                    # the role's wire: openai_embeddings | vllm_pooling | rerank
   # client.model, client.revision and client.tokenizer are injected per variant

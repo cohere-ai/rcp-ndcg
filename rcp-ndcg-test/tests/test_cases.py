@@ -456,6 +456,20 @@ def test_a_mixed_modality_batch_mixes_text_and_media(tmp_path: Path) -> None:
         load_case(write_case(tmp_path, "fake-embed", "short", body))
 
 
+def test_a_single_batch_may_not_mix_media_and_text(tmp_path: Path) -> None:
+    """g-cases-10: two shipped 2-document cases mixed an image document with a text-only one but kept
+    ``batch: single``; a single/uniform batch that mixes is the ``mixed_modality`` cell and is refused."""
+    body = VALID.replace("modality: text", "modality: mixed").replace(
+        "- {id: d2, text: calibrated judgements}",
+        "- {id: d2, image: media/page.png, text: a caption}",
+    )
+    media = tmp_path / "fake-embed" / "media"
+    media.mkdir(parents=True)
+    (media / "page.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    with pytest.raises(CaseError, match="mixed_modality"):
+        load_case(write_case(tmp_path, "fake-embed", "short", body))
+
+
 def test_a_mixed_length_case_declares_a_mixed_length_batch(tmp_path: Path) -> None:
     """length 'mixed' means the batch mixes lengths: a single/uniform batch is a mislabel."""
     body = VALID.replace("length: short", "length: mixed")

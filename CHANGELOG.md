@@ -23,6 +23,108 @@ Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped onl
 incompatibly, independently of the package version. All four distributions carry the tag version; `rcp-ndcg` pins
 `rcp-ndcg-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
 
+## Unreleased
+
+### Fixed
+
+- **The behaviour fingerprint resolves plugin modules without importing package `__init__` files** (B2):
+  `importlib.util.find_spec` imported every parent package, and the embeddinggemma-2 fold's `__init__`
+  installs the folded transformers modules at import time -- which needs transformers' gemma4 modules and
+  torchvision. In the documented `gated` install (`rcp-ndcg[mteb]` plus `rcp-ndcg-test`, no torchvision)
+  the embeddinggemma-2 golden failed with `ModuleNotFoundError: No module named 'torchvision'`, and where
+  torchvision was present the hash computation mutated the process. The module's source is now resolved by
+  walking the top-level package's search location; the hashes are unchanged.
+- **Harness: a non-finite rerank score fails every stage-2 gate row** (testpkg-1): `max()` ignored a NaN that
+  was not first, the p99 fraction counted one as merely not within, and `_rerank_summary` never read
+  `within`, so a NaN on either side could pass stage 2 with `max_abs_delta 0.0`; the summary now fails every
+  gate row when a delta is non-finite and reports the NaN, and `_rerank_stage2` refuses a non-finite
+  reference score with a typed error naming the row.
+- **Harness: a declared over-cap count mismatch is reported, not gated** (testpkg-2): the per-text
+  vector-count mismatch was appended to the gates before the over-cap exemption, so a recipe declaring
+  `over_cap_cut_differs` failed stage 2 on exactly the text the deviation declares non-gating, and the row
+  was missing from the `over_cap` table; declared, the mismatch is now reported there with both counts,
+  undeclared it gates and is named there too.
+- **Harness: a constant conformance row fails its `spearman_min` gate wherever it sits** (testpkg-4): the
+  worst-row tracking never replaced a finite minimum with a NaN, so a constant second query passed as
+  'worst spearman 1 >= spearman_min'; the NaN row is now selected and the failure names the query.
+- **Harness: the rerank anchor audit checks the promised in-budget cut** (testpkg-6): the audit's referent
+  promised 'no in-budget pair may be cut' but nothing checked it (the `over_length` lookup read a key the
+  probe entry never carried); a changed document of a real pairs row now fails `in_budget_cut` unless the
+  change record's measured uncut request exceeds its budget, and the injected over-length samples are
+  excluded.
+- **Harness: `stage2_scores` serves under the given `served_model_name`** (testpkg-9): the parameter was
+  declared and ignored, so a caller serving a recipe under an alias got 404s pointing away from it; the
+  alias is now the endpoint config's `model` (`recipe_config`/`role_client` carry it), and the recipe id
+  when none is given.
+- **Harness: the stored-reference key covers the serve block and the unmanaged interpreter** (testpkg-3):
+  the reference receives the whole resolved recipe through `--recipe`, and its media arms read
+  `serve.mm_processor_kwargs`/`serve.extra_args`, but the key carried no `serve` field; with no environment
+  lock (the equivalence CLI's case) it also carried no interpreter identity, so an upgraded reference venv
+  reused stale outputs. The key now carries `serve.<field>` and, when `lock_sha256` is `None`, the reference
+  interpreter's real path; `REFERENCE_FINGERPRINT_SCHEMA` is `rcp-ref-fp/3`, so old entries never collide.
+- **Harness: the T4 driver refuses an empty scenario list and fails a failed upload** (testpkg-5): a list
+  holding only comments (or an empty directory) reported PASS with exit 0 over nothing, and the
+  `--upload` record was discarded so a job whose report never reached `OUT_URI` ended green; `main` now
+  refuses an empty list with exit 2, writes the upload record into `status.json` and exits 1 when it
+  failed, as the wave runner does.
+- **Harness: the equivalence report records no hostname and names its pairs file** (testpkg-7):
+  `EQUIVALENCE.md` claimed the base URL was replaced while `equivalence.json` stored it verbatim (the
+  stage-1 captured heads carried it too), and the header's pairs line always printed `?`. The document and
+  the captured heads now carry the recorder's placeholder host (`http://engine`, the path kept; one home in
+  `record.placeholder_url`, which also handles a URL with no path), and `pairs` names the pairs file.
+- **Harness: the fake-engine docs name the emulator route** (testpkg-8): the docs said no model-level fake
+  ships while 12 verified emulators ship; they now say `target='fake'` covers the registered fakes and name
+  the `fake://vllm-0.31.0/<recipe>` engine-target route the committed corpora's emulators reach a run
+  through once registered, and `fake_engine_for`'s hint names it too.
+- **Harness: the submit.sh dry run removes its scratch directory** (testpkg-10): the plan writes the token
+  wrapper (and a grouped wave's fetched recipes) into the mktemp dir, so the `rmdir` always failed and
+  every `KJOBS=echo` run left a `rcp-submit.*` behind; the cleanup now removes the directory recursively
+  after a check that it is exactly the mktemp path (never a glob, never an operator's directory), and the
+  comment says what it removes.
+- **The reranker case notes name the recipe's declared deviation** (g-cases-9): the qwen3-reranker and
+  qwen3-vl-reranker long_over/mixed-lengths notes claimed 'known_deviations empty' or
+  '[anchor_drop_over_cap]' while every one of those recipes declares `over_cap_cut_differs`, and the
+  vl-reranker notes asserted non-gating the runner does not implement; the notes now name the declared
+  deviation, and a cases test holds every note that mentions `known_deviations` to the recipe's own list.
+- **A single/uniform case batch may not mix media and text documents** (g-cases-10): the loader now refuses
+  `batch: single`/`uniform` when the batch holds both media-bearing and text-only documents (that is the
+  `mixed_modality` cell), and the two shipped 2-document cases that did so are relabelled
+  `mixed_modality`. The stricter half of the finding's suggestion (refuse `single` with more than one
+  query or document) is left out: the repo's own fixture cases use `single` for multi-item text batches,
+  and the finding's red test does not cover it.
+
+- **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
+  (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
+  not carry the `pooling-full-context` patch now refuses `serve.max_num_batched_tokens` below
+  `serve.max_model_len`, naming both numbers and the patch. On the pinned vLLM v0.31.0 the engine chunks an
+  exactly-full prompt and the scheduler never schedules its last token, so the request hangs and holds the
+  engine slot. The refusal covers the seven recipes that reach this state (ctxl-2b, octen x3,
+  qwen3-vl-embedding x2, zerank-2); a recipe that carries the patch, a recipe whose budget stays below
+  `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk equal to `serve.max_model_len` are
+  unaffected.
+- **`rcp-ndcg-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
+  alone starts an engine without the recipe's declared patches (`RCP_NDCG_VLLM_PATCHES` is set only by the
+  console), so the dry run now prints the variable beside the identity and the overrides; the how-to says so.
+- **The `serve.plugin` presence check runs in the engine's interpreter** (vllm-3): the console now resolves
+  the interpreter the `vllm` executable's shebang names and probes the distribution there, so a `vllm` on
+  `PATH` from another environment (a pipx/uv-tool install) is refused before it starts when that environment
+  lacks the wheel; an executable with no readable shebang falls back to the console's own environment, the
+  documented one-interpreter install.
+- **`plugin_distribution_name` parses a real pip requirement** (vllm-4): a ranged, URL or non-canonical
+  `serve.plugin` spec (`rcp-ndcg-vllm>=0.0.1`, `rcp_ndcg_vllm==0.0.1`) now names the distribution it installs
+  (PEP 503-normalised), so it is no longer refused as missing, the architecture check applies to the
+  underscore spelling, text with no requirement name is refused naming the accepted forms, and the install
+  hint quotes the spec for the shell.
+- **`serve.extra_args` may not repeat a flag `serve_argv` renders** (vllm-5): a duplicate lands after the
+  rendered value and the engine's last-wins parsing silently overrides a `--set` value, the
+  `serve.max_model_len` budget check or even `--revision`; the schema now refuses one by name, with the field
+  to use instead (`schema/recipe.schema.json` and `schema/family.schema.json` carry the field note).
+- **The quickstart and serve-a-model flow name the real NanoBEIR subset** (docs-1): the three flows used
+  `--subset NanoSciFact`, which is not a subset of `suite:nanobeir` (`NanoSciFactRetrieval` is), and the
+  following `eval score --suite nanobeir` carried no `--subset`, so the other twelve subsets would have
+  scored 0 and the headline mean come out about 1/13 of the subset's value. A docs test now checks every
+  documented `--subset` against `rcp_ndcg.data.SUITES` and requires a following `eval score` to carry it.
+
 ## 0.0.1 — 2026-10-14
 
 ### Overview

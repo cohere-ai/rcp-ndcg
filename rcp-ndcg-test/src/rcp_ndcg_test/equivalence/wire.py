@@ -229,7 +229,9 @@ class Capture:
         return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
 
 
-def recipe_config(recipe: Recipe, base_url: str | None = None, *, full_width: bool = False) -> Any:
+def recipe_config(
+    recipe: Recipe, base_url: str | None = None, *, full_width: bool = False, served_model_name: str | None = None
+) -> Any:
     """The product's validated endpoint config the recipe's ``client`` block implies.
 
     One home for the construction :func:`role_client` uses: :func:`~rcp_ndcg_vllm.recipe.client_config`'s
@@ -239,7 +241,8 @@ def recipe_config(recipe: Recipe, base_url: str | None = None, *, full_width: bo
     the role client applies them with, never a second reading of the block.  With ``full_width``, the
     config's Matryoshka SELECTION (``dimensions``/``mrl_dim``) is stripped before the endpoint is built --
     stage 2's ex-post gate needs one full-width pass, while the declaration
-    (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.
+    (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.  ``served_model_name`` overrides the endpoint's
+    ``model`` (the recipe's id) for an engine serving the recipe under another ``--served-model-name``.
     """
     from rcp_ndcg_vllm.recipe import client_config
 
@@ -250,6 +253,8 @@ def recipe_config(recipe: Recipe, base_url: str | None = None, *, full_width: bo
         # Stage 2's ex-post gate runs one full-width pass: the selection fields go, the declaration stays.
         data.pop("dimensions", None)
         data.pop("mrl_dim", None)
+    if served_model_name is not None:
+        data["model"] = served_model_name
     data["tokenizer"] = resolved_tokenizer_spec(recipe)
     classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
     return classes[recipe.role](**data)
@@ -261,6 +266,7 @@ def role_client(
     *,
     census: Any | None = None,
     full_width: bool = False,
+    served_model_name: str | None = None,
 ) -> tuple[Any, Capture]:
     """The product's role client for the recipe, sending through a :class:`CapturingTransport`.
 
@@ -268,7 +274,9 @@ def role_client(
     engine needed, the requests are still the client's).  With ``full_width``, the config's Matryoshka
     SELECTION (``dimensions``/``mrl_dim``) is stripped before the endpoint is built -- stage 2's ex-post gate
     needs one full-width pass, while the declaration (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.
-    Outputs: the client (its config is :func:`~rcp_ndcg_vllm.recipe.client_config`'s, with the recipe's real
+    ``served_model_name`` overrides the endpoint's ``model`` (the recipe's id) for an engine serving the
+    recipe under another ``--served-model-name``.  Outputs: the client (its config is
+    :func:`~rcp_ndcg_vllm.recipe.client_config`'s, with the recipe's real
     budget -- prompts, text budget, ``query_max_tokens``, the reranker's settle-once) and the
     :class:`Capture` whose ``exchanges`` carry every request and reply, in order.
     """
@@ -278,7 +286,7 @@ def role_client(
     url = base_url if base_url else _capture_base(recipe)
     if base_url and recipe.role == "embed":
         url = _openai_base(url)
-    config = recipe_config(recipe, url, full_width=full_width)
+    config = recipe_config(recipe, url, full_width=full_width, served_model_name=served_model_name)
     if base_url:
         delegate: httpx.AsyncBaseTransport | httpx.BaseTransport = httpx.AsyncHTTPTransport()
     else:

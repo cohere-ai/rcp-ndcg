@@ -84,7 +84,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 
 from .errors import RecipeError
 from .models import ARCHITECTURE_MODULES
-from .patches import PATCH_NAMES
+from .patches import PATCH_NAMES, pooling_full_context
 
 __all__ = [
     "FIELD_ROLES",
@@ -211,15 +211,28 @@ always a misplaced engine setting -- silently ignored by the product's endpoint 
 an engine of another family."""
 
 
+_REQUIREMENT_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
+"""The PEP 508 requirement name: letters, digits and ``-_.`` inside, starting and ending alphanumeric."""
+
+
 def plugin_distribution_name(spec: str) -> str:
     """The distribution name a pip spec installs (``rcp-ndcg-vllm==0.0.1`` -> ``rcp-ndcg-vllm``).
 
     One home for the rule the recipe loader, the ``rcp-ndcg-vllm serve`` console and the harness's
-    behaviour fingerprint all need: the plugin spec's extras and exact-version pins are not part of the
-    distribution name.  ``spec`` is the ``serve.plugin`` value; the returned name is what
-    :func:`importlib.metadata.distribution` takes and what a recipe compares against the shipped wheel.
+    behaviour fingerprint all need: only the requirement's leading name is the distribution, PEP 503-
+    normalised (``rcp_ndcg_vllm`` and ``rcp-ndcg-vllm`` name the same distribution), and the extras, the
+    version specifiers and the URL a spec may carry are not part of it.  ``spec`` is the ``serve.plugin``
+    value; the returned name is what :func:`importlib.metadata.distribution` takes and what a recipe
+    compares against the shipped wheel.  Raises :class:`RecipeError` for text with no requirement name
+    (a bare URL has none), naming the field and the accepted forms.
     """
-    return spec.split("==", 1)[0].split("[", 1)[0].strip()
+    text = spec.strip()
+    match = _REQUIREMENT_NAME.match(text)
+    if match is None or not (match.end() == len(text) or text[match.end()] in "[<>=!~;@ "):
+        raise RecipeError(
+            f"serve.plugin {spec!r}: the form is NAME, NAME==VERSION, NAME[extras]==VERSION or NAME @ URL"
+        )
+    return re.sub(r"[-_.]+", "-", match.group(0)).lower()
 
 
 def _no_extra() -> dict[str, Any]:
@@ -272,6 +285,23 @@ class Resources(BaseModel):
     model_config = ConfigDict(**_no_extra())
 
     gpus: int = Field(ge=1)
+
+
+_SERVE_ARGV_FLAG_FIELDS: Mapping[str, str] = {
+    # The flags serve_argv renders that no FIELD_ROLES entry names (its DEPLOYMENT flags come from there):
+    # extra_args may not repeat one. The value is the schema field (or the run's own knob) to use instead.
+    "--revision": "the recipe's revision (a different revision is a variant row)",
+    "--served-model-name": "the console's --served-model-name (the run owns it)",
+    "--runner": "serve.runner",
+    "--convert": "serve.convert",
+    "--dtype": "serve.dtype",
+    "--trust-remote-code": "serve.trust_remote_code",
+    "--hf-overrides": "serve.hf_overrides",
+    "--chat-template": "serve.chat_template",
+    "--pooler-config": "serve.pooler_config",
+    "--mm-processor-kwargs": "serve.mm_processor_kwargs",
+    "--limit-mm-per-prompt": "serve.limit_mm_per_prompt",
+}
 
 
 class ServeConfig(BaseModel):
@@ -335,7 +365,10 @@ class ServeConfig(BaseModel):
         default=None, description="vLLM --limit-mm-per-prompt, the per-request media caps"
     )
     extra_args: list[str] = Field(
-        default_factory=list, description="further vllm serve flags, verbatim (one argv element per item)"
+        default_factory=list,
+        description="further vllm serve flags, verbatim (one argv element per item); a flag serve_argv already "
+        "renders (--revision, --max-model-len, --max-num-seqs, ...) is refused, because the engine keeps the "
+        "last occurrence and would silently override the rendered value",
     )
 
     @field_validator("chat_template")
@@ -391,6 +424,27 @@ class ServeConfig(BaseModel):
                 f"patches names {unknown_patches}, which rcp_ndcg_vllm.patches.PATCH_NAMES does not ship "
                 f"(known: {', '.join(PATCH_NAMES)})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _extra_args_do_not_repeat_a_rendered_flag(self) -> ServeConfig:
+        """``extra_args`` carries flags the schema has no field for, never a second copy of one it renders.
+
+        ``serve_argv`` appends ``extra_args`` after the rendered deployment tail, and the engine's argparse
+        keeps the last occurrence: a duplicate silently overrides a ``--set`` value, the ``serve.max_model_len``
+        budget check or even ``--revision``.  A flag the recipe already renders is refused by name, with the
+        schema field to use instead -- a DEPLOYMENT field takes ``--set``, a content field is a variant row.
+        """
+        rendered = {spec.flag: path for path, spec in FIELD_ROLES.items() if spec.flag is not None}
+        rendered.update(_SERVE_ARGV_FLAG_FIELDS)
+        for element in self.extra_args:
+            flag = element.split("=", 1)[0].strip()
+            field = rendered.get(flag)
+            if field is not None:
+                raise ValueError(
+                    f"serve.extra_args carries {flag}, which serve_argv renders itself: use {field} instead "
+                    "(a deployment field takes --set, a content field is a variant row)"
+                )
         return self
 
 
@@ -564,7 +618,11 @@ class FieldSpec:
 
 FIELD_ROLES: Mapping[str, FieldSpec] = {
     # The deployment fields, in argv order. Each is a resource, scheduling or address knob of the engine: it
-    # cannot change what the model returns, so an operator may set it at serve time.
+    # cannot change what the model returns, so an operator may set it at serve time. One of them can change
+    # whether a request finishes at all: _deployment_values refuses serve.max_num_batched_tokens below
+    # serve.max_model_len when the client's largest budget reaches it and the recipe does not carry the
+    # pooling-full-context patch (an exactly-full prompt is then chunked, and the v0.31.0 scheduler never
+    # schedules its last token -- the request hangs; the values it would return are the same).
     "serve.host": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--host", str, position="head", default="0.0.0.0"),
     "serve.port": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--port", int, low=0, high=65535, position="head"),
     "resources.gpus": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--tensor-parallel-size", int, low=1, position="head"),
@@ -1441,9 +1499,12 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
     """The effective deployment values: the recipe's own, the run's ``port``, the declared defaults, the overrides.
 
     Raises:
-        RecipeError: a value that is not a DEPLOYMENT field or does not fit it, no port to serve on, or a
+        RecipeError: a value that is not a DEPLOYMENT field or does not fit it, no port to serve on, a
             ``serve.max_model_len`` below the client's largest token budget (the engine would reject admissible
-            prompts, so both numbers are named).
+            prompts, so both numbers are named), or a ``serve.max_num_batched_tokens`` below a
+            ``serve.max_model_len`` that the client's largest budget reaches exactly on a pooling recipe
+            without the pooling-full-context patch (the engine would chunk an at-budget prompt and the
+            v0.31.0 scheduler would never finish it).
     """
     values: dict[str, Any] = {}
     for path, spec in deployment_fields().items():
@@ -1466,6 +1527,21 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
             raise RecipeError(
                 f"serve.max_model_len {values['serve.max_model_len']} is below the client's largest token budget "
                 f"{budgets[largest]} (client.{largest}): the engine would reject admissible prompts"
+            )
+        chunk = values["serve.max_num_batched_tokens"]
+        if (
+            chunk is not None
+            and chunk < values["serve.max_model_len"]
+            and values["serve.max_model_len"] == budgets[largest]
+            and recipe.serve.runner == "pooling"
+            and pooling_full_context.PATCH_NAME not in recipe.serve.patches
+        ):
+            raise RecipeError(
+                f"serve.max_num_batched_tokens {chunk} is below serve.max_model_len "
+                f"{values['serve.max_model_len']}, which the client's largest token budget ({budgets[largest]}) "
+                f"reaches exactly: the engine chunks an at-budget prompt, and the v0.31.0 scheduler never "
+                f"finishes its last token (the hang {pooling_full_context.PATCH_NAME!r} fixes). Serve with "
+                f"serve.max_num_batched_tokens at least serve.max_model_len, or a recipe that carries the patch"
             )
     return values
 
@@ -1985,8 +2061,10 @@ def serve_argv(
     plugin architectures the fingerprint keys, and the last is rendered into the engine's environment by the
     ``rcp-ndcg-vllm serve`` console.  Raises :class:`RecipeError` when the recipe sets
     ``serve.chat_template`` but was not loaded from a directory (the template's absolute path is needed), when
-    a deployment value is not a DEPLOYMENT field or does not fit it, when no port is resolvable, or when
-    ``serve.max_model_len`` falls below the client's largest token budget.
+    a deployment value is not a DEPLOYMENT field or does not fit it, when no port is resolvable, when
+    ``serve.max_model_len`` falls below the client's largest token budget, or when
+    ``serve.max_num_batched_tokens`` falls below a ``serve.max_model_len`` that budget reaches exactly on a
+    pooling recipe without the pooling-full-context patch.
     """
     values = _deployment_values(recipe, port=port, deployment=deployment)
     argv = [

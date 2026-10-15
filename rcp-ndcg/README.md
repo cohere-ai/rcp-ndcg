@@ -124,8 +124,8 @@ encoder:
 ```
 
 ```bash
-rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFact --retriever retriever.yaml --out rankings.parquet
-rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir
+rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out rankings.parquet
+rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir --subset NanoSciFactRetrieval
 ```
 
 The [recipe catalog](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md) names the 24

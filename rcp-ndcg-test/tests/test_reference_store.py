@@ -219,6 +219,62 @@ def test_the_store_key_covers_the_client_render_block(tmp_path: Path, monkeypatc
     assert len(list(store.iterdir())) == 2
 
 
+def test_the_store_key_covers_the_serve_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reference contract hands the whole resolved recipe over (``--recipe``), and the media references
+    read ``serve.mm_processor_kwargs``/``serve.extra_args`` (embeddinggemma-2's fps pin): a serve change must
+    move the stored output's key, or stage 2 compares the new engine against a reference rendered under the
+    old pin."""
+    from rcp_ndcg_test.equivalence import stages
+    from rcp_ndcg_vllm import load_recipe
+
+    from tests.conftest import sample_pairs
+
+    base = load_recipe(RECIPES / "fixture-embed")
+    changed = base.model_copy(
+        update={
+            "serve": base.serve.model_copy(
+                update={"mm_processor_kwargs": {"videos_kwargs": {"max_pixels": 6000000}}, "extra_args": ["--x"]}
+            )
+        }
+    )
+    rows = [{"query": row["query"], "documents": list(row["documents"])} for row in sample_pairs()[:1]]
+    store = tmp_path / "references"
+
+    def fake_run(
+        reference_python: str, entry: str, *, mode: str, pairs_path: Path, out_path: Path, recipe: Any, **kwargs: object
+    ) -> dict[str, Any]:  # fmt: skip
+        return {"rows": [{"index": 0, "query_vectors": [[[1.0, 0.0]]], "document_vectors": [[[1.0, 0.0]]]}]}
+
+    monkeypatch.setattr(stages, "run_reference", fake_run)
+    first, first_state = stages._reference_outputs(
+        base, "fake", rows, device="cpu", cuda_visible_devices=None, store=store
+    )
+    second, second_state = stages._reference_outputs(
+        changed, "fake", rows, device="cpu", cuda_visible_devices=None, store=store
+    )
+    assert first_state["state"] == "computed"
+    assert second_state["state"] == "computed", "a changed serve block must not reuse the stale reference"
+    assert second_state["changed_inputs"] == ["serve.extra_args", "serve.mm_processor_kwargs"]
+    assert len(list(store.iterdir())) == 2
+
+
+def test_the_store_key_covers_the_reference_interpreter_when_unmanaged() -> None:
+    """With no environment lock the interpreter IS the environment: two unmanaged reference interpreters
+    must not share a key (the equivalence CLI never passes a lock), while a locked environment is identified
+    by its lock hash."""
+    unmanaged = {**BASE, "lock_sha256": None}
+    first = reference_key(**unmanaged, reference_python="/venvs/old/bin/python")
+    second = reference_key(**unmanaged, reference_python="/venvs/new/bin/python")
+    assert first.fingerprint != second.fingerprint
+    assert first.inputs["reference_python"].endswith("old/bin/python")
+    assert reference_key(**unmanaged, reference_python="/venvs/old/bin/python").fingerprint == first.fingerprint
+    # A lock identifies the environment: the interpreter path is not keyed then.
+    locked_a = reference_key(**BASE, reference_python="/venvs/old/bin/python")
+    locked_b = reference_key(**BASE, reference_python="/venvs/new/bin/python")
+    assert locked_a.fingerprint == locked_b.fingerprint
+    assert "reference_python" not in locked_a.inputs
+
+
 def test_stage2_without_a_store_never_writes_one(tmp_path: Path) -> None:
     """No store: the reference runs and the state says so (the library's pure path)."""
     import sys

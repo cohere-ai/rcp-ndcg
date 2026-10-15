@@ -25,13 +25,16 @@ rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH
 ```
 
 builds the `vllm serve` argv from the recipe's package data (the chat template file path, the media flags, the
-pooler config) and runs it (`--dry-run` prints the argv, the recipe's identity and the applied overrides, and
-exits). `--set` names a **deployment** field of the recipe -- `resources.gpus`,
+pooler config) and runs it (`--dry-run` prints the argv, the recipe's identity, the applied overrides and the
+engine environment's patch opt-in, and exits). `--set` names a **deployment** field of the recipe -- `resources.gpus`,
 `serve.gpu_memory_utilization`, `serve.max_num_seqs`, `serve.max_num_batched_tokens`, `serve.host`,
 `serve.port`, `serve.max_model_len` -- and the schema declares that surface once
 (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field (the model, the revision, the dtype, a template, ...) is
-refused by name, and `serve.max_model_len` is refused below the client's largest token budget. A checkpoint
-that needs its model plugin is refused with the exact install line. Example, on the stock image:
+refused by name, `serve.max_model_len` is refused below the client's largest token budget, and
+`serve.max_num_batched_tokens` is refused below a `serve.max_model_len` an at-budget prompt reaches on a
+pooling recipe without the `pooling-full-context` patch. A checkpoint that needs its model plugin is refused
+with the exact install line, judged in the interpreter the `vllm` executable's shebang names (so a `vllm` from
+another environment must carry the wheel itself). Example, on the stock image:
 
 ```bash
 python3 -m pip install --no-deps rcp-ndcg-vllm

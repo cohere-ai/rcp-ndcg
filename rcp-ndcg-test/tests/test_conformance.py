@@ -135,6 +135,26 @@ def test_a_spearman_tolerance_passes_the_order_and_fails_the_reversal() -> None:
     assert failing.failed and "spearman" in (failing.detail or "")
 
 
+def test_a_constant_spearman_row_fails_whatever_its_position() -> None:
+    """testpkg-4: ``ranks.spearman`` returns nan for a constant row and its contract says a comparison
+    against it fails; the worst-tracking ``rho < worst[0]`` never replaced a finite minimum with nan, so a
+    constant *second* query passed with 'worst spearman 1 >= spearman_min'.  The failure names the query."""
+    import numpy as np
+    from rcp_ndcg_test.conformance import _compare_spearman
+
+    case = load_case(CASES / "fake-rerank" / "short-single.yaml")
+    with_tolerance = case.model_copy(
+        update={"expected": case.expected.model_copy(update={"tolerance": CaseTolerance(spearman_min=0.9)})}
+    )
+    expected = np.asarray(with_tolerance.expected.values, dtype=np.float64)
+    for constant_index, query_id in ((0, "q1"), (1, "q2")):
+        matrix = expected.copy()
+        matrix[constant_index, :] = 0.3
+        result = _compare_spearman(with_tolerance, matrix, 0.9)
+        assert result.failed, query_id
+        assert query_id in (result.detail or ""), result.detail
+
+
 def test_the_run_refuses_a_case_whose_recipe_disagrees() -> None:
     """(round-2 F4) ``run_case(recipe, case)`` refuses a case belonging to a different recipe: a run
     under the wrong scorer is an identity lie that can pass as a numbers check."""

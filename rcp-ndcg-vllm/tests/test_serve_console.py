@@ -304,6 +304,70 @@ def test_the_largest_budget_is_the_largest_of_the_clients_declared_budgets(tmp_p
     assert "8192" in message and "9000" in message and "document_max_tokens" in message
 
 
+def test_a_chunk_below_max_model_len_is_refused_when_a_full_prompt_is_admissible() -> None:
+    """A pooling recipe whose client budget reaches ``serve.max_model_len`` and that does not carry the
+    pooling-full-context patch must not be served with a smaller chunk: an exactly-full prompt is chunked,
+    and the v0.31.0 scheduler never finishes its last token.  Both numbers and the patch are named."""
+    recipe = load_recipe("octen-embedding-8b")  # client.max_tokens 8192 == serve.max_model_len 8192
+    with pytest.raises(RecipeError) as excinfo:
+        serve_argv(
+            recipe,
+            port=8000,
+            served_model_name=recipe.id,
+            deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
+        )
+    message = str(excinfo.value)
+    assert "max_num_batched_tokens" in message and "4096" in message and "8192" in message
+    assert "pooling-full-context" in message
+
+
+def test_a_chunk_at_max_model_len_or_a_patch_carrier_or_a_smaller_budget_is_allowed() -> None:
+    """The refusal is exactly the hang: the chunk may equal ``max_model_len``; a recipe that opts into
+    pooling-full-context may chunk; and a recipe whose largest budget is below ``max_model_len`` never sends
+    an at-budget prompt (the documented qwen3-reranker example keeps working)."""
+    recipe = load_recipe("octen-embedding-8b")
+    at_the_edge = serve_argv(
+        recipe,
+        port=8000,
+        served_model_name=recipe.id,
+        deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=8192"]),
+    )
+    assert _flag_value(at_the_edge, "--max-num-batched-tokens") == "8192"
+
+    carrier = load_recipe("harrier-oss-v1-27b")  # patches: [pooling-full-context]
+    patched = serve_argv(
+        carrier,
+        port=8000,
+        served_model_name=carrier.id,
+        deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
+    )
+    assert _flag_value(patched, "--max-num-batched-tokens") == "4096"
+
+    below = load_recipe(SHIPPED)  # qwen3-reranker-0.6b: largest budget 8192 < serve.max_model_len 10000
+    documented = serve_argv(
+        below,
+        port=8000,
+        served_model_name=below.id,
+        deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
+    )
+    assert _flag_value(documented, "--max-num-batched-tokens") == "4096"
+
+
+def test_the_dry_run_shows_the_engine_environment_a_patched_recipe_needs(capsys: pytest.CaptureFixture[str]) -> None:
+    """The argv alone is not the engine command for a patched recipe: the dry run also prints the patch
+    opt-in the console would set, so a copied argv cannot silently run without pooling-full-context."""
+    assert run_console(["serve", "harrier-oss-v1-27b", "--dry-run"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "RCP_NDCG_VLLM_PATCHES=pooling-full-context" in lines[3]
+    assert lines[0].startswith("vllm serve ")
+
+
+def test_the_dry_run_shows_an_empty_patch_opt_in(capsys: pytest.CaptureFixture[str]) -> None:
+    """A recipe that opts into no patch prints the empty value a real serve clears the environment to."""
+    assert run_console(["serve", SHIPPED, "--dry-run"]) == 0
+    assert capsys.readouterr().out.splitlines()[3] == "engine environment: RCP_NDCG_VLLM_PATCHES="
+
+
 def test_the_dry_run_prints_the_argv_the_identity_and_the_applied_overrides(capsys: pytest.CaptureFixture[str]) -> None:
     code = run_console(["serve", SHIPPED, "--dry-run", "--set", "serve.max_num_seqs=64"])
     assert code == 0
@@ -561,6 +625,130 @@ def test_an_io_processor_plugin_is_config_resolved_not_installed_by_name(tmp_pat
         serve_extra="  io_processor_plugin: checkpoint-io-plugin",
     )
     assert run_console(["serve", str(directory), "--dry-run"]) == 0
+
+
+def test_the_plugin_check_probes_the_engines_interpreter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ``vllm`` on PATH from another environment decides the engine's imports: the presence check runs in
+    the engine interpreter the script's shebang names, not in the console's, so a foreign engine without the
+    plugin is refused before it starts."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    foreign_python = tmp_path / "foreign-python"
+    foreign_python.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    foreign_python.chmod(0o755)
+    vllm = tmp_path / "vllm"
+    vllm.write_text(f"#!{foreign_python}\n", encoding="utf-8")
+    vllm.chmod(0o755)
+    monkeypatch.setattr(serve_module.shutil, "which", lambda name: str(vllm) if name == "vllm" else None)
+    monkeypatch.setattr(serve_module.os, "execvp", lambda *_args: pytest.fail("the engine must not start"))
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_console(["serve", "harrier-oss-v1-27b"])
+    message = str(excinfo.value)
+    assert "does not carry" in message and "install it first: pip install --no-deps" in message
+
+
+def test_the_plugin_check_passes_when_the_engines_interpreter_carries_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The console's own environment is not the one that counts: an engine script pointing at an interpreter
+    that carries the distribution proceeds to exec."""
+    import sys
+
+    import rcp_ndcg_vllm.serve as serve_module
+
+    vllm = tmp_path / "vllm"
+    vllm.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+    vllm.chmod(0o755)
+    monkeypatch.setattr(serve_module.shutil, "which", lambda name: str(vllm) if name == "vllm" else None)
+
+    def _exec(*_args: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(serve_module.os, "execvp", _exec)
+    with pytest.raises(SystemExit):
+        run_console(["serve", "harrier-oss-v1-27b"])
+
+
+def test_the_plugin_check_falls_back_to_this_interpreter_without_a_shebang(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An executable with no readable interpreter (a binary) leaves the check where it was: the console's own
+    environment, the documented one-interpreter install."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    vllm = tmp_path / "vllm"
+    vllm.write_bytes(b"\x7fELF not really an executable")
+    monkeypatch.setattr(serve_module.shutil, "which", lambda name: str(vllm) if name == "vllm" else None)
+
+    def _exec(*_args: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(serve_module.os, "execvp", _exec)
+    with pytest.raises(SystemExit):
+        run_console(["serve", "harrier-oss-v1-27b"])
+
+
+def test_the_plugin_spec_parses_a_ranged_url_or_non_canonical_spec() -> None:
+    """A ``serve.plugin`` is a pip spec: the name is the leading requirement name, PEP 503-normalised, and
+    a ranged, URL or underscore-spelled spec names the same distribution as the bare canonical one."""
+    from rcp_ndcg_vllm.recipe import plugin_distribution_name
+
+    assert plugin_distribution_name("rcp-ndcg-vllm>=0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp-ndcg-vllm~=0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp_ndcg_vllm==0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp-ndcg-vllm[extra]==0.0.1") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("rcp-ndcg-vllm @ file:///x.whl") == "rcp-ndcg-vllm"
+    assert plugin_distribution_name("  rcp-ndcg-vllm  ") == "rcp-ndcg-vllm"
+    with pytest.raises(RecipeError, match="serve.plugin"):
+        plugin_distribution_name("https://example.invalid/rcp_ndcg_vllm-0.0.1-py3-none-any.whl")
+
+
+def test_a_non_canonical_plugin_spelling_still_gets_the_architecture_check() -> None:
+    """The underscore spelling is the same distribution: a plugin architecture the wheel does not register is
+    refused, not silently loaded because the exact-string comparison missed."""
+    from pydantic import ValidationError
+    from rcp_ndcg_vllm.recipe import ServeConfig
+
+    base = {"runner": "pooling", "dtype": "bfloat16", "max_model_len": 1024}
+    with pytest.raises(ValidationError, match="PplxTypo"):
+        ServeConfig(**base, plugin="rcp_ndcg_vllm==0.0.1", plugin_architectures=("PplxTypo",))
+
+
+def test_the_missing_plugin_hint_quotes_the_spec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The install line is pasted into a shell: a ranged spec must be quoted, or ``>=`` redirects."""
+    import rcp_ndcg_vllm.serve as serve_module
+
+    monkeypatch.setattr(serve_module.shutil, "which", lambda _name: None)
+    directory = _write_family(tmp_path, family="foreign-plugin", serve_extra="  plugin: some-other-plugin>=1.0")
+    with pytest.raises(SystemExit) as excinfo:
+        run_console(["serve", str(directory)])
+    assert "pip install --no-deps 'some-other-plugin>=1.0'" in str(excinfo.value)
+
+
+def test_extra_args_may_not_repeat_a_flag_serve_argv_renders(tmp_path: Path) -> None:
+    """``extra_args`` is for flags the schema has no field for: a duplicate lands after the rendered value and
+    the engine's last-wins parsing silently overrides ``--set``, the budget check or ``--revision``.  The
+    refusal names the flag and the schema field to use instead."""
+    directory = _write_family(
+        tmp_path,
+        family="colliding",
+        serve_extra='  extra_args: ["--max-model-len", "1024", "--revision", "main"]',
+    )
+    with pytest.raises(RecipeError) as excinfo:
+        load_recipe(directory)
+    message = str(excinfo.value)
+    assert "--max-model-len" in message and "serve.max_model_len" in message
+    assert "extra_args" in message
+
+
+def test_extra_args_keep_the_flags_the_schema_has_no_field_for() -> None:
+    """The shipped extra flags (quantization, the KV-cache dtype, the media-io kwargs) are not rendered by
+    ``serve_argv`` and stay verbatim."""
+    recipe = load_recipe("gemma-4-31b-it-nvfp4")
+    assert recipe.serve.extra_args, "the fixture recipe carries verbatim extra flags"
+    argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
+    assert "--quantization" in argv
 
 
 def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(

@@ -83,10 +83,7 @@ notes: 'Generated for the stratum cell modality=text, length=mixed, batch=mixed_
   keep queries within the share). Over-cap documents are cut client-side (on_overflow: cut; content spans
   only, the frame and its anchor re-attached): post-cut rendered tokens d3 8192. The wave asserts every
   sent prompt is at most 8192 tokens and ends with the 9-token assistant suffix (ids 151645+198+151644+77091+198+151667+271+151668+271)
-  (anchor: last). This recipe declares reference.known_deviations [anchor_drop_over_cap]: over the cap
-  the reference truncates the pair string longest_first (8144 pair tokens, suffix re-attached) while the
-  served path cuts the query''s share first, so the two may keep different content tokens; the wave records
-  both scores and reports over-cap pairs separately, without the score gate. Two queries (the second deliberately
+  (anchor: last). This recipe declares reference.known_deviations [over_cap_cut_differs]: over the cap the reference truncates the pair string longest_first (8144 pair tokens, suffix re-attached) while the served path cuts the query''s share first, so the two may keep different content tokens. Two queries (the second deliberately
   unrelated): the scores matrix has two rows, one per query in inputs.queries order, one column per document.
   Scores are probability-scale (use_activation true; the served head scores sigmoid, the reference softmax([no,
   yes])[yes] of token ids 2152/9693): expected.values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; the wave conformance run compares the served engine against them), gated at the declared abs 0.02 (the stage-2 gate

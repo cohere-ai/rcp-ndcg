@@ -58,6 +58,24 @@ def test_a_missing_fake_names_the_hint() -> None:
         fake_engine_for("no-such-recipe")
 
 
+def test_the_fake_docs_name_the_emulator_route() -> None:
+    """testpkg-8: the docs said no model-level fake ships while 12 verified emulators ship; the text now
+    says ``target='fake'`` covers the registered fakes and names the ``fake://`` route the committed
+    corpora's emulators reach a run through."""
+    import rcp_ndcg_test.fakes as fakes_module
+
+    doc = fakes_module.__doc__ or ""
+    assert "No model-level fake ships" not in doc
+    assert "fake://vllm-0.31.0/<recipe>" in doc
+    with pytest.raises(ConformanceError) as excinfo:
+        fake_engine_for("no-such-recipe")
+    assert "fake://vllm-0.31.0/<recipe>" in str(excinfo.value)
+
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    assert "No model-level fake ships" not in readme
+    assert "fake://vllm-0.31.0/<recipe>" in readme
+
+
 def test_a_second_fake_for_one_recipe_is_refused() -> None:
     register_fake_engine(_MinimalFake())
     with pytest.raises(ConformanceError, match="already registered"):

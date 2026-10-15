@@ -320,6 +320,29 @@ def test_stage2_rerank_through_the_product_client(tmp_path: Path) -> None:
         engine.stop()
 
 
+def test_stage2_serves_under_the_given_served_model_name(tmp_path: Path) -> None:
+    """testpkg-9: ``stage2_scores`` declared ``served_model_name`` and never read it, so a caller serving the
+    recipe under an alias got 404s pointing away from the ignored argument.  Every request now carries the
+    alias (and the recipe id when none is given)."""
+    recipe = load("fixture-rerank-pointwise")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        recorder: list[dict[str, Any]] = []
+        document = stage2_scores(
+            recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url, served_model_name="alias", recorder=recorder
+        )
+        assert document["passed"] is True, document["gates"]
+        assert recorder, "the recorder carries the captured exchanges"
+        assert {exchange["request_body"].get("model") for exchange in recorder} == {"alias"}
+
+        plain: list[dict[str, Any]] = []
+        stage2_scores(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url, recorder=plain)
+        assert {exchange["request_body"].get("model") for exchange in plain} == {recipe.id}
+    finally:
+        engine.stop()
+
+
 def test_stage2_embed_through_the_product_client_compares_every_text(tmp_path: Path) -> None:
     """Stage 2 sends through the product's EmbeddingClient: every document's vectors compare."""
     recipe = load("fixture-embed")
@@ -435,6 +458,13 @@ def test_stage2_raises_a_typed_error_on_a_short_reference(tmp_path: Path) -> Non
             full.replace(scores_line, scores_line.replace("]})", "][:-1]})")),
             "scores align to the documents as given",
         ),
+        "non-finite": (
+            full.replace(
+                'scores": [score(folded, document) for document in row["documents"]]',
+                'scores": [float("nan") for _document in row["documents"]]',
+            ),
+            "non-finite reference score",
+        ),
     }
     engine = start_stub("--tokenizer", str(TOKENIZER))
     try:
@@ -453,6 +483,35 @@ def test_stage2_raises_a_typed_error_on_a_short_reference(tmp_path: Path) -> Non
                 stage2_scores(load_recipe(directory), pairs, REFERENCE_PYTHON, base_url=engine.base_url)
     finally:
         engine.stop()
+
+
+def test_a_non_finite_rerank_delta_fails_every_gate_row() -> None:
+    """testpkg-1: ``max()`` ignores a NaN that is not first, the p99 fraction counts one as merely not
+    within, and ``_rerank_summary`` never read ``within`` -- a NaN score on either side could pass stage 2
+    with ``max_abs_delta 0.0``.  Every gate row fails, and the reported maximum is the NaN."""
+    import math
+
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    gates = resolve_gates(load("fixture-rerank-pointwise"))
+    per_document: list[dict[str, Any]] = [
+        {
+            "query_index": 0,
+            "document_index": index,
+            "served": 0.5,
+            "reference": 0.5,
+            "abs_delta": float("nan") if index == 50 else 0.0,
+            "within": index != 50,
+        }
+        for index in range(200)
+    ]
+    per_query = [{"query_index": 0, "kendall_tau": 1.0, "within": True}]
+    for scale in ("probability", "logit", "cosine"):
+        summary = stages_module._rerank_summary(per_document, per_query, gates, scale)
+        assert summary["passed"] is False, scale
+        assert all(row["passed"] is False for row in summary["gates"]), (scale, summary["gates"])
+        assert math.isnan(summary["abs_delta_max"]), scale
 
 
 def test_stage2_vector_over_cap_carve_out_when_declared(tmp_path: Path) -> None:
@@ -499,6 +558,33 @@ def test_a_cuda_reference_recipe_refuses_a_cpu_stage_2(tmp_path: Path) -> None:
         recipe, base_url=None, pairs_path=str(pairs), out_dir=str(tmp_path / "out1"), stages=[1], device="cpu"
     )
     assert document["stage1"]["passed"] is True
+
+
+def test_the_report_records_no_hostname_and_names_the_pairs_file(tmp_path: Path) -> None:
+    """testpkg-7: EQUIVALENCE.md claimed the base URL was replaced and no hostname recorded, but ``run``
+    stored it verbatim (and the stage-1 captured heads carried it too); the header's pairs line was always
+    '?' because ``run`` never set ``document['pairs']``."""
+    from rcp_ndcg_test.equivalence import run
+
+    recipe = load("fixture-rerank-pointwise")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        document = run(
+            recipe,
+            base_url=engine.base_url,
+            pairs_path=str(pairs),
+            out_dir=str(tmp_path / "out"),
+            stages=[1],
+        )
+    finally:
+        engine.stop()
+    assert document["base_url"] == "http://engine"
+    text = (tmp_path / "out" / "equivalence.json").read_text(encoding="utf-8")
+    markdown = (tmp_path / "out" / "EQUIVALENCE.md").read_text(encoding="utf-8")
+    assert "127.0.0.1" not in text, text[:400]
+    assert "127.0.0.1" not in markdown, markdown[:400]
+    assert "- pairs: pairs.jsonl" in markdown
 
 
 def test_run_records_the_reference_device_and_its_gpu(tmp_path: Path) -> None:
@@ -1359,6 +1445,60 @@ def test_a_zero_vector_pair_is_an_agreement_not_a_cosine_failure() -> None:
     assert stages_module._vector_summary(recipe, per_vector, gates)["passed"] is False
 
 
+def test_an_over_cap_count_mismatch_is_reported_not_gated_when_declared() -> None:
+    """testpkg-2: the per-text count mismatch was appended to ``per_vector`` before the over-cap exemption,
+    so a declared ``over_cap_cut_differs`` recipe failed stage 2 on exactly the text the deviation declares
+    non-gating, and the row was missing from the over_cap table.  Declared: report the mismatch with both
+    counts and gate nothing.  Undeclared: keep the gating row and name it in the table."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    recipe = load("fixture-multi-vector")
+    gates = resolve_gates(recipe)
+    served = [[[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]]
+    reference = [[[1.0, 0.0], [0.0, 1.0]]]
+
+    per_vector: list[dict[str, Any]] = []
+    over_cap: list[dict[str, Any]] = []
+    stages_module._compare_shape(
+        recipe,
+        served,
+        reference,
+        0,
+        "document",
+        per_vector,
+        gates,
+        cut_flags=[True],
+        deviation=True,
+        over_cap=over_cap,
+    )
+    assert per_vector == []
+    assert len(over_cap) == 1
+    assert over_cap[0]["n_vectors"] == 3 and over_cap[0]["n_reference_vectors"] == 2, over_cap[0]
+
+    per_vector = []
+    over_cap = []
+    stages_module._compare_shape(
+        recipe,
+        served,
+        reference,
+        0,
+        "document",
+        per_vector,
+        gates,
+        cut_flags=[True],
+        deviation=False,
+        over_cap=over_cap,
+    )
+    assert len(per_vector) == 1 and per_vector[0]["within"] is False
+    assert len(over_cap) == 1
+
+    # the remaining in-cap rows still gate and pass
+    per_vector = []
+    stages_module._compare_shape(recipe, [[[1.0, 0.0]]], [[1.0, 0.0]], 1, "document", per_vector, gates)
+    assert stages_module._vector_summary(recipe, per_vector, gates)["passed"] is True
+
+
 def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
     """A served vector whose width differs from the reference's is a named gate failure carrying both
     widths -- never a ValueError out of the cosine (MRL's declared dimension makes this live: a served
@@ -1375,6 +1515,62 @@ def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
     assert "2-wide" in per_vector[0]["note"] and "3-wide" in per_vector[0]["note"]
     summary = stages_module._vector_summary(recipe, per_vector, gates)
     assert summary["passed"] is False
+
+
+def test_the_rerank_anchor_audit_fails_a_cut_on_an_in_budget_pair() -> None:
+    """testpkg-6: the audit's referent promises 'no in-budget pair may be cut' but nothing checked it (the
+    ``entry.get('over_length')`` lookup read a key the probe entry never carried).  A recorded budget cut of
+    a pair whose uncut render fits the budget fails; the same cut of an over-budget pair does not, and an
+    injected over-length sample is not audited for it."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+
+    recipe = load("fixture-rerank-pointwise")
+    tokenizer = tokenizer_of(recipe)
+
+    def probe(
+        *, over_length: bool, original: int | None, budget: int | None, mechanisms: tuple[str, ...] = ("budget_cut",)
+    ) -> dict[str, Any]:
+        return {
+            "rows": [
+                {
+                    "over_length": over_length,
+                    "cuts": 1,
+                    "changes": [
+                        {
+                            "input_id": "0",
+                            "mechanisms": list(mechanisms),
+                            "original_request_tokens": original,
+                            "budget_tokens": budget,
+                        }
+                    ],
+                    "shapes": {
+                        "pair": {
+                            "query": "q",
+                            "queries": ["q"],
+                            "documents": ["a short document"],
+                            "documents_changed": [True],
+                            "query_changed": False,
+                        }
+                    },
+                }
+            ]
+        }
+
+    in_budget = stages_module._anchor_check(recipe, probe(over_length=False, original=100, budget=160), tokenizer)
+    assert in_budget["passed"] is False, in_budget
+    assert any(failure["check"] == "in_budget_cut" for failure in in_budget["failures"]), in_budget["failures"]
+
+    over_budget = stages_module._anchor_check(recipe, probe(over_length=False, original=200, budget=160), tokenizer)
+    assert over_budget["passed"] is True, over_budget["failures"]
+    injected = stages_module._anchor_check(recipe, probe(over_length=True, original=100, budget=160), tokenizer)
+    assert injected["passed"] is True, injected["failures"]
+    # A declared substitution (an empty document sent as the recipe's placeholder) is not a pair-budget cut:
+    # it carries no measurement and must not fail the audit.
+    substituted = stages_module._anchor_check(
+        recipe, probe(over_length=False, original=None, budget=None, mechanisms=("empty_doc",)), tokenizer
+    )
+    assert substituted["passed"] is True, substituted["failures"]
 
 
 def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:

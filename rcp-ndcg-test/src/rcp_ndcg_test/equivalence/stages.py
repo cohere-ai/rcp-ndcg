@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -299,7 +300,7 @@ def _probe(
     for position, row in enumerate([*sampled, *(media_template_rows or ())]):
         start = len(client.processing)
         shapes = [str(row["shape"])] if "shape" in row else fitting.declared_shapes(recipe)
-        entry: dict[str, Any] = {"shapes": {}}
+        entry: dict[str, Any] = {"shapes": {}, "over_length": bool(row.get("over_length"))}
         try:
             if row.get("media_template"):
                 entry["media_template"] = True
@@ -581,13 +582,19 @@ def _probe_texts(entry: dict[str, Any]) -> list[str]:
 
 
 def _captured_heads(capture: Capture, sampled: list[dict[str, Any]]) -> dict[str, Any]:
-    """The captured requests, summarised: per exchange the route and the texts' heads (no full bodies)."""
+    """The captured requests, summarised: per exchange the route and the texts' heads (no full bodies).
+
+    The URL carries the placeholder host (the recorder's own rule, one home): the report never records a
+    hostname, and the route stays visible.
+    """
+    from ..record import placeholder_url
+
     heads: list[dict[str, Any]] = []
     for exchange in capture.exchanges[:8]:
         texts = capture.texts(exchange)
         heads.append(
             {
-                "url": exchange["url"],
+                "url": placeholder_url(exchange["url"]),
                 "status": exchange["status"],
                 "texts_head": [text[:_SNIPPET] for text in _flatten(texts)],
                 **({"media": texts["media"]} if any(texts.get("media") or ()) else {}),
@@ -636,7 +643,15 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
                 checked += _audit_rerank_span(
-                    index, shape, shape_body, (share, document_cap), max_tokens, entry, failures, tokenizer
+                    index,
+                    shape,
+                    shape_body,
+                    (share, document_cap),
+                    max_tokens,
+                    entry,
+                    failures,
+                    tokenizer,
+                    over_length=bool(entry.get("over_length")),
                 )
                 continue
             flag = _add_specials_flag(recipe, shape)
@@ -864,9 +879,18 @@ def _audit_rerank_span(
     entry: dict[str, Any],
     failures: list[dict[str, Any]],
     tokenizer: Any,
+    *,
+    over_length: bool = False,
 ) -> int:
     """The rerank side of the anchor audit, on the captured spans: the settle-once query, the declared caps
-    (``caps``: the query's share and the per-document cap) and the budget."""
+    (``caps``: the query's share and the per-document cap), the budget and the in-budget cut check.
+
+    ``over_length`` marks the harness's own over-length samples (their cut is the point of the audit); every
+    other row is a real pairs row, and a document the client changed there must have been over the pair
+    budget: the change record's measured uncut request must exceed its budget.  A changed document whose
+    record shows the uncut pair fitting the budget -- or a change with no record at all -- fails
+    (``in_budget_cut``), because a cut may only shorten what the budget refuses whole.
+    """
     share, document_cap = caps
     checked = 0
     queries = shape_body.get("queries") or ([shape_body["query"]] if shape_body.get("query") else [])
@@ -916,6 +940,36 @@ def _audit_rerank_span(
                     "document_tokens": tokenizer.count(document),
                     "bound": max_tokens,
                     "text": document[:_SNIPPET],
+                }
+            )
+    if not over_length:
+        # No cut on an in-budget pair: a changed document of a real pairs row must have been cut by the pair
+        # budget, and the change record's own measurement is the evidence (the uncut request it reports must
+        # exceed the budget it measured against).  A declared substitution (empty_doc) or a declared cap or
+        # media change is not a pair-budget cut and is not gated here; a change with no record cannot be
+        # cleared: the audit fails closed.
+        records = {record.get("input_id"): record for record in entry.get("changes", [])}
+        for position, changed in enumerate(shape_body.get("documents_changed") or []):
+            if not changed:
+                continue
+            record = records.get(str(position))
+            if record is not None and "budget_cut" not in (record.get("mechanisms") or []):
+                continue
+            original = None if record is None else record.get("original_request_tokens")
+            budget = None if record is None else record.get("budget_tokens")
+            if original is not None and budget is not None and original > budget:
+                continue  # the pair was over budget: the cut was the budget's
+            failures.append(
+                {
+                    "shape": shape,
+                    "check": "in_budget_cut",
+                    "row": row_index,
+                    "document_index": position,
+                    "uncut_request_tokens": original,
+                    "budget_tokens": budget,
+                    "note": "the client changed a document of a row that is not an over-length sample, "
+                    "and the change's uncut request does not exceed its budget: a budget cut may only "
+                    "shorten a pair the budget refuses whole",
                 }
             )
     return checked
@@ -1983,7 +2037,9 @@ def stage2_scores(
     device the reference runs on (``reference_gpu`` pins it to that physical GPU via CUDA_VISIBLE_DEVICES;
     GPU-E1: the wave's references ran on CPU, where the Qwen3.5-based references cannot run at all and
     every precision-class verdict compared a CPU reference with a bf16 GPU engine) -- a recipe whose
-    ``reference.device`` requires ``cuda`` refuses a CPU reference run, with the way out.
+    ``reference.device`` requires ``cuda`` refuses a CPU reference run, with the way out.  ``served_model_name``
+    is the engine's ``--served-model-name`` (``None``: the recipe's id), carried as the endpoint's ``model`` so
+    a recipe served under an alias is talked to under that alias.
     """
     if device == "cpu" and reference_of(recipe).device == "cuda":
         raise HarnessError(
@@ -2032,9 +2088,9 @@ def stage2_scores(
     )
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":
-        summary = _rerank_stage2(recipe, rows, reference, base_url, gates, recorder)
+        summary = _rerank_stage2(recipe, rows, reference, base_url, gates, recorder, served_model_name)
     else:
-        summary = _vector_stage2(recipe, rows, reference, base_url, gates, recorder)
+        summary = _vector_stage2(recipe, rows, reference, base_url, gates, recorder, served_model_name)
     summary["reference_outputs"] = outputs
     summary["reference_environment"] = reference_environment or {}
     summary["media_rows"] = media_report
@@ -2086,6 +2142,8 @@ def _reference_outputs(
                 mode=mode,
                 reference=reference_of(recipe).model_dump(mode="json"),
                 client=recipe.client,
+                serve=recipe.serve.model_dump(mode="json"),
+                reference_python=reference_python,
             )
             stored, changed = load_stored(store, key)
             if stored is not None:
@@ -2157,18 +2215,20 @@ def _rerank_stage2(
     base_url: str,
     gates: Any,
     recorder: Any | None,
+    served_model_name: str | None = None,
 ) -> dict[str, Any]:
     """Rerank scores from the served engine through the product's :class:`RerankClient`.
 
     One client call per row: the client folds the query per the config's instruction mode, settles the shared
     query span once, and fits every pair into the declared budget -- the wire carries exactly what the served
-    path ships.  The pairs the client changed (a processing record: a change to the document's row, or the
-    shared query's settlement, which changes every pair of its call) are excluded from the gates and reported
-    separately under a declared over-cap deviation; the Kendall tau covers the uncut subset of every gated
-    query.
+    path ships.  ``served_model_name`` is the engine's ``--served-model-name`` (``None``: the recipe's id),
+    carried as the endpoint's ``model``.  The pairs the client changed (a processing record: a change to the
+    document's row, or the shared query's settlement, which changes every pair of its call) are excluded from
+    the gates and reported separately under a declared over-cap deviation; the Kendall tau covers the uncut
+    subset of every gated query.
     """
     deviation = reference_of(recipe).over_cap_deviation is not None
-    client, capture = role_client(recipe, base_url)
+    client, capture = role_client(recipe, base_url, served_model_name=served_model_name)
     if len(rows) > len(reference.get("rows", [])):
         raise HarnessError(
             f"the reference emitted {len(reference.get('rows', []))} score row(s) for {len(rows)} pairs "
@@ -2185,6 +2245,12 @@ def _rerank_stage2(
                 f"the reference emitted {len(reference_scores)} score(s) for pairs row {row_index} with "
                 f"{len(row['documents'])} document(s): scores align to the documents as given"
             )
+        for document_index, value in enumerate(reference_scores):
+            if not math.isfinite(value):
+                raise HarnessError(
+                    f"the reference's score for pairs row {row_index} document {document_index} is {value!r}: "
+                    "a non-finite reference score (a bf16 overflow?) cannot be compared"
+                )
         start = len(client.processing)
         query, documents = _client_sides(row)
         result = client.rerank(query, documents, instruction=row.get("instruction"))
@@ -2293,12 +2359,25 @@ def _changed_rows(client: Any, start: int, n_documents: int) -> list[bool]:
     return flags
 
 
+def _worst(values: list[float]) -> float:
+    """The largest value, propagating a non-finite one: ``max`` ignores a NaN that is not first."""
+    if any(not math.isfinite(value) for value in values):
+        return float("nan")
+    return max(values) if values else 0.0
+
+
 def _rerank_summary(
     per_document: list[dict[str, Any]], per_query: list[dict[str, Any]], gates: Any, scale: str
 ) -> dict[str, Any]:
-    """Aggregate the per-document deltas and per-query taus into the gate rows of the score's scale."""
+    """Aggregate the per-document deltas and per-query taus into the gate rows of the score's scale.
+
+    A non-finite delta (a NaN or infinity on either side) fails every gate row: the finite-only reductions
+    would otherwise drop it, and stage 2 would report ``passed`` with ``max_abs_delta 0.0`` for a run whose
+    reference or engine produced a NaN.
+    """
     deltas = [entry["abs_delta"] for entry in per_document]
-    worst = max(deltas) if deltas else 0.0
+    non_finite = any(not math.isfinite(delta) for delta in deltas)
+    worst = _worst(deltas)
     taus = [entry["kendall_tau"] for entry in per_query if entry["kendall_tau"] is not None]
     median_tau = float(np.median(taus)) if taus else None
     within_p99 = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
@@ -2306,7 +2385,7 @@ def _rerank_summary(
     )
     tau_row = {
         "gate": "kendall_tau_median",
-        "passed": bool(median_tau is not None and median_tau >= gates.tau_min),
+        "passed": bool(not non_finite and median_tau is not None and median_tau >= gates.tau_min),
         "value": median_tau,
         "bound": gates.tau_min,
         "referent": "median per-query Kendall tau between served and reference scores (under-cap pairs)",
@@ -2315,7 +2394,7 @@ def _rerank_summary(
         gate_rows = [
             {
                 "gate": "p99_documents_within",
-                "passed": bool(within_p99 >= 0.99),
+                "passed": bool(not non_finite and within_p99 >= 0.99),
                 "value": within_p99,
                 "bound": 0.99,
                 "referent": f"fraction of documents with |served - reference| <= {gates.prob_p99_abs}",
@@ -2331,7 +2410,7 @@ def _rerank_summary(
         ]
     elif scale == "logit":
         ratios = [entry["abs_delta"] / (1.0 + abs(entry["reference"])) for entry in per_document]
-        worst_ratio = max(ratios) if ratios else 0.0
+        worst_ratio = _worst(ratios)
         gate_rows = [
             {
                 "gate": "max_relative_delta",
@@ -2383,6 +2462,7 @@ def _vector_stage2(
     base_url: str,
     gates: Any,
     recorder: Any | None,
+    served_model_name: str | None = None,
 ) -> dict[str, Any]:
     """Vectors from the served engine through the product's role clients, against the reference's vectors.
 
@@ -2405,7 +2485,7 @@ def _vector_stage2(
     selection = recipe.client.get("mrl_dim")
     if selection is None:
         selection = recipe.client.get("dimensions")
-    client, capture = role_client(recipe, base_url, full_width=True)
+    client, capture = role_client(recipe, base_url, full_width=True, served_model_name=served_model_name)
     head, dims = _mrl_gate(client.config, selection)
     from rcp_ndcg.inference.types import EncodeRole
 
@@ -2564,13 +2644,29 @@ def _compare_shape(
             else [reference_item]
         )
         if len(served_matrix) != len(expected_matrix):
+            note = f"the engine returned {len(served_matrix)} vector(s), the reference {len(expected_matrix)}"
+            if over and over_cap is not None:
+                # The count mismatch is an over-cap difference like any other: the declared deviation
+                # reports it in the table (both counts) instead of gating it; undeclared, the gating row
+                # stays and the table names it too, as the cosine path does.
+                over_cap.append(
+                    {
+                        "referent": f"row {row_index} {role} {index}",
+                        "query": str((row or {}).get("query", ""))[:_SNIPPET],
+                        "n_vectors": len(served_matrix),
+                        "n_reference_vectors": len(expected_matrix),
+                        "note": note,
+                    }
+                )
+                if deviation:
+                    continue
             per_vector.append(
                 {
                     "referent": f"row {row_index} {role} {index} count",
                     "cosine": None,
                     "within": False,
                     "over_cap": over,
-                    "note": f"the engine returned {len(served_matrix)} vector(s), the reference {len(expected_matrix)}",
+                    "note": note,
                 }
             )
             continue

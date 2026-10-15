@@ -4,9 +4,9 @@ command of the lean serving package.
 It builds the exact ``vllm serve`` argv of the recipe (the template path from the package data, the media
 flags, the pooler config) with :func:`~rcp_ndcg_vllm.recipe.serve_argv` and execs it — the engine image
 runs this instead of a hand-written command line (``serve: {command: ["rcp-ndcg-vllm", "serve", "<id>"]}`` in a
-run config). ``--dry-run`` prints the argv, the recipe's identity and the applied deployment overrides instead;
-a real serve logs the identity and the overrides on stderr before exec (the argv is the engine's own record,
-which the corpus provenance keeps).
+run config). ``--dry-run`` prints the argv, the recipe's identity, the applied deployment overrides and the
+engine environment's patch opt-in instead; a real serve logs the identity and the overrides on stderr before
+exec (the argv is the engine's own record, which the corpus provenance keeps).
 
 ``<recipe>`` is a shipped recipe id, or a **family directory of the operator's own** (``./my-family/``, with
 ``--variant <id>`` when it declares more than one size): such a recipe loads through the same schema, is marked
@@ -19,8 +19,9 @@ unshipped and ``unverified``, and is identified by the content hash of its resol
 ``serve.max_num_batched_tokens``. A content field
 (model, revision, dtype, the pooler config, the templates, the hf overrides, a patch) is refused by name: a
 different revision or content is a different variant. A recipe that declares ``serve.plugin`` the engine
-environment does not carry is refused before anything starts, with the exact ``pip install --no-deps`` line that
-prepares it.
+environment does not carry -- judged in the interpreter the ``vllm`` executable's shebang names, so a
+``vllm`` from another environment is judged by its own -- is refused before anything starts, with the exact
+``pip install --no-deps`` line that prepares it.
 
 The module needs only the stdlib and this package's own imports (pydantic, PyYAML): it runs inside a stock
 engine image where rcp-ndcg is absent.
@@ -33,6 +34,7 @@ import importlib.metadata
 import os
 import shlex
 import shutil
+import subprocess
 import sys
 
 from .errors import RecipeError
@@ -44,18 +46,62 @@ _DEFAULT_PORT = 8000
 """The port a serve without ``--port`` and without a ``serve.port`` override serves on."""
 
 
-def _check_plugin(spec: str | None) -> None:
-    """Refuse a declared ``serve.plugin`` (a pip spec) missing from this environment, with the install line."""
+def _engine_python(executable: str | None) -> str | None:
+    """The interpreter the engine executable's shebang names, or ``None`` when it cannot be read.
+
+    ``vllm`` is normally a console script whose first line is ``#!<python>`` (optionally through
+    ``/usr/bin/env``); that interpreter is the environment the engine imports its plugin from.  A binary,
+    an unreadable file, an unresolvable ``env`` argument or a missing interpreter gives ``None``: the
+    caller then checks the console's own environment, the documented one-interpreter install.
+    """
+    if executable is None:
+        return None
+    try:
+        with open(executable, "rb") as handle:
+            first = handle.readline(4096)
+    except OSError:
+        return None
+    if not first.startswith(b"#!"):
+        return None
+    words = first[2:].decode("utf-8", "replace").strip().split()
+    if not words:
+        return None
+    if os.path.basename(words[0]) == "env":
+        if len(words) < 2:
+            return None
+        resolved = shutil.which(words[1])
+        return resolved if resolved is not None and os.path.exists(resolved) else None
+    return words[0] if os.path.exists(words[0]) else None
+
+
+def _check_plugin(spec: str | None, *, engine_python: str | None = None) -> None:
+    """Refuse a declared ``serve.plugin`` (a pip spec) missing from the engine's environment.
+
+    The check runs in ``engine_python`` -- the interpreter the engine executable's shebang names, so a
+    ``vllm`` from another environment is judged by its own environment -- and falls back to this
+    interpreter when the engine executable has no readable shebang (the documented install puts both in
+    one image).  The refusal is a :class:`SystemExit` with the exact install line.
+    """
     if spec is None:
         return
     name = plugin_distribution_name(spec)
-    try:
-        importlib.metadata.distribution(name)
-    except importlib.metadata.PackageNotFoundError:
-        raise SystemExit(
-            f"recipe names plugin {spec!r}, which this environment does not carry.\n"
-            f"install it first: pip install --no-deps {spec}"
-        ) from None
+    if engine_python is not None:
+        probe = [engine_python, "-c", f"import importlib.metadata as m; m.distribution({name!r})"]
+        if subprocess.run(probe, capture_output=True).returncode == 0:
+            return
+        where = f"the engine environment ({engine_python})"
+    else:
+        try:
+            importlib.metadata.distribution(name)
+        except importlib.metadata.PackageNotFoundError:
+            pass
+        else:
+            return
+        where = "this environment"
+    raise SystemExit(
+        f"recipe names plugin {spec!r}, which {where} does not carry.\n"
+        f"install it first: pip install --no-deps {shlex.quote(spec)}"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -103,6 +149,17 @@ def _served_lines(recipe: Recipe, overrides: dict[str, object]) -> list[str]:
     return [f"identity: {recipe.identity}", f"deployment overrides: {_overrides_text(overrides)}"]
 
 
+def _patch_environment_text(recipe: Recipe) -> str:
+    """The engine environment a serve sets for the recipe's declared patches, as one ``NAME=value`` line.
+
+    ``--dry-run`` prints it beside the argv: the argv alone is not the engine command for a patched recipe
+    (the patch modules are inert unless the engine process carries the opt-in).
+    """
+    from .patches import PATCHES_ENV, patches_env_value
+
+    return f"{PATCHES_ENV}={patches_env_value(recipe.serve.patches)}"
+
+
 def _render_patch_environment(recipe: Recipe) -> None:
     """Set the engine's patch opt-in from the recipe's declared ``serve.patches``.
 
@@ -130,18 +187,13 @@ def run_console(argv: list[str] | None = None) -> int:
     Inputs: the console argv (default :data:`sys.argv`).  Outputs: the exit status — 0 from ``--dry-run`` and
     never from a real serve (:func:`os.execvp` replaces this process); 2 for usage, 1 for a bad recipe, a
     refused deployment override or a missing plugin, each message on stderr.  ``--dry-run`` prints the argv
-    first (one shell-quoted line), then the identity and the applied overrides; a real serve logs those two
-    lines on stderr.
+    first (one shell-quoted line), then the identity, the applied overrides and the engine environment's patch
+    opt-in; a real serve logs those record lines on stderr and sets the variable before exec.
     """
     args = build_parser().parse_args(argv)
 
     try:
         recipe = load_recipe(args.recipe_id, variant=args.variant)
-        # serve.plugin is the pip package the engine imports through vllm.general_plugins; it must be
-        # installed in this environment.  serve.io_processor_plugin is NOT checked here: it names the
-        # checkpoint's IO-processor plugin, resolved through the checkpoint's own config and recorded by
-        # the harness (jobs.plugins), never an installed distribution.
-        _check_plugin(recipe.serve.plugin)
         overrides = parse_deployment_overrides(args.set)
         port = args.port if args.port is not None else _DEFAULT_PORT
         command = serve_argv(recipe, port=port, served_model_name=recipe.id, deployment=overrides)
@@ -149,15 +201,24 @@ def run_console(argv: list[str] | None = None) -> int:
         print(f"rcp-ndcg-vllm: {error}", file=sys.stderr)
         return 1
 
+    # serve.plugin is the pip package the engine imports through vllm.general_plugins; the check runs in the
+    # interpreter the engine executable's shebang names, so a vllm from another environment is judged by the
+    # environment that will import the plugin.  serve.io_processor_plugin is NOT checked here: it names the
+    # checkpoint's IO-processor plugin, resolved through the checkpoint's own config and recorded by
+    # the harness (jobs.plugins), never an installed distribution.
+    engine = shutil.which(command[0])
+    _check_plugin(recipe.serve.plugin, engine_python=_engine_python(engine))
+
     if args.dry_run:
         print(shlex.join(command))
         for line in _served_lines(recipe, overrides):
             print(line)
+        print(f"engine environment: {_patch_environment_text(recipe)}")
         return 0
     print(f"rcp-ndcg-vllm: serving {recipe.id}", file=sys.stderr)
     for line in _served_lines(recipe, overrides):
         print(f"rcp-ndcg-vllm: {line}", file=sys.stderr)
-    if shutil.which(command[0]) is None:
+    if engine is None:
         print(
             f"rcp-ndcg-vllm: {command[0]} is not on PATH; run inside the engine image (image {recipe.engine.image})",
             file=sys.stderr,

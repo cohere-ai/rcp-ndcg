@@ -15,6 +15,7 @@ import click
 import pytest
 
 from rcp_ndcg.cli.main import cli
+from rcp_ndcg.data import SUITES, VIDORE_NATIVE_LANGUAGE
 from tests.docs._markdown import ROOT, code_blocks, markdown_files, prose
 
 SHELL = {"bash", "sh", "shell", "console", "zsh"}
@@ -114,6 +115,52 @@ FILES = [f for f in markdown_files() if "rcp-ndcg" in (ROOT / f).read_text(encod
 @pytest.mark.parametrize("path", FILES, ids=str)
 def test_every_documented_command_exists_and_parses(path: Path) -> None:
     assert _problems(path) == []
+
+
+def _flag_value(args: list[str], flag: str) -> str | None:
+    """The value of ``flag`` in an argument list (``--flag value`` or ``--flag=value``), or ``None``."""
+    for index, token in enumerate(args):
+        if token == flag and index + 1 < len(args):
+            return args[index + 1]
+        if token.startswith(f"{flag}="):
+            return token.split("=", 1)[1]
+    return None
+
+
+def _subset_problems(path: Path) -> list[str]:
+    """A documented ``--subset`` names a real subset, and a following ``eval score`` carries it.
+
+    A retrieval on ``suite:<s> --subset X`` followed by ``eval score --suite <s>`` without ``--subset``
+    loads the whole suite, and the subsets with no rankings score 0: the documented flow would report a
+    suite mean about one thirteenth of the subset's value.
+    """
+    text = (ROOT / path).read_text(encoding="utf-8")
+    problems: list[str] = []
+    for block in code_blocks(text):
+        if block.language not in SHELL:
+            continue
+        retrieved: str | None = None
+        for args in _commands_in_shell(block.text):
+            dataset = _flag_value(args, "--dataset")
+            subset = _flag_value(args, "--subset")
+            if dataset is not None and dataset.startswith("suite:") and subset is not None:
+                suite = dataset.split(":", 1)[1]
+                known = set(SUITES[suite].subsets) if suite in SUITES else set()
+                if suite == "vidore":
+                    known |= set(VIDORE_NATIVE_LANGUAGE)
+                if subset not in known:
+                    problems.append(f"{path}:{block.line}: --subset {subset!r} is not a subset of suite:{suite}")
+                retrieved = subset
+            if args[:2] == ["eval", "score"] and retrieved is not None and subset is None:
+                problems.append(
+                    f"{path}:{block.line}: eval score follows --subset {retrieved} without --subset: "
+                    "the suite's other subsets would score 0"
+                )
+    return problems
+
+
+def test_every_documented_subset_is_real_and_reaches_the_score() -> None:
+    assert [problem for path in FILES for problem in _subset_problems(path)] == []
 
 
 def test_a_wrong_command_is_reported() -> None:

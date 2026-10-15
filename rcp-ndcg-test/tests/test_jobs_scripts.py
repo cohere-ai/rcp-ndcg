@@ -917,7 +917,9 @@ def test_the_submit_output_dir_is_the_one_the_environment_gives(
 
 
 def test_the_default_submit_output_dir_follows_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Without ``RCP_SUBMIT_DIR``, the scratch output dir lives under ``${TMPDIR}``, never a hardcoded /tmp."""
+    """Without ``RCP_SUBMIT_DIR``, the scratch output dir lives under ``${TMPDIR}``, never a hardcoded /tmp;
+    and the dry run removes it again (testpkg-10: the plan writes the token wrapper into it, so ``rmdir``
+    always failed and every KJOBS=echo run left a ``rcp-submit.*`` behind)."""
     (tmp_path / "tmp").mkdir()
     completed = _submit(
         tmp_path,
@@ -928,7 +930,8 @@ def test_the_default_submit_output_dir_follows_tmpdir(tmp_path: Path, monkeypatc
         env_overrides={"RCP_SUBMIT_DIR": "", "TMPDIR": str(tmp_path / "tmp")},
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert list((tmp_path / "tmp").glob("rcp-submit.*")), "the scratch output dir must live under TMPDIR"
+    assert str(tmp_path / "tmp") in completed.stdout, "the plan names the scratch path it was built with"
+    assert not list((tmp_path / "tmp").glob("rcp-submit.*")), "the dry run must remove its scratch dir"
 
 
 def test_submit_chains_waves_beyond_max_jobs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
