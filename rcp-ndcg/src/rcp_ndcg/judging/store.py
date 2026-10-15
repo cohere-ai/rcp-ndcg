@@ -180,10 +180,25 @@ class JudgementStore:
         if not differences:
             return False
         if not force:
+            if all(difference.startswith("family.parse_version:") for difference in differences):
+                # Only the parser moved: the stored answers are still the judge's, so they are re-read, not re-paid.
+                hint = (
+                    "the store's answers were read by another parser: re-read them with the current one into a new "
+                    "store (rcp_ndcg.judging.reparse) and resume there; force=True would supersede them and ask the "
+                    "judge again"
+                )
+                cli_hint = (
+                    "the store's answers were read by another parser: re-read them into a new store with "
+                    "`rcp-ndcg judge reparse` and resume with that --out; --force would supersede them and ask the "
+                    "judge again"
+                )
+            else:
+                hint = "write to a new output directory, or pass force=True to supersede them"
+                cli_hint = "write to a new --out directory, or pass --force to supersede them"
             raise IdentityError(
                 f"{self.path(stage)} holds {stage} judgements of another identity: {'; '.join(differences[:8])}",
-                hint="write to a new output directory, or pass force=True to supersede them",
-                cli_hint="write to a new --out directory, or pass --force to supersede them",
+                hint=hint,
+                cli_hint=cli_hint,
                 details={"stage": stage, "differences": differences},
             )
         return True

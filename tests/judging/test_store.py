@@ -43,6 +43,23 @@ def test_the_store_identity_is_replaced_never_rewritten(tmp_path: Path) -> None:
     assert store.identity_path.stat().st_ino != first, "a rewrite in place is caught half-written by a reader"
 
 
+def test_a_store_read_by_another_parser_points_at_reparse_not_at_force(tmp_path: Path) -> None:
+    """A pass resumed after a parser upgrade differs from its store in the parse version alone: its answers are the
+    judge's and are re-read with reparse, so the refusal says so instead of offering force, which re-asks them."""
+    from rcp_ndcg.errors import IdentityError
+
+    store = JudgementStore(tmp_path)
+    old = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=3)
+    new = old.model_copy(update={"parse_version": 4})
+    store.claim("tournament", {"family": old.model_dump(mode="json"), "a": 1}, old)
+    with pytest.raises(IdentityError, match="parse_version") as caught:
+        store.claim("tournament", {"family": new.model_dump(mode="json"), "a": 1}, new)
+    assert "reparse" in caught.value.hint and "judge reparse" in caught.value.cli_hint
+    with pytest.raises(IdentityError) as other:
+        store.claim("tournament", {"family": new.model_dump(mode="json"), "a": 2}, new)
+    assert "reparse" not in other.value.hint
+
+
 def test_a_claim_racing_a_progress_reader_never_serves_a_partial_identity(tmp_path: Path) -> None:
     """The race the MCP e2e poll lost: `_judge_progress` reads the store's identity while the job's pass
     rewrites it; with a big payload the truncated-in-place window is wide, and the reader must never see it."""

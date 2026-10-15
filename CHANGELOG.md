@@ -316,6 +316,10 @@ incompatibly, independently of the package version. All four distributions carry
   `uncalibrated_documents` with the `UNCALIBRATED_DOCUMENTS` warning, like any document the tournament did not
   judge; a chunked document pools its compared chunks only. The coverage schemas' descriptions of the two lists
   say so. Fits in which every document has a valid window are unchanged.
+- **A judgement store read by an older parser points at `judge reparse`**: resuming a pass after a parser upgrade
+  is refused (the parse version is part of the family), and the refusal offered `--force`, which supersedes the
+  stored answers and asks the judge for every window again. When the parse version is the only difference, the
+  hint now says to re-read the answers into a new store with `rcp-ndcg judge reparse` and resume there.
 
 ## 0.0.1 — 2026-10-14
 
