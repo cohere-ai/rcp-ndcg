@@ -215,6 +215,7 @@ class Rankings:
         system: str | None = None,
         task: str | None = None,
         qrels: Mapping[str, Mapping[str, float]] | None = None,
+        dataset: str | None = None,
         model_name: str | None = None,
         model_revision: str | None = None,
         split: str = "test",
@@ -233,6 +234,10 @@ class Rankings:
                 non-empty qrels dict -- mteb's own filter -- so a labelled query the rankings did not rank is
                 refused, naming it; a ranked query without qrels is dropped, declared policy, because mteb
                 raises on a result for a query that has no qrels.
+            dataset: The task's ``hf_subset``, for ``format="mteb"``: the subset whose rows are written and
+                the file's subset key. ``None`` takes the one dataset the system's rows name; rows spanning
+                several datasets are refused (a suite run's subsets share query ids, and the coverage check
+                must not pass with another subset's query). An explicit name keys unnamed rows under it.
             model_name: The model (``org/model``), for ``format="mteb"``: the file's ``mteb_model_meta``.
             model_revision: The model revision, for ``format="mteb"``.
             split: The split key of the file's per-subset dict, for ``format="mteb"`` (the published tasks
@@ -289,6 +294,7 @@ class Rankings:
                 folder=uri,
                 task=task or "",
                 qrels=qrels or {},
+                dataset=dataset,
                 model_name=model_name or "",
                 model_revision=model_revision or "",
                 split=split,
@@ -439,12 +445,20 @@ def _save_mteb_predictions(
     folder: str,
     task: str,
     qrels: Mapping[str, Mapping[str, float]],
+    dataset: str | None,
     model_name: str,
     model_revision: str,
     split: str,
     system: str | None,
 ) -> str:
     """The ``{Task}_predictions.json`` of mteb's ``_save_task_predictions``: one model, per subset, per split.
+
+    One subset is written -- the ``dataset=`` the caller names (resolved through
+    :meth:`Rankings.resolve_dataset`: the rows naming it, else the unnamed rows), else the one dataset the
+    system's rows name; rows spanning several datasets without a selector are refused, because a suite run's
+    subsets share query ids and the coverage check must not pass with another subset's query. The file key is
+    the subset's own name (an explicit ``dataset=`` names an unnamed group's key; unnamed rows without one key
+    ``default``).
 
     Every query with a non-empty qrels dict must be ranked (a missing one makes the file lie about its
     coverage and is refused); a ranked query without qrels is dropped -- mteb raises on a result for a query
@@ -461,34 +475,31 @@ def _save_mteb_predictions(
             "the qrels hold no labelled query (every dict is empty); a mteb predictions file would be empty",
             hint="a mteb predictions file holds the labelled queries only: trim the qrels to them",
         )
-    ranked_query_ids = {
-        str(query_id)
-        for (system_key, _dataset), queries in rankings._grouped().items()
-        if system_key == name
-        for query_id in queries
-    }
+    key = rankings.resolve_dataset(dataset) if dataset is not None else rankings._dataset_key(name, None)
+    if key is None:
+        raise no_rankings_error(dataset or "", rankings.datasets)
+    queries_of_group = rankings._grouped().get((name, key), {})
+    ranked_query_ids = {str(query_id) for query_id in queries_of_group}
     missing = sorted(labelled - ranked_query_ids)
     if missing:
         raise DataError(
             f"the rankings do not rank the labelled queries {missing[:5]}",
             hint="a mteb predictions file holds every query with qrels: rank them, or trim the qrels to the "
             "queries the run covered",
-            details={"task": task, "missing_queries": missing[:20]},
+            details={"task": task, "dataset": key or dataset, "missing_queries": missing[:20]},
         )
+    subset_key = dataset if dataset is not None else (key or "default")
     file: dict[str, Any] = {"mteb_model_meta": {"model_name": model_name, "revision": model_revision}}
     dropped = 0
-    for (system_key, dataset), queries in rankings._grouped().items():
-        if system_key != name:
+    for query_id, docs in queries_of_group.items():
+        if str(query_id) not in labelled:
+            dropped += 1
             continue
-        for query_id, docs in queries.items():
-            if str(query_id) not in labelled:
-                dropped += 1
-                continue
-            # the cap of mteb's own top_k (retrieval.py: top_k = 1000), ties by document id descending
-            capped = rank_by_score(docs, ties="doc_id_desc")[:MTEB_MAX_DOCS]
-            file.setdefault(dataset or "default", {}).setdefault(split, {})[query_id] = {
-                doc_id: docs[doc_id] for doc_id in capped
-            }
+        # the cap of mteb's own top_k (retrieval.py: top_k = 1000), ties by document id descending
+        capped = rank_by_score(docs, ties="doc_id_desc")[:MTEB_MAX_DOCS]
+        file.setdefault(subset_key, {}).setdefault(split, {})[query_id] = {
+            doc_id: docs[doc_id] for doc_id in capped
+        }
     if dropped:
         logger.info(
             f"mteb predictions: dropped the scores of {dropped} queries without qrels "

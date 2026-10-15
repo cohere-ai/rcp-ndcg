@@ -135,3 +135,39 @@ def test_the_split_is_the_caller_s(tmp_path: Path) -> None:
     out = save(run(), tmp_path, split="train")
     document = json.loads(Path(out).read_text())
     assert document["NanoArguAnaRetrieval"]["train"]["q1"]["d1"] == 2.0
+
+
+def test_a_suite_run_does_not_span_subsets(tmp_path: Path) -> None:
+    """A run over several subsets shares query ids (NanoBEIR): the coverage check spanned every dataset, so
+    a labelled query missing from subset A passed when subset B ranked it, and every subset's scores were
+    written under its own name beside this task's file."""
+    rankings = Rankings.from_records(
+        [
+            {"query_id": "q1", "doc_id": "d1", "score": 1.0, "dataset": "A"},
+            {"query_id": "q2", "doc_id": "d9", "score": 1.0, "dataset": "B"},
+            {"query_id": "q1", "doc_id": "d1", "score": 1.0, "dataset": "B"},
+        ]
+    )
+
+    with pytest.raises(DataError, match="span"):
+        save(rankings, tmp_path, qrels={"q1": {"d1": 1}, "q2": {"d9": 1}})
+    with pytest.raises(DataError, match="q2"):
+        save(rankings, tmp_path, dataset="A", qrels={"q1": {"d1": 1}, "q2": {"d9": 1}})
+
+    out = save(rankings, tmp_path, dataset="A", qrels={"q1": {"d1": 1}})
+
+    document = json.loads(Path(out).read_text())
+    assert set(document) == {"mteb_model_meta", "A"}
+    assert document["A"] == {"test": {"q1": {"d1": 1.0}}}
+
+
+def test_an_explicit_subset_names_unnamed_rows(tmp_path: Path) -> None:
+    """Rows that name no dataset are keyed by the task's hf_subset the caller names, not by an implicit
+    'default' (mteb's published tasks read named subsets)."""
+    rankings = Rankings.from_scores({"q1": {"d1": 1.0}})
+
+    out = save(rankings, tmp_path, dataset="NanoArguAnaRetrieval", qrels={"q1": {"d1": 1}})
+
+    document = json.loads(Path(out).read_text())
+    assert set(document) == {"mteb_model_meta", "NanoArguAnaRetrieval"}
+    assert document["NanoArguAnaRetrieval"]["test"]["q1"] == {"d1": 1.0}
