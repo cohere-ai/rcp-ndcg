@@ -368,7 +368,7 @@ require_tokenizer(tokenizer: TextTokenizer | None, what: str) -> TextTokenizer
 function — Split *text* into consecutive, overlapping chunks of at most ``policy.max_tokens`` tokens.
 
 ```text
-split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) -> list[str]
+split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer, *, fits: Callable[[str], bool] | None = None) -> list[str]
 ```
 
 ## `token_prefix`
@@ -376,5 +376,5 @@ split_into_chunks(text: str, policy: ChunkPolicy, tokenizer: TextTokenizer) -> l
 function — A prefix of ``text`` that ends at one of its first ``max_tokens`` token boundaries and counts at most ``max_tokens``: the longest such prefix the search finds.
 
 ```text
-token_prefix(text: str, max_tokens: int, tokenizer: TextTokenizer, *, rendered: Callable[[str], str] | None = None, add_special_tokens: bool = False) -> str
+token_prefix(text: str, max_tokens: int, tokenizer: TextTokenizer, *, rendered: Callable[[str], str] | None = None, count_rendered: Callable[[str], int] | None = None, add_special_tokens: bool = False) -> str
 ```
