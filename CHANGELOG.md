@@ -104,15 +104,20 @@ incompatibly, independently of the package version. All four distributions carry
   query or document) is left out: the repo's own fixture cases use `single` for multi-item text batches,
   and the finding's red test does not cover it.
 
-- **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
-  (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
-  not carry the `pooling-full-context` patch now refuses `serve.max_num_batched_tokens` below
-  `serve.max_model_len`, naming both numbers and the patch. On the pinned vLLM v0.31.0 the engine chunks an
-  exactly-full prompt and the scheduler never schedules its last token, so the request hangs and holds the
-  engine slot. The refusal covers the seven recipes that reach this state (ctxl-2b, octen x3,
-  qwen3-vl-embedding x2, zerank-2); a recipe that carries the patch, a recipe whose budget stays below
-  `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk equal to `serve.max_model_len` are
-  unaffected.
+- **`rcp-ndcg-vllm serve` declares a chunk that cannot hang an at-budget pooling prompt** (vllm-1,
+  owner decision 6(b)): a pooling recipe whose client's largest token budget reaches
+  `serve.max_model_len` and that does not carry the `pooling-full-context` patch now renders
+  `--max-num-batched-tokens` at `serve.max_model_len` when nothing sets one, so the engine's own
+  GPU-dependent default (2048 on A100 and GPUs under 70 GiB) can never chunk an exactly-full prompt. On the
+  pinned vLLM v0.31.0 the scheduler never schedules a chunked prompt's last token, so the request hangs and
+  holds the engine slot. The render-time declaration covers the seven recipes that reach this state
+  (ctxl-2b, octen x3, qwen3-vl-embedding x2, zerank-2); a recipe that carries the patch, a recipe whose
+  budget stays below `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk equal to
+  `serve.max_model_len` are unaffected. An explicit smaller `--set serve.max_num_batched_tokens` is warned
+  about and replaced by the safe value (decision 6(b) chose a warning over a refusal), naming the value
+  asked for, the value rendered and the patch. Carrying the patch on the seven recipes (option (a)) is
+  deferred: v0.31.0 is the latest release and the five pooling bugfix PRs upstream (60978, 55226, 55192,
+  60035, 61062) are open, none merged, so no release carries the fix yet.
 - **`rcp-ndcg-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
   alone starts an engine without the recipe's declared patches (`RCP_NDCG_VLLM_PATCHES` is set only by the
   console), so the dry run now prints the variable beside the identity and the overrides; the how-to says so.

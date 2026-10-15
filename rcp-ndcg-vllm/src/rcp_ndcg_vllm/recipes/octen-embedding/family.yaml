@@ -140,7 +140,15 @@ notes: >-
   for other clients is a deliberate change (the architecture allows 40960). tokenizer_config.json's
   model_max_length 131072 exceeds the architecture's max_position_embeddings 40960; the recipe never
   relies on the tokenizer's limit, and the card's context claims disagree among themselves
-  (README.md:99 says 40,960; its results table says 32,768).
+  (README.md:99 says 40,960; its results table says 32,768). Serving the 8192-token budget safely
+  the at-budget pooling rule: the largest client budget reaches serve.max_model_len exactly and this
+  recipe carries no pooling-full-context patch, so the renderer declares `--max-num-batched-tokens` at
+  serve.max_model_len (8192) when nothing sets one. The engine's own GPU-dependent default chunk (2048
+  on A100 and GPUs under 70 GiB) would chunk an at-budget prompt, and the pinned v0.31.0 scheduler
+  never schedules a chunked prompt's last token: the request hangs and holds the engine slot. Carrying
+  the pooling-full-context patch stays deferred: v0.31.0 is the latest release and the
+  five pooling bugfix PRs upstream (60978, 55226, 55192, 60035, 61062) are open, none merged, so no
+  release carries the fix yet.
 
   dtype bfloat16 (config.json; the paper loads bf16 explicitly, experiments/paper/rerankers/reference/octen.py:55); vLLM's pooled head
   normalises in fp32 on both paths. empty_doc: send -- the paper embeds an empty document as the bare

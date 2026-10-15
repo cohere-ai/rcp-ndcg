@@ -330,25 +330,63 @@ def test_the_largest_budget_is_the_largest_of_the_clients_declared_budgets(tmp_p
     assert "8192" in message and "9000" in message and "document_max_tokens" in message
 
 
-def test_a_chunk_below_max_model_len_is_refused_when_a_full_prompt_is_admissible() -> None:
-    """A pooling recipe whose client budget reaches ``serve.max_model_len`` and that does not carry the
-    pooling-full-context patch must not be served with a smaller chunk: an exactly-full prompt is chunked,
-    and the v0.31.0 scheduler never finishes its last token.  Both numbers and the patch are named."""
+#: vllm-1 decision 6(b): the seven pooling recipes whose largest client budget reaches max_model_len and
+#: that carry no pooling-full-context patch (ctxl-2b, octen x3, qwen3-vl-embedding x2, zerank-2).
+POOLING_AT_BUDGET = (
+    "ctxl-rerank-v2-instruct-multilingual-2b",
+    "octen-embedding-0.6b",
+    "octen-embedding-4b",
+    "octen-embedding-8b",
+    "qwen3-vl-embedding-2b",
+    "qwen3-vl-embedding-8b",
+    "zerank-2-reranker",
+)
+
+
+def test_a_full_budget_pooling_recipe_declares_the_chunk_its_prompt_needs() -> None:
+    """vllm-1 decision 6(b): every pooling recipe whose largest client budget reaches
+    ``serve.max_model_len`` and that does not carry the pooling-full-context patch renders
+    ``--max-num-batched-tokens`` at that budget, so the engine's own GPU-dependent default (2048 on A100 and
+    GPUs under 70 GiB) can never chunk an exactly-full prompt -- the v0.31.0 scheduler would never finish
+    its last token."""
+    for recipe_id in POOLING_AT_BUDGET:
+        recipe = load_recipe(recipe_id)
+        argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
+        assert _flag_value(argv, "--max-model-len") == "8192", recipe_id
+        assert _flag_value(argv, "--max-num-batched-tokens") == "8192", recipe_id
+
+
+def test_a_recipe_that_cannot_hang_renders_no_derived_chunk() -> None:
+    """The render-time declaration is exactly the hang condition: a recipe that carries the patch and a
+    recipe whose largest budget stays below ``serve.max_model_len`` keep the engine's own default (no flag)
+    when nothing is set."""
+    for recipe_id in ("harrier-oss-v1-27b", SHIPPED):
+        recipe = load_recipe(recipe_id)
+        argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
+        assert "--max-num-batched-tokens" not in argv, recipe_id
+
+
+def test_a_chunk_below_max_model_len_is_warned_about_and_replaced_by_the_safe_value() -> None:
+    """Decision 6(b) chose warning over refusal: an explicit chunk below a ``serve.max_model_len`` that an
+    at-budget prompt reaches exactly is warned about -- naming the value asked for, the value rendered and
+    the patch -- and the safe chunk (``max_model_len``) is rendered, because rendering the smaller value
+    would reproduce the hang the decision exists to prevent."""
     recipe = load_recipe("octen-embedding-8b")  # client.max_tokens 8192 == serve.max_model_len 8192
-    with pytest.raises(RecipeError) as excinfo:
-        serve_argv(
+    with pytest.warns(UserWarning) as caught:
+        argv = serve_argv(
             recipe,
             port=8000,
             served_model_name=recipe.id,
             deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
         )
-    message = str(excinfo.value)
+    assert _flag_value(argv, "--max-num-batched-tokens") == "8192"
+    message = str(caught[0].message)
     assert "max_num_batched_tokens" in message and "4096" in message and "8192" in message
     assert "pooling-full-context" in message
 
 
 def test_a_chunk_at_max_model_len_or_a_patch_carrier_or_a_smaller_budget_is_allowed() -> None:
-    """The refusal is exactly the hang: the chunk may equal ``max_model_len``; a recipe that opts into
+    """The rule is exactly the hang: the chunk may equal ``max_model_len``; a recipe that opts into
     pooling-full-context may chunk; and a recipe whose largest budget is below ``max_model_len`` never sends
     an at-budget prompt (the documented qwen3-reranker example keeps working)."""
     recipe = load_recipe("octen-embedding-8b")

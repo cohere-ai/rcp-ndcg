@@ -203,6 +203,15 @@ notes: >-
   The published 0.999 is the bf16 kernel-stack residual, not a defect, and each declared bound sits
   just below its measured floor, so a real regression still fails. E2 re-measures after any change.
 
+  Serving the 8192-token budget safely: this family's largest client budget
+  reaches serve.max_model_len exactly and it carries no pooling-full-context patch, so the renderer
+  declares `--max-num-batched-tokens` at serve.max_model_len (8192) when nothing sets one. The engine's
+  own GPU-dependent default chunk (2048 on A100 and GPUs under 70 GiB) would chunk an at-budget prompt,
+  and the pinned v0.31.0 scheduler never schedules a chunked prompt's last token: the request hangs and
+  holds the engine slot. Carrying the pooling-full-context patch stays deferred: v0.31.0 is
+  the latest release and the five pooling bugfix PRs upstream (60978, 55226, 55192, 60035, 61062) are
+  open, none merged, so no release carries the fix yet.
+
 variants:
   - id: qwen3-vl-embedding-2b
     model: Qwen/Qwen3-VL-Embedding-2B
@@ -252,8 +261,10 @@ variants:
       = 1.21 GB = 1.1 GiB, so bf16 weights + KV fit one 80 GB-class GPU (resources.gpus 1, the family's). One
       forward of 8192 tokens stays inside the 32-bit envelope: attention q 32 x 128 x 8192 x 2 B =
       6.7e7 B, MLP activations 12288 x 8192 = 1.0e8 elements; the served budget equals max_model_len
-      (8192), so a full-budget prompt is a single chunk (no chunked-prefill path) and the pooling
-      stall the larger pooling recipes meet at exactly max_model_len does not apply here. Family
+      (8192), and the renderer declares `--max-num-batched-tokens` at that budget (the at-budget
+      pooling rule, see the family notes), so an at-budget prompt is a single chunk on every GPU class and the pooling
+      stall the larger pooling recipes meet at exactly max_model_len cannot arise from the engine's own
+      GPU-dependent default. Family
       membership, every file byte- or JSON-identical to the 2b row at its own pinned revision:
       tokenizer.json (sha256 def76fb0..., the same 14 special added tokens including endoftext
       151643, the same post-processor), chat_template.jinja (sha256 a47e6afb...),
