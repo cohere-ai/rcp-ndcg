@@ -314,7 +314,7 @@ def retrieval_sweep(request: RetrievalSweepRequest) -> RetrievalSweepResult:
         from rcp_ndcg.support.logging import get_logger
 
         dataset = load_dataset(request.dataset, subset=request.subset, revision=request.revision)
-        metrics = list(request.metrics) if request.metrics else None
+        metrics: list[Literal["rcp_ndcg", "qrel_ndcg"]] | None = list(request.metrics) if request.metrics else None
         if metrics is None:
             # The documented example names no metrics, and a BEIR dataset has no released gains: scoring
             # rcp_ndcg would refuse the command after the per-k rankings were already written.

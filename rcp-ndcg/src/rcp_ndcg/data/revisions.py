@@ -407,7 +407,7 @@ def _remote_source_digest(location: str) -> str:
     raise _unfingerprinted(location, None)
 
 
-def _remote_object_digest(location: str, info: Mapping[str, Any]) -> str:
+def _remote_object_digest(location: str, info: dict[str, Any]) -> str:
     """One remote object's fingerprint: its size and change stamp, or a streamed SHA-256 when it has neither."""
     from rcp_ndcg.data.media import _change_stamp
 
