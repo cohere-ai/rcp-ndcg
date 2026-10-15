@@ -18,9 +18,11 @@ token vectors, not one vector per text) and its own scorer
 
 A multi-vector encoder is served with vLLM's pooling API and reached with the
 `vllm_pooling` wire adapter (the `api` field of a `PoolingEndpoint`), which sends
-`POST {base_url}/pooling` with `task: "token_embed"` — the field names and values
-below are verified against the vLLM entrypoints (`vllm/entrypoints/pooling/` and
-`vllm/utils/serial_utils.py` in the vLLM checkout):
+`POST {base_url}/pooling` with `task: "token_embed"`. `base_url` is the engine's
+root (vLLM registers `/pooling` at the root, not under `/v1`): a `.../v1` base is
+refused where the retriever config is read, never 404 at the first request. The
+field names and values below are verified against the vLLM entrypoints
+(`vllm/entrypoints/pooling/` and `vllm/utils/serial_utils.py` in the vLLM checkout):
 
 | Field | Sent | Why |
 | --- | --- | --- |

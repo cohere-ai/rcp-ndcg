@@ -207,7 +207,7 @@ def test_a_rebuild_that_pooled_to_single_vectors_is_refused(monkeypatch: pytest.
             "encoder": {
                 "api": "vllm_pooling",
                 "model": "m",
-                "base_url": "http://engine:8000/v1",
+                "base_url": "http://engine:8000",
                 "dim": 2,
                 **_SERVED_BUDGET,
             },

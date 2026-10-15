@@ -238,6 +238,20 @@ def test_a_registered_pooling_adapter_runs_late_interaction_end_to_end(
     assert set(np.load(tmp_path / "idx" / "offsets.npy")) >= {0.0}, "the ragged layout is stored"
 
 
+def test_a_plugin_wires_base_url_is_the_adapters_own() -> None:
+    """The registry knows a third-party adapter's role, not its route: a plugin multi_vector wire's
+    ``base_url`` is its own, so the shipped pooling wire's root rule is not imposed on it."""
+    from rcp_ndcg.retrieval.config import PluginPooling
+
+    config = validate_retriever(
+        {
+            "kind": "late_interaction",
+            "encoder": {"api": "slow_pooling", "base_url": "http://h:8000/v1", "model": "colqwen", "dim": 4},
+        }
+    )
+    assert isinstance(config.encoder, PluginPooling) and config.encoder.base_url == "http://h:8000/v1"
+
+
 def test_the_identity_keys_on_the_adapter_name(dataset) -> None:
     """The adapter name is content: the config payload carries it, so two plugins never share a key."""
     from rcp_ndcg.support.identity import identity_payload
