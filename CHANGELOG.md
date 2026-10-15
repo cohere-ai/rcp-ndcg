@@ -321,6 +321,20 @@ incompatibly, independently of the package version. All four distributions carry
   stored answers and asks the judge for every window again. When the parse version is the only difference, the
   hint now says to re-read the answers into a new store with `rcp-ndcg judge reparse` and resume there.
 
+### Changed
+
+- **Every scoring preset credits ties with their group's mean gain** (`rcp_ndcg_core.PROTOCOLS`): `nanobeir`
+  and `bright` broke tied scores by document id, descending, and `trecdl` by judge-pool order, as arXiv v1's tables
+  did. A document id is an arbitrary order and a judged pool is often sorted by relevance, so a tie straddling the
+  cutoff took credit the system did not earn. All presets now use `group_mean` (each tied document is credited
+  its tie group's mean gain: the expected nDCG over the orders of the tie), mteb's `ndcg_float_at_k` rule and the
+  paper's from arXiv v2 on. RCP-, qrel- and Count-nDCG move only for queries whose scores tie across the cutoff;
+  untied scores are unchanged. `rcp-ndcg eval score --suite ...` and `evaluate` follow the presets, and
+  `ndcg`'s default was already `group_mean`. To score as arXiv v1 did, copy a preset with its old rule
+  (`PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})`; `"input_order"` with the pool for TREC-DL).
+  mteb's integer `ndcg_at_k` (pytrec_eval) keeps breaking ties by document id, so it equals `evaluate`'s
+  qrel-nDCG under that copy, not under the preset.
+
 ## 0.0.1 — 2026-10-14
 
 ### Overview

@@ -17,11 +17,11 @@ TieRule = Literal["doc_id_desc", "group_mean", "input_order"]
 """How documents with equal scores are ordered when a score mapping is scored.
 
 * ``"group_mean"`` -- every document of an equal-score class is credited the class's mean gain: the expected nDCG
-  over all orders of the tie. It depends on the scores alone (mteb's ``ndcg_float_at_k``; the paper's ViDoRe v3
-  table).
-* ``"doc_id_desc"`` -- ties broken by document id, descending (trec_eval / pytrec_eval; the paper's NanoBEIR and
+  over all orders of the tie. It depends on the scores alone (mteb's ``ndcg_float_at_k``; the default, and the rule
+  of every :data:`~rcp_ndcg_core.protocol.PROTOCOLS` preset and of the paper's tables).
+* ``"doc_id_desc"`` -- ties broken by document id, descending (trec_eval / pytrec_eval; arXiv v1's NanoBEIR and
   BRIGHT tables).
-* ``"input_order"`` -- ties keep the order in which the scores are given (the paper's TREC-DL tables pass them in
+* ``"input_order"`` -- ties keep the order in which the scores are given (arXiv v1's TREC-DL tables pass them in
   judge-pool order). A relevance-ordered input leaks relevance into tied scores, so use it only with an order you
   constructed.
 """

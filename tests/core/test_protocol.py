@@ -12,6 +12,16 @@ from rcp_ndcg_core.protocol import PROTOCOLS, Protocol, aggregate, candidate_doc
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "paper_protocol_queries.json").read_text())
 LOG2_3 = math.log2(3)
 
+#: The tie rule each suite's per-query values in the fixture were printed under (arXiv v1: document id for NanoBEIR
+#: and BRIGHT, judge-pool order for TREC-DL). The presets credit ties with the group mean, as the paper does from
+#: arXiv v2 on; the anchors below score the fixture under the rule its values were printed with.
+FIXTURE_TIES = {"nanobeir": "doc_id_desc", "bright": "doc_id_desc", "trecdl": "input_order", "vidore": "group_mean"}
+
+
+def _fixture_protocol(query: dict) -> Protocol:
+    """The query's suite preset with the tie rule the fixture's values were printed under."""
+    return PROTOCOLS[query["suite"]].model_copy(update={"ties": FIXTURE_TIES[query["suite"]]})
+
 
 def _score_fixture(query: dict, protocol: Protocol | str, *, excluded: bool = True) -> tuple[float, float]:
     """``(rcp_ndcg, qrel_ndcg)`` of a fixture query."""
@@ -34,7 +44,7 @@ def _score_fixture(query: dict, protocol: Protocol | str, *, excluded: bool = Tr
 
 @pytest.mark.parametrize("query", FIXTURE["queries"], ids=lambda q: f"{q['dataset']}:{q['query_id'][:24]}")
 def test_reproduces_the_papers_per_query_values(query: dict) -> None:
-    rcp, qrel = _score_fixture(query, query["suite"])
+    rcp, qrel = _score_fixture(query, _fixture_protocol(query))
 
     # The fixture states each query's RCP tolerance (see its description); the paper's qrel-nDCG is exact.
     assert rcp == pytest.approx(query["expected"]["rcp_ndcg"], abs=query["rcp_ndcg_tolerance"])
@@ -59,10 +69,37 @@ def _query(query_id: str) -> dict:
 def test_the_fixture_queries_depend_on_their_tie_rule(query_id: str, other_rule: str) -> None:
     """Guards the anchors above: with another tie rule these queries score differently."""
     query = _query(query_id)
-    paper = PROTOCOLS[query["suite"]]
+    paper = _fixture_protocol(query)
     other = paper.model_copy(update={"ties": other_rule})
 
     assert _score_fixture(query, other) != _score_fixture(query, paper)
+
+
+@pytest.mark.parametrize(
+    "query_id",
+    [
+        "test-religion-grcrgshwbr-pro03a",
+        "PLAIN-2051",
+        "5cd7b83eb30797aa8bf49b4b7a3f6a433aca4a75",
+        "aops_1959_IMO_Problems/Problem_1",
+        "359349",
+    ],
+)
+def test_the_presets_score_the_fixtures_tied_queries_by_their_group_mean(query_id: str) -> None:
+    """The fixture's NanoBEIR, BRIGHT and TREC-DL queries whose ties reach the cutoff: the preset scores them as an
+    explicit group-mean protocol does, whatever order the scores and the pool come in, and no longer as arXiv v1
+    printed them."""
+    query = _query(query_id)
+    group_mean = PROTOCOLS[query["suite"]].model_copy(update={"ties": "group_mean", "name": "explicit"})
+    shuffled = {
+        **query,
+        "scores": dict(reversed(list(query["scores"].items()))),
+        "candidates": list(reversed(query["candidates"])) if query.get("candidates") else query.get("candidates"),
+    }
+
+    assert _score_fixture(query, query["suite"]) == _score_fixture(query, group_mean)
+    assert _score_fixture(shuffled, query["suite"]) == pytest.approx(_score_fixture(query, query["suite"]), abs=1e-12)
+    assert _score_fixture(query, query["suite"]) != _score_fixture(query, _fixture_protocol(query))
 
 
 def test_bright_excluded_ids_leave_the_ranking_and_the_ideal() -> None:
@@ -147,11 +184,23 @@ def test_a_non_finite_qrel_grade_is_refused_not_read_as_absent() -> None:
 def test_input_order_ties_follow_the_judged_pool_order() -> None:
     scores = {"b": 1.0, "a": 1.0}
     gains = {"a": 1.0}
+    pool_order = Protocol(name="pool-order", ties="input_order", restrict_to_candidates=True)
 
-    assert score_query(scores, gains, protocol="trecdl", k=1, candidates=["a", "b"]) == 1.0
-    assert score_query(scores, gains, protocol="trecdl", k=1, candidates=["b", "a"]) == 0.0
+    assert score_query(scores, gains, protocol=pool_order, k=1, candidates=["a", "b"]) == 1.0
+    assert score_query(scores, gains, protocol=pool_order, k=1, candidates=["b", "a"]) == 0.0
     with pytest.raises(ValueError, match="judged pool"):
-        score_query(scores, gains, protocol="trecdl")
+        score_query(scores, gains, protocol=pool_order)
+
+
+@pytest.mark.parametrize("preset", sorted(PROTOCOLS))
+def test_no_preset_takes_a_tie_order_from_the_ids_or_the_pool(preset: str) -> None:
+    """Two documents tied at the cutoff share their mean gain under every preset, whatever their ids and the pool
+    order (a pool sorted by relevance would otherwise leak relevance into the tie)."""
+    gains = {"a": 1.0, "b": 0.0, "c": 0.5}
+    expected = 0.5 / 1.0  # k=1: the tied pair {a, b} is credited its mean gain 0.5; the ideal DCG@1 is 1.0
+    for pool in (["a", "b", "c"], ["b", "a", "c"]):
+        for scores in ({"a": 2.0, "b": 2.0, "c": 1.0}, {"b": 2.0, "a": 2.0, "c": 1.0}):
+            assert score_query(scores, gains, protocol=preset, k=1, candidates=pool) == pytest.approx(expected)
 
 
 def test_identical_ids_can_be_dropped_without_an_excluded_list() -> None:
@@ -186,10 +235,10 @@ def test_aggregate_takes_the_mean_per_dataset_then_over_datasets() -> None:
 
 def test_presets_carry_the_papers_tie_rules() -> None:
     assert {name: p.ties for name, p in PROTOCOLS.items()} == {
-        "nanobeir": "doc_id_desc",
-        "bright": "doc_id_desc",
+        "nanobeir": "group_mean",
+        "bright": "group_mean",
         "vidore": "group_mean",
-        "trecdl": "input_order",
+        "trecdl": "group_mean",
         "mteb": "group_mean",
         "plain": "group_mean",
     }

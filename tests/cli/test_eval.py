@@ -121,8 +121,12 @@ def test_float_grades_are_scored_as_floats(dataset: str, tmp_path: Path) -> None
     assert _summary(document, "qrel_ndcg", 3, "mine") == pytest.approx(dcg / ideal)
 
 
-@pytest.mark.parametrize(("protocol", "expected"), [("plain", 0.5 + 0.5 / math.log2(3)), ("bright", 1 / math.log2(3))])
-def test_tied_scores_follow_the_protocols_tie_rule(tmp_path: Path, protocol: str, expected: float) -> None:
+@pytest.mark.parametrize("protocol", ["plain", "bright"])
+def test_tied_scores_follow_the_protocols_tie_rule(tmp_path: Path, protocol: str) -> None:
+    """a and b tie at the top: under the presets' group-mean rule each is credited their mean grade, 0.5 (bright rounds
+    qrel-nDCG to 5 decimals, as BEIR does)."""
+    expected = 0.5 + 0.5 / math.log2(3)
+    expected = round(expected, 5) if protocol == "bright" else expected
     path = tmp_path / "rows.jsonl"
     row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"], "qrels": {"a": 1.0}}
     path.write_text(json.dumps(row) + "\n", encoding="utf-8")

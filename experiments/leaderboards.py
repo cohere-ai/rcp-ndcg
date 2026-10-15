@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 from checks import Checker, KnownDeviation, paper_values
 from fetch_data import BRIGHT_SUBSETS, NANOBEIR_SUBSETS, TRECDL_SUBSETS, VIDORE_NATIVE, fetch_group, local_path
-from rcp_ndcg_core.protocol import candidate_docs, score_query
+from rcp_ndcg_core.protocol import PROTOCOLS, Protocol, candidate_docs, score_query
 from scipy.stats import kendalltau, ttest_rel
 
 # Hub model id -> the paper's short name.
@@ -49,6 +49,18 @@ RERANKERS = {
 
 # Tolerance for a table cell, in nDCG points: the printed rounding (0.05) plus one unit of float noise.
 CELL_TOL = 0.05 + 1e-6
+
+# The values checked here (paper_values.json, the pinned release 1) are arXiv v1's, whose NanoBEIR and BRIGHT tables
+# broke tied scores by document id and whose TREC-DL tables by judge-pool order. The presets credit a tie its group's
+# mean gain, so the harness scores each suite with arXiv v1's rule until it checks arXiv v2's values.
+V1_TIES = {"nanobeir": "doc_id_desc", "bright": "doc_id_desc", "trecdl": "input_order"}
+
+
+def protocol(suite: str) -> Protocol:
+    """The protocol a suite's tables were computed under: its preset with arXiv v1's tie rule."""
+    preset = PROTOCOLS[suite]
+    return preset.model_copy(update={"ties": V1_TIES[suite]}) if suite in V1_TIES else preset
+
 
 _NANOBEIR_GAINS = (
     "hub gains come from a refit that differs from the paper's by <= 0.0065 in gain; 10 cells move <= 0.07"
@@ -112,13 +124,15 @@ def _score_subset(suite, dataset, runs, positives, gains, pools=None, excluded=N
             continue
         scored = dict(zip(g["corpus-id"], g.score, strict=True))
         pool = pools[qid] if pools is not None else None
-        cands = candidate_docs(suite, scored, candidates=pool, excluded=excluded.get(qid, ()))
+        cands = candidate_docs(protocol(suite), scored, candidates=pool, excluded=excluded.get(qid, ()))
         q_gains = gains[qid]
         if suite == "nanobeir":  # the RCP ideal ranking is taken over the candidates (self-docs removed)
             q_gains = {d: v for d, v in q_gains.items() if d in set(pool)}
         ranked = {d: scored[d] for d in cands}
-        qrel = score_query(ranked, positives.get(qid, {}), protocol=suite, metric="qrel_ndcg", candidates=pool)
-        rcp = score_query(ranked, q_gains, protocol=suite, candidates=pool)
+        qrel = score_query(
+            ranked, positives.get(qid, {}), protocol=protocol(suite), metric="qrel_ndcg", candidates=pool
+        )
+        rcp = score_query(ranked, q_gains, protocol=protocol(suite), candidates=pool)
         yield suite, dataset, RERANKERS[model], qid, qrel, rcp
 
 

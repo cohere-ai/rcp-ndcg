@@ -13,12 +13,15 @@ the order of the candidate pool, which is often sorted by relevance. `rcp_ndcg_c
 
 | Rule | What a tied group gets | Used by |
 |---|---|---|
-| `group_mean` | every document of the tied group is credited the group's mean gain: the expected nDCG over all orders of the tie | the paper's ViDoRe v3 table; mteb's `ndcg_float_at_k`; the default of `ndcg` |
-| `doc_id_desc` | ties are broken by document id, descending (the trec_eval convention) | the paper's NanoBEIR and BRIGHT tables |
-| `input_order` | ties keep the order in which the scores are given | the paper's TREC-DL tables, which pass scores in judge-pool order |
+| `group_mean` | every document of the tied group is credited the group's mean gain: the expected nDCG over all orders of the tie | every preset and the paper's tables; mteb's `ndcg_float_at_k`; the default of `ndcg` |
+| `doc_id_desc` | ties are broken by document id, descending (the trec_eval convention) | arXiv v1's NanoBEIR and BRIGHT tables |
+| `input_order` | ties keep the order in which the scores are given | arXiv v1's TREC-DL tables, which passed scores in judge-pool order |
 
-`input_order` leaks relevance into tied scores when the input is sorted by relevance. Use it only with an order you
-constructed yourself.
+`group_mean` depends on the scores alone. `doc_id_desc` credits a tie by the arbitrary order of document ids, and
+`input_order` leaks relevance into tied scores when the input is sorted by relevance: use them only to reproduce a
+number computed that way (`trec_eval`, arXiv v1), and `input_order` only with an order you constructed yourself.
+With a cutoff inside a tied group, `group_mean` credits each rank of the group up to the cutoff with the group's mean
+gain, which is the expected DCG@k over the orders of the tie.
 
 ## Protocols
 
@@ -35,15 +38,19 @@ A `Protocol` fixes a suite's rules:
 
 | Preset | Ties | Candidates | qrel-nDCG rounding |
 |---|---|---|---|
-| `nanobeir` | `doc_id_desc` | judged pool only | 5 decimals |
-| `bright` | `doc_id_desc` | every scored document | 5 decimals |
+| `nanobeir` | `group_mean` | judged pool only | 5 decimals |
+| `bright` | `group_mean` | every scored document | 5 decimals |
 | `vidore` | `group_mean` | judged pool only | none |
-| `trecdl` | `input_order` | judged pool only, in pool order | none |
+| `trecdl` | `group_mean` | judged pool only | none |
 | `mteb` | `group_mean` | judged pool only | none |
 | `plain` | `group_mean` | every scored document | none |
 
 BRIGHT is not restricted to the judged pool, because its TheoremQA reranker runs hold candidates outside the pool.
 Those candidates are scored with gain 0.
+
+To score as arXiv v1 did, copy a preset with its old tie rule, e.g.
+`PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})` (BRIGHT likewise; TREC-DL with
+`"input_order"` and the judged pool in pool order).
 
 ## Excluded documents and ideal rankings
 
@@ -86,18 +93,19 @@ scores = {"q7": 0.95, "d1": 0.80, "d2": 0.80, "d3": 0.10}  # the system ranked t
 gains = {"d1": 0.9, "d2": 0.2, "d3": 0.5}
 pool = ["d3", "q7", "d1", "d2"]  # the judged pool, in pool order
 
+arxiv_v1 = PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})
 print(PROTOCOLS["nanobeir"])
 print(score_query(scores, gains, protocol="nanobeir", k=10, candidates=pool, excluded=["q7"]))
-print(score_query(scores, gains, protocol="vidore", k=10, candidates=pool, excluded=["q7"]))
+print(score_query(scores, gains, protocol=arxiv_v1, k=10, candidates=pool, excluded=["q7"]))
 ```
 
-The two calls differ only in how the tie between `d1` and `d2` is resolved. `rcp_ndcg.eval.evaluate` applies the
+The two calls differ only in how the tie between `d1` and `d2` is resolved: the preset credits both with their
+mean gain, arXiv v1's rule ranks `d2` first by its id. `rcp_ndcg.eval.evaluate` applies the
 protocol of a suite or dataset automatically; its `protocol=` argument overrides it. On the command line the
 equivalent is `rcp-ndcg eval score --suite nanobeir --protocol <name>`.
 
 ## The MTEB integration
 
 The proposed MTEB integration (embeddings-benchmark/mteb#5516) reports `ndcg_float_at_k` with group-mean ties on
-every suite. On untied scores it agrees with the paper's rules. With tied scores, the NanoBEIR, BRIGHT and TREC-DL
-numbers can differ from the paper's tables, which use `doc_id_desc` and `input_order` there. See
+every suite, the rule of every preset here, so the two agree on tied scores too. See
 [the MTEB tutorial](../how-to/mteb-integration.md).

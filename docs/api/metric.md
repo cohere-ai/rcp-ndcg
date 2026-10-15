@@ -10,8 +10,8 @@ torch, no pandas, no LLM client, no cloud storage.
   the ideal ranking (default: all values of `gains`). RCP-, qrel- and Count-nDCG differ only in the gains. Scores,
   gains and ideal gains must be finite numbers: a non-finite one is refused, not NaN'd through the sums.
 - Tie rules (`TieRule`): `"group_mean"` (every tied document gets its tie group's mean gain: the expected nDCG over
-  tie orders, as mteb's `ndcg_float_at_k`), `"doc_id_desc"` (trec_eval), `"input_order"` (the order the scores
-  come in).
+  tie orders, as mteb's `ndcg_float_at_k`; the default and every preset's rule), `"doc_id_desc"` (trec_eval;
+  arXiv v1's NanoBEIR and BRIGHT tables), `"input_order"` (the order the scores come in; arXiv v1's TREC-DL tables).
 - `rank_by_score(scores, *, ties)`, `dcg(gains, k)`, `ideal_dcg(gains, k)`, `discount(rank)`: building blocks.
 
 ## Gains (`rcp_ndcg_core.gain`)
@@ -37,8 +37,8 @@ paper's gain-function ablation live in `experiments/gain_variants.py`, outside t
 
 - `Protocol`: a suite's rules: `ties`, `qrel_gain`, `restrict_to_candidates` (rank only the judged pool),
   `drop_identical_ids`, `round_digits` (BEIR rounds qrel-nDCG to 5).
-- `PROTOCOLS`: presets `nanobeir`, `bright` (doc-id ties, BEIR rounding), `vidore`, `mteb` (group-mean ties),
-  `trecdl` (input-order ties over the judged pool in pool order) and `plain`.
+- `PROTOCOLS`: presets `nanobeir`, `bright` (BEIR rounding), `vidore`, `mteb`, `trecdl` (the judged pool) and
+  `plain`, all with group-mean ties.
 - `score_query(scores, gains, *, protocol, k, metric, candidates, excluded, query_id)`: one query's nDCG@k.
   Excluded documents leave the ranking and the ideal; the RCP (and Count) ideal takes all gains of the query, the
   qrel ideal all positive grades.

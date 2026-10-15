@@ -1,6 +1,7 @@
 """Scoring inside mteb (`rcp_ndcg.eval.mteb.stored`): a `SearchProtocol` serving stored `Rankings` to
 `mteb.evaluate`, a `ModelMeta` from our model identity, and the round trips: the integer nDCG@10 equals our
-evaluator's (mteb breaks ties by doc id; so does the nanobeir protocol), and `TaskResult` files land in mteb's
+evaluator's under the trec_eval tie rule (mteb's integer metrics, through pytrec_eval, break ties by doc id; the
+presets credit a tie its group's mean, as mteb's `ndcg_float_at_k` does), and `TaskResult` files land in mteb's
 `ResultCache` layout."""
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ MTEB = pytest.importorskip("mteb")
 from mteb.abstasks.retrieval import AbsTaskRetrieval  # noqa: E402
 from mteb.abstasks.task_metadata import TaskMetadata  # noqa: E402
 from mteb.cache import ResultCache  # noqa: E402
+from rcp_ndcg_core import PROTOCOLS  # noqa: E402
 
 from rcp_ndcg.data import Rankings  # noqa: E402
 from rcp_ndcg.data.dataset import Dataset  # noqa: E402
@@ -25,6 +27,8 @@ from rcp_ndcg.eval.evaluate import evaluate  # noqa: E402
 from rcp_ndcg.eval.mteb import model_meta, stored_rankings_model  # noqa: E402
 
 SUBSET = "NanoArguAnaRetrieval"
+#: The nanobeir protocol with pytrec_eval's tie rule (document id, descending): mteb's integer ``ndcg_at_10``.
+TREC_EVAL_TIES = PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})
 TASK = "NanoArguAnaRCPReranking"
 
 
@@ -122,23 +126,26 @@ def test_stored_rankings_scored_by_mteb_give_our_integer_ndcg_at_10(task: Any, t
 
     result = mteb_evaluate(model, task, cache, tmp_path / "preds")
 
-    ours = evaluate(a_run(), dataset=a_dataset(), metrics=("qrel_ndcg",), k=10, bootstrap=0)
+    ours = evaluate(a_run(), dataset=a_dataset(), metrics=("qrel_ndcg",), k=10, bootstrap=0, protocol=TREC_EVAL_TIES)
     ours_at_10 = ours.summary[0].value
     theirs_at_10 = result.task_results[0].scores["test"][0]["ndcg_at_10"]
     assert theirs_at_10 == pytest.approx(ours_at_10), f"mteb {theirs_at_10} != ours {ours_at_10}"
 
 
 def test_tied_scores_score_identically_inside_mteb(task: Any) -> None:
-    """The gate's tie check: q1 ranks d2 and d3 tied; mteb (pytrec_eval) and the nanobeir protocol both break
-    the tie by document id descending, so the per-query values agree (d3 wins the tie; d2 is its tie group's
-    mean on ours is not used here -- the integer protocol has no group means)."""
+    """The gate's tie check: q1 ranks d2 and d3 tied; mteb's integer ``ndcg_at_10`` (pytrec_eval) breaks the tie
+    by document id descending (d3 wins it), so it equals ours under that rule. The nanobeir preset credits the tie
+    its group's mean gain instead (mteb's ``ndcg_float_at_k`` rule), which is below d3-first here."""
     model = stored_rankings_model(a_run(), model_meta("org/model", "abc123"))
     result = mteb_evaluate(model, task, ResultCache(Path(task.metadata.dataset["path"]) / ".." / "cache"))
 
-    ours = evaluate(a_run(), dataset=a_dataset(), metrics=("qrel_ndcg",), k=10, bootstrap=0)
+    ours = evaluate(a_run(), dataset=a_dataset(), metrics=("qrel_ndcg",), k=10, bootstrap=0, protocol=TREC_EVAL_TIES)
     per_query_ours = {v.query_id: v.value for v in ours.per_query if v.metric == "qrel_ndcg"}
     assert per_query_ours["q1"] is not None
-    assert result.task_results[0].scores["test"][0]["ndcg_at_10"] == pytest.approx(ours.summary[0].value)
+    theirs = result.task_results[0].scores["test"][0]["ndcg_at_10"]
+    assert theirs == pytest.approx(ours.summary[0].value)
+    preset = evaluate(a_run(), dataset=a_dataset(), metrics=("qrel_ndcg",), k=10, bootstrap=0)
+    assert preset.summary[0].value < theirs
 
 
 def test_the_task_result_lands_in_mteb_s_cache_layout(task: Any, tmp_path: Path) -> None:
@@ -195,7 +202,7 @@ def test_a_run_scoring_outside_the_pool_is_restricted_to_it(tmp_path: Path) -> N
 
     result = mteb_evaluate(model, a_task(out), ResultCache(tmp_path / "cache"))
 
-    ours = evaluate(run, dataset=dataset, metrics=("qrel_ndcg",), k=10, bootstrap=0)
+    ours = evaluate(run, dataset=dataset, metrics=("qrel_ndcg",), k=10, bootstrap=0, protocol=TREC_EVAL_TIES)
     assert_same_ndcg(ours.summary[0].value, result.task_results[0].scores["test"][0]["ndcg_at_10"])
 
 

@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from rcp_ndcg_core import gain, ndcg
-from rcp_ndcg_core.protocol import score_query
+from rcp_ndcg_core.protocol import PROTOCOLS, score_query
 from scipy.stats import ttest_rel
 
 from rcp_ndcg.data import Dataset, Rankings
@@ -342,10 +342,14 @@ def test_the_protocol_decides_pools_and_ties() -> None:
     tied = Rankings.from_scores({q: {"d1": 1.0, "d2": 1.0, "d3": 0.0, "d4": 0.0, "x": 5.0} for q in QUERIES})
     no_pools = _dataset(candidates=None)
 
+    by_id = PROTOCOLS["nanobeir"].model_copy(update={"name": "nanobeir-arxiv-v1", "ties": "doc_id_desc"})
     nanobeir = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol="nanobeir", k=1, metrics=["rcp_ndcg"])
+    arxiv_v1 = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol=by_id, k=1, metrics=["rcp_ndcg"])
     plain = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol="plain", k=1, metrics=["rcp_ndcg"])
 
-    assert nanobeir.value("system") == pytest.approx(GAINS["q0"]["d2"] / GAINS["q0"]["d1"]), "pool only, id ties"
+    g1, g2 = GAINS["q0"]["d1"], GAINS["q0"]["d2"]
+    assert nanobeir.value("system") == pytest.approx((g1 + g2) / 2 / g1), "pool only, group-mean ties"
+    assert arxiv_v1.value("system") == pytest.approx(g2 / g1), "pool only, id ties"
     assert plain.value("system") == 0.0, "the unjudged x leads when nothing restricts to the pool"
     with pytest.raises(DataError, match="judged pool"):
         evaluate(tied, dataset=no_pools, gains=GAINS, protocol="nanobeir")
@@ -405,9 +409,12 @@ def test_the_bootstrap_interval_is_the_alpha_over_2_quantiles_of_the_draws() -> 
 
 
 def test_evaluate_reproduces_the_papers_per_query_values() -> None:
-    """The paper anchors of ``tests/core/test_protocol.py``, scored through ``evaluate``."""
+    """The paper anchors of ``tests/core/test_protocol.py``, scored through ``evaluate`` under the tie rule the
+    fixture's values were printed with (arXiv v1: document id for NanoBEIR and BRIGHT, pool order for TREC-DL)."""
     fixture = json.loads((Path(__file__).parents[1] / "core" / "fixtures" / "paper_protocol_queries.json").read_text())
+    printed_ties = {"nanobeir": "doc_id_desc", "bright": "doc_id_desc", "trecdl": "input_order", "vidore": "group_mean"}
     for query in fixture["queries"]:
+        protocol = PROTOCOLS[query["suite"]].model_copy(update={"ties": printed_ties[query["suite"]]})
         dataset = Dataset(
             name=query["dataset"],
             qrels={query["query_id"]: query["qrels"]},
@@ -417,7 +424,7 @@ def test_evaluate_reproduces_the_papers_per_query_values() -> None:
         )
         rankings = Rankings.from_scores({query["query_id"]: query["scores"]})
 
-        result = evaluate(rankings, dataset=dataset, protocol=query["suite"], k=fixture["k"], bootstrap=0)
+        result = evaluate(rankings, dataset=dataset, protocol=protocol, k=fixture["k"], bootstrap=0)
 
         assert result.value("system", "rcp_ndcg") == pytest.approx(
             query["expected"]["rcp_ndcg"], abs=query["rcp_ndcg_tolerance"]

@@ -108,6 +108,26 @@ class TestTieRules:
         assert ndcg(self.SCORES, self.GAINS, k=2) == pytest.approx(expected)
         assert ndcg({"b": 1.0, "a": 1.0, "c": 0.0}, self.GAINS, k=2) == pytest.approx(expected)
 
+    def test_group_mean_is_the_expected_ndcg_over_every_order_of_the_ties(self) -> None:
+        """Brute force: the mean nDCG@k over all orders of the tied documents, also when the cutoff cuts a tie."""
+        import itertools
+        import random
+
+        rng = random.Random(15)
+        for _ in range(60):
+            n = rng.randint(2, 6)
+            ids = [f"d{i}" for i in range(n)]
+            scores = {doc: float(rng.randint(0, 2)) for doc in ids}
+            gains = {doc: rng.choice([0.0, 0.25, 0.5, 1.0]) for doc in ids}
+            k = rng.randint(1, n)
+            orders = [
+                list(order)
+                for order in itertools.permutations(ids)
+                if all(scores[a] >= scores[b] for a, b in itertools.pairwise(order))
+            ]
+            expected = sum(ndcg(order, gains, k=k) for order in orders) / len(orders)
+            assert ndcg(scores, gains, k=k, ties="group_mean") == pytest.approx(expected, abs=1e-12)
+
     def test_doc_id_desc_breaks_ties_by_descending_id(self) -> None:
         assert rank_by_score(self.SCORES, ties="doc_id_desc") == ["b", "a", "c"]
         assert ndcg(self.SCORES, self.GAINS, k=2, ties="doc_id_desc") == pytest.approx(1 / LOG2_3)

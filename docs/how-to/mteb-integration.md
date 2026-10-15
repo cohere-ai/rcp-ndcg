@@ -28,9 +28,10 @@ The default view reranks each query's judged pool (`{subset}-top_ranked`). `get_
 searches the full corpus instead and reports only the integer-qrels metrics, because the RCP gains cover the judged
 pools only.
 
-mteb credits tied scores with their group's mean gain on every suite. The paper's NanoBEIR, BRIGHT and TREC-DL
-tables break ties by document id or pool order instead. On untied scores the two conventions agree; with ties, use
-`rcp_ndcg.eval.evaluate` with the suite's protocol to match the paper ([scoring protocols](../concepts/protocols.md)).
+mteb credits tied scores with their group's mean gain on every suite, as do this package's suite protocols and the
+paper from arXiv v2 on, so `rcp_ndcg.eval.evaluate` and mteb agree on tied scores too. arXiv v1's NanoBEIR, BRIGHT
+and TREC-DL tables broke ties by document id or pool order instead ([scoring protocols](../concepts/protocols.md)
+shows how to score that way).
 
 ## Exporting a dataset to the MTEB layout
 
@@ -129,14 +130,14 @@ results = mteb.evaluate(
 
 The served scores are the queries mteb asks about, and only those (mteb raises on a result for a query that
 has no qrels). A task with a `top_ranked` pool (the reranking view) receives the pool's documents only, and
-every query keeps at most `top_k` documents, ties by document id descending -- mteb's own tie rule, which the
-task's protocol scores under (the retrieval stack's own selection ties toward the *lower* document id, a
-different, declared rule). A query the run did not rank scores 0, the same semantics our evaluator reports
-an unranked labelled query with. For NanoBEIR and BRIGHT -- the suites whose protocol breaks ties by
-document id descending, mteb's own rule -- the integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s
-`qrel_ndcg`, and for any suite it does when no scores are tied; ViDoRe v3 (`group_mean` ties) and TREC-DL
-(`input_order` ties) break ties differently, so a tied ranking's two numbers differ (the two also differ only
-in how they round -- mteb rounds its mean to 5 decimals, the protocol rounds per query). One deliberate divergence: a query whose qrels are all zero scores 0
+every query keeps at most `top_k` documents, ties by document id descending, the tie rule of mteb's integer
+metrics (pytrec_eval's; the retrieval stack's own selection ties toward the *lower* document id, a different,
+declared rule). A query the run did not rank scores 0, the same semantics our evaluator reports
+an unranked labelled query with. The integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s `qrel_ndcg` under
+the suite's protocol with that tie rule (`protocol=PROTOCOLS["nanobeir"].model_copy(update={"ties":
+"doc_id_desc"})`; the presets credit a tie its group's mean gain, as `ndcg_float_at_k` does, so on tied scores
+they differ). The two then differ only in how they round -- mteb rounds its mean to 5 decimals, the protocol
+rounds per query. One deliberate divergence: a query whose qrels are all zero scores 0
 in mteb's mean, while qrel-nDCG is undefined without a positive grade and drops out of our means -- every query
 of the shipped suites carries a positive label, so the two agree there.
 

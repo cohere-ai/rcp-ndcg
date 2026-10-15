@@ -42,8 +42,9 @@ Each benchmark dataset holds the judged candidate pools, the human qrels and the
 - stock [mteb](https://github.com/embeddings-benchmark/mteb): `ndcg_float_at_10` through the `rcp_ndcg_tasks.py`
   shipped with each dataset ([MTEB integration](docs/how-to/mteb-integration.md)).
 
-mteb credits tied scores with their group's mean gain on every suite. The paper's NanoBEIR, BRIGHT and TREC-DL
-numbers break ties by a fixed order instead. On untied scores the two conventions agree.
+Both routes credit tied scores with their group's mean gain on every suite, as the paper does from arXiv v2 on.
+arXiv v1's NanoBEIR, BRIGHT and TREC-DL numbers broke ties by a fixed order (document id; judge-pool order) instead;
+on untied scores the conventions agree.
 
 ## 3. Re-judge a pool with your own LLM endpoint
 

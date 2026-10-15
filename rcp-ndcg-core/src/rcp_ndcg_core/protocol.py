@@ -20,14 +20,19 @@ leave the ranking and every ideal.  A :class:`Protocol` adds the suite rules,
 =========  ===========  ============================  ======================
 preset     ties         candidates                    qrel-nDCG rounding
 =========  ===========  ============================  ======================
-nanobeir   doc_id_desc  judged pool only              5 decimals (BEIR)
-bright     doc_id_desc  every scored document         5 decimals (BEIR)
+nanobeir   group_mean   judged pool only              5 decimals (BEIR)
+bright     group_mean   every scored document         5 decimals (BEIR)
 vidore     group_mean   judged pool only              none
-trecdl     input_order  judged pool only, pool order  none
+trecdl     group_mean   judged pool only              none
 mteb       group_mean   judged pool only              none
 plain      group_mean   every scored document         none
 =========  ===========  ============================  ======================
 
+Every preset credits tied scores with their group's mean gain (the expected nDCG over all
+orders of the tie), so a tie never borrows an order from document ids or from the pool,
+which is often sorted by relevance; this is mteb's ``ndcg_float_at_k`` rule.  arXiv v1 of
+the paper broke ties by document id (NanoBEIR, BRIGHT) and by pool order (TREC-DL); a
+:class:`Protocol` with ``ties="doc_id_desc"`` or ``"input_order"`` still scores that way.
 BRIGHT is not restricted to the judged pool because its TheoremQA reranker runs hold
 candidates outside it, which the paper scores with gain 0.  Loading the released
 HuggingFace data is ``rcp_ndcg.data.load_dataset``; this module never reads files.
@@ -71,14 +76,14 @@ class Protocol(BaseModel):
 
 
 PROTOCOLS: dict[str, Protocol] = {
-    "nanobeir": Protocol(name="nanobeir", ties="doc_id_desc", restrict_to_candidates=True, round_digits=5),
-    "bright": Protocol(name="bright", ties="doc_id_desc", round_digits=5),
+    "nanobeir": Protocol(name="nanobeir", ties="group_mean", restrict_to_candidates=True, round_digits=5),
+    "bright": Protocol(name="bright", ties="group_mean", round_digits=5),
     "vidore": Protocol(name="vidore", ties="group_mean", restrict_to_candidates=True),
-    "trecdl": Protocol(name="trecdl", ties="input_order", restrict_to_candidates=True),
+    "trecdl": Protocol(name="trecdl", ties="group_mean", restrict_to_candidates=True),
     "mteb": Protocol(name="mteb", ties="group_mean", restrict_to_candidates=True),
     "plain": Protocol(name="plain", ties="group_mean"),
 }
-"""Named presets: the paper's four suites, mteb's ``ndcg_float_at_k`` rule, and ``plain``."""
+"""Named presets: the paper's four suites, mteb's ``ndcg_float_at_k`` rule, and ``plain``; all with group-mean ties."""
 
 MetricName = Literal["rcp_ndcg", "qrel_ndcg", "count_ndcg"]
 """The three nDCGs; they differ only in their gains (paper, appendix B)."""
