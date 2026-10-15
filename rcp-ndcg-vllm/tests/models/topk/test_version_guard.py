@@ -59,3 +59,9 @@ def test_installed_vllm_version_without_vllm_names_the_distribution() -> None:
         assert "vLLM" in str(error)
         pytest.skip(f"vLLM is not installed on this CPU environment: {error}")
     assert isinstance(version, str) and version
+
+
+def test_the_module_keeps_one_version_parser_and_no_dead_regex() -> None:
+    """``_VERSION_RE`` was a second, unused spelling of ``_LEADING_NUMBERS``; nothing read it. A
+    dead compiled pattern is a parser a reader may trust, so the module must not carry it."""
+    assert not hasattr(guard, "_VERSION_RE")

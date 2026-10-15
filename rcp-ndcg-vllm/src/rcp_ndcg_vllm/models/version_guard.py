@@ -107,8 +107,6 @@ def ensure_vllm_version() -> tuple[int, int]:
 SUPPORTED_VLLM_MIN = TESTED_VLLM_MIN
 SUPPORTED_VLLM_MAX = TESTED_VLLM_MAX
 
-_VERSION_RE = re.compile(r"^(\d+)\.(\d+)")
-
 
 def checked_vllm_version() -> tuple[int, int]:
     """The installed vLLM's ``(major, minor)`` (the pplx spelling; :func:`parse_vllm_minor_version` reads it)."""
