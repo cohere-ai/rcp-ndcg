@@ -10,6 +10,13 @@ side in both orders; the **majority** decides it when at least two of the three 
 * Study 1 (``blind_comparisons/study1_*``): share of decided cases in which the judges prefer the set selected by
   the reference judge over the benchmark's qrel set, on NanoBEIR and BRIGHT.
 
+arXiv v2 applies one exclusion rule to every judged case: a case enters an analysis only if, under the v2 fit, it
+keeps the property it was selected for. Release 2 of the external-validation dataset records it per case in a column
+``excluded_under_fit``: in ``external_judges_cases`` (an S1 disagreement on which both metrics now favour the same
+list, an S1 control on which they now disagree, an S2 or S3 case whose RCP side changed) and in ``study1_cases`` (a
+case whose qrel set has at least as much total RCP gain as the reference judge's set under the v2 fit). The script
+leaves the flagged cases out. A table without the column (release 1) keeps every case.
+
 Usage::
 
     python experiments/external_judges.py
@@ -29,6 +36,15 @@ JUDGES = {"glm-5-3-flash": "GLM-5.3-flash", "deepseek-4-1-flash": "DeepSeek-4.1-
 # The display labels of the three BRIGHT tasks with excluded ids (fetch_data.BRIGHT_WITH_EXCLUSIONS, whose
 # subset ids these labels normalise to -- pinned in tests/experiments/test_reproduction_rules.py).
 BRIGHT_EXCLUSION_LABELS = ["AoPS", "LeetCode", "TheoremQA Questions"]
+
+
+def kept_under_fit(cases: pd.DataFrame) -> pd.Series:
+    """The cases that enter the analyses: those not flagged ``excluded_under_fit`` (release 2's exclusion rule:
+    the case no longer has, under the v2 fit, the property it was selected for). A table without the column
+    (release 1) keeps every case."""
+    if "excluded_under_fit" not in cases.columns:
+        return pd.Series(True, index=cases.index)
+    return ~cases["excluded_under_fit"].fillna(False).astype(bool)
 
 
 def judge_decisions(verdicts: pd.DataFrame, keys: list[str], side: str) -> pd.DataFrame:
@@ -66,6 +82,15 @@ def tournament_order_test(chk: Checker, paper: dict) -> None:
     cases = pd.read_parquet(local_path(REPO, "blind_comparisons/external_judges_cases.parquet"))
     verdicts = pd.read_parquet(local_path(REPO, "blind_comparisons/external_judges_verdicts.parquet"))
     verdicts["side"] = verdicts.choice_side.map({"rcp_side": "rcp", "count_side": "count"})
+    keep = kept_under_fit(cases)
+    if not keep.all():
+        left = cases[~keep].groupby(["set", cases.kind.fillna("")]).size()
+        print(
+            f"== tournament-order test: {int((~keep).sum())} of {len(cases)} cases left out (excluded_under_fit: "
+            + ", ".join(f"{s} {k}".strip() + f" {n}" for (s, k), n in left.items())
+            + ")"
+        )
+    cases = cases[keep].reset_index(drop=True)
     dec = judge_decisions(verdicts, ["case_id"], "side").reindex(cases.case_id)
     cons = majority(dec, ("rcp", "count"))
     unit = np.where(cases.set == "S1", np.where(cases.kind == "control", "s1ctl", "s1"), cases.set.str.lower())
@@ -89,6 +114,17 @@ def tournament_order_test(chk: Checker, paper: dict) -> None:
 
 def study1(chk: Checker, paper: dict) -> None:
     cases = pd.read_parquet(local_path(REPO, "blind_comparisons/study1_cases.parquet"))
+    keep = kept_under_fit(cases)
+    # the original cases the rebuilt BRIGHT set replaces, counted as selected (before the exclusion rule)
+    n_original = int(((cases.set == "bright_qwen3.5-397b") & cases.dataset.isin(BRIGHT_EXCLUSION_LABELS)).sum())
+    if not keep.all():
+        left = cases[~keep].groupby("set").size()
+        print(
+            f"== Study 1: {int((~keep).sum())} of {len(cases)} cases left out (excluded_under_fit: "
+            + ", ".join(f"{s} {n}" for s, n in left.items())
+            + ")"
+        )
+    cases = cases[keep].reset_index(drop=True)
     verdicts = pd.read_parquet(local_path(REPO, "blind_comparisons/study1_external_panel_verdicts.parquet"))
     verdicts["side"] = verdicts.choice_role.map({"LLM": "rcp", "GT": "qrel"})
     keys = ["set", "dataset", "query_id"]
@@ -123,7 +159,7 @@ def study1(chk: Checker, paper: dict) -> None:
     chk.count(
         "study1 bright_qwen_rebuilt original cases",
         paper["bright_qwen_rebuilt"]["n_original"],
-        int(((s == "bright_qwen3.5-397b") & affected).sum()),
+        n_original,
     )
     nano = selections["nanobeir_qwen"]
     per_ds = pd.DataFrame({"ds": ds[nano], "pick": cons[nano].to_numpy()}).dropna()

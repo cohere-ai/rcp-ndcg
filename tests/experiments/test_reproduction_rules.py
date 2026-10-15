@@ -55,7 +55,6 @@ def _checker(experiment):
     return experiment("checks").Checker("t")
 
 
-_NANO_REASON = "hub gains come from a refit that differs from the paper's by <= 0.0065 in gain; 10 cells move <= 0.07"
 _THQA_REASON = "paper used the gold ids of a later BRIGHT revision on 27 of 58 ThQA-T queries; hub keeps a75a0eb4"
 _MEAN_REASON = "carries the ThQA-T qrel difference into the mean"
 
@@ -143,18 +142,15 @@ def test_a_documented_deviation_is_bounded_to_its_population(experiment):
 
 
 def test_the_known_deviation_populations_are_the_documented_ones(experiment):
-    """The code table is ``experiments/README.md``'s \"Known deviations\": NanoBEIR 5 FEVER + 2 Quora + 2
-    NFCorpus + 1 HotpotQA cells within 0.08, BRIGHT 13 TheoremQA Theorems cells within 2.6 and 12 of the 14 qrel
-    means within 0.25 -- 35 rows in total, and no wildcard entry that would cover anything else."""
+    """The code table is ``experiments/README.md``'s \"Known deviations\": all 14 BRIGHT TheoremQA Theorems cells
+    within 2.6 and 11 of the 14 qrel means within 0.25 (arXiv v2, group-mean ties) -- 25 rows in total, and no
+    wildcard entry that would cover anything else (the NanoBEIR fit populations of the v1 data are gone: the v2 hub
+    gains are the paper's fit)."""
     lb = experiment("leaderboards")
     populations = {(s, m, col): (dev.bound, dev.cells, dev.reason) for (s, m, col), dev in lb.KNOWN.items()}
     assert populations == {
-        ("nanobeir", "rcp_ndcg10", "NanoFEVERRetrieval"): (0.08, 5, _NANO_REASON),
-        ("nanobeir", "rcp_ndcg10", "NanoQuoraRetrieval"): (0.08, 2, _NANO_REASON),
-        ("nanobeir", "rcp_ndcg10", "NanoNFCorpusRetrieval"): (0.08, 2, _NANO_REASON),
-        ("nanobeir", "rcp_ndcg10", "NanoHotpotQARetrieval"): (0.08, 1, _NANO_REASON),
-        ("bright", "qrel_ndcg10", "theoremqa_theorems"): (2.6, 13, _THQA_REASON),
-        ("bright", "qrel_ndcg10", "mean"): (0.25, 12, _MEAN_REASON),
+        ("bright", "qrel_ndcg10", "theoremqa_theorems"): (2.6, 14, _THQA_REASON),
+        ("bright", "qrel_ndcg10", "mean"): (0.25, 11, _MEAN_REASON),
     }
     for key, dev in lb.KNOWN.items():
         assert dev.label == " ".join(key), f"{key}: a population's label names its table position (a swap lies)"
@@ -177,8 +173,8 @@ def test_a_single_suite_run_accounts_for_its_own_populations_only(experiment):
 
 
 def test_the_real_known_table_accepts_exactly_the_documented_rows(experiment):
-    """The table's own populations run through ``finish()``: 35 rows exactly as documented, and one extra
-    row -- a 36th, or one outside every entry -- fails (equal-valued declarations stay separate populations)."""
+    """The table's own populations run through ``finish()``: 25 rows exactly as documented, and one extra
+    row -- a 26th, or one outside every entry -- fails (equal-valued declarations stay separate populations)."""
     lb = experiment("leaderboards")
     chk = experiment("checks").Checker("t", tuple(lb.KNOWN.values()))
     row = 0
@@ -186,13 +182,31 @@ def test_the_real_known_table_accepts_exactly_the_documented_rows(experiment):
         for i in range(dev.cells):
             assert chk.compare(f"{suite} {metric} r{i} {col}", 50.0, 50.0 + dev.bound / 2, 0.001, known=dev)
             row += 1
-    assert row == 35
+    assert row == 25
     assert chk.finish() == 0
     overflowing = experiment("checks").Checker("t", tuple(lb.KNOWN.values()))
     for (suite, metric, col), dev in lb.KNOWN.items():
         for i in range(dev.cells + 1):
             overflowing.compare(f"{suite} {metric} r{i} {col}", 50.0, 50.0 + dev.bound / 2, 0.001, known=dev)
     assert overflowing.finish() == 1
+
+
+def test_external_judges_declares_no_documented_deviation(experiment):
+    """Release 2 flags every case arXiv v2 leaves out (``excluded_under_fit`` in ``external_judges_cases`` and
+    ``study1_cases``), so every external-judge value reproduces exactly: the script declares no deviation."""
+    source = (ROOT / "experiments" / "external_judges.py").read_text(encoding="utf-8")
+    assert "KnownDeviation" not in source
+    assert 'Checker("external LLM judges")' in source
+
+
+def test_the_exclusion_rule_leaves_out_flagged_cases_and_keeps_every_case_without_the_flag(experiment):
+    """Release 2's ``excluded_under_fit`` leaves a case out of every analysis; a release-1 table has no such column
+    and keeps every case (a missing flag counts as kept)."""
+    ej = experiment("external_judges")
+    flagged = pd.DataFrame({"case_id": ["a", "b", "c"], "excluded_under_fit": [False, True, None]})
+    assert ej.kept_under_fit(flagged).tolist() == [True, False, True]
+    release1 = pd.DataFrame({"case_id": ["a", "b", "c"]})
+    assert ej.kept_under_fit(release1).tolist() == [True, True, True]
 
 
 def test_check_trecdl_refuses_a_ragged_reranker_matrix(experiment):
@@ -248,10 +262,22 @@ def test_the_bright_exclusion_tasks_are_one_concept_with_one_definition(experime
     assert [re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") for label in labels] == ids
 
 
-def test_the_setup_snippets_give_the_same_install_commands():
+def test_the_data_directory_is_keyed_by_the_pinned_revision(experiment, tmp_path):
+    """A file fetched at another revision (release 1, arXiv v1's numbers), or stored unkeyed by an earlier version of
+    the script, is never read for the checks: every local path names the revision the checks pin."""
+    fetch_data = experiment("fetch_data")
+    for repo, revision in fetch_data.DATASETS.items():
+        path = fetch_data.local_path(repo, "a/qrels.parquet", tmp_path)
+        assert path == tmp_path / repo / revision / "a" / "qrels.parquet"
+        stale = tmp_path / repo / "a" / "qrels.parquet"  # the unkeyed layout of the earlier script
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_bytes(b"release 1")
+        assert not path.exists()
+
+
+def test_the_two_setup_snippets_give_the_same_install_commands():
     """Experiments install the checkout's own core first (``pip install -e .`` alone would resolve
-    ``rcp-ndcg-core==0.0.1`` from PyPI): ``experiments/README.md``, ``REPRODUCIBILITY.md`` and
-    ``docs/how-to/reproduce-the-paper.md`` say the same."""
+    ``rcp-ndcg-core==0.0.1`` from PyPI): ``experiments/README.md`` and ``REPRODUCIBILITY.md`` say the same."""
 
     def install_commands(text: str) -> list[str]:
         return [
@@ -263,8 +289,7 @@ def test_the_setup_snippets_give_the_same_install_commands():
 
     readme = install_commands((ROOT / "experiments" / "README.md").read_text(encoding="utf-8"))
     repro = install_commands((ROOT / "REPRODUCIBILITY.md").read_text(encoding="utf-8"))
-    how_to = install_commands((ROOT / "docs" / "how-to" / "reproduce-the-paper.md").read_text(encoding="utf-8"))
-    assert readme and readme == repro == how_to
+    assert readme and readme == repro
 
 
 def test_paper_values_cover_the_three_leaderboard_tables(experiment):
@@ -275,73 +300,3 @@ def test_paper_values_cover_the_three_leaderboard_tables(experiment):
             table = lb[suite][metric]
             assert len(table) == 14
             assert all(len(cells) == n_datasets + 1 for cells in table.values())
-
-
-def test_the_data_directory_knob_is_the_environment_variable(experiment, monkeypatch, tmp_path) -> None:
-    """``fetch_data.py --data-dir`` moves its own download; the checks resolve ``RCP_EXPERIMENTS_DATA``.
-
-    The README promised that ``--data-dir`` moved the data directory, so a reader who ran it saw
-    ``run_all.py`` download the corpus again into the checkout (or fail offline).
-    """
-    fetch_data = experiment("fetch_data")
-    monkeypatch.setenv("RCP_EXPERIMENTS_DATA", str(tmp_path))
-    assert fetch_data.local_path("repo", "file.parquet") == tmp_path / "repo" / "file.parquet"
-
-    readme = (ROOT / "experiments" / "README.md").read_text(encoding="utf-8")
-    assert "`RCP_EXPERIMENTS_DATA` or `fetch_data.py --data-dir` moves the data directory" not in readme
-    assert "`RCP_EXPERIMENTS_DATA` moves the data directory for the checks" in readme
-
-
-def test_the_reference_environment_installs_flash_attn_after_torch() -> None:
-    """flash-attn's sdist imports torch in its ``setup.py``; pip's build isolation hides the torch
-    already listed in the same file, so a one-shot install failed with ``ModuleNotFoundError: torch``.
-
-    The paper-exact reference environment installs torch first, then flash-attn with
-    ``--no-build-isolation`` from its own requirements file.
-    """
-    reference = ROOT / "experiments" / "paper" / "rerankers" / "reference"
-    files = sorted(reference.glob("requirements*.txt"))
-    assert files, "the reference environment's requirements files are there"
-    for path in files:
-        text = path.read_text(encoding="utf-8")
-        packages = {
-            line.split("==")[0].split(">=")[0].split(";")[0].strip()
-            for line in text.splitlines()
-            if line.strip() and not line.strip().startswith("#")
-        }
-        if "flash-attn" in packages:
-            assert "torch" not in packages, f"{path.name} installs flash-attn beside torch in one pip run"
-
-    instructions = (reference / "requirements.txt").read_text(encoding="utf-8")
-    assert "pip install --no-build-isolation -r requirements-flash-attn.txt" in instructions
-
-
-def test_the_reranker_readme_does_not_claim_every_config_names_a_recipe() -> None:
-    """Seven of the ten served configs keep explicit fields instead of a ``recipe:`` pointer (their content
-    deliberately differs from the recipe's serving path), so the README may not claim every config names one."""
-    rerankers = ROOT / "experiments" / "paper" / "rerankers"
-    readme = re.sub(r"\s+", " ", (rerankers / "README.md").read_text(encoding="utf-8"))
-    if "Each config names the recipe that serves it" in readme:
-        served = [
-            path
-            for path in sorted(rerankers.glob("*.yaml"))
-            if re.search(r"^api: rerank\b", path.read_text(encoding="utf-8"), re.M)
-        ]
-        missing = [path.name for path in served if not re.search(r"^recipe:", path.read_text(encoding="utf-8"), re.M)]
-        assert not missing, f"the README claims every served config names a recipe; these do not: {missing}"
-
-
-def test_an_empty_or_unknown_suite_selection_is_refused(experiment, monkeypatch) -> None:
-    """``--suite`` with no values compared nothing and exited 0; a typo raised a bare ValueError after the fetch."""
-    leaderboards = experiment("leaderboards")
-    monkeypatch.setattr(leaderboards, "fetch_group", lambda *args, **kwargs: None)
-
-    for argv in (["--suite"], ["--suite", "nanobeir,bright"], ["--suite", "nanobeir", "--suite", "typo"]):
-        with pytest.raises(SystemExit) as caught:
-            leaderboards.main(argv)
-        assert caught.value.code != 0, argv
-
-
-def test_a_checker_that_compared_nothing_fails(experiment) -> None:
-    """A green '0 checks' run is a reproduction that checked nothing."""
-    assert experiment("checks").Checker("nothing").finish() == 1

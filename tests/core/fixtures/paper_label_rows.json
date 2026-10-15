@@ -1,19 +1,19 @@
 {
- "description": "Five rows of the public NanoBEIR release (https://huggingface.co/datasets/fabianschmidt-cohere/rcp-ndcg-nanobeir, <subset>/qrels.parquet: theta and gain), one per subset and spanning low to high gain, with the item parameters the release ships (provenance/item_params.qwen35.json). Over every qrels row of the release, gain(theta) equals the released gain within 2.2e-16.",
+ "description": "Five rows of the public NanoBEIR release 2 (the corrected Stage A parse and refit behind arXiv v2; https://huggingface.co/datasets/fabianschmidt-cohere/rcp-ndcg-nanobeir at the revision experiments/fetch_data.py pins, <subset>/qrels.parquet: theta and gain), one per subset and spanning low to high gain, with the item parameters the release ships (provenance/item_params.qwen35.json). Over every qrels row of the release, gain(theta) equals the released gain within 2.2e-16.",
  "item_params": {
   "gamma": [
-   1.1690490245819092,
-   1.047158122062683,
-   0.9400498867034912,
-   1.1572155952453613,
-   0.6865269541740417
+   1.16842782497406,
+   1.0465545654296875,
+   0.9403960108757019,
+   1.1583954095840454,
+   0.6862263679504395
   ],
   "beta": [
-   -2.5716564655303955,
-   -2.0024073123931885,
-   -0.2512804865837097,
-   0.7088905572891235,
-   4.116453647613525
+   -2.575401782989502,
+   -2.0037059783935547,
+   -0.2501501142978668,
+   0.7126871943473816,
+   4.116570472717285
   ]
  },
  "rows": [
@@ -21,36 +21,36 @@
    "subset": "NanoHotpotQARetrieval",
    "query_id": "5adbd70c55429947ff173843",
    "doc_id": "44269101",
-   "theta": -5.187374497929923,
-   "gain": 0.01997428042617851
+   "theta": -5.179935626783944,
+   "gain": 0.02019949517918868
   },
   {
    "subset": "NanoQuoraRetrieval",
    "query_id": "362950",
    "doc_id": "35146",
-   "theta": -2.69231277679755,
-   "gain": 0.20004480585660003
+   "theta": -2.693869400325365,
+   "gain": 0.20002187488458445
   },
   {
    "subset": "NanoFiQA2018Retrieval",
    "query_id": "9548",
    "doc_id": "511945",
-   "theta": -0.6592735429940149,
-   "gain": 0.5000468970283468
+   "theta": -0.6566112135787989,
+   "gain": 0.5001204852850426
   },
   {
    "subset": "NanoTouche2020Retrieval",
    "query_id": "26",
    "doc_id": "440fb971-2019-04-18T17:06:22Z-00002-000",
-   "theta": 1.7329515144396055,
-   "gain": 0.800045354013547
+   "theta": 1.735925794861629,
+   "gain": 0.8001646309720323
   },
   {
    "subset": "NanoMSMARCORetrieval",
    "query_id": "265729",
    "doc_id": "7011409",
-   "theta": 6.095513311843433,
-   "gain": 0.9709403037225048
+   "theta": 6.167130791051335,
+   "gain": 0.9720909025779039
   }
  ]
 }

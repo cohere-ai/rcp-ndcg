@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 from checks import Checker, KnownDeviation, paper_values
 from fetch_data import BRIGHT_SUBSETS, NANOBEIR_SUBSETS, TRECDL_SUBSETS, VIDORE_NATIVE, fetch_group, local_path
-from rcp_ndcg_core.protocol import PROTOCOLS, Protocol, candidate_docs, score_query
+from rcp_ndcg_core.protocol import candidate_docs, score_query
 from scipy.stats import kendalltau, ttest_rel
 
 # Hub model id -> the paper's short name.
@@ -50,46 +50,18 @@ RERANKERS = {
 # Tolerance for a table cell, in nDCG points: the printed rounding (0.05) plus one unit of float noise.
 CELL_TOL = 0.05 + 1e-6
 
-# The values checked here (paper_values.json, the pinned release 1) are arXiv v1's, whose NanoBEIR and BRIGHT tables
-# broke tied scores by document id and whose TREC-DL tables by judge-pool order. The presets credit a tie its group's
-# mean gain, so the harness scores each suite with arXiv v1's rule until it checks arXiv v2's values.
-V1_TIES = {"nanobeir": "doc_id_desc", "bright": "doc_id_desc", "trecdl": "input_order"}
-
-
-def protocol(suite: str) -> Protocol:
-    """The protocol a suite's tables were computed under: its preset with arXiv v1's tie rule."""
-    preset = PROTOCOLS[suite]
-    return preset.model_copy(update={"ties": V1_TIES[suite]}) if suite in V1_TIES else preset
-
-
-_NANOBEIR_GAINS = (
-    "hub gains come from a refit that differs from the paper's by <= 0.0065 in gain; 10 cells move <= 0.07"
-)
 _THQA_GOLD_IDS = "paper used the gold ids of a later BRIGHT revision on 27 of 58 ThQA-T queries; hub keeps a75a0eb4"
 _MEAN_CARRIES = "carries the ThQA-T qrel difference into the mean"
 
 # Documented deviations: (suite, metric, dataset or "mean") -> (bound in points, reason, documented cells).
-# The cell populations are ``experiments/README.md``'s "Known deviations": NanoBEIR 5 FEVER + 2 Quora + 2
-# NFCorpus + 1 HotpotQA cells of the 196, BRIGHT 13 of the 14 TheoremQA Theorems qrel cells and 12 of the 14 qrel
-# means -- 35 rows in total (`run_all.py`). No other cell may deviate at all, and every count here is exact:
-# ``Checker.finish`` fails the run when the populations do not materialise as documented.
+# The cell populations are ``experiments/README.md``'s "Known deviations": BRIGHT all 14 TheoremQA Theorems qrel
+# cells and 11 of the 14 qrel means -- 25 rows in total (`run_all.py`). No other cell may deviate at all, and every
+# count here is exact: ``Checker.finish`` fails the run when the populations do not materialise as documented.
 KNOWN = {
-    ("nanobeir", "rcp_ndcg10", "NanoFEVERRetrieval"): KnownDeviation(
-        0.08, _NANOBEIR_GAINS, 5, "nanobeir rcp_ndcg10 NanoFEVERRetrieval"
-    ),
-    ("nanobeir", "rcp_ndcg10", "NanoQuoraRetrieval"): KnownDeviation(
-        0.08, _NANOBEIR_GAINS, 2, "nanobeir rcp_ndcg10 NanoQuoraRetrieval"
-    ),
-    ("nanobeir", "rcp_ndcg10", "NanoNFCorpusRetrieval"): KnownDeviation(
-        0.08, _NANOBEIR_GAINS, 2, "nanobeir rcp_ndcg10 NanoNFCorpusRetrieval"
-    ),
-    ("nanobeir", "rcp_ndcg10", "NanoHotpotQARetrieval"): KnownDeviation(
-        0.08, _NANOBEIR_GAINS, 1, "nanobeir rcp_ndcg10 NanoHotpotQARetrieval"
-    ),
     ("bright", "qrel_ndcg10", "theoremqa_theorems"): KnownDeviation(
-        2.6, _THQA_GOLD_IDS, 13, "bright qrel_ndcg10 theoremqa_theorems"
+        2.6, _THQA_GOLD_IDS, 14, "bright qrel_ndcg10 theoremqa_theorems"
     ),
-    ("bright", "qrel_ndcg10", "mean"): KnownDeviation(0.25, _MEAN_CARRIES, 12, "bright qrel_ndcg10 mean"),
+    ("bright", "qrel_ndcg10", "mean"): KnownDeviation(0.25, _MEAN_CARRIES, 11, "bright qrel_ndcg10 mean"),
 }
 
 
@@ -124,15 +96,13 @@ def _score_subset(suite, dataset, runs, positives, gains, pools=None, excluded=N
             continue
         scored = dict(zip(g["corpus-id"], g.score, strict=True))
         pool = pools[qid] if pools is not None else None
-        cands = candidate_docs(protocol(suite), scored, candidates=pool, excluded=excluded.get(qid, ()))
+        cands = candidate_docs(suite, scored, candidates=pool, excluded=excluded.get(qid, ()))
         q_gains = gains[qid]
         if suite == "nanobeir":  # the RCP ideal ranking is taken over the candidates (self-docs removed)
             q_gains = {d: v for d, v in q_gains.items() if d in set(pool)}
         ranked = {d: scored[d] for d in cands}
-        qrel = score_query(
-            ranked, positives.get(qid, {}), protocol=protocol(suite), metric="qrel_ndcg", candidates=pool
-        )
-        rcp = score_query(ranked, q_gains, protocol=protocol(suite), candidates=pool)
+        qrel = score_query(ranked, positives.get(qid, {}), protocol=suite, metric="qrel_ndcg", candidates=pool)
+        rcp = score_query(ranked, q_gains, protocol=suite, candidates=pool)
         yield suite, dataset, RERANKERS[model], qid, qrel, rcp
 
 

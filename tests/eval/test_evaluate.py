@@ -409,12 +409,11 @@ def test_the_bootstrap_interval_is_the_alpha_over_2_quantiles_of_the_draws() -> 
 
 
 def test_evaluate_reproduces_the_papers_per_query_values() -> None:
-    """The paper anchors of ``tests/core/test_protocol.py``, scored through ``evaluate`` under the tie rule the
-    fixture's values were printed with (arXiv v1: document id for NanoBEIR and BRIGHT, pool order for TREC-DL)."""
+    """The paper anchors of ``tests/core/test_protocol.py``, scored through ``evaluate`` with the suite presets
+    (arXiv v2 credits tied scores with their group's mean gain, as the presets do)."""
     fixture = json.loads((Path(__file__).parents[1] / "core" / "fixtures" / "paper_protocol_queries.json").read_text())
-    printed_ties = {"nanobeir": "doc_id_desc", "bright": "doc_id_desc", "trecdl": "input_order", "vidore": "group_mean"}
     for query in fixture["queries"]:
-        protocol = PROTOCOLS[query["suite"]].model_copy(update={"ties": printed_ties[query["suite"]]})
+        protocol = PROTOCOLS[query["suite"]]
         dataset = Dataset(
             name=query["dataset"],
             qrels={query["query_id"]: query["qrels"]},

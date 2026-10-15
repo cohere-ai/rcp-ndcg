@@ -13,7 +13,7 @@ _PAPER_VALUES = Path(__file__).resolve().parent / "paper_values.json"
 
 
 def paper_values() -> dict:
-    """The paper's printed values (``paper_values.json``, transcribed from arXiv:2609.35739)."""
+    """The paper's printed values (``paper_values.json``, transcribed from arXiv:2609.35739v2)."""
     return json.loads(_PAPER_VALUES.read_text())
 
 

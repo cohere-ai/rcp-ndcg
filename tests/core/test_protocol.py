@@ -12,15 +12,15 @@ from rcp_ndcg_core.protocol import PROTOCOLS, Protocol, aggregate, candidate_doc
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "paper_protocol_queries.json").read_text())
 LOG2_3 = math.log2(3)
 
-#: The tie rule each suite's per-query values in the fixture were printed under (arXiv v1: document id for NanoBEIR
-#: and BRIGHT, judge-pool order for TREC-DL). The presets credit ties with the group mean, as the paper does from
-#: arXiv v2 on; the anchors below score the fixture under the rule its values were printed with.
-FIXTURE_TIES = {"nanobeir": "doc_id_desc", "bright": "doc_id_desc", "trecdl": "input_order", "vidore": "group_mean"}
+#: arXiv v1's tie rule per suite (document id for NanoBEIR and BRIGHT, judge-pool order for TREC-DL). The fixture's
+#: values are arXiv v2's, printed under the presets' rule (ties credited with their group's mean gain on every suite);
+#: the guards below score the fixture under the old rule to show which queries the rule moves.
+V1_TIES = {"nanobeir": "doc_id_desc", "bright": "doc_id_desc", "trecdl": "input_order", "vidore": "group_mean"}
 
 
-def _fixture_protocol(query: dict) -> Protocol:
-    """The query's suite preset with the tie rule the fixture's values were printed under."""
-    return PROTOCOLS[query["suite"]].model_copy(update={"ties": FIXTURE_TIES[query["suite"]]})
+def _v1_protocol(query: dict) -> Protocol:
+    """The query's suite preset with arXiv v1's tie rule."""
+    return PROTOCOLS[query["suite"]].model_copy(update={"ties": V1_TIES[query["suite"]]})
 
 
 def _score_fixture(query: dict, protocol: Protocol | str, *, excluded: bool = True) -> tuple[float, float]:
@@ -44,7 +44,7 @@ def _score_fixture(query: dict, protocol: Protocol | str, *, excluded: bool = Tr
 
 @pytest.mark.parametrize("query", FIXTURE["queries"], ids=lambda q: f"{q['dataset']}:{q['query_id'][:24]}")
 def test_reproduces_the_papers_per_query_values(query: dict) -> None:
-    rcp, qrel = _score_fixture(query, _fixture_protocol(query))
+    rcp, qrel = _score_fixture(query, query["suite"])
 
     # The fixture states each query's RCP tolerance (see its description); the paper's qrel-nDCG is exact.
     assert rcp == pytest.approx(query["expected"]["rcp_ndcg"], abs=query["rcp_ndcg_tolerance"])
@@ -58,18 +58,21 @@ def _query(query_id: str) -> dict:
 @pytest.mark.parametrize(
     ("query_id", "other_rule"),
     [
-        ("test-religion-grcrgshwbr-pro03a", "group_mean"),
-        ("PLAIN-2051", "group_mean"),
-        ("5cd7b83eb30797aa8bf49b4b7a3f6a433aca4a75", "group_mean"),
+        ("test-religion-grcrgshwbr-pro03a", "doc_id_desc"),
+        ("PLAIN-2051", "doc_id_desc"),
+        ("5cd7b83eb30797aa8bf49b4b7a3f6a433aca4a75", "doc_id_desc"),
+        ("aops_1959_IMO_Problems/Problem_1", "doc_id_desc"),
+        ("359349", "input_order"),
         ("359349", "doc_id_desc"),
         ("query-test-7", "doc_id_desc"),
         ("query-test-7", "input_order"),
     ],
 )
 def test_the_fixture_queries_depend_on_their_tie_rule(query_id: str, other_rule: str) -> None:
-    """Guards the anchors above: with another tie rule these queries score differently."""
+    """Guards the anchors above: with another tie rule (arXiv v1's, or the other order) these queries score
+    differently from the presets' group mean."""
     query = _query(query_id)
-    paper = _fixture_protocol(query)
+    paper = PROTOCOLS[query["suite"]]
     other = paper.model_copy(update={"ties": other_rule})
 
     assert _score_fixture(query, other) != _score_fixture(query, paper)
@@ -99,7 +102,7 @@ def test_the_presets_score_the_fixtures_tied_queries_by_their_group_mean(query_i
 
     assert _score_fixture(query, query["suite"]) == _score_fixture(query, group_mean)
     assert _score_fixture(shuffled, query["suite"]) == pytest.approx(_score_fixture(query, query["suite"]), abs=1e-12)
-    assert _score_fixture(query, query["suite"]) != _score_fixture(query, _fixture_protocol(query))
+    assert _score_fixture(query, query["suite"]) != _score_fixture(query, _v1_protocol(query))
 
 
 def test_bright_excluded_ids_leave_the_ranking_and_the_ideal() -> None:

@@ -29,8 +29,10 @@ its stated tolerance. They cover:
 The scripts score the released reranker runs with the released gains, that is, the `bt_score`, `theta` and `gain`
 columns that the paper's judging and calibration produced. They do not refit the calibration and do not judge
 again. [`experiments/README.md`](experiments/README.md) lists every compared value and what the scripts do not
-cover. It also documents the two known deviations: 10 NanoBEIR RCP-nDCG cells within 0.07 points, and the BRIGHT
-qrel-nDCG column of TheoremQA Theorems.
+cover. It also documents the one known deviation: the BRIGHT qrel-nDCG column of TheoremQA Theorems. The pinned
+revisions are the datasets' release 2, which carries the numbers of arXiv v2 (see
+[below](#tournament-answers-the-papers-code-could-not-parse)). The data directory is keyed by revision
+(`<data-dir>/<repo>/<revision>/`), so data fetched earlier for arXiv v1 is never read for these checks.
 
 ## 2. Score your own system like the paper (no LLM)
 
@@ -157,8 +159,8 @@ The values are in the recipe's `client` block at its pinned revision:
 
 ## Tournament answers the paper's code could not parse
 
-The code behind the paper (arXiv v1) mishandled tournament answers it could not parse. This release fixes it. The
-fix changes printed values but none of the paper's conclusions. A minor correction to the paper is forthcoming.
+The code behind the paper (arXiv v1) mishandled tournament answers it could not parse. This release fixes it, and
+arXiv v2 of the paper corrects the numbers. The fix changes printed values but none of the paper's conclusions.
 
 **What happened.** Some Stage A answers were valid JSON with a small defect:
 - a stray closing brace after the object;
@@ -169,22 +171,67 @@ In most cases this reproduced the order in which the documents were shown, not t
 Bradley-Terry fit took that order as a complete ranking at five times the weight of a scored window. Windows that
 scored only some of their documents entered at the weight of a full window.
 
-**How often.** With the Qwen3.5-397B judge:
+**How often.** With the primary judges:
 - NanoBEIR: 562 of 140,184 windows, in 272 of 649 queries;
-- BRIGHT: 3,224 of 298,723 windows, in 691 of 1,383 queries, mostly LaTeX escapes in AoPS and TheoremQA.
+- BRIGHT: 3,224 of 298,723 windows, in 571 of 1,383 queries, mostly LaTeX escapes in AoPS and TheoremQA;
+- ViDoRe v3: 6,051 of 3,122,771 windows, in 4,043 of 14,514 queries;
+- TREC-DL: 8 of 87,723 windows.
 
-The gpt-oss-120b releases have 38 (NanoBEIR) and 18 (BRIGHT) such windows, and TREC-DL at most 8.
+The gpt-oss-120b releases have 38 (NanoBEIR) and 18 (BRIGHT) such windows, and TREC-DL none.
 
-**Effect on the paper's tables.** Estimated with the judges' own answers recovered from the raw responses, and the
-2PL parameters held at their released values:
+**How arXiv v2 reads the answers.** Each answer is cut at the judge's last reasoning tag, and the text after it is
+read with the decoder of this release, which takes the first complete JSON object of that text and never reads
+numbers from free text. It recovers the judge's own ranking and scores in 558 (NanoBEIR), 3,086 (BRIGHT), 6,024
+(ViDoRe v3) and 6 (TREC-DL) of the windows above. A window enters the fit only when the judge ranked and scored all
+of its documents: a complete ranking and a score for every document. The fit leaves out the few windows the decoder
+cannot read and the windows that rank or score only some of their documents (40 on NanoBEIR, 403 on BRIGHT, 2,349 on
+ViDoRe v3 and 219 on TREC-DL). Stage B answers follow the same rule: after the sixth criterion the paper's rubric
+prompt also asked (C6, never fitted) is dropped, an answer that does not give all five criteria for every document
+is left out (72 of 64,860 rubric windows on NanoBEIR, 10 of 138,298 on BRIGHT, 11 of 1,451,399 on ViDoRe v3 and 63
+of 25,961 on TREC-DL), so Count-nDCG also moves slightly. arXiv v2 then refits the Bradley-Terry
+scores and the 2PL calibration of every suite and judge, and recomputes every number that depends on them. Its
+tables credit tied scores with their group's mean gain on every suite, where arXiv v1 broke ties by document id or
+by judge-pool order. The decoder of this release (parse version 4) makes the cut at the last reasoning tag itself,
+so on the stored paper-era answers it decodes the same JSON object as arXiv v2's rule in every window (checked on
+the stored NanoBEIR and TREC-DL answers of both stages, 577,449 windows). For Stage A, `rcp-ndcg judge reparse` of
+those answers therefore reads the same observations as arXiv v2. For Stage B it does not: the paper's rubric prompt
+also asked a sixth criterion (C6), which the paper never fitted and arXiv v2 dropped before requiring C1..C5 of
+every document, while the rubric parser refuses a criterion the prompt did not ask (`schema`). The released
+`bt_score`, `theta` and `gain` columns remain the reference for reproducing release 2. Live judging with a
+reasoning parser in the engine is not affected.
 
-| | NanoBEIR | BRIGHT |
-|---|---|---|
-| Reranker means | +0.12 to +0.25 pp | +0.35 to +1.14 pp |
-| Largest cell | 1.05 pp | 5.6 pp (AoPS) |
-| System ranking | unchanged | unchanged |
-| Significant comparisons that reverse | none | none |
-| Significance decisions that change (all near p = 0.05) | 13 of 1,183 | 9 of 1,092 |
+**Effect of the correction on the paper's tables** (RCP-nDCG@10, release 2 against release 1, both scored with
+arXiv v1's tie rule, in nDCG points):
+
+| | NanoBEIR | BRIGHT | ViDoRe v3 |
+|---|---|---|---|
+| Reranker means | +0.10 to +0.23 | +0.09 to +0.98 | 0.00 to +0.02 |
+| Largest cell | 1.07 (HotpotQA) | 5.19 (AoPS) | 0.10 |
+| Order of the 14 rerankers by mean | unchanged | unchanged | unchanged |
+| Reranker pairs per dataset whose significance changes | 12 of 1,183 | 4 of 1,092 | 1 of 728 |
+| Significant comparisons that reverse | none | none | none |
+
+The two significance rows compare the per-query scores of the two data releases (paired t-test, p < 0.05). At
+this tie rule qrel-nDCG@10 does not change. On TREC-DL, RCP-nDCG@10 separates 61 of the 91 DL19 reranker pairs (60
+in arXiv v1) and 70 of the DL20 pairs (unchanged), and it still agrees with NIST on every pair NIST separates (14 of
+14, 37 of 37). In the human study the main measure moves from 72.4% of 185 contests to 72.9% of 181.
+
+**Effect of the tie rule.** arXiv v2 credits tied scores with their group's mean gain for qrel-nDCG as well, as the
+presets do. On its own, the switch moves each NanoBEIR and BRIGHT table cell by at most 0.21 and 0.35 points of
+RCP-nDCG@10 and 1.59 and 0.69 points of qrel-nDCG@10. On TREC-DL, the cells of Qwen3-RR-0.6B, whose scores tie most
+often, move by up to 5.10 and 8.63 points. NIST then separates 25 of the DL19 pairs (14 in arXiv v1) and 41 of the
+DL20 pairs (37), and RCP-nDCG@10 agrees with NIST on all of them. With both changes, 326 RCP-nDCG@10 and 194
+qrel-nDCG@10 cells of `experiments/paper_values.json` differ from arXiv v1.
+
+**Which judged cases enter.** arXiv v2 keeps every collected list and verdict, and a judged case enters an analysis
+only if, under the v2 fit, it keeps the property it was selected for. In the external-judge study this leaves out
+21 of 480 per-query disagreements, 1 of 120 controls, 9 of 447 ideal-list cases and 1 of 100 minimal pairs. In
+Study 1 it leaves out the cases whose reference-judge set no longer has more total RCP gain than the qrel set, 35 of
+2,969 cases in all. In the printed analyses these are 3 of 264 NanoBEIR and 30 of 938 BRIGHT cases selected with
+Qwen3.5-397B, and 1 of 585 BRIGHT cases selected with gpt-oss-120b (a case without a majority verdict). Release 2 of
+`rcp-ndcg-external-validation` flags every one of them (`excluded_under_fit` in `external_judges_cases` and
+`study1_cases`), and `experiments/external_judges.py` leaves them out; on release 1, which has no such column, it
+keeps every case.
 
 **What changed in the code:**
 - One decoder serves both stages. It takes the answer as the text after the last reasoning end tag (`</think>`),
@@ -202,8 +249,11 @@ The gpt-oss-120b releases have 38 (NanoBEIR) and 18 (BRIGHT) such windows, and T
   adaptive window, and refuses under `--strict`.
 - A window without scores for all its documents is invalid and not fitted.
 
-**Reproducing the paper as published** uses the released `bt_score`, `theta` and `gain` values, as `experiments/`
-does. They carry the paper's numbers. A corrected data revision will accompany the paper's correction.
+**Reproducing the paper** uses the released `bt_score`, `theta` and `gain` values, as `experiments/` does. The
+revisions it pins are the datasets' release 2: they carry the corrected data and the numbers of arXiv v2, which
+`experiments/paper_values.json` transcribes. Release 1 stays loadable at its own revision (the four gain datasets
+list both releases in `provenance/releases.json`, `rcp-ndcg-external-validation` in its dataset card) and carries
+the numbers of arXiv v1, up to the documented deviations of that time.
 
 ## Tests
 

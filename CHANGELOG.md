@@ -323,6 +323,25 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Changed
 
+- **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
+  dataset's release 2 (the corrected Stage A parse and refit; see
+  [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data
+  directory by revision (`<data-dir>/<repo>/<revision>/`), so data fetched earlier for arXiv v1 is never read for
+  the v2 checks, and
+  `experiments/paper_values.json` holds the values arXiv v2 prints: 622 of its 1,168 values change (326 RCP-nDCG@10
+  and 194 qrel-nDCG@10 leaderboard cells, 7 TREC-DL pair values, 38 human-study and 57 external-judge values).
+  qrel-nDCG changes too, because arXiv v2 credits tied scores with their group's mean gain on every suite, as the
+  presets do. `experiments/external_judges.py` applies arXiv v2's exclusion rule (a judged case enters only if, under
+  the v2 fit, it keeps the property it was selected for): it leaves out the cases that release 2 flags in
+  `excluded_under_fit` (32 of 1,147 tournament-order cases, 35 of 2,969 Study 1 cases), and keeps every case of a
+  table without that column (release 1). The NanoBEIR known deviation is gone, because release 2's gains are the fit
+  behind the paper's tables. The BRIGHT TheoremQA Theorems qrel deviation stays (now 14 cells and 11 means); every
+  human-study and external-judge value reproduces exactly. The test fixtures that pin released or paper values
+  (`tests/core/fixtures/paper_label_rows.json`, `paper_protocol_queries.json`) carry release 2's gains and arXiv
+  v2's per-query values, and the protocol anchors score with the presets (5 of the 7 queries move under group-mean
+  ties). The vLLM harness keeps reading release 1 (`PINNED_DATASET_COMMITS`, its e2e scenarios and quality test):
+  those commits are part of its request generator's identity (`GENERATOR_VERSION` 1, the committed `pairs/`), and
+  the queries and documents it samples are identical in release 2.
 - **Every scoring preset credits ties with their group's mean gain** (`rcp_ndcg_core.PROTOCOLS`): `nanobeir`
   and `bright` broke tied scores by document id, descending, and `trecdl` by judge-pool order, as arXiv v1's tables
   did. A document id is an arbitrary order and a judged pool is often sorted by relevance, so a tie straddling the
@@ -3145,7 +3164,8 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   transformers.
 - **The reproduction bounds its documented deviations**: each known deviation now names its exact population of
   cells (NanoBEIR 5 FEVER + 2 Quora + 2 NFCorpus + 1 HotpotQA cells within 0.08 nDCG points, BRIGHT 13 TheoremQA
-  Theorems cells within 2.6 and 12 of the 14 qrel means within 0.25 -- 35 rows), and `experiments/checks.py`
+  Theorems cells within 2.6 and 12 of the 14 qrel means within 0.25 -- 35 rows; on release 2 and arXiv v2, 25 rows
+  of the BRIGHT populations only, see Unreleased), and `experiments/checks.py`
   fails a run whose counts differ in either direction, replacing a wildcard entry that let any NanoBEIR cell
   drift within 0.08. Each population names its table position (its `label`) and may be declared once, so
   equal-valued populations (NanoQuora/NanoNFCorpus) never merge. `experiments/leaderboards.py::check_trecdl`

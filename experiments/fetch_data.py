@@ -1,8 +1,10 @@
 """Download the public data behind the paper's tables from the Hugging Face Hub.
 
 Every file comes from a public dataset repository, pinned to the revision the checks were run against, and is
-fetched without authentication (no token is read or sent). Files land under ``<data-dir>/<repo>/<path>``; a file
-that is already there is not fetched again.
+fetched without authentication (no token is read or sent). Files land under ``<data-dir>/<repo>/<revision>/<path>``;
+a file that is already there is not fetched again. The directory is keyed by the revision, so files fetched at
+another revision (release 1, which carries arXiv v1's numbers), or by an earlier version of this script (which
+stored ``<repo>/<path>``), are never read for these checks.
 
 Usage::
 
@@ -24,13 +26,13 @@ __all__ = ["DATASETS", "GROUPS", "data_dir", "fetch", "fetch_group", "local_path
 
 OWNER = "fabianschmidt-cohere"
 
-# repo name -> revision (commit sha) the published checks were run against.
+# repo name -> revision (commit sha) the published checks were run against: each dataset's release 2 (arXiv v2).
 DATASETS: dict[str, str] = {
-    "rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
-    "rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
-    "rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
-    "rcp-ndcg-trecdl": "67d32cbe133805086ee5ee2600369bf05cb45143",
-    "rcp-ndcg-external-validation": "4464fb1a6a0dc2ba2d84cdbb2dd8a070b88accd3",
+    "rcp-ndcg-nanobeir": "cb6c981c80a70b6a46f8b7ba3a60206a9fab5d8e",
+    "rcp-ndcg-bright": "b827417851d3cfe997a65203b54c73a0fc885568",
+    "rcp-ndcg-vidore-v3": "c85f096ff9c2b66395100a9795274bbdf087a9b0",
+    "rcp-ndcg-trecdl": "ee65bffbd2dda46c1204e767118d428f32c3cfaf",
+    "rcp-ndcg-external-validation": "8c8dda6ece90906d490c31b03ce9a8bb56cbd871",
 }
 
 NANOBEIR_SUBSETS = [
@@ -124,8 +126,12 @@ def data_dir(override: str | Path | None = None) -> Path:
 
 
 def local_path(repo: str, path: str, root: Path | None = None) -> Path:
-    """Local path of ``path`` from dataset ``repo`` (it may not exist yet)."""
-    return (root or data_dir()) / repo / path
+    """Local path of ``path`` from dataset ``repo`` at its pinned revision (it may not exist yet).
+
+    The path is keyed by the revision (``<data-dir>/<repo>/<revision>/<path>``): a file fetched at another revision
+    is never read in its place.
+    """
+    return (root or data_dir()) / repo / DATASETS[repo] / path
 
 
 def fetch(repo: str, paths: list[str], root: Path | None = None) -> list[Path]:
@@ -149,7 +155,7 @@ def fetch(repo: str, paths: list[str], root: Path | None = None) -> list[Path]:
                 filename=p,
                 repo_type="dataset",
                 revision=DATASETS[repo],
-                local_dir=root / repo,
+                local_dir=root / repo / DATASETS[repo],
                 token=False,
             )
     return [local_path(repo, p, root) for p in paths]

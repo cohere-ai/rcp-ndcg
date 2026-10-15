@@ -1,12 +1,12 @@
 {
-"description": "Seven queries of the paper's per-query tables with the inputs the paper scored, all read from the public releases https://huggingface.co/datasets/fabianschmidt-cohere/rcp-ndcg-{nanobeir,bright,trecdl,vidore-v3}: reranker scores (provenance/runs; zerank-2, and Qwen3-Reranker-4B for the ViDoRe query), RCP gains and qrels (<subset>/qrels), and the judged pool and excluded ids (provenance/pool). The public runs omit excluded documents, so their scores here are placeholders above every public score, in the order the full run ranked them; the protocol removes them. Pruned to what can change nDCG@10: the candidates that reach the top 10 (with boundary ties), the excluded candidates ranked above them, and the top-10 gains and qrels of each ideal. Expected values are the paper's per-query scores. rcp_ndcg_tolerance: the public NanoBEIR gains come from a refit that differs slightly from the paper's (up to 3e-5 in these per-query values); the other releases reproduce the paper's gains to float32 rounding.",
+"description": "Seven queries of the paper's per-query tables with the inputs the paper scored, all read from the public releases https://huggingface.co/datasets/fabianschmidt-cohere/rcp-ndcg-{nanobeir,bright,trecdl,vidore-v3}: reranker scores (provenance/runs; zerank-2, and Qwen3-Reranker-4B for the ViDoRe query), RCP gains and qrels (<subset>/qrels), and the judged pool and excluded ids (provenance/pool). The public runs omit excluded documents, so their scores here are placeholders above every public score, in the order the full run ranked them; the protocol removes them. Pruned to what can change nDCG@10: the candidates that reach the top 10 (with boundary ties), the excluded candidates ranked above them, and the top-10 gains and qrels of each ideal. Gains are release 2's (the corrected Stage A parse and refit behind arXiv v2). Expected values are the paper's per-query scores in arXiv v2, which credits tied scores with their group's mean gain on every suite (the presets' rule; arXiv v1 broke ties by document id for NanoBEIR and BRIGHT and by judge-pool order for TREC-DL). rcp_ndcg_tolerance: release 2 carries the paper's v2 gains, so every value reproduces to float rounding.",
 "k": 10,
 "queries": [
 {
 "suite": "nanobeir",
 "dataset": "NanoArguAna",
 "query_id": "test-religion-grcrgshwbr-pro03a",
-"rule": "doc_id_desc ties",
+"rule": "group_mean ties (arXiv v1: doc_id_desc)",
 "scores": {
 "test-politics-grcrgshwbr-con01b": 0.784781239226995,
 "test-politics-grcrgshwbr-con02a": 0.8626527684625688,
@@ -21,20 +21,20 @@
 "training-religion-frgsbnaofcs-pro03b": 0.9258759348093368
 },
 "gains": {
-"test-politics-grcrgshwbr-con01b": 0.1326762240681573,
-"test-politics-grcrgshwbr-con02a": 0.5989271605360584,
-"test-politics-grcrgshwbr-pro01a": 0.1392537071779304,
-"test-politics-grcrgshwbr-pro01b": 0.6136772121251174,
-"test-politics-grcrgshwbr-pro02a": 0.10155313149438444,
-"test-politics-grcrgshwbr-pro03b": 0.7625933552856129,
-"test-religion-grcrgshwbr-pro03b": 0.7637196868635918,
-"test-religion-msgfhwbamec-con02a": 0.6678801215774784,
-"training-culture-mrrtdnsnhpc-con04b": 0.6748069421642253,
-"training-free-speech-debate-ldigrrg-pro02a": 0.6987918971357997,
-"training-philosophy-eppprfmhb-pro02a": 0.6408860920750818,
-"training-philosophy-eppprfmhb-pro04a": 0.6034374305233403,
-"training-religion-frgsbnaofcs-con01b": 0.25365057266579594,
-"training-religion-frgsbnaofcs-pro03b": 0.7493471714267577
+"test-politics-grcrgshwbr-con01b": 0.13239273808363677,
+"test-politics-grcrgshwbr-con02a": 0.5993593920015035,
+"test-politics-grcrgshwbr-pro01a": 0.13898129347444327,
+"test-politics-grcrgshwbr-pro01b": 0.6141302702813982,
+"test-politics-grcrgshwbr-pro02a": 0.10124363308568265,
+"test-politics-grcrgshwbr-pro03b": 0.7634532960418627,
+"test-religion-grcrgshwbr-pro03b": 0.7645790728368136,
+"test-religion-msgfhwbamec-con02a": 0.668499671661849,
+"training-culture-mrrtdnsnhpc-con04b": 0.6755200019275736,
+"training-free-speech-debate-ldigrrg-pro02a": 0.6995305749504177,
+"training-philosophy-eppprfmhb-pro02a": 0.6414421314707125,
+"training-philosophy-eppprfmhb-pro04a": 0.6039001247460214,
+"training-religion-frgsbnaofcs-con01b": 0.2535835739323755,
+"training-religion-frgsbnaofcs-pro03b": 0.7501748479587169
 },
 "qrels": {
 "test-religion-grcrgshwbr-pro03b": 1
@@ -43,8 +43,8 @@
 "test-politics-grcrgshwbr-pro03a"
 ],
 "expected": {
-"rcp_ndcg": 0.7824901207,
-"qrel_ndcg": 1.0
+"rcp_ndcg": 0.7822838779610906,
+"qrel_ndcg": 0.81546
 },
 "candidates": [
 "test-politics-grcrgshwbr-pro01a",
@@ -58,13 +58,13 @@
 "training-religion-frgsbnaofcs-con01b",
 "test-religion-msgfhwbamec-con02a"
 ],
-"rcp_ndcg_tolerance": 5e-05
+"rcp_ndcg_tolerance": 1e-08
 },
 {
 "suite": "nanobeir",
 "dataset": "NanoNFCorpus",
 "query_id": "PLAIN-2051",
-"rule": "doc_id_desc ties; qrel ideal includes positives outside the judged pool",
+"rule": "group_mean ties (arXiv v1: doc_id_desc); qrel ideal includes positives outside the judged pool",
 "scores": {
 "MED-1454": 0.9502634884414434,
 "MED-1455": 0.969231140642852,
@@ -78,20 +78,20 @@
 "MED-5014": 0.9284088005554476
 },
 "gains": {
-"MED-1454": 0.8635672861197644,
-"MED-1455": 0.9083462850101359,
-"MED-1460": 0.8224579671757803,
-"MED-1506": 0.6668635723877782,
-"MED-1552": 0.9213173496353463,
-"MED-1554": 0.9467012059084209,
-"MED-1556": 0.9476455746299669,
-"MED-1557": 0.8090291279847845,
-"MED-1558": 0.7992093147280357,
-"MED-1781": 0.6366443911900346,
-"MED-3197": 0.7773914005811572,
-"MED-4450": 0.6435949957482491,
-"MED-4556": 0.8675542052547928,
-"MED-5014": 0.7616828143480848
+"MED-1454": 0.8634292172154154,
+"MED-1455": 0.9081215024144832,
+"MED-1460": 0.8224894667381134,
+"MED-1506": 0.6674296959096292,
+"MED-1552": 0.9210790511727228,
+"MED-1554": 0.9464294826785501,
+"MED-1556": 0.94738511793577,
+"MED-1557": 0.8085367769200019,
+"MED-1558": 0.7990115007025368,
+"MED-1781": 0.6363957584419568,
+"MED-3197": 0.7773492328037528,
+"MED-4450": 0.6436945209556713,
+"MED-4556": 0.8674259982834481,
+"MED-5014": 0.7617186729863221
 },
 "qrels": {
 "MED-1556": 1,
@@ -117,7 +117,7 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.9395512267,
+"rcp_ndcg": 0.9394042844350838,
 "qrel_ndcg": 1.0
 },
 "candidates": [
@@ -132,13 +132,13 @@
 "MED-1455",
 "MED-1552"
 ],
-"rcp_ndcg_tolerance": 5e-05
+"rcp_ndcg_tolerance": 1e-08
 },
 {
 "suite": "nanobeir",
 "dataset": "NanoSCIDOCS",
 "query_id": "5cd7b83eb30797aa8bf49b4b7a3f6a433aca4a75",
-"rule": "doc_id_desc ties; positive outside the pool in the qrel ideal",
+"rule": "group_mean ties (arXiv v1: doc_id_desc); positive outside the pool in the qrel ideal",
 "scores": {
 "04e5b276da90c8181d6ad8397f763a181baae949": 0.1496307594633238,
 "0debd1c0b73fc79dc7a64431b8b6a1fe21dcd9f7": 0.2099876265736025,
@@ -153,20 +153,20 @@
 "ffcb7146dce1aebf47a910b51a873cfec897d602": 0.15283973537436785
 },
 "gains": {
-"04e5b276da90c8181d6ad8397f763a181baae949": 0.3537649223443927,
-"0d57ba12a6d958e178d83be4c84513f7e42b24e5": 0.40304811593315715,
-"0debd1c0b73fc79dc7a64431b8b6a1fe21dcd9f7": 0.34050852934220743,
-"2c075293886b601570024b638956828b4fbc6a24": 0.34197683340646534,
-"2e526c2fac79c080b818b304485ddf84d09cf08b": 0.31499323112652894,
-"3f63b12887fd8d29bb6de64fce506b2a388ae3ed": 0.5263242278829342,
-"698b8181cd613a72adeac0d75252afe7f57a5180": 0.5580539279234956,
-"8fcffa267ed01e38e2280891c9f33bfa41771cad": 0.34315031844813954,
-"91a613ed06c4654f38f5c2e7fe6ebffeec53d887": 0.3841490611030472,
-"bfcf14ae04a9a326f9263dcdd30e475334a96d39": 0.6944641839387353,
-"d257ba76407a13bbfddef211a5e3eb00409dc7b6": 0.2058349107261868,
-"d920943892caa0bc9f300cb9e3b7f3ab250f78c9": 0.6808246790810996,
-"e321ab5d7a98e18253ed7874946a229a10e40f26": 0.4053159218886311,
-"ffcb7146dce1aebf47a910b51a873cfec897d602": 0.26826671225785287
+"04e5b276da90c8181d6ad8397f763a181baae949": 0.3537222434700323,
+"0d57ba12a6d958e178d83be4c84513f7e42b24e5": 0.40295774411545343,
+"0debd1c0b73fc79dc7a64431b8b6a1fe21dcd9f7": 0.340603113818281,
+"2c075293886b601570024b638956828b4fbc6a24": 0.34196717158069967,
+"2e526c2fac79c080b818b304485ddf84d09cf08b": 0.3150205425692991,
+"3f63b12887fd8d29bb6de64fce506b2a388ae3ed": 0.5260811337596861,
+"698b8181cd613a72adeac0d75252afe7f57a5180": 0.5578327174811708,
+"8fcffa267ed01e38e2280891c9f33bfa41771cad": 0.3431848608151751,
+"91a613ed06c4654f38f5c2e7fe6ebffeec53d887": 0.3841367034733403,
+"bfcf14ae04a9a326f9263dcdd30e475334a96d39": 0.6942504545205539,
+"d257ba76407a13bbfddef211a5e3eb00409dc7b6": 0.20595143742382155,
+"d920943892caa0bc9f300cb9e3b7f3ab250f78c9": 0.6807129149799476,
+"e321ab5d7a98e18253ed7874946a229a10e40f26": 0.40520843744605234,
+"ffcb7146dce1aebf47a910b51a873cfec897d602": 0.2683255099111359
 },
 "qrels": {
 "bfcf14ae04a9a326f9263dcdd30e475334a96d39": 1,
@@ -177,7 +177,7 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.9161655613,
+"rcp_ndcg": 0.9189039073099305,
 "qrel_ndcg": 0.38357
 },
 "candidates": [
@@ -193,13 +193,13 @@
 "2e526c2fac79c080b818b304485ddf84d09cf08b",
 "04e5b276da90c8181d6ad8397f763a181baae949"
 ],
-"rcp_ndcg_tolerance": 5e-05
+"rcp_ndcg_tolerance": 1e-08
 },
 {
 "suite": "bright",
 "dataset": "AoPS",
 "query_id": "aops_1959_IMO_Problems/Problem_1",
-"rule": "excluded_ids removed from ranking and ideal",
+"rule": "excluded_ids removed from ranking and ideal; group_mean ties (arXiv v1: doc_id_desc)",
 "scores": {
 "aops_1959_IMO_Problems/Problem_1": 2.1449,
 "aops_2021_AIME_I_Problems/Problem_10": 0.11155054018289638,
@@ -236,20 +236,22 @@
 "math_train_number_theory_7100": 2.0049
 },
 "gains": {
-"aops_2021_AIME_I_Problems/Problem_10": 0.325673166682346,
-"aqua_rat_17938": 0.2970909486667104,
-"aqua_rat_39900": 0.14091996004910937,
-"aqua_rat_61489": 0.13980151954870376,
-"aqua_rat_67970": 0.08156744075971896,
-"aqua_rat_70217": 0.07561564250055404,
-"aqua_rat_71945": 0.4072050778614875,
-"aqua_rat_7264": 0.39036251054275484,
-"aqua_rat_73795": 0.05961018349304819,
-"aqua_rat_78368": 0.1880949784498137,
-"aqua_rat_82761": 0.3986189776462501,
-"camel_37427": 0.02930769498736181,
-"math_train_number_theory_7003": 0.31074765158706796,
-"math_train_prealgebra_291": 0.15436787327311055
+"aops_2020_AMC_10A_Problems/Problem_24": 0.23647896983314506,
+"aops_2021_AIME_II_Problems/Problem_9": 0.1920779063158088,
+"aops_2021_AIME_I_Problems/Problem_10": 0.244239637166048,
+"aqua_rat_17938": 0.4173111893020844,
+"aqua_rat_39900": 0.13683996539072332,
+"aqua_rat_61489": 0.1425061028008781,
+"aqua_rat_67970": 0.16988861264191762,
+"aqua_rat_70217": 0.06897266943844874,
+"aqua_rat_71945": 0.3748597176144946,
+"aqua_rat_7264": 0.35826314540890014,
+"aqua_rat_73795": 0.08134622537731463,
+"aqua_rat_78368": 0.304944028059166,
+"aqua_rat_82761": 0.37259007729751026,
+"camel_37427": 0.03756954152001561,
+"math_train_number_theory_7003": 0.33067932328990474,
+"math_train_prealgebra_291": 0.08203425759399745
 },
 "qrels": {
 "aops_2020_AMC_10A_Problems/Problem_24": 1,
@@ -282,7 +284,7 @@
 "math_train_number_theory_7100"
 ],
 "expected": {
-"rcp_ndcg": 0.6502062445,
+"rcp_ndcg": 0.7371144922902809,
 "qrel_ndcg": 0.41443
 },
 "rcp_ndcg_tolerance": 1e-08
@@ -325,18 +327,18 @@
 "camel_38625": 0.672331699179286
 },
 "gains": {
-"TheoremQA_jianyu_xu/Graph_2.json": 0.5253725507439303,
-"aqua_rat_36545": 0.045113398470623324,
-"camel_18365": 0.13351428709785026,
-"camel_19957": 0.2274665812853754,
-"camel_38561": 0.20851176608438535,
-"camel_38572": 0.19461292122018886,
-"camel_38609": 0.2233575115729007,
-"camel_38617": 0.22798567759587657,
-"camel_38619": 0.09692047228764923,
-"camel_38621": 0.23379525275841434,
-"camel_38625": 0.24240699605669816,
-"camel_41200": 0.1672621156334579
+"TheoremQA_jianyu_xu/Graph_2.json": 0.5220383672977734,
+"aqua_rat_36545": 0.04464742804798179,
+"camel_18365": 0.13229553636426597,
+"camel_19957": 0.22548110177484257,
+"camel_38561": 0.20665761991397139,
+"camel_38572": 0.19289481336352446,
+"camel_38609": 0.22142554525574742,
+"camel_38617": 0.226049257090301,
+"camel_38619": 0.09602154798965203,
+"camel_38621": 0.23180720357040774,
+"camel_38625": 0.24032949609568377,
+"camel_41200": 0.1657522430482687
 },
 "qrels": {
 "TheoremQA_jianyu_xu/Graph_2.json": 1
@@ -363,7 +365,7 @@
 "camel_23242"
 ],
 "expected": {
-"rcp_ndcg": 0.943042521,
+"rcp_ndcg": 0.943098363224884,
 "qrel_ndcg": 1.0
 },
 "rcp_ndcg_tolerance": 1e-08
@@ -372,7 +374,7 @@
 "suite": "trecdl",
 "dataset": "TrecDlPassage2019",
 "query_id": "359349",
-"rule": "input_order (pool order) ties; qrel ideal over all NIST-graded passages",
+"rule": "group_mean ties (arXiv v1: input_order, the pool order); qrel ideal over all NIST-graded passages",
 "scores": {
 "68649": 0.9502634884414434,
 "68648": 0.9399133498259924,
@@ -386,19 +388,19 @@
 "2826510": 0.8846784569260049
 },
 "gains": {
-"1394087": 0.7851242813794794,
-"1830517": 0.8221162836581628,
-"2826510": 0.7659952212374123,
-"3193824": 0.7854619018634351,
-"3223831": 0.7128809958158844,
-"3223833": 0.7800869606397949,
-"4013723": 0.786557802233382,
-"576629": 0.8135596410106989,
-"68647": 0.8287928048603663,
-"68648": 0.7857305197589527,
-"68649": 0.8193318356765071,
-"8058873": 0.7912095627012941,
-"943229": 0.8202302532101793
+"1394087": 0.7849169317401739,
+"1830517": 0.8220069168903426,
+"2826510": 0.7658025034257413,
+"3193824": 0.7853082363156324,
+"3223831": 0.712865134359354,
+"3223833": 0.7798261773617083,
+"4013723": 0.7863421251619875,
+"576629": 0.813456761347627,
+"68647": 0.8286438181190573,
+"68648": 0.7854823576902636,
+"68649": 0.8192304763775335,
+"8058873": 0.7911008770736017,
+"943229": 0.820131193318619
 },
 "qrels": {
 "1830517": 3,
@@ -417,8 +419,8 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.9832112940217832,
-"qrel_ndcg": 0.9556493299547569
+"rcp_ndcg": 0.9832751288580229,
+"qrel_ndcg": 0.9561788297018217
 },
 "candidates": [
 "3223833",
@@ -453,22 +455,22 @@
 "corpus-test-602": 0.62109375
 },
 "gains": {
-"corpus-test-485": 0.8485621083554453,
-"corpus-test-521": 0.7976766844683422,
-"corpus-test-545": 0.5947730473675333,
-"corpus-test-587": 0.4442322545051289,
-"corpus-test-590": 0.7833224148301204,
-"corpus-test-591": 0.8970193041430923,
-"corpus-test-592": 0.8328470943055565,
-"corpus-test-598": 0.5969526935922028,
-"corpus-test-601": 0.7591418876463392,
-"corpus-test-602": 0.4972298499631581,
-"corpus-test-603": 0.5854880877198808,
-"corpus-test-604": 0.4755659283890064,
-"corpus-test-606": 0.46377638687913775,
-"corpus-test-641": 0.5300889679008732,
-"corpus-test-643": 0.5866025418469998,
-"corpus-test-646": 0.44491430239403784
+"corpus-test-485": 0.8476882275108806,
+"corpus-test-521": 0.7966895797129726,
+"corpus-test-545": 0.5939178892094401,
+"corpus-test-587": 0.444059168893398,
+"corpus-test-590": 0.7822589040977656,
+"corpus-test-591": 0.8963536729237016,
+"corpus-test-592": 0.8319154777945318,
+"corpus-test-598": 0.5960453769410217,
+"corpus-test-601": 0.7580577642131806,
+"corpus-test-602": 0.4968120594373873,
+"corpus-test-603": 0.5846203441881145,
+"corpus-test-604": 0.47516476161224225,
+"corpus-test-606": 0.46350395394898264,
+"corpus-test-641": 0.529560618708837,
+"corpus-test-643": 0.585689393504051,
+"corpus-test-646": 0.4447908861205162
 },
 "qrels": {
 "corpus-test-485": 1,
@@ -485,7 +487,7 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.8226438806247116,
+"rcp_ndcg": 0.8227864051509935,
 "qrel_ndcg": 0.4977024886349645
 },
 "candidates": [

@@ -15,18 +15,19 @@ python experiments/run_all.py                    # every check; exits 1 if a val
 |---|---|
 | `experiments/leaderboards.py` | the NanoBEIR, BRIGHT and ViDoRe v3 leaderboards (qrel-nDCG@10 and RCP-nDCG@10 of 14 rerankers, every cell) and the TREC-DL reranker pairs |
 | `experiments/human_study.py` | the human contest study: counts, the verdict table with its intervals, margin bands and margin AUCs |
-| `experiments/external_judges.py` | the external LLM judges on the tournament-order test and on Study 1 |
+| `experiments/external_judges.py` | the external LLM judges on the tournament-order test and on Study 1, without the cases the paper's version 2 leaves out |
 
 Each script prints the paper's value next to the reproduced one. Each also runs on its own, for example
-`python experiments/leaderboards.py --suite bright`. `experiments/README.md` lists every compared value, the two
-documented deviations, and what the scripts do not cover.
+`python experiments/leaderboards.py --suite bright`. The data directory is keyed by revision, so data fetched
+earlier for arXiv v1 is never read for these checks. `experiments/README.md` lists every compared value, the
+documented deviation, and what the scripts do not cover.
 
 ## What "reproduce" means here
 
 The scripts score the released rankings of the 14 rerankers with the released gains, under the paper's scoring
-protocols ([scoring protocols](../concepts/protocols.md)). The gains come from the released `bt_score`, `theta` and
-`gain` columns, which are the outputs of the paper's judging and calibration. The scripts do not refit the
-calibration from the judgements, and they do not judge again.
+protocols ([scoring protocols](../concepts/protocols.md)), which credit tied scores with their group's mean gain.
+The gains come from the released `bt_score`, `theta` and `gain` columns, which are the outputs of the paper's
+judging and calibration. The scripts do not refit the calibration from the judgements, and they do not judge again.
 
 A fresh refit is a different computation. It re-estimates the Bradley-Terry scores and the 2PL parameters from the
 released judgements, and a re-judged pool depends on the judge's sampling, which is not bit-deterministic on GPUs.
