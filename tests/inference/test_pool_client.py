@@ -1103,9 +1103,7 @@ class TestConcatAll:
             calls += 1
             return fold(self, other)
 
-        chunks = [
-            Embeddings.ragged([np.full((2 + index, 3), float(index), dtype=np.float32)]) for index in range(6)
-        ]
+        chunks = [Embeddings.ragged([np.full((2 + index, 3), float(index), dtype=np.float32)]) for index in range(6)]
         expected = chunks[0]
         for chunk in chunks[1:]:
             expected = fold(expected, chunk)

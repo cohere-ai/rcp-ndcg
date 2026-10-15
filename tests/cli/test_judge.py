@@ -206,9 +206,7 @@ def test_candidates_pools_break_ties_toward_the_lower_document_id(dataset: str, 
     from rcp_ndcg.cli.judge import TournamentRequest, _pools
     from rcp_ndcg.data import Rankings, load_dataset
 
-    written = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 0.5}}, system="a").save(
-        tmp_path / "run.parquet"
-    )
+    written = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 0.5}}, system="a").save(tmp_path / "run.parquet")
     request = TournamentRequest(candidates=str(written), depth=1, out=str(tmp_path / "store"), dataset=dataset)
     pools = _pools(request, load_dataset(dataset))
     assert pools["q1"] == ["d1"]

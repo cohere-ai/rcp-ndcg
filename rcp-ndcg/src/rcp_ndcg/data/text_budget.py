@@ -1117,9 +1117,7 @@ def fit(
             room = cap - q_min
             if budget.on_overflow == "cut":
                 d_final = _cut_span(document, span="document", other=q_final, cap=cap)
-                if (
-                    measure(q_final, d_final) > cap
-                ):  # pragma: no cover - guarded by construction
+                if measure(q_final, d_final) > cap:  # pragma: no cover - guarded by construction
                     raise DataError(
                         f"the assembled render of input {input_id!r} exceeds the budget of {shape_budget} "
                         "tokens after both spans were verified: an internal invariant broke; report this",
@@ -1200,9 +1198,7 @@ def fit(
                     request_tokens=request_tokens,
                 )
             if len(pieces) == 1:
-                if (
-                    measure("", pieces[0]) > cap
-                ):  # pragma: no cover - guarded by construction
+                if measure("", pieces[0]) > cap:  # pragma: no cover - guarded by construction
                     raise DataError(
                         f"the assembled render of input {input_id!r} exceeds the budget of {shape_budget} "
                         "tokens after the span was verified: an internal invariant broke; report this",

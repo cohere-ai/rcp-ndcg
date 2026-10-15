@@ -1127,9 +1127,7 @@ class RoleClient[C: Endpoint]:
             return list(contents), [0] * len(contents)
         doc_ids = [str(position) for position in positions]
         request = self._prepare_request(list(contents), doc_ids=doc_ids)
-        return self._fit_media_per_item(
-            request, shape=shape, doc_ids=doc_ids, changes=changes, instruction=instruction
-        )
+        return self._fit_media_per_item(request, shape=shape, doc_ids=doc_ids, changes=changes, instruction=instruction)
 
     def _stage_budget(
         self,
@@ -1259,9 +1257,7 @@ class RoleClient[C: Endpoint]:
         kept, cuts, result = self._stage_budget(
             kept,
             shape=shape,
-            media_tokens=[media_tokens[kept_index[position]] for position in positions]
-            if kept_positions
-            else [],
+            media_tokens=[media_tokens[kept_index[position]] for position in positions] if kept_positions else [],
             positions=positions,
             instruction=instruction,
             changes=changes,

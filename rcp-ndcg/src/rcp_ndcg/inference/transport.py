@@ -405,11 +405,7 @@ class Transport:
                     replies = await self._send_on(replica, calls, headers[replica.url])
                 except _Unavailable as exc:
                     index = self._replicas.index(replica)
-                    if (
-                        not exc.load_failure
-                        and index in failed_at
-                        and replica.successes > failed_at[index]
-                    ):
+                    if not exc.load_failure and index in failed_at and replica.successes > failed_at[index]:
                         # Other requests got through on this replica since this one first failed there: the
                         # replica is up, and this failure belongs to this request. Never a 408 or 429: those
                         # are the endpoint's load, and stay on the outage path (park and retry).

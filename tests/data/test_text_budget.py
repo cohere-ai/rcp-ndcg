@@ -523,7 +523,7 @@ class TestPairSplit:
             budget=budget,
             tokenizer=BERT,
         )
-        (query, document), = result.contents
+        ((query, document),) = result.contents
         assert len(BERT.backend.encode(query, document, add_special_tokens=True).ids) <= 12
 
 

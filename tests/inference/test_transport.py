@@ -206,9 +206,7 @@ class TestReplicas:
         assert isinstance(stuck, BackendUnavailableError), stuck
         assert fine[0].status == 200
 
-    def test_a_set_aside_honours_retry_after(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_set_aside_honours_retry_after(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A 429's Retry-After is the set-aside window, not just the within-request retry delay: with
         BACKOFF_S at 60 s the request would park for a minute without it."""
         monkeypatch.setattr(Transport, "BACKOFF_S", 60.0)

@@ -238,9 +238,7 @@ def test_messages_lower_a_text_prompt_to_a_string_and_refuse_nothing() -> None:
 
 
 class TestMaxVideoBytes:
-    def test_a_malformed_max_video_bytes_is_a_config_error_at_the_guard(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_malformed_max_video_bytes_is_a_config_error_at_the_guard(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The variable is parsed where the guard runs: a value like ``64MB`` is a typed ``ConfigError``
         naming the variable and the integer-bytes form, not a raw ``ValueError``."""
         monkeypatch.setenv("RCP_NDCG_MAX_VIDEO_BYTES", "64MB")

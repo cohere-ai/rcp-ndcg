@@ -72,8 +72,19 @@ def test_an_anchor_failure_reports_the_report_in_error_details(tmp_path: Path) -
     result = CliRunner().invoke(
         cli,
         [
-            "calibration", "insert", "--calibration", calibration, "--judgements", store,
-            "--se-target", "3.0", "--max-gain-shift", "0", "--out", str(tmp_path / "extended"), "--json",
+            "calibration",
+            "insert",
+            "--calibration",
+            calibration,
+            "--judgements",
+            store,
+            "--se-target",
+            "3.0",
+            "--max-gain-shift",
+            "0",
+            "--out",
+            str(tmp_path / "extended"),
+            "--json",
         ],  # fmt: skip
     )
     assert result.exit_code == 11, result.output

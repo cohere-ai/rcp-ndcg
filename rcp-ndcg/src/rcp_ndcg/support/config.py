@@ -146,9 +146,7 @@ def validation_problems(
         problem: dict[str, Any] = {
             "field": field,
             "problem": str(error["msg"]).removeprefix("Value error, "),
-            "input": None
-            if error["type"] == "missing"
-            else _redacted_input(_plain(error.get("input")), loc),
+            "input": None if error["type"] == "missing" else _redacted_input(_plain(error.get("input")), loc),
         }
         expected = _expected(error, node)
         if expected is not None:

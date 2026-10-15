@@ -1080,9 +1080,7 @@ def test_a_config_missing_a_budget_field_is_refused_not_defaulted(tokenizer_json
 
 
 class TestPrepareScaling:
-    def test_the_media_reservation_never_scans_the_kept_positions_per_item(
-        self, tokenizer_json: str
-    ) -> None:
+    def test_the_media_reservation_never_scans_the_kept_positions_per_item(self, tokenizer_json: str) -> None:
         """``_prepare_rows`` maps each kept position through one dict, not ``list.index`` per item: a linear
         scan per item made a whole-corpus encode quadratic (hours for a BEIR-size corpus) before any request
         was sent."""
