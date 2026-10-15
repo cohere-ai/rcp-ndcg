@@ -283,7 +283,8 @@ class _MediaEndpoint(Endpoint):
             raise ConfigError(
                 "video_policy.fps declares the engine's fps rule, which is ported for the qwen3_vl processor "
                 f"family only; this config declares image_processor {self.image_processor!r}",
-                hint="declare num_frames for another family, or set image_processor: qwen3_vl",
+                hint="send frames (`video_policy: {num_frames: N, wire: frames}`) for another family, or set "
+                "image_processor: qwen3_vl",
             )
         return self
 

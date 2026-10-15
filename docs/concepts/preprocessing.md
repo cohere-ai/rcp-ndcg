@@ -270,9 +270,9 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   under the image policy and sent as a standard `image_url` part, so the frames counted are the frames sent.
 - **`wire: video_url` (opt-in, for models with a native video encoder).** The container is sent unchanged and
   the engine decodes and samples it with its own video loader. A stock engine samples its own default -- the
-  checkpoint's processor fps on the Qwen3-VL backend, whose loader is fps-driven and ignores `num_frames`;
-  the default vLLM loader's 32 frames elsewhere -- which would make the counted tokens and the recorded
-  instrument describe frames nobody chose, so the policy refuses `video_url` unless
+  checkpoint's own processor rate on the Qwen-VL backends, whose loaders are fps-driven and ignore
+  `num_frames`; the default vLLM loader's own count elsewhere -- which would make the counted tokens and the
+  recorded instrument describe frames nobody chose, so the policy refuses `video_url` unless
   `engine_video_pinning: true` declares the engine
   pinned -- to a uniform `num_frames` (`--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM) or to
   the engine's own rate, `fps` (`--media-io-kwargs '{"video": {"fps": N}}'`; see [judges](judges.md)).
@@ -281,7 +281,11 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling and its 4..768 frame bounds), and
   the client counts each clip's frames from its recorded frame count and rate. On that family a pinned
   `num_frames` policy is refused at count time: the backend would ignore the pin, so the declared policy
-  would name a layout the engine never renders (declare `fps`). The policy refuses a
+  would name a layout the engine never renders (declare `fps`). The Qwen2-VL families
+  (`qwen2_vl`, `qwen2_5_vl`) are refused for a container under either rule: their engine backend
+  (vLLM v0.31.0's `Qwen2VLVideoBackend`) is fps-driven too, and its fps rule is not ported here, so no
+  declaration can be counted honestly -- send `wire: frames` instead, or serve a `qwen3_vl` checkpoint.
+  The policy refuses a
   single-frame container (the declared instrument merges frames in time, which needs a temporal pair; a
   single frame is an image), including a clip whose fps sampling realises one frame. Run
   `engine_media_check` once against a prepared probe when a serving setup

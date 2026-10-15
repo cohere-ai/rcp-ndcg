@@ -4435,6 +4435,14 @@ text it sends to the declared budget.
   recipe was never validated with. A different spec is accepted only when it is a local copy of the same
   `tokenizer.json` (the digests agree) and refused naming both otherwise.
 
+- **The Qwen2-VL families refuse a `video_url` container**: their engine video backend (vLLM v0.31.0's
+  `Qwen2VLVideoBackend`) samples by fps and ignores `num_frames`, so a pinned policy counted a temporal grid
+  (ceil(num_frames / temporal_patch) groups at the family's per-frame budget) the engine never renders -- the
+  window budget under-reserved media and the recorded instrument named a frame count the model never saw.
+  A container for `qwen2_vl`/`qwen2_5_vl` is now refused under either rule (the family's fps rule is not
+  ported here), with a hint to send `wire: frames` or serve a `qwen3_vl` checkpoint; the "32 frames
+  elsewhere" text in the policy and the preprocessing page is corrected too.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
