@@ -1916,13 +1916,21 @@ def _outage_pass(
     return status, parked
 
 
-def write_report(out: Path, results: Sequence[ScenarioResult]) -> Path:
-    """``E2E.md`` and ``status.json`` of the T4 stage: per scenario, its judge decision and every check."""
+def write_report(out: Path, results: Sequence[ScenarioResult], *, upload: dict[str, Any] | None = None) -> Path:
+    """``E2E.md`` and ``status.json`` of the T4 stage: per scenario, its judge decision and every check.
+
+    ``upload`` is the wave runner's attempt record when ``--upload`` was given: it is written into
+    ``status.json`` (and a failed one fails the document's ``passed``), so the report says whether the
+    destination received it.
+    """
+    passed = all(row.status == "passed" for row in results) and (upload is None or bool(upload["ok"]))
     document = {
         "schema": "rcp-ndcg-vllm.e2e-report.v1",
-        "passed": all(row.status == "passed" for row in results),
+        "passed": passed,
         "scenarios": [row.model_dump(mode="json") for row in results],
     }
+    if upload is not None:
+        document["upload"] = upload
     (out / "status.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     lines = ["# T4 end to end", ""]
     for row in results:
@@ -1975,7 +1983,8 @@ def _resolve_scenarios(names: Sequence[str], roots: Sequence[Path]) -> list[Path
 
 def main(argv: Sequence[str] | None = None) -> int:
     """The CLI: drive the scenarios named on the command line in this pod.  Exit 0 when every scenario
-    passed, 1 when one failed, 2 for a bad request."""
+    passed, 1 when one failed or the ``--upload`` did not reach its destination, 2 for a bad request (an
+    empty scenario list included: a job that runs nothing must not report PASS)."""
     parser = argparse.ArgumentParser(prog="python -m rcp_ndcg_test.e2e", description=(__doc__ or "").splitlines()[0])
     parser.add_argument(
         "--scenarios", required=True, help="scenario ids, files, directories, or @file listing ids/paths (one per line)"
@@ -2003,6 +2012,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         names = _scenario_ids(args.scenarios) if args.scenarios.startswith("@") else args.scenarios.split(",")
         paths = _resolve_scenarios([name for name in names if name], scenario_roots)
+        if not paths:
+            raise HarnessError(
+                f"no scenarios to run: {args.scenarios!r} named none (an empty list or an empty directory); "
+                "a T4 job must run something"
+            )
         results = [
             run_scenario(
                 load_scenario(path),
@@ -2019,14 +2033,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
     write_report(out, results)
+    upload_record: dict[str, Any] | None = None
     if args.upload:
         from .jobs import run_wave as _run_wave
 
-        _run_wave._upload(out, args.upload)  # noqa: SLF001 - the wave runner's transfer path: one home
+        upload_record = _run_wave._upload(out, args.upload)  # noqa: SLF001 - the wave runner's transfer path: one home
+        # The destination holds the provisional report; land the local one that names the upload's outcome
+        # (a failed upload is the run's failure, exactly as run_wave folds its own in).
+        write_report(out, results, upload=upload_record)
+    passed = all(row.status == "passed" for row in results) and (upload_record is None or bool(upload_record["ok"]))
     for row in results:
         print(f"{row.scenario}: {row.status}")
-    print(f"e2e: {'PASS' if all(row.status == 'passed' for row in results) else 'FAIL'}")
-    return 0 if all(row.status == "passed" for row in results) else 1
+    print(f"e2e: {'PASS' if passed else 'FAIL'}")
+    return 0 if passed else 1
 
 
 def _scenario_ids(value: str) -> list[str]:

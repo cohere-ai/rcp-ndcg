@@ -427,6 +427,68 @@ def test_a_missing_scenario_list_is_a_bad_request_not_a_crash() -> None:
     assert status == 2
 
 
+def test_an_empty_scenario_list_is_a_bad_request(tmp_path: Path) -> None:
+    """A list holding only comments (or an empty directory) must not report PASS over nothing: ``main``
+    refuses it with exit 2, like the wave runner's no-recipes refusal."""
+    from rcp_ndcg_test.e2e import main
+
+    listing = tmp_path / "empty.txt"
+    listing.write_text("# nothing here\n\n", encoding="utf-8")
+    status = main(
+        [
+            "--scenarios",
+            f"@{listing}",
+            "--recipes-root",
+            str(RECIPES),
+            "--out",
+            str(tmp_path / "out"),
+            "--wheelhouse",
+            "/stage/wheelhouse",
+        ]
+    )
+    assert status == 2
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_failed_upload_fails_the_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A T4 job whose report never reached ``--upload`` must not report PASS: the upload record is written
+    into ``status.json`` and the exit code is 1, as the wave runner folds its own failed upload in."""
+    from rcp_ndcg_test import e2e
+    from rcp_ndcg_test.jobs import run_wave
+
+    scenario_name = _names()[0]
+    monkeypatch.setattr(
+        e2e,
+        "run_scenario",
+        lambda scenario, **_kwargs: e2e.ScenarioResult(
+            scenario=scenario.id, description=scenario.description, mode="identity", status="passed"
+        ),
+    )
+    monkeypatch.setattr(
+        run_wave, "_upload", lambda out, uri: {"ok": False, "attempts": 3, "files": 0, "error": "boom"}
+    )
+    out = tmp_path / "out"
+    out.mkdir()  # run_scenario creates it on the real path; the stub does not
+    status = e2e.main(
+        [
+            "--scenarios",
+            scenario_name,
+            "--recipes-root",
+            str(RECIPES),
+            "--out",
+            str(out),
+            "--wheelhouse",
+            "/stage/wheelhouse",
+            "--upload",
+            "gs://example.invalid/report",
+        ]
+    )
+    assert status == 1
+    document = json.loads((out / "status.json").read_text(encoding="utf-8"))
+    assert document["passed"] is False
+    assert document["upload"]["ok"] is False
+
+
 def test_an_unknown_scenario_key_is_refused() -> None:
     """The schema is closed: a typo fails at load, not at GPU time."""
     with pytest.raises(ValueError, match="typo"):

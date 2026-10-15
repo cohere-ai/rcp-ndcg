@@ -62,6 +62,11 @@ incompatibly, independently of the package version. All four distributions carry
   lock (the equivalence CLI's case) it also carried no interpreter identity, so an upgraded reference venv
   reused stale outputs. The key now carries `serve.<field>` and, when `lock_sha256` is `None`, the reference
   interpreter's real path; `REFERENCE_FINGERPRINT_SCHEMA` is `rcp-ref-fp/3`, so old entries never collide.
+- **Harness: the T4 driver refuses an empty scenario list and fails a failed upload** (testpkg-5): a list
+  holding only comments (or an empty directory) reported PASS with exit 0 over nothing, and the
+  `--upload` record was discarded so a job whose report never reached `OUT_URI` ended green; `main` now
+  refuses an empty list with exit 2, writes the upload record into `status.json` and exits 1 when it
+  failed, as the wave runner does.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
