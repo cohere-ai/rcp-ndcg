@@ -31,8 +31,9 @@ Two things may legitimately stop a gate from passing, and both are declared, nev
 - **A measured bound.** Where the residual is a genuine numeric floor — both sides run bf16 kernels, no
   ranking changes, τ = 1.0 — the family, or the size whose floor differs, declares the measured bound in
   `gates` (`vec_min_cosine`, `prob_p99_abs`, …) and names the evidence (per-MRL, per-document) in its
-  notes and the CHANGELOG. A size may tighten a family bound, never loosen one; an unset field keeps the
-  family's value. The bound still gates: a regression beyond it fails.
+  notes and the CHANGELOG. A size's set field replaces the family's value -- or the published default
+  where the family sets none -- in either direction, and must name its evidence; an unset field keeps
+  the family's value. The bound still gates: a regression beyond it fails.
 - **A declared deviation.** The reference's own behaviour over a cap, or a card pipeline that cannot run
   an input, is declared under `reference.known_deviations` (`anchor_drop_over_cap`,
   `over_cap_cut_differs`, `media_approximation`). Those inputs are reported in a separate non-gating
@@ -48,8 +49,9 @@ skipped (counted as satisfied); a judge's parity is the instrument's own contrac
 ### Dense embedding — `role: embed`
 
 One vector per text: a pooler (last token, mean, CLS) plus normalization, sometimes a Matryoshka head.
-Served as `runner: pooling` with `api: vllm_pooling` or `openai_embeddings`; the wire is `messages`
-(the engine's template frames the content) or `token_ids` (the client tokenizes and sends ids).
+Served as `runner: pooling` with `api: vllm_pooling` or `openai_embeddings`; the wire is `text`
+(the default: the client sends the rendered string and the engine tokenizes it), `messages` (the engine's
+template frames the content), or `token_ids` (the client tokenizes and sends ids).
 
 What to look out for:
 
@@ -101,8 +103,9 @@ What to look out for:
 ### Late interaction (multi-vector) — `role: multi_vector`
 
 One L2-normalized vector per kept token; the retrieval score is fp32 MaxSim. The keep-rule is the
-checkpoint's own mask, not a generic one. Served with the multi-vector plugin; the wire is `token_ids`
-(the client tokenizes; the engine tokenizes nothing).
+checkpoint's own mask, not a generic one. Served with the multi-vector plugin; the wire is `text`
+(the engine tokenizes), `messages` for media, or `token_ids` where the checkpoint's own construction
+needs client-side ids.
 
 What to look out for:
 
@@ -129,9 +132,11 @@ prompt, so no `reference.py` and no stage-2 gates.
 
 What to look out for:
 
-- **Sampling is declared, not inherited.** The self-hosted recipes send the engine's HF defaults
-  (temperature 1.0, top_p 1.0, no top_k) rather than a vendor's defaults; what the recipe declares is
-  what crosses the wire.
+- **Sampling is declared, not inherited.** A self-hosted recipe declares its checkpoint's own
+  `generation_config.json` sampling at the pinned revision -- Gemma 4's `top_p` 0.95/`top_k` 64, the
+  Qwen3.x judges' 0.95/20, Qwen3.5-397B's temperature 0.6 -- or greedy `temperature 0.0` when the config
+  declares none, and `rcp-ndcg-test/tests/recipes/test_judge_sampling.py` pins the table. What the recipe
+  declares is what crosses the wire, and the sampling settings are content fields of the judgement family.
 - **The prompt is the family.** The tournament and rubric prompts define the judgement family, with a
   parse version; a changed prompt is a new family and never pools with the shipped one. Every criterion
   is fixed — the rubric has exactly its five, and they are not reworded.
