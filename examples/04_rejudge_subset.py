@@ -28,12 +28,13 @@ tournament = rcp.TournamentSchedule(window=4, random_placements=2.0, stratified_
                                     adaptive_window=4, adaptive_batches=1, adaptive_placements=1.0)  # fmt: skip
 rubric = rcp.RubricSchedule(window=4, placements_per_doc=4.0, random_share=0.5)
 
-rcp.judge(dataset, pools, judge, stage="tournament", out="judgements", schedule=tournament)
-judged = rcp.judge(dataset, pools, judge, stage="rubric", out="judgements", schedule=rubric)
+rcp.judge(dataset, pools, judge, stage="tournament", out="judgements-rejudge", schedule=tournament)
+judged = rcp.judge(dataset, pools, judge, stage="rubric", out="judgements-rejudge", schedule=rubric)
 calibration = rcp.calibrate([judged])
 
 # Only the missing documents: the store is append-only, so only their new windows are asked.
-rejudged = rcp.judge(dataset, None, judge, stage="rubric", out="judgements", schedule=rubric, docs={"q2": missing})
+rejudged = rcp.judge(dataset, None, judge, stage="rubric", out="judgements-rejudge", schedule=rubric,
+                     docs={"q2": missing})  # fmt: skip
 extension = rcp.score_documents(calibration, rejudged)  # the items are frozen: no published ability moves
 for record in extension.records:
     print(f"{record.doc_id}: theta {record.estimate.theta:+.2f} (se {record.estimate.se:.2f})")

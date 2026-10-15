@@ -26,15 +26,15 @@ pools = {q: [d for d in docs if d != new] for q, docs in dataset.candidates.item
 tournament = rcp.TournamentSchedule(window=4, random_placements=2.0, stratified_placements=1.0,
                                     adaptive_window=4, adaptive_batches=1, adaptive_placements=1.0)  # fmt: skip
 rubric = rcp.RubricSchedule(window=4, placements_per_doc=4.0, random_share=0.5)
-fitted = rcp.judge(dataset, pools, judge, stage="tournament", out="judgements", schedule=tournament)
-answered = rcp.judge(dataset, pools, judge, stage="rubric", out="judgements", schedule=rubric)
+fitted = rcp.judge(dataset, pools, judge, stage="tournament", out="judgements-insert", schedule=tournament)
+answered = rcp.judge(dataset, pools, judge, stage="rubric", out="judgements-insert", schedule=rubric)
 calibration = rcp.calibrate([fitted, answered])
 
 # Two windows of the schedule's size (four), each holding the new document and three ranked opponents; in a real
 # pool `rcp_ndcg.calibration.select_opponents(calibration, "q1", new, n=..., window=4)` picks them. Exactly these
 # windows are judged (each also reversed: the schedule mirrors), into the calibration's own store.
 windows = [[new, *pools["q1"][:3]], [new, *pools["q1"][3:6]]]
-judged = rcp.judge(dataset, None, judge, stage="tournament", out="judgements", schedule=tournament,
+judged = rcp.judge(dataset, None, judge, stage="tournament", out="judgements-insert", schedule=tournament,
                    windows={"q1": windows})  # fmt: skip
 
 # A pool of eight has few opponents to offer: accept a standard error of 1.5 logits (the default asks for 0.5,

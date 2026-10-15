@@ -67,6 +67,19 @@ def test_offline_examples_run(example: Path, tmp_path: Path) -> None:
     assert result.stdout.strip()
 
 
+def test_examples_04_and_05_can_share_one_working_directory(tmp_path: Path) -> None:
+    """Each example judges into its own store, so running them in sequence (as their docstrings show) never
+    mixes pools: 05 must insert its one document, and 04 must re-judge its own subset, whatever ran before."""
+    orders = (("04_rejudge_subset.py", "05_insert_documents.py"), ("05_insert_documents.py", "04_rejudge_subset.py"))
+    for first, second in orders:
+        cwd = tmp_path / first[:2]
+        cwd.mkdir()
+        for name in (first, second):
+            result = _run(ROOT / "examples" / name, cwd)
+            assert result.returncode == 0, f"{first} then {name}: {result.stderr[-3000:]}"
+        assert (cwd / "judgements-rejudge").is_dir() and (cwd / "judgements-insert").is_dir()
+
+
 @pytest.mark.network
 @pytest.mark.skipif(not os.environ.get("RCP_NDCG_NETWORK_TESTS"), reason="set RCP_NDCG_NETWORK_TESTS=1 (HF Hub)")
 @pytest.mark.parametrize("example", [e for e in EXAMPLES if e.name in NETWORK], ids=lambda p: p.stem)
