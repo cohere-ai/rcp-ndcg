@@ -139,6 +139,9 @@ rcp_ndcg_stop "$RCP_NDCG_ENGINE_PID"
 if ! rcp_ndcg_wait_gone 20 8100 /v1/models 127.0.0.1; then
   exit 1
 fi
+unset RCP_NDCG_COORDINATOR_PID
+unset RCP_NDCG_ENGINE_PID
+trap - EXIT TERM INT
 read -r -d '' WORKER_2 <<'RCP_NDCG_WORKER_2' || true
 #!/usr/bin/env bash
 set -euo pipefail
@@ -265,6 +268,9 @@ rcp_ndcg_stop "$RCP_NDCG_ENGINE_PID"
 if ! rcp_ndcg_wait_gone 20 8110 /v1/models 127.0.0.1; then
   exit 1
 fi
+unset RCP_NDCG_COORDINATOR_PID
+unset RCP_NDCG_ENGINE_PID
+trap - EXIT TERM INT
 read -r -d '' WORKER_3 <<'RCP_NDCG_WORKER_3' || true
 #!/usr/bin/env bash
 set -euo pipefail
@@ -391,6 +397,9 @@ rcp_ndcg_stop "$RCP_NDCG_ENGINE_PID"
 if ! rcp_ndcg_wait_gone 20 8120 /v1/models 127.0.0.1; then
   exit 1
 fi
+unset RCP_NDCG_COORDINATOR_PID
+unset RCP_NDCG_ENGINE_PID
+trap - EXIT TERM INT
 read -r -d '' WORKER_4 <<'RCP_NDCG_WORKER_4' || true
 #!/usr/bin/env bash
 set -euo pipefail

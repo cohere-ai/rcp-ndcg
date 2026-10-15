@@ -17,7 +17,7 @@ serve:
   plugin: null
   mm_processor_kwargs: {"images_kwargs": {"min_pixels": 784, "max_pixels": 200704}}
   limit_mm_per_prompt: {"image": 2, "video": 1}
-  extra_args: ["--media-io-kwargs", '{"video": {"num_frames": 4}}']
+  extra_args: ["--media-io-kwargs", '{"video": {"fps": 2}}']
 client:
   api: openai_embeddings
   request_shape: messages
@@ -37,11 +37,11 @@ client:
       - {content: document}
       - {fixed: " [END]"}
     anchor: last
-  image_processor: qwen2_vl
+  image_processor: qwen3_vl
   image_policy: {min_px: 784, max_px: 200704, engine_pixel_pinning: true}
   max_images: 2
   max_videos: 1
-  video_policy: {num_frames: 4, wire: video_url, engine_video_pinning: true}
+  video_policy: {fps: 2, wire: video_url, engine_video_pinning: true}
   on_overflow: cut
   empty_doc: send
   normalize: true
@@ -52,7 +52,7 @@ reference:
 gates: {}
 status: {state: unverified, image: null, date: null, report: null}
 sources: []
-notes: "A fixture for the media stage's video and interleaved rows: an embedder on the messages route that takes two images and one video per request (max_images 2, max_videos 1), its video sampling pinned to 4 uniformly spaced frames per clip (engine_video_pinning, --media-io-kwargs). Its reference consumes a side's parts in the given order (an interleaved-native card) and reports a video as the declared frame count."
+notes: "A fixture for the media stage's video and interleaved rows: an embedder on the messages route that takes two images and one video per request (max_images 2, max_videos 1), its video sampling declared as the engine's own fps rule (2 fps: the Qwen3-VL backend's ported rule, engine_video_pinning, --media-io-kwargs). Its reference consumes a side's parts in the given order (an interleaved-native card) and reports a video as the declared rule's realised frame count."
 variants:
   - id: fixture-vl-video
     model: fixtures/VisionEmbedder
