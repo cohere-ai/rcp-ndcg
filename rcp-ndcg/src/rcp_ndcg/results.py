@@ -802,7 +802,13 @@ def _run_artifacts(layout: Any) -> list[ResultArtifact]:
 
 
 def _system_identity(layout: Any, manifest: Any, system: str) -> str | None:
-    """The subject's content identity: the system's rankings digest, or the judge's family-key digest."""
+    """The subject's content identity: the digest the run scored, or the judge's family-key digest.
+
+    A named system takes the digest the evaluate step recorded among its inputs, never a fresh hash of the
+    file at export time: a rankings file regenerated in place after the run must not relabel the numbers it
+    did not produce. A run whose evaluate step did not hash the location (a remote one, or a manifest written
+    without it) has no identity to report.
+    """
     from rcp_ndcg.storage.artifacts import artifact_ref
 
     if system == CANDIDATES and Path(layout.candidates).is_file():
@@ -812,9 +818,24 @@ def _system_identity(layout: Any, manifest: Any, system: str) -> str | None:
     evaluation = manifest.config.get("evaluation")
     location = evaluation.get("systems", {}).get(system) if isinstance(evaluation, dict) else None
     if isinstance(location, str):
-        path = location.split("#", 1)[0]
-        if storage.exists(path):
-            return artifact_ref(path).sha256
+        return _recorded_input_digest(layout, manifest, location.split("#", 1)[0])
+    return None
+
+
+def _recorded_input_digest(layout: Any, manifest: Any, path: str) -> str | None:
+    """The digest the evaluate step recorded for ``path``, or ``None`` when the run recorded none.
+
+    The step records inputs run-relative where possible and absolute otherwise, while the recorded config
+    holds the location as it was given, so both forms are matched (and a moved run directory still matches by
+    the run-relative form).
+    """
+    step = manifest.step("evaluate")
+    if step is None:
+        return None
+    wanted = {layout.relative(path), layout.resolve(path)}
+    for ref in step.inputs:
+        if ref.path in wanted:
+            return ref.sha256
     return None
 
 
