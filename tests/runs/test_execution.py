@@ -290,9 +290,7 @@ class TestStatus:
         monkeypatch.setattr(
             "rcp_ndcg.runs.execution.run_argv", lambda *args, **kwargs: ("bash", "-c", "echo boom; exit 1")
         )
-        config = _config(
-            data, tmp_path, runner={"name": "local", "options": {"log_dir": str(tmp_path / "local-logs")}}
-        )
+        config = _config(data, tmp_path, runner={"name": "local", "options": {"log_dir": str(tmp_path / "local-logs")}})
         code, error = _invoke("run", "start", str(config), "--runs-dir", str(tmp_path / "runs"), "--runner", "local")
         assert code == 1 and "exited 1" in error["message"]
 
@@ -569,9 +567,7 @@ class TestResubmission:
 
 
 class TestCancel:
-    def test_cancelling_a_detached_run_inside_a_step_records_it_cancelled(
-        self, data: Path, tmp_path: Path
-    ) -> None:
+    def test_cancelling_a_detached_run_inside_a_step_records_it_cancelled(self, data: Path, tmp_path: Path) -> None:
         """runs-7: the coordinator handled SIGTERM first and recorded the run failed, so `run cancel` reported
         'failed' for a run the user stopped (every detached local run, and the MCP run_cancel path)."""
         from rcp_ndcg.runs.manifest import RunStatus, StepStatus

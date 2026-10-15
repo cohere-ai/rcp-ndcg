@@ -21102,7 +21102,8 @@
                 "returns": "list[JobHandle]"
               }
             ]
-          }
+          },
+          "synchronous": "property"
         }
       },
       "Resources": {

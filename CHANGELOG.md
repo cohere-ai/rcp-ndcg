@@ -252,8 +252,10 @@ that exports it.
 - `rcp_ndcg.runners`: `JobSpec` (a named command, with `serve`), `JobOptions` and `Resources` (a runner's `resources`
   and `env` are its jobs' defaults, env names must be shell identifiers, and every path a job records is absolute),
   the `JobRunner` protocol (submit, status, logs, cancel over a `JobHandle`, with a `JobStatus`; a cancel that
-  cannot find or stop its job raises), `get_runner` with the `local`,
-  `slurm` and `kubernetes` runners (`LocalRunner`, `SlurmRunner`, `KubernetesRunner`) and their options models
+  cannot find or stop its job raises; a `synchronous` runner runs its job inside `submit`, so its handle is the
+  job's name and its failure is raised there), `get_runner` with the `local`,
+  `slurm` and `kubernetes` runners (`LocalRunner`, `SlurmRunner`, `KubernetesRunner`; `LocalRunner.synchronous`
+  is true when it is not detached) and their options models
   (`LocalOptions`, `SlurmOptions`, `KubernetesOptions`; a plugin runner's name cannot be a public one's),
   `RunnerError` (exit 6), `ServeConfig` (`image` is optional, `nodes_per_replica` must be 1, and a SLURM job
   without a container runtime refuses an `image`; Kubernetes StatefulSet and Service names are cut to 52
@@ -1778,6 +1780,73 @@ tolerantly and never invents a ranking. The effect on the paper's tables is smal
 
 A minor correction to the paper is forthcoming. Details and all numbers are in
 [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse).
+
+- **Run steps hash their remote inputs, and `candidates.from: fuse` accepts them**: `_inputs` kept an input
+  only when `Path(path).exists()`, which is false for every fsspec URI, so a rankings file, fuse system or
+  evaluation system named by `s3://`/`gs://`/`https://` never entered the step's input set and a resume reused
+  candidates or metrics built from an object that had since been replaced. The existence check now goes
+  through the storage layer (`storage.exists`), the recorded input path is redacted (`safe_url`), and
+  `_fuse_system` checks the same way instead of refusing every remote system as "does not exist" (which made
+  a fused run impossible on Kubernetes, where local system paths are refused).
+- **The fuse step identity carries the systems' order**: reciprocal rank fusion breaks a fused-score tie at
+  the depth cut by earliest appearance in argument order, while the step identity's canonical JSON sorted the
+  systems mapping's keys, so a reordered config reused pools a fresh run would not produce. The identity now
+  records `systems_order`; reordering the systems re-keys the fuse step (the library's documented tie rule is
+  unchanged).
+- **A step's recorded error is redacted**: `_describe` and the `[run] <step> failed` warning pass through
+  `redact_urls`, so a credentialed URI that `RunConfig.recorded()` strips can no longer reach the mirrored
+  `manifest.json` or `logs/run.log` through the error text.
+- **The mirror refuses mixed generations, foreign runs, escaping keys and empty mirrors**: `flush` checks
+  every append-only file against what the mirror holds *before* it uploads anything, so a superseded store
+  never leaves the new `identity.json` beside the old generation's parts; `restore` replaces a shorter local
+  append-only file only when its bytes are a prefix of the parts, else refuses with `DataError`; the first
+  flush of any `Mirror` runs the same foreign-run check `restore` does, so a second submission to one prefix
+  is refused before it overwrites the first run's manifest (the `RunConfig` docstring now asks for a
+  run-scoped mirror URI); a mirror key that is absolute or carries a `..` or `.` segment is refused instead
+  of written outside the run directory; and an empty mirror (`mirror: ""`, `--set mirror=`) is refused at the
+  config boundary and by `Mirror`/`check_target` instead of silently resolving to the working directory. The
+  foreign-run error names the mirror through `safe_url`.
+- **A resume whose dataset load fails leaves the run as it was**: the `from: dataset` preamble (which loads
+  the dataset and computes the first-stage pools) now runs before `run.yaml` and the `RUNNING` status are
+  written, so a typo in `--set dataset=...` or a Hub error no longer leaves the run `running` with the failed
+  override recorded, as the `run resume` help already promised.
+- **A resubmission lets an explicit `--set runner.options.*` win over the last job's record**: the recorded
+  options are merged under the options the config declares (a value equal to the runner's own default is not
+  a declaration), so a changed partition, account, QoS or `log_dir` reaches the job instead of being silently
+  overridden; the documented reuse of the last job's options stands for everything the config does not set.
+- **`run cancel` records a run it stopped as `cancelled`**: the cancel intent is marked before the job is
+  signalled, so the coordinator's `SIGTERM` handler keeps `CANCELLED` instead of recording `FAILED` (the
+  canceller had not marked yet); a `FAILED` manifest whose failing step error is the interrupt is also
+  recorded cancelled, and a newer mirror manifest from a pod that recorded the interrupt as a failure no
+  longer overrides the host's `cancelled`.
+- **The identity-refusal hint names a remedy that works**: it no longer suggests moving
+  `judgements/<stage>.jsonl` aside (the store's `identity.json` keeps the claim, and a mirror restores the
+  file); it names a new run, and a new mirror URI for a mirrored run.
+- **A foreground local-runner job that fails keeps its handle and its log**: the handle (the job's name) is
+  recorded before a synchronous runner runs it, so `run logs` prints the job's output and `run status` reports
+  the job's failure rather than "the submission failed" for a job that ran.
+- **A phase cannot kill a reused PID at job exit**: a `supervise` block unsets its coordinator and engine
+  PIDs and resets its traps after the phase boundary, so an engine-free phase that runs next in the same
+  shell (SLURM renders each phase as one `srun`) does not inherit the earlier phase's `EXIT` trap.
+- **The process umask is read, never set**: `publish` reads it from `/proc/self/status` (else under a module
+  lock), so two concurrent publishers (a run mirror's flush thread and the main thread) can no longer
+  interleave and leave the process umask at 0, which would make every later file world-writable.
+- **A runner plugin that fails to import is a typed config error**: the runner registry loads its entry point
+  through `support.entrypoints`' load check, so a broken plugin is a `ConfigError` naming it (exit 3) instead
+  of an internal error (exit 1).
+- **A credential in an engine `command` is refused**: `ServeConfig` refuses a value that follows a
+  credential-bearing flag (`--api-key`, `--hf-token`, `--token`, `--secret`, in the `--flag value` and
+  `--flag=value` forms), because the command is written verbatim into `run.yaml`, the manifest, every job
+  script and every mirror copy; `--tokenizer`/`--tokenizer-mode` name a model and are not refused.
+- **A recipe named by path is relative to the file that names it**: `judge: recipe:./my-judge`,
+  `candidates.retrieval.encoder.recipe`, `candidates.rerank.recipe` and a retriever/reranker YAML's
+  `recipe:` now resolve against the config file's directory like every other relative path, instead of the
+  working directory; a path recipe is also listed as a host-local input, so a runner whose jobs do not see
+  this host's files refuses it at submission.
+- **Public surface**: the `JobRunner` protocol and `LocalRunner` gain `synchronous` (a synchronous runner runs
+  its job inside `submit`, so its handle is the job's name), and `schemas/run-config.v1.json`'s `mirror`
+  description names the run-scoped URI the flush check enforces. `tests/contract/snapshots/python_api.json`
+  and the exported schema are regenerated; no CLI command, flag, exit code or MCP tool changes.
 
 - **The qwen3-vl-embedding reference reads video through the checkpoint's own processor**: the recipe pins
 the engine's video sampling to the checkpoint's own `video_preprocessor_config.json` rate (fps 2) and the

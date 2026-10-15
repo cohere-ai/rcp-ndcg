@@ -246,7 +246,7 @@ class Mirror:
         for relative, kind in sorted(remote.items()):
             if relative in SKIPPED_FILES:
                 continue
-            target = self.root / _safe_relative(relative, where=self.root)
+            target = self.root / _safe_relative(relative, where=str(self.root))
             if kind == "parts":
                 parts = _parts(self._target, relative)
                 end = _end(parts)

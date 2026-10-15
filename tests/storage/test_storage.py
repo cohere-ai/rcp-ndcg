@@ -255,9 +255,7 @@ class TestPublish:
         storage.publish_bytes(target, b"new")
         assert stat.S_IMODE(target.stat().st_mode) == 0o640
 
-    def test_publish_reads_the_umask_without_setting_it(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_publish_reads_the_umask_without_setting_it(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """runs-14: ``_umask()`` set the process umask to 0 and restored it in two statements; two concurrent
         publishers (the mirror's flush thread and the main thread) could interleave and leave the process umask
         at 0, making every later file and directory world-writable."""
