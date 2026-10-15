@@ -1943,7 +1943,7 @@
             }
           ],
           "default": null,
-          "description": "The served model's image processor family (``qwen2_vl``, ``qwen2_5_vl``, ``qwen3_vl``; PROCESSORS). The client resizes every image and video frame exactly as that processor would, within the pass's pixel budget, so the engine needs no media flags. ``None`` (the default): the family is unknown, and images are sent unchanged, as stored.",
+          "description": "The served model's image processor family (``qwen2_vl``, ``qwen2_5_vl``, ``qwen3_vl``, ``gemma4``; PROCESSORS). The client resizes every image and video frame exactly as that processor would, within the pass's pixel budget, so the engine needs no media flags. ``None`` (the default): the family is unknown, and images are sent unchanged, as stored.",
           "title": "Image Processor"
         },
         "max_images": {

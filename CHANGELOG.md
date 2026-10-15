@@ -454,7 +454,7 @@ property carries a description (a config field's is its model's documentation).
   `qwen3.5-397b-a17b-nvfp4`, `gpt-oss-120b`, `qwen3.6-27b-fp8`, `qwen3.8-27b-fp8`,
   `qwen3.8-flash-next-nvfp4`, `qwen3.8-flash-next-fp8` (the six of decision 15) and the four Gemma 4 judges
   `gemma-4-12b-it`, `gemma-4-26b-a4b-it`, `gemma-4-26b-a4b-nvfp4`, `gemma-4-31b-it-nvfp4`, each pinned,
-  `status: unverified`, with its per-variant golden snapshot and its memory arithmetic for one B200 and one
+  `status: verified`, with its per-variant golden snapshot and its memory arithmetic for one B200 and one
   H100 (decision 41: one GPU where the weights fit, the smallest tensor parallel size that fits a B200
   otherwise, the H100 shape a documented `serve --set resources.gpus=<n>` override). Every variant renders
   through `rcp-ndcg-vllm serve <id>`; the engine flags (reasoning parser, quantisation, KV-cache dtype, media
@@ -806,7 +806,7 @@ owner pushes, with the move to a Hugging Face organisation).
 - The release workflow builds and publishes the three published distributions from their own directories in the
   order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
   byte-identical in all four distributions.
-- The pplx folded plugin registers a second architecture for the 19th recipe: the late checkpoint's
+- The pplx folded plugin registers a second architecture for `pplx-embed-v2-late-0.6b`: the late checkpoint's
   `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
   `rcp_ndcg_vllm.models.pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the
   checkpoint's separate `1_Dense/model.safetensors` head (one tensor, `linear.weight` [128, 1024]) into
@@ -820,7 +820,7 @@ owner pushes, with the move to a Hugging Face organisation).
 - `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
   published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
   `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.
-- **The media request set carries video and interleaved rows** (`rcp_ndcg_vllm.observe.media_set`,
+- **The media request set carries video and interleaved rows** (`rcp_ndcg_test.observe.media_set`,
   `MEDIA_SET_VERSION` 3; the text rows' sampling untouched): a recipe with video input and a declared policy
   (`client.max_videos` and `client.video_policy`) plans an MJPEG AVI clip per size (64x64 and 224x224), alone
   and with text, at the policy's declared frame count -- tiny RIFF containers written on CPU from PIL-drawn
@@ -836,7 +836,7 @@ owner pushes, with the move to a Hugging Face organisation).
   manifest records `media:video`, `media:video:icon`/`:page`, `media:video+text`, `media:mixed_batch`,
   `media:query_image`, `media:interleaved` and `media:several_images` present or absent with the reason;
   pairs regenerated for the three media recipes (their text rows byte-identical).
-- **The media gate gates video and interleaved order** (`rcp_ndcg_vllm.equivalence.media`): a video's
+- **The media gate gates video and interleaved order** (`rcp_ndcg_test.equivalence.media`): a video's
   declared frame count gates against the reference's `--mode media` (the sampling both sides declare), and
   its container's token count gates against the engine -- the stage probes the sent container's header (the
   product's `probe_video_header`) and counts it exactly (`content_media_tokens` under the client's declared
@@ -850,9 +850,9 @@ owner pushes, with the move to a Hugging Face organisation).
   video per request, a 4-frame pinned sampling) carries the video and interleaved tests.
 
 - **The media gate's fix round**: the recorder records a media side the role client refuses as a
-  `client_refusal` record (`rcp_ndcg_vllm.record.refusal_exchange`; no status, nothing sent), so a refusal never
+  `client_refusal` record (`rcp_ndcg_test.record.refusal_exchange`; no status, nothing sent), so a refusal never
   ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files
-  come through one reader (`rcp_ndcg_vllm.equivalence.checkpoint.checkpoint_file`, `checkpoint_pixel_budget`),
+  come through one reader (`rcp_ndcg_test.equivalence.checkpoint.checkpoint_file`, `checkpoint_pixel_budget`),
   where only an absent file (the Hub's answer, or the cache's record of it) falls through to the next source; a
   file neither cached nor askable is unknown, and that or any other read failure is unresolved; the
   media stage names a side the reference refuses (`reference_refused`, which the generator prunes) before a side
@@ -860,7 +860,7 @@ owner pushes, with the move to a Hugging Face organisation).
   are `observe.media_set.planned_media_rows` (renamed from `media_rows`, which stays the pairs-file reader in
   `equivalence.media`). The test stub resizes with the product's own `smart_resize`, so on CPU only the
   reference comparison can catch a product resize bug.
-- **The media request set is generated and recorded** (`rcp_ndcg_vllm.observe.media_set`, `MEDIA_SET_VERSION` 1,
+- **The media request set is generated and recorded** (`rcp_ndcg_test.observe.media_set`, `MEDIA_SET_VERSION` 1,
   versioned apart from the text sampling so no recipe's text rows move): a recipe with image input plans one
   pairs row per image size bucket of OBSERVATIONS-SPEC section 1 (tiny, icon, A4 at 72/150/300 dpi, a 16:9
   slide, a tall receipt, an extreme aspect ratio; deterministic PNGs inline) and a captioned page, after its
@@ -870,7 +870,7 @@ owner pushes, with the move to a Hugging Face organisation).
   (`validation.media_check` in `pairs/manifest.json`; a media failure is recorded, never pruned), stage 1's
   red rows map back to the text rows' positions, and the recorder sends each media row with its media, one
   item (a reranker's pair) per request.
-- **The media stage of the equivalence harness** (`rcp_ndcg_vllm.equivalence.media.stage_media`, run by
+- **The media stage of the equivalence harness** (`rcp_ndcg_test.equivalence.media.stage_media`, run by
   `equivalence.run` beside stages 1 and 2 for a recipe with image or video input): stages 1 and 2 are text-only, so
   nothing proved that a served vision-language recipe shows its model the images its reference sees. For every
   pairs row that carries `media` (inline `MediaRef` entries with their `kind`; a side's content is its media in
@@ -895,15 +895,15 @@ owner pushes, with the move to a Hugging Face organisation).
   keys silently, so a recipe declaring a field twice served whichever came last. The loader raises
   `RecipeError` naming the key and its line; the `fixture-rerank-noisy` fixture declared `use_activation` twice
   (both `true`) and now declares it once.
-- **Change handling reads corpora through the one reader**: `rcp_ndcg_vllm.changes` (the committed-corpora
-  selection and staleness) reads each manifest through `rcp_ndcg.testing.corpus.load_corpus` and refuses a
+- **Change handling reads corpora through the one reader**: `rcp_ndcg_test.changes` (the committed-corpora
+  selection and staleness) reads each manifest through `rcp_ndcg_test.corpus.load_corpus` and refuses a
   corpus whose hashes do not hold (`HarnessError` naming the mismatches) instead of parsing `manifest.json`
   itself; the conformance wiring (`tests/_engines.py`) reads through the same reader. The two re-record
   selections state their scopes: `changes changed` compares the corpora committed in the repository, the
   wave runner's `--changed-since <wave.json>` a previous wave's index (`observe.corpus.changed_since`).
 - **`rcp_ndcg.runs.execution.stage_run(pipeline)`**: the one staging of a run directory before a job runs it (the
   layout, the resolved `run.yaml`, the manifest in status `submitted`). `submit_run` calls it, and
-  `rcp_ndcg_vllm.e2e.stage_run_dir` -- the GPU end-to-end driver, which runs the job itself -- now calls it
+  `rcp_ndcg_test.e2e.stage_run_dir` -- the GPU end-to-end driver, which runs the job itself -- now calls it
   instead of the pipeline's private `run.yaml` writer.
 - **Re-keyed corpora name the manifest they were re-keyed from**: each `recipe.rekeyed` entry carries
   `from_manifest_sha256` and `from_manifest_file_sha256` beside `from_behaviour_fingerprint`, the link from the
@@ -917,7 +917,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `--limit-mm-per-prompt`, an undecodable image, a video container it cannot decode) and reports
   `usage.prompt_tokens` on every chat-shaped and `/rerank` reply; a stage-2 test passes a template that frames
   once and fails one that frames twice.
-- **The harness reads the checkpoint's own chat template** (`rcp_ndcg_vllm.equivalence.stages.checkpoint_chat_template`,
+- **The harness reads the checkpoint's own chat template** (`rcp_ndcg_test.equivalence.stages.checkpoint_chat_template`,
   `CHECKPOINT_TEMPLATE_FILES`): a `messages` recipe without `serve.chat_template` reported its
   `template_render_check` as `not_run`, so the frame the engine renders there was never checked. The check now
   reads the checkpoint's own template at the pinned revision, in the order the engine resolves it
@@ -934,12 +934,12 @@ owner pushes, with the move to a Hugging Face organisation).
   on `PoolingEndpoint` (its media lowering sends no such field), and `false` -- the engine's default -- is
   stored as `None`, so no identity re-keys. The equivalence harness's messages template check renders every
   captured conversation with the flag that request carried, its parts as vLLM hands them to the template
-  (`rcp_ndcg_vllm.equivalence.stages.engine_conversation`: `image_url` as `{"type": "image"}`, `video_url` as
+  (`rcp_ndcg_test.equivalence.stages.engine_conversation`: `image_url` as `{"type": "image"}`, `video_url` as
   `{"type": "video"}`).
-- **Two public accessors of `rcp-ndcg-vllm`, and the release rule for stale corpora**:
-  `rcp_ndcg_vllm.fingerprint.stored_tokenizer(spec)` returns a registered tokenizer store's verified
+- **Two public accessors of `rcp-ndcg-test`, and the release rule for stale corpora**:
+  `rcp_ndcg_test.fingerprint.stored_tokenizer(spec)` returns a registered tokenizer store's verified
   `tokenizer.json` bytes and SHA-256 (the golden replay materialises the recipe's tokenizer with it), and
-  `rcp_ndcg_vllm.record.bare_exchange` records one bare probe as a captured exchange (the wave runner's
+  `rcp_ndcg_test.record.bare_exchange` records one bare probe as a captured exchange (the wave runner's
   readiness edge uses it); no caller imports a private helper for either. With `RCP_NDCG_RELEASE=1` the
   conformance suite requires `tests/conformance/stale.json` empty, as it requires the waiver file empty; the
   re-key of a corpus whose fingerprint moved by metadata only is a documented procedure
@@ -1044,14 +1044,14 @@ owner pushes, with the move to a Hugging Face organisation).
   `BackendUnavailableError`; a resume finishes), `identity` (the same run on new ports: nothing
   recomputes) and `vidore` (ViDoRe v3 page images). Offline counterparts in the root suite: the golden
   rendered script (harness tests), the four-phase supervision re-run with the verified fake engines as
-  its encoder and reranker engines (`rcp_ndcg.testing.engines` emulators of `qwen3-embedding-0.6b` and
+  its encoder and reranker engines (`rcp_ndcg_test.engines` emulators of `qwen3-embedding-0.6b` and
   `qwen3-reranker-8b` served over HTTP, each coordinator's recorded request answered `replayed`; the judge
   phase keeps the supervision stub, no judge corpus being recorded;
   `tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
   test (`tests/inference/test_outage_observed.py`).
-- **`rcp_ndcg.testing.corpus` is the whole format seam**: `ObservationCorpus.nondeterminism` exposes the
+- **`rcp_ndcg_test.corpus` is the whole format seam**: `ObservationCorpus.nondeterminism` exposes the
   corpus's `nondeterminism.json` (parsed; `None` when absent; an unreadable one is a `DataError`), and
-  `rcp_ndcg.testing.engines.corpus_tolerance` reads it there; the append-only `verification.jsonl` lives
+  `rcp_ndcg_test.engines.corpus_tolerance` reads it there; the append-only `verification.jsonl` lives
   here (`VERIFICATION_FILE`, `VERIFICATION_SCHEMA`, `append_verification` -- which refuses a record of
   another schema -- and `verification_records`; moved from `rcp_ndcg.testing.engines`) and no integrity
   hash covers it (`write_subset_index` and the collector's `write_corpus` leave it out); the one raw-body
@@ -1060,7 +1060,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `rcp_ndcg_vllm.observe.corpus`, where it was private); and `credential_findings` also names an
   `X-Api-Key` header, a cookie and a secret-valued field (`api_key`, `client_secret`, `password`,
   `access_token`, ... with a string value), never a tokenizer vocabulary's integer ids.
-- **`rcp_ndcg.testing.engines`: the verified fake engines**. One
+- **`rcp_ndcg_test.engines`: the verified fake engines**. One
   emulator per (engine, version, recipe, behaviour fingerprint), selected as
   `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
   protocol is emulated (routes, request validation, error bodies, result ordering and framing, usage
@@ -1069,7 +1069,7 @@ owner pushes, with the move to a Hugging Face organisation).
   and `surrogate_matrix` draw one SHAKE-256 stream per vector, `surrogate_scores` one draw per score;
   no value is pinned), marked
   `replayed`/`surrogate`/`mixed` in `x-rcp-ndcg-emulator-source`, recorded per reply in `answer_log`.
-  The emulators read corpora through the format's one reader, `rcp_ndcg.testing.corpus`
+  The emulators read corpora through the format's one reader, `rcp_ndcg_test.corpus`
   (`exchanges_of` views its records, `corpus_tolerance` takes the tolerance the corpus's
   `nondeterminism.json` derived from same-request repetitions -- `None` when none was measured, so a
   replay is compared exactly, never with an invented tolerance -- and each bound applies jointly);
@@ -1081,7 +1081,7 @@ owner pushes, with the move to a Hugging Face organisation).
   version or recipe revision it was not verified against; the conformance suite
   (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
   fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
-- **`rcp_ndcg_vllm.fingerprint`: the recipe behaviour fingerprint**:
+- **`rcp_ndcg_test.fingerprint`: the recipe behaviour fingerprint**:
   `behaviour_fingerprint(recipe)` (rule `rcp-fp/4`: the SHA-256 of the checkpoint id and revision, the
   engine image and its version floor, the serve block, the source hash of every plugin module the recipe's
   engine runs, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
@@ -1092,14 +1092,14 @@ owner pushes, with the move to a Hugging Face organisation).
   `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
   `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
   verified on every read).
-- **`rcp_ndcg_vllm.changes`: change handling**: `recipe_state` (one
+- **`rcp_ndcg_test.changes`: change handling**: `recipe_state` (one
   recipe's fingerprint recomputed and compared with every committed corpus of it, found by scanning
-  manifests with `rcp_ndcg.testing.engines.find_corpora`), `resolve_corpus` (the corpus of the current
+  manifests with `rcp_ndcg_test.engines.find_corpora`), `resolve_corpus` (the corpus of the current
   fingerprint, or `StaleCorpusError` naming the changed inputs per recorded corpus), `waiver_covers`
   (a dated, reasoned, unexpired staleness waiver), `changed_recipes` (the re-record-changed-only
   selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed inputs named) and
   `behaviour_report` (the behaviour diff of two corpora of one recipe), as functions and
-  `python -m rcp_ndcg_vllm.changes` (`changed` and `diff`).
+  `python -m rcp_ndcg_test.changes` (`changed` and `diff`).
 - **The provisional corpora after the families' recipe changes**: three corpora are current as recorded
   (`octen-embedding-8b`, `qwen3-embedding-0.6b`, `zembed-1-embedding`); two are re-keyed to the current
   fingerprint because only inputs that shape none of their recorded exchanges moved (`qwen3-reranker-8b`:
@@ -1111,7 +1111,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `zerank-2-reranker`): the replays skip them and each must fail the staleness gate naming exactly the
   declared inputs. The NanoBEIR golden's rerank view replays `qwen3-reranker-8b` (same recorded texts;
   the pinned metrics are unchanged).
-- **The corpora under `tests/contract/engines/`**: the provisional shakedown corpus (12 recipes, 48
+- **The corpora under `rcp-ndcg-test/corpora/`**: the provisional shakedown corpus (12 recipes, 48
   exchanges) as repository subsets in the observation-corpus format (`records.jsonl.gz`, the manifest
   with a `provisional` statement -- valid to build and test the emulators, not release evidence --,
   `nondeterminism.json`, `index.json`; the manifest hashes in the repository's corpus index; a shared
@@ -1140,8 +1140,8 @@ owner pushes, with the move to a Hugging Face organisation).
   verification record); the unobserved `/pooling` and `/tokenize` follow vLLM v0.31.0's source
   (`PoolingResponse`, the bytes framing's `metadata`, `TokenizeResponse`; `embed_dtype` `float32`,
   `endianness` `native` by default). `RE_ENGINE_URL` is exported from `rcp_ndcg.inference.fake`
-  (`rcp_ndcg.testing.engines` is pinned as public API).
-- **`rcp_ndcg.testing.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
+  (`rcp_ndcg_test.engines` is pinned as public API).
+- **`rcp_ndcg_test.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
   is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's
   `records.jsonl` or a repository subset's `records.jsonl.gz` with its `index.json` -- and migrates records of an
   older `RECORD_SCHEMA` through `register_record_migration` (a record from a newer collector, or one without a
@@ -1150,25 +1150,25 @@ owner pushes, with the move to a Hugging Face organisation).
   fields (`NORMALISATION_VERSION` 1: request ids and `created` timestamps) and `credential_findings` names the
   credential shapes a text carries. The collector in `rcp-ndcg-vllm` writes this format; the verified fake
   engines read it here. A frozen schema-1 sample (`tests/observation_corpus_v1/`) pins that it stays readable.
-- **The observation corpus, the T3 quality stage and the negative controls (`rcp-ndcg-vllm`)**:
-  `rcp_ndcg_vllm.record.record_corpus` records a corpus in the product's format (`rcp_ndcg.testing.corpus`):
+- **The observation corpus, the T3 quality stage and the negative controls (`rcp-ndcg-test`)**:
+  `rcp_ndcg_test.record.record_corpus` records a corpus in the corpus format (`rcp_ndcg_test.corpus`):
   the request plan (`observe.requests.corpus_plan`: the pairs rows, the over-length ladder and the long content
   kinds through the client and uncut, the wire variants, the protocol edges) twice in one engine process and
   once after a restart, `/tokenize` of the exact prompts, and the section-4 provenance (`observe.provenance`);
-  `observe.corpus` keys it by engine version and `rcp_ndcg_vllm.fingerprint.behaviour_fingerprint`, measures the
+  `observe.corpus` keys it by engine version and `rcp_ndcg_test.fingerprint.behaviour_fingerprint`, measures the
   non-determinism over true repetitions, runs the acceptance checks and cuts the repository subset
-  (`python -m rcp_ndcg_vllm.observe.corpus verify|subset`).  `quality.py` is the T3 stage: the served path
+  (`python -m rcp_ndcg_test.observe.corpus verify|subset`).  `quality.py` is the T3 stage: the served path
   through the product's CLI, the `mteb` reference, RCP-nDCG@10 and qrel-nDCG@10 gated vs the reference and the
   paper's numbers, `QUALITY.md`, and a recording proxy for the golden-replay corpus.  `observe.controls` derives
   the negative controls (a)-(f) as real vLLM breakages (recipe variants, or request-body patches through
   `equivalence.wire.patched_wire`).  `run_wave` gains `--record-corpus`, `--changed-since`, `--quality`
   (`--paper-numbers`) and `--controls`; a passing control fails the recipe.  The format is documented in
-  `rcp-ndcg-vllm/schema/observation-corpus.md`.
-- **`rcp_ndcg_vllm.observe` (the `rcp-ndcg-vllm` distribution)**: the deterministic observation request
+  `rcp-ndcg-test/schema/observation-corpus.md`.
+- **`rcp_ndcg_test.observe` (the `rcp-ndcg-test` distribution)**: the deterministic observation request
   generator -- `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set stored as
   text -- writing one stage-2 pairs file per recipe in the harness's pairs format plus `pairs/manifest.json`
   (per-row provenance, stratum presence records, file hashes, excluded source ids, the recipes that could not
-  load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_vllm.observe.requests` generates
+  load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_test.observe.requests` generates
   it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest per recipe (a
   recipe a run touched replaces its file, skipped and pruned entries), so one bounded invocation per recipe
   composes. Stage-1 validation probes the offline fake with a `/pooling` recipe's reply width bounded (`dim` 8
@@ -1517,6 +1517,9 @@ owner pushes, with the move to a Hugging Face organisation).
   `additionalProperties: true` -- no summary, per_dataset, per_query, protocol, warnings, inputs or out. The
   model answers the schema request with its validation-mode schema now, so the exported contract lists every
   field, while the runtime output still drops the null ones (regenerate as below).
+- **The `image_processor` description names every family**: `judge-config.v1` and `run-config.v1` carry the
+  field's description with all four processor families (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`, `gemma4`); the
+  exported schemas are regenerated, descriptions only, no shape changes.
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 ### Changed
@@ -2827,14 +2830,14 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   `messages` capture per conversation, audits the declared frame around the sent content, and its
   `template_render_check` renders the served chat template over every captured conversation against the
   declared render (`not_run` without `serve.chat_template`).
-- **The anchor audit implements `anchor: last_content`** (`rcp_ndcg_vllm.equivalence`): a recipe declaring
+- **The anchor audit implements `anchor: last_content`** (`rcp_ndcg_test.equivalence`): a recipe declaring
   it (jina-embeddings-v5) fell into the `last` branch, whose edge -- the last fixed segment, not at the edge,
   plus the post-processor's tail -- is empty for a content-final shape on a tokenizer that appends nothing, so
   its audit could never pass. The branch follows the product's definition: the shape ends on its content
   span, the fixed head segments open every captured body as the engine reads them in the assembled render
   (after the post-processor's prefix), the post-processor's tail closes it when the shape declares one, and a
   content token sits between them -- the last kept content token the model pools.
-- **The equivalence harness reports exactly the rows the client changed** (`rcp_ndcg_vllm.equivalence`,
+- **The equivalence harness reports exactly the rows the client changed** (`rcp_ndcg_test.equivalence`,
   decision 9): a row was reported non-gating only when a census cut's content count exceeded `max_tokens`,
   and the census counts content only -- so a row whose framed request was over the budget while its content
   was under it, and a reranker's query settled at its share inside a pair the budget takes whole, were gated
@@ -2882,7 +2885,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   width now costs about twice the probe's time per text, not minutes) and stays: its assertions are
   width-independent, and it keeps each probed answer small (an 8192-token text at 2048 dimensions is a
   64 MiB float32 matrix on each side of the wire).
-- **The equivalence harness's stage 1 reads every wire shape** (`rcp_ndcg_vllm.equivalence`): a
+- **The equivalence harness's stage 1 reads every wire shape** (`rcp_ndcg_test.equivalence`): a
   `request_shape: token_ids` body is audited on the ids it sends (it crashed the audit with a `TypeError`),
   the engine `/tokenize` check reports `not_run` for it (the engine tokenizes nothing), and the render check
   compares those ids with the reference text's ids under the shape's `add_special_tokens` flag (it compared
@@ -2983,7 +2986,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   small corpus. The `cli.v1` envelope schema changed description-only (`data` says which commands tag their
   data with a schema id). No payload changes shape except `run list`'s unreadable rows, which now carry the row's null
   fields explicitly; the payloads validate against the regenerated schemas.
-- New served recipe `octen-embedding-8b` (`rcp-ndcg-vllm/recipes/octen-embedding-8b/`): the paper's
+- New served recipe `octen-embedding-8b` (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding/`): the paper's
   first-stage retriever Octen/Octen-Embedding-8B @ `5adcfa292e712091dfc30f0e97f0b2282e6cc66c` on stock
   `vllm/vllm-openai:v0.31.0` (`--runner pooling`; last-token pooling and the normalize activation come from the
   checkpoint's own sentence-transformers configs). The client block is an `EmbeddingEndpoint` with the product's
@@ -2994,7 +2997,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   template would change every prompt; the /v2/embed route is a trap: it auto-applies the checkpoint's ST prompts).
   `reference.py` is the paper-exact in-process path (bf16, left padding, last token, float32 L2) whose render
   mode needs no torch and no transformers; the recipe directory carries its `requirements-reference.txt`.
-- New serving recipe `rcp-ndcg-vllm/recipes/qwen3-vl-embedding-2b/` (`Qwen/Qwen3-VL-Embedding-2B` at revision
+- New serving recipe `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-embedding/` (`Qwen/Qwen3-VL-Embedding-2B` at revision
   `9f2f7e71…`, role `embed`, stock `vllm/vllm-openai:v0.31.0`, no plugin): the chat frame declared as product
   `TemplateSpec` data with the model's default instruction pinned as fixed text, every item sent on the
   `messages` route and framed once by the checkpoint's own chat template (no template file ships;
@@ -3043,7 +3046,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   at once, the product's `fit` and embedding client over 20
   texts (5 over the explicit budget) with the engine's `/tokenize` per input, the HF-cache eviction
   with the disk before/after, and the no-engine assert — fail-fast, with one JSON report
-  (`rcp-ndcg.wave0-report.v1`, schema at `rcp-ndcg-vllm/schema/wave0-report.schema.json`) and
+  (`rcp-ndcg.wave0-report.v1`, schema at `rcp-ndcg-test/schema/wave0-report.schema.json`) and
   a dry mode (`WAVE0_DRY=1`). The wave runner's wave gains per-slot `VLLM_PORT` and `TMPDIR`, the
   pre-serve disk check against the model's Hub size, the post-recipe eviction, and an upload fallback
   through the product's own `rcp_ndcg.storage` when the image has neither `gcloud` nor `gsutil`. Wave
@@ -3130,7 +3133,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
 - Stage 1's report carries `checked` (the audited request count) for `EQUIVALENCE.md`; `tests/recipes/` is
   the recipe lanes' network-gated home (`RCP_NDCG_NETWORK_TESTS=1`; downloads land in
   `RCP_NDCG_VLLM_TOKENIZER_CACHE` or `tmp_path`, never the checkout).
-- First served recipe `recipes/qwen3-reranker-4b/` (the recipe lanes' product): Qwen/Qwen3-Reranker-4B at the
+- Served recipe `recipes/qwen3-reranker-4b/` (the recipe lanes' product): Qwen/Qwen3-Reranker-4B at the
   pinned revision, role `rerank`/pointwise on the unmodified `vllm/vllm-openai:v0.31.0` image — hf_overrides
   turn the checkpoint into the 1-label sequence-classification head (`classifier_from_token` [no, yes],
   `is_original_qwen3_reranker`), the paper-exact chat template ships as `template.jinja` (the stock example
@@ -3138,10 +3141,10 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   (`max_tokens` 8192, `query_max_tokens` 4096, `on_overflow: cut`, tokenizer pinned `<repo>@<commit>`), the
   anchor (the 9-token assistant suffix) is declared `anchor: last` and reserved from every cut, and the
   reference derives unchanged from the paper's `QwenOGRerank` at bfloat16 with
-  `reference.known_deviations: [anchor_drop_over_cap]` (over-cap pairs gate on under-cap pairs only).
-  Stage 1 passes on CPU against the real Hub tokenizer (tokenizer files only); state `unverified` until the
-  GPU waves run.
-- The first serving recipe ships: `rcp-ndcg-vllm/recipes/topk-embed-v1-small/` (recipe.yaml,
+  `reference.known_deviations: [over_cap_cut_differs]` (the reference's own cut never copies the client's;
+  over-cap pairs are reported, not gated).
+  Stage 1 passes on CPU against the real Hub tokenizer (tokenizer files only).
+- A serving recipe ships: `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/topk-embed-v1/` (family.yaml,
   reference.py; the recipe directory is grafted into the sdist with the rest of `recipes/`), serving
   `topk-io/topk-embed-v1-small` as a multi-vector model on `vllm/vllm-openai:v0.31.0` through a
   `vllm.general_plugins` wheel (`serve.plugin: topk-embed-vllm`, built by the plugin lane). Its tests pin
@@ -3294,7 +3297,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   registry effects, the config-class parse and the served-class mapper cross-check need vLLM and
   transformers; the full served-vs-reference equivalence on real weights is the GPU wave's.
 
-- A served recipe in `rcp-ndcg-vllm/recipes/`: `ctxl-rerank-v2-instruct-multilingual-2b`
+- A served recipe in `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/`: `ctxl-rerank-v2-instruct-multilingual-2b`
   (ContextualAI/ctxl-rerank-v2-instruct-multilingual-2b @ 6ffef5dc552583b8db58dc4a87f79f7aee78d2d9, pointwise
   rerank, paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
   (`classifier_from_token` ["!"] = the checkpoint's token id 0, `method: no_post_processing`) on the stock
@@ -3306,8 +3309,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   whole-prompt right truncation drops the trailing " ??" anchor over the cap, so the recipe declares
   `reference.known_deviations: [anchor_drop_over_cap]` instead of copying the drop into the served path;
   the reference subprocess derives from `experiments/paper/rerankers/reference/contextual.py`
-  (paper-exact; no instruction is sent or folded -- the family's `instruction: none`). Status `unverified`
-  until the GPU waves run the harness's stages 2–3.
+  (paper-exact; no instruction is sent or folded -- the family's `instruction: none`).
 
 - The `ctxl-rerank-v2-instruct-multilingual-1b`/`-2b`/`-6b` recipe family settles one policy: all three
   declare `client.instruction: none` (the paper configs' mode; the paper's in-process path never received
@@ -3348,7 +3350,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   through the one shared cache, and checks that no shipped recipe file carries an internal process
   label.
 
-- The first served recipe in `rcp-ndcg-vllm/recipes/`: `qwen3-reranker-0.6b`
+- A served recipe in `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/`: `qwen3-reranker-0.6b`
   (Qwen/Qwen3-Reranker-0.6B @ e61197ed45024b0ed8a2d74b80b4d909f1255473, pointwise rerank,
   paper-exact): `--runner pooling` with the `Qwen3ForSequenceClassification` conversion overrides
   (`classifier_from_token` no/yes, `is_original_qwen3_reranker`) on the stock
@@ -3358,8 +3360,7 @@ corpus re-record is needed, and the case fills from the reference on GPU under i
   (`max_tokens` 8192 = `MAX_SEQ_LENGTH`, `query_max_tokens` 4096 = `MAX_QUERY_LENGTH`,
   `on_overflow: cut`), `use_activation: true` on the probability scale, and a reference subprocess
   derived from `experiments/paper/rerankers/reference/qwen3.py` (probability =
-  `softmax([no, yes])[yes]`, bfloat16, batch 16, no anchor ever dropped). Status `unverified`
-  until the GPU waves run the harness's stages 2–3.
+  `softmax([no, yes])[yes]`, bfloat16, batch 16, no anchor ever dropped).
 - `TournamentSchedule.adaptive_batches_for(n_docs)`: the adaptive batches a pool of `n_docs` runs. A pool no
   larger than `adaptive_window` runs one batch, not one per batch: every adaptive window of such a pool holds
   the whole pool, so a further batch asks the same documents again (in the refit order) and covers only what
@@ -3767,25 +3768,25 @@ text it sends to the declared budget.
   product's `request_shape: token_ids` (the `vllm_pooling` wire sends it), and the
   recipe's chunker must not emit the `<|chunk_sep|>` marker as chunk content (the id wire cannot tell it from a
   boundary; declared in the plugin README).
-- The served recipe `jina-reranker-v3` (`rcp-ndcg-vllm/recipes/jina-reranker-v3/`,
+- The served recipe `jina-reranker-v3` (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/jina-reranker-v3/`,
   jinaai/jina-reranker-v3 @ d7d7e73b6ea138ced340b83865931b5dfb6c97aa, listwise rerank, paper-exact):
   stock `vllm/vllm-openai:v0.31.0` with `--runner pooling` (the native `JinaForRanking`; no conversion,
   no plugin, and deliberately no chat-template file — the listwise prompt is built server-side by the
   engine's Python builder, which the declared pair template mirrors byte for byte), the pair budget
   `max_tokens` 3219 (the measured 147-token frame + `query_max_tokens` 512 for EACH of the query's
   two spans + the checkpoint's per-document 2048 — the checkpoint's own worst-case 1-vs-1 prompt), `instruction: none`, `use_activation: false` (raw cosine), `empty_doc:
-  omit_zero`, and a reference subprocess derived from `experiments/paper/rerankers/reference/jina.py`
+  omit_zero_blank`, and a reference subprocess derived from `experiments/paper/rerankers/reference/jina.py`
   (raw cosine in [-1, 1], empty documents 0.0, the checkpoint's 125-doc/2048-token blocking ported for
   the GPU waves). Stage 1 passes on CPU against the real tokenizer; the anchor mutation turns the
-  audit red. Status `unverified` until the GPU waves run the harness's stages 2–3.
-- New recipe `qwen3-vl-reranker-2b` (`rcp-ndcg-vllm/recipes/qwen3-vl-reranker-2b/`, shipped in the sdist):
+  audit red.
+- New recipe `qwen3-vl-reranker-2b` (`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-reranker/`, shipped in the sdist):
   Qwen/Qwen3-VL-Reranker-2B as a pointwise reranker on the stock `vllm/vllm-openai:v0.31.0` pooling runner --
   three-key `hf_overrides`, the served chat template as data plus a shipped template file (rewritten to the recipe
   variable convention, byte-equal under the engine's render), the explicit 8192-token budget with a 4096 query
   share, `instruction: none` (the card's default instruction pinned as fixed frame text), `use_activation: true`
   (probability), `empty_doc: send_text "NULL"`, and `mm_processor_kwargs` min_pixels 4096 / max_pixels 1310720
-  (1280 tokens/image, R20). `reference.known_deviations: [anchor_drop_over_cap]`: the card's script truncates
-  over-cap pairs itself. Status `unverified` until the GPU waves run stages 2-3.
+  (1280 tokens/image, R20). `reference.known_deviations: [over_cap_cut_differs]`: the card's script truncates
+  over-cap pairs itself and never copies the client's cut; over-cap rows are reported, not gated.
 - **The embedding and pooling media allowances count from the item shape's own budget.** Under a declared
   `query_max_tokens` a query's media were fitted against `max_tokens` while the text fit measured the query
   against its share, so an image that fit `max_tokens` but not the share was kept whole and the request was

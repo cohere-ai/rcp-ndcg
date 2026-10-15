@@ -57,7 +57,9 @@ v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on N
   and a run config's `recipe: <id>` reads the recipe's client block. The release ships 44 recipes in 24 families:
   42 verified end to end on GPU in their waves, and 2 shipped with status failed (the `topk-embed-v1` variants,
   small and xsmall); see the [`rcp-ndcg-vllm` README](rcp-ndcg-vllm/README.md).
-- The judge configs ship in the package (`rcp-ndcg/src/rcp_ndcg/judging/judges/`, loaded by name). The paper's
+- The paper's judges ship the same way: `--judge recipe:<id>` (or `judge: recipe:<id>` in a run config) reads
+  the recipe's client block, and `rcp-ndcg-vllm serve <id>` builds its engine command; the package itself keeps
+  only the hosted `gpt5_hosted` vendor profile. The paper's
   judges ran on SGLang: the paper's submission code is the record of those engine commands, which this
   repository does not ship; this release serves the same checkpoints on vLLM v0.31.0
   ([judges](docs/concepts/judges.md)).

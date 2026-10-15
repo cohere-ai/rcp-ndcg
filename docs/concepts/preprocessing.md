@@ -203,14 +203,17 @@ preprocessing:
 
 Which resize applies is a property of the judge's model, so the judge config names it as `image_processor`:
 
-| `image_processor` | Models | Factor (patch x merge) | Budget a stock engine keeps (pixels) |
+| `image_processor` | Models | Factor (patch x merge) | Budget a stock engine keeps |
 |---|---|---|---|
-| `qwen2_vl` | Qwen2-VL | 28 (14 x 2) | 3,136 to 12,845,056 |
-| `qwen2_5_vl` | Qwen2.5-VL | 28 (14 x 2) | 3,136 to 12,845,056 |
-| `qwen3_vl` | Qwen3-VL, Qwen3.5-397B, Qwen3.6-27B | 32 (16 x 2) | 65,536 to 16,777,216 |
+| `qwen2_vl` | Qwen2-VL | 28 (14 x 2) | 3,136 to 12,845,056 px |
+| `qwen2_5_vl` | Qwen2.5-VL | 28 (14 x 2) | 3,136 to 12,845,056 px |
+| `qwen3_vl` | Qwen3-VL, Qwen3.5-397B, Qwen3.6-27B, Qwen3.8-27B, Qwen3.8-Flash-Next | 32 (16 x 2) | 65,536 to 16,777,216 px |
+| `gemma4` | the Gemma 4 judges | 48 (16 x 3) | 280 soft tokens (140 per video frame) |
 
-The shipped Qwen3.5-397B and Qwen3.6-27B judge configs declare `qwen3_vl`. The resize is the processor's own `smart_resize`,
-as vLLM runs it for these models. Both
+The shipped Qwen3.5-397B, Qwen3.6-27B, Qwen3.8-27B and Qwen3.8-Flash-Next judge configs declare `qwen3_vl`,
+and the four Gemma 4 judges declare `gemma4`. The qwen families' resize is the processor's own `smart_resize`,
+as vLLM runs it for these models; `gemma4` instead resizes to its soft-token budget, aspect-ratio preserving,
+so its row's budget is a token count, not a pixel range. Both
 edges are rounded to a multiple of the factor. If the area then lies outside `[min_px, max_px]`, the image is scaled
 by the square root of the ratio and each edge is floored (when shrinking) or ceiled (when growing) to the factor.
 Aspect ratio is kept to within one factor.

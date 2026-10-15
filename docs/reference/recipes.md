@@ -42,10 +42,12 @@ knobs (`resources.gpus`, `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
 `serve.max_num_batched_tokens`, `serve.host`, `serve.port`, `serve.max_model_len`) -- and the schema declares
 that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refused by name, and
 `serve.max_model_len` is refused below the client's largest token budget, with both numbers named. A checkpoint
-that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`, `topk-embed-v1-xsmall` and the
-pplx checkpoints fold into `rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (the pplx
-plugin registers the pplx-embed-v1 family's local config class and serves the v2 contextual and both
-late-interaction sizes; importing `rcp_ndcg_vllm` never imports torch or vLLM). A recipe that names a plugin
+that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`/`-xsmall`
+(`TopkEmbedModel`), the pplx checkpoints (pplx-embed-v1's config-only `PplxV1Config`; the pplx-embed-v2
+contextual and both
+late-interaction sizes) and embeddinggemma-2 (`EmbeddingGemma2Config`/`EmbeddingGemma2Model`) fold into
+`rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never
+imports torch or vLLM). A recipe that names a plugin
 also declares `plugin_architectures` -- the architectures its engine registers (empty for a patch-only
 carrier) -- because the behaviour
 fingerprint keys the plugin's code by hashing exactly those modules (`plugin_sha256.<module>`: the shared
