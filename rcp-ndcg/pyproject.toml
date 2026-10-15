@@ -34,7 +34,7 @@ dependencies = [
   # BM25 (bm25s: numpy and scipy only) and its Snowball stemmers, so a keyword first stage runs on any install.
   "bm25s==0.2.13",
   "PyStemmer>=2.2",
-  "pydantic>=2.0",
+  "pydantic>=2.11",
   "tqdm>=4.67",
   "click>=8.1",
   # Read only by ``rcp-ndcg --env-file``; the package never loads a .env file on its own.

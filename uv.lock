@@ -2787,7 +2787,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pyarrow", specifier = ">=15.0" },
-    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10" },
     { name = "pypdfium2", marker = "extra == 'data'", specifier = ">=4.30" },
     { name = "pystemmer", specifier = ">=2.2" },
@@ -2826,7 +2826,7 @@ irt = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
-    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "scipy", marker = "extra == 'irt'", specifier = ">=1.11" },
     { name = "torch", marker = "extra == 'irt'", specifier = ">=2.0" },
 ]
@@ -2852,7 +2852,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
-    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rcp-ndcg", editable = "rcp-ndcg" },
@@ -2878,7 +2878,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
-    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]

@@ -601,3 +601,32 @@ def test_the_notice_summary_names_every_licence_its_entries_name() -> None:
     assert named, "no NOTICE entry names its licence"
     missing = sorted(licence for licence in named if licence not in " ".join(summary.split()))
     assert not missing, f"the NOTICE summary omits the entries' licence(s) {missing}"
+
+
+#: The pydantic config keys the records rely on; they first exist in pydantic 2.11.
+PYDANTIC_211_KEYS = ("validate_by_name=", "validate_by_alias=", "serialize_by_alias=")
+PYDANTIC_211 = Version("2.11")
+
+
+def test_the_pydantic_floor_covers_the_config_keys_the_code_uses() -> None:
+    """Pydantic before 2.11 ignores unknown ``ConfigDict`` keys without a warning.
+
+    ``validate_by_name``, ``validate_by_alias`` and ``serialize_by_alias`` arrived in 2.11, and the
+    records rely on them: with an older pydantic, ``Query(text=..., id=...)`` fails validation and every
+    record with a ``schema`` alias is dumped under its field name (``schema_name``), violating the
+    committed JSON Schemas. The declared floor must admit the version that implements them.
+    """
+    sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for folder in ("rcp-ndcg/src", "rcp-ndcg-core/src")
+        for path in (ROOT / folder).rglob("*.py")
+    )
+    used = [key for key in PYDANTIC_211_KEYS if key in sources]
+    assert used, "the scan found no pydantic 2.11 config keys; update this test if the models changed"
+    for member in ("rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"):
+        manifest = tomllib.loads((ROOT / member / "pyproject.toml").read_text(encoding="utf-8"))
+        requirements = [Requirement(spec) for spec in manifest["project"]["dependencies"]]
+        pydantic = [req for req in requirements if req.name.lower() == "pydantic"]
+        assert len(pydantic) == 1, f"{member} declares pydantic {len(pydantic)} times"
+        floors = [Version(spec.version) for spec in pydantic[0].specifier if spec.operator == ">="]
+        assert floors and min(floors) >= PYDANTIC_211, f"{member} declares {pydantic[0]}"

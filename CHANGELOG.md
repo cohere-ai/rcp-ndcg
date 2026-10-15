@@ -1776,6 +1776,13 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   needed 150 against a shipped cap of 10, and the first real call would have failed -- naming the cap, the
   window and `--set judge.max_images=...`. The token counts are unchanged.
 
+- **The pydantic floor moves to `>=2.11`**: the records rely on the `validate_by_name`, `validate_by_alias`
+  and `serialize_by_alias` config keys, which arrived in pydantic 2.11. Pydantic 2.0-2.10 ignored them
+  silently, so an environment that already had an older 2.x (pip keeps it, because it satisfied `>=2.0`)
+  failed to build `Query(text=..., id=...)` and dumped every record with a `schema` alias under its field
+  name (`schema_name`), violating the committed JSON Schemas. All four manifests now declare the floor the
+  code needs.
+
 ### Fixed
 
 The code behind the paper (arXiv v1) turned some unparseable tournament answers into rankings read from the
