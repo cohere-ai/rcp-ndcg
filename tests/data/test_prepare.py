@@ -475,6 +475,25 @@ class TestFitMediaToBudget:
 
         assert fit.media == [] and [item.kind for item in fit.dropped] == ["video"]
 
+    def test_media_fit_drops_a_frames_video_whole(self, tmp_path: Path):
+        """A video part is one atomic unit: its frames are kept or dropped together, so the fitted contents
+        never carry a clip shortened below the declared ``num_frames`` -- the recount of such a part refuses
+        with a ``VideoPolicyError`` blaming the corpus, and a shortened clip is a different instrument from
+        the declared one."""
+        policy = ImagePolicy(min_px=640 * 480, max_px=1280 * 32 * 32, processor="qwen3_vl")
+        frames = [_png(tmp_path / f"f{index}.png", (640, 480), color=(index, index, index)) for index in range(8)]
+        content = Content.from_parts([VideoPart(frames=frames, frame_indices=list(range(8)))])
+        video = VideoPolicy(num_frames=8, wire="frames")
+        request = prepare_request([content], policy, video)
+        assert len(request.media) == 8
+        per_frame = content_media_tokens(Content.from_parts([ImagePart(ref=request.media[0].sent)]), policy).tokens
+
+        fit = fit_media_to_budget(request.media, image=policy, video=video, text_budget_tokens=3 * per_frame)
+
+        assert fit.dropped_positions == tuple(range(8)), fit.dropped_positions
+        fitted = apply_media_fit(request.contents, fit)
+        assert content_media_tokens(fitted[0], policy, video).tokens == 0
+
     def test_a_soft_token_policy_has_no_pixel_floor_so_items_drop_whole(self, tmp_path: Path):
         """A gemma4 policy's budget is a soft-token count, not a pixel range: there is no smaller prepared
         size the stock engine keeps (the checkpoint's processor budget is the engine's own), so the shrink

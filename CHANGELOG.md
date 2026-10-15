@@ -4443,6 +4443,13 @@ text it sends to the declared budget.
   ported here), with a hint to send `wire: frames` or serve a `qwen3_vl` checkpoint; the "32 frames
   elsewhere" text in the policy and the preprocessing page is corrected too.
 
+- **The media fit drops a frame-sampled video whole**: `fit_media_to_budget` treated every prepared frame as
+  an independent item, so an over-budget frames video lost its most expensive frames one by one -- a clip
+  shortened to its first frames is a different instrument from the declared `num_frames`, and the client's
+  recount of the fitted contents then refused it with a `VideoPolicyError` blaming the corpus (so
+  `on_overflow: cut` never worked for an overflowing frames video). A video part's consecutive prepared
+  frames are now one atomic unit: the clip is kept or dropped whole, every frame's drop recorded.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

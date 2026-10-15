@@ -223,7 +223,9 @@ request's media tokens exactly, and reserves them whole out of `max_tokens` befo
 media alone fill the budget the declared `on_overflow` decides: `cut` (the default) shrinks to the policy's
 minimum, then drops whole items most expensive first -- every drop recorded in the media census with
 `dropped=True` --, `fail` refuses the request, and `chunk` is refused (media are not chunkable: a vision
-block is atomic, the engine sees a whole item or none of it). A document whose every media item was dropped
+block is atomic, the engine sees a whole item or none of it). A video part's prepared frames are one unit:
+a clip is kept or dropped whole, never shortened below its declared `num_frames`. A document whose every
+media item was dropped
 is an empty document, and follows `empty_doc`. A role with an `image_processor` also declares
 `max_images`/`max_videos` (the per-request gates, refused before sending), and the pool and rerank roles'
 startup probe runs the engine media check: one prepared probe image beside its no-media baseline, the DELTA
