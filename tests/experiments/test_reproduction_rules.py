@@ -248,9 +248,10 @@ def test_the_bright_exclusion_tasks_are_one_concept_with_one_definition(experime
     assert [re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_") for label in labels] == ids
 
 
-def test_the_two_setup_snippets_give_the_same_install_commands():
+def test_the_setup_snippets_give_the_same_install_commands():
     """Experiments install the checkout's own core first (``pip install -e .`` alone would resolve
-    ``rcp-ndcg-core==0.0.1`` from PyPI): ``experiments/README.md`` and ``REPRODUCIBILITY.md`` say the same."""
+    ``rcp-ndcg-core==0.0.1`` from PyPI): ``experiments/README.md``, ``REPRODUCIBILITY.md`` and
+    ``docs/how-to/reproduce-the-paper.md`` say the same."""
 
     def install_commands(text: str) -> list[str]:
         return [
@@ -262,7 +263,8 @@ def test_the_two_setup_snippets_give_the_same_install_commands():
 
     readme = install_commands((ROOT / "experiments" / "README.md").read_text(encoding="utf-8"))
     repro = install_commands((ROOT / "REPRODUCIBILITY.md").read_text(encoding="utf-8"))
-    assert readme and readme == repro
+    how_to = install_commands((ROOT / "docs" / "how-to" / "reproduce-the-paper.md").read_text(encoding="utf-8"))
+    assert readme and readme == repro == how_to
 
 
 def test_paper_values_cover_the_three_leaderboard_tables(experiment):

@@ -5,6 +5,7 @@ datasets. They call no LLM and need no GPU and no credentials. The folder is not
 run it from a checkout of the repository:
 
 ```bash
+pip install ./rcp-ndcg-core ./rcp-ndcg     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py                    # every check; exits 1 if a value falls outside its tolerance
