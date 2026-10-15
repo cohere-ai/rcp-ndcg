@@ -4373,6 +4373,12 @@ text it sends to the declared budget.
   checkpoint is (a local snapshot directory, or `hf_hub_download` at the spec's revision), and an
   absent or disagreeing file fails loudly. The ids still come from the vocabulary, so no score moves.
 
+- **qwen3-vl-embedding's render mode refuses the harness's `media` field**: the module docstring promised
+  that a media column in render mode is refused loudly, but `_MEDIA_COLUMNS` listed only the retired
+  per-column fields, so a row carrying the harness's `media` field rendered its text and was never
+  refused. `media` is now listed, as the embeddinggemma-2 sibling does. Stage 1 hands the reference text
+  rows only, so no gate is affected today and no output moves.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

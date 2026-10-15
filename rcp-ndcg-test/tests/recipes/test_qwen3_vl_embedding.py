@@ -801,6 +801,22 @@ def test_the_media_modes_refuse_the_retired_media_columns() -> None:
         module.mode_embed({}, [row], "cpu")
 
 
+def test_the_render_mode_refuses_the_harness_media_field() -> None:
+    """The render mode's contract is text, and the harness's media rows carry the ``media`` field
+    (``{"documents": [[{"kind": "image", "uri": ...}]]}``).  The module docstring says a media
+    column there is refused loudly, but ``_MEDIA_COLUMNS`` listed only the retired per-column fields,
+    so a media-bearing row rendered its text and was never refused; ``media`` is now listed, as the
+    embeddinggemma-2 sibling does."""
+    module = _reference_module()
+    row = {
+        "query": "q",
+        "documents": ["d"],
+        "media": {"documents": [[{"kind": "image", "uri": "data:image/png;base64,AA=="}]]},
+    }
+    with pytest.raises(SystemExit, match="media columns"):
+        module.mode_render([row], "unused")
+
+
 def _stub_video_processor(
     grid: tuple[int, int, int] = (2, 16, 28), frames_indices: tuple[int, ...] = (0, 1, 2, 3)
 ) -> tuple[Any, list[dict[str, Any]]]:
