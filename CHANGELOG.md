@@ -4366,6 +4366,13 @@ text it sends to the declared budget.
   still refuses every video row, so no output moves; the qwen3-vl-reranker goldens moved for the notes
   edit.
 
+- **The qwen3-vl-reranker reference's LogitScore cross-check runs**: `_true_false_ids` probed
+  `Path("Qwen/Qwen3-VL-Reranker-2B@<rev>")/1_LogitScore/config.json` -- a relative path that never
+  exists -- so the comparison of the vocab's yes/no ids with the checkpoint's declared
+  `true_token_id`/`false_token_id` was skipped on every run. The file is now resolved the way the
+  checkpoint is (a local snapshot directory, or `hf_hub_download` at the spec's revision), and an
+  absent or disagreeing file fails loudly. The ids still come from the vocabulary, so no score moves.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
