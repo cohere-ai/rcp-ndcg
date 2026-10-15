@@ -15,7 +15,11 @@ Two targets:
 
 The report is per case (:class:`CaseResult`: compared, passed, skipped with a reason) and per run
 (:class:`ConformanceReport`). ``expected.values: null`` is a skip, never a pass; ``expected.kind: none``
-runs the path and compares nothing; a tolerance breach is a failure carrying the worst delta.
+runs the path and compares nothing; a tolerance breach is a failure carrying the worst delta. Under the
+recipe's declared over-cap deviation, the cells the client changed relative to the case's raw input are
+**reported, not compared** -- stage 2's rule (``reference.known_deviations``: ``anchor_drop_over_cap`` or
+``over_cap_cut_differs``): the expectation was filled from the uncut input, so a correctly served engine
+must not fail on the reference's own over-cap cut.
 
 """
 
@@ -118,6 +122,20 @@ class ConformanceReport:
             f"{sum(result.passed for result in self.results)} passed, {len(self.skipped)} skipped, "
             f"{len(self.failures)} failed -- {state}"
         )
+
+
+@dataclass(frozen=True)
+class _Sent:
+    """One case's answer and the cells the client changed relative to the case's raw input.
+
+    ``changed`` is a ``len(queries) x len(documents)`` boolean array: a query the client settled or cut
+    changes every cell of its row, a changed document every cell of its column (read from the client's own
+    processing records, the same referent stage 2 uses). Under the recipe's declared over-cap deviation those
+    cells are reported instead of compared.
+    """
+
+    answer: Any
+    changed: Any
 
 
 def run_suite(
@@ -295,7 +313,8 @@ def _run_or_skip(resolved: _Resolved, case: Case) -> CaseResult:
     blocked = _media_skip(resolved.recipe, case)
     if blocked is not None:
         return CaseResult(case_id=case.id, compared=False, passed=False, skipped=blocked, detail=None)
-    return _compare(case, _matrix(_send(resolved, case)))
+    sent = _send(resolved, case)
+    return _compare(case, _matrix(sent.answer), report=_over_cap_report(resolved.recipe, sent.changed))
 
 
 def _media_skip(recipe: Recipe, case: Case) -> str | None:
@@ -328,7 +347,7 @@ def _media_skip(recipe: Recipe, case: Case) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _send(resolved: _Resolved, case: Case) -> Any:
+def _send(resolved: _Resolved, case: Case) -> _Sent:
     """The role client's answer for the case: the case's raw contents through the product's role client.
 
     The client does every content decision -- the per-side prompts, the text budget's fit and cut, the
@@ -338,6 +357,9 @@ def _send(resolved: _Resolved, case: Case) -> Any:
     :class:`~rcp_ndcg.inference.types.Embeddings`. For ``rerank``: the raw queries, documents and
     instruction through :class:`~rcp_ndcg.inference.clients.RerankClient` (``rerank_many``), as one
     :class:`~rcp_ndcg.inference.types.RerankResult` per query, aligned to the case's documents.
+
+    The client's processing records are read beside the answer: which cells it changed relative to the raw
+    input, the referent of the over-cap report-not-compare rule.
     """
     if resolved.recipe.role == "rerank":
         return _send_rerank(resolved, case)
@@ -354,18 +376,44 @@ def _send(resolved: _Resolved, case: Case) -> Any:
         instruction = case.inputs.instruction if resolved.recipe.client.get("instruction") is not None else None
         query_side = client.encode(_query_contents(case), EncodeRole.QUERY, instruction=instruction)
         document_side = client.encode(_document_contents(case), EncodeRole.DOCUMENT)
+        changed = _embed_changed(client, len(case.inputs.queries), len(case.inputs.documents))
     finally:
         client.close()
-    return query_side, document_side
+    return _Sent(answer=(query_side, document_side), changed=changed)
 
 
-def _send_rerank(resolved: _Resolved, case: Case) -> Any:
-    """The case's queries through :meth:`RerankClient.rerank_many`, raw.
+def _embed_changed(client: Any, n_queries: int, n_documents: int) -> Any:
+    """The query x document cells the embed/pool client changed, from its own processing records.
+
+    A record names the row's position within its call (``input_id``) and the shape it was prepared as: a
+    changed query settles every cell of its row, a changed document every cell of its column. A record that
+    cannot be attributed to one input (a media fit's owner fallback) changes every cell -- never a crash,
+    never a silent gate.
+    """
+    flags = np.zeros((n_queries, n_documents), dtype=bool)
+    for record in client.processing:
+        if not record.changed:
+            continue  # pragma: no cover - a client emits records for changed rows only
+        if not record.input_id.isdigit():
+            return np.ones((n_queries, n_documents), dtype=bool)
+        position = int(record.input_id)
+        if record.shape == "query" and 0 <= position < n_queries:
+            flags[position, :] = True
+        elif record.shape == "document" and 0 <= position < n_documents:
+            flags[:, position] = True
+        else:
+            return np.ones((n_queries, n_documents), dtype=bool)
+    return flags
+
+
+def _send_rerank(resolved: _Resolved, case: Case) -> _Sent:
+    """The case's queries through :meth:`RerankClient.rerank`, raw.
 
     The raw query goes in with the case's instruction as the run's TASK instruction (the client folds or
     sends it per its ``instruction`` mode) and the documents as the content parts the case declares (media
     included): the client fits the pairs, cuts the query to its declared share, chunks on overflow and pools
-    by max -- every content decision is the product's.
+    by max -- every content decision is the product's.  One call per query (the same call ``rerank_many``
+    makes under its semaphore), so each query's processing records are attributable to its own row.
     """
     from rcp_ndcg_core.records import RankingExample
 
@@ -386,15 +434,62 @@ def _send_rerank(resolved: _Resolved, case: Case) -> Any:
         )
         for query in case.inputs.queries
     ]
+    results: list[Any] = []
+    changed = np.zeros((len(examples), len(doc_ids)), dtype=bool)
     try:
-        results = client.rerank_many(examples, instruction=case.inputs.instruction)
+        for index, example in enumerate(examples):
+            start = len(client.processing)
+            results.append(
+                client.rerank(
+                    example.as_content,
+                    example.doc_contents,
+                    instruction=case.inputs.instruction,
+                    query_instruction=example.instruction,
+                    query_id=str(example.id),
+                )
+            )
+            changed[index] = _rerank_changed(client, start, len(doc_ids))
     finally:
         client.close()
     if len(results) != len(examples):
         raise ConformanceError(
             f"case {case.id}: the rerank client returned {len(results)} result(s) for {len(examples)} query(ies)"
         )
-    return results
+    return _Sent(answer=results, changed=changed)
+
+
+def _rerank_changed(client: Any, start: int, n_documents: int) -> list[bool]:
+    """Per document of one rerank call, whether the client changed the pair, from its processing records.
+
+    The one home of the rule stage 2 uses (``stages._changed_rows``): a record of the document's position
+    changes that pair; the reranker's shared query (``QUERY_DOC_ID``) or a record under no position changes
+    every pair of the call.
+    """
+    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+
+    flags = [False] * n_documents
+    for record in client.processing[start:]:
+        if not record.changed:
+            continue  # pragma: no cover - a client emits records for changed rows only
+        if record.input_id == QUERY_DOC_ID or not record.input_id.isdigit():
+            return [True] * n_documents
+        position = int(record.input_id)
+        if 0 <= position < n_documents:
+            flags[position] = True
+    return flags
+
+
+def _over_cap_report(recipe: Any, changed: Any) -> tuple[str, Any] | None:
+    """The cells to report instead of comparing, or ``None`` when the recipe declares no over-cap deviation.
+
+    Stage 2's rule: only a recipe whose ``reference.known_deviations`` declares ``anchor_drop_over_cap`` or
+    ``over_cap_cut_differs`` exempts the cells its client changed; every other recipe gates them exactly.
+    """
+    reference = getattr(recipe, "reference", None)
+    deviation = reference.over_cap_deviation if reference is not None else None
+    if deviation is None or not bool(np.asarray(changed).any()):
+        return None
+    return deviation, changed
 
 
 def _query_contents(case: Case) -> list[Any]:
@@ -483,8 +578,13 @@ def _maxsim_matrix(document_vectors: Any, query_vectors: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _compare(case: Case, matrix: Any) -> CaseResult:
-    """The matrix against ``expected`` under the tolerance: the case's verdict and its detail."""
+def _compare(case: Case, matrix: Any, *, report: tuple[str, Any] | None = None) -> CaseResult:
+    """The matrix against ``expected`` under the tolerance: the case's verdict and its detail.
+
+    ``report`` is the over-cap report-not-compare rule (``(deviation, cells)`` from
+    :func:`_over_cap_report`): the named cells are excluded from every comparison and named in the detail;
+    when every cell is reported the case compared nothing (like ``kind: none``), never a false failure.
+    """
     expected = case.expected
     shape = (len(case.inputs.queries), len(case.inputs.documents))
     if matrix.shape != shape:
@@ -499,23 +599,56 @@ def _compare(case: Case, matrix: Any) -> CaseResult:
     if tolerance is None:  # pragma: no cover - validated at load
         raise ConformanceError(f"case {case.id} carries no tolerance")
     if expected.kind == "ranking":
-        return _compare_ranking(case, matrix, tolerance)
+        return _compare_ranking(case, matrix, tolerance, report=report)
     if tolerance.abs is not None:
-        return _compare_abs(case, matrix, tolerance.abs)
-    return _compare_spearman(case, matrix, tolerance.spearman_min)  # type: ignore[arg-type]
+        return _compare_abs(case, matrix, tolerance.abs, report=report)
+    return _compare_spearman(case, matrix, tolerance.spearman_min, report=report)  # type: ignore[arg-type]
 
 
-def _compare_abs(case: Case, matrix: Any, bound: float) -> CaseResult:
-    """Every cell's absolute difference within ``abs``; the detail names the worst cell."""
+def _over_cap_suffix(report: tuple[str, Any] | None) -> str:
+    """The detail's tail naming the over-cap cells reported instead of compared (empty without a report)."""
+    if report is None:
+        return ""
+    deviation, cells = report
+    return f"; {int(np.asarray(cells).sum())} over-cap cell(s) reported, not compared (recipe declares {deviation})"
+
+
+def _all_over_cap(case: Case, report: tuple[str, Any]) -> CaseResult:
+    """Every cell is over-cap: the case ran the path and compared nothing (like ``kind: none``)."""
+    deviation, cells = report
+    return CaseResult(
+        case_id=case.id,
+        compared=False,
+        passed=True,
+        skipped=None,
+        detail=(
+            f"no comparison: all {int(np.asarray(cells).sum())} cell(s) are over-cap (the recipe declares "
+            f"{deviation}): the client changed these inputs relative to the case's, so the expectation was "
+            "not filled from what was sent (stage 2's report-not-compare rule)"
+        ),
+    )
+
+
+def _compare_abs(case: Case, matrix: Any, bound: float, *, report: tuple[str, Any] | None = None) -> CaseResult:
+    """Every cell's absolute difference within ``abs``; the detail names the worst cell.
+
+    Under ``report`` the over-cap cells are excluded from the worst-delta reduction, never compared against
+    an expectation the client's changed input did not produce.
+    """
     delta = np.abs(matrix - np.asarray(case.expected.values, dtype=np.float64))
+    if report is not None and bool(np.asarray(report[1]).all()):
+        return _all_over_cap(case, report)
+    if report is not None:
+        delta = np.where(np.asarray(report[1]), -np.inf, delta)
     worst = float(np.max(delta))
+    suffix = _over_cap_suffix(report)
     if worst <= bound:
         return CaseResult(
             case_id=case.id,
             compared=True,
             passed=True,
             skipped=None,
-            detail=f"max abs delta {worst:.3g} <= abs {bound:.3g}",
+            detail=f"max abs delta {worst:.3g} <= abs {bound:.3g}{suffix}",
         )
     row, column = (int(index) for index in np.unravel_index(int(np.argmax(delta)), delta.shape))
     return CaseResult(
@@ -526,54 +659,91 @@ def _compare_abs(case: Case, matrix: Any, bound: float) -> CaseResult:
         detail=(
             f"max abs delta {worst:.6g} exceeds abs {bound:.3g} at "
             f"[query {case.inputs.queries[row].id}, document {case.inputs.documents[column].id}]: "
-            f"got {matrix[row, column]:.6g}, expected {case.expected.values[row][column]:.6g}"
+            f"got {matrix[row, column]:.6g}, expected {case.expected.values[row][column]:.6g}{suffix}"
         ),
     )
 
 
-def _compare_spearman(case: Case, matrix: Any, threshold: float) -> CaseResult:
+def _compare_spearman(
+    case: Case, matrix: Any, threshold: float, *, report: tuple[str, Any] | None = None
+) -> CaseResult:
     """Every row's rank correlation against the expected row, bounded from below.
 
     A constant row (a degenerate output) gives a NaN correlation, which is never a pass: the worst-row
-    tracking selects it wherever it sits (``rho < worst[0]`` alone never replaced a finite minimum).
+    tracking selects it wherever it sits (``rho < worst[0]`` alone never replaced a finite minimum). Under
+    ``report`` a row's over-cap cells are dropped from the correlation; a row with fewer than two under-cap
+    cells is reported, not correlated.
     """
+    cells = np.asarray(report[1]) if report is not None else None
+    if cells is not None and bool(cells.all()):
+        assert report is not None
+        return _all_over_cap(case, report)
     worst: tuple[float, int] | None = None
     for index, (got_row, want_row) in enumerate(zip(matrix, case.expected.values, strict=True)):
-        rho = spearman(got_row, want_row)
+        if cells is not None:
+            keep = ~cells[index]
+            got_row = np.asarray(got_row)[keep]
+            want_row = np.asarray(want_row, dtype=np.float64)[keep]
+        if len(got_row) < 2:
+            continue  # every cell of this row (or all but one) is over-cap: no order to compare
+        rho = spearman(list(got_row), list(want_row))
         if worst is None or math.isnan(rho) or rho < worst[0]:
             worst = (rho, index)
-    if worst is None:  # pragma: no cover - the load requires at least one query
-        raise ConformanceError(f"case {case.id} holds no queries")
+    if worst is None:
+        if report is not None:
+            return CaseResult(
+                case_id=case.id,
+                compared=False,
+                passed=True,
+                skipped=None,
+                detail=(f"no comparison: every query holds fewer than two under-cap cells{_over_cap_suffix(report)}"),
+            )
+        raise ConformanceError(f"case {case.id} holds no queries")  # pragma: no cover - the load requires one
     rho, index = worst
+    suffix = _over_cap_suffix(report)
     if rho >= threshold:
         return CaseResult(
             case_id=case.id,
             compared=True,
             passed=True,
             skipped=None,
-            detail=f"worst spearman {rho:.4g} >= spearman_min {threshold:.4g}",
+            detail=f"worst spearman {rho:.4g} >= spearman_min {threshold:.4g}{suffix}",
         )
     return CaseResult(
         case_id=case.id,
         compared=True,
         passed=False,
         skipped=None,
-        detail=f"spearman {rho:.4g} < spearman_min {threshold:.4g} on query {case.inputs.queries[index].id}",
+        detail=(f"spearman {rho:.4g} < spearman_min {threshold:.4g} on query {case.inputs.queries[index].id}{suffix}"),
     )
 
 
-def _compare_ranking(case: Case, matrix: Any, tolerance: Any) -> CaseResult:
+def _compare_ranking(case: Case, matrix: Any, tolerance: Any, *, report: tuple[str, Any] | None = None) -> CaseResult:
     """The ranking kind: the derived order per query against the case's expected order.
 
-    ``rank_exact``: the derived order (all documents, ties toward the lower document index -- the
-    package's rule) must equal the expected row exactly. ``spearman_min``: the expected row may be a
-    top-k prefix; its documents' positions in the derived order correlate with ``1..k`` from below.
+    ``rank_exact``: the derived order (ties toward the lower document index -- the package's rule) must
+    equal the expected row exactly. ``spearman_min``: the expected row may be a top-k prefix; its documents'
+    positions in the derived order correlate with ``1..k`` from below. Under ``report`` the over-cap
+    documents are dropped from the derived order and the expectation; a query with fewer than two under-cap
+    documents is reported, not ranked.
     """
     doc_ids = [document.id for document in case.inputs.documents]
+    cells = np.asarray(report[1]) if report is not None else None
+    if cells is not None and bool(cells.all()):
+        assert report is not None
+        return _all_over_cap(case, report)
+    suffix = _over_cap_suffix(report)
     if tolerance.rank_exact:
+        compared = 0
         for index, (row, expected_row) in enumerate(zip(matrix, case.expected.values, strict=True)):
-            derived = _ranking_of(row, doc_ids)
-            if derived != expected_row:
+            keep = [position for position in range(len(doc_ids)) if cells is None or not cells[index, position]]
+            if not keep:
+                continue
+            compared += 1
+            derived = _ranking_of(np.asarray(row)[keep], [doc_ids[position] for position in keep])
+            under_cap = set(derived)
+            want = [doc_id for doc_id in expected_row if doc_id in under_cap]
+            if derived != want:
                 return CaseResult(
                     case_id=case.id,
                     compared=True,
@@ -581,52 +751,80 @@ def _compare_ranking(case: Case, matrix: Any, tolerance: Any) -> CaseResult:
                     skipped=None,
                     detail=(
                         f"the ranking of query {case.inputs.queries[index].id} is {derived}, expected "
-                        f"{expected_row} (rank_exact)"
+                        f"{want} (rank_exact){suffix}"
                     ),
                 )
+        if not compared:
+            return CaseResult(
+                case_id=case.id,
+                compared=False,
+                passed=True,
+                skipped=None,
+                detail=(
+                    f"no comparison: every query holds fewer than two under-cap documents{_over_cap_suffix(report)}"
+                ),
+            )
         return CaseResult(
             case_id=case.id,
             compared=True,
             passed=True,
             skipped=None,
-            detail="every query's ranking matches rank-exactly",
+            detail=f"every query's ranking matches rank-exactly{suffix}",
         )
     threshold = tolerance.spearman_min
     worst: tuple[float, int] | None = None
     for index, (row, expected_row) in enumerate(zip(matrix, case.expected.values, strict=True)):
-        derived = _ranking_of(row, doc_ids)
-        position = {doc_id: rank for rank, doc_id in enumerate(derived)}
-        k = len(expected_row)
+        keep = [position for position in range(len(doc_ids)) if cells is None or not cells[index, position]]
+        if not keep:
+            continue
+        derived = _ranking_of(np.asarray(row)[keep], [doc_ids[position] for position in keep])
+        under_cap = set(derived)
+        want = [doc_id for doc_id in expected_row if doc_id in under_cap]
+        k = len(want)
         if k < 2:
+            if cells is None:
+                return CaseResult(
+                    case_id=case.id,
+                    compared=True,
+                    passed=False,
+                    skipped=None,
+                    detail=(
+                        f"the expected ranking row {expected_row} of query {case.inputs.queries[index].id} "
+                        "holds fewer than two documents; a one-document expectation compares rank_exact, "
+                        "not spearman_min (it would pass free)"
+                    ),
+                )
+            continue  # fewer than two under-cap documents left: reported, not ranked
+        if set(want) != set(derived[:k]):
             return CaseResult(
                 case_id=case.id,
                 compared=True,
                 passed=False,
                 skipped=None,
                 detail=(
-                    f"the expected ranking row {expected_row} of query {case.inputs.queries[index].id} "
-                    "holds fewer than two documents; a one-document expectation compares rank_exact, "
-                    "not spearman_min (it would pass free)"
-                ),
-            )
-        if set(expected_row) != set(derived[:k]):
-            return CaseResult(
-                case_id=case.id,
-                compared=True,
-                passed=False,
-                skipped=None,
-                detail=(
-                    f"the expected top-{k} prefix {expected_row} is not the derived top-{k} "
+                    f"the expected top-{k} prefix {want} is not the derived top-{k} "
                     f"{derived[:k]} on the ranking of query {case.inputs.queries[index].id} "
                     "(a ranking row names the derived top-k: its documents hold the top-k positions)"
+                    f"{suffix}"
                 ),
             )
-        got = [float(position[doc_id]) for doc_id in expected_row]
+        position = {doc_id: rank for rank, doc_id in enumerate(derived)}
+        got = [float(position[doc_id]) for doc_id in want]
         rho = spearman(got, list(range(k)))
         if worst is None or rho < worst[0]:
             worst = (rho, index)
-    if worst is None:  # pragma: no cover - the load requires at least one query
-        raise ConformanceError(f"case {case.id} holds no queries")
+    if worst is None:
+        if report is not None:
+            return CaseResult(
+                case_id=case.id,
+                compared=False,
+                passed=True,
+                skipped=None,
+                detail=(
+                    f"no comparison: every query holds fewer than two under-cap documents{_over_cap_suffix(report)}"
+                ),
+            )
+        raise ConformanceError(f"case {case.id} holds no queries")  # pragma: no cover - the load requires one
     rho, index = worst
     if rho >= threshold:
         return CaseResult(
@@ -634,7 +832,7 @@ def _compare_ranking(case: Case, matrix: Any, tolerance: Any) -> CaseResult:
             compared=True,
             passed=True,
             skipped=None,
-            detail=f"worst expected-prefix spearman {rho:.4g} >= spearman_min {threshold:.4g}",
+            detail=f"worst expected-prefix spearman {rho:.4g} >= spearman_min {threshold:.4g}{suffix}",
         )
     return CaseResult(
         case_id=case.id,
@@ -642,7 +840,8 @@ def _compare_ranking(case: Case, matrix: Any, tolerance: Any) -> CaseResult:
         passed=False,
         skipped=None,
         detail=(
-            f"spearman {rho:.4g} < spearman_min {threshold:.4g} on the ranking of query {case.inputs.queries[index].id}"
+            f"spearman {rho:.4g} < spearman_min {threshold:.4g} on the ranking of query "
+            f"{case.inputs.queries[index].id}{suffix}"
         ),
     )
 

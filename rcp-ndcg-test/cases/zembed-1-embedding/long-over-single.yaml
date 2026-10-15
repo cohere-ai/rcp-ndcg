@@ -32,7 +32,6 @@ notes: 'Long text built deterministically: 900 paragraph blocks, each ''Entry NN
   with the recipe tokenizer zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a: 39995
   tokens (fixed prefix 9 + content + suffix 2). Over the 32768-token cap by 7227: the client cuts the
   content spans only and re-attaches the fixed frame, so the pooled final-token anchor survives (recipe
-  client.template anchor: last, on_overflow: cut); the reference applies the same anchor-preserving cut
-  (recipe note 5). The engine must never see an over-length request (vLLM would 400). Tolerance: bf16
+  client.template anchor: last, on_overflow: cut); the reference does NOT apply that cut: over-cap it right-cuts the whole prompt and drops the pooled suffix anchor (recipe note 5, reference.known_deviations [anchor_drop_over_cap]), so the over-cap cells are reported, not compared (stage 2''s report-not-compare rule, decision 10). The engine must never see an over-length request (vLLM would 400). Tolerance: bf16
   serve (recipe dtype) vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research
-  r-zembed1), headroom to 2e-3. Values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; the wave conformance run compares the served engine against them).'
+  r-zembed1), headroom to 2e-3. Values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; every cell of this case is over-cap, so the conformance runner reports them rather than comparing them -- decision 10/g-cases-1).'
