@@ -11,6 +11,7 @@ whether that is fatal), never an exception through the runner. Sizes are bytes; 
 
 from __future__ import annotations
 
+import fnmatch
 import re
 import shutil
 import time
@@ -25,11 +26,16 @@ __all__ = [
     "evict",
     "hf_cache_root",
     "model_disk_bytes",
+    "model_weight_files",
     "snapshot_bytes",
 ]
 
 _HEADROOM_BYTES = 1 << 30
 """Free disk the engine needs beside the weights (compile caches, temporary files)."""
+
+_WEIGHT_PATTERNS: tuple[str, ...] = ("*.safetensors", "*.bin", "*.pt")
+"""The weight formats vLLM's loader tries in order, and the only formats it downloads at the repo root;
+its default load config ignores ``original/**`` (the other copies a multi-format repo ships)."""
 
 _MODEL_DIR = re.compile(r"^models--(?P<org>.+)--(?P<name>.+)$")
 
@@ -77,12 +83,15 @@ def snapshot_bytes(model: str, *, cache_root: Path | None = None) -> int:
     return total
 
 
-def model_disk_bytes(model: str, revision: str | None = None) -> int | None:
-    """The model's weight bytes from the Hub's file metadata; ``None`` when the Hub does not say.
+def model_weight_files(model: str, revision: str | None = None) -> tuple[str, int] | None:
+    """What the engine downloads for ``model``: ``(pattern, bytes)``, or ``None`` when the Hub does not say.
 
-    Offline-safe: any Hub error returns ``None`` (the caller records "size unknown" and decides), so a
-    wave without the Hub never fails on the disk check. The download needs ``huggingface_hub`` (the
-    ``[hf]`` extra); without it the size is unknown too.
+    vLLM loads one weight format -- the first of ``*.safetensors``, ``*.bin``, ``*.pt`` the repo ships at
+    its root -- plus the small root-level files beside it (configs, tokenizers, the safetensors index),
+    and ignores ``original/**``.  Summing every sibling (the old behaviour) also sized the other formats:
+    ``openai/gpt-oss-120b`` holds 60.8 GiB of root safetensors plus 60.8 GiB each under ``original/`` and
+    ``metal/`` (182.3 GiB against 60.8 GiB loaded), so a node with 62-183 GiB free false-failed the judge.
+    Offline-safe: any Hub error returns ``None`` (the caller records "size unknown" and decides).
     """
     try:
         from huggingface_hub import HfApi
@@ -92,12 +101,38 @@ def model_disk_bytes(model: str, revision: str | None = None) -> int | None:
         info = HfApi().model_info(model, revision=revision, files_metadata=True)
     except Exception:  # noqa: BLE001 - offline, rate-limited or gone: the size is unknown, not fatal
         return None
-    total = 0
+    files: dict[str, int] = {}
     for sibling in info.siblings or []:
+        name = str(getattr(sibling, "rfilename", "") or "")
         size = getattr(sibling, "size", None)
-        if size:
-            total += int(size)
-    return total or None
+        if name and size:
+            files[name] = int(size)
+    if not files:
+        return None
+    for pattern in _WEIGHT_PATTERNS:
+        weights = {name: size for name, size in files.items() if "/" not in name and fnmatch.fnmatch(name, pattern)}
+        if weights:
+            small = sum(
+                size
+                for name, size in files.items()
+                if "/" not in name and not any(fnmatch.fnmatch(name, other) for other in _WEIGHT_PATTERNS)
+            )
+            return pattern, sum(weights.values()) + small
+    # No recognised weight file at the root: size what the loader would fetch minus the ignored copies.
+    total = sum(size for name, size in files.items() if not name.startswith("original/"))
+    return ("*", total) if total else None
+
+
+def model_disk_bytes(model: str, revision: str | None = None) -> int | None:
+    """The model's weight bytes from the Hub's file metadata; ``None`` when the Hub does not say.
+
+    The bytes the engine downloads (see :func:`model_weight_files`), never the sum of every sibling.
+    Offline-safe: any Hub error returns ``None`` (the caller records "size unknown" and decides), so a
+    wave without the Hub never fails on the disk check. The download needs ``huggingface_hub`` (the
+    ``[hf]`` extra); without it the size is unknown too.
+    """
+    found = model_weight_files(model, revision)
+    return found[1] if found is not None else None
 
 
 @dataclass(frozen=True)

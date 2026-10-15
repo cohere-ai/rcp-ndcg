@@ -110,7 +110,7 @@ def _hub_is_offline(monkeypatch: pytest.MonkeyPatch) -> None:
     file fails at once instead of retrying a refused connection."""
     from rcp_ndcg_test.jobs import weights
 
-    monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: None)
+    monkeypatch.setattr(weights, "model_weight_files", lambda model, revision=None: None)
     if not os.environ.get("RCP_NDCG_NETWORK_TESTS"):
         import huggingface_hub.constants as constants
 

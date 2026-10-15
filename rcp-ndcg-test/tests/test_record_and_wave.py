@@ -474,7 +474,9 @@ def test_the_post_serve_steps_of_two_recipes_overlap(tmp_path: Path, monkeypatch
 
 def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A model whose size cannot fit the free disk fails before its engine started (one line)."""
-    monkeypatch.setattr(weights, "model_disk_bytes", lambda model, revision=None: 1 << 40)  # 1 TiB of weights
+    monkeypatch.setattr(
+        weights, "model_weight_files", lambda model, revision=None: ("*.safetensors", 1 << 40)
+    )  # 1 TiB of weights
     monkeypatch.setattr(weights, "disk_free_bytes", lambda path: 2 << 30)  # 2 GiB free: it cannot fit
     document = run_wave(
         ["fixture-embed"],
@@ -489,6 +491,7 @@ def test_wave_fails_a_recipe_that_measurably_cannot_fit(tmp_path: Path, monkeypa
     assert row["state"] == "failed"
     assert "free" in (row["error"] or "") and "GiB" in (row["error"] or "")
     assert row["disk"]["model_bytes"] == 1 << 40
+    assert row["disk"]["weight_pattern"] == "*.safetensors"
     assert row["steps"]["serve"]["state"] == "failed"
     assert not (tmp_path / "wave" / "fixture-embed" / "serve.log").exists()  # no engine ever started
 

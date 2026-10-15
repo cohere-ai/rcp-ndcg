@@ -1167,8 +1167,9 @@ _LIVE_LOCK = threading.Lock()
 body can call :func:`_start` after its worker's snapshot, so the wave's end sweeps the registry and no
 engine may start once the wave closes -- the wave leaves no engine behind)."""
 
-_MODEL_SIZES: dict[str, int | None] = {}
-"""The Hub size of each model, asked once per wave (the same model does not download twice)."""
+_MODEL_SIZES: dict[str, tuple[str, int] | None] = {}
+"""The Hub's downloaded-weight ``(pattern, bytes)`` per model, asked once per wave (the same model does
+not download twice)."""
 
 
 def _disk_check(recipe: Recipe) -> dict[str, Any]:
@@ -1181,11 +1182,13 @@ def _disk_check(recipe: Recipe) -> dict[str, Any]:
     from . import weights
 
     free = weights.disk_free_bytes(weights.hf_cache_root())
-    size = _model_size(recipe)
+    found = _model_size(recipe)
+    size = found[1] if found is not None else None
     ok, reason = weights.will_fit(free, size)
     document: dict[str, Any] = {
         "free_disk_bytes": free,
         "model_bytes": size,
+        "weight_pattern": found[0] if found is not None else None,
         "fits": ok if size is not None else None,
     }
     document["error"] = reason if not ok else None
@@ -1194,13 +1197,13 @@ def _disk_check(recipe: Recipe) -> dict[str, Any]:
     return document
 
 
-def _model_size(recipe: Recipe) -> int | None:
-    """The recipe model's weight bytes, asked once per model per process (the Hub's file metadata)."""
+def _model_size(recipe: Recipe) -> tuple[str, int] | None:
+    """The recipe model's downloaded weight files (pattern, bytes), asked once per model per process."""
     from . import weights
 
     key = f"{recipe.model}@{recipe.revision}"
     if key not in _MODEL_SIZES:
-        _MODEL_SIZES[key] = weights.model_disk_bytes(recipe.model, recipe.revision)
+        _MODEL_SIZES[key] = weights.model_weight_files(recipe.model, recipe.revision)
     return _MODEL_SIZES[key]
 
 
