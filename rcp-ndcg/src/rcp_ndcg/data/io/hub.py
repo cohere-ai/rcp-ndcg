@@ -44,7 +44,7 @@ import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeGuard
 
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 from rcp_ndcg_core.records import ID, Document, Query
@@ -784,7 +784,7 @@ def _text_or_none(value: Any) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _is_finite_number(value: Any) -> bool:
+def _is_finite_number(value: Any) -> TypeGuard[int | float]:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(float(value))
 
 
