@@ -3823,7 +3823,8 @@
           "present": true
         },
         "content:empty": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"actual_ids_head\": [2929, 25, 220, 128001], \"actual_ids_tail\": [2929, 25, 220, 128001], \"check\": \"no_content_token\", \"expected_head_ids\": [2929, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [128001], \"row\": 15, \"shape\": \"query\"}"
         },
         "content:long_token_url": {
           "present": true
@@ -4319,7 +4320,8 @@
           "present": true
         },
         "content:empty": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
         },
         "content:long_token_url": {
           "present": true
@@ -4806,7 +4808,8 @@
           "present": true
         },
         "content:whitespace_only": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"index\": 14, \"reference_text_head\": \"   \\t\\t\\n     \", \"served_text_head\": \"\", \"shape\": \"pair\", \"span\": \"query\"}"
         },
         "content:empty": {
           "present": true
@@ -8247,7 +8250,8 @@
           "height": 20
         },
         "media:image+text": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
         },
         "media:mixed_batch": {
           "present": true
@@ -8310,7 +8314,8 @@
           "present": true
         },
         "content:empty": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
         },
         "content:long_token_url": {
           "present": true
@@ -8848,7 +8853,8 @@
           "height": 20
         },
         "media:image+text": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
         },
         "media:mixed_batch": {
           "present": true
@@ -8911,7 +8917,8 @@
           "present": true
         },
         "content:empty": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
         },
         "content:long_token_url": {
           "present": true
@@ -15069,7 +15076,8 @@
           "height": 20
         },
         "media:image+text": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Encode text or images in separate batches."
         },
         "media:mixed_batch": {
           "present": true
@@ -15129,7 +15137,8 @@
           "present": true
         },
         "content:whitespace_only": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
         },
         "content:empty": {
           "present": false,
@@ -15142,13 +15151,15 @@
           "present": true
         },
         "content:special_token_spellings": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
         },
         "source:nanobeir": {
           "present": true
         },
         "source:bright": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"document\": 1, \"index\": 6, \"reference_text_head\": \"Document: \\n\\n\\n\\n\\n\\n\\nhashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"served_text_head\": \"Document: hashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"shape\": \"document\"}"
         },
         "source:vidore": {
           "present": false,
@@ -15613,7 +15624,8 @@
           "height": 20
         },
         "media:image+text": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Encode text or images in separate batches."
         },
         "media:mixed_batch": {
           "present": true
@@ -15673,7 +15685,8 @@
           "present": true
         },
         "content:whitespace_only": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: {\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
         },
         "content:empty": {
           "present": false,
@@ -15686,7 +15699,8 @@
           "present": true
         },
         "content:special_token_spellings": {
-          "present": true
+          "present": false,
+          "reason": "pruned by stage-1 validation: CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
         },
         "source:nanobeir": {
           "present": true

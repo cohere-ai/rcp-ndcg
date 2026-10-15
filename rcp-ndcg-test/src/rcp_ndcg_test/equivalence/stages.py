@@ -1067,6 +1067,10 @@ def _render_check(
         "rows": len(reference.get("rows", [])),
         "passed": not failures,
         "failures": failures,
+        # Each written row's origin (the pairs row it was rendered from, and its text position): a failure
+        # note carrying the reference's written row maps back through this, never through the written index
+        # (g-observe-4: an embed reference writes one row per document).
+        "origins": [[row, position] for row, position in origin],
     }
     if over_cap:
         summary["over_cap"] = {
