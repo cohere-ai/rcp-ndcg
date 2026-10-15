@@ -67,7 +67,7 @@
           "type": "string"
         },
         "no_tournament_evidence_documents": {
-          "description": "``<query>/<doc_id>`` of the documents whose tournament windows are all invalid: the Bradley-Terry fit gives them the query's mean ability (the joint ridge's standard error ``1 / sqrt(bt_l2 * W)`` only when the query has other comparisons), and they carry no tournament evidence (tournament mode).",
+          "description": "``<query>/<doc_id>`` of the documents whose tournament windows are all invalid: they carry no tournament evidence, so the Bradley-Terry fit gives them no ability (tournament mode).",
           "items": {
             "type": "string"
           },
@@ -93,7 +93,7 @@
           "type": "string"
         },
         "uncalibrated_documents": {
-          "description": "``<query>/<doc_id>`` of the documents with rubric verdicts but no calibrated ability (tournament mode: documents the tournament did not judge, whose verdicts the fit cannot use).",
+          "description": "``<query>/<doc_id>`` of the documents with rubric verdicts but no calibrated ability (tournament mode: documents the tournament did not judge, or compared in no valid window, whose verdicts the fit cannot use).",
           "items": {
             "type": "string"
           },
@@ -406,45 +406,6 @@
           "description": "Queries whose observations the fit skipped: a query absent from ``bt_scores`` (tournament mode). Its rows count in ``skipped_observations`` too.",
           "title": "Skipped Queries",
           "type": "integer"
-        },
-        "tournament_converged": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Whether the tournament fit stopped before the iteration cap with that gradient at or below the convergence threshold (tournament mode).",
-          "title": "Tournament Converged"
-        },
-        "tournament_iterations": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The optimiser's iteration count (tournament mode).",
-          "title": "Tournament Iterations"
-        },
-        "tournament_max_grad": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The largest absolute gradient over the per-query scale and offset parameters, in sum units (tournament mode): the float32 optimiser stops at its own resolution, not at the optimiser's ``1e-13`` tolerance.",
-          "title": "Tournament Max Grad"
         }
       },
       "required": [

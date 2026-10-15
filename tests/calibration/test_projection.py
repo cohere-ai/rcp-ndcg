@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
 from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
 from rcp_ndcg.calibration._projection import bradley_terry
@@ -32,16 +31,68 @@ def _window(seq: int, units: tuple[tuple[str, str], ...], scores: tuple[float, .
     )
 
 
-def test_a_window_without_a_comparison_gets_a_missing_se_not_zero() -> None:
-    """A valid one-placement window carries no pair, so the estimator forms no information matrix and computes
-    no SE: the projection must write the missing one as ``None``, not as 0.0 ("certain")."""
+def test_a_window_without_a_comparison_gives_no_ability_and_no_se() -> None:
+    """A valid one-placement window carries no pair, so the estimator forms no information matrix: the unit has no
+    comparison, so it gets no ability and no standard error -- never the prior with an SE of 0.0 ("certain")."""
     family = FAMILY
     judgements = JudgementSet(judgements=(_window(0, (("a", "a"),), (1.0,)),), families={family.key: family})
 
     thetas, ses = bradley_terry(judgements, l2=1.0)
 
-    assert thetas["d||q"] == {"a": pytest.approx(0.0)}
-    assert ses["d||q"] == {"a": None}, "no observation means no standard error, not an SE of zero"
+    assert thetas.get("d||q", {}) == {}
+    assert ses.get("d||q", {}) == {}, "no observation means no standard error, not an SE of zero"
+
+
+def _invalid(seq: int, units: tuple[tuple[str, str], ...]) -> Judgement:
+    """A window whose answer did not parse: its placements carry no score."""
+    return Judgement(
+        record_id=f"r{seq}",
+        dataset="d",
+        query_id="q",
+        stage="tournament",
+        family_key=FAMILY.key,
+        window_seq=seq,
+        placements=tuple(
+            Placement(position=position, doc_id=doc_id, chunk_id=chunk or None)
+            for position, (chunk, doc_id) in enumerate(units, start=1)
+        ),
+        response="{",
+        valid=False,
+        invalid_reason="the JSON object does not decode",
+        invalid_category="invalid_json",
+        recorded_at=RECORDED_AT,
+    )
+
+
+def test_a_unit_no_valid_window_compared_gets_no_ability() -> None:
+    """A document shown only in windows that did not parse has no evidence: the refit would return its prior (0
+    logits, a mid-scale gain once calibrated), so it gets no ability and the calibration leaves it uncalibrated,
+    rather than filling it in. A chunk only invalid windows showed does not enter its document's max-pool either."""
+    judgements = JudgementSet(
+        judgements=(
+            _window(0, (("", "a"), ("", "b")), (3.0, -1.0)),
+            _invalid(1, (("", "a"), ("", "c"))),
+            _window(2, (("d#0", "d"), ("", "b")), (-2.0, 1.0)),
+            _invalid(3, (("d#1", "d"), ("", "a"))),
+        ),
+        families={FAMILY.key: FAMILY},
+    )
+    thetas, ses = bradley_terry(judgements, l2=1e-4)
+    assert set(thetas["d||q"]) == set(ses["d||q"]) == {"a", "b", "d"}
+    # The same windows with each chunk as its own document: d is its compared chunk's ability, never the prior of
+    # the chunk only an invalid window showed (which the max-pool would pick: d#0 lost its only comparison).
+    plain = JudgementSet(
+        judgements=(
+            _window(0, (("", "a"), ("", "b")), (3.0, -1.0)),
+            _invalid(1, (("", "a"), ("", "c"))),
+            _window(2, (("", "d0"), ("", "b")), (-2.0, 1.0)),
+            _invalid(3, (("", "d1"), ("", "a"))),
+        ),
+        families={FAMILY.key: FAMILY},
+    )
+    units = bradley_terry(plain, l2=1e-4)[0]["d||q"]
+    assert set(units) == {"a", "b", "d0"}
+    assert thetas["d||q"]["d"] == units["d0"]
 
 
 def test_a_chunked_tournament_refit_writes_the_best_chunks_se() -> None:

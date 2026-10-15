@@ -60,7 +60,9 @@ The Bradley-Terry model gives the probability that document $i$ is preferred to 
 $\sigma(\theta_i - \theta_{i'})$. The fit minimises the weighted mean cross-entropy between the soft preferences
 $p_{ii'}$ and the predicted ones, plus a ridge penalty of $10^{-4}$ on the scores, with L-BFGS (at most 250
 iterations). The scores $\hat\theta^{\mathrm{BT}}_i$ have mean zero within the query. They are identified only up
-to this additive constant, and their spread depends on how decisive the judge was on that query.
+to this additive constant, and their spread depends on how decisive the judge was on that query. A document that
+no readable window compared gets no score: the fit would only return its prior, so the calibration reports it as
+uncalibrated instead ([calibration](calibration.md#documents-without-a-tournament-ability)).
 
 ## The window schedule
 

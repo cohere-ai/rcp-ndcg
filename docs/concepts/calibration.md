@@ -25,11 +25,8 @@ $$
 $$
 
 The offset $\alpha_j$ fixes the Bradley-Terry constant of query $j$ on the shared scale, and $\tau_j$ sets
-its spread, so that a one-logit difference in ability has the same meaning on every query. That holds while the
-rubric evidence identifies $\tau_j$: on a query whose passing documents are exactly the Bradley-Terry top $m$,
-the likelihood does not bound $\tau_j$ and the $\mathcal{N}(1,1)$ prior sets it, so that query's spread follows
-the Bradley-Terry spread rather than its rubric answers. Because $\tau_j > 0$, sorting a query's documents by
-$\tilde\theta_{ij}$ reproduces their Stage A order. A document
+its spread, so that a one-logit difference in ability has the same meaning on every query. Because
+$\tau_j > 0$, sorting a query's documents by $\tilde\theta_{ij}$ reproduces their Stage A order. A document
 with $\tilde\theta_{ij} = \beta_c$ passes criterion $c$ with probability one half on every query. The gain of
 RCP-nDCG, $g(\tilde\theta) = \sum_c \gamma_c\,\sigma(\gamma_c(\tilde\theta - \beta_c)) / \sum_c \gamma_c$, is
 defined on this scale ([the metric](metric.md)).
@@ -110,13 +107,11 @@ calibration/
 `theta_se` is a standard error in logits, when one is known (a row with none leaves the column empty). A
 rubric-only document's is the posterior standard deviation of its ability; a tournament document's is its
 Bradley-Terry standard error mapped onto the calibrated scale by the query's `tau`. The Bradley-Terry one is the
-**diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2 * W)`,
-where `W` is the fit's total comparison weight. That is the same `info + l2*W` referent the insertion reports
-(`calibration insert`), so an inserted document's SE is commensurate with the fitted documents'. It ignores the
-covariance between documents, so it is comparable across documents of one fit but is not a full-information
-standard error. A document a fitted query never compared carries no information of its own: its SE is the ridge's
-`1 / sqrt(bt_l2 * W)` when the query has other comparisons, and missing when it has none (`coverage.json` lists
-those documents under `no_tournament_evidence_documents`).
+**diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2)`:
+it is a per-document information referent that ignores the covariance between documents, so it is comparable
+across documents of one fit but is not a full-information standard error. A document a fitted query never
+compared carries no information of its own, so it has no ability and no SE (`coverage.json` lists those documents
+under `no_tournament_evidence_documents`).
 
 `diagnostics.json` reports how well the predicted pass probabilities match the observed answers. The expected
 calibration error (ECE) is the size-weighted mean gap between predicted probabilities and observed pass rates in
@@ -141,18 +136,20 @@ again only into a new store.
 ## Documents without a tournament ability
 
 In tournament mode a document's rubric verdicts enter the fit through its Bradley-Terry ability, so a document the
-tournament did not judge (added to the pool after it, for instance) gets no ability from the fit. The fit lists such
+tournament did not judge (added to the pool after it, for instance) gets no ability from the fit. Neither does a
+document the tournament showed only in windows whose answers could not be read: no comparison informs it, and its
+prior is never reported as an ability. The fit lists such
 documents in `coverage.json` (`uncalibrated_documents`) and warns with `UNCALIBRATED_DOCUMENTS`. Score them from
 their rubric verdicts with `score_documents` (`rcp-ndcg calibration score`), or insert them into the tournament
 ([primitives](primitives.md)).
 
-A document the tournament showed only in windows whose answers did not parse is the other side of the same coin.
-When the query has at least one valid window, the document does enter the Bradley-Terry fit (the windows name
-it), but with no comparison: the model gives it the query's mean ability -- and the ridge's standard error only
-when the query has other comparisons -- which are the paper's numbers, not evidence. The fit does not present
-them as judged: it lists the documents in `coverage.json` (`no_tournament_evidence_documents`) and warns with
-`NO_VALID_TOURNAMENT_EVIDENCE`, and `calibrate(..., strict=True)` (`rcp-ndcg calibration fit --strict`) refuses
-them. Judge a valid window for them (an insertion plan's windows are the way in) or leave them out of the pool.
+When the query has at least one valid window, such a document is named by the windows that did not parse, but no
+comparison involves it: the Bradley-Terry model would only give it its prior, the query's mean ability, which is
+no evidence. The fit gives it no ability (a document judged in chunks pools only its compared chunks), lists it in
+`coverage.json` (`no_tournament_evidence_documents`, beside `uncalibrated_documents` when it has rubric verdicts)
+and warns with `NO_VALID_TOURNAMENT_EVIDENCE`, and `calibrate(..., strict=True)` (`rcp-ndcg calibration fit
+--strict`) refuses it. Judge a valid window for it (an insertion plan's windows are the way in) or leave it out of
+the pool.
 When every window of a query is invalid, nothing of the query is fitted at all: it is listed under
 `uncalibrated_queries`, its rubric-judged documents under `uncalibrated_documents`, and no ability is written for
 them (a pure-tournament document of such a query appears in neither list, since the fit only sees rubric

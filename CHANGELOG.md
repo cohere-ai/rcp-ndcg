@@ -306,6 +306,16 @@ incompatibly, independently of the package version. All four distributions carry
   (7 s at 3,000 whitespace characters, 132 s at 8,000), stalling a judging pass or a reparse. The strip now
   locates the same fence directly and returns the same content for every answer (checked against the pattern on
   every stored paper-era window and on random fences).
+- **A tournament unit that no valid window compared gets no ability** (`rcp_ndcg.calibration`): the
+  Bradley-Terry refit returned its prior, the query's mean ability, for a document shown only in windows whose
+  answer did not parse. 0.0.1 kept that number (listing the document under `no_tournament_evidence_documents`
+  with the `NO_VALID_TOURNAMENT_EVIDENCE` warning), and the calibration turned it into a mid-scale gain as if it
+  had been judged; a chunk shown only in such windows could likewise win its document's max-pool. Such a unit is
+  now left out of the refit's abilities: the document is still listed and warned about (and refused by
+  `strict`), but gets no ability and no `thetas` row, and one with rubric verdicts is reported among
+  `uncalibrated_documents` with the `UNCALIBRATED_DOCUMENTS` warning, like any document the tournament did not
+  judge; a chunked document pools its compared chunks only. The coverage schemas' descriptions of the two lists
+  say so. Fits in which every document has a valid window are unchanged.
 
 ## 0.0.1 — 2026-10-14
 

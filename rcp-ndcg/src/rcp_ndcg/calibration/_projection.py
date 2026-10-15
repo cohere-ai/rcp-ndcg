@@ -257,11 +257,11 @@ def _units(judgements: JudgementSet) -> dict[str, dict[str, str]]:
 def no_tournament_evidence(judgements: JudgementSet) -> list[str]:
     """``["<dataset>||<query_id>/<doc_id>", ...]``: documents a fitted query showed with no comparison at all.
 
-    A document whose only tournament windows are invalid enters the Bradley-Terry fit with no observations: the
-    estimator gives it the query's mean ability (and the ridge's standard error only when the query has other
-    comparisons). Those are the model's own numbers (the paper's), but no comparison backs them, so the fit
-    reports the documents instead of presenting them as judged. A query whose windows are all invalid is not
-    fitted at all -- no ability is written for it -- and its documents are ``uncalibrated_documents``.
+    A document whose only tournament windows are invalid has no comparison: the Bradley-Terry fit would only return
+    its prior (the query's mean ability), so :func:`bradley_terry` gives it no ability, and the fit reports the
+    documents instead of presenting a prior as judged (a document with rubric verdicts is then also among
+    ``uncalibrated_documents``). A query whose windows are all invalid is not fitted at all -- no ability is
+    written for it -- and its documents are ``uncalibrated_documents`` only.
     """
     units = _units(judgements)
     evidenced: dict[str, set[str]] = defaultdict(set)
@@ -285,11 +285,12 @@ def bradley_terry(
 
     Refitted from every valid window's comparisons over every unit the query
     showed; a document judged in chunks takes its best chunk's ability (and that
-    chunk's standard error). A document with no comparison at all takes the mean
-    ability (:func:`no_tournament_evidence` names it): its standard error is the
-    ridge's ``1 / sqrt(l2 * W)`` (W the fit's total comparison weight) when the
-    query has other comparisons, and ``None``
-    when it has none, since then no information matrix was formed.
+    chunk's standard error). A unit that no valid window compared has no ability:
+    the fit would only return its prior, so it is left out (a document none of whose
+    units was compared is then not calibrated, and the fit names it among
+    ``uncalibrated_documents``; :func:`no_tournament_evidence` names it too), never
+    given the prior's value as if observed. A standard error the estimator cannot
+    form is ``None``, never 0.0.
     """
     from rcp_ndcg_core.irt import BradleyTerryEstimator
 
@@ -301,7 +302,8 @@ def bradley_terry(
         for winner, loser, weight, soft_label in comparisons:
             estimator.add_comparison(winner, loser, weight=weight, soft_label=soft_label)
         estimator.fit_lbfgs()
-        per_unit = estimator.get_scores_with_se(list(units[key]))
+        compared = {unit for winner, loser, _, _ in comparisons for unit in (winner, loser)}
+        per_unit = estimator.get_scores_with_se([unit for unit in units[key] if unit in compared])
         pooled = max_pool_scores_by_document({u: theta for u, (theta, _) in per_unit.items()}, units[key])
         best_unit = {units[key][u]: u for u in sorted(per_unit, key=lambda u: per_unit[u][0])}
         thetas[key] = dict(pooled)
