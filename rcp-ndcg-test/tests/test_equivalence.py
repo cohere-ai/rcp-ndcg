@@ -435,6 +435,13 @@ def test_stage2_raises_a_typed_error_on_a_short_reference(tmp_path: Path) -> Non
             full.replace(scores_line, scores_line.replace("]})", "][:-1]})")),
             "scores align to the documents as given",
         ),
+        "non-finite": (
+            full.replace(
+                'scores": [score(folded, document) for document in row["documents"]]',
+                'scores": [float("nan") for _document in row["documents"]]',
+            ),
+            "non-finite reference score",
+        ),
     }
     engine = start_stub("--tokenizer", str(TOKENIZER))
     try:
@@ -453,6 +460,35 @@ def test_stage2_raises_a_typed_error_on_a_short_reference(tmp_path: Path) -> Non
                 stage2_scores(load_recipe(directory), pairs, REFERENCE_PYTHON, base_url=engine.base_url)
     finally:
         engine.stop()
+
+
+def test_a_non_finite_rerank_delta_fails_every_gate_row() -> None:
+    """testpkg-1: ``max()`` ignores a NaN that is not first, the p99 fraction counts one as merely not
+    within, and ``_rerank_summary`` never read ``within`` -- a NaN score on either side could pass stage 2
+    with ``max_abs_delta 0.0``.  Every gate row fails, and the reported maximum is the NaN."""
+    import math
+
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    gates = resolve_gates(load("fixture-rerank-pointwise"))
+    per_document: list[dict[str, Any]] = [
+        {
+            "query_index": 0,
+            "document_index": index,
+            "served": 0.5,
+            "reference": 0.5,
+            "abs_delta": float("nan") if index == 50 else 0.0,
+            "within": index != 50,
+        }
+        for index in range(200)
+    ]
+    per_query = [{"query_index": 0, "kendall_tau": 1.0, "within": True}]
+    for scale in ("probability", "logit", "cosine"):
+        summary = stages_module._rerank_summary(per_document, per_query, gates, scale)
+        assert summary["passed"] is False, scale
+        assert all(row["passed"] is False for row in summary["gates"]), (scale, summary["gates"])
+        assert math.isnan(summary["abs_delta_max"]), scale
 
 
 def test_stage2_vector_over_cap_carve_out_when_declared(tmp_path: Path) -> None:

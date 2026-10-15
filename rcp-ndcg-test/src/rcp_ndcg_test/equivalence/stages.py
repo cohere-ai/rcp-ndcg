@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -2185,6 +2186,12 @@ def _rerank_stage2(
                 f"the reference emitted {len(reference_scores)} score(s) for pairs row {row_index} with "
                 f"{len(row['documents'])} document(s): scores align to the documents as given"
             )
+        for document_index, value in enumerate(reference_scores):
+            if not math.isfinite(value):
+                raise HarnessError(
+                    f"the reference's score for pairs row {row_index} document {document_index} is {value!r}: "
+                    "a non-finite reference score (a bf16 overflow?) cannot be compared"
+                )
         start = len(client.processing)
         query, documents = _client_sides(row)
         result = client.rerank(query, documents, instruction=row.get("instruction"))
@@ -2293,12 +2300,25 @@ def _changed_rows(client: Any, start: int, n_documents: int) -> list[bool]:
     return flags
 
 
+def _worst(values: list[float]) -> float:
+    """The largest value, propagating a non-finite one: ``max`` ignores a NaN that is not first."""
+    if any(not math.isfinite(value) for value in values):
+        return float("nan")
+    return max(values) if values else 0.0
+
+
 def _rerank_summary(
     per_document: list[dict[str, Any]], per_query: list[dict[str, Any]], gates: Any, scale: str
 ) -> dict[str, Any]:
-    """Aggregate the per-document deltas and per-query taus into the gate rows of the score's scale."""
+    """Aggregate the per-document deltas and per-query taus into the gate rows of the score's scale.
+
+    A non-finite delta (a NaN or infinity on either side) fails every gate row: the finite-only reductions
+    would otherwise drop it, and stage 2 would report ``passed`` with ``max_abs_delta 0.0`` for a run whose
+    reference or engine produced a NaN.
+    """
     deltas = [entry["abs_delta"] for entry in per_document]
-    worst = max(deltas) if deltas else 0.0
+    non_finite = any(not math.isfinite(delta) for delta in deltas)
+    worst = _worst(deltas)
     taus = [entry["kendall_tau"] for entry in per_query if entry["kendall_tau"] is not None]
     median_tau = float(np.median(taus)) if taus else None
     within_p99 = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
@@ -2306,7 +2326,7 @@ def _rerank_summary(
     )
     tau_row = {
         "gate": "kendall_tau_median",
-        "passed": bool(median_tau is not None and median_tau >= gates.tau_min),
+        "passed": bool(not non_finite and median_tau is not None and median_tau >= gates.tau_min),
         "value": median_tau,
         "bound": gates.tau_min,
         "referent": "median per-query Kendall tau between served and reference scores (under-cap pairs)",
@@ -2315,7 +2335,7 @@ def _rerank_summary(
         gate_rows = [
             {
                 "gate": "p99_documents_within",
-                "passed": bool(within_p99 >= 0.99),
+                "passed": bool(not non_finite and within_p99 >= 0.99),
                 "value": within_p99,
                 "bound": 0.99,
                 "referent": f"fraction of documents with |served - reference| <= {gates.prob_p99_abs}",
@@ -2331,7 +2351,7 @@ def _rerank_summary(
         ]
     elif scale == "logit":
         ratios = [entry["abs_delta"] / (1.0 + abs(entry["reference"])) for entry in per_document]
-        worst_ratio = max(ratios) if ratios else 0.0
+        worst_ratio = _worst(ratios)
         gate_rows = [
             {
                 "gate": "max_relative_delta",

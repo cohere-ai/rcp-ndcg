@@ -34,6 +34,11 @@ incompatibly, independently of the package version. All four distributions carry
   the embeddinggemma-2 golden failed with `ModuleNotFoundError: No module named 'torchvision'`, and where
   torchvision was present the hash computation mutated the process. The module's source is now resolved by
   walking the top-level package's search location; the hashes are unchanged.
+- **Harness: a non-finite rerank score fails every stage-2 gate row** (testpkg-1): `max()` ignored a NaN that
+  was not first, the p99 fraction counted one as merely not within, and `_rerank_summary` never read
+  `within`, so a NaN on either side could pass stage 2 with `max_abs_delta 0.0`; the summary now fails every
+  gate row when a delta is non-finite and reports the NaN, and `_rerank_stage2` refuses a non-finite
+  reference score with a typed error naming the row.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
