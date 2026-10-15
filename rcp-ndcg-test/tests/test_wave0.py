@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from rcp_ndcg_test.jobs.wave0_report import Wave0Report, wave0_report_schema
 
-from tests.conftest import STUB, TOKENIZER
+from tests.conftest import STUB, TOKENIZER, start_stub
 
 PY = sys.executable
 WAVE0_SH = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs" / "wave0.sh"
@@ -225,12 +225,7 @@ def test_embed_check_fails_when_the_client_did_not_fit(tmp_path: Path, monkeypat
     import numpy as np
     from rcp_ndcg_test.jobs import wave0_probe
 
-    port = _free_port()
-    engine = subprocess.Popen(
-        [PY, str(STUB), "--port", str(port), "--tokenizer", str(TOKENIZER)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
-    )
+    engine = start_stub("--tokenizer", str(TOKENIZER))  # waits for the stub's readiness line
     try:
 
         class UnfittedClient:
@@ -241,7 +236,7 @@ def test_embed_check_fails_when_the_client_did_not_fit(tmp_path: Path, monkeypat
 
         monkeypatch.setattr("rcp_ndcg.inference.EmbeddingClient", lambda endpoint: UnfittedClient())  # noqa: ARG005
         args = argparse.Namespace(
-            base_url=f"http://127.0.0.1:{port}",
+            base_url=engine.base_url,
             served_model_name="fixture",
             tokenizer=str(TOKENIZER),
             budget=128,
@@ -250,8 +245,7 @@ def test_embed_check_fails_when_the_client_did_not_fit(tmp_path: Path, monkeypat
         )
         fragment = wave0_probe._embed(args, tmp_path / "embed.json")
     finally:
-        engine.terminate()
-        engine.wait(timeout=10)
+        engine.stop()
     assert fragment["client_budget_wired"] is False
     assert fragment["passed"] is False
 
