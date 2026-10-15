@@ -38,7 +38,10 @@ frequency-threshold filtering applies only to languages without a named stop lis
 (`(title + " " + body).strip()`, the body alone without a title), place the task instruction per the encoder
 config's `instruction` mode, and append the per-query instruction as mteb's dataloader does ([data](../data.md)).
 A document-side task instruction reaches an encoder through the template's `instruction` span (the generic
-default frames the query side only) and enters the index identity.
+default frames the query side only) and enters the index identity. A served encoder's `base_url` must be the
+form its wire speaks: the OpenAI-style embeddings wire (`api: openai_embeddings`) takes `.../v1`, while the
+pooling wire (`api: vllm_pooling`) takes the engine's root -- vLLM registers `/pooling` at the root, so a
+`.../v1` base there is refused where the config is read, never 404 at the first request.
 
 Its second stage, `rcp-ndcg retrieval rerank` and a run's `rerank` step, takes a reranker config instead: a
 cross-encoder's scores over `POST {base_url}/rerank`, a served engine or a hosted API. The wire and the client

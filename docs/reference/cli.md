@@ -61,7 +61,9 @@ your systems and leaves the reference systems out unless `--include-reference`.
 
 `rcp-ndcg retrieval index` and `search` read a retriever config (`--retriever`, e.g. `experiments/paper/retrieval/bm25s.yaml` in the repository).
 A BM25 config's `stemmer:` names a Snowball language (`english`, `german`, ...) or `null`; stemming uses PyStemmer,
-which installs with the package, and the stemmer is part of the index identity.
+which installs with the package, and the stemmer is part of the index identity. A served encoder's `base_url` is
+the form its wire speaks -- `.../v1` for `api: openai_embeddings`, the engine's root for the pooling wire
+(`api: vllm_pooling`) -- and the other form is refused where the config is read.
 
 ## Flags
 
