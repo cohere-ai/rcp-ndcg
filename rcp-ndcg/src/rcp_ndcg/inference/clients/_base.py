@@ -64,6 +64,7 @@ from rcp_ndcg.data.text_budget import (
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
 from rcp_ndcg.inference.adapters import embeddings as _shipped_adapters  # noqa: F401  # registers them
 from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter
+from rcp_ndcg.inference.adapters.chat import media_counts
 from rcp_ndcg.inference.endpoint import Endpoint
 from rcp_ndcg.inference.transport import AuthProfile, Sender, Transport
 from rcp_ndcg.inference.types import Call, Reply, TokenCount, Usage
@@ -1282,8 +1283,10 @@ class RoleClient[C: Endpoint]:
 
         The caps are what ONE wire request carries (:meth:`_gate_media_calls`), so the client that packs the
         requests splits at them: a VL encoder whose endpoint accepts one image per request sends one image
-        per request rather than packing a media batch past its own declaration. A text-only batch is grouped
-        by ``size`` alone -- the packing is unchanged where no media is involved.
+        per request rather than packing a media batch past its own declaration. The count is the wire's own
+        (:func:`~rcp_ndcg.inference.adapters.chat.media_counts`): a frame-sampled video counts one image per
+        frame, a container one video. A text-only batch is grouped by ``size`` alone -- the packing is
+        unchanged where no media is involved.
         """
         max_images = getattr(self.config, "max_images", 0)
         max_videos = getattr(self.config, "max_videos", 0)
@@ -1291,8 +1294,8 @@ class RoleClient[C: Endpoint]:
         current: list[Content] = []
         images = videos = 0
         for item in items:
-            item_images = sum(1 for part in item.parts if isinstance(part, ImagePart))
-            item_videos = sum(1 for part in item.parts if isinstance(part, VideoPart))
+            counts = media_counts(item)
+            item_images, item_videos = counts.images, counts.videos
             if current and (
                 len(current) >= size or images + item_images > max_images or videos + item_videos > max_videos
             ):

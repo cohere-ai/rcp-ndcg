@@ -1107,3 +1107,27 @@ class TestPrepareScaling:
             return calls
 
         assert index_calls(64) == index_calls(8)  # a per-item scan would be 64 against 8
+
+
+class TestRequestGroupMediaCaps:
+    def test_a_frame_sampled_video_counts_its_frames_as_images(self, tokenizer_json: str) -> None:
+        """The grouping counts what the wire lowers -- a frame-sampled video as one image block per frame
+        (``adapters.chat.media_counts``'s rule) -- so two 8-frame videos with ``max_images: 8`` split into
+        two requests instead of one the media gate refuses with ``CapabilityError``."""
+        from rcp_ndcg_core.content import MediaRef, TextPart, VideoPart
+
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                api="openai_embeddings",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                max_images=8,
+                max_videos=2,
+            ),
+            sender=RecordingSender(),
+        )
+        frames = [MediaRef(uri=f"data:image/png;base64,{index}") for index in range(8)]
+        item = Content.from_parts([TextPart(text="doc"), VideoPart(frames=frames)])
+        groups = client._request_groups([item, item], 32)
+        assert [len(group) for group in groups] == [1, 1]

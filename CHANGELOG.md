@@ -4341,6 +4341,12 @@ text it sends to the declared budget.
   request had returned. One `np.concatenate` with cumulative offsets builds the same buffer; the single-chunk
   case still returns the chunk itself.
 
+- **The request grouping counts a frame-sampled video the way the wire sends it**: `_request_groups` counted
+  each `VideoPart` as one video, while the messages lowering sends its sampled frames as one `image_url` block
+  each and `_gate_media_calls` counts those blocks. Two 8-frame videos with `max_images: 8` were packed into
+  one request and then refused with a `CapabilityError`, instead of splitting at the caps; the grouping now
+  uses `adapters.chat.media_counts`, the one lowering rule.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
