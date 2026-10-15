@@ -108,6 +108,23 @@ class TestStoreRoundTrip:
             build_store(dataset, BM25Config(), out=tmp_path / "store")
         assert "vectors" in (caught.value.hint or "")
 
+    def test_a_remote_out_is_written_remotely_and_recorded_unchanged(
+        self, dataset: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A remote ``--out`` URI used to be wrapped in ``Path()``: the store landed in a local directory
+        named ``memory:/...`` and the record (and the CLI's printed path) named the mangled one."""
+        from uuid import uuid4
+
+        monkeypatch.chdir(tmp_path)
+        prefix = f"memory://store-{uuid4().hex}"
+        record = build_store(dataset, _dense(mrl_dim=2), out=prefix)
+
+        assert record.path == prefix
+        assert not (tmp_path / "memory:").exists(), "a remote out is never turned into a local directory"
+        loaded, corpus, queries = load_store(prefix)
+        assert loaded.path == prefix
+        assert corpus.as_matrix().shape == (3, 8) and queries.as_matrix().shape == (2, 8)
+
     def test_a_store_rebuilt_in_place_across_layouts_still_reads(self, dataset: Any, tmp_path: Path) -> None:
         """A late-interaction store then a dense store in one directory leaves the ragged offsets behind;
         the record's layout is what the reader follows, so the stale files are never mistaken for data."""

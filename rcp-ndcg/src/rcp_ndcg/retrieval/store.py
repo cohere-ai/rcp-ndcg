@@ -33,6 +33,7 @@ from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.inference.types import Embeddings, EncodeRole
 from rcp_ndcg.retrieval._api import _corpus, _encode, _identity
 from rcp_ndcg.retrieval.config import BM25Config, DenseConfig, LateInteractionConfig, RetrieverConfig
+from rcp_ndcg.storage import makedirs
 from rcp_ndcg.support.identity import combine_digests, hash_payload, hash_strings, identity_payload, short
 
 #: The request-shaping fields whose digest the store records as its ``prompt_digest``.
@@ -81,8 +82,10 @@ def build_store(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path
             "use the BM25 index",
         )
     assert isinstance(retriever, (DenseConfig, LateInteractionConfig))
-    root = Path(out)
-    root.mkdir(parents=True, exist_ok=True)
+    # The one storage helper: a local path is created (parents included), an object store is a no-op, and the
+    # URI is recorded as given -- Path() would turn ``gs://bucket/store`` into a local ``gs:/bucket/store``.
+    root = str(out)
+    makedirs(root)
     doc_ids, contents = _corpus(dataset)
     queries = dataset.queries
     query_ids = list(queries)
@@ -103,7 +106,7 @@ def build_store(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path
         )
     encoder = retriever.encoder
     record = EmbeddingStore(
-        path=str(root),
+        path=root,
         dataset=dataset.name,
         identity=_store_identity(full, doc_ids, contents),
         layout="ragged" if corpus_embeddings.is_multi_vector else "single",
