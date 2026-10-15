@@ -27,6 +27,14 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **`rcp-ndcg-vllm` declares the licences its wheel actually carries** (release-3, owner decision 2): the
+  manifest said `Apache-2.0` while the wheel bundles ContextualAI's `ctxl-rerank-v2-instruct-multilingual`
+  reference and template (CC-BY-NC-SA-4.0), Jina AI's `jina-reranker-v3` reference (CC-BY-NC-4.0) and
+  Perplexity AI's `pplx-embed-v2-context-9b-preview` chunk rule (MIT) — every one of them named in `NOTICE`.
+  A commercial redistributor was told the opposite of the truth, and a PyPI release cannot be corrected in
+  place. The expression is now `Apache-2.0 AND MIT AND CC-BY-NC-4.0 AND CC-BY-NC-SA-4.0`, `license-files`
+  carries the licence texts under `LICENSES/`, and two tests pin the expression against `NOTICE`'s own
+  entries so the declaration and the notice cannot drift apart.
 - **A token-budget flag is not a credential** (security-6): `_credential_flag` matched its markers as
   substrings, so `command: [vllm, serve, m, --max-num-batched-tokens, 8192]` — the flag this package maps
   `serve.max_num_batched_tokens` to, and a form `docs/concepts/runs.md` shows hand-written — was refused with
