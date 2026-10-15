@@ -28,7 +28,8 @@ def _run_page(page: Path, tmp_path: Path, monkeypatch) -> dict:  # noqa: ANN001 
 
 
 def test_the_select_opponents_comment_matches_the_returned_windows(
-    tmp_path: Path, monkeypatch  # noqa: ANN001 - pytest's monkeypatch fixture
+    tmp_path: Path,
+    monkeypatch,  # noqa: ANN001 - pytest's monkeypatch fixture
 ) -> None:
     """The comment's window count is ``len(select_opponents(...))``, run against the tiny world."""
     namespace = _run_page(PAGE, tmp_path, monkeypatch)
