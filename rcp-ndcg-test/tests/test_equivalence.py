@@ -320,6 +320,29 @@ def test_stage2_rerank_through_the_product_client(tmp_path: Path) -> None:
         engine.stop()
 
 
+def test_stage2_serves_under_the_given_served_model_name(tmp_path: Path) -> None:
+    """testpkg-9: ``stage2_scores`` declared ``served_model_name`` and never read it, so a caller serving the
+    recipe under an alias got 404s pointing away from the ignored argument.  Every request now carries the
+    alias (and the recipe id when none is given)."""
+    recipe = load("fixture-rerank-pointwise")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        recorder: list[dict[str, Any]] = []
+        document = stage2_scores(
+            recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url, served_model_name="alias", recorder=recorder
+        )
+        assert document["passed"] is True, document["gates"]
+        assert recorder, "the recorder carries the captured exchanges"
+        assert {exchange["request_body"].get("model") for exchange in recorder} == {"alias"}
+
+        plain: list[dict[str, Any]] = []
+        stage2_scores(recipe, pairs, REFERENCE_PYTHON, base_url=engine.base_url, recorder=plain)
+        assert {exchange["request_body"].get("model") for exchange in plain} == {recipe.id}
+    finally:
+        engine.stop()
+
+
 def test_stage2_embed_through_the_product_client_compares_every_text(tmp_path: Path) -> None:
     """Stage 2 sends through the product's EmbeddingClient: every document's vectors compare."""
     recipe = load("fixture-embed")

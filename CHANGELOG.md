@@ -52,6 +52,10 @@ incompatibly, independently of the package version. All four distributions carry
   probe entry never carried); a changed document of a real pairs row now fails `in_budget_cut` unless the
   change record's measured uncut request exceeds its budget, and the injected over-length samples are
   excluded.
+- **Harness: `stage2_scores` serves under the given `served_model_name`** (testpkg-9): the parameter was
+  declared and ignored, so a caller serving a recipe under an alias got 404s pointing away from it; the
+  alias is now the endpoint config's `model` (`recipe_config`/`role_client` carry it), and the recipe id
+  when none is given.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does

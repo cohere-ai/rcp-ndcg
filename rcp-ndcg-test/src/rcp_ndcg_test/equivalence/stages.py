@@ -2027,7 +2027,9 @@ def stage2_scores(
     device the reference runs on (``reference_gpu`` pins it to that physical GPU via CUDA_VISIBLE_DEVICES;
     GPU-E1: the wave's references ran on CPU, where the Qwen3.5-based references cannot run at all and
     every precision-class verdict compared a CPU reference with a bf16 GPU engine) -- a recipe whose
-    ``reference.device`` requires ``cuda`` refuses a CPU reference run, with the way out.
+    ``reference.device`` requires ``cuda`` refuses a CPU reference run, with the way out.  ``served_model_name``
+    is the engine's ``--served-model-name`` (``None``: the recipe's id), carried as the endpoint's ``model`` so
+    a recipe served under an alias is talked to under that alias.
     """
     if device == "cpu" and reference_of(recipe).device == "cuda":
         raise HarnessError(
@@ -2076,9 +2078,9 @@ def stage2_scores(
     )
     gates = resolve_gates(recipe)
     if recipe.role == "rerank":
-        summary = _rerank_stage2(recipe, rows, reference, base_url, gates, recorder)
+        summary = _rerank_stage2(recipe, rows, reference, base_url, gates, recorder, served_model_name)
     else:
-        summary = _vector_stage2(recipe, rows, reference, base_url, gates, recorder)
+        summary = _vector_stage2(recipe, rows, reference, base_url, gates, recorder, served_model_name)
     summary["reference_outputs"] = outputs
     summary["reference_environment"] = reference_environment or {}
     summary["media_rows"] = media_report
@@ -2201,18 +2203,20 @@ def _rerank_stage2(
     base_url: str,
     gates: Any,
     recorder: Any | None,
+    served_model_name: str | None = None,
 ) -> dict[str, Any]:
     """Rerank scores from the served engine through the product's :class:`RerankClient`.
 
     One client call per row: the client folds the query per the config's instruction mode, settles the shared
     query span once, and fits every pair into the declared budget -- the wire carries exactly what the served
-    path ships.  The pairs the client changed (a processing record: a change to the document's row, or the
-    shared query's settlement, which changes every pair of its call) are excluded from the gates and reported
-    separately under a declared over-cap deviation; the Kendall tau covers the uncut subset of every gated
-    query.
+    path ships.  ``served_model_name`` is the engine's ``--served-model-name`` (``None``: the recipe's id),
+    carried as the endpoint's ``model``.  The pairs the client changed (a processing record: a change to the
+    document's row, or the shared query's settlement, which changes every pair of its call) are excluded from
+    the gates and reported separately under a declared over-cap deviation; the Kendall tau covers the uncut
+    subset of every gated query.
     """
     deviation = reference_of(recipe).over_cap_deviation is not None
-    client, capture = role_client(recipe, base_url)
+    client, capture = role_client(recipe, base_url, served_model_name=served_model_name)
     if len(rows) > len(reference.get("rows", [])):
         raise HarnessError(
             f"the reference emitted {len(reference.get('rows', []))} score row(s) for {len(rows)} pairs "
@@ -2446,6 +2450,7 @@ def _vector_stage2(
     base_url: str,
     gates: Any,
     recorder: Any | None,
+    served_model_name: str | None = None,
 ) -> dict[str, Any]:
     """Vectors from the served engine through the product's role clients, against the reference's vectors.
 
@@ -2468,7 +2473,7 @@ def _vector_stage2(
     selection = recipe.client.get("mrl_dim")
     if selection is None:
         selection = recipe.client.get("dimensions")
-    client, capture = role_client(recipe, base_url, full_width=True)
+    client, capture = role_client(recipe, base_url, full_width=True, served_model_name=served_model_name)
     head, dims = _mrl_gate(client.config, selection)
     from rcp_ndcg.inference.types import EncodeRole
 
