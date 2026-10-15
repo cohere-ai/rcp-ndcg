@@ -83,7 +83,7 @@ def test_the_package_depends_on_the_product_and_the_harness_at_the_release_versi
         "rcp-ndcg==0.0.1",
         "rcp-ndcg-vllm==0.0.1",
         "numpy>=1.26",
-        "pydantic>=2.0",
+        "pydantic>=2.11",
         "PyYAML>=6.0",
     ]
 
