@@ -395,3 +395,70 @@ def test_a_limited_conversion_records_the_limit(runner: CliRunner, ranking_jsonl
     assert json.loads(limited.stdout)["data"]["limit"] == 1
     assert json.loads(full.stdout)["data"]["limit"] is None
     assert json.loads(limited.stdout)["data"]["written"] == 1
+
+
+def test_a_limited_corpus_conversion_trims_its_labels_and_queries(
+    runner: CliRunner, ranking_jsonl: str, tmp_path: Path
+) -> None:
+    """``--limit`` on the corpus shape used to write every query and qrel but only N documents: the output
+    names documents its corpus lacks, and ``load_dataset`` refuses it."""
+    from rcp_ndcg.data import load_dataset
+
+    out = tmp_path / "limited"
+    result = runner.invoke(
+        data_group,
+        [
+            "convert",
+            "--format",
+            "jsonl",
+            "--source",
+            ranking_jsonl,
+            "--out",
+            str(out),
+            "--shape",
+            "corpus",
+            "--limit",
+            "1",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert (data["written"], data["queries"], data["labels"]) == (1, 1, 1)
+    dataset = load_dataset(f"jsonl:{out}")
+    assert set(dataset.corpus) == {"d1"}
+    assert dataset.qrels == {"q1": {"d1": 1.0}}
+    assert set(dataset.queries) == {"q1"}
+
+
+def test_a_mteb_conversion_keeps_the_pools_exclusions_and_gains(runner: CliRunner, tmp_path: Path) -> None:
+    """``data convert --to mteb`` wrote corpus/queries/qrels only: the pool, the exclusions and the
+    gain/theta columns vanished, so a model scored inside mteb ranked excluded and out-of-pool documents."""
+    import pyarrow.parquet as pq
+    from tests.data.hub_stubs import SHA, hub_fixture
+
+    out = tmp_path / "mteb"
+    with hub_fixture("rcp-ndcg-nanobeir", tmp_path):
+        result = runner.invoke(
+            data_group,
+            [
+                "convert",
+                "--format",
+                "hf",
+                "--source",
+                f"fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoArguAnaRetrieval@{SHA}",
+                "--to",
+                "mteb",
+                "--out",
+                str(out),
+                "--json",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    configs = sorted({path.parent.name for path in out.rglob("*.parquet")})
+    assert "NanoArguAnaRetrieval-top_ranked" in configs
+    assert "NanoArguAnaRetrieval-excluded" in configs
+    qrels = pq.read_table(out / "NanoArguAnaRetrieval-qrels/train-00000-of-00001.parquet").to_pylist()
+    assert qrels and all(row["gain"] is not None and row["theta"] is not None for row in qrels)

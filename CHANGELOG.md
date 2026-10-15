@@ -4756,3 +4756,25 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are refused),
   and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine objects no
   longer carry an owner reference with a placeholder uid).
+- **`data convert` carries every table the source has**: `--to mteb` now writes the source's candidate pools
+  (`top_ranked`), its `-excluded` config, the calibrated `gain`/`theta` qrels columns, the subset, the split
+  and the task instruction, through the one reader path (`write_dataset`) -- before, it wrote corpus, queries
+  and qrels only, so a model scored inside mteb ranked the excluded and out-of-pool documents. A writer that
+  cannot express a table refuses with a hint instead of dropping it silently. `--limit` on the corpus shape now
+  trims the labels and queries with the documents, so a smoke conversion loads back; `Conversion` reports the
+  written `queries` and `labels` counts beside `written` (additive schema change, `conversion.v1`).
+- **The BEIR writer writes an integral grade as an integer** (BEIR's own loader parses `int(row[2])`, so
+  `repr(1.0)` made every export, all-integer ones included, unreadable by BEIR itself) and refuses a fractional
+  grade with a hint naming the formats that carry a continuous one; the reader keeps float grades. The BEIR
+  reader serves the requested `split` only: a missing split raises naming the splits the directory has, instead
+  of falling back to `qrels/test.tsv` (a user tuning on dev silently evaluated test), and a root `qrels.tsv` is
+  the test split rather than the split "qrels".
+- **The Hub reader refuses what it must not read and reads what it should**: a media cell that names a path and
+  carries no bytes is refused (a third-party row must not make the reader read any local file or credentialed
+  URI into the media cache), and a struct cell whose suffix names no media type must state one by its magic
+  numbers; a null text cell reads as empty text (pandas' NaN was refused as "not text"); a gains-only qrels
+  table reloads its gains (they were read only beside a non-null theta); the instruction completeness check runs
+  over the queries mteb keeps; the valid card `data_files` forms (a string, a list path) are read; and
+  `load_dataset('hf://org/repo', name=...)` on a single-subset repository honours the name. The MTEB writer
+  writes a document's title verbatim (mteb's join keeps the title's own whitespace) and writes a string task
+  instruction on every query, so a lifted BRIGHT instruction round-trips; a per-side mapping needs a card.

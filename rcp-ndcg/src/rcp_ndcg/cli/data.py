@@ -282,6 +282,13 @@ class Conversion(BaseModel):
     writer: str
     shape: Literal["corpus", "ranking"]
     written: int | None = Field(description="Records written; null for a dry run.")
+    queries: int | None = Field(
+        default=None, description="Queries written (corpus shape, after --limit trims); null for a dry run."
+    )
+    labels: int | None = Field(
+        default=None,
+        description="(query, document) labels written (corpus shape, after --limit trims); null for a dry run.",
+    )
     limit: int | None = Field(
         default=None,
         description="The --limit cap the conversion ran under (a smoke conversion); null without it.",
@@ -395,13 +402,14 @@ def data_convert(request: DataConvertRequest) -> Conversion:
     writer = get_writer(request.to)
     shape = _target_shape(request.shape, reader, writer)
     written: int | None = None
+    queries: int | None = None
+    labels: int | None = None
     if not request.dry_run:
         if shape is DataShape.RANKING:
             records = _nonempty(_limited(reader.examples(), request.limit), reader, shape)
             written = writer.write_examples(records, request.out)
         else:
-            records = _nonempty(_limited(reader.documents(), request.limit), reader, shape)
-            written = writer.write_corpus(records, reader.queries(), reader.qrels(), request.out)
+            written, queries, labels = _write_corpus(writer, reader, request, shape)
     return Conversion(
         source=request.source,
         out=request.out,
@@ -409,9 +417,115 @@ def data_convert(request: DataConvertRequest) -> Conversion:
         writer=writer.name,
         shape="ranking" if shape is DataShape.RANKING else "corpus",
         written=written,
+        queries=queries,
+        labels=labels,
         limit=request.limit,
         dry_run=request.dry_run,
     )
+
+
+def _write_corpus(writer: Any, reader: Any, request: DataConvertRequest, shape: Any) -> tuple[int, int, int]:
+    """Write the corpus shape, carrying every table the source has, and return ``(documents, queries, labels)``.
+
+    A writer that exposes ``write_dataset`` (the MTEB layout) gets the Dataset built through the one reader
+    path, so its pools, exclusions, gains, thetas, subset, split and task instruction are written. Any other
+    writer gets the tables its ``write_corpus`` accepts, and a table it cannot express is refused with a hint
+    rather than dropped silently. With ``--limit`` the documents, labels and queries are trimmed together:
+    writing every query and qrel beside N documents names documents the corpus lacks, and the result does not
+    load (``Dataset`` refuses it: qrels name documents that are not in the corpus).
+    """
+    from rcp_ndcg.data.dataset import _from_reader
+
+    documents = list(_limited(reader.documents(), request.limit))
+    records = _nonempty(iter(documents), reader, shape)
+    qrels = reader.qrels()
+    queries = list(reader.queries())
+    if request.limit is not None:
+        kept = {document.doc_id for document in documents}
+        qrels = {q: {d: g for d, g in judged.items() if d in kept} for q, judged in qrels.items()}
+        qrels = {q: judged for q, judged in qrels.items() if judged}
+        queries = [query for query in queries if query.query_id in qrels]
+    if hasattr(writer, "write_dataset"):
+        dataset = (
+            _from_reader(reader, uri=request.source)
+            if request.limit is None
+            else _limited_dataset(reader, documents, queries, qrels)
+        )
+        written = writer.write_dataset(dataset, request.out)
+    else:
+        _refuse_unexpressible_tables(writer, reader)
+        written = writer.write_corpus(records, queries, qrels, request.out)
+    return written, len(queries), sum(len(judged) for judged in qrels.values())
+
+
+def _limited_dataset(reader: Any, documents: list[Any], queries: list[Any], qrels: Any) -> Any:
+    """The Dataset of a ``--limit`` corpus conversion: the N documents with the labels, queries, pools and
+    exclusions trimmed to them (a smoke conversion must not name documents its corpus lacks)."""
+    from rcp_ndcg.data.dataset import Dataset
+
+    kept = {document.doc_id for document in documents}
+    gains = {q: {d: g for d, g in judged.items() if d in kept} for q, judged in (reader.gains() or {}).items()}
+    thetas = {q: {d: t for d, t in judged.items() if d in kept} for q, judged in (reader.thetas() or {}).items()}
+    candidates = {
+        q: [doc_id for doc_id in ids if doc_id in kept]
+        for q, ids in (reader.candidates() or {}).items()
+        if q in qrels
+    }
+    excluded = {
+        q: [doc_id for doc_id in ids if doc_id in kept]
+        for q, ids in reader.excluded().items()
+        if q in qrels
+    }
+    rows = [
+        {
+            "query_id": query_id,
+            "doc_id": doc_id,
+            "grade": grade,
+            "gain": gains.get(query_id, {}).get(doc_id),
+            "theta": thetas.get(query_id, {}).get(doc_id),
+        }
+        for query_id, judged in qrels.items()
+        for doc_id, grade in judged.items()
+    ]
+    provenance = reader.provenance
+    return Dataset.from_records(
+        name=reader.dataset_name,
+        queries=queries,
+        corpus=documents,
+        qrels=rows,
+        candidates=candidates or None,
+        excluded=excluded or None,
+        subset=provenance.subset,
+        split=provenance.split,
+        task=reader.task,
+        task_instruction=reader.task_instruction,
+    )
+
+
+def _refuse_unexpressible_tables(writer: Any, reader: Any) -> None:
+    """Refuse a conversion whose source carries a table the writer's ``write_corpus`` cannot express.
+
+    The tables checked are the ones that change what a model sees or how it is scored -- the exclusions, the
+    calibrated gains and thetas, and the task instruction. A source's candidate lists are not counted: the
+    corpus shape is derived from them (the ranking-to-corpus derivation), so they are consumed, not dropped.
+    """
+    dropped = [
+        name
+        for name, value in (
+            ("excluded", reader.excluded()),
+            ("gains", reader.gains()),
+            ("thetas", reader.thetas()),
+            ("task_instruction", reader.task_instruction),
+        )
+        if value
+    ]
+    if dropped:
+        raise DataError(
+            f"writer {writer.name!r} cannot carry the {', '.join(dropped)} this source has: converting "
+            "would drop them silently",
+            hint="export to `mteb`, whose layout carries pools, exclusions, gains, thetas and the task "
+            "instruction, or trim the source first",
+        )
 
 
 class DataFormatsRequest(BaseModel):

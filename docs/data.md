@@ -148,8 +148,10 @@ images, video clips or pre-extracted frames. `rcp-ndcg data convert` ingests suc
 images, into JSONL (a
 directory with `corpus.jsonl`, `queries.jsonl` and `qrels.jsonl`, or with `--shape ranking` one file of queries with
 their candidates), a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`; the BEIR
-round trip keeps grades exactly (`repr`, not six significant digits), carries a query's per-query `instruction`
-through, and writes a document's `title` into the BEIR title column so it round-trips too), or the MTEB Hub
+writer writes an integral grade as an integer, because BEIR's own loader parses `int(row[2])`, and refuses a
+fractional grade, which no BEIR-compatible tool reads -- the reader keeps float grades, and the `jsonl` and
+`mteb` writers carry a continuous one; a query's per-query `instruction` carries through, and a document's
+`title` is written into the BEIR title column so it round-trips too), or the MTEB Hub
 layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`theta` qrels columns, the
 `image`/`video` media columns and the `-excluded` config where mteb ignores them; see
 [MTEB integration](how-to/mteb-integration.md)).
