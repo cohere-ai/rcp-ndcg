@@ -88,6 +88,9 @@ class EmbeddingStore(BaseModel):
         schema_name: ``rcp-ndcg.embedding-store.v1`` (the ``schema`` field).
         path: The store directory.
         dataset: The dataset the corpus and queries were read from (its name, as the index records it).
+        document_instruction: The dataset's document-side task instruction, when it declares one (the
+            instruction the corpus was encoded with; part of the identity).
+        query_instruction: The dataset's query-side task instruction, when it declares one.
         identity: The store's content identity: the retrieval identity of the full-width encoder plus a
             full-width marker (:func:`rcp_ndcg.retrieval.build_store`). ``k`` never enters it.
         layout: ``"single"`` (one vector per item) or ``"ragged"`` (late interaction: a flat token-vector
@@ -119,6 +122,8 @@ class EmbeddingStore(BaseModel):
     schema_name: Literal["rcp-ndcg.embedding-store.v1"] = Field(default=STORE_SCHEMA, alias="schema")  # type: ignore[assignment]
     path: str = Field(min_length=1)
     dataset: str
+    document_instruction: str | None = None
+    query_instruction: str | None = None
     identity: str = Field(min_length=1)
     layout: Literal["single", "ragged"]
     model: str = Field(min_length=1)

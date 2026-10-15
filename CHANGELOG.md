@@ -4348,6 +4348,13 @@ text it sends to the declared budget.
   and swapped in as a whole.
 - **Examples 04 and 05 judge into their own stores** (`docs-5`): both wrote `./judgements`, so running them in
   sequence mixed their pools and broke the second (`judgements-rejudge` and `judgements-insert` now).
+- **The embedding store encodes what index/search encode** (`retrieval-2`): `build_store` read the corpus with
+  the default title join and no task instruction and encoded both sides without an instruction, so its vectors
+  -- and every per-k ranking the sweep wrote -- came from other model inputs than a direct per-k run whenever a
+  dataset carried a task instruction or the encoder declared `title: separate`. It now reads the corpus through
+  the index's own rule (`_indexed_corpus`) and passes both instructions to the encoder; the store's record
+  carries the two instructions (``document_instruction`` and ``query_instruction``, both optional) and its
+  identity covers the document-side one, like the index's.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 

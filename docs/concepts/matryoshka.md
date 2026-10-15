@@ -114,7 +114,9 @@ the checkpoint's full width (the configured selection is stripped for that pass)
 ```
 
 The record carries the schema (`rcp-ndcg.embedding-store.v1`), the model, its revision, the recipe, the
-digest of the request-shaping fields (prompts, template, budget, shapes), the tokenizer and its digest, the
+digest of the request-shaping fields (prompts, template, budget, shapes), the dataset's document- and
+query-side task instructions when it declares them (the corpus and query vectors were encoded with them,
+the same inputs `retrieval index`/`search` use), the tokenizer and its digest, the
 text budget, the full width, the stored dtype, the declared MRL kind, set and projection source, and the
 corpus and query ids in stored order. Its identity is the retrieval identity of the full-width encoder plus
 a full-width marker, so a cut store can never be mistaken for a full-width one; the reader refuses vectors

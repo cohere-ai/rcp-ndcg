@@ -4688,6 +4688,13 @@
             "required": true,
             "type": "list[str]"
           },
+          "document_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
           "dtype": {
             "alias": null,
             "default": "<required>",
@@ -4785,6 +4792,13 @@
             "frozen": false,
             "required": true,
             "type": "list[str]"
+          },
+          "query_instruction": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
           },
           "recipe": {
             "alias": null,

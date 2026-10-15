@@ -208,6 +208,40 @@ class TestSweep:
         direct = retrieve(dataset, _late(mrl_dim=2), depth=3, out=tmp_path / "direct")
         assert ranked[0].queries() == direct.queries()
 
+    def test_the_sweep_equals_direct_runs_with_task_instructions_and_a_separate_title(
+        self, dataset: Any, tmp_path: Path
+    ) -> None:
+        """The store must encode what index/search encode: the dataset's document- and query-side task
+        instructions and the encoder's title mode. Without them the stored vectors (and every per-k ranking
+        the sweep writes) come from other model inputs than a direct per-k run."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            query=(Segment(fixed="Query: "), Segment(content="query")),
+            document=(
+                Segment(fixed="Instruct: "),
+                Segment(content="instruction"),
+                Segment(fixed="\nDocument: "),
+                Segment(content="document"),
+            ),
+        )
+        corpus = {
+            doc_id: document.model_copy(update={"title": f"Title {doc_id}"})
+            for doc_id, document in dataset.corpus.items()
+        }
+        dataset = dataset.model_copy(
+            update={"corpus": corpus, "task_instruction": {"query": "q-instr", "document": "d-instr"}}
+        )
+        retriever = _dense(mrl_dim=2, title="separate", instruction="fold", template=template)
+        record = build_store(dataset, retriever, out=tmp_path / "store")
+        _, corpus_vectors, query_vectors = load_store(tmp_path / "store")
+
+        ranked = sweep(record, corpus_vectors, query_vectors, dims=(2,), depth=3)
+
+        direct = retrieve(dataset, retriever, depth=3, out=tmp_path / "direct")
+        assert ranked[0].queries() == direct.queries()
+        assert record.document_instruction == "d-instr" and record.query_instruction == "q-instr"
+
     def test_the_sweep_identity_k_equals_the_direct_full_width_run(self, dataset: Any, tmp_path: Path) -> None:
         """A declared set that keeps the card's full-width member (8 here): sweeping ``k == full_width``
         uses the stored full-width vectors unchanged (the identity selection applies no head), and a

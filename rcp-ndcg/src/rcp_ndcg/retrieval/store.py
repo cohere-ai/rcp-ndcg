@@ -31,7 +31,7 @@ from rcp_ndcg.data.mrl import MrlHead
 from rcp_ndcg.data.rankings import Rankings
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.inference.types import Embeddings, EncodeRole
-from rcp_ndcg.retrieval._api import _corpus, _encode, _identity
+from rcp_ndcg.retrieval._api import _encode, _identity, _indexed_corpus
 from rcp_ndcg.retrieval.config import BM25Config, DenseConfig, LateInteractionConfig, RetrieverConfig
 from rcp_ndcg.storage import makedirs
 from rcp_ndcg.support.identity import combine_digests, hash_payload, hash_strings, identity_payload, short
@@ -86,13 +86,14 @@ def build_store(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path
     # URI is recorded as given -- Path() would turn ``gs://bucket/store`` into a local ``gs:/bucket/store``.
     root = str(out)
     makedirs(root)
-    doc_ids, contents = _corpus(dataset)
+    doc_ids, contents, document_instruction = _indexed_corpus(dataset, retriever)
     queries = dataset.queries
     query_ids = list(queries)
+    query_instruction = dataset.task_instruction_for("query")
     query_contents = [queries[query_id].format_content() for query_id in query_ids]
     full = _full_width(retriever)
-    corpus_embeddings = _encode(full.encoder, contents, EncodeRole.DOCUMENT)
-    query_embeddings = _encode(full.encoder, query_contents, EncodeRole.QUERY)
+    corpus_embeddings = _encode(full.encoder, contents, EncodeRole.DOCUMENT, instruction=document_instruction)
+    query_embeddings = _encode(full.encoder, query_contents, EncodeRole.QUERY, instruction=query_instruction)
     if corpus_embeddings.dim < 1:
         raise DataError(
             "the encoder answered zero-width corpus vectors: there is no full width to store",
@@ -108,7 +109,9 @@ def build_store(dataset: Dataset, retriever: RetrieverConfig, *, out: str | Path
     record = EmbeddingStore(
         path=root,
         dataset=dataset.name,
-        identity=_store_identity(full, doc_ids, contents),
+        document_instruction=document_instruction,
+        query_instruction=query_instruction,
+        identity=_store_identity(full, doc_ids, contents, document_instruction=document_instruction),
         layout="ragged" if corpus_embeddings.is_multi_vector else "single",
         model=encoder.model,
         revision=encoder.revision,
@@ -253,11 +256,24 @@ def _prompt_digest(encoder: object) -> str:
 
 
 def _store_identity(
-    retriever: DenseConfig | LateInteractionConfig, doc_ids: Sequence[str], contents: Sequence[object]
+    retriever: DenseConfig | LateInteractionConfig,
+    doc_ids: Sequence[str],
+    contents: Sequence[object],
+    *,
+    document_instruction: str | None = None,
 ) -> str:
-    """The retrieval identity of the full-width retriever plus the full-width marker."""
+    """The retrieval identity of the full-width retriever plus the full-width marker.
+
+    ``document_instruction`` is the resolved document-side task instruction the corpus was encoded with: the
+    same field the index's own identity carries, so a store and an index of one corpus share their key.
+    """
     return combine_digests(
-        _identity(retriever, list(doc_ids), list(contents)),  # type: ignore[arg-type]  # the index's own corpus hash
+        _identity(
+            retriever,
+            list(doc_ids),
+            list(contents),  # type: ignore[arg-type]  # the index's own corpus hash
+            document_instruction=document_instruction,
+        ),
         hash_strings([_FULL_WIDTH_MARKER]),
     )
 
