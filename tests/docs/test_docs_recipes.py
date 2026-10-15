@@ -63,3 +63,17 @@ def test_every_recipe_snippet_loads(block: Any, tmp_path: Path) -> None:  # noqa
     assert family.id == data["id"]
     first = family.variants[0].id
     assert resolve_recipe(first, root=tmp_path).id == first
+
+
+def test_the_reproducibility_page_counts_the_recipe_statuses() -> None:
+    """Two recipes ship with status ``failed`` (the topk-embed-v1 variants), so the page may not call all
+    44 recipes validated end to end on GPU."""
+    from collections import Counter
+
+    from rcp_ndcg_vllm.recipe import iter_recipes
+
+    states = Counter(recipe.status.state for recipe in iter_recipes())
+    text = (ROOT / "REPRODUCIBILITY.md").read_text(encoding="utf-8")
+    assert "each validated end to end on GPU" not in text, "the page claims every recipe was validated"
+    assert f"{states['verified']} verified end to end on GPU" in text
+    assert f"{states['failed']} shipped with status failed" in text
