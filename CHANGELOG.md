@@ -47,6 +47,11 @@ incompatibly, independently of the package version. All four distributions carry
 - **Harness: a constant conformance row fails its `spearman_min` gate wherever it sits** (testpkg-4): the
   worst-row tracking never replaced a finite minimum with a NaN, so a constant second query passed as
   'worst spearman 1 >= spearman_min'; the NaN row is now selected and the failure names the query.
+- **Harness: the rerank anchor audit checks the promised in-budget cut** (testpkg-6): the audit's referent
+  promised 'no in-budget pair may be cut' but nothing checked it (the `over_length` lookup read a key the
+  probe entry never carried); a changed document of a real pairs row now fails `in_budget_cut` unless the
+  change record's measured uncut request exceeds its budget, and the injected over-length samples are
+  excluded.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does

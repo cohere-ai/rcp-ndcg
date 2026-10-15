@@ -1467,6 +1467,54 @@ def test_a_width_mismatch_gates_stage_2_with_both_widths() -> None:
     assert summary["passed"] is False
 
 
+def test_the_rerank_anchor_audit_fails_a_cut_on_an_in_budget_pair() -> None:
+    """testpkg-6: the audit's referent promises 'no in-budget pair may be cut' but nothing checked it (the
+    ``entry.get('over_length')`` lookup read a key the probe entry never carried).  A recorded budget cut of
+    a pair whose uncut render fits the budget fails; the same cut of an over-budget pair does not, and an
+    injected over-length sample is not audited for it."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+
+    recipe = load("fixture-rerank-pointwise")
+    tokenizer = tokenizer_of(recipe)
+
+    def probe(*, over_length: bool, original: int, budget: int) -> dict[str, Any]:
+        return {
+            "rows": [
+                {
+                    "over_length": over_length,
+                    "cuts": 1,
+                    "changes": [
+                        {
+                            "input_id": "0",
+                            "mechanisms": ["budget_cut"],
+                            "original_request_tokens": original,
+                            "budget_tokens": budget,
+                        }
+                    ],
+                    "shapes": {
+                        "pair": {
+                            "query": "q",
+                            "queries": ["q"],
+                            "documents": ["a short document"],
+                            "documents_changed": [True],
+                            "query_changed": False,
+                        }
+                    },
+                }
+            ]
+        }
+
+    in_budget = stages_module._anchor_check(recipe, probe(over_length=False, original=100, budget=160), tokenizer)
+    assert in_budget["passed"] is False, in_budget
+    assert any(failure["check"] == "in_budget_cut" for failure in in_budget["failures"]), in_budget["failures"]
+
+    over_budget = stages_module._anchor_check(recipe, probe(over_length=False, original=200, budget=160), tokenizer)
+    assert over_budget["passed"] is True, over_budget["failures"]
+    injected = stages_module._anchor_check(recipe, probe(over_length=True, original=100, budget=160), tokenizer)
+    assert injected["passed"] is True, injected["failures"]
+
+
 def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:
     """``anchor: mean`` has no anchor token, so the audit checks what a cut must keep: the declared fixed
     edges (the shape's head here) and at least one content token between them.  A body missing the head, or

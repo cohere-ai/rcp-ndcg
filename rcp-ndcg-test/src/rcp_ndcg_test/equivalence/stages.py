@@ -300,7 +300,7 @@ def _probe(
     for position, row in enumerate([*sampled, *(media_template_rows or ())]):
         start = len(client.processing)
         shapes = [str(row["shape"])] if "shape" in row else fitting.declared_shapes(recipe)
-        entry: dict[str, Any] = {"shapes": {}}
+        entry: dict[str, Any] = {"shapes": {}, "over_length": bool(row.get("over_length"))}
         try:
             if row.get("media_template"):
                 entry["media_template"] = True
@@ -637,7 +637,15 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
         for shape, shape_body in entry["shapes"].items():
             if recipe.role == "rerank":
                 checked += _audit_rerank_span(
-                    index, shape, shape_body, (share, document_cap), max_tokens, entry, failures, tokenizer
+                    index,
+                    shape,
+                    shape_body,
+                    (share, document_cap),
+                    max_tokens,
+                    entry,
+                    failures,
+                    tokenizer,
+                    over_length=bool(entry.get("over_length")),
                 )
                 continue
             flag = _add_specials_flag(recipe, shape)
@@ -865,9 +873,18 @@ def _audit_rerank_span(
     entry: dict[str, Any],
     failures: list[dict[str, Any]],
     tokenizer: Any,
+    *,
+    over_length: bool = False,
 ) -> int:
     """The rerank side of the anchor audit, on the captured spans: the settle-once query, the declared caps
-    (``caps``: the query's share and the per-document cap) and the budget."""
+    (``caps``: the query's share and the per-document cap), the budget and the in-budget cut check.
+
+    ``over_length`` marks the harness's own over-length samples (their cut is the point of the audit); every
+    other row is a real pairs row, and a document the client changed there must have been over the pair
+    budget: the change record's measured uncut request must exceed its budget.  A changed document whose
+    record shows the uncut pair fitting the budget -- or a change with no record at all -- fails
+    (``in_budget_cut``), because a cut may only shorten what the budget refuses whole.
+    """
     share, document_cap = caps
     checked = 0
     queries = shape_body.get("queries") or ([shape_body["query"]] if shape_body.get("query") else [])
@@ -919,6 +936,32 @@ def _audit_rerank_span(
                     "text": document[:_SNIPPET],
                 }
             )
+    if not over_length:
+        # No cut on an in-budget pair: a changed document of a real pairs row must have been over the pair
+        # budget, and the change record's own measurement is the evidence (the uncut request it reports
+        # must exceed the budget it measured against).  A change with no record cannot be cleared: the
+        # audit fails closed.
+        records = {record.get("input_id"): record for record in entry.get("changes", [])}
+        for position, changed in enumerate(shape_body.get("documents_changed") or []):
+            if not changed:
+                continue
+            record = records.get(str(position))
+            original = None if record is None else record.get("original_request_tokens")
+            budget = None if record is None else record.get("budget_tokens")
+            if record is None or original is None or budget is None or original <= budget:
+                failures.append(
+                    {
+                        "shape": shape,
+                        "check": "in_budget_cut",
+                        "row": row_index,
+                        "document_index": position,
+                        "uncut_request_tokens": original,
+                        "budget_tokens": budget,
+                        "note": "the client changed a document of a row that is not an over-length sample, "
+                        "and the change's uncut request does not exceed its budget: a cut may only shorten "
+                        "a pair the budget refuses whole",
+                    }
+                )
     return checked
 
 
