@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -192,7 +193,7 @@ def _release_tree(
     versions: dict[str, str],
     *,
     core: str = '"rcp-ndcg-core==0.0.1"',
-    vllm: str | None = '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = ["rcp-ndcg==0.0.1"]\n',
+    vllm: str | None = '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = ["pydantic>=2.0"]\n',
     core_in_extras: bool = False,
     extra_core: str | None = None,
 ) -> Path:
@@ -308,13 +309,14 @@ def test_every_workflow_action_is_pinned_to_a_full_commit_sha() -> None:
     assert pinned >= len(WORKFLOW_ACTIONS), "no workflow action found to pin"
 
 
-def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) -> None:
-    """The release check requires ``rcp-ndcg-core==<tag>`` in this manifest and, where ``rcp-ndcg-vllm`` depends
-    on ``rcp-ndcg``, exactly ``rcp-ndcg==<tag>`` there.
+def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -> None:
+    """decision 15 / g-rcjobs-5(d): the tag pipeline refuses the lockstep pin, matching rc_build and
+    decision 18 -- ``rcp-ndcg-vllm`` names no workspace sibling at all.
 
     The build job runs ``.github/scripts/check_release.py`` (the one home rc_build.sh shares); the test drives
-    the script against manifests in ``tmp_path``: a manifest the release builds but cannot find is a failure
-    ("nothing to check" is never a pass), and no dependency means nothing to pin.
+    the script against manifests in ``tmp_path``: every spelling of a sibling is refused, a manifest the
+    release builds but cannot find is a failure ("nothing to check" is never a pass), and no sibling means
+    nothing to pin.
     """
     workflow, _ = _release_workflow()
     steps = workflow["jobs"]["build"]["steps"]
@@ -338,50 +340,55 @@ def test_the_release_workflow_pins_each_sibling_at_the_tags_version(tmp_path) ->
         )
         return _run_release_check(tree, version)
 
-    exact = '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = ["rcp-ndcg==0.0.1"]\n'
-    assert check(exact).returncode == 0, "an exact pin must pass"
-    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp-ndcg[calibrate]==0.0.1"]\n').returncode == 0
-    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp_ndcg==0.0.1"]\n').returncode == 0, (
-        "a _ name normalises"
+    # Every spelling of the lockstep pin (and every other workspace sibling) is refused, naming decision 18.
+    siblings = (
+        "rcp-ndcg==0.0.1",
+        "rcp-ndcg[calibrate]==0.0.1",
+        "rcp_ndcg==0.0.1",
+        "rcp-ndcg == 0.0.1",
+        "rcp-ndcg (==0.0.1)",
+        "rcp.ndcg==0.0.1",
+        "RCP.NDCG==0.0.2",
+        "rcp-ndcg>=0.0.1",
+        "rcp-ndcg",
+        "rcp-ndcg-core==0.0.1",
+        "rcp-ndcg-test==0.0.1",
     )
-    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp-ndcg == 0.0.1"]\n').returncode == 0, (
-        "spaces normalise"
-    )
-    assert check('[project]\nversion = "0.0.1"\ndependencies = ["rcp-ndcg (==0.0.1)"]\n').returncode == 0, (
-        "parentheses normalise"
-    )
-    dotted = check('[project]\nversion = "0.0.1"\ndependencies = ["rcp.ndcg==0.0.1"]\n')
-    assert dotted.returncode == 0 and "pins rcp-ndcg==0.0.1" in dotted.stdout, "a . name normalises (PEP 503)"
-    dotted_loose = check('[project]\nversion = "0.0.1"\ndependencies = ["RCP.NDCG==0.0.2"]\n')
-    assert dotted_loose.returncode == 1 and "==0.0.1" in dotted_loose.stderr, "a . name must still be checked"
-    assert check('[project]\nversion = "0.0.1"\ndependencies = ["numpy"]\n').returncode == 0, (
-        "no dependency, nothing to pin"
-    )
+    for sibling in siblings:
+        result = check(f'[project]\nversion = "0.0.1"\ndependencies = ["{sibling}"]\n')
+        assert result.returncode == 1, f"{sibling} must be refused"
+        assert "no sibling" in result.stderr, (sibling, result.stderr)
+    no_sibling = '[project]\nversion = "0.0.1"\ndependencies = ["numpy"]\n'
+    assert check(no_sibling).returncode == 0, "no sibling, nothing to pin"
     missing = check(None)
     assert missing.returncode == 1 and "pyproject.toml" in missing.stderr, (
         "a manifest the release builds may not be absent"
     )
     # The root manifest pins the core the same way: exact at the tag's version, however the TOML is spelled.
-    assert check(exact, core='"rcp_ndcg_core == 0.0.1"').returncode == 0, "spaced and _ spelling normalise"
+    assert check(no_sibling, core='"rcp_ndcg_core == 0.0.1"').returncode == 0, "spaced and _ spelling normalise"
     assert (
-        check(exact, core='"rcp-ndcg-core==0.0.1"  # a trailing comment in the list does not matter\n').returncode == 0
+        check(
+            no_sibling,
+            core='"rcp-ndcg-core==0.0.1"  # a trailing comment in the list does not matter\n',
+        ).returncode
+        == 0
     ), "only the dependencies list is read"
-    unpinned = check(exact, core='"numpy"')
+    unpinned = check(no_sibling, core='"numpy"')
     assert unpinned.returncode == 1 and "rcp-ndcg-core" in unpinned.stderr, "a root manifest must pin the core"
-    extras_only = check(exact, core='"rcp-ndcg-core==0.0.1"', core_in_extras=True)
+    extras_only = check(no_sibling, core='"rcp-ndcg-core==0.0.1"', core_in_extras=True)
     assert extras_only.returncode == 1 and "rcp-ndcg-core" in extras_only.stderr, (
         "the required pin must be a runtime dependency: `pip install rcp-ndcg` resolves the core unpinned otherwise"
     )
-    mixed = check(exact, core='"rcp-ndcg-core==0.0.1"', extra_core='"rcp-ndcg-core==0.0.2"')
+    mixed = check(
+        no_sibling,
+        core='"rcp-ndcg-core==0.0.1"',
+        extra_core='"rcp-ndcg-core==0.0.2"',
+    )
     assert mixed.returncode == 1 and "==0.0.1" in mixed.stderr, (
         "an exact pin must not hide a stale one in an extra: `pip install rcp-ndcg[probe]` would not resolve"
     )
-    stale = check(exact, core='"rcp-ndcg-core==0.0.2"')
+    stale = check(no_sibling, core='"rcp-ndcg-core==0.0.2"')
     assert stale.returncode == 1 and "==0.0.1" in stale.stderr, "a wrong core pin must be refused"
-    for wrong in ("rcp-ndcg>=0.0.1", "rcp-ndcg", "rcp-ndcg[calibrate]", "rcp-ndcg==0.0.2"):
-        result = check(f'[project]\nversion = "0.0.1"\ndependencies = ["{wrong}"]\n')
-        assert result.returncode == 1, f"{wrong} must be refused"
-        assert "==0.0.1" in result.stderr
 
 
 def test_the_release_workflow_checks_every_workspace_manifests_version(tmp_path) -> None:
@@ -407,6 +414,59 @@ def test_the_release_workflow_checks_every_workspace_manifests_version(tmp_path)
     assert result.returncode == 1 and "rcp-ndcg-test" in result.stderr, "a stale fourth manifest must fail"
     missing = {package: "0.0.1" for package in packages[:-1]}
     assert check(missing).returncode == 1, "a missing workspace manifest must fail"
+
+
+def test_the_release_check_refuses_a_tag_that_is_not_the_tested_rc_commit(tmp_path) -> None:
+    """decision 16 / g-rcjobs-7: the tag commit must equal the tested RC's commit.  The shared release check
+    takes the wave document(s) whose evidence flipped the statuses and compares their recorded
+    ``rc.commit`` with the tag commit; a mismatch is refused naming both, and a wave document without the
+    RC record (or of another version) is refused too."""
+    packages = ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test")
+    tree = _release_tree(tmp_path, dict.fromkeys(packages, "0.0.1"))
+    wave = tmp_path / "wave.json"
+    wave.write_text(
+        json.dumps(
+            {
+                "rc": {
+                    "name": "rc0-20261015",
+                    "commit": "abc123",
+                    "version": "0.0.1",
+                    "manifest_sha256": "a" * 64,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    matching = _run_release_check(tree, "0.0.1", "--wave", str(wave), "--commit", "abc123")
+    assert matching.returncode == 0, matching.stderr
+    mismatched = _run_release_check(tree, "0.0.1", "--wave", str(wave), "--commit", "def456")
+    assert mismatched.returncode == 1, mismatched.stderr
+    assert "abc123" in mismatched.stderr and "def456" in mismatched.stderr, mismatched.stderr
+    wave.write_text(json.dumps({"recipes": []}), encoding="utf-8")
+    unrecorded = _run_release_check(tree, "0.0.1", "--wave", str(wave), "--commit", "abc123")
+    assert unrecorded.returncode == 1 and "rc" in unrecorded.stderr, unrecorded.stderr
+    wave.write_text(
+        json.dumps(
+            {
+                "rc": {
+                    "name": "rc0-20261015",
+                    "commit": "abc123",
+                    "version": "0.0.2",
+                    "manifest_sha256": "a" * 64,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    wrong_version = _run_release_check(tree, "0.0.1", "--wave", str(wave), "--commit", "abc123")
+    assert wrong_version.returncode == 1 and "0.0.2" in wrong_version.stderr, wrong_version.stderr
+    # The tag pipeline carries the same check as a workflow_dispatch input (the release checklist downloads
+    # the wave documents and dispatches the tag): the step runs check_release.py with --wave and --commit.
+    workflow, _ = _release_workflow()
+    steps = workflow["jobs"]["build"]["steps"]
+    wave_step = next(step for step in steps if "tested RC's commit" in str(step.get("name", "")))
+    assert "--wave" in str(wave_step["run"]) and "--commit" in str(wave_step["run"])
+    assert "rc_wave" in str(workflow[True].get("workflow_dispatch", {}))
 
 
 def test_the_release_workflow_check_fails_when_two_environments_are_swapped() -> None:

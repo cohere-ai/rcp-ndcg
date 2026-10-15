@@ -8,12 +8,15 @@ can never pass the node gates with a check the tag would fail (g-rcjobs-5).  It 
   leaves ``uv.lock`` and the stated rule disagreeing);
 * ``CITATION.cff``'s ``version:`` is the version;
 * ``rcp-ndcg`` pins ``rcp-ndcg-core==<version>`` exactly, in every dependency scope;
-* ``rcp-ndcg-vllm`` either names no workspace sibling at all (``--refuse-vllm-sibling``: decision 18,
-  what ``rc_build.sh`` runs) or, when it names ``rcp-ndcg``, pins it exactly (``release.yml``'s rule).
+* ``rcp-ndcg-vllm`` names no workspace sibling at all (decision 18; owner decision 15 settled the tag
+  pipeline on the documented rule: the lean package pins no sibling, matching what ``rc_build.sh``
+  already enforced);
+* each ``--wave`` document's recorded RC commit is the tag's commit (decision 16 / g-rcjobs-7: the
+  release checklist passes the wave documents whose evidence flipped the statuses).
 
 Usage::
 
-    python .github/scripts/check_release.py <version> [--refuse-vllm-sibling] [--root DIR]
+    python .github/scripts/check_release.py <version> [--root DIR] [--wave WAVE.json ...] [--commit SHA]
 
 Exit code 0: every check agrees. 1: the first disagreement is printed and the rest are not run.
 """
@@ -21,12 +24,15 @@ Exit code 0: every check agrees. 1: the first disagreement is printed and the re
 from __future__ import annotations
 
 import argparse
+import json
 import re
+import subprocess
 import sys
 import tomllib
+from collections.abc import Sequence
 from pathlib import Path
 
-__all__ = ["check_citation", "check_manifests", "check_pins", "main"]
+__all__ = ["check_citation", "check_manifests", "check_pins", "check_wave_commits", "main"]
 
 MANIFESTS = (
     "rcp-ndcg/pyproject.toml",
@@ -89,12 +95,12 @@ def check_citation(root: Path, version: str) -> None:
     print(f"CITATION.cff version {version} matches")
 
 
-def check_pins(root: Path, version: str, *, refuse_vllm_sibling: bool) -> None:
-    """The sibling pins: ``rcp-ndcg`` pins its core exactly; ``rcp-ndcg-vllm``'s rule is the caller's.
+def check_pins(root: Path, version: str) -> None:
+    """The sibling pins: ``rcp-ndcg`` pins its core exactly; ``rcp-ndcg-vllm`` names no sibling at all.
 
-    ``refuse_vllm_sibling`` is decision 18's rule (``rc_build.sh``): the lean package names no workspace
-    sibling at all.  Without it, release.yml's rule applies: ``rcp-ndcg-vllm`` may name ``rcp-ndcg``, but
-    only as the exact pin.  Which rule governs the tag pipeline is the owner's open decision (15).
+    One rule for both pipelines (owner decision 15, g-rcjobs-5(d)): the documented rule governs -- the
+    lean package pins no sibling -- so the tag pipeline refuses the lockstep pin exactly as ``rc_build.sh``
+    and decision 18 already did.
     """
     core_manifest = root / "rcp-ndcg/pyproject.toml"
     if not core_manifest.is_file():
@@ -117,27 +123,52 @@ def check_pins(root: Path, version: str, *, refuse_vllm_sibling: bool) -> None:
         raise SystemExit(f"{vllm_manifest} is not in this tree: the release builds it")
     project = tomllib.loads(vllm_manifest.read_text(encoding="utf-8"))["project"]
     declared = _declared(project)
-    if refuse_vllm_sibling:
-        siblings = [
-            requirement.strip()
-            for requirement in declared
-            if (match := _REQUIREMENT_RE.match(requirement.split(";", 1)[0])) is not None
-            and _canonical(match.group(1)) in WORKSPACE_SIBLINGS
-        ]
-        if siblings:
+    siblings = [
+        requirement.strip()
+        for requirement in declared
+        if (match := _REQUIREMENT_RE.match(requirement.split(";", 1)[0])) is not None
+        and _canonical(match.group(1)) in WORKSPACE_SIBLINGS
+    ]
+    if siblings:
+        raise SystemExit(
+            "rcp-ndcg-vllm/pyproject.toml must name no sibling package (decision 18: no lockstep "
+            f"version pin between rcp-ndcg and rcp-ndcg-vllm), found {siblings}"
+        )
+    print("rcp-ndcg-vllm/pyproject.toml names no sibling package")
+
+
+def check_wave_commits(root: Path, version: str, waves: Sequence[str], commit: str | None) -> None:
+    """Every wave document's recorded RC commit is the tag's commit (decision 16 / g-rcjobs-7).
+
+    ``commit`` defaults to the tree's own HEAD (``git rev-parse HEAD`` in ``--root``): the tag pipeline
+    checks out the tag, so the recorded RC commit must equal it.  Each ``--wave`` document must carry the
+    ``rc`` record the bootstrap writes (name, commit, version, manifest sha256); a document without it
+    predates the recording and cannot tie the tag to the tested RC.
+    """
+    if not waves:
+        return
+    if commit is None:
+        completed = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False)
+        commit = completed.stdout.strip()
+        if completed.returncode != 0 or not commit:
+            raise SystemExit(f"no --commit given and {root} is not a git checkout: pass --commit <sha>")
+    for path in waves:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+        rc = document.get("rc")
+        required = ("name", "commit", "version", "manifest_sha256")
+        if not isinstance(rc, dict) or not all(rc.get(field) for field in required):
             raise SystemExit(
-                "rcp-ndcg-vllm/pyproject.toml must name no sibling package (decision 18: no lockstep "
-                f"version pin between rcp-ndcg and rcp-ndcg-vllm), found {siblings}"
+                f"{path}: no rc record ({', '.join(required)}): the wave document cannot identify the tested "
+                "RC, so the tag cannot be tied to it (decision 16)"
             )
-        print("rcp-ndcg-vllm/pyproject.toml names no sibling package")
-        return
-    pins = _pins_of(declared, "rcp-ndcg")
-    if not pins:
-        print("rcp-ndcg-vllm/pyproject.toml does not depend on rcp-ndcg")
-        return
-    if any(pin != expected for pin in pins):
-        raise SystemExit(f"rcp-ndcg must be pinned {expected} exactly in rcp-ndcg-vllm/pyproject.toml; found {pins}")
-    print(f"rcp-ndcg-vllm/pyproject.toml pins rcp-ndcg{expected}")
+        if rc["version"] != version:
+            raise SystemExit(f"{path}: rc.version is {rc['version']!r}, and the release version is {version!r}")
+        if rc["commit"] != commit:
+            raise SystemExit(
+                f"{path}: rc.commit is {rc['commit']!r}, and the tag's commit is {commit!r}: the tag must be "
+                "the tested RC's commit (decision 16)"
+            )
+        print(f"{path}: tested RC {rc['name']} at {rc['commit']}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -145,15 +176,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("version", help="the release version (the tag without its leading v)")
     parser.add_argument("--root", default=".", help="the tree to check (default: the current directory)")
     parser.add_argument(
-        "--refuse-vllm-sibling",
-        action="store_true",
-        help="refuse any workspace sibling in rcp-ndcg-vllm's manifest (decision 18; rc_build.sh's rule)",
+        "--wave",
+        action="append",
+        default=[],
+        help="a wave.json whose rc record must name the tag's commit (decision 16); repeatable",
+    )
+    parser.add_argument(
+        "--commit",
+        default=None,
+        help="the commit the tag names (default: git rev-parse HEAD in --root); compared with each wave's rc.commit",
     )
     args = parser.parse_args(argv)
     root = Path(args.root)
     check_manifests(root, args.version)
     check_citation(root, args.version)
-    check_pins(root, args.version, refuse_vllm_sibling=args.refuse_vllm_sibling)
+    check_pins(root, args.version)
+    check_wave_commits(root, args.version, args.wave, args.commit)
     return 0
 
 

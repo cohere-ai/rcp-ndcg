@@ -19,6 +19,15 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # The release checklist's tag-vs-RC check (decision 16 / g-rcjobs-7): dispatch the tag with the wave
+  # document(s) whose evidence flipped the statuses; the step below refuses a tag whose commit is not the
+  # tested RC's.  A bare tag push runs every other check (a push event carries no input).
+  workflow_dispatch:
+    inputs:
+      rc_wave:
+        description: "Path to a tested RC's wave.json (the release checklist downloads it first)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -54,6 +63,13 @@ jobs:
           # One home (.github/scripts/check_release.py) shared with rc_build.sh: the candidate build runs
           # the same checks the tag will, so a node-passed RC cannot fail at the tag (g-rcjobs-5).
           python3 .github/scripts/check_release.py "${GITHUB_REF_NAME#v}"
+      - name: the tag commit is the tested RC's commit
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # decision 16 / g-rcjobs-7: the wave document records the RC's commit; the tag must be that
+          # commit.  The release checklist dispatches the tag with the wave documents it verified.
+          python3 .github/scripts/check_release.py "${GITHUB_REF_NAME#v}" --commit "$GITHUB_SHA" \
+            --wave "${{ inputs.rc_wave }}"
       - name: the requirements-constraints.txt is the lock's export
         run: python3 .github/scripts/check_constraints.py
       - name: twine check every file
