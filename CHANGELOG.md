@@ -27,6 +27,27 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **A prior too wide for the fixed 2PL quadrature grid is refused** (core-glm53 note 2): `Criteria2PL`
+  integrates on a fixed 561-point grid over `[-18, 10]`, so a `prior_sd` whose mass spills past the +10
+  edge was silently truncated — at `prior_sd=20` the prior is nearly flat on the grid, and a document with
+  no data scored near the grid's centre (about -4) instead of the prior mean 0. `Criteria2PL.fit` and the
+  direct constructor now refuse a prior whose mass on the grid is below `QUAD_MIN_PRIOR_MASS` (sd above
+  about 3.2); the public `score_document()` still accepts any finite `prior_sd > 0`, because it integrates
+  a wide prior in standardised units on the same grid.
+- **The wrong-role judge refusal reads grammatically** (pipeline-ds41 D5): `judge_config_data` answered
+  `recipe 'octen-embedding-0.6b' is a embed recipe, not a judge recipe`; the message is now "is a recipe of
+  role 'embed'", which reads for every role. `recipe_role`'s docstring also names the `judge` role it
+  returns (pipeline-ds41 D4).
+- **Importing `rcp_ndcg.cli.__main__` no longer runs the CLI** (pipeline-glm53 O1): the module called
+  `main()` unguarded, so any import executed click and printed the command help (exit 2). The call is
+  behind `if __name__ == "__main__":`; `python -m rcp_ndcg.cli` and the console script are unchanged.
+- **The release record's prose is current** (core-glm53 note 1, vllm-ds41 nit, docsrel-glm53 minor (b),
+  recipes-ds41 D6, recipes-ds41 D4/recipes-glm53 4): the base estimator docstring names the
+  `RaschEstimator` raw-`theta` override it documents, the dead `_VERSION_RE` constant is gone, every
+  tracked citation of the deleted GPU-validation spec names the public page that carries its content (the
+  hygiene guard now holds the retired id out of the shipped tree), the octen 0.6b/4b per-size equivalence
+  minima are recorded (0.9995311 and 0.9993266, both clearing the kept family floor 0.993), and the topk
+  notes count the twelfth gate run (`rc0-202610140620`) beside the eleven before it.
 - **A token-budget flag is not a credential** (security-6): `_credential_flag` matched its markers as
   substrings, so `command: [vllm, serve, m, --max-num-batched-tokens, 8192]` — the flag this package maps
   `serve.max_num_batched_tokens` to, and a form `docs/concepts/runs.md` shows hand-written — was refused with

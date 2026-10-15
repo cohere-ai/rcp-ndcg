@@ -997,7 +997,8 @@ def t0_smoke(
     completion_body: Mapping[str, Any],
     timeout_s: float,
 ) -> dict[str, Any]:
-    """T0 smoke for a judge candidate (docs/how-to/validate-a-recipe.md's T0 row): boot, ``GET /v1/models``, one request.
+    """T0 smoke for a judge candidate (docs/how-to/validate-a-recipe.md's T0 row): boot, ``GET /v1/models``,
+    one request.
 
     Inputs: the engine to boot, its base URL (``.../v1``), the name the command serves and the body of the
     one chat completion to send.  Output: a report dict (``state``: ``verified`` or ``failed``, what

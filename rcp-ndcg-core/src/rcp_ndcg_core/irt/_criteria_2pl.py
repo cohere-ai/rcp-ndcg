@@ -99,8 +99,7 @@ def _validate_prior_sd_fits_grid(prior_sd: float) -> float:
     """
     value = _validate_prior_sd(prior_sd)
     mass = 0.5 * (
-        math.erf(float(QUAD[-1]) / (value * math.sqrt(2.0)))
-        - math.erf(float(QUAD[0]) / (value * math.sqrt(2.0)))
+        math.erf(float(QUAD[-1]) / (value * math.sqrt(2.0))) - math.erf(float(QUAD[0]) / (value * math.sqrt(2.0)))
     )
     if mass < QUAD_MIN_PRIOR_MASS:
         raise ValueError(

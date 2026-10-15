@@ -138,8 +138,9 @@ pairs file); the corpus request set keeps the over-cap ladder separately."""
 
 GENERATION_SUITES: tuple[str, ...] = ("nanobeir", "bright")
 """The source suites the pairs generator materializes at generation time (the T2 pairs of
-docs/how-to/validate-a-recipe.md: NanoBEIR and BRIGHT, plus ViDoRe for the media recipes once loadable).  TREC DL's full MS MARCO-passage
-corpus and ViDoRe's per-page images exceed a generation-time load (the diagnosis of the operator's
+docs/how-to/validate-a-recipe.md: NanoBEIR and BRIGHT, plus ViDoRe for the media recipes once loadable).
+TREC DL's full MS MARCO-passage corpus and ViDoRe's per-page images exceed a generation-time load (the
+diagnosis of the operator's
 stall); the corpus request set samples those two on the node, and ``--suites`` names them for a run
 with the memory available there."""
 

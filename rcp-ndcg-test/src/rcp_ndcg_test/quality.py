@@ -127,8 +127,9 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
         "suites": ["nanobeir", "bright"],
     },
 )
-"""The T3 task matrix of docs/how-to/validate-a-recipe.md as data: per family, the view and the suites (every subset of each, at the
-generator's pinned dataset commits).  The private recipes run the same suites in their own repository."""
+"""The T3 task matrix of docs/how-to/validate-a-recipe.md as data: per family, the view and the suites
+(every subset of each, at the generator's pinned dataset commits).  The private recipes run the same
+suites in their own repository."""
 
 SEARCH_DEPTH = 100
 """Documents retrieved per query in the retrieval view (nDCG@10 reads the top 10)."""
