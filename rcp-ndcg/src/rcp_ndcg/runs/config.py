@@ -697,13 +697,18 @@ class RunConfig(BaseModel):
             local(f"candidates.fuse.systems.{name}", location.partition("#")[0])
         for name, location in self.evaluation.systems.items():
             local(f"evaluation.systems.{name}", location.partition("#")[0])
-        if (
-            isinstance(self.judge, str)
-            and self.judge != "fake"
-            and self.judge not in judge_names()
-            and recipe_source(self.judge) is None  # a recipe is package data (or a path the job's host owns)
+        if isinstance(self.judge, str) and self.judge != "fake" and self.judge not in judge_names():
+            source = recipe_source(self.judge)
+            if source is None:
+                local("judge", self.judge)
+            elif source.startswith((".", "/")):  # a recipe path is a file of the operator's own on this host
+                local("judge", source)
+        for name, location in (
+            ("candidates.retrieval.encoder.recipe", _recipe_path(self.candidates.retrieval)),
+            ("candidates.rerank.recipe", _recipe_path(self.candidates.rerank)),
         ):
-            local("judge", self.judge)
+            if location is not None:
+                local(name, location)
         for stage in ("tournament", "rubric"):
             schedule = getattr(self, stage)
             if schedule is not None and schedule.prompt is not None and schedule.prompt not in PROMPT_FILES:
@@ -879,6 +884,22 @@ def _redact_mapping(env: Any) -> None:
         env[name] = REDACTED if looks_like_secret(name) else safe_url(value)
 
 
+def _recipe_path(config: Any) -> str | None:
+    """The local path of a role config's ``recipe``, when it names a file of the operator's own (else ``None``).
+
+    A shipped recipe id is package data and not an input; a path form is a file the job's host owns, which a
+    runner whose jobs do not see this host's files cannot read.
+    """
+    from rcp_ndcg.inference.recipes import recipe_source
+
+    encoder = getattr(config, "encoder", None)
+    value = getattr(encoder if encoder is not None else config, "recipe", None)
+    if not isinstance(value, str):
+        return None
+    source = recipe_source(value)
+    return source if source is not None and source.startswith((".", "/")) else None
+
+
 def _config_file(path: str | Path) -> Path:
     """The run config file: ``path`` itself, or the packaged config of that name when no such file exists."""
     candidate = Path(path)
@@ -891,6 +912,8 @@ def _config_file(path: str | Path) -> Path:
 
 def _relative_to(data: dict[str, Any], base: Path) -> dict[str, Any]:
     """``data`` with the relative paths a run config names made relative to ``base`` (the config's directory)."""
+    from rcp_ndcg.inference.recipes import rebase_recipe_path
+
     data = dict(data)
 
     def local(location: Any) -> Any:
@@ -921,14 +944,28 @@ def _relative_to(data: dict[str, Any], base: Path) -> dict[str, Any]:
         fuse = candidates.get("fuse")
         if isinstance(fuse, dict) and isinstance(fuse.get("systems"), dict):
             updates["fuse"] = {**fuse, "systems": {k: local(v) for k, v in fuse["systems"].items()}}
+        retrieval = candidates.get("retrieval")
+        if isinstance(retrieval, dict) and isinstance(retrieval.get("encoder"), dict):
+            encoder = retrieval["encoder"]
+            if isinstance(encoder.get("recipe"), str):
+                updates["retrieval"] = {
+                    **retrieval,
+                    "encoder": {**encoder, "recipe": rebase_recipe_path(encoder["recipe"], base)},
+                }
+        rerank = candidates.get("rerank")
+        if isinstance(rerank, dict) and isinstance(rerank.get("recipe"), str):
+            updates["rerank"] = {**rerank, "recipe": rebase_recipe_path(rerank["recipe"], base)}
         if updates:
             data["candidates"] = {**candidates, **updates}
     evaluation = data.get("evaluation")
     if isinstance(evaluation, dict) and isinstance(evaluation.get("systems"), dict):
         data["evaluation"] = {**evaluation, "systems": {k: local(v) for k, v in evaluation["systems"].items()}}
     judge = data.get("judge")
-    if isinstance(judge, str) and (base / judge).is_file():  # else a shipped judge's name (or fake)
-        data["judge"] = local(judge)
+    if isinstance(judge, str):
+        if judge.startswith("recipe:"):
+            data["judge"] = rebase_recipe_path(judge, base)
+        elif (base / judge).is_file():  # else a shipped judge's name (or fake)
+            data["judge"] = local(judge)
     for stage in ("tournament", "rubric"):
         schedule = data.get(stage)
         if (

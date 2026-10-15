@@ -20,7 +20,7 @@ from importlib.metadata import EntryPoint
 
 from rcp_ndcg.errors import ConfigError
 
-__all__ = ["load_entry_point", "provider_of", "registered_names"]
+__all__ = ["load_entry_point", "load_target", "provider_of", "registered_names"]
 
 
 def registered_names(entries: Iterable[EntryPoint], group: str) -> tuple[str, ...]:
@@ -61,6 +61,27 @@ def provider_of(entries: Iterable[EntryPoint], group: str, name: str, *, kind: s
     return next(entry_point for entry_point in entries if entry_point.name == name)
 
 
+def load_target(entry_point: EntryPoint, *, kind: str) -> object:
+    """Load *entry_point*'s target, wrapping any import failure in a ConfigError naming the plugin.
+
+    The load-only half of :func:`load_entry_point`, for a seam whose plugin is checked structurally (a job
+    runner is a :class:`~rcp_ndcg.runners.base.JobRunner` Protocol, which ``issubclass`` cannot check): the
+    caller gets the loaded object and does its own check.
+
+    Raises:
+        ConfigError: The entry point does not import (the plugin's own failure, named).
+    """
+    del kind  # the messages name the entry point and its group, which the entry point itself carries
+    try:
+        return entry_point.load()
+    except Exception as exc:  # noqa: BLE001 - any plugin failure is the plugin's, and is named
+        raise ConfigError(
+            f"the {entry_point.name!r} entry point of {entry_point.group!r} could not be loaded: "
+            f"{type(exc).__name__}: {exc}",
+            hint="fix or uninstall the package that declares it",
+        ) from exc
+
+
 def load_entry_point[T](entry_point: EntryPoint, base: type[T], *, kind: str) -> type[T]:
     """The class *entry_point* names, checked against *base*.
 
@@ -68,15 +89,7 @@ def load_entry_point[T](entry_point: EntryPoint, base: type[T], *, kind: str) ->
         ConfigError: The entry point does not import (the plugin's own failure, named), or what it names is
             not a subclass of *base* (the one contract every plugin of that kind must meet).
     """
-    del kind  # the messages name the entry point and its group, which the entry point itself carries
-    try:
-        loaded = entry_point.load()
-    except Exception as exc:  # noqa: BLE001 - any plugin failure is the plugin's, and is named
-        raise ConfigError(
-            f"the {entry_point.name!r} entry point of {entry_point.group!r} could not be loaded: "
-            f"{type(exc).__name__}: {exc}",
-            hint="fix or uninstall the package that declares it",
-        ) from exc
+    loaded = load_target(entry_point, kind=kind)
     if not (isinstance(loaded, type) and issubclass(loaded, base)):
         raise ConfigError(
             f"the {entry_point.name!r} entry point of {entry_point.group!r} names {loaded!r}, not a {base.__name__}"

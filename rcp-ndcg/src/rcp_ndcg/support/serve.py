@@ -69,6 +69,18 @@ def _command_flag(command: Sequence[str], name: str, *aliases: str) -> int | Non
     return None
 
 
+def _credential_flag(word: str) -> bool:
+    """Whether an argv word is a credential-bearing flag: ``--api-key``, ``--hf-token``, ``--flag=value`` too.
+
+    ``--tokenizer`` and ``--tokenizer-mode`` name a model, not a credential, so the engine's tokenizer flags are
+    not refused.
+    """
+    flag = word.partition("=")[0].lower()
+    if not flag.startswith("--") or flag.startswith("--tokenizer"):
+        return False
+    return any(marker in flag for marker in ("token", "key", "secret"))
+
+
 class ServeConfig(BaseModel):
     """The engine replicas a run's job starts for one role's config (the judge, the retrieval encoder, the
     reranker).
@@ -140,8 +152,26 @@ class ServeConfig(BaseModel):
     @field_validator("command")
     @classmethod
     def _safe_command(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        for word in value:
+        """No NUL byte reaches a rendered script, and no credential reaches a recorded command.
+
+        The command is written verbatim into ``run.yaml``, the manifest, every job script and every mirror
+        copy, so a key passed as a flag (``--api-key sk-...`` or ``--api-key=sk-...``) would be recorded in
+        clear, against ``RunConfig.recorded``'s promise. A credential belongs in the job's environment
+        (``VLLM_API_KEY``/``HF_TOKEN``) or the runner's ``secrets``.
+        """
+        words = list(value)
+        for index, word in enumerate(words):
             no_nul_byte(word)
+            if not _credential_flag(word):
+                continue
+            followed = index + 1 < len(words) and not words[index + 1].startswith("-")
+            if "=" in word or followed:
+                raise ValueError(
+                    f"the engine command passes a credential as {word.partition('=')[0]!r}: the command is "
+                    "written verbatim into run.yaml, the manifest, every job script and every mirror copy, so "
+                    "the key would be recorded in clear; export VLLM_API_KEY (or HF_TOKEN) in the job's "
+                    "environment instead, or use the runner's secrets"
+                )
         return value
 
     @field_validator("env")

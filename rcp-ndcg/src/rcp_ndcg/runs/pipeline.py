@@ -215,7 +215,7 @@ class Pipeline:
             return
         pools, _ = self._planned_pools()
         for stage in stages:
-            with _run_identity_hint(self.layout, stage):
+            with _run_identity_hint(self.layout, stage, mirrored=self.config.mirror is not None):
                 preflight(
                     self.dataset,
                     pools,
@@ -324,14 +324,19 @@ class Pipeline:
         recorded = self.manifest.model_copy(deep=True)
         claims = self._store_claims()
         self.layout.ensure()
-        self._write_config()
-        self.manifest.status = RunStatus.RUNNING
-        self.manifest.save(self.layout)
+        # The dataset is loaded (and a from:dataset run's first-stage pools computed) before anything is written:
+        # a failure here -- a typo in --set dataset=..., a Hub error -- leaves run.yaml, the recorded config and
+        # the status exactly as they were, as this method promises.
+        pools: dict[str, list[str]] | None = None
         if self.config.candidates.source == "dataset" and set(self.config.steps) - {"retrieve"}:
             # A reranker rescores the whole first stage; the depth cut comes after it.
             pools = self._dataset_pools()
             if "rerank" not in self.config.steps:
                 pools = {query: pool[: self.config.candidates.depth] for query, pool in pools.items()}
+        self._write_config()
+        self.manifest.status = RunStatus.RUNNING
+        self.manifest.save(self.layout)
+        if pools is not None:
             _write_rankings(self._first_stage, Rankings.from_orders(pools, system=CANDIDATES))
         ran: set[str] = set()
         for step in self.steps:
@@ -340,7 +345,7 @@ class Pipeline:
                     ran.add(step)
             except IdentityError as exc:
                 self._refused(ran, recorded)
-                _identity_hint(exc, self.layout, step)
+                _identity_hint(exc, self.layout, step, mirrored=self.config.mirror is not None)
                 raise
             except (Exception, KeyboardInterrupt) as exc:
                 # An interruption (SIGINT, or SIGTERM from a scheduler) is recorded like a failure.
@@ -1014,10 +1019,14 @@ def _check_engines(config: RunConfig, engines: Mapping[EngineRole, EngineURLs]) 
             )
 
 
+#: The error text :func:`_describe` records for a step interrupted by SIGINT or SIGTERM.
+INTERRUPT_ERROR = "Interrupted: interrupted (SIGINT or SIGTERM)"
+
+
 def _describe(exc: BaseException) -> str:
     """A step's recorded error, with every URL in it redacted (it reaches the mirrored manifest and run.log)."""
     if isinstance(exc, KeyboardInterrupt):
-        return "Interrupted: interrupted (SIGINT or SIGTERM)"
+        return INTERRUPT_ERROR
     return redact_urls(f"{type(exc).__name__}: {exc}")
 
 
@@ -1026,21 +1035,29 @@ def _cancelled_meanwhile(layout: RunLayout) -> bool:
     return Path(layout.manifest).exists() and RunManifest.load(layout).status is RunStatus.CANCELLED
 
 
-def _identity_hint(exc: IdentityError, layout: RunLayout, step: str) -> None:
-    """Give a run's refusal of a judging store of another identity the run's own way out."""
+def _identity_hint(exc: IdentityError, layout: RunLayout, step: str, *, mirrored: bool) -> None:
+    """Give a run's refusal of a judging store of another identity the run's own way out.
+
+    The store's ``identity.json`` keeps the claim, so moving the stage's JSONL aside does not clear it (and a
+    mirror restores the file); the remedy is a new run, and a mirrored one needs a new mirror URI, since the
+    run-scoped mirror holds the old store.
+    """
     store = layout.path("judgements", f"{step}.jsonl")
-    exc.hint = exc.cli_hint = (
-        f"start a new run with the changed config (`rcp-ndcg run start`), or move {store} aside to "
-        f"judge the {step} step again in this run"
+    hint = (
+        f"start a new run with the changed config (`rcp-ndcg run start`), which judges the {step} step under its "
+        f"own identity in its own store; {store} keeps its claim, so this run cannot judge it again"
     )
+    if mirrored:
+        hint += "; give the new run a new mirror URI too, since this run's mirror holds the old store"
+    exc.hint = exc.cli_hint = hint
 
 
 @contextmanager
-def _run_identity_hint(layout: RunLayout, step: str) -> Iterator[None]:
+def _run_identity_hint(layout: RunLayout, step: str, *, mirrored: bool) -> Iterator[None]:
     try:
         yield
     except IdentityError as exc:
-        _identity_hint(exc, layout, step)
+        _identity_hint(exc, layout, step, mirrored=mirrored)
         raise
 
 

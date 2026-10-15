@@ -153,6 +153,30 @@ class TestResume:
         assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
         assert _statuses(Pipeline.resume(run_dir).run()) == dict.fromkeys(STEPS, "completed")
 
+    def test_the_identity_refusal_hint_names_a_working_remedy(self, data: Path, tmp_path: Path) -> None:
+        """runs-8: the hint said to move ``judgements/<stage>.jsonl`` aside, but ``identity.json`` keeps the
+        claim (and a mirror restores the file), so the next resume refuses again; a mirrored run also needs a
+        new mirror URI, which the hint did not say."""
+        from rcp_ndcg import storage
+
+        pipeline = Pipeline(
+            tiny_config(data, steps=["tournament"], mirror="memory://mirror/identity"),
+            runs_dir=str(tmp_path / "runs"),
+        )
+        try:
+            pipeline.run()
+            with pytest.raises(IdentityError) as caught:
+                Pipeline.resume(pipeline.layout.root, overrides=["tournament.seed=7"]).run()
+        finally:
+            memory = storage.filesystem("memory://")
+            memory.store.clear()
+            memory.pseudo_dirs[:] = [""]
+
+        hint = caught.value.hint or ""
+        assert "start a new run" in hint
+        assert "move" not in hint and "aside" not in hint
+        assert "new mirror URI" in hint
+
 
 class TestFailure:
     def test_a_failing_step_fails_the_run(self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -249,6 +273,20 @@ class TestAFailedChange:
         assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
         monkeypatch.undo()
         assert _statuses(Pipeline.resume(run_dir).run()) == dict.fromkeys(STEPS, "completed")
+
+    def test_a_failed_dataset_override_leaves_the_run_as_it_was(self, run_dir: Path) -> None:
+        """runs-1: the from:dataset preamble loaded the dataset outside the failure handling, so a resume
+        whose dataset load fails kept the failed --set change and left the run 'running' forever."""
+        recorded = RunManifest.load(run_dir)
+        run_yaml = (run_dir / "run.yaml").read_text(encoding="utf-8")
+
+        with pytest.raises(FileNotFoundError):
+            Pipeline.resume(run_dir, overrides=[f"dataset=jsonl:{run_dir}/missing.jsonl"]).run()
+
+        manifest = RunManifest.load(run_dir)
+        assert manifest.config == recorded.config
+        assert (run_dir / "run.yaml").read_text(encoding="utf-8") == run_yaml
+        assert manifest.status is RunStatus.COMPLETED
 
     def test_a_step_rerun_before_the_failure_is_redone_under_the_recorded_config(
         self, run_dir: Path, monkeypatch: pytest.MonkeyPatch

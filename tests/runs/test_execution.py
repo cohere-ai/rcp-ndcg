@@ -34,6 +34,7 @@ class _Scheduler:
 
     submitted: list[tuple[str, ...]] = []
     cancelled: list[str] = []
+    options_seen: list[dict] = []
     state = "pending"
     reason: str | None = None
     note_error: Exception | None = None
@@ -41,6 +42,7 @@ class _Scheduler:
 
     def __init__(self, **options) -> None:
         self.options = options
+        _Scheduler.options_seen.append(dict(options))
 
     def submit(self, jobs) -> list[str]:
         _Scheduler.submitted.extend(job.argv for job in jobs)
@@ -71,6 +73,7 @@ class _PodScheduler(_Scheduler):
 @pytest.fixture
 def scheduler(monkeypatch: pytest.MonkeyPatch) -> type[_Scheduler]:
     _Scheduler.submitted, _Scheduler.cancelled, _Scheduler.state = [], [], "pending"
+    _Scheduler.options_seen = []
     _Scheduler.reason = None
     _Scheduler.note_error = None
     runners = {"sched": _Scheduler, "pod": _PodScheduler}
@@ -165,6 +168,34 @@ class TestPaths:
 
 
 class TestStatus:
+    def test_a_cancelled_run_is_not_overridden_by_a_pod_mirror_that_recorded_it_failed(
+        self, data: Path, tmp_path: Path, scheduler
+    ) -> None:
+        """runs-7: a pod never sees the host's cancel mark; its newer failed manifest must not turn the user's
+        cancellation back into a failure in ``run status``."""
+        from datetime import UTC, datetime, timedelta
+
+        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
+        from rcp_ndcg.runs.pipeline import INTERRUPT_ERROR
+
+        remote = "memory://mirror/cancelled-run"
+        started = _submit(_config(data, tmp_path, mirror=remote, runner={"name": "pod"}), tmp_path)
+        run = Run(started["run_dir"])
+        manifest = run.manifest
+        manifest.start_step("tournament", identity={})
+        manifest.finish_step("tournament", status=StepStatus.FAILED, error=INTERRUPT_ERROR)
+        manifest.status = RunStatus.CANCELLED
+        manifest.save(run.layout)
+
+        pod = manifest.model_copy(
+            update={"status": RunStatus.FAILED, "updated_at": datetime.now(UTC) + timedelta(days=1)}
+        )
+        storage.write_bytes(f"{remote}/manifest.json", pod.model_dump_json().encode("utf-8"))
+
+        state = _ok("run", "status", "--run", started["run_dir"])
+        assert state["status"] == "cancelled"
+        assert "cancelled it" in (state["note"] or "")
+
     @pytest.mark.parametrize(
         ("job", "derived"), [("failed", "failed"), ("cancelled", "cancelled"), ("completed", "failed")]
     )
@@ -248,6 +279,27 @@ class TestStatus:
         assert "holds the run" in error["message"]
         manifest = json.loads(storage.read_text(f"{remote}/manifest.json"))
         assert manifest["run_id"] == Path(first["run_dir"]).name
+
+    def test_a_foreground_local_job_that_failed_records_its_handle_and_its_log(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """runs-11: a local-runner job that ran and failed recorded no handle, so `run logs` printed nothing
+        and `run status` said the submission failed."""
+        from rcp_ndcg.runs.execution import logs
+
+        monkeypatch.setattr(
+            "rcp_ndcg.runs.execution.run_argv", lambda *args, **kwargs: ("bash", "-c", "echo boom; exit 1")
+        )
+        config = _config(
+            data, tmp_path, runner={"name": "local", "options": {"log_dir": str(tmp_path / "local-logs")}}
+        )
+        code, error = _invoke("run", "start", str(config), "--runs-dir", str(tmp_path / "runs"), "--runner", "local")
+        assert code == 1 and "exited 1" in error["message"]
+
+        (run_dir,) = (tmp_path / "runs").iterdir()
+        record = Run(run_dir).jobs()
+        assert record["jobs"][0]["handle"] == record["jobs"][0]["name"]
+        assert "boom" in logs(run_dir)
 
     def test_a_submission_that_fails_leaves_a_failed_run_saying_why(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -417,6 +469,28 @@ class TestJobRecord:
 
 
 class TestResubmission:
+    def test_a_resumed_runs_set_runner_options_win_over_the_recorded_ones(
+        self, data: Path, tmp_path: Path, scheduler
+    ) -> None:
+        """runs-2: `run resume --runner sched --set runner.options.partition=b` recorded partition=b in run.yaml
+        and the manifest, but the job was handed the last record's partition=a, with no message."""
+        started = _submit(_config(data, tmp_path, runner={"name": "sched", "options": {"partition": "a"}}), tmp_path)
+        scheduler.state = "failed"
+        _ok(
+            "run",
+            "resume",
+            "--run",
+            started["run_dir"],
+            "--runner",
+            "sched",
+            "--set",
+            "runner.options.partition=b",
+        )
+
+        assert scheduler.options_seen[-1]["partition"] == "b"
+        assert Run(started["run_dir"]).manifest.config["runner"]["options"]["partition"] == "b"
+        assert Run(started["run_dir"]).jobs()["options"]["partition"] == "b", "the record holds the effective options"
+
     def test_a_run_whose_job_failed_is_submitted_again_with_its_runner(
         self, data: Path, tmp_path: Path, scheduler
     ) -> None:
@@ -495,6 +569,35 @@ class TestResubmission:
 
 
 class TestCancel:
+    def test_cancelling_a_detached_run_inside_a_step_records_it_cancelled(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        """runs-7: the coordinator handled SIGTERM first and recorded the run failed, so `run cancel` reported
+        'failed' for a run the user stopped (every detached local run, and the MCP run_cancel path)."""
+        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
+
+        config = _config(
+            data,
+            tmp_path,
+            judge={"base_url": "http://127.0.0.1:9/v1", "model": "my-judge", "wait_on_outage_s": 3600},
+            steps=["tournament"],
+        )
+        started = _ok("run", "start", str(config), "--runs-dir", str(tmp_path / "runs"), "--detach")
+        run = Run(started["run_dir"])
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            record = run.manifest.step("tournament")
+            if run.manifest.status is RunStatus.RUNNING and record is not None and record.status is StepStatus.RUNNING:
+                break
+            time.sleep(0.05)
+        else:
+            pytest.fail("the detached job never entered the tournament step")
+
+        state = _ok("run", "cancel", "--run", started["run_dir"])
+
+        assert state["status"] == "cancelled"
+        assert [step for step in state["steps"] if step["name"] == "tournament"][0]["status"] == "cancelled"
+
     def test_cancel_of_a_handle_less_record_says_it_may_be_live(self, data: Path, tmp_path: Path, scheduler) -> None:
         """A record with no handle was reported as 'never submitted ... the run is not running' -- a claim the
         record cannot make when the submission was in flight."""

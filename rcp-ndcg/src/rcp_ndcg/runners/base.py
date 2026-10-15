@@ -298,6 +298,11 @@ class JobRunner(Protocol):
 
     name: str
 
+    #: Whether ``submit`` runs the job in this process: then the job's handle is its name, known before it runs,
+    #: and its failure is raised from ``submit``. A scheduler runner's handle names a job on the scheduler and
+    #: exists only after ``submit`` returns.
+    synchronous: bool = False
+
     def submit(self, jobs: Sequence[JobSpec]) -> list[JobHandle]:
         """Submit ``jobs`` in order; one handle per job."""
         ...

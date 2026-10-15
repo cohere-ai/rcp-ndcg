@@ -99,6 +99,12 @@ class LocalRunner:
         self.detach = self.options.detach
         self._statuses: dict[str, JobStatus] = {}
 
+    @property
+    def synchronous(self) -> bool:
+        """Whether ``submit`` runs the job in this process (foreground): its handle is its name, known before
+        it runs, and a job failure is raised from ``submit``."""
+        return not self.detach
+
     def render(self, jobs: Sequence[JobSpec]) -> dict[str, str]:
         """The worker script each job runs: a phased job's phases in order (their commands are the job's
         commands), a plain job its ``argv``. Submits nothing.

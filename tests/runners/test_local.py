@@ -242,6 +242,22 @@ def test_a_duplicate_entry_point_name_never_shadows_a_built_in(monkeypatch: pyte
     assert isinstance(get_runner("local"), LocalRunner)
 
 
+def test_a_plugin_runner_that_fails_to_import_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """runs-15: the runner registry called ``entry_point.load()`` directly, so a plugin that fails to import
+    reached the user as an internal bug (exit 1), not a ConfigError naming the plugin (exit 3)."""
+    from importlib.metadata import EntryPoint
+
+    import rcp_ndcg.runners.registry as registry
+
+    plugin = EntryPoint(name="broken", value="tests.runners.not_a_module:Runner", group="rcp_ndcg.runners")
+    installed = registry.entry_points(group="rcp_ndcg.runners")
+    monkeypatch.setattr(registry, "entry_points", lambda group: [*installed, plugin])
+
+    with pytest.raises(ConfigError) as refused:
+        get_runner("broken")
+    assert "the 'broken' entry point of 'rcp_ndcg.runners' could not be loaded" in str(refused.value)
+
+
 class TeleportRunner:
     name = "teleport"
 

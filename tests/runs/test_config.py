@@ -278,6 +278,37 @@ class TestJudge:
         assert (judge.base_url, judge.model, judge.concurrency) == ("http://other:8000/v1", "m", 4)
         assert RunConfig.load(path).judge == str(tmp_path / "judges" / "j.yaml"), "relative to the config file"
 
+    def test_a_relative_recipe_path_is_relative_to_the_config_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """g-decisions-6: every other relative path in a run config resolves against the config file, but
+        ``judge: recipe:./my-judge`` resolved against the working directory, so starting the run from anywhere
+        but the config's directory failed ('no family at ./my-judge')."""
+        import shutil
+
+        from rcp_ndcg_vllm.recipe import default_recipes_root
+
+        configs = tmp_path / "configs"
+        configs.mkdir()
+        family = configs / "my-judge"
+        shutil.copytree(default_recipes_root() / "gpt-oss-120b", family)
+        family_yaml = family / "family.yaml"
+        data = yaml.safe_load(family_yaml.read_text(encoding="utf-8"))
+        data["id"] = "my-judge"
+        data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
+        family_yaml.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        path = _write(
+            configs / "run.yaml",
+            {"dataset": DATASET, "judge": "recipe:./my-judge", "steps": ["tournament"]},
+        )
+
+        monkeypatch.chdir(tmp_path)  # the working directory is not the config's directory
+        config = RunConfig.load(path)
+
+        judge = config.judge_config()
+        assert judge.recipe is not None and judge.recipe.startswith("unshipped:sha256:")
+        assert any(str(family) in entry for entry in config.local_inputs()), config.local_inputs()
+
     def test_a_base_configs_paths_are_relative_to_the_base(self, tmp_path: Path) -> None:
         """They resolved against the extending file: the base's dataset was missed, or another file read silently."""
         (tmp_path / "base" / "data").mkdir(parents=True)
