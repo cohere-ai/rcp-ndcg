@@ -81,3 +81,49 @@ def test_the_readme_catalog_matches_iter_recipes() -> None:
                 assert str(value) in mrl, f"{recipe_id}: README MRL {mrl!r} omits {value}"
         else:
             assert mrl, f"{recipe_id}: README MRL cell is empty"
+
+
+_WORKSPACE_MODULES = frozenset({"rcp_ndcg", "rcp_ndcg_core", "rcp_ndcg_vllm", "rcp_ndcg_test"})
+_WORKSPACE_DISTRIBUTIONS = frozenset(name.replace("_", "-") for name in _WORKSPACE_MODULES)
+
+
+def test_no_reference_subprocess_imports_the_product() -> None:
+    """A family's ``reference.py`` is a dependency-free reference subprocess (AGENTS.md): it must not
+    import the product. A workspace import makes the reference check the client against itself, so the
+    reference loads the checkpoint's own code path instead (vllm-6)."""
+    import ast
+
+    offenders: list[str] = []
+    for family in iter_families():
+        path = RECIPES_ROOT / family.id / "reference.py"
+        if not path.is_file():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            names = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else []
+            )
+            for name in names:
+                if name.split(".", 1)[0] in _WORKSPACE_MODULES:
+                    offenders.append(f"{family.id}/reference.py:{node.lineno}: {name}")
+    assert not offenders, "reference subprocesses must not import the product:\n" + "\n".join(offenders)
+
+
+def test_no_reference_environment_pins_a_workspace_distribution() -> None:
+    """A family's ``reference.in`` must not pin a workspace distribution: the pin couples the reference
+    environment to the release under test (the staged wheelhouse carries the workspace wheels), so the
+    reference could never run against another checkout (vllm-6)."""
+    offenders: list[str] = []
+    for family in iter_families():
+        path = RECIPES_ROOT / family.id / "reference.in"
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            requirement = line.split("#", 1)[0].strip()
+            if requirement and requirement.split("==", 1)[0].strip().lower() in _WORKSPACE_DISTRIBUTIONS:
+                offenders.append(f"{family.id}/reference.in:{number}: {requirement}")
+    assert not offenders, "reference.in files must not pin a workspace distribution:\n" + "\n".join(offenders)

@@ -2,12 +2,11 @@
 # family: jina-reranker-v3
 # image: vllm/vllm-openai:v0.31.0
 # image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
-# reference-in-sha256: 478a8a7a232ded4c48ca097e78c3d6441eb769626c771d9a77d9ca9f0fdf45ce
+# reference-in-sha256: 78fc9271941470d230477828aa016ad95e6dc509adbd0c61d8107274330205af
 # own-torch: false
 # image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.9)
 #
 # The pins below install into the family's reference venv with `pip install --no-deps --no-index --find-links <wheelhouse> -r <this file>`; the image's torch/CUDA stack is read through --system-site-packages and never replaced.
-rcp-ndcg==0.0.1
 huggingface-hub==0.36.2 \
     --hash=sha256:1934304d2fb224f8afa3b87007d58501acfda9215b334eed53072dd5e815ff7a \
     --hash=sha256:48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270

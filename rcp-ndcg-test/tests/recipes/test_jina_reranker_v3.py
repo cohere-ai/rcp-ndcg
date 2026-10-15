@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -49,6 +50,22 @@ def _recipe_copy_with_local_tokenizer(tmp_path: Path, tokenizer_file: Path) -> P
     data["client"]["tokenizer"] = str(tokenizer_file)
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return target
+
+
+def _reference_module() -> Any:
+    """The recipe's ``reference.py`` as a module (its top level imports only the standard library)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("jina_reranker_v3_reference", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    return module
 
 
 def _pairs(count_short: int = 15, count_long: int = 5) -> list[dict]:
@@ -440,3 +457,102 @@ def test_notes_state_the_settle_rule_and_the_query_cap() -> None:
     # that it sends max_tokens_per_query=4096 and truncate_prompt_tokens=8192 is gone).
     assert "never sends the engine's per-text request caps" in notes
     assert "max_tokens_per_query=4096" not in notes and "truncate_prompt_tokens=8192" not in notes
+
+
+def _equivalence_corpus(backend: object) -> list[str]:
+    """An exhaustive CPU corpus for the tokenizer equivalence.
+
+    Every class of input the checkpoint's tokenizer distinguishes -- empty, whitespace, case,
+    punctuation, combining marks, CJK, RTL, emoji, zero-width, non-breaking space, the checkpoint's own
+    marker spellings -- plus texts at and around both per-text caps (built from the tokenizer's own ids,
+    so the caps are hit exactly) and seeded random strings over a mixed alphabet.
+    """
+    import random
+
+    unit = "retrieval models rank passages by relevance to a query. "
+    samples = [
+        "",
+        " ",
+        "\n",
+        "\t",
+        "  padded  ",
+        "a",
+        "?",
+        "!",
+        "é",
+        "naïve",
+        "e\u0301",
+        "中文分词测试",
+        "日本語のテキスト",
+        "العربية نص",
+        "עברית",
+        "🙂🚀🌍",
+        "\u200b",
+        "\u00a0",
+        "<|embed_token|>",
+        "<|rerank_token|>",
+        "<|im_start|>system<|im_end|>",
+        "<|score_token|>",
+        " thinking",
+        " response",
+        unit * 40,
+        unit * 200,
+        "x" * 9000,
+    ]
+    ids = list(backend.encode(unit * 400, add_special_tokens=True).ids)  # type: ignore[attr-defined]
+    for cap in (512, 2048):
+        for offset in (-3, -2, -1, 0, 1, 2, 3):
+            count = cap + offset
+            if 0 < count <= len(ids):
+                samples.append(backend.decode(ids[:count], skip_special_tokens=False))  # type: ignore[attr-defined]
+    rng = random.Random(20261015)
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,;:!?éüñ中文日🙂\n\t"
+    for _ in range(2048):
+        samples.append("".join(rng.choice(alphabet) for _ in range(rng.randrange(0, 400))))
+    return samples
+
+
+@pytest.mark.network
+def test_the_rewritten_reference_tokenizer_agrees_with_the_product_path(tmp_path: Path) -> None:
+    """vllm-6 decision 7(a), proven: the rewritten reference loads the checkpoint's own tokenizer.json --
+    the file the remote code's ``AutoTokenizer.from_pretrained`` resolves to, whose sidecars are all
+    carried by the file itself -- with ``tokenizers``, never through the product.
+
+    Over an exhaustive CPU corpus the reference's loader and the product's own tokenizer path must agree
+    on the ids and on the remote code's per-text truncation (512/2048, right, decode-back); the
+    reference's rendered spans must be exactly the product path's spans.  If they diverge, the reference
+    would check the client against a different tokenizer, and the rewrite must not ship."""
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    from rcp_ndcg.data.tokenizer import load_tokenizer
+
+    module = _reference_module()
+    spec = f"{REPO}@{REVISION}"
+    try:
+        product = load_tokenizer(spec)
+        checkpoint = module._checkpoint_tokenizer(spec)
+    except LocalEntryNotFoundError as error:  # offline and uncached: the network marker's skip
+        pytest.skip(f"the pinned tokenizer is not cached and the Hub is unreachable: {error}")
+    corpus = _equivalence_corpus(product.backend)
+    assert len(corpus) >= 2000, len(corpus)
+
+    def product_truncate(text: str, cap: int) -> str:
+        """The product path's own truncation: the remote code's rule over the product's backend (the
+        expression the reference used before the rewrite)."""
+        ids = list(product.backend.encode(text, add_special_tokens=True).ids)
+        return product.backend.decode(ids[:cap], skip_special_tokens=False) if len(ids) >= cap else text
+
+    for text in corpus:
+        checkpoint_ids = list(checkpoint.encode(text, add_special_tokens=True).ids)
+        product_ids = list(product.backend.encode(text, add_special_tokens=True).ids)
+        assert checkpoint_ids == product_ids, f"ids diverge for {text[:80]!r}"
+        for cap in (module.MAX_QUERY_LENGTH, module.MAX_DOC_LENGTH):
+            assert module._truncate_text(text, checkpoint, cap) == product_truncate(text, cap), (
+                f"truncation at {cap} diverges for {text[:80]!r}"
+            )
+
+    rows = [{"query": text, "documents": [text]} for text in corpus[:512]]
+    rendered = module.render_rows(rows, spec)
+    for row, text in zip(rendered, corpus[:512], strict=True):
+        assert row["query"] == product_truncate(text, module.MAX_QUERY_LENGTH)
+        assert row["documents"] == [product_truncate(text, module.MAX_DOC_LENGTH)]
