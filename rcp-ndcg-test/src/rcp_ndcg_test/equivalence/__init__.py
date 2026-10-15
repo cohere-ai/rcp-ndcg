@@ -14,6 +14,7 @@ the client's sent media against the reference's ``--mode media``, and with stage
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from rcp_ndcg_vllm.recipe import load_recipe
@@ -70,14 +71,19 @@ def run(
     (:func:`~rcp_ndcg_test.equivalence.media.stage_media`, with the engine's media count when stage 2 runs).
     Output: the report document; ``passed`` is true only when every requested stage passed and the media
     stage did not fail.  Also writes ``equivalence.json``
-    and ``EQUIVALENCE.md`` under ``out_dir``.
+    and ``EQUIVALENCE.md`` under ``out_dir``.  The document records the engine URL with the placeholder host
+    (no hostname is ever recorded) and the pairs file's name.
     """
+    from ..record import placeholder_url
     from .report import write_report
 
     document: dict[str, Any] = {
         "recipe": recipe.id,
         "image": recipe.engine.image,
-        "base_url": base_url,
+        # The engine URL with the placeholder host: the report never records a hostname (the recorder's own
+        # rule, one home), while the path stays so the route is still visible.
+        "base_url": placeholder_url(base_url) if base_url else None,
+        "pairs": Path(pairs_path).name if pairs_path else None,
         "stages": stages,
         "device": device,
         **({"reference_gpu": reference_gpu} if reference_gpu is not None else {}),

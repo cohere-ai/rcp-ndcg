@@ -116,7 +116,7 @@ def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str
         text = _SNIPPET_TEXT if role is EncodeRole.QUERY else _SNIPPET_DOCUMENTS[0]
         client.encode([Content.from_text(text)], role)
     for exchange in capture.exchanges:
-        exchange["url"] = _placeholder(exchange["url"])
+        exchange["url"] = placeholder_url(exchange["url"])
         exchanges.append(exchange)
 
 
@@ -179,7 +179,7 @@ def _exchange(url: str, method: str, request_body: Any, response: httpx.Response
     except ValueError:
         response_json = None
     return {
-        "url": _placeholder(url),
+        "url": placeholder_url(url),
         "method": method,
         "request_body": request_body,
         "status": response.status_code,
@@ -189,11 +189,18 @@ def _exchange(url: str, method: str, request_body: Any, response: httpx.Response
     }
 
 
-def _placeholder(url: str) -> str:
-    """The engine URL with the placeholder host (no hostname is ever recorded); the path is kept."""
+def placeholder_url(url: str) -> str:
+    """The engine URL with the placeholder host (no hostname is ever recorded); the path is kept.
+
+    The one home of the replacement the recorder and the equivalence report both need: ``scheme://host:port``
+    becomes ``http://engine``, the path after it is kept (``http://host:8000/v1/embeddings`` ->
+    ``http://engine/v1/embeddings``).  A URL with no scheme keeps its path under the placeholder.
+    """
     for scheme in ("https://", "http://"):
         if url.startswith(scheme):
-            return _PLACEHOLDER + url[url.find("/", len(scheme)) :]
+            rest = url[len(scheme) :]
+            slash = rest.find("/")
+            return _PLACEHOLDER + (rest[slash:] if slash >= 0 else "")
     return _PLACEHOLDER + "/" + url.removeprefix("/")
 
 

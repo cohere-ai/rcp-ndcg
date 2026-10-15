@@ -560,6 +560,33 @@ def test_a_cuda_reference_recipe_refuses_a_cpu_stage_2(tmp_path: Path) -> None:
     assert document["stage1"]["passed"] is True
 
 
+def test_the_report_records_no_hostname_and_names_the_pairs_file(tmp_path: Path) -> None:
+    """testpkg-7: EQUIVALENCE.md claimed the base URL was replaced and no hostname recorded, but ``run``
+    stored it verbatim (and the stage-1 captured heads carried it too); the header's pairs line was always
+    '?' because ``run`` never set ``document['pairs']``."""
+    from rcp_ndcg_test.equivalence import run
+
+    recipe = load("fixture-rerank-pointwise")
+    pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        document = run(
+            recipe,
+            base_url=engine.base_url,
+            pairs_path=str(pairs),
+            out_dir=str(tmp_path / "out"),
+            stages=[1],
+        )
+    finally:
+        engine.stop()
+    assert document["base_url"] == "http://engine"
+    text = (tmp_path / "out" / "equivalence.json").read_text(encoding="utf-8")
+    markdown = (tmp_path / "out" / "EQUIVALENCE.md").read_text(encoding="utf-8")
+    assert "127.0.0.1" not in text, text[:400]
+    assert "127.0.0.1" not in markdown, markdown[:400]
+    assert "- pairs: pairs.jsonl" in markdown
+
+
 def test_run_records_the_reference_device_and_its_gpu(tmp_path: Path) -> None:
     """The device the reference ran on (and the GPU it was pinned to) is recorded in the report document
     and in equivalence.json (GPU-E1: the wave's CPU references were invisible in the reports)."""

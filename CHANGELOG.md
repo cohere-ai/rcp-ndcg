@@ -67,6 +67,11 @@ incompatibly, independently of the package version. All four distributions carry
   `--upload` record was discarded so a job whose report never reached `OUT_URI` ended green; `main` now
   refuses an empty list with exit 2, writes the upload record into `status.json` and exits 1 when it
   failed, as the wave runner does.
+- **Harness: the equivalence report records no hostname and names its pairs file** (testpkg-7):
+  `EQUIVALENCE.md` claimed the base URL was replaced while `equivalence.json` stored it verbatim (the
+  stage-1 captured heads carried it too), and the header's pairs line always printed `?`. The document and
+  the captured heads now carry the recorder's placeholder host (`http://engine`, the path kept; one home in
+  `record.placeholder_url`, which also handles a URL with no path), and `pairs` names the pairs file.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does

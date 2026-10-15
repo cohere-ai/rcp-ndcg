@@ -582,13 +582,19 @@ def _probe_texts(entry: dict[str, Any]) -> list[str]:
 
 
 def _captured_heads(capture: Capture, sampled: list[dict[str, Any]]) -> dict[str, Any]:
-    """The captured requests, summarised: per exchange the route and the texts' heads (no full bodies)."""
+    """The captured requests, summarised: per exchange the route and the texts' heads (no full bodies).
+
+    The URL carries the placeholder host (the recorder's own rule, one home): the report never records a
+    hostname, and the route stays visible.
+    """
+    from ..record import placeholder_url
+
     heads: list[dict[str, Any]] = []
     for exchange in capture.exchanges[:8]:
         texts = capture.texts(exchange)
         heads.append(
             {
-                "url": exchange["url"],
+                "url": placeholder_url(exchange["url"]),
                 "status": exchange["status"],
                 "texts_head": [text[:_SNIPPET] for text in _flatten(texts)],
                 **({"media": texts["media"]} if any(texts.get("media") or ()) else {}),
