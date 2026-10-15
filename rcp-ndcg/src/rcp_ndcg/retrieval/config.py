@@ -334,6 +334,47 @@ rerank role's registry before the union runs."""
 # Retrievers
 # ---------------------------------------------------------------------------
 
+_ROOT_RELATIVE_WIRES = frozenset({"vllm_pooling"})
+"""The shipped wires whose routes are root-relative: vLLM registers ``/pooling`` at the root, not under
+``/v1``, so their ``base_url`` is the engine's root. The hosted profiles' roots are the vendors' own, and a
+third-party adapter's route is its own, so neither is checked."""
+
+_VERSION_SEGMENTS = ("/v1", "/v2")
+"""The OpenAI-style version segments a served engine's root never carries: the routes a root-relative wire
+speaks are registered at the root (``/pooling``), while the versioned wires append to ``.../v1``."""
+
+
+def _refuse_a_versioned_base_url(endpoint: Any) -> None:
+    """Refuse a ``base_url`` that carries a version segment on a wire whose route is root-relative.
+
+    The wire's route decides the base URL: the pooling wire posts to ``{base_url}/pooling`` and the engine
+    registers ``/pooling`` at the root, so ``.../v1`` used to load and 404 at the first request. The check
+    runs on the config model itself, so every loader sees it (the CLI's :func:`validate_retriever`, a run's
+    ``candidates.retrieval``, a direct construction). A config that names a recipe is checked through the
+    recipe's own wire -- the mapping form merges it before the model runs -- and one that names none is
+    checked by the wire it declares; neither is refused for lacking a recipe.
+
+    Raises:
+        ConfigError: ``base_url`` (or one replica of it) ends in a version segment (``/v1``, ``/v2``).
+    """
+    if endpoint.api not in _ROOT_RELATIVE_WIRES or endpoint.base_url is None:
+        return
+    bases = [endpoint.base_url] if isinstance(endpoint.base_url, str) else list(endpoint.base_url)
+    for base in bases:
+        # The path is what the wire appends to: a gateway base's query (a signed URL) is not part of it.
+        path = base.partition("?")[0].partition("#")[0].rstrip("/")
+        if not path.endswith(_VERSION_SEGMENTS):
+            continue
+        from rcp_ndcg.errors import ConfigError
+        from rcp_ndcg.support.urls import safe_url
+
+        raise ConfigError(
+            f"the {endpoint.api} wire posts to {{base_url}}/pooling, and the engine registers that route at "
+            f"the root, not under /v1: base_url {safe_url(base)} carries a version segment",
+            hint="give the engine's root as base_url (e.g. http://127.0.0.1:8000): the OpenAI-style embeddings "
+            "wire is the one whose base_url takes the /v1 segment",
+        )
+
 
 class BM25Config(BaseModel):
     """Okapi BM25 with ``bm25s``.
@@ -359,6 +400,12 @@ class DenseConfig(_ApiSelected):
     kind: Literal["dense"] = "dense"
     encoder: EncoderConfig
 
+    @model_validator(mode="after")
+    def _base_url_matches_the_wire(self) -> DenseConfig:
+        """The encoder's ``base_url`` must be the form its wire speaks (``_refuse_a_versioned_base_url``)."""
+        _refuse_a_versioned_base_url(self.encoder)
+        return self
+
 
 class LateInteractionConfig(_ApiSelected):
     """One vector per token, searched by MaxSim; the encoder is a served ``vllm_pooling`` endpoint."""
@@ -367,6 +414,12 @@ class LateInteractionConfig(_ApiSelected):
 
     kind: Literal["late_interaction"] = "late_interaction"
     encoder: Annotated[ServedPooling | PluginPooling, BeforeValidator(_resolve_pooling_api)]
+
+    @model_validator(mode="after")
+    def _base_url_matches_the_wire(self) -> LateInteractionConfig:
+        """The encoder's ``base_url`` must be the form its wire speaks (``_refuse_a_versioned_base_url``)."""
+        _refuse_a_versioned_base_url(self.encoder)
+        return self
 
 
 RetrieverConfig = Annotated[BM25Config | DenseConfig | LateInteractionConfig, Field(discriminator="kind")]
@@ -389,7 +442,9 @@ def validate_retriever(data: Any) -> RetrieverConfig:
 
     Raises:
         ConfigError: the data is not a retriever config: an old shape (``provider:``, ``engine:``), an unknown
-            ``api``, or a field its variant does not take. The hint shows the new shape.
+            ``api``, a field its variant does not take, or a served encoder's ``base_url`` that does not
+            match its wire (a version segment on a wire whose route is root-relative). The hint shows the
+            new shape, or the fix.
     """
     from rcp_ndcg.errors import ConfigError
     from rcp_ndcg.support.config import config_error

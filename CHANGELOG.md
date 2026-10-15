@@ -1788,6 +1788,13 @@ re-derived count, and a container without the declared rate is refused loudly. T
 deviation is gone: the behaviour fingerprint does not move (the `reference` block is out of it), so no
 corpus re-record is needed, and the case fills from the reference on GPU under its declared tolerance.
 
+- **A served retriever's `base_url` must match its wire**: the OpenAI-style embeddings wire (`api:
+  openai_embeddings`) takes `.../v1`, and the pooling wire (`api: vllm_pooling`) the engine's root -- vLLM
+  registers `/pooling` at the root, so a `.../v1` base there reached the first request and 404ed there. The
+  refusal is typed and runs where the retriever config is read (`validate_retriever`, a run's
+  `candidates.retrieval`): it reads the wire of the recipe a config names, and a config that names none is
+  checked by the wire it declares (a hosted profile's or a third-party adapter's base is its own).
+
 - **The embeddinggemma-2 reference prepares media the way the card's processor does** (the stage-2 image
   rows 31/32, cosines 0.9941-0.9963 against the 0.999 gate): the engine's processor runs on the bytes the
   client prepares -- the Gemma 4 resize's fixed point (`rcp_ndcg.data.resolution.gemma4_fixed_point`, Pillow

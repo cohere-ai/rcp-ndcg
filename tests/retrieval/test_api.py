@@ -216,7 +216,7 @@ def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
     pooling = {
         "api": "vllm_pooling",
         "model": "colqwen",
-        "base_url": "http://h:8000/v1",
+        "base_url": "http://h:8000",
         **_SERVED_BUDGET,
     }
     served = {
@@ -234,6 +234,58 @@ def test_single_and_multi_vector_retrievers_are_different_kinds() -> None:
         adapter.validate_python({"kind": "late_interaction", "encoder": served})
     assert "embed" in (caught.value.hint or "")
     assert adapter.validate_python({"kind": "late_interaction", "encoder": pooling}).kind == "late_interaction"
+
+
+def test_a_version_segment_is_refused_on_the_pooling_wires_base_url() -> None:
+    """The pooling wire's route is root-relative (vLLM registers ``/pooling`` at the root, not under
+    ``/v1``), so a ``.../v1`` base used to load and 404 at the first request; the retriever config refuses
+    it at the load, naming the wire and the fix."""
+    data = {
+        "kind": "late_interaction",
+        "encoder": {"api": "vllm_pooling", "model": "colqwen", "base_url": "http://h:8003/v1", **_SERVED_BUDGET},
+    }
+    with pytest.raises(ConfigError, match="at the root") as caught:
+        validate_retriever(data)
+    assert "/pooling" in str(caught.value) and "/v1" in str(caught.value)
+    assert "base_url" in (caught.value.hint or "")
+    # every replica of a list is checked: one versioned replica reaches the same 404
+    replicas = {**data["encoder"], "base_url": ["http://h:8003", "http://h:8004/v1"]}
+    with pytest.raises(ConfigError, match="at the root"):
+        validate_retriever({**data, "encoder": replicas})
+
+
+def test_the_retriever_base_url_rule_passes_the_wires_own_forms() -> None:
+    """The correct forms pass without a recipe: the OpenAI-style embeddings wire takes ``.../v1``, the
+    pooling wire the engine's root. A config that names no recipe is checked by the wire it declares -- it
+    is never refused for lacking one -- and a hosted profile's proxy base is the operator's own root."""
+    served_embed = {
+        "kind": "dense",
+        "encoder": {"api": "openai_embeddings", "model": "m", "base_url": "http://h:8000/v1", **_SERVED_BUDGET},
+    }
+    pooling_root = {
+        "kind": "late_interaction",
+        "encoder": {"api": "vllm_pooling", "model": "colqwen", "base_url": "http://h:8000", **_SERVED_BUDGET},
+    }
+    assert isinstance(validate_retriever(served_embed), DenseConfig)
+    assert isinstance(validate_retriever(pooling_root), LateInteractionConfig)
+    hosted = {"kind": "dense", "encoder": {"api": "cohere", "model": "embed-v4.0", "base_url": "https://proxy/v1"}}
+    assert isinstance(validate_retriever(hosted), DenseConfig)
+
+
+def test_a_named_recipes_wire_decides_the_base_url_rule() -> None:
+    """The mapping form merges the recipe's client block before the model runs, so the recipe's own wire is
+    what the rule reads: a shipped multi-vector recipe with a ``.../v1`` base is refused like a bare one."""
+    with pytest.raises(ConfigError, match="at the root"):
+        validate_retriever(
+            {
+                "kind": "late_interaction",
+                "encoder": {"recipe": "pplx-embed-v2-late-0.6b", "base_url": "http://h:8003/v1"},
+            }
+        )
+    root = validate_retriever(
+        {"kind": "late_interaction", "encoder": {"recipe": "pplx-embed-v2-late-0.6b", "base_url": "http://h:8003"}}
+    )
+    assert isinstance(root.encoder, ServedPooling) and root.encoder.base_url == "http://h:8003"
 
 
 def test_where_an_encoder_runs_is_not_part_of_what_an_index_is() -> None:

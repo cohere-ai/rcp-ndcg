@@ -743,7 +743,7 @@ class TestTheRetrieveAndRerankIdentities:
             "from": "retrieval",
             "retrieval": {
                 "kind": "late_interaction",
-                "encoder": {"api": "vllm_pooling", "model": "m", "base_url": "http://engine.test/v1", **_SERVED_BUDGET},
+                "encoder": {"api": "vllm_pooling", "model": "m", "base_url": "http://engine.test", **_SERVED_BUDGET},
             },
         }
         one, two = self._two(data, tmp_path, dense, token, "retrieve")
@@ -799,7 +799,7 @@ class TestTheRetrieveAndRerankIdentities:
                     "encoder": {
                         "api": "vllm_pooling",
                         "model": "m",
-                        "base_url": "http://engine.test/v1",
+                        "base_url": "http://engine.test",
                         **_SERVED_BUDGET,
                     },
                 },
