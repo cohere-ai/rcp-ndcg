@@ -101,9 +101,7 @@ notes: 'Generated for the stratum cell modality=text, length=long_over, batch=mi
   client-side (on_overflow: cut; content spans only, the frame and its anchor re-attached): post-cut rendered
   tokens d1 8192, d2 8192, d3 8192. The wave asserts every sent prompt is at most 8192 tokens and ends
   with the 9-token assistant suffix (ids 151645+198+151644+77091+198+151667+271+151668+271) (anchor: last).
-  This recipe declares no reference deviation over the cap (reference.known_deviations empty): for a query
-  within the 4096-token share the served cut matches the reference''s truncation byte-for-byte, so over-cap
-  pairs are gated at the declared tolerance too. Scores are probability-scale (use_activation true; the
+  This recipe declares reference.known_deviations [over_cap_cut_differs]: over the cap the reference truncates the pair string its own way while the served path cuts the query''s share first, so the two may keep different content tokens. Scores are probability-scale (use_activation true; the
   served head scores sigmoid, the reference softmax([no, yes])[yes] of token ids 2152/9693): expected.values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; the wave conformance run compares the served engine against them),
   gated at the declared abs 0.02 (the stage-2 gate for probability-scale scores: at most 0.02
   for 99% of documents, 0.05 for all). status reproduced (values filled from the reference implementation on cpu, 2026-10-12).'

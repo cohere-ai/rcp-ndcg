@@ -81,6 +81,11 @@ incompatibly, independently of the package version. All four distributions carry
   every `KJOBS=echo` run left a `rcp-submit.*` behind; the cleanup now removes the directory recursively
   after a check that it is exactly the mktemp path (never a glob, never an operator's directory), and the
   comment says what it removes.
+- **The reranker case notes name the recipe's declared deviation** (g-cases-9): the qwen3-reranker and
+  qwen3-vl-reranker long_over/mixed-lengths notes claimed 'known_deviations empty' or
+  '[anchor_drop_over_cap]' while every one of those recipes declares `over_cap_cut_differs`, and the
+  vl-reranker notes asserted non-gating the runner does not implement; the notes now name the declared
+  deviation, and a cases test holds every note that mentions `known_deviations` to the recipe's own list.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does
