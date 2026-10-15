@@ -381,9 +381,10 @@ notes: |
   The reference's load() asserts the MultiVectorEncoder surface it relies on, so a
   sentence-transformers change fails loudly.
 
-  What the wave measured (the wave has run, eleven times: rc0-202610120045 .. rc0-202610131205-record;
-  the per-token gate FAILED in every one of them -- status: failed above; the report is the wave's
-  EQUIVALENCE.md, and the probe's own report re-derives the numbers):
+  What the wave measured (the wave has run, twelve times: rc0-202610120045 .. rc0-202610131205-record,
+  plus the rc0-202610140620 re-verification; the per-token gate FAILED in every one of them -- status:
+  failed above; the report is the wave's EQUIVALENCE.md, and the probe's own report re-derives the
+  numbers):
   - Stage 1 PASSED (the render check, the engine /tokenize check and the engine prompt-tokens check:
     98 pairs / 20 sampled): the failing inputs are byte-identical on both sides, so the divergence
     has no input seed -- it is in the model's forward.

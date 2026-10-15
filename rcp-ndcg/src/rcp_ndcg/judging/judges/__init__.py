@@ -75,7 +75,7 @@ def judge_config_data(value: str | Path) -> dict[str, Any]:
         role = recipe_role(source)
         if role != "judge":
             raise ConfigError(
-                f"recipe {source!r} is a {role} recipe, not a judge recipe",
+                f"recipe {source!r} is a recipe of role {role!r}, not a judge recipe",
                 hint="a judge is role: judge with client.api: chat; the judge recipes are the ids "
                 "`rcp-ndcg-vllm serve` lists (see docs/concepts/judges.md)",
             )

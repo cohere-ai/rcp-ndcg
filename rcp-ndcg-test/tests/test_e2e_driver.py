@@ -2,7 +2,8 @@
 ``tests/runners/test_supervise.py`` stubs, in the same shape), the process-boundary probe, the ``srun``
 shim and the run-scoped judge the outage scenario kills and restarts.
 
-These are GPU-VALIDATION.md T4's "CPU tests of the driver with stub engines": the phases' engines are
+These are the T4 driver's "CPU tests of the driver with stub engines"
+(docs/how-to/validate-a-recipe.md): the phases' engines are
 bash stubs standing in for ``vllm serve`` processes (today) and for the verified fake engines'
 ``rcp_ndcg_test.engines`` emulators (when lane ``fake-engines`` lands -- the engine commands in these
 tests are the one seam that changes).  No GPU, no network.

@@ -783,7 +783,7 @@ recipe_client_data(recipe_id: str) -> dict[str, Any]
 
 ## `recipe_role`
 
-function — The role of the recipe ``recipe_id``: ``embed``, ``multi_vector`` or ``rerank``.
+function — The role of the recipe ``recipe_id``: ``embed``, ``multi_vector``, ``rerank`` or ``judge``.
 
 ```text
 recipe_role(recipe_id: str) -> str

@@ -1,4 +1,4 @@
-"""The golden replays (GPU-VALIDATION.md items 3-4): suite minis run through rcp-ndcg's full retrieval
+"""The golden replays (docs/how-to/use-verified-fake-engines.md): suite minis run through rcp-ndcg's full retrieval
 and rerank path against the emulators, their nDCG@10 and RCP-nDCG@10 pinned to 1e-9.
 
 **What the numbers are: regression pins, not independent GPU numbers.**
@@ -407,7 +407,7 @@ def test_the_vidore_retrieval_view_waiver_holds() -> None:
 
 
 def test_the_golden_replay_goes_red_when_a_rerank_score_is_perturbed(tmp_path: Path) -> None:
-    """Mutation (GPU-VALIDATION item 5): one perturbed rerank score moves the ranking and the golden
+    """Mutation (docs/how-to/release-candidates.md): one perturbed rerank score moves the ranking and the golden
     metric with it -- the golden replay catches a changed score, not only a changed order file."""
     case = "nanobeir"
     row = CASES[case]["rerank"]

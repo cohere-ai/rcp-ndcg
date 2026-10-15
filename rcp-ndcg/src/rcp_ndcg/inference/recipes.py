@@ -214,7 +214,7 @@ def recipe_source(value: str) -> str | None:
 
 
 def recipe_role(recipe_id: str) -> str:
-    """The role of the recipe ``recipe_id``: ``embed``, ``multi_vector`` or ``rerank``."""
+    """The role of the recipe ``recipe_id``: ``embed``, ``multi_vector``, ``rerank`` or ``judge``."""
     return str(_load(recipe_id).role)
 
 

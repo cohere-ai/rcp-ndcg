@@ -1,4 +1,4 @@
-"""The observed outage behaviour as a transport test (GPU-VALIDATION.md T4's offline counterpart).
+"""The observed outage behaviour as a transport test (docs/how-to/validate-a-recipe.md T4's offline counterpart).
 
 T4's outage scenario observes, on the node, that a run whose judge engine is killed **parks** and
 recovers when the engine is back, and that an outage past ``wait_on_outage_s`` fails with

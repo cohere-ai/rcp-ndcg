@@ -17,7 +17,7 @@ Public surface:
   :func:`~rcp_ndcg_test.observe.requests.write_manifest`.
 - :mod:`rcp_ndcg_test.observe.corpus` writes and accepts observation corpora in the format whose one reader is
   the product's :mod:`rcp_ndcg_test.corpus`; the corpus key is the engine version and the behaviour
-  fingerprint of :mod:`rcp_ndcg_test.fingerprint` (GPU-VALIDATION.md item 8).
+  fingerprint of :mod:`rcp_ndcg_test.fingerprint` (docs/reference/gpu-validation.md).
 - :mod:`rcp_ndcg_test.observe.provenance` (the manifest's section-4 provenance) and
   :mod:`rcp_ndcg_test.observe.controls` (the negative controls).
 """

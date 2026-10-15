@@ -52,7 +52,7 @@
   "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
  },
  "fingerprint": {
-  "fingerprint": "153f4f59a135df62292509673b5206e9a9d2fef3d149eb7888e76382b81fa73d",
+  "fingerprint": "db7a5387c4e69c70c042a728e6d392172eae0b9cee7bd8ba49e2c8ab6f97591e",
   "inputs": {
    "client.api": "openai_embeddings",
    "client.batch_size": "32",
@@ -80,7 +80,7 @@
    "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
    "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:9e5cafe3eb26b0357184158c443c60a01dffec385cc5db6b9d932e8e1499df48",
    "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:780c032d726428061f3e204d8a7cc2208a46292cfefd764104c7cc5e2eb0ed6d",
-   "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:d39dcb93cb89492f68b2524d516f04f751164bcbdbed8c0a7d2090c380d9e7c2",
+   "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:3625e08399c75147142ccba26c3e774b64a31bd8634ad28ece3f2e5ebb70ba8c",
    "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:210654602311d992ad803f90261a1d7fe97039b101d19dcf53b4217717f7505a",
    "plugin_sha256.rcp_ndcg_vllm.patches.pooling_full_context": "sha256:0de99c56e416ced8025eb8635b79804ca7d6b8a565539c86f4de2b07ec73eed8",
    "revision": "cf13c81f3274394053d166740294f7eea4586f7a",

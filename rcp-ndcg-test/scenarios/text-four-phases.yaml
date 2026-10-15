@@ -7,7 +7,7 @@
 # identical identities and outputs (see rcp_ndcg_test.e2e.run_facts for exactly what is compared; judged
 # values are compared structurally only, judgements may differ at temperature > 0).
 #
-# Judge (GPU-VALIDATION.md, "Judges for T4"): nvidia/Qwen3.8-Flash-Next-NVFP4 when vLLM v0.31.0 serves it
+# Judge (the owner's T4 choice, docs/how-to/release-candidates.md): nvidia/Qwen3.8-Flash-Next-NVFP4 when vLLM v0.31.0 serves it
 # on this node (the T0 smoke in run_scenario decides), else Qwen/Qwen3.8-Flash-Next-FP8.  The revisions
 # are the Hub commits (https://huggingface.co/api/models/<id>), checked 2026-10-07.
 id: text-four-phases

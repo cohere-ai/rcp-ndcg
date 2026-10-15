@@ -221,6 +221,15 @@ def test_the_recipe_roles_drive_the_retriever_kind() -> None:
     assert recipe_role(RECIPE_ID) == "rerank"
 
 
+def test_the_recipe_role_docstring_names_every_role_it_returns() -> None:
+    """``recipe_role`` returns four roles -- the judge role reaches it through ``judge_config_data``
+    -- and the docstring must name all four, not only the three retrieval roles."""
+    doc = recipe_role.__doc__ or ""
+    assert recipe_role("gemma-4-12b-it") == "judge"
+    for role in ("embed", "multi_vector", "rerank", "judge"):
+        assert f"``{role}``" in doc, f"recipe_role's docstring omits the {role!r} role"
+
+
 def test_a_served_wire_takes_the_recipe_and_builds() -> None:
     config = RerankEndpoint(**expand_role_recipe({"recipe": RECIPE_ID}, classes=CLASSES))
     assert config.model == RECIPE_ID

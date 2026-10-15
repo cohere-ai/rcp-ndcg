@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Wave 0: the one-job node test, run before any recipe wave (GPU-VALIDATION.md, node-runtime items).
+# Wave 0: the one-job node test, run before any recipe wave (docs/how-to/release-candidates.md,
+# "Wave 0, the node test").
 #
 #   wave0.sh <RC_STAGE_URI> <OUT_URI>
 #

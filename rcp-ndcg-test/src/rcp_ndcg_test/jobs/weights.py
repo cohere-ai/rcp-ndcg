@@ -1,4 +1,4 @@
-"""HF weight caches on the node: measure, decide, evict (GPU-VALIDATION.md node-runtime item 8).
+"""HF weight caches on the node: measure, decide, evict (docs/how-to/release-candidates.md).
 
 The pod has no persistent volume: engine weights land on the container filesystem, and a wave that
 serves several models would fill it. The wave runner measures the free disk before each recipe and

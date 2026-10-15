@@ -1,6 +1,6 @@
-"""The conformance suite: every recorded exchange replays against its emulator (GPU-VALIDATION.md
-items 2-7), staleness fails with the changed inputs named, and the registry refuses what it was not
-verified against.
+"""The conformance suite: every recorded exchange replays against its emulator
+(docs/how-to/use-verified-fake-engines.md), staleness fails with the changed inputs named, and the
+registry refuses what it was not verified against.
 
 Every corpus under ``rcp-ndcg-test/corpora/`` is loaded through the corpus seam, its emulator is built
 through ``tests._engines`` (the recipe's real tokenizer and prompt derivation), and **every recorded
@@ -249,7 +249,7 @@ def test_the_stale_declarations_name_committed_corpora_only() -> None:
 
 
 def test_staleness_names_the_changed_inputs_and_the_waiver_file_must_be_empty_at_release() -> None:
-    """The mechanism and the release rule (GPU-VALIDATION.md item 8): staleness is a failure that names
+    """The mechanism and the release rule (docs/reference/gpu-validation.md): staleness is a failure that names
     what moved; the only way past is a dated waiver, and the waiver file ships empty."""
     from rcp_ndcg_test.fingerprint import fingerprint_changes
 
@@ -365,7 +365,7 @@ def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None
 
 
 def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The extensibility seam (GPU-VALIDATION.md item 8): a private repository's emulator registers
+    """The extensibility seam (docs/reference/gpu-validation.md): a private repository's emulator registers
     through the ``rcp_ndcg.emulators`` entry-point group."""
     import importlib.metadata as metadata
 

@@ -6,7 +6,7 @@
 # The assertion is that every step record, usage count, judgement store and output is identical after the
 # rerun (rcp_ndcg_test.e2e.full_facts).
 #
-# Judge (owner, GPU-VALIDATION.md, "Judges for T4"): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
+# Judge (the owner's T4 choice, docs/how-to/release-candidates.md): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
 # commit (https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8), checked 2026-10-07.
 id: identity
 description: >

@@ -1,6 +1,7 @@
 """The negative controls (a)-(g): each provably fails the gates, through the wave, on the stub engine.
 
-GPU-VALIDATION.md item 5: every GPU check must prove it can fail -- each wave serves deliberately broken variants
+docs/how-to/release-candidates.md: every GPU check must prove it can fail -- each wave serves
+deliberately broken variants
 and requires the gates to fail them; a control that passes is a blocker.  Here every control runs through
 ``run_wave --controls`` against the stub engine, which breaks exactly as vLLM v0.31.0 breaks (it honours
 ``truncate_prompt_tokens``/``truncation_side``, ``use_activation`` and the requested ``embed_dtype``; and, as

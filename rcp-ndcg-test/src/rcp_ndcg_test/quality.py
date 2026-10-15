@@ -1,6 +1,6 @@
 """The T3 quality stage: the model through rcp-ndcg's served path and through ``mteb``, compared.
 
-GPU-VALIDATION.md T3 ("MTEB across modalities") runs every model of the task matrix (:data:`TASK_MATRIX`)
+docs/how-to/validate-a-recipe.md T3 ("MTEB across modalities") runs every model of the task matrix (:data:`TASK_MATRIX`)
 through **rcp-ndcg's own served path** -- ``rcp-ndcg retrieval index`` + ``search`` (embedders, the retrieval
 view) or ``retrieval rerank`` over the suite's released pools (rerankers, the reranking view), then
 ``rcp-ndcg eval score`` -- and, on the same tasks, through the reference implementation: ``mteb`` with the
@@ -127,8 +127,9 @@ TASK_MATRIX: tuple[dict[str, Any], ...] = (
         "suites": ["nanobeir", "bright"],
     },
 )
-"""GPU-VALIDATION.md's T3 task matrix as data: per family, the view and the suites (every subset of each, at the
-generator's pinned dataset commits).  The private recipes run the same suites in their own repository."""
+"""The T3 task matrix of docs/how-to/validate-a-recipe.md as data: per family, the view and the suites
+(every subset of each, at the generator's pinned dataset commits).  The private recipes run the same
+suites in their own repository."""
 
 SEARCH_DEPTH = 100
 """Documents retrieved per query in the retrieval view (nDCG@10 reads the top 10)."""
