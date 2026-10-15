@@ -128,6 +128,48 @@ def test_a_refused_secret_is_never_echoed() -> None:
     assert "pw-SECRET" not in json.dumps(caught.value.to_dict())
 
 
+def test_a_secret_under_an_env_or_in_a_command_is_never_echoed() -> None:
+    """The redactor's own rule: every value under an ``env`` mapping is a credential by convention, whatever
+    its name, and a credential flag's value in a ``command`` is one too. The final review reproduced both
+    leaking: a model-level error dumps the whole config (``env.MYVAR``'s value included), the refusal of a
+    key-bearing env value echoes the mapping, and the serve command's refusal echoes its argv."""
+    with pytest.raises(ConfigError) as caught:
+        RunConfig.from_data(
+            {"dataset": {"uri": "x"}, "runner": {"name": "local", "options": {"env": {"MYVAR": "hunter2"}}}}
+        )
+    assert "hunter2" not in json.dumps(caught.value.to_dict())
+
+    with pytest.raises(ConfigError) as caught:
+        RunConfig.from_data(
+            {
+                "dataset": {"uri": "x"},
+                "runner": {"name": "local", "options": {"env": {"AZURE_CONN": "AccountKey=SECRETKEYVALUE"}}},
+            }
+        )
+    assert "SECRETKEYVALUE" not in json.dumps(caught.value.to_dict())
+
+    base = {
+        "dataset": {"uri": "x"},
+        "candidates": {
+            "from": "retrieval",
+            "retrieval": {
+                "kind": "dense",
+                "encoder": {"api": "openai_embeddings", "model": "e", "tokenizer": "t", "max_tokens": 512},
+            },
+        },
+        "steps": ["retrieve"],
+    }
+    for command in (
+        ["vllm", "serve", "e", "--api-key=sk-live-XYZ"],
+        ["vllm", "serve", "e", "--api-key", "sk-live-XYZ"],
+        "vllm serve e --hf-token=sk-live-XYZ",
+    ):
+        data = dict(base, serve={"encoder": {"image": "registry.example.com/vllm-openai:v1", "command": command}})
+        with pytest.raises(ConfigError) as caught:
+            RunConfig.from_data(data)
+        assert "sk-live-XYZ" not in json.dumps(caught.value.to_dict()), command
+
+
 def test_a_control_character_refusal_names_the_character_not_the_value() -> None:
     """A mirror URI can carry a presigned signature; the refusal names the character and its position, so
     the value (signature included) does not ride out in the message."""
