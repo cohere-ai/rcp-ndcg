@@ -135,6 +135,17 @@ incompatibly, independently of the package version. All four distributions carry
   following `eval score --suite nanobeir` carried no `--subset`, so the other twelve subsets would have
   scored 0 and the headline mean come out about 1/13 of the subset's value. A docs test now checks every
   documented `--subset` against `rcp_ndcg.data.SUITES` and requires a following `eval score` to carry it.
+- **Two corpora are declared stale for re-recording after the merged plugin-module edits** (F6): the
+  behaviour fingerprint keys the source of every plugin module a recipe's engine runs, and the merged tree's
+  plugin-module edits (the embeddinggemma-2 config hook's licence header and the pplx/topk config hooks'
+  sub-config casts) moved those hashes for every plugin recipe. The recorded corpora of
+  `jina-embeddings-v5-text-small` and `zembed-1-embedding` no longer carry their recipes' current
+  fingerprints, so `tests/conformance/stale.json` declares both with their recorded fingerprints and the
+  three moved inputs (`plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config`,
+  `plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config`,
+  `plugin_sha256.rcp_ndcg_vllm.models.topk.config`): the replays skip them, and each declaration must fail
+  the staleness gate naming exactly those inputs. This is the pre-release state: the GPU re-recording wave
+  empties the list before the tag (`RCP_NDCG_RELEASE=1` enforces it).
 
 ## 0.0.1 — 2026-10-14
 
