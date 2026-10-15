@@ -19,7 +19,7 @@ BOOTSTRAP_SH = JOBS / "bootstrap.sh"
 
 PINNED_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
 
-_SHELL_TOOLS = ("bash", "mkdir", "mktemp", "rm", "date", "wc", "tail")
+_SHELL_TOOLS = ("bash", "mkdir", "mktemp", "rm", "date", "wc", "tail", "grep")
 """The system tools wave0.sh and the scripts it calls run up to the bootstrap's expected failure; nothing else
 of the machine is on the test's PATH. The scripts' own Cloud SDK search (``gcs_sdk_on_path``, which puts an
 SDK bin directory such as ``/usr/lib/google-cloud-sdk/bin`` first on PATH) is a second way in, closed by

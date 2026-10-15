@@ -40,6 +40,13 @@
           "title": "Client Budget Wired",
           "type": "boolean"
         },
+        "client_cut_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Client Cut Ids",
+          "type": "array"
+        },
         "client": {
           "additionalProperties": true,
           "title": "Client",
@@ -61,6 +68,7 @@
         "n_over_length",
         "cuts_recorded",
         "client_budget_wired",
+        "client_cut_ids",
         "client",
         "tokenize_check",
         "passed"

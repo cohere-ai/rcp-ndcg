@@ -214,6 +214,49 @@ def test_embed_check_fits_embeds_and_tokenizes(tmp_path: Path) -> None:
     assert len(over) == 5 and all(row["cut"] and row["fit_tokens"] <= 128 for row in over)
 
 
+def test_embed_check_fails_when_the_client_did_not_fit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """g-rcjobs-11: ``client_budget_wired`` must be derived from the client's own per-row
+    ``ProcessingRecord``s, never hard-coded: a client that stops fitting sends the raw over-budget inputs
+    and leaves no ``budget_cut`` record, so the wave must fail instead of reporting the property it never
+    measured."""
+    import argparse
+    import types
+
+    import numpy as np
+
+    from rcp_ndcg_test.jobs import wave0_probe
+
+    port = _free_port()
+    engine = subprocess.Popen(
+        [PY, str(STUB), "--port", str(port), "--tokenizer", str(TOKENIZER)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+
+        class UnfittedClient:
+            processing: list = []
+
+            def encode(self, contents, role, **kwargs):  # noqa: ARG002
+                return types.SimpleNamespace(as_matrix=lambda: np.ones((len(contents), 4), dtype="float32"))
+
+        monkeypatch.setattr("rcp_ndcg.inference.EmbeddingClient", lambda endpoint: UnfittedClient())  # noqa: ARG005
+        args = argparse.Namespace(
+            base_url=f"http://127.0.0.1:{port}",
+            served_model_name="fixture",
+            tokenizer=str(TOKENIZER),
+            budget=128,
+            count=20,
+            over=5,
+        )
+        fragment = wave0_probe._embed(args, tmp_path / "embed.json")
+    finally:
+        engine.terminate()
+        engine.wait(timeout=10)
+    assert fragment["client_budget_wired"] is False
+    assert fragment["passed"] is False
+
+
 # --- the eviction probe (f) on a fake cache ---------------------------------------------------------------
 
 
@@ -434,6 +477,7 @@ def _full_report(tmp_path: Path) -> Path:
             "cuts_recorded": 5,
             "overhead_tokens": 1,
             "client_budget_wired": True,
+            "client_cut_ids": ["15", "16", "17", "18", "19"],
             "client": {"n_vectors": 20, "dim": 1024, "finite": True},
             "tokenize_check": {
                 "checked": 20,
