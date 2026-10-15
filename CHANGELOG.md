@@ -4314,6 +4314,13 @@ text it sends to the declared budget.
   procedure is in [use verified fake engines](docs/how-to/use-verified-fake-engines.md), and
   `test_no_committed_corpus_names_private_infrastructure` holds the committed bytes to it.
 
+- **The paper's three zerank reranker configs name the served model**: `model` is the
+  `--served-model-name`, and `rcp-ndcg-vllm serve <id>` hard-codes it to the recipe id
+  (`zerank-1-reranker`, `zerank-1-small-reranker`, `zerank-2-reranker`), not the short Hub redirect
+  (`zerank-1`, `zerank-1-small`, `zerank-2`). Every `/rerank` call to the recipe's own serve path
+  previously 404ed with vLLM's "model does not exist"; the configs' budgets and copied blocks are
+  unchanged.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0

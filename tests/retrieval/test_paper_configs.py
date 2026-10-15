@@ -8,6 +8,7 @@ mechanism wires the cut, so a config that declares it is validated as a config a
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,26 @@ def test_each_served_paper_reranker_names_its_recipe_tokenizer_and_budgets(path:
     assert "@" in (config.tokenizer or ""), f"{path.name}: tokenizer declared"
     assert config.max_tokens == 8192 and config.query_max_tokens == 4096
     assert config.instruction == "none", "the release's in-process path passed the bare query"
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted((PAPER / "rerankers").glob("*.yaml")),
+    ids=lambda path: path.name,
+)
+def test_each_served_paper_reranker_names_the_recipe_its_header_points_at(path: Path) -> None:
+    """A config without a ``recipe:`` pointer copies the served name: ``model`` is the
+    ``--served-model-name``, and ``rcp-ndcg-vllm serve <id>`` hard-codes it to the recipe id
+    (``zerank-1-reranker``, not the short Hub redirect ``zerank-1``). The header comment names the
+    recipe; a config that keeps the pointer takes the recipe's whole client block and copies nothing."""
+    text = path.read_text(encoding="utf-8")
+    match = re.search(r"Served by recipe `([^`]+)`", text)
+    if match is None:
+        return  # a hosted vendor config: no recipe, no served engine
+    data = yaml.safe_load(text)
+    if data.get("recipe") is not None:
+        return  # the mapping form resolves the recipe's own block
+    assert data["model"] == match.group(1), f"{path.name}: model {data['model']!r} is not the served name"
 
 
 def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> None:
