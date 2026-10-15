@@ -349,11 +349,19 @@ class Calibration:
     # ------------------------------------------------------------------
 
     def save(self, directory: str | Path) -> Path:
-        """Write the calibration layout (module docstring) into ``directory``; return it."""
+        """Write the calibration layout (module docstring) into ``directory``; return it.
+
+        Every payload is built and validated first (all JSON with ``allow_nan=False``), and the layout is
+        written into a temporary sibling directory that is swapped in as a whole: a crash or a mid-save
+        refusal leaves the previous calibration intact instead of a mixed one that loads cleanly.
+        """
+        import shutil
+        import tempfile
+
         import pandas as pd
 
         out = Path(directory)
-        out.mkdir(parents=True, exist_ok=True)
+        out.parent.mkdir(parents=True, exist_ok=True)
         items = CalibrationItems(
             mode=self.mode,
             criteria=list(self.items.criteria),
@@ -363,21 +371,36 @@ class Calibration:
             families=dict(sorted(self.families.items())),
             fingerprint=self.fingerprint,
         )
-        _write_json(out / ITEMS_FILE, items.model_dump(mode="json"))
         queries = [
             {"dataset": split_namespace(key)[0], "query_id": split_namespace(key)[1], "tau": q.tau, "alpha": q.alpha}
             for key, q in sorted(self.queries.items())
         ]
-        pd.DataFrame(queries, columns=["dataset", "query_id", "tau", "alpha"]).to_parquet(
-            out / QUERIES_FILE, index=False
-        )
-        self.to_pandas().to_parquet(out / THETAS_FILE, index=False)
-        _write_json(out / COVERAGE_FILE, self.coverage.model_dump(mode="json"))
-        _write_json(out / DIAGNOSTICS_FILE, self.diagnostics.model_dump(mode="json"))
-        _write_json(out / IDENTITY_FILE, self.identity.model_dump(mode="json"))
-        (out / EXTENSIONS_FILE).write_text(
-            "".join(record.model_dump_json() + "\n" for record in self.extensions), encoding="utf-8"
-        )
+        json_payloads: list[tuple[str, Any]] = [
+            (ITEMS_FILE, items.model_dump(mode="json")),
+            (COVERAGE_FILE, self.coverage.model_dump(mode="json")),
+            (DIAGNOSTICS_FILE, self.diagnostics.model_dump(mode="json")),
+            (IDENTITY_FILE, self.identity.model_dump(mode="json")),
+        ]
+        # Serialise every JSON payload before writing anything: a non-finite number refuses the save while the
+        # previous calibration is still in place (the write below only repeats the serialisation).
+        for name, payload in json_payloads:
+            _json_text(name, payload)
+        frames = {
+            QUERIES_FILE: pd.DataFrame(queries, columns=["dataset", "query_id", "tau", "alpha"]),
+            THETAS_FILE: self.to_pandas(),
+        }
+        extensions = "".join(record.model_dump_json() + "\n" for record in self.extensions)
+        staging = Path(tempfile.mkdtemp(prefix=f".{out.name}.", dir=out.parent))
+        try:
+            for name, payload in json_payloads:
+                _write_json(staging / name, payload)
+            for name, frame in frames.items():
+                frame.to_parquet(staging / name, index=False)
+            (staging / EXTENSIONS_FILE).write_text(extensions, encoding="utf-8")
+            _swap_in(staging, out)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
         return out
 
     @classmethod
@@ -503,15 +526,42 @@ def _theta_row(path: Path, row: Mapping[str, Any]) -> ThetaRow:
     return ThetaRow(str(row["dataset"]), str(row["query_id"]), str(row["doc_id"]), theta, se, cast("Source", source))
 
 
-def _write_json(path: Path, payload: Any) -> None:
+def _json_text(name: str, payload: Any) -> str:
+    """``payload`` as the JSON text of one calibration file, refusing a value JSON cannot carry."""
     try:
-        text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
+        return json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
     except ValueError as exc:
         raise DataError(
-            f"{path.name} would hold a value JSON cannot carry: {exc}",
+            f"{name} would hold a value JSON cannot carry: {exc}",
             hint="a non-finite number (NaN or infinity) reached the artifact; check the fit's diagnostics",
         ) from exc
-    path.write_text(text + "\n", encoding="utf-8")
+
+
+def _write_json(path: Path, payload: Any) -> None:
+    path.write_text(_json_text(path.name, payload) + "\n", encoding="utf-8")
+
+
+def _swap_in(staging: Path, out: Path) -> None:
+    """Replace the calibration directory ``out`` with ``staging`` in two renames, never a partial layout.
+
+    A crash between the renames leaves either the previous calibration or none at all, never a mix; the
+    staging directory is removed only after the new layout is in place.
+    """
+    import os
+    import shutil
+    from uuid import uuid4
+
+    if not out.exists():
+        os.replace(staging, out)
+        return
+    previous = out.with_name(f".{out.name}.previous-{uuid4().hex[:8]}")
+    os.replace(out, previous)
+    try:
+        os.replace(staging, out)
+    except BaseException:
+        os.replace(previous, out)  # put the previous calibration back
+        raise
+    shutil.rmtree(previous, ignore_errors=True)
 
 
 def _read_json(path: Path) -> dict[str, Any]:

@@ -19,7 +19,7 @@ ResolvedRevision(repo_id: str, commit: str | None)
 
 ## `dataset_content_digest`
 
-function — ``{name: digest}`` of the local files a dataset URI's reader reads (empty for a remote or unreadable one).
+function — ``{name: digest}`` of the files a dataset URI's reader reads (empty for a source with a resolved commit).
 
 ```text
 dataset_content_digest(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]
