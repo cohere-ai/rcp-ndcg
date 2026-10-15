@@ -312,3 +312,18 @@ def test_the_reference_environment_installs_flash_attn_after_torch() -> None:
 
     instructions = (reference / "requirements.txt").read_text(encoding="utf-8")
     assert "pip install --no-build-isolation -r requirements-flash-attn.txt" in instructions
+
+
+def test_the_reranker_readme_does_not_claim_every_config_names_a_recipe() -> None:
+    """Seven of the ten served configs keep explicit fields instead of a ``recipe:`` pointer (their content
+    deliberately differs from the recipe's serving path), so the README may not claim every config names one."""
+    rerankers = ROOT / "experiments" / "paper" / "rerankers"
+    readme = re.sub(r"\s+", " ", (rerankers / "README.md").read_text(encoding="utf-8"))
+    if "Each config names the recipe that serves it" in readme:
+        served = [
+            path
+            for path in sorted(rerankers.glob("*.yaml"))
+            if re.search(r"^api: rerank\b", path.read_text(encoding="utf-8"), re.M)
+        ]
+        missing = [path.name for path in served if not re.search(r"^recipe:", path.read_text(encoding="utf-8"), re.M)]
+        assert not missing, f"the README claims every served config names a recipe; these do not: {missing}"
