@@ -161,9 +161,7 @@ def test_the_over_cap_rule_masks_cells_in_the_ranking_and_spearman_comparators()
 
     spearman = load_case(CASES / "fake-rerank" / "short-single.yaml")
     spearman = spearman.model_copy(
-        update={
-            "expected": spearman.expected.model_copy(update={"tolerance": CaseTolerance(spearman_min=0.9)})
-        }
+        update={"expected": spearman.expected.model_copy(update={"tolerance": CaseTolerance(spearman_min=0.9)})}
     )
     expected = np.asarray(spearman.expected.values, dtype=np.float64)
     one_masked = np.zeros(expected.shape, dtype=bool)
