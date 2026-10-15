@@ -592,8 +592,9 @@ def test_a_rerank_document_is_echoed_as_the_engine_echoes_it() -> None:
 
 def test_a_rerank_reply_is_compared_by_document_identity() -> None:
     """A rerank reply is compared by document identity: a near-tie rank flip within the measured tolerance
-    is not a body drift (the recorded qwen3-reranker-8b case), while a missing document or a score outside
-    the tolerance still refuses."""
+    is not a body drift (the recorded qwen3-reranker-8b case, whose re-derived corpus tolerance is abs
+    0.1640625 / rel 0.6847826086956521), while a missing document or a score outside the tolerance still
+    refuses."""
     from rcp_ndcg_test.engines import Exchange
 
     def reply(scores: list[tuple[int, float]]) -> dict:
@@ -606,17 +607,18 @@ def test_a_rerank_reply_is_compared_by_document_identity() -> None:
             ],
         }
 
+    tolerance = (0.1640625, 0.6847826086956521)  # qwen3-reranker-8b's re-derived corpus tolerance
     recorded = Exchange(0, "POST", "/rerank", {}, 200, {}, reply([(1, 0.542969), (2, 0.542969)]))
     flipped = reply([(2, 0.550781), (1, 0.535156)])
-    assert compare_exchange(recorded, httpx.Response(200, json=flipped), (3.0, 1.5)) == []
+    assert compare_exchange(recorded, httpx.Response(200, json=flipped), tolerance) == []
     missing = reply([(1, 0.542969)])
     assert any(
         "document indices" in problem
-        for problem in compare_exchange(recorded, httpx.Response(200, json=missing), (3.0, 1.5))
+        for problem in compare_exchange(recorded, httpx.Response(200, json=missing), tolerance)
     )
     moved = reply([(1, 5.0), (2, 0.542969)])
     assert any(
-        ".results[1]" in problem for problem in compare_exchange(recorded, httpx.Response(200, json=moved), (3.0, 1.5))
+        ".results[1]" in problem for problem in compare_exchange(recorded, httpx.Response(200, json=moved), tolerance)
     )
 
 

@@ -327,8 +327,8 @@
         ],
         "order": "reversed"
       },
-      "max_abs_diff": 1.0,
-      "max_rel_diff": 0.5,
+      "max_abs_diff": 0.01171875,
+      "max_rel_diff": 0.01775147928994083,
       "min_cosine": null,
       "statuses_differ": false,
       "bodies_differ": true
@@ -959,8 +959,8 @@
           0
         ]
       },
-      "max_abs_diff": 1.0,
-      "max_rel_diff": 0.5,
+      "max_abs_diff": 0.0546875,
+      "max_rel_diff": 0.22826086956521738,
       "min_cosine": null,
       "statuses_differ": false,
       "bodies_differ": true
@@ -2925,8 +2925,8 @@
     }
   },
   "summary": {
-    "max_abs_diff": 1.0,
-    "max_rel_diff": 0.5,
+    "max_abs_diff": 0.0546875,
+    "max_rel_diff": 0.22826086956521738,
     "min_cosine": null
   },
   "derived": {
@@ -2935,7 +2935,7 @@
     "repeated_requests": 113,
     "statuses_differ": true,
     "bodies_differ": true,
-    "abs_tolerance": 3.0,
-    "rel_tolerance": 1.5
+    "abs_tolerance": 0.1640625,
+    "rel_tolerance": 0.6847826086956521
   }
 }
