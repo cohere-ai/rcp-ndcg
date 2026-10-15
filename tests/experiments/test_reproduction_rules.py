@@ -288,3 +288,27 @@ def test_the_data_directory_knob_is_the_environment_variable(experiment, monkeyp
     readme = (ROOT / "experiments" / "README.md").read_text(encoding="utf-8")
     assert "`RCP_EXPERIMENTS_DATA` or `fetch_data.py --data-dir` moves the data directory" not in readme
     assert "`RCP_EXPERIMENTS_DATA` moves the data directory for the checks" in readme
+
+
+def test_the_reference_environment_installs_flash_attn_after_torch() -> None:
+    """flash-attn's sdist imports torch in its ``setup.py``; pip's build isolation hides the torch
+    already listed in the same file, so a one-shot install failed with ``ModuleNotFoundError: torch``.
+
+    The paper-exact reference environment installs torch first, then flash-attn with
+    ``--no-build-isolation`` from its own requirements file.
+    """
+    reference = ROOT / "experiments" / "paper" / "rerankers" / "reference"
+    files = sorted(reference.glob("requirements*.txt"))
+    assert files, "the reference environment's requirements files are there"
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        packages = {
+            line.split("==")[0].split(">=")[0].split(";")[0].strip()
+            for line in text.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+        if "flash-attn" in packages:
+            assert "torch" not in packages, f"{path.name} installs flash-attn beside torch in one pip run"
+
+    instructions = (reference / "requirements.txt").read_text(encoding="utf-8")
+    assert "pip install --no-build-isolation -r requirements-flash-attn.txt" in instructions
