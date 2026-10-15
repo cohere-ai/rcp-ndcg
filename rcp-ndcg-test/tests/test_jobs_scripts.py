@@ -674,7 +674,8 @@ def test_bootstrap_wave_command_adds_record_corpus_only_when_asked(tmp_path: Pat
                 "bash",
                 "-c",
                 f'source "{BOOTSTRAP}" && STATE="{state}" OUT_URI="gs://YOUR-BUCKET/waves/wave-a" '
-                f'STAGE_DIR="{stage}" wave_command "{wave_list}" "{stage}/recipes" 8',
+                f'STAGE_DIR="{stage}" RC_NAME="rc0" RC_COMMIT="abc123" MANIFEST_SHA256="{"a" * 64}" '
+                f'wave_command "{wave_list}" "{stage}/recipes" 8',
             ],
             capture_output=True,
             text=True,
@@ -699,12 +700,19 @@ def test_bootstrap_wave_command_adds_record_corpus_only_when_asked(tmp_path: Pat
         f"{state}/plugin-failures.txt",
         "--reference-root",
         f"{state}/reference",
+        # The tested RC's identity every wave document records (g-rcjobs-7 / decision 16).
+        "--rc-name",
+        "rc0",
+        "--rc-commit",
+        "abc123",
+        "--rc-manifest-sha256",
+        "a" * 64,
         "--pairs-dir",
         f"{stage}/pairs",
     ]
     assert wave_command(None) == base
     assert wave_command("0") == base  # only 1 turns the recording on
-    assert wave_command("1") == base[:15] + ["--record-corpus"] + base[15:]
+    assert wave_command("1") == base[:21] + ["--record-corpus"] + base[21:]
 
 
 def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
@@ -798,7 +806,15 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         )
     ]
     (stage / "manifest.json").write_text(
-        json.dumps({"version": "0.0.1", "commit": "scratch", "files": files, "cpu_inert_wheels": []}),
+        json.dumps(
+            {
+                "rc_name": "rc0",
+                "version": "0.0.1",
+                "commit": "abc123",
+                "files": files,
+                "cpu_inert_wheels": [],
+            }
+        ),
         encoding="utf-8",
     )
     env = {
@@ -821,7 +837,15 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "unbound variable" not in completed.stderr
     report = json.loads((state / "bootstrap.json").read_text(encoding="utf-8"))
-    assert set(report) >= {"engine", "client", "reference"}
+    assert set(report) >= {"engine", "client", "reference", "rc"}
+    # g-rcjobs-7 / decision 16: the report records which RC (name, commit, version, manifest sha256)
+    # the environments were built from, so two RCs built from different commits never look alike.
+    assert report["rc"] == {
+        "name": "rc0",
+        "commit": "abc123",
+        "version": "0.0.1",
+        "manifest_sha256": hashlib.sha256((stage / "manifest.json").read_bytes()).hexdigest(),
+    }
     reference = report["reference"]
     assert reference["n_families"] == 1
     assert "demo" in reference["families"]

@@ -40,7 +40,7 @@ notes: 'Long text built deterministically: 900 paragraph blocks, each ''Entry NN
   tokens (fixed prefix 9 + content + suffix 2). Second document: 1000 blocks, rendered 44440 tokens. A
   uniform batch over the 32768-token cap (over by 7227 and 11672): the client cuts each content span independently
   and re-attaches the fixed frame, so every pooled final-token anchor survives (recipe client.template
-  anchor: last, on_overflow: cut); the reference applies the same anchor-preserving cut (recipe note 5).
+  anchor: last, on_overflow: cut); the reference does NOT apply that cut: over-cap it right-cuts the whole prompt and drops the pooled suffix anchor (recipe note 5, reference.known_deviations [anchor_drop_over_cap]), so the over-cap cells are reported, not compared (stage 2''s report-not-compare rule, decision 10).
   The engine must never see an over-length request (vLLM would 400). Tolerance: bf16 serve (recipe dtype)
   vs bf16 sentence-transformers reference; expected cosine deviation ~1e-3 (research r-zembed1), headroom
-  to 2e-3. Values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; the wave conformance run compares the served engine against them).'
+  to 2e-3. Values are the outputs of the reference implementation itself for these inputs (filled on cpu before the wave; every cell of this case is over-cap, so the conformance runner reports them rather than comparing them -- decision 10/g-cases-1).'

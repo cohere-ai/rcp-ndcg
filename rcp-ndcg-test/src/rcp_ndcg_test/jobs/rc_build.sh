@@ -165,10 +165,10 @@ stage_tree() {
 
 # check_pins SRC VERSION: the release checks, one home in .github/scripts/check_release.py -- the four
 # manifests, CITATION.cff, the core pin (every scope, read with tomllib, never by matching TOML text) and
-# decision 18's vllm rule: the lean package names NO workspace sibling.
+# decision 18/15's vllm rule: the lean package names NO workspace sibling (the tag pipeline refuses it too).
 check_pins() {
   local src="$1" version="$2"
-  python3 "$src/.github/scripts/check_release.py" "$version" --root "$src" --refuse-vllm-sibling
+  python3 "$src/.github/scripts/check_release.py" "$version" --root "$src"
 }
 
 # refuse_existing_stage: the stage name must be fresh.  A recursive copy into an existing prefix merges

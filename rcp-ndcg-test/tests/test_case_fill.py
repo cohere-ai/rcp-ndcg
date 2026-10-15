@@ -474,7 +474,9 @@ def test_a_media_case_is_no_longer_skipped_and_a_kind_none_case_still_is(tmp_pat
 
     filled = load_case(cases_root / "qwen3-vl-reranker-2b" / "gen-image-short-single.yaml")
     assert filled.expected.status == "reproduced" and filled.expected.values == [[0.25]]
-    assert filled.expected.tolerance is not None and filled.expected.tolerance.abs == 0.01
+    # the case's own tolerance is carried through unchanged: the recipe's measured stage-2 bound
+    # (g-cases-3) is 0.035, not the previous 0.01.
+    assert filled.expected.tolerance is not None and filled.expected.tolerance.abs == 0.035
     # the note's own pending sentence is retired where it stood (the case's "GPU wave fills values;")
     assert "the outputs of the reference implementation itself for these inputs" in filled.notes
     assert "(filled on cpu before the wave" in filled.notes

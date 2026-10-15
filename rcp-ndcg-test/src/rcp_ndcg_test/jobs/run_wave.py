@@ -239,6 +239,9 @@ def run_wave(
     port_base: int = 8100,
     failed_plugins: Iterable[str] = (),
     plugin_wheel: str | Path | None = None,
+    rc_name: str | None = None,
+    rc_commit: str | None = None,
+    rc_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Run one wave: every recipe on the node's GPUs, as parallel as the GPUs allow.
 
@@ -449,6 +452,9 @@ def run_wave(
         skipped_unchanged=skipped_unchanged,
         change_verdict=change_verdict,
         previous_index=previous_index,
+        rc_name=rc_name,
+        rc_commit=rc_commit,
+        rc_manifest_sha256=rc_manifest_sha256,
     )
     upload_failures = {
         recipe_id: row["upload"]
@@ -2086,13 +2092,19 @@ def _wave_document(
     skipped_unchanged: tuple[str, ...] | list[str] = (),
     change_verdict: dict[str, Any] | None = None,
     previous_index: dict[str, Any] | None = None,
+    rc_name: str | None = None,
+    rc_commit: str | None = None,
+    rc_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     """The wave summary: one row per recipe, the corpus keys (the recorded recipes' fingerprints and the
-    probed engine versions of recorded corpora), the verdict.
+    probed engine versions of recorded corpora), the tested RC's identity and the verdict.
 
     The verdict is ``passed`` only when at least one recipe ran and every one verified; ``skipped`` when the
     wave ran nothing because ``--changed-since`` skipped every recipe (it verified nothing, so it is never a
-    PASS); ``failed`` otherwise.  ``passed`` is ``verdict == "passed"``.
+    PASS); ``failed`` otherwise.  ``passed`` is ``verdict == "passed"``.  ``rc`` records the staged RC the
+    wave ran against (name, commit, manifest sha256; g-rcjobs-7 / decision 16): the version strings are the
+    same for every RC, so without it two RCs built from different commits produce indistinguishable
+    documents.
     """
     rows = [results[recipe_id] for recipe_id in sorted(results)]
     # The index is the --changed-since key: a recipe whose observation-corpus step did not PASS has no
@@ -2124,6 +2136,7 @@ def _wave_document(
     verdict = "passed" if verified else ("skipped" if skipped else "failed")
     return {
         "gpus": gpus,
+        "rc": {"name": rc_name, "commit": rc_commit, "manifest_sha256": rc_manifest_sha256},
         "recipes": rows,
         "skipped_unchanged": list(skipped_unchanged),
         "changes": (change_verdict or {}).get("changes", {}),
@@ -2160,6 +2173,13 @@ def _wave_markdown(document: dict[str, Any]) -> str:
     if not document["recipes"] and document.get("skipped_unchanged"):
         lines.append("")
         lines.append(f"- skipped (unchanged): {', '.join(document['skipped_unchanged'])}")
+    rc = document.get("rc") or {}
+    if rc.get("name") or rc.get("commit"):
+        lines.append("")
+        lines.append(
+            f"- tested RC: {rc.get('name') or '-'} at commit {rc.get('commit') or '-'} "
+            f"(manifest sha256 {rc.get('manifest_sha256') or '-'})"
+        )
     for recipe_id, blockers in sorted((document.get("control_blockers") or {}).items()):
         for blocker in blockers:
             lines.append(f"\n- BLOCKER {recipe_id} control {blocker['control']} {blocker['name']}: {blocker['reason']}")
@@ -2258,6 +2278,22 @@ def main(argv: list[str] | None = None) -> int:
         "against the behaviour fingerprint's plugin inputs and refuses to record when they differ "
         "(the bootstrap passes the staged rcp_ndcg_vllm wheel)",
     )
+    parser.add_argument(
+        "--rc-name",
+        default=None,
+        help="the staged RC's name; recorded with its commit and manifest sha256 in wave.json/WAVE.md "
+        "(decision 16; the bootstrap passes the manifest's fields)",
+    )
+    parser.add_argument(
+        "--rc-commit",
+        default=None,
+        help="the staged RC's commit; the release check compares it with the tag's commit (decision 16)",
+    )
+    parser.add_argument(
+        "--rc-manifest-sha256",
+        default=None,
+        help="the staged RC manifest.json's sha256, recorded beside the name and commit (decision 16)",
+    )
     args = parser.parse_args(argv)
     try:
         ids = parse_ids(args.recipes)
@@ -2282,6 +2318,9 @@ def main(argv: list[str] | None = None) -> int:
             port_base=args.port_base,
             failed_plugins=failed_plugins,
             plugin_wheel=args.plugin_wheel,
+            rc_name=args.rc_name,
+            rc_commit=args.rc_commit,
+            rc_manifest_sha256=args.rc_manifest_sha256,
         )
     except (HarnessError, RecipeError) as error:
         print(f"error: {error}", file=sys.stderr)

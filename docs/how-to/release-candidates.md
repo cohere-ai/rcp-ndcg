@@ -164,7 +164,26 @@ left `pending_gpu`, the recipe's other cases still filling).
 - **The judge item of the release checklist** is its own job: `submit.sh --script judgecheck` (below).
 
 A recipe's `status` flips to `verified` only from a wave whose document records the gates it needs; the
-wave document's `recipes[].steps` names exactly which ran in that job.
+wave document's `recipes[].steps` names exactly which ran in that job. The document also records the tested
+RC (`rc.name`, `rc.commit`, `rc.manifest_sha256`) — every RC carries version `0.0.1`, so
+without it two RCs built from different commits would produce indistinguishable evidence.
+
+## Tagging the release
+
+The tag's commit must equal the tested RC's commit: the tag pipeline rebuilds from the tag, so
+a tag on another commit would publish bytes no GPU node ever saw. The shared release check takes the wave
+documents whose evidence flipped the statuses and compares their recorded `rc.commit` with the tag commit:
+
+```bash
+git fetch --tags origin
+python .github/scripts/check_release.py 0.0.1 --commit "$(git rev-parse v0.0.1)" \
+  --wave /path/to/waves/wave-a/wave.json --wave /path/to/waves/wave-b/wave.json
+```
+
+A mismatch is refused naming both commits, and a wave document without the `rc` record is refused too (it
+predates the recording and cannot tie the tag to the tested RC). `release.yml` runs the same check on a
+`workflow_dispatch` of the tag with the `rc_wave` input, so the checklist can enforce it in the tag pipeline
+itself.
 
 ## Submitting the waves
 

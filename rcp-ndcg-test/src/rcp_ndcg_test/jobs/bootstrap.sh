@@ -136,6 +136,7 @@ wave_command() {
     --recipes "@$wave_list" --recipes-root "$recipes_root" --gpus "$gpus"
     --out "$STATE/wave" --upload "$OUT_URI" --record
     --failed-plugins "$STATE/plugin-failures.txt" --reference-root "$STATE/reference"
+    --rc-name "$RC_NAME" --rc-commit "$RC_COMMIT" --rc-manifest-sha256 "$MANIFEST_SHA256"
   )
   if [[ -n "${RCP_REFERENCE_STORE:-}" ]]; then
     # A previous wave's downloaded reference store: the wave computes only the missing/stale outputs.
@@ -534,7 +535,23 @@ ENVS_START="$(now_s)"
 VERSION="$(manifest_field version)"
 [[ -n "$VERSION" ]] || { echo "bootstrap: the manifest carries no version" >&2; exit 1; }
 validate_version "$VERSION" || exit 1
-echo "bootstrap: staged RC version $VERSION (commit $(manifest_field commit))" >&2
+# The RC identity every wave document records (g-rcjobs-7 / decision 16): the manifest's name and commit,
+# the version, and the manifest's own SHA-256.  A legacy manifest without rc_name falls back to the stage's
+# own directory name; the commit is read with a default so an old manifest cannot abort the bootstrap.
+RC_NAME="$(python3 - "$STAGE_DIR/manifest.json" "$STAGE_DIR" <<'PY'
+import json, sys
+from pathlib import Path
+manifest = json.load(open(sys.argv[1]))
+print(manifest.get("rc_name") or Path(sys.argv[2]).name)
+PY
+)"
+RC_COMMIT="$(python3 - "$STAGE_DIR/manifest.json" <<'PY'
+import json, sys
+print(json.load(open(sys.argv[1])).get("commit") or "")
+PY
+)"
+MANIFEST_SHA256="$(sha256sum "$STAGE_DIR/manifest.json" | cut -d' ' -f1)"
+echo "bootstrap: staged RC $RC_NAME version $VERSION (commit $RC_COMMIT, manifest $MANIFEST_SHA256)" >&2
 
 # The staged files must hash to the manifest (a tampered or partial stage never installs).
 echo "bootstrap: verifying the staged files against the manifest" >&2
@@ -847,6 +864,15 @@ echo "bootstrap: $(( $(python3 -c 'import json,sys; print(json.load(open(sys.arg
 
 REPORT="$STATE/bootstrap.json"
 python3 "$REPORT_PY" init --file "$REPORT" --schema rcp-ndcg.bootstrap-report.v1 --started "$STARTED"
+# The RC record (g-rcjobs-7 / decision 16): which staged RC this node built its environments from, so two
+# RCs built from different commits never produce indistinguishable reports.
+python3 "$REPORT_PY" merge --file "$REPORT" --key rc --fragment <(
+  python3 - "$RC_NAME" "$RC_COMMIT" "$VERSION" "$MANIFEST_SHA256" <<'PYEOF'
+import json, sys
+name, commit, version, manifest_sha256 = sys.argv[1:5]
+print(json.dumps({"name": name, "commit": commit, "version": version, "manifest_sha256": manifest_sha256}))
+PYEOF
+)
 python3 "$REPORT_PY" merge --file "$REPORT" --key engine --fragment <(
   python3 - "$STATE/plugin-allowed.txt" "$STATE/plugin-failures.txt" "$ENGINE_PYTHON_VERSION" "$ENGINE_VLLM_VERSION" "$ENGINE_MEASURE_S" \
     "$STATE/engine-freeze-after.txt" "$STAGE_DIR/wheelhouse" "$PLUGIN_CANARY" <<'PYEOF'

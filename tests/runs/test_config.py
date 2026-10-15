@@ -256,6 +256,82 @@ class TestServe:
 
 
 class TestJudge:
+    def test_a_recipe_judge_refuses_a_content_override(self) -> None:
+        """g-decisions-1 / decision 13(a): ``--set judge.temperature=...`` on a recipe judge was applied over
+        the expanded block while the shipped recipe id stayed recorded; a content override is refused, naming
+        both values (decision 17 for judges)."""
+        with pytest.raises(ConfigError, match="temperature: 1.5 disagrees with recipe"):
+            RunConfig.from_data(
+                {"dataset": DATASET, "judge": "recipe:gpt-oss-120b", "steps": ["tournament"]},
+                overrides=["judge.temperature=1.5"],
+            )
+        with pytest.raises(ConfigError, match="max_output_tokens: 7 disagrees with recipe"):
+            RunConfig.from_data(
+                {"dataset": DATASET, "judge": "recipe:gpt-oss-120b", "steps": ["tournament"]},
+                overrides=["judge.max_output_tokens=7"],
+            )
+
+    def test_an_inline_recipe_judge_mapping_refuses_a_content_override(self) -> None:
+        """g-judges-1: a hand-written mapping that names ``recipe`` while carrying its own content is
+        expanded through the recipe (the whole client block) and its disagreements are refused."""
+        with pytest.raises(ConfigError, match="temperature: 1.5 disagrees with recipe"):
+            RunConfig.from_data(
+                {
+                    "dataset": DATASET,
+                    "judge": {"recipe": "gpt-oss-120b", "temperature": 1.5},
+                    "steps": ["tournament"],
+                }
+            )
+
+    def test_an_inline_recipe_judge_mapping_without_model_takes_the_recipes_block(self) -> None:
+        """g-judges-1's red test: a hand-written mapping with ``recipe`` and no content used to fail with a
+        bare 'model Field required'; with ``model`` added it silently dropped the recipe's sampling,
+        decoding, budget and tokenizer while recording the recipe id.  It now takes the whole client
+        block."""
+        config = RunConfig.model_validate(
+            {"dataset": DATASET, "judge": {"recipe": "gpt-oss-120b", "base_url": "http://h:8000/v1"}}
+        )
+        judge = config.judge_config()
+        assert judge.recipe == "gpt-oss-120b"
+        assert judge.decoding == "json_schema"
+        assert judge.temperature == 0.0
+        assert judge.max_output_tokens == 8192
+        assert judge.context_tokens == 131072
+        assert judge.tokenizer == "openai/gpt-oss-120b@b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
+
+    def test_a_runtime_override_on_a_recipe_judge_still_applies(self) -> None:
+        """RUNTIME fields stay the config's: base_url (and the served model name) apply; the recipe's client
+        block fills everything else (decision 13's content rule)."""
+        config = RunConfig.from_data(
+            {"dataset": DATASET, "judge": "recipe:gpt-oss-120b", "steps": ["tournament"]},
+            overrides=["judge.base_url=http://h:8000/v1", "judge.model=judge"],
+        )
+        judge = config.judge_config()
+        assert judge.base_url == "http://h:8000/v1" and judge.model == "judge"
+        assert judge.recipe == "gpt-oss-120b"
+        assert judge.decoding == "json_schema" and judge.context_tokens == 131072, "the recipe's block filled in"
+
+    def test_the_extra_body_thinking_switch_is_the_one_allowed_override(self) -> None:
+        """Decision 13(a)'s one named exception: the extra_body thinking switch (the documented
+        ``chat_template_kwargs.enable_thinking`` toggle), the recipe's own extra_body kept."""
+        config = RunConfig.from_data(
+            {"dataset": DATASET, "judge": "recipe:qwen3.5-397b-a17b-nvfp4", "steps": ["tournament"]},
+            overrides=[
+                'judge.extra_body={"top_p": 0.95, "top_k": 20, "chat_template_kwargs": {"enable_thinking": true}}'
+            ],
+        )
+        assert config.judge_config().extra_body == {
+            "top_p": 0.95,
+            "top_k": 20,
+            "chat_template_kwargs": {"enable_thinking": True},
+        }
+        # Anything else in extra_body is a content override: dropping the recipe's sampling is refused.
+        with pytest.raises(ConfigError, match="extra_body"):
+            RunConfig.from_data(
+                {"dataset": DATASET, "judge": "recipe:qwen3.5-397b-a17b-nvfp4", "steps": ["tournament"]},
+                overrides=['judge.extra_body={"chat_template_kwargs": {"enable_thinking": true}}'],
+            )
+
     def test_fake_is_the_offline_judge_with_the_run_seed(self) -> None:
         judge = RunConfig(dataset=DATASET, judge="fake", seed=3).judge_config()
         assert judge.is_fake and judge == JudgeConfig.fake(3)

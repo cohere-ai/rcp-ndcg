@@ -127,6 +127,33 @@ The judge's documents text policy defaults to `keep`: nothing is cut unless a po
 preset and paper config that relied on the previous
 20000-token default pins it explicitly, so no judgement identity moves.
 
+### Judges
+
+The paper's judges are served recipes ([judges](docs/concepts/judges.md)); their divergences from the paper's
+judge runs are declared in the recipes' own notes and listed here, because each one moves a re-judged number.
+The values are in the recipe's `client` block at its pinned revision:
+
+- **Output caps.** The paper's TREC-DL runs drove the Qwen3.6-27B judge with the deploy strategy's run-level
+  `strategy.max_response_tokens: 12288`, which overrode the client's own `max_tokens: 16384`; the second judge
+  (gpt-oss-120b) ran the pooled client with the same 12288. The recipes keep their presets' caps:
+  `qwen3.6-27b-fp8` sends `max_output_tokens: 16384` and `gpt-oss-120b` sends `8192`, both against the paper's
+  12288. A cap is a CONTENT field of the judgement family, so these runs never pool with a paper run: truncation
+  and `incomplete` rates can move.
+- **Sampling.** The paper's runs set per-run sampling; from the 2026-10-10 owner decision every judge sends its
+  checkpoint's own generation defaults, read from its `generation_config.json` at the pinned revision
+  (superseding the paper's run-level sampling). `temperature`, `extra_body` and `max_output_tokens` are CONTENT
+  fields, so the change re-keys each family (the owner accepted the re-key). The per-judge values are in the
+  recipe notes; the gpt-oss-120b variant follows the HF-default rule for a config with no sampling parameters
+  (`do_sample: true`).
+- **Qwen3.6 revision.** The paper's checkpoint revision for the TREC-DL judge was never recorded (its preset
+  carried `revision: null`), so `qwen3.6-27b-fp8` pins the Hub head at the recipe's check date
+  (`e89b16ebf1988b3d6befa7de50abc2d76f26eb09`) for a reproducible conformance replay; a different Hub revision
+  would move its scores.
+- **SGLang to vLLM.** The paper's judges ran on SGLang; this release serves the same checkpoints on vLLM
+  v0.31.0 with the recipes' engine blocks (section 3). A different engine moves scores at the bf16 margin and
+  re-keys the behaviour fingerprint; the recipe notes record the parser-name differences
+  (e.g. vLLM's `openai_gptoss` against SGLang's `gpt-oss`).
+
 ## Tournament answers the paper's code could not parse
 
 The code behind the paper (arXiv v1) mishandled tournament answers it could not parse. This release fixes it. The

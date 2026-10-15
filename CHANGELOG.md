@@ -103,6 +103,44 @@ incompatibly, independently of the package version. All four distributions carry
   `mixed_modality`. The stricter half of the finding's suggestion (refuse `single` with more than one
   query or document) is left out: the repo's own fixture cases use `single` for multi-item text batches,
   and the finding's red test does not cover it.
+- **The conformance runner reports a recipe's over-cap cells instead of gating them** (g-cases-1): the
+  runner sent every filled case to the abs/ranking comparators with no over-cap exemption, so a correctly
+  served engine failed `long-over-single`/`long-over-uniform` (zembed-1: a served cosine ~0.62 against the
+  reference's own anchor-dropped 0.000349) and an anchor-dropping regression passed. Under the recipe's
+  declared `reference.known_deviations` (`anchor_drop_over_cap`/`over_cap_cut_differs`) the cells the
+  product client changed -- read from its own processing records, stage 2's referent -- are now reported,
+  not compared; a recipe that declares no deviation still gates them exactly. The zembed notes that
+  claimed the reference applied the anchor-preserving cut are corrected too.
+- **The qwen3-reranker card-st-logits cases compare the card's printed ranking** (g-cases-2): the three
+  cases expected the card's raw logit differences under `abs: 1.0`, which the served path cannot produce
+  (the recipes pin `use_activation: true`, so the head returns probabilities), so a perfect engine failed
+  them by 11-14. They are now `kind: ranking` with `rank_exact`, like the family's card-st-ranking case;
+  the card's raw values stay recorded in their notes.
+- **The rerank case tolerances are the recipes' measured stage-2 bounds** (g-cases-3): the generated
+  qwen3-reranker cases gated at abs 0.02 and qwen3-vl-reranker-2b at 0.01 while the recipes' own measured
+  served-vs-reference maxima are 0.0234/0.0391 and 0.0332 (declared as `gates.prob_p99_abs` 0.025/0.04 and
+  0.035), so an engine the equivalence gate verifies could fail a case; every probability-scale rerank case
+  now uses its recipe's bound, and a cases test holds them to it.
+- **A judge recipe refuses a content override** (g-decisions-1): `--set judge.<content>` was applied over
+  the expanded client block while the shipped recipe id stayed recorded, and a hand-written
+  `judge: {recipe: <id>, ...}` mapping skipped the recipe's block entirely. A mapping that names a recipe
+  now expands through the one recipe mechanism, every CONTENT field must equal the recipe's (both values
+  named on a disagreement), and `recipe` records the recipe's identity. The served model name stays the
+  run's (the T4 driver serves every judge under its slot name, and `--judge-model` is documented), and
+  `extra_body`'s `chat_template_kwargs.enable_thinking` switch is the one named exception; the recipe's own
+  `extra_body` must travel with it.
+- **The tag pipeline refuses the lockstep pin** (g-rcjobs-5): `release.yml`'s shared check accepted
+  `rcp-ndcg==<version>` in the vllm manifest while `rc_build.sh` and decision 18 refuse any workspace
+  sibling; the check now refuses the sibling in both pipelines (owner decision 15).
+- **Wave documents record the tested RC, and the tag must be its commit** (g-rcjobs-7): `bootstrap.sh`
+  records `rc: {name, commit, version, manifest_sha256}` in `bootstrap.json` and passes it to the wave, so
+  `wave.json`/`WAVE.md` identify the staged RC (version strings are `0.0.1` for every RC); the shared
+  release check takes the wave documents (`--wave`) and refuses a tag whose commit differs from their
+  `rc.commit` (owner decision 16).
+- **REPRODUCIBILITY's ledger lists the judge-side divergences** (g-judges-6): a new "Judges" entry names
+  the output caps against the paper's run-level `max_response_tokens` 12288 (16384/8192 in the recipes),
+  the checkpoint-generation-defaults sampling decision, the Qwen3.6 Hub-head revision pin and the SGLang
+  to vLLM move, instead of narrowing the ledger's "every cause" claim (owner decision 14(ii)).
 
 - **`rcp-ndcg-vllm serve` declares a chunk that cannot hang an at-budget pooling prompt** (vllm-1,
   owner decision 6(b)): a pooling recipe whose client's largest token budget reaches

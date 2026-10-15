@@ -42,6 +42,36 @@ def test_every_recipe_backed_case_validates_with_its_recipe() -> None:
         assert bundle.cases, f"recipe {recipe.id} has a case directory that loaded no cases"
 
 
+def test_every_rerank_case_tolerance_covers_its_recipes_measured_stage2_bound() -> None:
+    """g-cases-3 / decision 10: a generated rerank case gated at abs 0.01-0.02 while its recipe's own
+    measured served-vs-reference bound is 0.025-0.04, so an engine the equivalence gate verifies can fail
+    the case.  Every probability-scale rerank case's abs must be at least the recipe's resolved
+    ``prob_p99_abs`` (the measured stage-2 bound it declares)."""
+    from rcp_ndcg_test.cases import load_cases
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+    from rcp_ndcg_vllm.recipe import iter_recipes
+
+    checked = 0
+    for recipe in iter_recipes():
+        if not (CASES / recipe.id).is_dir() or recipe.role != "rerank":
+            continue
+        reference = recipe.reference
+        if reference is None or reference.score_scale != "probability":
+            continue
+        bound = resolve_gates(recipe).prob_p99_abs
+        bundle = load_cases(CASES, recipe, check_lengths=False)
+        for case in bundle.cases:
+            tolerance = case.expected.tolerance
+            if tolerance is None or tolerance.abs is None:
+                continue
+            checked += 1
+            assert tolerance.abs >= bound, (
+                f"{case.id}: abs {tolerance.abs} is below recipe {recipe.id}'s measured stage-2 bound "
+                f"prob_p99_abs {bound}"
+            )
+    assert checked, "the probability-scale rerank cases must load for the tolerance rule to be checked"
+
+
 def test_every_case_note_names_the_recipes_declared_deviation() -> None:
     """g-cases-9: the qwen3-reranker and qwen3-vl-reranker long_over/mixed-lengths notes claimed
     'known_deviations empty' or '[anchor_drop_over_cap]' while every one of those recipes declares

@@ -56,6 +56,122 @@ def filled_case():
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Over-cap cells: stage 2's report-not-compare rule (decision 10, g-cases-1)
+# ---------------------------------------------------------------------------
+
+
+def _over_cap_recipe(recipe: object) -> object:
+    """``recipe`` with the over-cap deviation declared: stage 2's report-not-compare rule applies."""
+    return recipe.model_copy(  # type: ignore[attr-defined]
+        update={"reference": recipe.reference.model_copy(update={"known_deviations": ["over_cap_cut_differs"]})}  # type: ignore[attr-defined]
+    )
+
+
+def _long_query_case(case: object) -> object:
+    """``case`` with its first query long enough for the client to settle at its declared share."""
+    queries = list(case.inputs.queries)  # type: ignore[attr-defined]
+    queries[0] = queries[0].model_copy(update={"text": " ".join(["overrun"] * 30)})
+    return case.model_copy(  # type: ignore[attr-defined]
+        update={"inputs": case.inputs.model_copy(update={"queries": queries})}  # type: ignore[attr-defined]
+    )
+
+
+def test_an_over_cap_rerank_row_is_reported_not_compared() -> None:
+    """g-cases-1 / decision 10(b): the client settles the long query at its declared share, so the served
+    scores are not comparable with the case's expectation; under the recipe's declared over-cap deviation the
+    changed pair is reported (stage 2's rule) and the untouched row still gates."""
+    recipe = _over_cap_recipe(load_recipe(RECIPES / "fake-rerank"))
+    case = _long_query_case(load_case(CASES / "fake-rerank" / "short-single.yaml"))
+    result = run_case(recipe, case, target="fake", fake_engine=FakeRerankEngine())
+    assert not result.failed, result.detail
+    assert result.passed
+    assert result.detail is not None and "over-cap" in result.detail, result.detail
+
+
+def test_an_over_cap_rerank_row_still_gates_without_the_declared_deviation() -> None:
+    """The exemption is the recipe's declaration, never the runner's guess: without
+    ``reference.known_deviations`` the changed pair stays in the gates, exactly as stage 2 keeps it."""
+    recipe = load_recipe(RECIPES / "fake-rerank")
+    case = _long_query_case(load_case(CASES / "fake-rerank" / "short-single.yaml"))
+    result = run_case(recipe, case, target="fake", fake_engine=FakeRerankEngine())
+    assert result.failed and "exceeds abs" in (result.detail or ""), result.detail
+
+
+def test_the_shipped_zembed_over_cap_case_reports_instead_of_failing() -> None:
+    """The finding's own case (g-cases-1): a correctly served zembed-1-embedding returns the
+    anchor-preserving cosine (~1.0 for identical unit vectors here), while ``long-over-uniform``'s filled
+    expectation is the reference's own anchor-dropped cut (0.000349).  Under the recipe's declared
+    ``anchor_drop_over_cap`` the runner must report the over-cap cells, not fail a correct engine."""
+    from rcp_ndcg_test.fakes import FakeReply
+
+    shipped_cases = Path(__file__).resolve().parents[1] / "cases"
+    recipe = load_recipe("zembed-1-embedding")
+    case = load_case(shipped_cases / "zembed-1-embedding" / "long-over-uniform.yaml")
+
+    class CorrectEngine:
+        recipe_id = "zembed-1-embedding"
+        name = "correct-zembed"
+
+        def handle(self, method: str, path: str, body: object) -> FakeReply:
+            if method == "GET" and path.endswith("/models"):
+                return FakeReply(200, {"object": "list", "data": [{"id": self.recipe_id}]})
+            if method == "POST" and path.endswith("/embeddings"):
+                texts = body["input"] if isinstance(body, dict) else None  # type: ignore[index]
+                if isinstance(texts, str):
+                    texts = [texts]
+                assert isinstance(texts, list), body
+                # one unit vector for every text: the served (anchor-preserving) path's cosine is ~1.0
+                return FakeReply(
+                    200,
+                    {
+                        "object": "list",
+                        "model": self.recipe_id,
+                        "data": [
+                            {"object": "embedding", "index": index, "embedding": [1.0, 0.0]}
+                            for index in range(len(texts))
+                        ],
+                        "usage": {"prompt_tokens": 0, "total_tokens": 0},
+                    },
+                )
+            return FakeReply(404, {"error": {"message": f"no route {method} {path}"}})
+
+    result = run_case(recipe, case, target="fake", fake_engine=CorrectEngine())
+    assert not result.failed, result.detail
+    assert result.passed
+    assert result.detail is not None and "over-cap" in result.detail, result.detail
+
+
+def test_the_over_cap_rule_masks_cells_in_the_ranking_and_spearman_comparators() -> None:
+    """Decision 10's rule lives in every comparator, not only the abs path: a masked cell is reported
+    (and never makes a correct engine fail) for ``kind: ranking`` and a ``spearman_min`` tolerance too."""
+    import numpy as np
+    from rcp_ndcg_test.cases import CaseTolerance
+    from rcp_ndcg_test.conformance import _compare_ranking, _compare_spearman
+
+    ranking = load_case(CASES / "fake-rerank" / "short-ranking.yaml")
+    cells = np.zeros((1, 3), dtype=bool)
+    cells[0, 0] = True  # d1 is over-cap
+    matrix = [[0.1, 0.9, 0.5]]  # over the under-cap documents the order is d2 before d3, as expected
+    result = _compare_ranking(ranking, matrix, ranking.expected.tolerance, report=("over_cap_cut_differs", cells))
+    assert result.passed and "over-cap" in (result.detail or ""), result.detail
+    all_masked = np.ones((1, 3), dtype=bool)
+    result = _compare_ranking(ranking, matrix, ranking.expected.tolerance, report=("over_cap_cut_differs", all_masked))
+    assert result.passed and not result.compared and "over-cap" in (result.detail or ""), result.detail
+
+    spearman = load_case(CASES / "fake-rerank" / "short-single.yaml")
+    spearman = spearman.model_copy(
+        update={"expected": spearman.expected.model_copy(update={"tolerance": CaseTolerance(spearman_min=0.9)})}
+    )
+    expected = np.asarray(spearman.expected.values, dtype=np.float64)
+    one_masked = np.zeros(expected.shape, dtype=bool)
+    one_masked[0, 0] = True
+    result = _compare_spearman(spearman, expected, 0.9, report=("over_cap_cut_differs", one_masked))
+    assert result.passed and "over-cap" in (result.detail or ""), result.detail
+    result = _compare_spearman(spearman, expected, 0.9, report=("over_cap_cut_differs", np.ones(expected.shape)))
+    assert result.passed and not result.compared and "over-cap" in (result.detail or ""), result.detail
+
+
 def test_the_packaged_suite_passes_against_the_shipped_fake() -> None:
     report = run_suite(packaged_recipe(), packaged_cases(), target="fake")
     assert isinstance(report, ConformanceReport)
