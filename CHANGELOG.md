@@ -4381,6 +4381,28 @@ text it sends to the declared budget.
   five-container window against `max_videos: 1` was blessed while every window is refused at its first call).
   It counts each unit as the policy samples it (`sample_video_part`, without preparing bytes) and gates both
   `max_images` and `max_videos`.
+- **`explain`'s selection/ordering split is scale-free** (`retrieval-3`): the mixed arrangement kept each
+  B-only document's raw B score beside A's raw scores, so the split depended on B's score scale and disagreed
+  with the list path. It is now built from A's own order (A's equal-score classes preserved, a document A
+  lacks below every A-scored one), so a monotone rescaling of either system changes no component.
+- **A pair without variance in its differences is not separated** (`retrieval-6`): scipy returns `t=inf`,
+  `p=0` for a constant nonzero difference, so `compare` reported such a pair significant with `t` serialised
+  as null and `sensitivity` counted it as separated, against both docstrings; `t` and `p_value` are now
+  `None` and the pair is not significant.
+- **A non-finite rerank score is refused at the wire and dropped from a checkpoint** (`retrieval-8`): a NaN
+  `relevance_score` was checkpointed and reused, and `Rankings.from_scores` refuses a non-finite score, so
+  every rerun failed the same way. `RerankAdapter._score` raises `ProviderError` and `_checkpoint_scores`
+  drops a record holding a non-finite value, so the query is scored again.
+- **A remote `retrieval store --out` URI is kept intact** (`retrieval-9`): wrapping it in `Path()` created a
+  stray local `gs:/...` directory and recorded (and printed) the mangled path; the store is written through
+  the storage helper and the record keeps the URI.
+- **A resumed rerank cuts a torn checkpoint tail before appending** (`robust-6`): appending after a partial
+  last line merged the next query's record into the fragment, so that record was lost on the next resume; the
+  one torn-tail repair (`storage.drop_torn_last_line`) now runs before the append.
+- **The judges page states what adding documents to a judged pool costs** (`judging-8`): it promised that
+  only the windows showing them are new; adding to a local source is another dataset (its bytes enter the
+  identity) and growing a pool through `candidates=` redraws every scheduled window into new records that the
+  fit pools with the old ones. The page now says so and points at the insertion-plan route.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 
