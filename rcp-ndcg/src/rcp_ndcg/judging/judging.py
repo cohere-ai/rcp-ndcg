@@ -285,16 +285,19 @@ def _dataset_rows(
 
 
 def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any]:
-    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI, resolved revision and --
-    for a local source -- the content digest of what its reader reads.
+    """The dataset part of a pass's identity: its name, and for a loaded dataset its URI, resolved revision and
+    -- for a local source -- the content digest of what its reader reads, plus the query texts the reader read.
 
     A local URI (a reader scheme whose location is a path, not ``scheme://``) enters with its path absolute and
     normalised, so the same file named from another directory or as ``./rows.jsonl`` is the same dataset, and
     with the digest of the files the reader reads (:func:`rcp_ndcg.data.revisions.dataset_content_digest`, the
     same one home the run steps' identity consumes): a local source has no commit, so an edited ``rows.jsonl``
     is another dataset and the store refuses it instead of reusing answers over texts the judge never saw. The
-    query selection is left out: judging more queries of the same corpus extends the store. The dataset's
-    **task instruction** is in: the model read it, so a pass whose instruction differs is another instrument.
+    query texts enter the identity too (their formatted form, the string the judge reads): a reader whose
+    queries live in a sidecar (``queries_uri``, the ``images:``/``videos:``/``frames:`` readers) is not covered
+    by the location digest, so an edited query file must be another dataset as well. The query *selection* is
+    left out: judging more queries of the same corpus extends the store. The dataset's **task instruction** is
+    in: the model read it, so a pass whose instruction differs is another instrument.
 
     A row-sequence input (no dataset object) has no name or revision to give: it is named by the SHA-256 of
     the rows it judges, so two passes over different row corpora never share a store identity (and, through
@@ -331,6 +334,13 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
     content = dataset_content_digest(source.uri)
     if content:
         payload["content"] = content
+    queries = getattr(source, "queries", None)
+    if queries:
+        instruction_for = getattr(source, "task_instruction_for", None)
+        instruction = instruction_for("query") if instruction_for is not None else None
+        payload["queries_sha256"] = hash_payload(
+            {str(query_id): query.format_query(task_instruction=instruction) for query_id, query in queries.items()}
+        )
     if source.task_instruction is not None:
         # Only a declared instruction is keyed: an absent one is the absence of a declaration, so a dataset
         # that carries none keeps the identity it had (the same rule identity_payload applies).

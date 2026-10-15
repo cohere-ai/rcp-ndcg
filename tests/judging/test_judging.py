@@ -1274,6 +1274,42 @@ class TestIdentities:
         assert entry["identity"]["dataset"]["name"] == "dataset"
         assert len(entry["identity"]["dataset"]["rows_sha256"]) == 64
 
+    def test_an_edited_reader_option_query_text_is_refused_by_the_store(self, tmp_path: Path) -> None:
+        """A page-image corpus takes its queries from ``queries_uri``, which is not the dataset location: the
+        query texts enter the store identity, so an edited query file is another dataset -- refused, never
+        reusing answers the judge gave on the old texts."""
+        import PIL.Image
+
+        from rcp_ndcg.data import load_dataset
+
+        root = tmp_path / "corpus"
+        images = root / "images"
+        for doc in ("docA", "docB"):
+            (images / doc).mkdir(parents=True)
+            for page in (1, 2):
+                PIL.Image.new("RGB", (40, 60)).save(images / doc / f"page_{page}.png")
+        queries = root / "queries.jsonl"
+        queries.write_text(json.dumps({"query_id": "q1", "text": "the invoice total"}) + "\n", encoding="utf-8")
+        qrels = root / "qrels.jsonl"
+        qrels.write_text(json.dumps({"query_id": "q1", "qrels": {"docA/page_1": 1}}) + "\n", encoding="utf-8")
+
+        def dataset():
+            return load_dataset(f"images:{images}", queries_uri=str(queries), qrels_uri=str(qrels))
+
+        def client() -> FakeJudge:
+            return FakeJudge(lambda text: 0.0, config=JudgeConfig.fake(0).model_copy(update={"max_images": 10}))
+
+        schedule = RubricSchedule(window=2, placements_per_doc=2.0)
+        judge(dataset(), None, client(), stage="rubric", out=tmp_path / "store", schedule=schedule)
+        assert client().usage.requests == 0  # the same texts resume
+
+        queries.write_text(json.dumps({"query_id": "q1", "text": "a completely different question"}) + "\n",
+                           encoding="utf-8")  # fmt: skip
+        changed = client()
+        with pytest.raises(IdentityError, match="queries_sha256"):
+            judge(dataset(), None, changed, stage="rubric", out=tmp_path / "store", schedule=schedule)
+        assert changed.usage.requests == 0
+
     def test_a_local_dataset_is_named_by_its_content_and_an_edited_file_is_refused(self, tmp_path: Path) -> None:
         """A local source has no revision to pin it: the digest of the file its reader reads enters the store
         identity, so editing ``rows.jsonl`` in place is another dataset -- refused, never reused (the same
