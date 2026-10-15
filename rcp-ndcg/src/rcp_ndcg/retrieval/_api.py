@@ -53,11 +53,11 @@ from rcp_ndcg.support.logging import get_logger
 logger = get_logger(__name__)
 
 #: The index's behaviour version.  Bumped deliberately when what an index *is* changes without any config
-#: field changing -- the selection rule, the payload layout, the tie rule -- and never for a release as such:
-#: it enters the index identity, so an index built by other numbers is rebuilt, and a release that changes no
-#: retrieval number does not invalidate every resume and judgement pool.  A judgement's identity is not
-#: versioned here: it is prompt- and model-defined.
-INDEX_BEHAVIOUR_VERSION = "1"
+#: field changing -- the selection rule, the payload layout, the tie rule, the tokenization a stemmer
+#: language implies -- and never for a release as such: it enters the index identity, so an index built by
+#: other numbers is rebuilt, and a release that changes no retrieval number does not invalidate every resume
+#: and judgement pool.  A judgement's identity is not versioned here: it is prompt- and model-defined.
+INDEX_BEHAVIOUR_VERSION = "2"
 
 #: The retrieve step's behaviour version: the numbers a retrieve output was computed with (the index's own
 #: version covers the index; this covers the first-stage selection and the ranking it writes).

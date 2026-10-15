@@ -381,7 +381,10 @@ class BM25Config(BaseModel):
 
     Attributes:
         stemmer: A Snowball stemmer language of PyStemmer (``english``, ``german``, ``french``, ...) that corpus and
-            queries are stemmed with, or ``None`` for no stemming.
+            queries are stemmed with, or ``None`` for no stemming. The stop list follows the language
+            (``english`` keeps the ``en`` list, ``german`` the ``de`` one, ...); a language bm25s keeps no list
+            for keeps no stop words. The list is recorded in the index beside the stemmer and read back at
+            search time.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

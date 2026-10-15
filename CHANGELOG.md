@@ -4355,6 +4355,11 @@ text it sends to the declared budget.
   the index's own rule (`_indexed_corpus`) and passes both instructions to the encoder; the store's record
   carries the two instructions (``document_instruction`` and ``query_instruction``, both optional) and its
   identity covers the document-side one, like the index's.
+- **BM25's stop list follows the stemmer's language** (`retrieval-5`): every run tokenized with bm25s' English
+  stop list, so a `stemmer: german` (or French, ...) run dropped English-looking words and kept German function
+  words, unlike mteb's own BM25 for the language. The stop list is now derived from the stemmer (`english` ->
+  `en`, `german` -> `de`, ...; none where bm25s keeps no list), recorded in the index's `meta.json` and read back
+  at search time; `INDEX_BEHAVIOUR_VERSION` moves to `2`, so an index built under the old list is rebuilt.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 

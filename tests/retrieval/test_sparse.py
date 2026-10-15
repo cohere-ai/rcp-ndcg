@@ -115,6 +115,22 @@ class TestTheIndexFormat:
             sparse.build_bm25_index(["the of and to a", "a the of"], tmp_path, stemmer=None)
         assert "stop" in (caught.value.hint or "")
 
+    def test_a_non_english_stemmer_uses_its_own_stop_list(self, tmp_path: pytest.Path) -> None:
+        """bm25s keeps a stop list per language; a German stemmer used to tokenize with the English list, so
+        a German run dropped English-looking words and kept German function words, unlike mteb's own BM25."""
+        import json
+
+        from rcp_ndcg_core.content import Content
+
+        sparse.build_bm25_index(
+            [Content.from_text("this ist der hund"), Content.from_text("und die katze")], tmp_path, stemmer="german"
+        )
+
+        meta = json.loads((tmp_path / "bm25s" / "meta.json").read_text(encoding="utf-8"))
+        assert meta == {"stemmer": "german", "stopwords": "de"}
+        hits = sparse.search_bm25(tmp_path, ["this"], k=2)  # an English stop word, not a German one
+        assert hits[0][0][0] == 0 and hits[0][0][1] > 0
+
 
 class TestTheQuerySide:
     """A8/A9: a query with no indexable term is refused, never scored as ``k`` arbitrary zero-score

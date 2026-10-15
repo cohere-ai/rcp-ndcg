@@ -17415,7 +17415,7 @@
       "INDEX_BEHAVIOUR_VERSION": {
         "kind": "constant",
         "type": "str",
-        "value": "1"
+        "value": "2"
       },
       "Index": {
         "bases": [
@@ -17426,7 +17426,7 @@
         "fields": {
           "behaviour_version": {
             "alias": null,
-            "default": "1",
+            "default": "2",
             "frozen": false,
             "required": false,
             "type": "str"
