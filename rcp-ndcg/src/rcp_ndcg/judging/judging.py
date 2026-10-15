@@ -837,6 +837,16 @@ class _Pass:
             self.prepared[key] = cached
         return cached
 
+    def release(self, query: _Query) -> None:
+        """Drop one finished query's prepared media: the cache holds one query's pool at a time.
+
+        Every prepared page and frame is an inlined PNG data URI, and the shared image LRU (sized to one
+        query's pool) cannot release them while this dict holds references; keeping every query's pool for
+        the whole pass made a media corpus' peak memory grow with the number of queries.
+        """
+        for key in [key for key in self.prepared if key[0] == query.query_id]:
+            del self.prepared[key]
+
     def window_tokens(self, query: _Query, window: int) -> int | None:
         """The per-document text budget of a window of ``window`` documents of this query, in tokens.
 
@@ -1081,6 +1091,14 @@ def _ingest_tournament(judgement: Judgement, bt: Any, obs_counts: Counter[tuple[
 
 async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass) -> None:
     """Stage A for one query: random, stratified and adaptive windows (see :mod:`rcp_ndcg.judging.schedule`)."""
+    try:
+        await _run_tournament(query, schedule, run)
+    finally:
+        run.release(query)
+
+
+async def _run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass) -> None:
+    """The body of :func:`run_tournament`; the public wrapper releases the query's prepared media."""
     from rcp_ndcg_core.irt import BradleyTerryEstimator
 
     units = query.units
@@ -1139,6 +1157,14 @@ async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass
 
 async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> None:
     """Stage B for one query: balanced random windows, then windows stratified by a preliminary Rasch ability."""
+    try:
+        await _run_rubric(query, schedule, run)
+    finally:
+        run.release(query)
+
+
+async def _run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> None:
+    """The body of :func:`run_rubric`; the public wrapper releases the query's prepared media."""
     from rcp_ndcg_core.irt import RaschEstimator
 
     units = query.units

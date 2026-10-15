@@ -4371,6 +4371,10 @@ text it sends to the declared budget.
   sent at the engine's own default sampling -- recorded as `video: null` -- while `--estimate` refused the same
   pass. The plan, the role clients' request preparation and the count now share one refusal
   (`refuse_unpolicied_containers`) with the declare-a-policy hint.
+- **A judging pass releases each query's prepared media when it finishes** (`g-video-7`): the per-pass cache
+  held every prepared page and frame of every query -- inlined PNG data URIs -- to the end of the pass,
+  defeating the shared image LRU's one-pool bound and growing peak memory with the number of queries;
+  `run_tournament`/`run_rubric` now drop the finished query's entries.
 
 ### Changed from the paper's code: text limits count the judge's tokens
 

@@ -444,6 +444,50 @@ class TestVideoContainers:
         assert fake.usage.requests == 0
 
 
+async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_path: Path, pages) -> None:
+    """A judging pass cached every prepared page and frame of every query for the whole pass (the shared
+    image LRU cannot release them while the per-pass dict holds references); the cache is now scoped to one
+    query and released when its run returns."""
+    from rcp_ndcg_core.schemas import JudgementFamily
+
+    from rcp_ndcg.data.census import TextTruncationCensus
+    from rcp_ndcg.data.prepare import MediaCensus
+    from rcp_ndcg.judging.judging import _Pass, _Query, run_rubric
+    from rcp_ndcg.judging.store import JudgementStore
+
+    prompt = load_prompt("rubric_vision")
+    query = _Query(
+        dataset="d",
+        query_id="q1",
+        text="what is the yield curve",
+        units=[f"p{i}" for i in range(len(pages))],
+        contents={f"p{i}": Content.from_parts([ImagePart(ref=ref)]) for i, ref in enumerate(pages)},
+        chunk_mapping=None,
+    )
+    client = FakeJudge()
+    client.config = client.config.model_copy(update={"max_images": len(pages)})
+    run = _Pass(
+        stage="rubric",
+        client=client,
+        prompt=prompt,
+        family=JudgementFamily(
+            stage="rubric", judge_model="fake", prompt_hash=prompt.sha256, criteria=prompt.criteria, parse_version=1
+        ),
+        store=JudgementStore(tmp_path / "store"),
+        existing={},
+        preprocessing=Preprocessing(),
+        census=TextTruncationCensus(),
+        media_census=MediaCensus(),
+        tokenizer=None,
+        schedule_key="schedule",
+        dataset_key="dataset",
+    )
+
+    await run_rubric(query, SMALL, run)
+
+    assert run.prepared == {}, "the finished query's prepared media is released, not held for the whole pass"
+
+
 class TestTheFpsFamilyOnPreprocessing:
     """The engine's fps rule is ported for the qwen3_vl family: an explicit other family is refused, while
     the deferred-processor form (the judge config fills the processor via ``for_processor``) stays valid,
