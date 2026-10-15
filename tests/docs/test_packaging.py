@@ -407,6 +407,11 @@ _NOTICE_PATH = re.compile(
     r"|experiments|packages)/[A-Za-z0-9_./-]+\.(?:py|jinja))\b"
 )
 
+#: A folded model file's header names its upstream (a fold note, an upstream SPDX line or the
+#: HuggingFace copyright): the attribution test collects these files automatically.
+_THIRD_PARTY_HEADER = re.compile(r"Folded from|SPDX-FileCopyrightText|Copyright .* HuggingFace")
+
+
 #: The audited derived files under the recipes and plugins: each ports, adapts or restates third-party code
 #: (a model card's usage code, a checkpoint's remote code, vLLM internals), so NOTICE must name it. Every
 #: template and every vendored module of a recipe directory is added automatically below.
@@ -442,7 +447,8 @@ def test_every_repository_path_the_notice_names_exists() -> None:
 
 
 def test_the_notice_attributes_every_third_party_recipe_and_plugin_file() -> None:
-    """Every recipe template, every vendored recipe module and every audited port is named in NOTICE."""
+    """Every recipe template, every vendored recipe module, every audited port and every folded model
+    file is named in NOTICE."""
     notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
     recipes = ROOT / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
     automatic = {
@@ -450,7 +456,14 @@ def test_the_notice_attributes_every_third_party_recipe_and_plugin_file() -> Non
         for path in recipes.glob("*/*")
         if path.suffix == ".jinja" or (path.suffix == ".py" and path.name != "reference.py")
     }
-    expected = automatic | set(_DERIVED_RECIPE_AND_PLUGIN_FILES)
+    models = ROOT / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "models"
+    folded = {
+        path.relative_to(ROOT).as_posix()
+        for path in models.rglob("*.py")
+        if _THIRD_PARTY_HEADER.search("\n".join(path.read_text(encoding="utf-8").splitlines()[:15]))
+    }
+    assert folded, "no folded model file declares its upstream; update this test if the fold changed"
+    expected = automatic | folded | set(_DERIVED_RECIPE_AND_PLUGIN_FILES)
     missing = sorted(path for path in expected if path not in notice)
     assert not missing, f"NOTICE does not attribute: {missing}"
 
