@@ -6,7 +6,7 @@ source:
 strata:
   modality: mixed
   length: long_over
-  batch: single
+  batch: mixed_modality
 inputs:
   instruction: null
   queries:

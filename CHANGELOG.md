@@ -86,6 +86,12 @@ incompatibly, independently of the package version. All four distributions carry
   '[anchor_drop_over_cap]' while every one of those recipes declares `over_cap_cut_differs`, and the
   vl-reranker notes asserted non-gating the runner does not implement; the notes now name the declared
   deviation, and a cases test holds every note that mentions `known_deviations` to the recipe's own list.
+- **A single/uniform case batch may not mix media and text documents** (g-cases-10): the loader now refuses
+  `batch: single`/`uniform` when the batch holds both media-bearing and text-only documents (that is the
+  `mixed_modality` cell), and the two shipped 2-document cases that did so are relabelled
+  `mixed_modality`. The stricter half of the finding's suggestion (refuse `single` with more than one
+  query or document) is left out: the repo's own fixture cases use `single` for multi-item text batches,
+  and the finding's red test does not cover it.
 
 - **`rcp-ndcg-vllm serve` refuses a chunk below `serve.max_model_len` when an at-budget prompt is possible**
   (vllm-1): a pooling recipe whose client's largest token budget reaches `serve.max_model_len` and that does

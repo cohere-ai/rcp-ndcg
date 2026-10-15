@@ -340,6 +340,11 @@ class Case(BaseModel):
             raise ValueError(
                 "strata.batch 'mixed_modality' means the batch mixes text-only and media-bearing documents"
             )
+        if self.strata.batch in ("single", "uniform") and with_media and text_only:
+            raise ValueError(
+                f"strata.batch {self.strata.batch!r} on a batch that mixes {len(with_media)} media-bearing and "
+                f"{len(text_only)} text-only document(s): a mixing batch is the 'mixed_modality' cell"
+            )
 
     @model_validator(mode="after")
     def _case_rules(self) -> Case:
