@@ -703,3 +703,15 @@ def test_the_wheel_build_fixture_fails_in_ci_instead_of_skipping(tmp_path: Path)
     )
     assert result.returncode != 0, result.stdout
     assert "skipped" not in result.stdout
+
+
+def test_the_gated_job_type_checks_with_the_integrations_installed() -> None:
+    """The dev-only ``types`` job sees mteb, datasets and transformers as ``Unknown``.
+
+    Every error the integrations carry is invisible there, so the gated job (which installs the
+    ``mteb`` and ``data`` extras) must run basedpyright with them resolved.
+    """
+    workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    runs = [str(step.get("run", "")) for step in workflow["jobs"]["gated"]["steps"]]
+    assert any("cpu-env.sh" in run and "mteb" in run for run in runs), "the gated job must install the mteb extra"
+    assert any("basedpyright" in run for run in runs), "the gated job must type-check with the integrations resolved"

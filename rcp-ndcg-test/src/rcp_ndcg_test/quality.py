@@ -30,7 +30,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from rcp_ndcg_vllm.recipe import Recipe
 
@@ -722,7 +722,8 @@ def _reference(args: argparse.Namespace) -> None:
     tasks = get_tasks(args.suite, [args.subset], mode=args.view, revision=args.data_revision)
     model = mteb.get_model(args.model, revision=args.revision)
     results = mteb.evaluate(model, tasks)
-    task_results = list(getattr(results, "task_results", results))
+    # mteb types evaluate() as ModelResult; the task results live on it (older versions returned the list).
+    task_results = list(cast(list[Any], getattr(results, "task_results", results)))
     if len(task_results) != 1:
         raise HarnessError(f"mteb returned {len(task_results)} task results for one task")
     Path(args.out).write_text(json.dumps(task_results[0].to_dict(), indent=2) + "\n", encoding="utf-8")

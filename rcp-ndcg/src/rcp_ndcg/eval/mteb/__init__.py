@@ -291,13 +291,22 @@ def _task_base() -> type:
                                 gains[str(q)][str(d)] = float(g)
                         self._gains[hf_subset][split] = dict(gains)
                         # encode only the candidates (a bi-encoder would otherwise embed the whole corpus)
-                        keep = {d for docs in data["top_ranked"].values() for d in docs}
+                        top_ranked = data["top_ranked"]
+                        if top_ranked is None:
+                            raise ConfigError(
+                                f"the reranking task {path!r} has no top-ranked documents for {hf_subset}/{split}",
+                                hint="a reranking task ships a {subset}-top_ranked config; score the suite in "
+                                "retrieval mode otherwise",
+                            )
+                        keep = {d for docs in top_ranked.values() for d in docs}
                         corpus = data["corpus"]
                         data["corpus"] = corpus.select([i for i, d in enumerate(corpus["id"]) if d in keep])
                     elif f"{hf_subset}-excluded" in configs:
                         # the full corpus minus each query's excluded documents
                         excluded_rows = load_dataset(path, f"{hf_subset}-excluded", split=split, revision=rev)
-                        excluded = {r["query-id"]: set(r["excluded-corpus-ids"]) for r in excluded_rows}
+                        excluded = {
+                            row["query-id"]: set(row["excluded-corpus-ids"]) for row in excluded_rows.to_list()
+                        }
                         ids = list(data["corpus"]["id"])
                         data["top_ranked"] = {
                             q: [d for d in ids if d not in excluded[q]] if q in excluded else ids

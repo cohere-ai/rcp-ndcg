@@ -34,9 +34,9 @@ only makes the config parse locally, so no remote code runs and
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from transformers import Qwen3_5Config, Qwen3Config
+from transformers import Qwen3_5Config, Qwen3_5TextConfig, Qwen3Config
 
 __all__ = ["BOUNDARY_MARKER_TEXT", "PplxContextualConfig", "PplxV1Config"]
 
@@ -78,7 +78,9 @@ class PplxContextualConfig(Qwen3_5Config):
         self.query_length = query_length
         self.document_length = document_length
         self.max_position_embeddings = document_length
-        self.text_config.use_cache = False
+        # transformers types the parent's ``text_config`` as ``dict | PreTrainedConfig | None``; the
+        # sub-config machinery has already built the checkpoint's Qwen3.5 text config.
+        cast(Qwen3_5TextConfig, self.text_config).use_cache = False
 
 
 class PplxV1Config(Qwen3Config):

@@ -45,8 +45,8 @@ class MtebTaskReader(SourceReader):
         name: The dataset name; defaults to the subset's name, or the task's name for the ``default`` subset.
 
     Raises:
-        ConfigError: The locator names no task, a task whose subsets are not named (a multilingual task), a
-            subset or split the task does not have, or two splits.
+        ConfigError: The locator names no task, the task is not a retrieval task, a task whose subsets are not
+            named (a multilingual task), a subset or split the task does not have, or two splits.
     """
 
     name = "mteb"
@@ -83,6 +83,17 @@ class MtebTaskReader(SourceReader):
                     f"the mteb task {self.task_name!r} could not be loaded: {exc}",
                     hint="a task is named as mteb names it (mteb.get_task); `mteb:<TaskName>[/<subset>][@split]`",
                 ) from exc
+            # Only a retrieval task's loader fills `dataset[subset][split]` with a RetrievalSplitData and
+            # carries `convert_v1_dataset_format_to_v2`; a classification or clustering task would reach
+            # that call and raise a bare AttributeError.
+            from mteb.abstasks.retrieval import AbsTaskRetrieval
+
+            if not isinstance(task, AbsTaskRetrieval):
+                raise ConfigError(
+                    f"the mteb task {self.task_name!r} is a {type(task).__name__}, not a retrieval task",
+                    hint="mteb:<TaskName> reads retrieval tasks (mteb's AbsTaskRetrieval); classification, "
+                    "clustering, STS and the other task types are not supported",
+                )
             available = _subsets_of(task.metadata)
             if self.subset is None:
                 if available != ["default"]:
