@@ -21,7 +21,8 @@
 #                  casefill (the cuda reference-case fills: casefill.sh builds the four families'
 #                  reference environments and uploads the edited case YAMLs) or judgecheck (the
 #                  release checklist's judge item: judgecheck.sh serves each judge recipe and runs
-#                  `rcp-ndcg judge check` in both thinking modes plus the engine media probe) or
+#                  `rcp-ndcg judge check` in the recipe's documented thinking modes plus the engine
+#                  media probe) or
 #                  topk-probe (one family's controlled GPU probe: topk_probe.sh builds the client
 #                  environment and the family's reference venv, then runs topk_probe.py, whose
 #                  E0-E7 experiments name the first divergent tensor; its own RCP_TOPK_* knobs are
@@ -410,8 +411,8 @@ for plan_row in "${PLAN[@]}"; do
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
   elif [[ "$SCRIPT_NAME" == "judgecheck" ]]; then
-    # The judge item: judgecheck.sh serves each judge recipe one at a time and runs the checks in both
-    # thinking modes; its probe helper owns the toggles and the engine media probe.
+    # The judge item: judgecheck.sh serves each judge recipe one at a time and runs the checks in the
+    # recipe's documented thinking modes; its probe helper owns the toggles and the engine media probe.
     args+=(
       "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/judgecheck/judgecheck.sh $RC_STAGE_URI $OUT_URI"
       "files.judgecheck.from_file=$JUDGECHECK_SH" "files.judgecheck.mount_path=/etc/rcp/files/judgecheck/judgecheck.sh"

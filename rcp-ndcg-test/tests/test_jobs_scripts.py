@@ -1982,6 +1982,17 @@ def test_judgecheck_vision_toggle_is_the_gemma_recipe_s_documented_choice() -> N
     assert "the parser reads the template kwarg, not reasoning_effort" in notes
 
 
+def test_the_judgecheck_header_names_the_documented_thinking_modes() -> None:
+    """g-rcjobs-14: the header said every judge runs 'both thinking modes' with 'the family's switch'; only
+    the Gemma 4 judges have two modes, and the other six run one documented mode with no ``--set``
+    (``judgecheck_probe.judge_modes``).  submit.sh repeated the stale claim in its usage text."""
+    header = JUDGECHECK_SH.read_text(encoding="utf-8").split("set -euo pipefail", 1)[0]
+    assert "both thinking modes" not in header
+    assert "the family's switch" not in header
+    assert "the mode's switch" in header
+    assert "both thinking modes" not in SUBMIT.read_text(encoding="utf-8")
+
+
 def test_judgecheck_media_probe_uses_the_engines_own_stock_budget() -> None:
     """The media probe's declared policy is the processor family's own stock budget (the engine keeps the
     prepared size, so the engine's delta and the client's count describe the same bytes); a text-only
@@ -2442,9 +2453,7 @@ def test_the_topk_probe_executes_the_auth_script_and_never_prints_it(tmp_path: P
     """g-rcjobs-4: the mounted auth script is executed, never sourced: a sourced ``exit 0`` would end the
     job green before anything ran, and its output (a credential line) would reach the log.  A missing auth
     script fails the job, as it does in every sibling script."""
-    env, calls, stage, out = _topk_probe_harness(
-        tmp_path, auth_body="#!/usr/bin/env bash\necho SECRET-LINE\nexit 0\n"
-    )
+    env, calls, stage, out = _topk_probe_harness(tmp_path, auth_body="#!/usr/bin/env bash\necho SECRET-LINE\nexit 0\n")
     completed = subprocess.run(
         ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
     )
@@ -2504,9 +2513,7 @@ def test_the_topk_probe_upload_goes_through_the_gcs_helper_dispatch(tmp_path: Pa
 def test_a_crashed_topk_probe_is_a_failed_job_even_with_a_partial_report(tmp_path: Path) -> None:
     """g-rcjobs-13: the probe rewrites its report after every row, so a crash later still leaves a file; the
     wrapper must exit non-zero after uploading it, never print DONE for a crashed probe."""
-    env, _, stage, out = _topk_probe_harness(
-        tmp_path, auth_body="#!/usr/bin/env bash\nexit 0\n", probe_exit=3
-    )
+    env, _, stage, out = _topk_probe_harness(tmp_path, auth_body="#!/usr/bin/env bash\nexit 0\n", probe_exit=3)
     completed = subprocess.run(
         ["bash", str(TOPK_PROBE_SH), str(stage), str(out)], capture_output=True, text=True, env=env
     )
@@ -2867,12 +2874,12 @@ def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes()
     assert "continuing past a failure" in plan
 
 
-def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -> None:
+def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, request: pytest.FixtureRequest) -> None:
     """Drive judgecheck.sh's node path with stubs: bootstrap envs builds the client wrapper, every judge is
     served and waited for on its own port, both thinking modes' checks run with the recipe's client block and
     the family's toggle, the media probe runs for every judge, one judge whose engine dies does not stop the
-    next, every engine's process group is stopped, the JSONs and the report upload, and the job exits 1 with
-    the failure recorded."""
+    next, every engine's process group is stopped (including a TERM-ignoring survivor), a media mismatch fails
+    its judge, the JSONs and the report upload, and the job exits 1 with the failures recorded."""
     auth = tmp_path / "gcs_auth.sh"
     auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     gcs_log = tmp_path / "gcs.log"
@@ -2902,6 +2909,7 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
     bootstrap_log = tmp_path / "bootstrap.log"
     client_log = tmp_path / "client.log"
     serve_pids = tmp_path / "serve-pids"
+    orphans = tmp_path / "orphans"
     bootstrap = tmp_path / "bootstrap.sh"
     bootstrap.write_text(
         "#!/usr/bin/env bash\n"
@@ -2921,6 +2929,9 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
         '    for arg in "$@"; do [[ "$prev" == "--port" ]] && port="$arg"; prev="$arg"; done\n'
         '    echo "$$" >> "$STUB_SERVE_PIDS"\n'
         '    if [[ "${3:-}" == "gpt-oss-120b" ]]; then echo "stub engine: CUDA out of memory" >&2; exit 3; fi\n'
+        '    if [[ "${3:-}" == "qwen3.6-27b-fp8" ]]; then\n'
+        '      bash -c \'trap "" TERM; echo $$ >> "$STUB_ORPHANS"; exec sleep 300\' &\n'
+        "    fi\n"
         '    exec python3 "$STUB_ENGINE_PY" "$port" "${3:-}"\n'
         "    ;;\n"
         "  rcp-ndcg)\n"
@@ -2941,7 +2952,11 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
         "        media)\n"
         '          out=""; prev=""\n'
         '          for arg in "$@"; do [[ "$prev" == "--out" ]] && out="$arg"; prev="$arg"; done\n'
-        '          printf \'{"checked": true, "outcome": "ok"}\\n\' > "$out"\n'
+        '          if [[ "$recipe" == "gemma-4-12b-it" ]]; then\n'
+        '            printf \'{"checked": true, "ok": false, "outcome": "mismatch"}\\n\' > "$out"\n'
+        "            exit 1\n"
+        "          fi\n"
+        '          printf \'{"checked": true, "ok": true, "outcome": "ok"}\\n\' > "$out"\n'
         "          ;;\n"
         "      esac\n"
         "    fi\n"
@@ -2971,11 +2986,25 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
             "STUB_SERVE_PIDS": str(serve_pids),
             "STUB_ENGINE_PY": str(stub_engine),
             "STUB_GCS_LOG": str(gcs_log),
+            "STUB_ORPHANS": str(orphans),
             "RCP_JUDGECHECK_STARTUP_S": "20",
         },
     )
+
+    def _kill_orphans() -> None:
+        """The TERM-ignoring stub child (a stand-in for a surviving TP worker) must never outlive the job."""
+        if not orphans.is_file():
+            return
+        for line in orphans.read_text(encoding="utf-8").splitlines():
+            try:
+                os.kill(int(line), 9)
+            except (ProcessLookupError, ValueError):
+                pass
+
+    request.addfinalizer(_kill_orphans)
+    orphan_pids = [int(line) for line in orphans.read_text(encoding="utf-8").splitlines()] if orphans.is_file() else []
     assert completed.returncode == 1, completed.stdout + completed.stderr  # the dead engine fails the job
-    assert "judgecheck: 1 recipe(s) failed: gpt-oss-120b" in completed.stderr
+    assert "judgecheck: 2 recipe(s) failed: gpt-oss-120b gemma-4-12b-it" in completed.stderr
     state_line = next(line for line in completed.stdout.splitlines() if "judgecheck: state " in line)
     state = Path(state_line.split("judgecheck: state ", 1)[1])
     # the bootstrap envs call carries the ten-recipe wave list (the client environment)
@@ -3007,8 +3036,13 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
     # the media probe ran for every judge (the helper records text-only itself); gpt-oss's engine never booted
     assert log.count("judgecheck_probe media") == 9, log
     assert not (state / "media-gpt-oss-120b.json").exists()
-    # every engine's process group was stopped
+    # every engine's process group was stopped -- including the TERM-ignoring member qwen3.6's stub left
+    # behind (the group poll + unconditional SIGKILL; g-rcjobs-10)
     for pid in (int(line) for line in serve_pids.read_text(encoding="utf-8").splitlines()):
+        with pytest.raises(ProcessLookupError):
+            os.kill(pid, 0)
+    assert orphan_pids, "the stub recorded the TERM-ignoring child it left in the engine's session"
+    for pid in orphan_pids:
         with pytest.raises(ProcessLookupError):
             os.kill(pid, 0)
     # the checks' JSONs upload per judge and mode; the failed judge's engine log does not become a check
@@ -3035,6 +3069,9 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path) -
     assert set(single["modes"]) == {"default"} and single["modes"]["default"]["ok"] is True
     assert single["modes_note"] == "single documented mode: the recipe documents no thinking-mode toggle"
     assert single["media"]["outcome"] == "ok"
+    # a vision judge whose engine media check failed is 'failed', not 'verified' (g-rcjobs-2)
+    assert report["recipes"]["gemma-4-12b-it"]["state"] == "failed"
+    assert report["recipes"]["gemma-4-12b-it"]["media"]["outcome"] == "mismatch"
     gemma = report["recipes"]["gemma-4-12b-it"]
     assert set(gemma["modes"]) == {"off", "on"} and all(row["ok"] for row in gemma["modes"].values())
     assert "modes_note" not in gemma
