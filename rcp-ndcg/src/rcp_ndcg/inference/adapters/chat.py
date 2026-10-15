@@ -33,7 +33,7 @@ from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
 # ``VIDEO_CACHE_SIZE`` is re-exported here for this module's public surface; its home is
 # :mod:`rcp_ndcg.data.media` (the one lowering), and no code here reads it.
 from rcp_ndcg.data.media import VIDEO_CACHE_SIZE, content_parts_payload
-from rcp_ndcg.errors import CapabilityError, DataError, RequestRejectedError
+from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, RequestRejectedError
 from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter
 from rcp_ndcg.inference.types import Call, Completion, CompletionInput, Reply, TokenCount
 from rcp_ndcg.support.logging import get_logger
@@ -84,12 +84,36 @@ class ChatSettings(Protocol):
 # The request: messages and media (moved from rcp_ndcg.judging._payload, unchanged)
 # ---------------------------------------------------------------------------
 
-#: Largest video container inlined into one request, in bytes. A data URI is
+#: The default largest video container inlined into one request, in bytes (64 MiB). A data URI is
 #: base64 (4/3 the size) and is re-sent with every window the clip appears in, so a
 #: clip over this is refused by name rather than sent as a request the engine or a
-#: proxy rejects -- or accepts after a long upload. Override with
-#: ``RCP_NDCG_MAX_VIDEO_BYTES``; a corpus of long clips wants shorter clips.
-MAX_VIDEO_BYTES = int(os.environ.get("RCP_NDCG_MAX_VIDEO_BYTES", str(64 * 1024 * 1024)))
+#: proxy rejects -- or accepts after a long upload. ``RCP_NDCG_MAX_VIDEO_BYTES``
+#: overrides it, parsed at the guard (:func:`_max_video_bytes`); a corpus of long clips
+#: wants shorter clips.
+MAX_VIDEO_BYTES = 64 * 1024 * 1024
+
+
+def _max_video_bytes() -> int:
+    """The inlined-container cap in bytes: ``RCP_NDCG_MAX_VIDEO_BYTES`` when set, else :data:`MAX_VIDEO_BYTES`.
+
+    Parsed here, where the guard runs, never at import: a malformed value is a typed ``ConfigError`` naming
+    the variable and the integer-bytes form, instead of an untyped ``ValueError`` that crashed every import
+    of ``rcp_ndcg`` -- including ``rcp-ndcg --help``.
+
+    Raises:
+        ConfigError: The variable is set to something that is not an integer number of bytes.
+    """
+    raw = os.environ.get("RCP_NDCG_MAX_VIDEO_BYTES")
+    if raw is None:
+        return MAX_VIDEO_BYTES
+    try:
+        return int(raw)
+    except ValueError:
+        raise ConfigError(
+            f"RCP_NDCG_MAX_VIDEO_BYTES={raw!r} is not a whole number of bytes",
+            hint="give an integer number of bytes (for example RCP_NDCG_MAX_VIDEO_BYTES=67108864), or unset it "
+            "for the 64 MiB default",
+        ) from None
 
 
 class MediaCounts(NamedTuple):
@@ -148,15 +172,18 @@ def _guard_prepared_image(ref: MediaRef) -> None:
 
 
 def _guard_video_size(ref: MediaRef, size: int) -> None:
-    """The judge's inlined-container cap: a clip over ``MAX_VIDEO_BYTES`` is refused by name, because a data
-    URI is base64 (4/3 the size) and is re-sent with every window the clip appears in.
+    """The judge's inlined-container cap: a clip over the cap (``RCP_NDCG_MAX_VIDEO_BYTES``, 64 MiB by
+    default) is refused by name, because a data URI is base64 (4/3 the size) and is re-sent with every window
+    the clip appears in.
 
     Raises:
+        ConfigError: ``RCP_NDCG_MAX_VIDEO_BYTES`` is set to something that is not an integer number of bytes.
         DataError: The container's bytes are over the cap.
     """
-    if size > MAX_VIDEO_BYTES:
+    limit = _max_video_bytes()
+    if size > limit:
         raise DataError(
-            f"{ref.uri} is {size} bytes, over the {MAX_VIDEO_BYTES}-byte limit for an inlined video "
+            f"{ref.uri} is {size} bytes, over the {limit}-byte limit for an inlined video "
             "(`RCP_NDCG_MAX_VIDEO_BYTES`). Shorten or re-encode the clip at ingest, or raise the limit "
             "knowingly -- every window re-sends it."
         )

@@ -13,11 +13,12 @@ from typing import Any
 import pytest
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef
 
-from rcp_ndcg.errors import CapabilityError, RequestRejectedError
+from rcp_ndcg.errors import CapabilityError, ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters.chat import (
     REASONING_KEYS,
     REASONING_WATCH,
     OpenAIChat,
+    _guard_video_size,
     build_messages,
     media_counts,
 )
@@ -234,3 +235,35 @@ class TestTheReasoningWatch:
 
 def test_messages_lower_a_text_prompt_to_a_string_and_refuse_nothing() -> None:
     assert build_messages(CompletionInput(user_prompt="hi")) == [{"role": "user", "content": "hi"}]
+
+
+class TestMaxVideoBytes:
+    def test_a_malformed_max_video_bytes_is_a_config_error_at_the_guard(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The variable is parsed where the guard runs: a value like ``64MB`` is a typed ``ConfigError``
+        naming the variable and the integer-bytes form, not a raw ``ValueError``."""
+        monkeypatch.setenv("RCP_NDCG_MAX_VIDEO_BYTES", "64MB")
+        ref = MediaRef(uri="data:video/mp4;base64,AAAA", mime="video/mp4")
+        with pytest.raises(ConfigError, match="RCP_NDCG_MAX_VIDEO_BYTES") as raised:
+            _guard_video_size(ref, 1)
+        assert "64MB" in str(raised.value)
+        assert "bytes" in (raised.value.hint or "")
+
+    def test_a_malformed_max_video_bytes_does_not_break_import(self, tmp_path: Any) -> None:
+        """``RCP_NDCG_MAX_VIDEO_BYTES=64MB rcp-ndcg --help`` used to die with an untyped ``ValueError`` at
+        import time: every CLI command, and every import of the package, crashed."""
+        import os
+        import subprocess
+        import sys
+
+        env = {key: value for key, value in os.environ.items() if key != "RCP_NDCG_MAX_VIDEO_BYTES"}
+        env.update(RCP_NDCG_MAX_VIDEO_BYTES="64MB", PYTHONDONTWRITEBYTECODE="1")
+        result = subprocess.run(
+            [sys.executable, "-c", "import rcp_ndcg, rcp_ndcg.cli.main, rcp_ndcg.inference.adapters.chat"],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr

@@ -4352,6 +4352,11 @@ text it sends to the declared budget.
   transport chains under `BackendUnavailableError`/`RequestRejectedError` and hid the group's context. The
   failure is now re-raised as itself, cause intact.
 
+- **A malformed `RCP_NDCG_MAX_VIDEO_BYTES` no longer crashes every import of the package**: the variable was
+  parsed with a bare `int()` at import time, so `RCP_NDCG_MAX_VIDEO_BYTES=64MB` made every CLI command (even
+  `rcp-ndcg --help`) and every `import rcp_ndcg` die with an untyped `ValueError`. It is parsed at the video
+  guard now: a malformed value is a typed `ConfigError` naming the variable and the integer-bytes form.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
