@@ -1,7 +1,7 @@
 """The plugin's ``TORCH_SDPA`` attention backend: encoder-only attention over torch SDPA.
 
-E2 round 10. The digest-pinned nightly (``vllm/vllm-openai:nightly-8cbd5d03`` @
-``sha256:b25e8a04...``) refuses every backend the embeddinggemma-2 recipe tried: TRITON_ATTN cannot
+E2 round 10. vLLM v0.31.0 (the stock image the recipe serves) refuses every backend the
+embeddinggemma-2 recipe tried: TRITON_ATTN cannot
 compile its prefill kernel for the full layers' head_dim 512, FA4 caps head_dim at 256, and
 ``TORCH_SDPA`` is not a decoder backend on the image -- its enum value is the empty string ("this tag
 is only used for ViT"), so the manual-selection path raises ``ValueError: Backend TORCH_SDPA must be

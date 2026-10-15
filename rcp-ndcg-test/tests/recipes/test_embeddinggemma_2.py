@@ -296,22 +296,55 @@ def test_recipe_contract_pins_every_field() -> None:
     (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
     recipe = load_recipe(RECIPE_DIR)
     assert_recipe_contract(recipe, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
-    assert recipe.engine.image.startswith("vllm/vllm-openai:nightly-8cbd5d03")
-    assert "@sha256:" in recipe.engine.image, "a nightly image is pinned by digest (decision 38)"
-    assert recipe.engine.min_version == "0.31.1.dev0"
+    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
+    assert recipe.engine.min_version == "0.31.0"
+    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
     assert not (RECIPE_DIR / "template.jinja").exists(), "no template file ships (serve.chat_template null)"
 
 
+def test_the_verified_engine_is_the_stock_image_the_waves_ran() -> None:
+    """vllm-7 (owner decision 8): the verifying embeddinggemma-2 waves ran stock
+    ``vllm/vllm-openai:v0.31.0`` (the needed pieces were backported), so ``engine.image``,
+    ``status.image`` and every module docstring say that.  The nightly digest remains the fold's source
+    provenance only; no document claims the verified state ran on it."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
+    assert recipe.engine.min_version == "0.31.0"
+    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+    assert "The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint" not in recipe.notes
+    assert "the pinned image is a v0.31.0-based build" not in recipe.notes
+    # The verifying-wave record: the stock image, and the fold as the fallback for images that lack the
+    # classes (the removal condition stays).
+    assert "stock vllm/vllm-openai:v0.31.0" in recipe.notes or "stock `vllm/vllm-openai:v0.31.0`" in recipe.notes
+    assert "backport" in recipe.notes
+    modules = [
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "__init__.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "config.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "attention.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "__init__.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "configuration_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "modeling_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "processing_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "video_processing_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "embedding_gemma2.py",
+    ]
+    for path in modules:
+        text = path.read_text(encoding="utf-8")
+        assert "the pinned image is a v0.31.0-based build" not in text, path
+        assert "the digest-pinned engine nightly's transformers does not carry" not in text, path
+        assert "the vLLM nightly the recipe pins" not in text, path
+        assert "nightly-8cbd5d03" not in text, path
+
+
 def test_the_recipe_declares_the_folded_model_the_image_registry_lacks() -> None:
-    """E2 round 4: the pinned image reports vLLM 0.31.0 and its supported-architecture list equals the
-    v0.31.0 tag's (no ``EmbeddingGemma2Model``), while the nightly commit the image tag names carries
-    both the model module and the registry entry -- so the plugin ships the model and the recipe
-    declares its registration beside the transformers fold, with the removal condition recorded."""
+    """The fold stays as the carrier for an engine image whose registry lacks ``EmbeddingGemma2Model``:
+    the plugin ships the model and the recipe declares its registration beside the transformers fold, with
+    the removal condition recorded.  On the stock v0.31.0 image the verifying waves ran, the backported
+    classes make both probes return early."""
     recipe = load_recipe(RECIPE_DIR)
     assert recipe.serve.plugin_architectures == ("EmbeddingGemma2Config", "EmbeddingGemma2Model")
     notes = recipe.notes
-    assert "v0.31.0-based build" in notes
-    assert "not supported for now" in notes
+    assert "backport" in notes
     assert "8cbd5d03006c33185f402249ff2b448efd594986" in notes
     assert "SWITCH TO RELEASE / REMOVAL" in notes
 
