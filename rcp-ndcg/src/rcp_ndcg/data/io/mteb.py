@@ -259,6 +259,8 @@ def _writable_task_instruction(task_instruction: Any, *, card: Any) -> str | Non
         "column cannot hold",
         hint="pass card= with the task metadata (mteb's TaskMetadata.prompt carries it), or write the dataset "
         "without its task instruction",
+        cli_hint="the command line carries no card: convert a dataset whose task_instruction is a string or "
+        "absent, or write the card through the library",
     )
 
 
