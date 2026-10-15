@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import faulthandler
 import ipaddress
 import os
 import shutil
@@ -48,6 +49,15 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "no_timeout: opt this test out of the per-test timeout")
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_stall_watchdog() -> Iterator[None]:
+    """g-ci-1: an in-process CLI (``observe.requests.main``) arms faulthandler's repeating stall watchdog
+    for its own run and must cancel it; any watchdog that leaks anyway is cancelled here, so no later test
+    runs under the no-GIL stack walk that can SIGSEGV the interpreter."""
+    yield
+    faulthandler.cancel_dump_traceback_later()
 
 
 @pytest.fixture(scope="session", autouse=True)

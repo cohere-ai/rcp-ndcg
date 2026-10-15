@@ -1178,6 +1178,36 @@ def test_the_validation_prunes_the_red_text_row_where_a_media_row_precedes_it(tm
     assert [entry["strata"] for entry in pruned] == [["long"]]
 
 
+def test_main_cancels_the_stall_watchdog_before_it_returns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """g-ci-1: ``main`` arms the operator's repeating faulthandler stall watchdog; it must cancel it
+    before returning.  This suite calls ``main`` in-process, and a leaked watchdog walks every thread's
+    frames with no GIL on every 60 s tick: at a racing frame that SIGSEGVs the interpreter silently
+    (the CI crash at ~95% of the suite)."""
+    import types
+
+    from rcp_ndcg_test.observe import requests as generator
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        generator,
+        "faulthandler",
+        types.SimpleNamespace(
+            dump_traceback_later=lambda *args, **kwargs: calls.append("arm"),
+            cancel_dump_traceback_later=lambda: calls.append("cancel"),
+        ),
+    )
+    monkeypatch.setattr("rcp_ndcg_test.observe.sources.load_corpora", lambda *args, **kwargs: [])
+    out = tmp_path / "pairs"
+    argv = ["--recipes-root", str(RECIPES), "--recipes", "fixture-embed", "--out", str(out), "--suites", "nanobeir"]
+    assert generator.main(argv) == 0
+    assert calls == ["arm", "cancel"], calls
+    with pytest.raises(SystemExit):
+        generator.main(["--help"])
+    assert calls == ["arm", "cancel", "arm", "cancel"], calls
+
+
 def test_validate_and_prune_accepts_a_multi_variant_family_variant(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

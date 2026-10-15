@@ -1358,10 +1358,21 @@ def main(argv: list[str] | None = None) -> int:
     ``--reference-python`` runs the harness's stage-1 validation per recipe and prunes red rows first;
     without it the files are written unvalidated (the manifest records the rows as written).  A stall
     watchdog (``faulthandler.dump_traceback_later(60, repeat=True)``) writes every live stack to stderr
-    every 60 s: wrap a run in ``timeout 300`` and redirect stderr to a scratch file to see where any
-    stall sits (the operator's runbook).
+    every 60 s while this call runs, and is cancelled before ``main`` returns: an in-process call never
+    leaves the no-GIL stack walk armed for the rest of the process.  Wrap a run in ``timeout 300`` and
+    redirect stderr to a scratch file to see where any stall sits (the operator's runbook).
     """
     faulthandler.dump_traceback_later(60, repeat=True)
+    try:
+        return _generate(argv)
+    finally:
+        # The watchdog belongs to this call, never to the process: the test suite calls main()
+        # in-process, and a repeating watchdog left armed walks every thread's frames without the GIL
+        # on every tick and can SIGSEGV the interpreter silently (the CI crash at ~95% of the suite).
+        faulthandler.cancel_dump_traceback_later()
+
+
+def _generate(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m rcp_ndcg_test.observe.requests",
         description="Generate the deterministic request set for every recipe (pairs files + manifest).",
