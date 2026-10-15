@@ -82,7 +82,7 @@ the GPU waves serve the recipes as shipped, with no overrides. `--port` (the run
 
 `serve.max_num_batched_tokens` is **rendered at** `serve.max_model_len` when the client's largest token budget
 reaches `serve.max_model_len` exactly and the recipe does not declare
-`serve.patches: [pooling-full-context]` (owner decision 6(b)): an exactly-full prompt is then chunked, and the
+`serve.patches: [pooling-full-context]`: an exactly-full prompt is then chunked, and the
 pinned v0.31.0 scheduler never schedules its last token, so the request hangs and holds the engine slot. The
 engine's own default chunk depends on the GPU class (2048 on A100 and GPUs under 70 GiB, below these
 recipes' budgets), so the recipe renders the safe value instead of relying on it -- nothing is left to the
@@ -90,7 +90,7 @@ engine's default. A recipe whose client budget stays below `serve.max_model_len`
 family: 8192 against 10000) never sends such a prompt, and a recipe that carries the patch finishes it; both
 may chunk freely and render no derived value. An explicit `--set serve.max_num_batched_tokens` below the
 floor is **warned about and replaced by** `serve.max_model_len`, naming the value asked for, the value
-rendered and the patch: decision 6(b) chose a warning over a refusal, but rendering the smaller value would
+rendered and the patch: the rule warns rather than refuses, but rendering the smaller value would
 reproduce the hang the rule exists to prevent. Carrying the patch on the seven affected recipes is deferred:
 v0.31.0 is the latest release and the five pooling bugfix PRs upstream (60978, 55226, 55192, 60035, 61062)
 are open, none merged, so no release carries the fix yet.

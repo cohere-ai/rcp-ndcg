@@ -483,11 +483,18 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
     Four distributions (``rcp-ndcg``, ``rcp-ndcg-core``, ``rcp-ndcg-vllm`` and the unpublished
     ``rcp-ndcg-test``), one merged NOTICE byte-identical in all of them (docs-release Q4); the folded model
     plugins' attributions are part of it (their distributions are gone, layout-move item 3).
+
+    ``rcp-ndcg-vllm`` additionally ships the full texts of the licences its wheel bundles beyond Apache-2.0
+    (ContextualAI's CC-BY-NC-SA-4.0 and Jina AI's CC-BY-NC-4.0 files, Perplexity AI's MIT file), so its
+    ``license-files`` carries ``LICENSES/*.txt``; the other three stay Apache-2.0 only.
     """
     folders = [ROOT / "rcp-ndcg", ROOT / "rcp-ndcg-core", ROOT / "rcp-ndcg-vllm", ROOT / "rcp-ndcg-test"]
     for folder in folders:
         project = tomllib.loads((folder / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-        assert project["license-files"] == ["LICENSE", "NOTICE"], folder
+        expected = ["LICENSE", "NOTICE"]
+        if folder.name == "rcp-ndcg-vllm":
+            expected = ["LICENSE", "NOTICE", "LICENSES/*.txt"]
+        assert project["license-files"] == expected, folder
         for name in ("LICENSE", "NOTICE"):
             assert (folder / name).read_bytes() == (ROOT / name).read_bytes(), (
                 f"{folder.relative_to(ROOT)}/{name} is stale"

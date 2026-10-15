@@ -257,12 +257,15 @@ def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) 
     image_policy, video_policy = media_policies_for(client.config)
 
     def consumed_geometry(height: int, width: int) -> tuple[int, int]:
-        if image_policy is None or not image_policy.resizes:
+        # Bind the policy once: ``resizes`` implies a known processor, but a checker cannot narrow a property's
+        # implication, and the later calls need the policy itself non-optional.
+        policy = image_policy
+        if policy is None or policy.processor is None or not policy.resizes:
             return height, width
-        if PROCESSORS[image_policy.processor].resize == "gemma4":
-            assert image_policy.max_soft_tokens is not None
-            return gemma4_resize(height, width, max_soft_tokens=image_policy.max_soft_tokens)
-        return image_policy.target_size(height, width)
+        if PROCESSORS[policy.processor].resize == "gemma4":
+            assert policy.max_soft_tokens is not None
+            return gemma4_resize(height, width, max_soft_tokens=policy.max_soft_tokens)
+        return policy.target_size(height, width)
 
     def tokens_of(content: Any) -> int | None:
         try:

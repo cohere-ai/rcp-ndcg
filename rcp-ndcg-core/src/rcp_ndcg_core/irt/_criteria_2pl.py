@@ -48,14 +48,6 @@ QUAD = np.linspace(-18.0, 10.0, 561)
 #: Prior standard deviation on ability (logits).
 DEFAULT_PRIOR_SD = 1.0
 
-#: The prior mass the fixed :data:`QUAD` grid must cover for a directly applied ``prior_sd``. With less,
-#: the tail outside the grid is truncated silently and biases the posterior mean; at the threshold the
-#: prior-only bias is under 0.01 logits, while a nearly flat truncated prior on ``[-18, 10]`` sits at
-#: about -4 instead of 0. The upper edge (+10) binds first, so the largest accepted sd is about 3.2. The
-#: public :func:`rcp_ndcg_core.irt.score_document` is not subject to this: it integrates a wide prior in
-#: standardised units on the same grid.
-QUAD_MIN_PRIOR_MASS = 1.0 - 1e-3
-
 DEFAULT_GAMMA_BOUNDS = (0.05, 20.0)
 DEFAULT_MAX_ITEM_WEIGHT = 0.90
 
@@ -85,32 +77,6 @@ def _validate_prior_sd(prior_sd: float) -> float:
     value = float(prior_sd)
     if not math.isfinite(value) or value <= 0:
         raise ValueError(f"prior_sd must be finite and > 0, got {prior_sd!r}")
-    return value
-
-
-def _validate_prior_sd_fits_grid(prior_sd: float) -> float:
-    """The prior sd (logits), refusing one whose prior mass on the fixed :data:`QUAD` grid is too small.
-
-    The grid is fixed, so a prior wider than the grid is truncated silently and the posterior mean is
-    computed over the truncated prior: at ``prior_sd=20`` the prior is nearly flat on ``[-18, 10]``, so a
-    document with no data scores near the grid's centre (about -4) instead of the prior mean 0. A
-    ``prior_sd`` whose mass inside the grid is below :data:`QUAD_MIN_PRIOR_MASS` (the upper edge binds
-    first, at about sd 3.2) is refused rather than fitted.
-
-    :func:`rcp_ndcg_core.irt.score_document` is not subject to this: it integrates a wide prior in
-    standardised units on the same grid, so it keeps accepting any finite ``prior_sd > 0``.
-    """
-    value = _validate_prior_sd(prior_sd)
-    mass = 0.5 * (
-        math.erf(float(QUAD[-1]) / (value * math.sqrt(2.0))) - math.erf(float(QUAD[0]) / (value * math.sqrt(2.0)))
-    )
-    if mass < QUAD_MIN_PRIOR_MASS:
-        raise ValueError(
-            f"prior_sd {value!r} puts only {mass:.6f} of the prior's mass on the fixed quadrature grid "
-            f"[{QUAD[0]:g}, {QUAD[-1]:g}] (at least {QUAD_MIN_PRIOR_MASS:g} required); the truncated "
-            "tail biases the posterior mean. Use a smaller prior_sd, or the public score_document(), "
-            "which integrates a wide prior in standardised units."
-        )
     return value
 
 
@@ -191,7 +157,7 @@ class Criteria2PL:
             raise ValueError("gamma and beta must be equal-length 1-D arrays of >= 2 criteria")
         if (self.gamma <= 0).any():
             raise ValueError("every discrimination gamma_k must be positive")
-        self.prior_sd = _validate_prior_sd_fits_grid(prior_sd)
+        self.prior_sd = _validate_prior_sd(prior_sd)
         self.diagnostics = diagnostics
 
     # -- construction ------------------------------------------------------
@@ -229,7 +195,7 @@ class Criteria2PL:
                 "Install it directly, or via the package extra: pip install 'rcp-ndcg-core[irt]'"
             ) from exc
 
-        prior_sd = _validate_prior_sd_fits_grid(prior_sd)
+        prior_sd = _validate_prior_sd(prior_sd)
         n_arr, S_arr = _validate_observations(n, S)
         n_items = S_arr.shape[1]
         lo, hi = float(np.log(DEFAULT_GAMMA_BOUNDS[0])), float(np.log(DEFAULT_GAMMA_BOUNDS[1]))

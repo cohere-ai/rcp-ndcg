@@ -83,8 +83,8 @@ ran against the fingerprint the tree computes today.
   Nothing is deferred past the tag: the state stays `failed`, and the gate's disposition stays the owner's
   explicit decision, recorded in the release notes; a recipe in this state ships only under that decision,
   never silently.
-- **The `embeddinggemma-2` row's engine image is stock `vllm/vllm-openai:v0.31.0`** (vllm-7, owner
-  decision 8): the verifying waves ran that image with the recipe's plugin backport, not the nightly
+- **The `embeddinggemma-2` row's engine image is stock `vllm/vllm-openai:v0.31.0`** (vllm-7): the verifying
+  waves ran that image with the recipe's plugin backport, not the nightly
   digest the row used to name. The correction moves the recipe's behaviour fingerprint (the engine image
   is a key), so the row's fingerprint cell names the value the tree computes today (`cc5e5c3c0766…`);
   the `rc0-202610140620` wave ran at the superseded nightly-keyed `d0e1e968…`, and the release's

@@ -294,7 +294,7 @@ class TestJudge:
         judge = config.judge_config()
         assert judge.recipe == "gpt-oss-120b"
         assert judge.decoding == "json_schema"
-        assert judge.temperature == 0.0
+        assert judge.temperature == 1.0
         assert judge.max_output_tokens == 8192
         assert judge.context_tokens == 131072
         assert judge.tokenizer == "openai/gpt-oss-120b@b5c939de8f754692c1647ca79fbf85e8c1e70f8a"

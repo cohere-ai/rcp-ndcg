@@ -39,13 +39,12 @@ incompatibly, independently of the package version. All four distributions carry
   place. The expression is now `Apache-2.0 AND MIT AND CC-BY-NC-4.0 AND CC-BY-NC-SA-4.0`, `license-files`
   carries the licence texts under `LICENSES/`, and two tests pin the expression against `NOTICE`'s own
   entries so the declaration and the notice cannot drift apart.
-- **A prior too wide for the fixed 2PL quadrature grid is refused** (core-glm53 note 2): `Criteria2PL`
-  integrates on a fixed 561-point grid over `[-18, 10]`, so a `prior_sd` whose mass spills past the +10
-  edge was silently truncated — at `prior_sd=20` the prior is nearly flat on the grid, and a document with
-  no data scored near the grid's centre (about -4) instead of the prior mean 0. `Criteria2PL.fit` and the
-  direct constructor now refuse a prior whose mass on the grid is below `QUAD_MIN_PRIOR_MASS` (sd above
-  about 3.2); the public `score_document()` still accepts any finite `prior_sd > 0`, because it integrates
-  a wide prior in standardised units on the same grid.
+- **A wide ability prior is integrated, not truncated** (core-glm53 note 2): `Criteria2PL` integrates on a
+  561-point grid expressed in units of the ability prior's sd, so every integral scales the grid and a
+  `prior_sd` far from 1 is integrated on the same standardised support rather than cut off at an absolute
+  edge. A short-lived validation refused a prior whose mass on a *fixed* grid was small (sd above about
+  3.2); the grid stopped being fixed when the fit moved to standardised units, which made that refusal
+  reject priors that work, so it is gone and the invariance tests cover the property instead.
 - **The wrong-role judge refusal reads grammatically** (pipeline-ds41 D5): `judge_config_data` answered
   `recipe 'octen-embedding-0.6b' is a embed recipe, not a judge recipe`; the message is now "is a recipe of
   role 'embed'", which reads for every role. `recipe_role`'s docstring also names the `judge` role it
