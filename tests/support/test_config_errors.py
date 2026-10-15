@@ -102,3 +102,38 @@ def test_a_non_pydantic_error_is_never_read_as_one() -> None:
         validation_problems(KeyError("judge"))
     with pytest.raises(KeyError, match="judge"):
         config_error(KeyError("judge"))
+
+
+def test_a_refused_secret_is_never_echoed() -> None:
+    """``details.errors[].input`` (and the message) must not carry a secret: the details reach ``--json``
+    output, CI logs and MCP tool results. A refused env token, a credential-bearing URL in a sibling error
+    and a credentialed engine list are the three shapes."""
+    with pytest.raises(ConfigError) as caught:
+        RunConfig.from_data(
+            {
+                "dataset": {"uri": "x"},
+                "runner": {"name": "local", "options": {"env": {"HF_TOKEN": "hf_SECRETVALUE123"}}},
+            }
+        )
+    assert "hf_SECRETVALUE123" not in json.dumps(caught.value.to_dict())
+
+    with pytest.raises(ConfigError) as caught:
+        RunConfig.from_data({"dataset": {"uri": "x"}, "judge": {"base_url": "http://user:pw-SECRET@host/v1"}})
+    assert "pw-SECRET" not in json.dumps(caught.value.to_dict())
+
+    from rcp_ndcg.support.serve import parse_engines_env
+
+    with pytest.raises(ConfigError) as caught:
+        parse_engines_env('{"judge": {"urls": ["https://user:pw-SECRET@gw.example/v1", ""]}}')
+    assert "pw-SECRET" not in json.dumps(caught.value.to_dict())
+
+
+def test_a_control_character_refusal_names_the_character_not_the_value() -> None:
+    """A mirror URI can carry a presigned signature; the refusal names the character and its position, so
+    the value (signature included) does not ride out in the message."""
+    from rcp_ndcg.support.resources import no_control_characters
+
+    with pytest.raises(ValueError) as caught:
+        no_control_characters("gs://b/x?sig=SECRETSIG\n")
+    assert "SECRETSIG" not in str(caught.value)
+    assert "U+000A" in str(caught.value)

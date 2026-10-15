@@ -4833,3 +4833,10 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   image the recipe declares must name an exact tag or a digest (`:latest` and an untagged reference are refused),
   and `run start --dry-run --runner kubernetes` emits objects `kubectl apply` accepts (the engine objects no
   longer carry an owner reference with a placeholder uid).
+- **A config validation error never echoes a secret**: `details.errors[].input` copied pydantic's raw input
+  unredacted, so a refused `runner.options.env` token, a credential-bearing `base_url` in a sibling error and a
+  credentialed `RCP_NDCG_ENGINES` URL list rode out in `--json` output, CI logs and MCP tool results -- the same
+  contract that refuses the value in the first place. One redactor now replaces the value under a secret-looking
+  key (or under an `env` mapping) with `<redacted>` and passes every string, nested included, through
+  `redact_urls`; `no_control_characters` names the character and its position instead of `repr(value)`, so a
+  mirror URI's presigned signature cannot ride out in the message either.

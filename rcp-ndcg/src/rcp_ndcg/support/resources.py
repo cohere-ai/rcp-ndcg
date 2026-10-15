@@ -41,8 +41,9 @@ def no_control_characters(value: str) -> str:
     found = _CONTROL_CHARACTERS.search(value)
     if found:
         raise ValueError(
-            f"{value!r} contains a control character (U+{ord(found.group()):04X}); a newline or a NUL in a "
-            "config value would end a heredoc or a scheduler directive line, and the rendered script is line-based"
+            f"a config value contains a control character U+{ord(found.group()):04X} at position "
+            f"{found.start()}; a newline or a NUL would end a heredoc or a scheduler directive line, and the "
+            "rendered script is line-based"
         )
     return value
 

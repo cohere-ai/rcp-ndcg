@@ -22,6 +22,8 @@ from typing import Any
 import yaml
 
 from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.support.resources import REDACTED, looks_like_secret
+from rcp_ndcg.support.urls import redact_urls
 
 EXTENDS_KEY = "extends"
 
@@ -121,12 +123,13 @@ def validation_problems(
 ) -> list[dict[str, Any]]:
     """One entry per problem of a pydantic ``ValidationError`` — the one shape of ``details.errors``.
 
-    Each entry carries ``field`` (the dotted path), ``problem``, ``input`` (the given value; ``null`` for a
-    missing field), ``expected`` (the type or the allowed values, when known), ``did_you_mean`` (the closest
-    known key, for an unknown one) and ``source`` (``"--set"`` when an override set the field, else *source*).
-    Config validation (:func:`config_error`) and the CLI's argument validation raise with this shape.  ``exc``
-    that is not a pydantic ``ValidationError`` has no such problems to read: it is re-raised as itself, so a
-    validator that raised something else surfaces as what it is instead of an ``AttributeError`` on it.
+    Each entry carries ``field`` (the dotted path), ``problem``, ``input`` (the given value with secrets
+    redacted; ``null`` for a missing field), ``expected`` (the type or the allowed values, when known),
+    ``did_you_mean`` (the closest known key, for an unknown one) and ``source`` (``"--set"`` when an
+    override set the field, else *source*). Config validation (:func:`config_error`) and the CLI's argument
+    validation raise with this shape.  ``exc`` that is not a pydantic ``ValidationError`` has no such problems
+    to read: it is re-raised as itself, so a validator that raised something else surfaces as what it is
+    instead of an ``AttributeError`` on it.
     """
     from pydantic import ValidationError
 
@@ -143,7 +146,9 @@ def validation_problems(
         problem: dict[str, Any] = {
             "field": field,
             "problem": str(error["msg"]).removeprefix("Value error, "),
-            "input": None if error["type"] == "missing" else _plain(error.get("input")),
+            "input": None
+            if error["type"] == "missing"
+            else _redacted_input(_plain(error.get("input")), loc),
         }
         expected = _expected(error, node)
         if expected is not None:
@@ -330,6 +335,26 @@ def _plain(value: Any) -> Any:
     if isinstance(value, list | tuple):
         return [_plain(item) for item in value]
     return repr(value)
+
+
+def _redacted_input(value: Any, loc: Sequence[str]) -> Any:
+    """``value`` as the ``input`` of one problem, with secrets redacted.
+
+    The details reach ``--json`` output, CI logs and MCP tool results, so a secret must not ride out in them:
+    a value under a secret-looking key (or under an ``env`` mapping, whose values are credentials by
+    convention) becomes :data:`~rcp_ndcg.support.resources.REDACTED`, and every string is passed through
+    :func:`~rcp_ndcg.support.urls.redact_urls` so a credential-bearing URL cannot either. ``loc`` is the
+    problem's location; nested mapping keys are appended as the walk goes.
+    """
+    if any(looks_like_secret(part) for part in loc):
+        return REDACTED
+    if isinstance(value, Mapping):
+        return {str(key): _redacted_input(item, (*loc, str(key))) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_redacted_input(item, loc) for item in value]
+    if isinstance(value, str):
+        return redact_urls(value)
+    return value
 
 
 __all__ = ["EXTENDS_KEY", "apply_overrides", "config_error", "deep_merge", "load_config", "validation_problems"]
