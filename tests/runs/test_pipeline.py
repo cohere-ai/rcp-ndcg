@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from rcp_ndcg.data import load_rankings
+from rcp_ndcg.data import Rankings, load_rankings
 from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError, RcpNdcgWarning
 from rcp_ndcg.judging import TournamentSchedule
 from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
@@ -287,6 +287,27 @@ class TestAFailedChange:
             "tournament": "completed",
             "rubric": "completed",
         }
+
+
+def test_a_failed_step_error_is_recorded_redacted(data: Path, tmp_path: Path) -> None:
+    """runs-12: a credentialed URI the recorded config strips must not ride the error text into the mirrored
+    ``manifest.json`` or ``logs/run.log``."""
+    from rcp_ndcg.runs.run import execute_run
+
+    config = tiny_config(
+        data,
+        candidates={"from": "rankings", "rankings": "memory://key:secret@bkt/missing.jsonl"},
+        steps=["retrieve"],
+    )
+    pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+    with pytest.raises(MissingInputError):
+        execute_run(pipeline)
+
+    manifest = Path(pipeline.layout.manifest).read_text(encoding="utf-8")
+    log = (Path(pipeline.layout.root) / "logs" / "run.log").read_text(encoding="utf-8")
+    assert "rankings file not found" in manifest, "the failure is still recorded"
+    assert "secret" not in manifest
+    assert "secret" not in log
 
 
 class TestOnly:
@@ -1536,6 +1557,62 @@ def test_only_rerank_regenerates_a_missing_first_stage(
 
     assert first.is_file(), "the first stage is regenerated"
     assert load_rankings(root / "candidates.parquet").queries().keys() == expected.keys()
+
+
+class TestRemoteInputs:
+    """A step input named by URI is hashed like a local one (arch-1): a replaced object re-keys the step."""
+
+    @pytest.fixture(autouse=True)
+    def _empty_memory_fs(self):
+        from rcp_ndcg import storage
+
+        memory = storage.filesystem("memory://")
+        memory.store.clear()
+        memory.pseudo_dirs[:] = [""]
+        yield
+        memory.store.clear()
+        memory.pseudo_dirs[:] = [""]
+
+    def _remote_rankings(self) -> str:
+        rows, _ = tiny_rows()
+        orders = {row.id: row.doc_ids[:6] for row in rows}
+        Rankings.from_orders(orders, system="text").save("memory://bkt/rankings.jsonl")
+        return "memory://bkt/rankings.jsonl"
+
+    def test_a_remote_rankings_input_is_hashed_and_a_replaced_object_re_runs_the_step(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        remote = self._remote_rankings()
+        pipeline = Pipeline(
+            tiny_config(data, candidates={"from": "rankings", "rankings": remote}, steps=["retrieve"]),
+            runs_dir=str(tmp_path / "runs"),
+        )
+        assert [ref.path for ref in pipeline._inputs("retrieve")] == [remote]
+        manifest = pipeline.run()
+        assert manifest.status is RunStatus.COMPLETED
+
+        rows, _ = tiny_rows()
+        changed = {row.id: list(reversed(row.doc_ids[:6])) for row in rows}
+        Rankings.from_orders(changed, system="text").save(remote)
+
+        assert Pipeline.resume(pipeline.layout.root).plan()[0] == {"step": "retrieve", "status": "would run"}
+
+    def test_a_credentialed_input_uri_is_recorded_redacted(self, data: Path, tmp_path: Path) -> None:
+        rows, _ = tiny_rows()
+        orders = {row.id: row.doc_ids[:6] for row in rows}
+        Rankings.from_orders(orders, system="text").save("memory://key:secret@bkt/rankings.jsonl")
+        pipeline = Pipeline(
+            tiny_config(
+                data,
+                candidates={"from": "rankings", "rankings": "memory://key:secret@bkt/rankings.jsonl"},
+                steps=["retrieve"],
+            ),
+            runs_dir=str(tmp_path / "runs"),
+        )
+
+        (ref,) = pipeline._inputs("retrieve")
+        assert ref.path == "memory://bkt/rankings.jsonl"
+        assert "secret" not in ref.path
 
 
 def test_the_rankings_first_stage_orders_a_tied_pair_by_the_lower_id() -> None:

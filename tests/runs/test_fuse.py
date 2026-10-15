@@ -115,6 +115,20 @@ class TestTheFusedCandidates:
         assert resumed.plan()[0] == {"step": "fuse", "status": "would run"}
         assert resumed.run().status is RunStatus.COMPLETED
 
+    def test_reordering_the_systems_re_keys_the_fuse_step(self, data: Path, tmp_path: Path) -> None:
+        """retrieval-1: the depth cut breaks fused-score ties by argument order, so the step identity must
+        carry that order; a reordered config never reuses a pool a fresh run would not produce."""
+        systems = _orders()
+        locations = _files(tmp_path, systems)
+        first = Pipeline(_fused_config(data, locations), runs_dir=str(tmp_path / "runs-first"))
+        first.run()
+        swapped = dict(reversed(list(locations.items())))
+        second = Pipeline(_fused_config(data, swapped), runs_dir=str(tmp_path / "runs-second"))
+        second.run()
+
+        assert second.manifest.step("fuse").identity["systems_order"] == list(swapped)
+        assert first.manifest.step("fuse").identity_hash != second.manifest.step("fuse").identity_hash
+
     def test_the_estimate_of_a_fused_run_reads_the_systems_before_the_step_runs(
         self, data: Path, tmp_path: Path
     ) -> None:
@@ -268,6 +282,50 @@ class TestTheRefusals:
 
         with pytest.raises(DataError, match="holds 2 systems"):
             pipeline.run()
+        assert not Path(pipeline.layout.candidates).exists()
+
+
+class TestRemoteSystems:
+    """A system's rankings may live in a bucket or at a URL (arch-3): ``load_rankings`` reads it like a local file."""
+
+    @pytest.fixture(autouse=True)
+    def _empty_memory_fs(self):
+        from rcp_ndcg import storage
+
+        memory = storage.filesystem("memory://")
+        memory.store.clear()
+        memory.pseudo_dirs[:] = [""]
+        yield
+        memory.store.clear()
+        memory.pseudo_dirs[:] = [""]
+
+    def test_systems_named_by_uri_fuse_like_local_files(self, data: Path, tmp_path: Path) -> None:
+        systems = _orders()
+        locations = {name: f"memory://bkt/{name}.jsonl" for name in systems}
+        for name, orders in systems.items():
+            Rankings.from_orders(orders, system=name).save(locations[name])
+        config = _fused_config(data, locations, steps=["fuse"])
+        pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        manifest = pipeline.run()
+
+        assert manifest.status is RunStatus.COMPLETED
+        expected = fuse(
+            [Rankings.from_orders(systems[name], system=name) for name in systems],
+            rrf_k=60,
+            depth=config.candidates.depth,
+        )
+        assert load_rankings(pipeline.layout.candidates).queries() == expected.queries(system="rrf")
+        assert [ref.path for ref in manifest.step("fuse").inputs] == list(locations.values())
+
+    def test_a_missing_remote_system_is_refused_with_its_location_redacted(self, data: Path, tmp_path: Path) -> None:
+        locations = _files(tmp_path, _orders())
+        locations["video"] = "memory://key:secret@bkt/not-retrieved.jsonl"
+        pipeline = Pipeline(_fused_config(data, locations), runs_dir=str(tmp_path / "runs"))
+
+        with pytest.raises(MissingInputError) as caught:
+            pipeline.run()
+        assert "memory://bkt/not-retrieved.jsonl" in str(caught.value)
+        assert "secret" not in str(caught.value)
         assert not Path(pipeline.layout.candidates).exists()
 
 
