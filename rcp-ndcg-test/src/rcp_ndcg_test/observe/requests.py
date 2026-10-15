@@ -708,6 +708,7 @@ def _cap_rungs(recipe: Any, budget: int) -> list[tuple[str, str, int]]:
         rungs.append(("over_query_cap", "query", int(query_cap) + 1))
     return rungs
 
+
 _ROLE_ROUTES = {"embed": "/v1/embeddings", "multi_vector": "/pooling", "rerank": "/rerank"}
 
 
@@ -1458,11 +1459,7 @@ def _red_row_indexes(document: dict[str, Any]) -> tuple[list[tuple[int | None, s
             row = failure.get("row")
             if isinstance(row, dict):
                 written = row.get("index")
-                index = (
-                    int(origins[written][0])
-                    if isinstance(written, int) and 0 <= written < len(origins)
-                    else None
-                )
+                index = int(origins[written][0]) if isinstance(written, int) and 0 <= written < len(origins) else None
             elif isinstance(row, int):
                 index = row
             else:

@@ -223,7 +223,6 @@ def test_embed_check_fails_when_the_client_did_not_fit(tmp_path: Path, monkeypat
     import types
 
     import numpy as np
-
     from rcp_ndcg_test.jobs import wave0_probe
 
     port = _free_port()
