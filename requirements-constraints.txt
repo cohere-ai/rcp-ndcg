@@ -2,11 +2,11 @@
 #    uv export --frozen --no-hashes --no-emit-workspace --no-dev --package rcp-ndcg --extra calibrate --extra hf --extra s3 --extra azure -o requirements-constraints.txt
 adlfs==2026.8.0
     # via rcp-ndcg
-aiobotocore==3.9.1
+aiobotocore==3.9.2
     # via s3fs
 aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.5
     # via
     #   aiobotocore
     #   azure-core
@@ -27,13 +27,13 @@ azure-core==1.41.0
     #   adlfs
     #   azure-identity
     #   azure-storage-blob
-azure-identity==1.25.3
+azure-identity==1.26.0
     # via adlfs
-azure-storage-blob==12.30.2
+azure-storage-blob==12.31.0
     # via adlfs
-bm25s==0.2.13
+bm25s==0.3.13
     # via rcp-ndcg
-botocore==1.43.75
+botocore==1.43.113
     # via aiobotocore
 certifi==2026.7.22
     # via
@@ -42,7 +42,7 @@ certifi==2026.7.22
     #   requests
 cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
     # via requests
 click==8.5.0
     # via
@@ -50,7 +50,7 @@ click==8.5.0
     #   rcp-ndcg
 colorama==0.4.6 ; sys_platform == 'win32'
     # via tqdm
-cryptography==50.0.1
+cryptography==50.0.2
     # via
     #   azure-identity
     #   azure-storage-blob
@@ -61,11 +61,11 @@ cuda-bindings==13.4.2 ; python_full_version < '3.15' and sys_platform == 'linux'
     # via torch
 cuda-pathfinder==1.8.2 ; python_full_version < '3.15' and sys_platform == 'linux'
     # via cuda-bindings
-cuda-toolkit==13.0.3.0 ; sys_platform == 'linux'
+cuda-toolkit==13.4.2 ; sys_platform == 'linux'
     # via torch
 decorator==5.3.1
     # via gcsfs
-filelock==3.32.7
+filelock==4.1.1
     # via
     #   huggingface-hub
     #   torch
@@ -73,7 +73,7 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-fsspec==2026.6.0
+fsspec==2026.9.0
     # via
     #   adlfs
     #   gcsfs
@@ -81,14 +81,14 @@ fsspec==2026.6.0
     #   rcp-ndcg
     #   s3fs
     #   torch
-gcsfs==2026.7.0
+gcsfs==2026.10.0
     # via rcp-ndcg
-google-api-core==2.38.0
+google-api-core==2.42.0
     # via
     #   google-cloud-core
     #   google-cloud-storage
     #   google-cloud-storage-control
-google-auth==2.58.0
+google-auth==2.62.0
     # via
     #   gcsfs
     #   google-api-core
@@ -96,21 +96,21 @@ google-auth==2.58.0
     #   google-cloud-core
     #   google-cloud-storage
     #   google-cloud-storage-control
-google-auth-oauthlib==1.4.1
+google-auth-oauthlib==1.5.0
     # via gcsfs
-google-cloud-core==2.7.0
+google-cloud-core==2.8.0
     # via google-cloud-storage
-google-cloud-storage==3.14.1
+google-cloud-storage==3.17.0
     # via gcsfs
-google-cloud-storage-control==1.15.0
+google-cloud-storage-control==1.16.0
     # via gcsfs
-google-crc32c==1.8.0
+google-crc32c==1.9.0
     # via
     #   google-cloud-storage
     #   google-resumable-media
-google-resumable-media==2.10.2
+google-resumable-media==2.11.0
     # via google-cloud-storage
-googleapis-common-protos==1.75.3
+googleapis-common-protos==1.75.5
     # via
     #   google-api-core
     #   grpc-google-iam-v1
@@ -128,7 +128,7 @@ grpcio-status==1.84.0
     # via google-api-core
 h11==0.16.0
     # via httpcore
-hf-xet==1.6.0 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
+hf-xet==1.7.0 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
@@ -136,7 +136,7 @@ httpx==0.28.1
     # via
     #   huggingface-hub
     #   rcp-ndcg
-huggingface-hub==1.32.0
+huggingface-hub==2.2.0
     # via
     #   rcp-ndcg
     #   tokenizers
@@ -154,9 +154,9 @@ jmespath==1.1.0
     # via
     #   aiobotocore
     #   botocore
-markupsafe==3.0.3
+markupsafe==3.0.4
     # via jinja2
-mpmath==1.3.0
+mpmath==1.4.1
     # via sympy
 msal==1.39.0
     # via
@@ -164,50 +164,50 @@ msal==1.39.0
     #   msal-extensions
 msal-extensions==1.3.1
     # via azure-identity
-multidict==6.9.1
+multidict==7.1.0
     # via
     #   aiobotocore
     #   aiohttp
     #   yarl
 networkx==3.7
     # via torch
-numpy==2.5.3
+numpy==2.5.4
     # via
     #   bm25s
     #   pandas
     #   rcp-ndcg
     #   rcp-ndcg-core
     #   scipy
-nvidia-cublas==13.1.1.3 ; sys_platform == 'linux'
+nvidia-cublas==13.8.1.7 ; sys_platform == 'linux'
     # via
     #   cuda-toolkit
     #   nvidia-cudnn-cu13
     #   nvidia-cusolver
-nvidia-cuda-cupti==13.0.85 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-cuda-cupti==13.4.92 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
-nvidia-cuda-nvrtc==13.0.88 ; sys_platform == 'linux'
+nvidia-cuda-nvrtc==13.4.92 ; sys_platform == 'linux'
     # via
     #   cuda-toolkit
     #   nvidia-cublas
-nvidia-cuda-runtime==13.0.96 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-cuda-runtime==13.4.92 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
-nvidia-cudnn-cu13==9.24.0.43 ; sys_platform == 'linux'
+nvidia-cudnn-cu13==9.27.0.42 ; sys_platform == 'linux'
     # via torch
-nvidia-cufft==12.0.0.61 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-cufft==12.4.0.43 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
-nvidia-cufile==1.15.1.6 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-cufile==1.19.1.55 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
-nvidia-curand==10.4.0.35 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-curand==10.4.4.72 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
-nvidia-cusolver==12.0.4.66 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-cusolver==12.3.4.7 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
-nvidia-cusparse==12.6.3.3 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-cusparse==12.8.6.72 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   cuda-toolkit
     #   nvidia-cusolver
-nvidia-cusparselt-cu13==0.8.1 ; sys_platform == 'linux'
+nvidia-cusparselt-cu13==0.10.0 ; sys_platform == 'linux'
     # via torch
-nvidia-nccl-cu13==2.30.7 ; sys_platform == 'linux'
+nvidia-nccl-cu13==2.32.3 ; sys_platform == 'linux'
     # via torch
 nvidia-nvjitlink==13.4.92 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
@@ -215,13 +215,13 @@ nvidia-nvjitlink==13.4.92 ; (platform_machine == 'aarch64' and sys_platform == '
     #   nvidia-cufft
     #   nvidia-cusolver
     #   nvidia-cusparse
-nvidia-nvshmem-cu13==3.4.5 ; sys_platform == 'linux'
+nvidia-nvshmem-cu13==3.8.0 ; sys_platform == 'linux'
     # via torch
-nvidia-nvtx==13.0.85 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nvidia-nvtx==13.4.92 ; (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via cuda-toolkit
 oauthlib==4.0.0
     # via requests-oauthlib
-opentelemetry-api==1.44.0
+opentelemetry-api==1.45.1
     # via google-api-core
 packaging==26.3
     # via huggingface-hub
@@ -233,7 +233,7 @@ propcache==0.5.4
     # via
     #   aiohttp
     #   yarl
-proto-plus==1.28.4
+proto-plus==1.29.0
     # via
     #   google-api-core
     #   google-cloud-storage-control
@@ -245,19 +245,19 @@ protobuf==7.36.2
     #   grpc-google-iam-v1
     #   grpcio-status
     #   proto-plus
-pyarrow==25.0.1
+pyarrow==26.0.0
     # via rcp-ndcg
 pyasn1==0.6.4
     # via pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth
-pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pycparser==3.11 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
-pydantic==2.13.5
+pydantic==2.14.1
     # via
     #   rcp-ndcg
     #   rcp-ndcg-core
-pydantic-core==2.46.5
+pydantic-core==2.50.1
     # via pydantic
 pyjwt==2.15.1
     # via msal
@@ -268,7 +268,7 @@ python-dateutil==2.9.0.post0
     #   aiobotocore
     #   botocore
     #   pandas
-python-dotenv==1.2.3
+python-dotenv==1.2.4
     # via rcp-ndcg
 pyyaml==6.0.3
     # via
@@ -284,7 +284,7 @@ requests==2.34.2
     #   requests-oauthlib
 requests-oauthlib==2.0.0
     # via google-auth-oauthlib
-s3fs==2026.6.0
+s3fs==2026.9.0
     # via rcp-ndcg
 scipy==1.18.1
     # via
@@ -296,9 +296,9 @@ six==1.17.0
     # via python-dateutil
 sympy==1.14.0
     # via torch
-tokenizers==0.23.2
+tokenizers==0.23.3
     # via rcp-ndcg
-torch==2.14.0
+torch==2.14.1
     # via rcp-ndcg
 tqdm==4.70.1
     # via
@@ -323,13 +323,13 @@ typing-extensions==4.16.0
     #   typing-inspection
 typing-inspection==0.4.4
     # via pydantic
-tzdata==2026.4 ; sys_platform == 'emscripten' or sys_platform == 'win32'
+tzdata==2026.5 ; sys_platform == 'emscripten' or sys_platform == 'win32'
     # via pandas
 urllib3==2.8.0
     # via
     #   botocore
     #   requests
-wrapt==2.4.1
+wrapt==2.5.0
     # via aiobotocore
 yarl==1.25.1
     # via aiohttp
