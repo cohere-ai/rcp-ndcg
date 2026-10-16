@@ -27,6 +27,12 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **The two stale corpora are re-recorded at the current fingerprints** (decision 17): the merge's plugin-module
+  edits moved `jina-embeddings-v5-text-small` and `zembed-1-embedding` off their recorded behaviour
+  fingerprints, so both were re-recorded on the rc3-20261015 wave (`1009a023...` and `db7a5387...` replace
+  `3ad7d8d0...` and `21bb1fd3...`), written into the repository as the redacted subset with their append-only
+  verification records, and `tests/conformance/stale.json` is empty again -- the state the release rule
+  requires. The new corpora carry no private infrastructure (`engine.redacted` is null), which the old ones did.
 - **The release-candidate manifest lists every staged file, nested manifests included** (the rc_build manifest
   writer): it excluded any file *named* `manifest.json`, which dropped `pairs/manifest.json` - a staged file the
   node installs and must be able to verify. Only the manifest at the stage root is excluded now, so the record

@@ -1,8 +1,8 @@
 {
   "corpora": {
-    "jina-embeddings-v5-text-small/3ad7d8d01be3a90e032cdc5ccc1c95bb31a9dc7e0c6d5ea0382d8792944735a4": {
-      "behaviour_fingerprint": "3ad7d8d01be3a90e032cdc5ccc1c95bb31a9dc7e0c6d5ea0382d8792944735a4",
-      "manifest_sha256": "a48347e34899ab8dc73d3d67b947399439cb3bbfc2083e603d5d5b48792fb6a8",
+    "jina-embeddings-v5-text-small/1009a023d493fc9a8777979ec5d87ffbaeb3ea3a3dc69a004b6a89fd31a84d88": {
+      "behaviour_fingerprint": "1009a023d493fc9a8777979ec5d87ffbaeb3ea3a3dc69a004b6a89fd31a84d88",
+      "manifest_sha256": "b45bcdaa48448e738b10a15bd1a0ef090e0e791ddf08b97c169f78e62e7a67a3",
       "recipe_revision": "dd76d535f5447ca3897a9c893fb1e612ead98192"
     },
     "jina-reranker-v3/f00e098f01c54022e0d4bc0eb0f5e8a84b1db1a0f4cd8ea9f095f669d18f911b": {
@@ -45,9 +45,9 @@
       "manifest_sha256": "20c5265711ae93579ee77db5a9c84724bca6ab9342eb1b28806ca2db5596a75e",
       "recipe_revision": "4bd860ac4f15ad1897a214615cccc700f8f71818"
     },
-    "zembed-1-embedding/21bb1fd31dc89b02ae86ae3f97dbdc03841c917527e08670f5524df0999130ad": {
-      "behaviour_fingerprint": "21bb1fd31dc89b02ae86ae3f97dbdc03841c917527e08670f5524df0999130ad",
-      "manifest_sha256": "881d89dd7d5fa6ad3b4f10d80a1dd679dec9aad2511b80611c08cedc84ae42ad",
+    "zembed-1-embedding/db7a5387c4e69c70c042a728e6d392172eae0b9cee7bd8ba49e2c8ab6f97591e": {
+      "behaviour_fingerprint": "db7a5387c4e69c70c042a728e6d392172eae0b9cee7bd8ba49e2c8ab6f97591e",
+      "manifest_sha256": "840c6a0b2e5e59ed7f68bacb1cd12e9bf100b0616e4e001c5c5c314f22316145",
       "recipe_revision": "cf13c81f3274394053d166740294f7eea4586f7a"
     },
     "zerank-1-small-reranker/e13348f43de3dab2969834ee41b24287aa2340be51178d31e5436c78a45f3b98": {

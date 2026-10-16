@@ -8,8 +8,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -33,8 +33,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -58,8 +58,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -87,8 +87,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -112,8 +112,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -143,8 +143,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -171,8 +171,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -196,8 +196,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -221,8 +221,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -252,8 +252,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -283,8 +283,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -308,8 +308,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -326,11 +326,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 1.0000000000000002,
+      "max_abs_diff": 0.0020852088928222656,
+      "max_rel_diff": 1.9938242761894014,
+      "min_cosine": 0.9999742938770074,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "0f36a39bc39d1b27f5f2fe1286d3c527844670796681016142aa12ff66828b90": {
       "repetitions": [
@@ -339,8 +339,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -367,8 +367,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -395,8 +395,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -426,8 +426,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -457,8 +457,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -485,8 +485,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -513,8 +513,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -531,11 +531,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999998,
+      "max_abs_diff": 0.0015884041786193848,
+      "max_rel_diff": 1.8770262716232808,
+      "min_cosine": 0.9999637252242721,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "192bae4fe24a4ccd27563bf5c92f821155bb6a63ef1aa4dfd184a688e9fadf66": {
       "repetitions": [
@@ -544,8 +544,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -569,8 +569,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -594,8 +594,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -622,8 +622,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -653,8 +653,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -678,8 +678,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -703,8 +703,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -728,8 +728,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -756,8 +756,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -784,8 +784,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -812,8 +812,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -843,8 +843,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -871,8 +871,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -896,8 +896,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -921,8 +921,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -946,8 +946,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -977,8 +977,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -995,11 +995,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 1.0,
+      "max_abs_diff": 0.003249138593673706,
+      "max_rel_diff": 1.9998801143119862,
+      "min_cosine": 0.9999524159214417,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "2ed90131b69cd8f9f6aa9d7e1edfc4c4941a04b4ced320b868acdbac97652d3f": {
       "repetitions": [
@@ -1008,8 +1008,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1039,8 +1039,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1067,8 +1067,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1085,11 +1085,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999998,
+      "max_abs_diff": 0.0013384371995925903,
+      "max_rel_diff": 1.8192413461403592,
+      "min_cosine": 0.9999742867347975,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "3495a281f6b80dbe47e50a47c838ebdec6213815d86ff18b86989a18bc7dba5c": {
       "repetitions": [
@@ -1098,8 +1098,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1129,8 +1129,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1154,8 +1154,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1179,8 +1179,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1207,8 +1207,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1232,8 +1232,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1260,8 +1260,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -1296,9 +1296,9 @@
           7
         ]
       },
-      "max_abs_diff": 0.002685040235519409,
-      "max_rel_diff": 1.9990457723335857,
-      "min_cosine": 0.9999707746853107,
+      "max_abs_diff": 0.0014800429344177246,
+      "max_rel_diff": 1.9986699370626504,
+      "min_cosine": 0.9999641451908694,
       "statuses_differ": false,
       "bodies_differ": true
     },
@@ -1309,8 +1309,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1337,8 +1337,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1355,11 +1355,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.001364201307296753,
-      "max_rel_diff": 1.9188357206754207,
-      "min_cosine": 0.9999655779646484,
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
       "statuses_differ": false,
-      "bodies_differ": true
+      "bodies_differ": false
     },
     "3b8c7845ec5411c27a6b5b534fe7de8406531fedcefb255ed019edf006c2c8ed": {
       "repetitions": [
@@ -1368,8 +1368,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1393,8 +1393,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1418,8 +1418,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1443,8 +1443,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -1479,9 +1479,9 @@
           7
         ]
       },
-      "max_abs_diff": 0.001364201307296753,
-      "max_rel_diff": 1.9003561231635768,
-      "min_cosine": 0.9999699142019375,
+      "max_abs_diff": 0.0028114616870880127,
+      "max_rel_diff": 1.9627845288289358,
+      "min_cosine": 0.9999619348243237,
       "statuses_differ": false,
       "bodies_differ": true
     },
@@ -1492,8 +1492,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1520,8 +1520,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1548,8 +1548,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1576,8 +1576,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1604,8 +1604,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1632,8 +1632,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1650,11 +1650,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999999,
+      "max_abs_diff": 0.004092693328857422,
+      "max_rel_diff": 1.7525029618580803,
+      "min_cosine": 0.9999660550768255,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "4c590bb69dfdcb443ca95e0555d7e26e424a02e5670233e99f645d2e306defca": {
       "repetitions": [
@@ -1663,8 +1663,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1691,8 +1691,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1719,8 +1719,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1744,8 +1744,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1769,8 +1769,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1797,8 +1797,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1828,8 +1828,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1856,8 +1856,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1884,8 +1884,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 16,
@@ -1957,8 +1957,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1982,8 +1982,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -2018,9 +2018,9 @@
           7
         ]
       },
-      "max_abs_diff": 0.0037182867527008057,
+      "max_abs_diff": 0.000813797116279602,
       "max_rel_diff": 1.9206105254094354,
-      "min_cosine": 0.9999642001988539,
+      "min_cosine": 0.9999782654079853,
       "statuses_differ": false,
       "bodies_differ": true
     },
@@ -2031,8 +2031,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2056,8 +2056,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2087,8 +2087,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2118,8 +2118,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2146,8 +2146,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 4,
@@ -2183,8 +2183,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2208,8 +2208,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2233,8 +2233,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2258,8 +2258,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2283,8 +2283,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2308,8 +2308,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2333,8 +2333,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2361,8 +2361,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2386,8 +2386,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2411,8 +2411,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -2447,9 +2447,9 @@
           7
         ]
       },
-      "max_abs_diff": 0.0022440850734710693,
-      "max_rel_diff": 1.997546472533274,
-      "min_cosine": 0.999959714772517,
+      "max_abs_diff": 0.002226639539003372,
+      "max_rel_diff": 1.9218783081002986,
+      "min_cosine": 0.9999661707268959,
       "statuses_differ": false,
       "bodies_differ": true
     },
@@ -2460,8 +2460,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -2509,8 +2509,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2534,8 +2534,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2559,8 +2559,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2584,8 +2584,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2609,8 +2609,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2627,11 +2627,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 1.0,
+      "max_abs_diff": 0.002264678478240967,
+      "max_rel_diff": 1.999163976115838,
+      "min_cosine": 0.9999689840629031,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "7344d9e03d8727dfd0c34dd3a2bb74a8760551b636bc09ef27ac59dd9645d8f5": {
       "repetitions": [
@@ -2640,8 +2640,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2668,8 +2668,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2696,8 +2696,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -2732,11 +2732,11 @@
           7
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 1.0,
+      "max_abs_diff": 0.0013713836669921875,
+      "max_rel_diff": 1.6233033279401121,
+      "min_cosine": 0.9999736060647121,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "78d482f59f52ec3c05aa08b85984361ca8029230fe488f7de7e1224333f058b4": {
       "repetitions": [
@@ -2745,8 +2745,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2773,8 +2773,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2801,8 +2801,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2826,8 +2826,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2854,8 +2854,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2879,8 +2879,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2907,8 +2907,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2932,8 +2932,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2957,8 +2957,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2982,8 +2982,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3010,8 +3010,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3038,8 +3038,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3066,8 +3066,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3091,8 +3091,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3116,8 +3116,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3144,8 +3144,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3172,8 +3172,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3190,11 +3190,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 1.0,
+      "max_abs_diff": 0.001657634973526001,
+      "max_rel_diff": 1.8841675160884843,
+      "min_cosine": 0.9999233988305087,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "9bd9e18db98be242df62acfde4aec05e479e87622a692dc5b8f8bded85f83b0d": {
       "repetitions": [
@@ -3203,8 +3203,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3231,8 +3231,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3259,8 +3259,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3287,8 +3287,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3305,11 +3305,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999998,
+      "max_abs_diff": 0.003571838140487671,
+      "max_rel_diff": 1.7253535840154979,
+      "min_cosine": 0.9999511360989021,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "a4547e8b532c9bea60fcf48c9fd4b156e784a5cd1c309562c8de3ee6b5c1209f": {
       "repetitions": [
@@ -3318,8 +3318,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3343,8 +3343,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3368,8 +3368,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3393,8 +3393,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3421,8 +3421,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3446,8 +3446,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3474,8 +3474,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3499,8 +3499,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3527,8 +3527,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3555,8 +3555,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3580,8 +3580,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3611,8 +3611,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3639,8 +3639,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3667,8 +3667,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3692,8 +3692,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3717,8 +3717,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3748,8 +3748,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3776,8 +3776,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3794,11 +3794,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 1.0,
+      "max_abs_diff": 0.002000570297241211,
+      "max_rel_diff": 1.8289162410677153,
+      "min_cosine": 0.9999701041051293,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "b14688acb2fc18c629d88c4beaddcf6a09d93086e5dc72079c0062cdb5520f03": {
       "repetitions": [
@@ -3807,8 +3807,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3832,8 +3832,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3857,8 +3857,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3882,8 +3882,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3913,8 +3913,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3941,8 +3941,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -3978,8 +3978,8 @@
         ]
       },
       "max_abs_diff": 0.001765131950378418,
-      "max_rel_diff": 1.993997184872264,
-      "min_cosine": 0.9999681069076769,
+      "max_rel_diff": 1.9373849562666265,
+      "min_cosine": 0.9999705406210668,
       "statuses_differ": false,
       "bodies_differ": true
     },
@@ -3990,8 +3990,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4015,8 +4015,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4040,8 +4040,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4068,8 +4068,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4099,8 +4099,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4124,8 +4124,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4152,8 +4152,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4177,8 +4177,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4205,8 +4205,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4230,8 +4230,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4258,8 +4258,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4283,8 +4283,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4311,8 +4311,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4329,11 +4329,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 1.0,
+      "max_abs_diff": 0.0015252605080604553,
+      "max_rel_diff": 1.8851709790236355,
+      "min_cosine": 0.9999745233794467,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "c634a828c21082add031dfda01dc077f71f247dedc71976d95509ff01fd90bce": {
       "repetitions": [
@@ -4342,8 +4342,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4360,11 +4360,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999999,
+      "max_abs_diff": 0.0022437572479248047,
+      "max_rel_diff": 1.8745806519670138,
+      "min_cosine": 0.999959191068873,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "c6931a563bdbee47f50abc9b405f9bcf73cd0a09985cfa5dd7f83e1f0d8f2f37": {
       "repetitions": [
@@ -4373,8 +4373,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4398,8 +4398,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4426,8 +4426,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4451,8 +4451,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4479,8 +4479,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4497,11 +4497,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999999,
+      "max_abs_diff": 0.00147218257188797,
+      "max_rel_diff": 1.5417741714790267,
+      "min_cosine": 0.9999690396331876,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "ca114958482f1ea5a5b2268388878e33699f98108545d27f096d3c5a0b06a571": {
       "repetitions": [
@@ -4510,8 +4510,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4535,8 +4535,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4563,8 +4563,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4588,8 +4588,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4616,8 +4616,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 32,
@@ -4724,9 +4724,9 @@
           31
         ]
       },
-      "max_abs_diff": 0.002438843250274658,
-      "max_rel_diff": 1.988058555718415,
-      "min_cosine": 0.9999638738113004,
+      "max_abs_diff": 0.0052002668380737305,
+      "max_rel_diff": 1.9999251976613635,
+      "min_cosine": 0.9999550966456431,
       "statuses_differ": false,
       "bodies_differ": true
     },
@@ -4737,8 +4737,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4768,8 +4768,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4793,8 +4793,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4818,8 +4818,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4846,8 +4846,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4871,8 +4871,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4899,8 +4899,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4930,8 +4930,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4955,8 +4955,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4980,8 +4980,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5005,8 +5005,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5033,8 +5033,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5058,8 +5058,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5083,8 +5083,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5111,8 +5111,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5136,8 +5136,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5161,8 +5161,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5189,8 +5189,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5207,11 +5207,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999998,
+      "max_abs_diff": 0.0027781426906585693,
+      "max_rel_diff": 1.4992915120984234,
+      "min_cosine": 0.9999706441163118,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "e09d701c15e3c7ec59f8efcdf6a2b1d7763d6a8382f4d397eb1fe10526423cdc": {
       "repetitions": [
@@ -5220,8 +5220,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -5269,8 +5269,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5294,8 +5294,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5312,11 +5312,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999998,
+      "max_abs_diff": 0.0009081289172172546,
+      "max_rel_diff": 1.2512745530205063,
+      "min_cosine": 0.9999717541790198,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "e6dfb852ae5084224fb4f34a3b2e01df5237ecd7d65ea9cd3290be26ddd50e55": {
       "repetitions": [
@@ -5325,8 +5325,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5350,8 +5350,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5375,8 +5375,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5400,8 +5400,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5431,8 +5431,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5459,8 +5459,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5484,8 +5484,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5509,8 +5509,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5534,8 +5534,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5552,11 +5552,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.001299351453781128,
-      "max_rel_diff": 1.8331821430282178,
-      "min_cosine": 0.999969076686121,
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
       "statuses_differ": false,
-      "bodies_differ": true
+      "bodies_differ": false
     },
     "eda924dbbf27a81677af33136309ddd4aac4869b1590d0066c2eb0006fbaa800": {
       "repetitions": [
@@ -5565,8 +5565,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5593,8 +5593,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5624,8 +5624,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5649,8 +5649,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5677,8 +5677,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5705,8 +5705,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5730,8 +5730,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5755,8 +5755,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5783,8 +5783,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5814,8 +5814,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5842,8 +5842,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5867,8 +5867,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5895,8 +5895,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5920,8 +5920,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -5956,9 +5956,9 @@
           7
         ]
       },
-      "max_abs_diff": 0.001454625278711319,
-      "max_rel_diff": 1.821098478805474,
-      "min_cosine": 0.9999707422053151,
+      "max_abs_diff": 0.0015174150466918945,
+      "max_rel_diff": 1.999932961008279,
+      "min_cosine": 0.9999683101337403,
       "statuses_differ": false,
       "bodies_differ": true
     },
@@ -5969,8 +5969,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5987,11 +5987,11 @@
           1
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
-      "min_cosine": 0.9999999999999998,
+      "max_abs_diff": 0.002666488289833069,
+      "max_rel_diff": 1.9532365330361068,
+      "min_cosine": 0.9999588086156801,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "fb88fb6d5ed480db60d85d72e72b20a4705f19872bc0eae4da0325ae38ec1226": {
       "repetitions": [
@@ -6000,8 +6000,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -6028,8 +6028,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -6053,8 +6053,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -6084,8 +6084,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -6112,8 +6112,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "zembed-1-embedding@2026-10-13T20:32:01+00:00",
-        "zembed-1-embedding@2026-10-13T20:36:37+00:00"
+        "zembed-1-embedding@2026-10-16T00:37:11+00:00",
+        "zembed-1-embedding@2026-10-16T00:42:21+00:00"
       ],
       "batch_context": {
         "size": 28,
@@ -6208,7 +6208,7 @@
           27
         ]
       },
-      "max_abs_diff": 0.004092693328857422,
+      "max_abs_diff": 0.003068074584007263,
       "max_rel_diff": 1.999863856199085,
       "min_cosine": 0.9999202401410089,
       "statuses_differ": false,
@@ -6216,7 +6216,7 @@
     }
   },
   "summary": {
-    "max_abs_diff": 0.004092693328857422,
+    "max_abs_diff": 0.0052002668380737305,
     "max_rel_diff": 1.99994355641387,
     "min_cosine": 0.9998557929592464
   },
@@ -6226,7 +6226,7 @@
     "repeated_requests": 212,
     "statuses_differ": true,
     "bodies_differ": true,
-    "abs_tolerance": 0.012278079986572266,
+    "abs_tolerance": 0.015600800514221191,
     "rel_tolerance": 5.99983066924161
   }
 }

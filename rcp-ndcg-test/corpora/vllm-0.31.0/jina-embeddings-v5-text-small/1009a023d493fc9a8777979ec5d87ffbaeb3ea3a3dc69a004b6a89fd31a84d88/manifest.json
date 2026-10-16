@@ -18,7 +18,7 @@
       "--host",
       "0.0.0.0",
       "--port",
-      "8100",
+      "8108",
       "--tensor-parallel-size",
       "1",
       "--runner",
@@ -40,11 +40,11 @@
       "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
       "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
       "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
-      "VLLM_PORT": "9100",
+      "VLLM_PORT": "9108",
       "VLLM_USAGE_SOURCE": "production-docker-image"
     },
-    "started": "2026-10-13T20:27:04+00:00",
-    "ready_wait_s": 78.727,
+    "started": "2026-10-16T00:00:51+00:00",
+    "ready_wait_s": 66.602,
     "gpus": {
       "model": [
         "NVIDIA B200"
@@ -57,17 +57,7 @@
       "unavailable": "the engine environment reports no vllm_commit"
     },
     "torch": "2.13.0+cu130",
-    "cuda": "13.0",
-    "redacted": [
-      {
-        "field_path": "engine.env",
-        "removed": "312 Kubernetes Service-link variables for 39 Services",
-        "reason": "the pod's Kubernetes Service links ride under the same VLLM_ prefix as the engine's own knobs and name internal Services and addresses, which the tracked tree may not carry (AGENTS.md: public names only)",
-        "date": "2026-10-14",
-        "from_manifest_sha256": "a2a4db6ac623c0f725f8e1d0e29b69653a76a1864f2e050798b6259d99b17c47",
-        "from_manifest_file_sha256": "15d5ca0f8664c549aa7550ab576139b797b4a1e2a9ecd248297c68912aaa96fc"
-      }
-    ]
+    "cuda": "13.0"
   },
   "model": {
     "id": "jinaai/jina-embeddings-v5-text-small",
@@ -87,7 +77,7 @@
       "name": "rcp-ndcg-vllm",
       "io_processor_plugin": null,
       "wheel": "rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
-      "wheel_sha256": "b5057cb09b5d42ed51feccc7cc35a9bb26f40391da277c8598f26b1c773156d4"
+      "wheel_sha256": "6518b82c9caa58bbfe9d8cb7ba2e43bf7464da24de5555a42b642b3cc7983514"
     },
     "hf_overrides": {
       "jina_task": "retrieval",
@@ -109,8 +99,8 @@
   "recipe": {
     "id": "jina-embeddings-v5-text-small",
     "shipped": false,
-    "file_sha256": "48b889b0f3c143edec85fbe6280b0ad2d5ef21548c5a32a940aeb953f3fe4747",
-    "behaviour_fingerprint": "3ad7d8d01be3a90e032cdc5ccc1c95bb31a9dc7e0c6d5ea0382d8792944735a4",
+    "file_sha256": "a35c4cd7993bd8863964bfb1455525ed1679f2944417dea107be3b466b8e7625",
+    "behaviour_fingerprint": "1009a023d493fc9a8777979ec5d87ffbaeb3ea3a3dc69a004b6a89fd31a84d88",
     "fingerprint_inputs": {
       "fingerprint_schema": "rcp-fp/4",
       "model": "jinaai/jina-embeddings-v5-text-small",
@@ -133,14 +123,14 @@
       "serve.runner": "pooling",
       "serve.trust_remote_code": "true",
       "plugin_sha256.rcp_ndcg_vllm.models": "sha256:cd90979e6cbf9def6287355fbbfb51d01b835de7be427b8e555f5e6e5f35db0b",
-      "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:d39dcb93cb89492f68b2524d516f04f751164bcbdbed8c0a7d2090c380d9e7c2",
-      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:46213ea54e56222971038b7e595e83dfc9bcbe55cbc31f65762ce15cb0e5be39",
-      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:a4e1804063afd79065b65520c2b753b099042e297679b8e91e3af78f4cbf592a",
+      "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:3625e08399c75147142ccba26c3e774b64a31bd8634ad28ece3f2e5ebb70ba8c",
+      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:36e84e2e87cfe7dd4a5432dc7f0ee8ff7e82722bf1562399099ff2eb9cf304cb",
+      "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:caef4d06eb65f3003ca8bc1f3152148e0ae81457b460f43830faf709163ea6c8",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
       "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
-      "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:ff2289b5547d05021a55602a76a1e29c68533a85ff1a4a0b6f8386be5817b013",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:942cdfeb17a6267c8c24ce67b934948299c940a5fb1f4b320f5f2aeedb52a479",
       "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
-      "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:5aa592de667c9de2528a572ec0265e43e433abe500c696cb4b6539aacda6cbca",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:9e5cafe3eb26b0357184158c443c60a01dffec385cc5db6b9d932e8e1499df48",
       "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:780c032d726428061f3e204d8a7cc2208a46292cfefd764104c7cc5e2eb0ed6d",
       "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:210654602311d992ad803f90261a1d7fe97039b101d19dcf53b4217717f7505a",
       "plugin_sha256.rcp_ndcg_vllm.patches.pooling_full_context": "sha256:0de99c56e416ced8025eb8635b79804ca7d6b8a565539c86f4de2b07ec73eed8",
@@ -179,7 +169,7 @@
     },
     "generator_version": 2,
     "generator_seed": "1/rcp-observe-v1",
-    "corpus_plan_version": 3,
+    "corpus_plan_version": 4,
     "record_schema": 1,
     "seed": "rcp-observe-v1",
     "dataset_commits": {
@@ -192,9 +182,9 @@
     "job_id": {
       "unavailable": "RCP_JOB_ID is not set"
     },
-    "started": "2026-10-13T20:29:56+00:00",
-    "finished": "2026-10-13T20:31:45+00:00",
-    "host_sha256": "1e637ba8c58b69fd03b0ab559d7d9994e03b46eaddecdce578c3754a5a72e969",
+    "started": "2026-10-16T00:03:05+00:00",
+    "finished": "2026-10-16T00:05:33+00:00",
+    "host_sha256": "120591f00ef8b011769241fadf65e0a5014f46e889baa0cfababc88a598f7fc2",
     "module": "rcp_ndcg_test.record.record_corpus",
     "batch_sizes": [
       1,
@@ -205,20 +195,20 @@
     "passes": [
       {
         "repetition": "same_process_1",
-        "server_run_id": "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00"
+        "server_run_id": "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00"
       },
       {
         "repetition": "same_process_2",
-        "server_run_id": "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00"
+        "server_run_id": "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00"
       },
       {
         "repetition": "after_restart",
-        "server_run_id": "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "server_run_id": "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       }
     ]
   },
   "plan": {
-    "corpus_plan_version": 3,
+    "corpus_plan_version": 4,
     "request_ids": [
       "pairs:0",
       "pairs:1",
@@ -390,15 +380,15 @@
   "integrity": {
     "files": {
       "nondeterminism.json": {
-        "sha256": "aea7245841e44365fa6b9b2793ebc7c560b786a9cc018a54a22256e3eecc0942",
-        "bytes": 155085
+        "sha256": "145ab1ce737573f5bb10b917015b7cd875a72dfe1b02f99cee788da6946c02bd",
+        "bytes": 155032
       },
       "records.jsonl": {
-        "sha256": "5ad74aa02265ca7d0e594e46e3514ebdd4cbc88428dc3e6fc73a855045b88f48",
-        "bytes": 72058991
+        "sha256": "ced85ad183d73c56dd66fa53fe87346ee4a2cdf8a8703c13e5283d94ec07753d",
+        "bytes": 72058915
       }
     },
     "records_count": 640,
-    "manifest_sha256": "cec2a9e7e6939525171feeb43a8f96c654ba97e8b853aee52032a2dbf94a0963"
+    "manifest_sha256": "66ddd58203d83724f64f655d2443510308f51c3f0ba1f66ec6433f27f435d32a"
   }
 }

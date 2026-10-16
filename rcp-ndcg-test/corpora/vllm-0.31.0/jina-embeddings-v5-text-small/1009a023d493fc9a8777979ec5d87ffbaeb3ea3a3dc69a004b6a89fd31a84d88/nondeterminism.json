@@ -9,8 +9,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -34,8 +34,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -65,8 +65,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -90,8 +90,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 32,
@@ -198,11 +198,11 @@
           31
         ]
       },
-      "max_abs_diff": 0.0007435902953147888,
-      "max_rel_diff": 1.0,
-      "min_cosine": 0.9999917130838668,
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
       "statuses_differ": false,
-      "bodies_differ": true
+      "bodies_differ": false
     },
     "06728847eb984e4abfe3d9eefa240e515c8e396d93db213fee19b182fe1aa748": {
       "repetitions": [
@@ -211,8 +211,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -239,8 +239,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -267,8 +267,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 3,
@@ -301,8 +301,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -326,8 +326,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -351,8 +351,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -379,8 +379,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -428,8 +428,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -456,8 +456,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -481,8 +481,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -512,8 +512,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -537,8 +537,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -562,8 +562,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -587,8 +587,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -636,8 +636,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -667,8 +667,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -695,8 +695,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -723,8 +723,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -751,8 +751,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -776,8 +776,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -801,8 +801,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -832,8 +832,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -863,8 +863,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -888,8 +888,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -913,8 +913,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -941,8 +941,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -969,8 +969,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1000,8 +1000,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1025,8 +1025,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1050,8 +1050,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1078,8 +1078,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1109,8 +1109,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -1158,8 +1158,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1183,8 +1183,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1211,8 +1211,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1236,8 +1236,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1261,8 +1261,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1289,8 +1289,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1314,8 +1314,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1345,8 +1345,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1373,8 +1373,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1398,8 +1398,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1426,8 +1426,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1454,8 +1454,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1485,8 +1485,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1510,8 +1510,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1535,8 +1535,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1560,8 +1560,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1585,8 +1585,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1613,8 +1613,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1638,8 +1638,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1666,8 +1666,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1694,8 +1694,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1719,8 +1719,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1744,8 +1744,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1772,8 +1772,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 7,
@@ -1818,8 +1818,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1843,8 +1843,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -1874,8 +1874,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1902,8 +1902,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1927,8 +1927,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1952,8 +1952,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -1980,8 +1980,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2011,8 +2011,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2039,8 +2039,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2070,8 +2070,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2095,8 +2095,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2120,8 +2120,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2145,8 +2145,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2170,8 +2170,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2195,8 +2195,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2223,8 +2223,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2248,8 +2248,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2273,8 +2273,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2301,8 +2301,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 15,
@@ -2371,8 +2371,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2402,8 +2402,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2433,8 +2433,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2461,8 +2461,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2492,8 +2492,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2517,8 +2517,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2545,8 +2545,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2576,8 +2576,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2601,8 +2601,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2626,8 +2626,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2651,8 +2651,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2679,8 +2679,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2707,8 +2707,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2732,8 +2732,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2760,8 +2760,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2788,8 +2788,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -2819,8 +2819,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2847,8 +2847,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2872,8 +2872,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2897,8 +2897,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2922,8 +2922,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2947,8 +2947,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -2975,8 +2975,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -3011,11 +3011,11 @@
           7
         ]
       },
-      "max_abs_diff": 0.0,
-      "max_rel_diff": 0.0,
+      "max_abs_diff": 1.4901161193847656e-08,
+      "max_rel_diff": 1.4503742835876226e-07,
       "min_cosine": 0.9999999999999998,
       "statuses_differ": false,
-      "bodies_differ": false
+      "bodies_differ": true
     },
     "78ea1c54d28c9d2a1f00593d6aedf2b27bec90dc43b94d75486632f60eef2108": {
       "repetitions": [
@@ -3024,8 +3024,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3049,8 +3049,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3074,8 +3074,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3102,8 +3102,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3130,8 +3130,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3155,8 +3155,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3186,8 +3186,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3214,8 +3214,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3245,8 +3245,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3270,8 +3270,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3295,8 +3295,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3320,8 +3320,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3345,8 +3345,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3376,8 +3376,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3407,8 +3407,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3435,8 +3435,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3460,8 +3460,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3485,8 +3485,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3510,8 +3510,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3538,8 +3538,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3566,8 +3566,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 27,
@@ -3659,11 +3659,11 @@
           26
         ]
       },
-      "max_abs_diff": 1.4901161193847656e-08,
-      "max_rel_diff": 1.924871125065999e-07,
-      "min_cosine": 0.9999999999999993,
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
       "statuses_differ": false,
-      "bodies_differ": true
+      "bodies_differ": false
     },
     "9aedacc7781b546fa941a86e652692306837ea3ee52a54851d7fce1d2c1e8c41": {
       "repetitions": [
@@ -3672,8 +3672,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3703,8 +3703,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3734,8 +3734,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3765,8 +3765,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3790,8 +3790,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3824,8 +3824,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3852,8 +3852,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -3901,8 +3901,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -3932,8 +3932,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3960,8 +3960,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -3988,8 +3988,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4016,8 +4016,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4047,8 +4047,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4072,8 +4072,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4100,8 +4100,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4125,8 +4125,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4156,8 +4156,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4187,8 +4187,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4215,8 +4215,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4240,8 +4240,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4265,8 +4265,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4290,8 +4290,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4318,8 +4318,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -4354,11 +4354,11 @@
           7
         ]
       },
-      "max_abs_diff": 1.4901161193847656e-08,
-      "max_rel_diff": 1.5760709559752948e-07,
-      "min_cosine": 0.9999999999999993,
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
       "statuses_differ": false,
-      "bodies_differ": true
+      "bodies_differ": false
     },
     "b12a25a6988154d85615d64d7251d3d4769763a3c96fc18cfc87c74c1e335bdf": {
       "repetitions": [
@@ -4367,8 +4367,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4392,8 +4392,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4420,8 +4420,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4445,8 +4445,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4476,8 +4476,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4501,8 +4501,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4526,8 +4526,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4551,8 +4551,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4579,8 +4579,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4616,8 +4616,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4644,8 +4644,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4669,8 +4669,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4694,8 +4694,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4722,8 +4722,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4750,8 +4750,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4775,8 +4775,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4803,8 +4803,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4831,8 +4831,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4859,8 +4859,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4884,8 +4884,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4915,8 +4915,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -4946,8 +4946,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4971,8 +4971,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -4996,8 +4996,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5024,8 +5024,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5049,8 +5049,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5074,8 +5074,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5099,8 +5099,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5127,8 +5127,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5155,8 +5155,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5183,8 +5183,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5211,8 +5211,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5236,8 +5236,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5261,8 +5261,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5292,8 +5292,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5320,8 +5320,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5345,8 +5345,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5370,8 +5370,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5401,8 +5401,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5429,8 +5429,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5460,8 +5460,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5485,8 +5485,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5513,8 +5513,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5541,8 +5541,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5566,8 +5566,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5594,8 +5594,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5619,8 +5619,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5647,8 +5647,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5672,8 +5672,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5700,8 +5700,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5725,8 +5725,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5753,8 +5753,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -5802,8 +5802,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5827,8 +5827,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5855,8 +5855,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -5880,8 +5880,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5911,8 +5911,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
@@ -5942,8 +5942,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 8,
@@ -5991,8 +5991,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -6016,8 +6016,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 1,
@@ -6041,8 +6041,8 @@
         "after_restart"
       ],
       "server_run_ids": [
-        "jina-embeddings-v5-text-small@2026-10-13T20:27:04+00:00",
-        "jina-embeddings-v5-text-small@2026-10-13T20:31:24+00:00"
+        "jina-embeddings-v5-text-small@2026-10-16T00:00:51+00:00",
+        "jina-embeddings-v5-text-small@2026-10-16T00:05:07+00:00"
       ],
       "batch_context": {
         "size": 2,
