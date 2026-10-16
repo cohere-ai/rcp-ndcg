@@ -743,6 +743,8 @@ def _numbers(corpus: ObservationCorpus, record_check: Any) -> None:
     outputs = str(recipe_block.get("outputs") or "per_token")
     problems: list[str] = []
     widths: dict[tuple[str, int | None], int] = {}
+    vectorless: list[str] = []
+    per_chunk_replies = 0
     for row in corpus.records:
         exchange = str(row.get("exchange_id"))
         for leaf, value in _numeric_leaves(row.get("response", {}).get("body_parsed")):
@@ -761,11 +763,15 @@ def _numbers(corpus: ObservationCorpus, record_check: Any) -> None:
             problems.append(str(error))
             continue
         if chunks is not None:
+            per_chunk_replies += 1
             if vectors is None:
-                problems.append(
-                    f"{exchange}: the recipe declares a per-chunk head, but the reply carries no vectors to "
-                    f"check against the declared per-chunk count {list(chunks)}"
-                )
+                # A reply carrying no vectors is the refusal/another-route case the rest of this check
+                # tolerates (``for vector in vectors or []`` below), and its status is validated by
+                # ``statuses_as_expected``: a refusal has no vectors to count against a chunk count, so
+                # counting it as a per-chunk failure made a shipped recipe fail a corpus it recorded
+                # correctly. A recipe whose per-chunk head never produces vectors at all is still a
+                # failure - the end-of-loop guard below says so.
+                vectorless.append(exchange)
                 continue
             if len(vectors) != len(chunks):
                 problems.append(
@@ -798,6 +804,11 @@ def _numbers(corpus: ObservationCorpus, record_check: Any) -> None:
             widths.setdefault(key, width)
             if widths[key] != width:
                 problems.append(f"{exchange}: vector width {width} differs from {widths[key]} on {path}")
+    if outputs == "per_chunk" and per_chunk_replies and len(vectorless) == per_chunk_replies:
+        problems.append(
+            f"every one of the {per_chunk_replies} per-chunk reply/replies carries no vectors: the per-chunk "
+            "head this recipe declares is not being exercised at all, which no refusal table explains"
+        )
     record_check(
         "scores_finite_and_vector_widths",
         not problems,

@@ -27,6 +27,13 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **A per-chunk recipe's refusal is no longer read as a per-chunk failure** (the observation-corpus check): the
+  `scores_finite_and_vector_widths` check treated a reply carrying no vectors as a per-chunk failure, while the
+  rest of the same function tolerates exactly that case (`for vector in vectors or []`; its docstring calls it
+  "another route, a refusal") and `statuses_as_expected` already validates the status. A refusal has no vectors
+  to count against a chunk count, so `pplx-embed-v2-context-9b-preview` failed a corpus it had recorded
+  correctly - 21 of its 421 exchanges are the measured refusal table's over-length 400s. A corpus whose
+  per-chunk replies carry vectors *nowhere* still fails, naming the unexercised head.
 - **The two stale corpora are re-recorded at the current fingerprints** (decision 17): the merge's plugin-module
   edits moved `jina-embeddings-v5-text-small` and `zembed-1-embedding` off their recorded behaviour
   fingerprints, so both were re-recorded on the rc3-20261015 wave (`1009a023...` and `db7a5387...` replace

@@ -680,6 +680,46 @@ def _per_chunk_record(*, vectors: int, ids: list[int]) -> dict[str, Any]:
     return _exchange("/pooling", request, reply)
 
 
+def test_a_vectorless_reply_is_a_refusal_not_a_per_chunk_failure(tmp_path: Path) -> None:
+    """The per-chunk branch must tolerate what the rest of the check already does: a reply that carries no
+    vectors is a refusal or another route (``for vector in vectors or []``), and its status is validated by
+    ``statuses_as_expected``. Counting it as a per-chunk failure made pplx-embed-v2-context-9b-preview
+    fail a corpus it had recorded correctly - 21 of its 421 exchanges are the measured refusal table's
+    over-length 400s, which carry no vectors by design.
+
+    A corpus whose per-chunk replies carry vectors *nowhere* is still a failure: the head the recipe
+    declares is then not being exercised at all, which no refusal table explains.
+    """
+    from rcp_ndcg_test.observe.provenance import recipe_facts
+    from rcp_ndcg_vllm.models.pplx.chunk_rule import BOUNDARY_TOKEN_ID, DOCUMENT_PREFIX_TOKEN_IDS
+
+    recipe = load_recipe(RECIPES / "fixture-multi-vector")
+    block = {**recipe_facts(recipe), "outputs": "per_chunk"}
+    ids = [*DOCUMENT_PREFIX_TOKEN_IDS, 11, BOUNDARY_TOKEN_ID, 12, 13]
+
+    def refusal(ids: list[int]) -> dict[str, Any]:
+        """One measured refusal: the 400 the engine's own status table expects, whose body carries no
+        vectors at all (an over-length prompt), not a 200 with an empty vector list."""
+        row = _per_chunk_record(vectors=0, ids=ids)
+        body = {"error": {"message": "the prompt is longer than the model's maximum context length"}}
+        row["response"]["status"] = 400
+        row["response"]["body_parsed"] = body
+        row["response"]["body_raw"] = json.dumps(body)
+        return row
+
+    # One real per-chunk reply beside one refusal: the check passes, which it did not before.
+    mixed = _synthetic_corpus(
+        tmp_path / "mixed", [_per_chunk_record(vectors=2, ids=ids), refusal(ids)], recipe=block
+    )
+    assert _checks(verify_corpus(mixed))["scores_finite_and_vector_widths"]["passed"] is True
+
+    # Nothing but refusals: the per-chunk head is not exercised, so the check fails and says so.
+    empty = _synthetic_corpus(tmp_path / "empty", [refusal(ids), refusal(ids)], recipe=block)
+    check = _checks(verify_corpus(empty))["scores_finite_and_vector_widths"]
+    assert check["passed"] is False, check
+    assert any("not being exercised at all" in str(m) for m in check["mismatches"]), check["mismatches"]
+
+
 def test_a_per_chunk_reply_is_checked_against_the_declared_chunk_count(tmp_path: Path) -> None:
     """pplx-embed-v2-context's per-chunk head (the rc0-202610130615 recording failure: ``the /pooling
     reply reports 9 prompt token(s) but its vectors decode to 1``): the served plugin pools one vector per
