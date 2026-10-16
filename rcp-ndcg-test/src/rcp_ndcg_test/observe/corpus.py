@@ -888,6 +888,22 @@ def _consistency(
 # ---------------------------------------------------------------------------
 
 
+def _redact_bucket(uri: str) -> str:
+    """The URI with its bucket host replaced by the repository's placeholder.
+
+    A committed corpus must not name the private stage: the corpus guard
+    (``test_no_committed_corpus_names_private_infrastructure``) refuses a ``gs://`` host that is not
+    ``YOUR-BUCKET``, and the procedure promises the subset's index "points at the full corpus with the
+    ``gs://YOUR-BUCKET/...`` placeholder". The path after the host is kept: it is the internal location a
+    reader with access needs, and it is not what the guard forbids.
+    """
+    scheme, sep, rest = uri.partition("://")
+    if sep != "://" or scheme != "gs":
+        return uri
+    _host, slash, path = rest.partition("/")
+    return f"gs://YOUR-BUCKET{slash}{path}"
+
+
 def subset_for_repository(
     corpus_dir: str | Path,
     out_dir: str | Path,
@@ -936,7 +952,7 @@ def subset_for_repository(
         shutil.copyfile(source / NONDETERMINISM_FILE, out / NONDETERMINISM_FILE)
     write_subset_index(
         out,
-        full_corpus_path=gcs_path,
+        full_corpus_path=_redact_bucket(gcs_path),
         sampling={
             "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
             "budget_bytes": per_recipe_bytes,

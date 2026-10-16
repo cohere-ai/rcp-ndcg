@@ -1,7 +1,7 @@
 {
   "schema": "rcp-ndcg.observation-subset/1",
   "full_corpus": {
-    "path": "gs://cohere-dev-central-2/fabian/rcp-ndcg-rfc/waves-rc3-20261015/all-retrieval/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/zembed-1-embedding/db7a5387c4e69c70c042a728e6d392172eae0b9cee7bd8ba49e2c8ab6f97591e/2026-10-16T004019Z0000/",
+    "path": "gs://YOUR-BUCKET/fabian/rcp-ndcg-rfc/waves-rc3-20261015/all-retrieval/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/zembed-1-embedding/db7a5387c4e69c70c042a728e6d392172eae0b9cee7bd8ba49e2c8ab6f97591e/2026-10-16T004019Z0000/",
     "manifest_file_sha256": "840c6a0b2e5e59ed7f68bacb1cd12e9bf100b0616e4e001c5c5c314f22316145",
     "manifest_sha256": "67012054bae11c404d9a3f9abda8688c5876377f5566f9faa883847e8161cac8"
   },

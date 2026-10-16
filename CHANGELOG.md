@@ -27,6 +27,10 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **A committed corpus never names the private stage** (the repository subset): `subset_for_repository` wrote
+  the full corpus's real `gs://` host into the subset's `index.json`, so two freshly recorded corpora failed
+  `test_no_committed_corpus_names_private_infrastructure`. The host is now replaced by the
+  `gs://YOUR-BUCKET/...` placeholder the procedure promises, and the two committed corpora were corrected.
 - **A per-chunk recipe's refusal is no longer read as a per-chunk failure** (the observation-corpus check): the
   `scores_finite_and_vector_widths` check treated a reply carrying no vectors as a per-chunk failure, while the
   rest of the same function tolerates exactly that case (`for vector in vectors or []`; its docstring calls it

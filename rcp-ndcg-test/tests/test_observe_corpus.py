@@ -1126,3 +1126,18 @@ def test_the_corpus_index_regenerates_from_the_committed_corpora(tmp_path: Path)
 
     # the file the tool writes is exactly the shape the conformance suite's integrity check reads
     assert load_corpus(corpora["fixture-embed"]).manifest["recipe"]["id"] == "fixture-embed"
+
+
+def test_the_subset_index_redacts_the_bucket_host() -> None:
+    """A committed corpus must not name the private stage: the corpus guard refuses a ``gs://`` host that is
+    not ``YOUR-BUCKET``, and the procedure promises the subset's index points at the full corpus with that
+    placeholder. ``subset_for_repository`` wrote the real host until this, which is how two freshly recorded
+    corpora came to fail ``test_no_committed_corpus_names_private_infrastructure``. The path after the host
+    is kept - it is the internal location a reader with access needs, and it is not what the guard forbids.
+    """
+    from rcp_ndcg_test.observe.corpus import _redact_bucket
+
+    real = "gs://a-private-bucket/stage/waves-rc4/x/observations/vllm-0.31.0/recipe/abc/2026-10-16T000000Z/"
+    assert _redact_bucket(real) == "gs://YOUR-BUCKET/stage/waves-rc4/x/observations/vllm-0.31.0/recipe/abc/2026-10-16T000000Z/"
+    assert _redact_bucket("gs://YOUR-BUCKET/stage/x/") == "gs://YOUR-BUCKET/stage/x/"
+    assert _redact_bucket("/tmp/local/path") == "/tmp/local/path"
