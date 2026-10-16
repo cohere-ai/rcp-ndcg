@@ -27,28 +27,37 @@ def _qrel(protocol: str, scores: dict[str, float] = _TIED) -> float:
     return score_query(scores, {"b": 1}, protocol=protocol, metric="qrel_ndcg", candidates=_CANDIDATES, k=2)
 
 
-def test_the_page_scopes_the_tie_claim_to_the_doc_id_desc_suites() -> None:
-    """The equality sentence names the suites whose protocol breaks ties by document id descending and the
-    tie rules that diverge; the old blanket "the tie rules agree" must not come back."""
+def test_the_page_scopes_the_tie_claim_to_the_rule_that_makes_it_true() -> None:
+    """The equality sentence names the tie rule it needs and the rule the presets use; the old blanket "the tie
+    rules agree" must not come back.
+
+    Under arXiv v2 every preset credits a tie its group's mean gain (mteb's ``ndcg_float_at_k`` rule), so
+    ``qrel_ndcg`` equals mteb's integer ``ndcg_at_10`` only under a protocol that breaks ties by document id
+    descending - what mteb's integer metrics do - and the page has to say which is which rather than claim
+    agreement. arXiv v1 broke ties by document id on NanoBEIR and BRIGHT and by pool order on TREC-DL, which is
+    why the earlier version of this test could name those suites.
+    """
     claim = paragraph(PAGE.read_text(encoding="utf-8"), "The served scores are")
-    doc_id_desc = sorted(name for name, protocol in PROTOCOLS.items() if protocol.ties == "doc_id_desc")
-    assert doc_id_desc == ["bright", "nanobeir"], doc_id_desc
-    for suite in doc_id_desc:
-        assert suite in claim.lower(), f"the page does not scope the equality to {suite}"
-    for suite in ("vidore", "trecdl"):
-        assert PROTOCOLS[suite].ties in claim, f"the page does not name {suite}'s tie rule"
-    assert "when no scores are tied" in claim, "the untied case is part of the claim"
-    assert "the tie rules agree" not in claim, "the broad claim is false for the group_mean/input_order suites"
+    ties = {name: protocol.ties for name, protocol in PROTOCOLS.items()}
+    assert set(ties.values()) == {"group_mean"}, ties
+    assert "doc_id_desc" in claim, "the page does not name the tie rule the equality needs"
+    assert "group's mean gain" in claim, "the page does not name the rule every preset now uses"
+    assert "differ only in how they round" in claim, "the untied case is part of the claim"
+    assert "the tie rules agree" not in claim, "the broad claim is false for every suite's group_mean ties"
 
 
 def test_the_tied_ranking_numbers_match_the_page_s_scope() -> None:
-    """The page's scope is the protocol's: a tied ranking scores the same under the doc_id_desc suites and
-    differently under ViDoRe v3 / TREC-DL; untied scores agree (up to the 5-decimal BEIR rounding)."""
+    """The page's scope is the protocol's: under arXiv v2 every preset credits a tie its group's mean gain, so a
+    tied ranking scores the same under every suite, and it is mteb's *integer* metric (which breaks ties by
+    document id descending) that differs. Untied scores agree up to the 5-decimal BEIR rounding."""
     same = _qrel("nanobeir")
-    assert same == pytest.approx(1.0)
-    assert _qrel("bright") == pytest.approx(same)
-    assert _qrel("vidore") != pytest.approx(same)
-    assert _qrel("trecdl") != pytest.approx(same)
+    for suite in ("bright", "vidore", "trecdl"):
+        # The suites round differently (nanobeir/bright to 5 decimals, vidore/trecdl not at all), so the tied
+        # value agrees to the coarser rounding rather than exactly.
+        assert _qrel(suite) == pytest.approx(same, abs=1e-4), f"{suite} does not credit the tie its group's mean gain"
+    # The rule is the group's mean gain, not the document-id order: the tied ranking is strictly below the
+    # untied one (a tie at the top of an order-1 gain class cannot borrow the best position).
+    assert same < 1.0
     untied = {name: _qrel(name, {"a": 2.0, "b": 1.0}) for name in ("nanobeir", "bright", "vidore", "trecdl")}
     for value in untied.values():
         assert value == pytest.approx(0.6309297535714575)
