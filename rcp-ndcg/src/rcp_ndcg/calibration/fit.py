@@ -691,7 +691,8 @@ def calibrate(
             message = (
                 f"{count} {'document has' if count == 1 else 'documents have'} no comparison in a valid "
                 f"tournament window: the Bradley-Terry fit gives {'it' if count == 1 else 'them'} no ability, "
-                f"so {'it is' if count == 1 else 'they are'} not calibrated: {', '.join(no_evidence[:5])}" + (" ..." if count > 5 else "")
+                f"so {'it is' if count == 1 else 'they are'} not calibrated: {', '.join(no_evidence[:5])}"
+                + (" ..." if count > 5 else "")
             )
             if strict:
                 raise DataError(

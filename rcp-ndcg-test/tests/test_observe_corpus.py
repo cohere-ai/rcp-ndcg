@@ -708,9 +708,7 @@ def test_a_vectorless_reply_is_a_refusal_not_a_per_chunk_failure(tmp_path: Path)
         return row
 
     # One real per-chunk reply beside one refusal: the check passes, which it did not before.
-    mixed = _synthetic_corpus(
-        tmp_path / "mixed", [_per_chunk_record(vectors=2, ids=ids), refusal(ids)], recipe=block
-    )
+    mixed = _synthetic_corpus(tmp_path / "mixed", [_per_chunk_record(vectors=2, ids=ids), refusal(ids)], recipe=block)
     assert _checks(verify_corpus(mixed))["scores_finite_and_vector_widths"]["passed"] is True
 
     # Nothing but refusals: the per-chunk head is not exercised, so the check fails and says so.
@@ -1138,6 +1136,9 @@ def test_the_subset_index_redacts_the_bucket_host() -> None:
     from rcp_ndcg_test.observe.corpus import _redact_bucket
 
     real = "gs://a-private-bucket/stage/waves-rc4/x/observations/vllm-0.31.0/recipe/abc/2026-10-16T000000Z/"
-    assert _redact_bucket(real) == "gs://YOUR-BUCKET/stage/waves-rc4/x/observations/vllm-0.31.0/recipe/abc/2026-10-16T000000Z/"
+    assert (
+        _redact_bucket(real)
+        == "gs://YOUR-BUCKET/stage/waves-rc4/x/observations/vllm-0.31.0/recipe/abc/2026-10-16T000000Z/"
+    )
     assert _redact_bucket("gs://YOUR-BUCKET/stage/x/") == "gs://YOUR-BUCKET/stage/x/"
     assert _redact_bucket("/tmp/local/path") == "/tmp/local/path"
