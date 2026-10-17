@@ -1,0 +1,401 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "version": "0.31.0",
+    "image_digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-VL-Reranker-2B",
+      "--revision",
+      "4bd860ac4f15ad1897a214615cccc700f8f71818",
+      "--served-model-name",
+      "qwen3-vl-reranker-2b",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8106",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "32768",
+      "--hf-overrides",
+      "{\"architectures\": [\"Qwen3VLForSequenceClassification\"], \"classifier_from_token\": [\"no\", \"yes\"], \"head_dtype\": \"model\", \"is_original_qwen3_reranker\": true}",
+      "--chat-template",
+      "template.jinja",
+      "--pooler-config",
+      "{\"use_activation\": true}",
+      "--mm-processor-kwargs",
+      "{\"images_kwargs\": {\"max_pixels\": 1310720, \"min_pixels\": 4096}}",
+      "--limit-mm-per-prompt",
+      "{\"image\": 1}"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+      "VLLM_PORT": "9106",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-10-13T20:31:06+00:00",
+    "ready_wait_s": 94.26,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.31.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "redacted": [
+      {
+        "field_path": "engine.env",
+        "removed": "312 Kubernetes Service-link variables for 39 Services",
+        "reason": "the pod's Kubernetes Service links ride under the same VLLM_ prefix as the engine's own knobs and name internal Services and addresses, which the tracked tree may not carry (AGENTS.md: public names only)",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "e90021254aaedc21bbeeea17b81da9a16d522d148278bd3eba4c5a5d6ccabaca",
+        "from_manifest_file_sha256": "56e5ae9805009aa84ba8ac6710c6ab863a89625c90a37165d4d18afc9a6b67ff"
+      },
+      {
+        "field_path": "engine.serve_argv",
+        "removed": "the pod's staging directory from the --chat-template value (the file name is kept)",
+        "reason": "the serve argv recorded the pod's own staging directory; the family goldens reduce the same --chat-template value to its file name",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "e90021254aaedc21bbeeea17b81da9a16d522d148278bd3eba4c5a5d6ccabaca",
+        "from_manifest_file_sha256": "56e5ae9805009aa84ba8ac6710c6ab863a89625c90a37165d4d18afc9a6b67ff"
+      }
+    ]
+  },
+  "model": {
+    "id": "Qwen/Qwen3-VL-Reranker-2B",
+    "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
+    "weights": {
+      "model.safetensors": "8bd124eb16d66741f31bb8e072215379a3f54f20bc60bae22b4a95a184988e80"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": "3f8373557f57b9d775557323cadf4dadf83e388fc922025fa6e5e26cbe3d2188",
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "architectures": [
+        "Qwen3VLForSequenceClassification"
+      ],
+      "classifier_from_token": [
+        "no",
+        "yes"
+      ],
+      "is_original_qwen3_reranker": true,
+      "head_dtype": "model"
+    },
+    "pooler_config": {
+      "use_activation": true
+    },
+    "mm_processor_kwargs": {
+      "images_kwargs": {
+        "min_pixels": 4096,
+        "max_pixels": 1310720
+      }
+    },
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "qwen3-vl-reranker-2b",
+    "shipped": false,
+    "file_sha256": "33b2dd4ec3df316f770d5bfa66d33485a2f289278e7e893f254d288266dddc58",
+    "behaviour_fingerprint": "07c5db0a959a200312c50dc793a429d1802a8fba244336f00859b4fbba59c988",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Qwen/Qwen3-VL-Reranker-2B",
+      "revision": "4bd860ac4f15ad1897a214615cccc700f8f71818",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "template.jinja",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"architectures\":[\"Qwen3VLForSequenceClassification\"],\"classifier_from_token\":[\"no\",\"yes\"],\"head_dtype\":\"model\",\"is_original_qwen3_reranker\":true}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "{\"image\":1}",
+      "serve.max_model_len": "32768",
+      "serve.mm_processor_kwargs": "{\"images_kwargs\":{\"max_pixels\":1310720,\"min_pixels\":4096}}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{\"use_activation\":true}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "sha256:3f8373557f57b9d775557323cadf4dadf83e388fc922025fa6e5e26cbe3d2188",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
+      "client.empty_doc": "send_text",
+      "client.empty_doc_text": "NULL",
+      "client.empty_query": "refuse",
+      "client.image_policy": "{\"engine_pixel_pinning\":true,\"max_px\":1310720,\"min_px\":4096}",
+      "client.image_processor": "qwen3_vl",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "1",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a search query, retrieve relevant candidates that answer the query.<Query>:\"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>:\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.use_activation": "true"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 2,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 3,
+    "record_schema": 1,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-10-13T20:33:38+00:00",
+    "finished": "2026-10-13T20:35:22+00:00",
+    "host_sha256": "1e637ba8c58b69fd03b0ab559d7d9994e03b46eaddecdce578c3754a5a72e969",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "qwen3-vl-reranker-2b@2026-10-13T20:31:06+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "qwen3-vl-reranker-2b@2026-10-13T20:35:08+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 3,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "pairs:25",
+      "pairs:26",
+      "pairs:27",
+      "pairs:28",
+      "pairs:29",
+      "pairs:30",
+      "pairs:31",
+      "pairs:32",
+      "pairs:33",
+      "pairs:34",
+      "pairs:35",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=true",
+      "wire:use_activation=false",
+      "wire:instruction=on",
+      "edge:top_n_over_documents",
+      "edge:too_many_images",
+      "edge:corrupt_image"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 8059
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 16116
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 80580
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl": {
+        "present": false,
+        "reason": "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+      },
+      "wire:top_n=1": {
+        "present": true
+      },
+      "wire:top_n=all": {
+        "present": true
+      },
+      "wire:use_activation=true": {
+        "present": true
+      },
+      "wire:use_activation=false": {
+        "present": true
+      },
+      "wire:instruction=on": {
+        "present": true
+      },
+      "edge:top_n_over_documents": {
+        "present": true
+      },
+      "wire:encoding_format": {
+        "present": false,
+        "reason": "the /rerank route has no encodings"
+      },
+      "media:request_set": {
+        "present": true,
+        "version": 3,
+        "buckets": 8
+      },
+      "edge:too_many_images": {
+        "present": true,
+        "images": 2
+      },
+      "edge:corrupt_image": {
+        "present": true
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe declares no video input"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe declares no video input"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe declares no video input"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "de7b781bcdb87efba2038b3142b77ae13943dcf5599b81007cde675793cd2a91",
+        "bytes": 85809
+      },
+      "records.jsonl": {
+        "sha256": "541f478a242e72a4433f6cfe63115be030100dd57488fb4df8e8f264039573f7",
+        "bytes": 9620382
+      }
+    },
+    "records_count": 442,
+    "manifest_sha256": "124098f2715e9007030acdc80b4efebab378991ae14a3bcfd6e68375b2c2ee6d"
+  }
+}

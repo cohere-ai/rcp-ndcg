@@ -1,0 +1,55 @@
+# T4 scenario 2: the text run (scenario 1's shape) with the judge engine killed mid-tournament.
+#
+# The judge is a run-scoped engine the driver owns (rcp_ndcg_test.e2e.ManagedEngine): engines the
+# supervision script started would end the job when they exit, while replicas that live elsewhere are
+# "restarted by whatever runs them, and the judge bounds the outage instead"
+# (rcp_ndcg.runners.script.supervise).  Two sub-runs and a resume:
+#
+#   (a) the killed judge restarts after ~20 s: the run parks through the outage and finishes;
+#   (b) the killed judge stays down past wait_on_outage_s (300 s here): the run fails with
+#       BackendUnavailableError, and a `run resume` after the engine returns finishes it.
+#
+# The window covers the restart's whole down span: the outage sleep AND the engine's boot (the rc0 run
+# measured 77 s per warm restart, 185 s for the T0 smoke's cold boot).  e2e.recovers_outage_s refuses a
+# scenario whose numbers cannot recover, at the start instead of an hour in.
+#
+# Judge (the owner's T4 choice, docs/how-to/release-candidates.md): Qwen/Qwen3.8-27B-FP8.  The revision is the Hub
+# commit (https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8), checked 2026-10-07.  The judge is the
+# driver's run-scoped engine and stays up while the phases run, so it gets its own device slice -- device
+# 1 -- while the encoder and reranker phases reuse device 0.  A judge on the phases' device starves them
+# (its vLLM pre-allocates the device it sees): the T4's second run's encoder phase died with CUDA out of
+# memory and the resume that followed had no encoder to talk to.  The Scenario schema refuses the overlap
+# in outage mode.
+id: outage
+description: >
+  The text run with the judge engine killed mid-tournament: one sub-run parks through the outage and
+  recovers when the engine restarts, one outlives wait_on_outage_s, fails with BackendUnavailableError
+  and is finished by a resume.
+mode: outage
+dataset:
+  uri: suite:nanobeir
+  subset: NanoNFCorpusRetrieval
+  revision: 4517f2cb9e342479725bf0931a329998b4d35038
+limit: 10
+depth: 30
+steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
+encoder_recipe: qwen3-embedding-0.6b
+rerank_recipe: qwen3-reranker-0.6b
+judge:
+  served_name: judge
+  recipe: qwen3.8-27b-fp8
+  config:
+    concurrency: 64
+    # The outage clock, sized by e2e.recovers_outage_s: the recovers sub-run's outage (~20 s) plus the
+    # judge's restart boot (77 s warm, 185 s cold) must fit with margin; the expiry sub-run's outage
+    # (wait_on_outage_s + 30 s) outlives this on purpose.
+    wait_on_outage_s: 300
+  slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "1", gpus: 1,
+         startup_timeout_s: 3600, outage_timeout_s: 300}
+slots:
+  encoder: {port: 8100, vllm_port: 9100, cuda_visible_devices: "0", gpus: 1,
+            startup_timeout_s: 1800, outage_timeout_s: 300}
+  reranker: {port: 8110, vllm_port: 9110, cuda_visible_devices: "0", gpus: 1,
+             startup_timeout_s: 1800, outage_timeout_s: 300}
+runner_options:
+  resources: {gpus: 0, cpus: 8, memory_gb: 32, time_limit_s: 28800}

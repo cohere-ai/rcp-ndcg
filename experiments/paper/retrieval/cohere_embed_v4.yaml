@@ -1,0 +1,14 @@
+# Cohere Embed v4 through the public Cohere API, one of the paper's three first-stage retrievers: a retriever
+# config (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`. No GPU;
+# the key is read from CO_API_KEY or COHERE_API_KEY, and `base_url` is omitted: the profile's public URL. The API
+# returns one vector per text. The Voyage and Gemini embedding APIs work the same way with
+# `api: voyage | gemini`; a served encoder is `api: openai_embeddings` with its engine's base_url.
+kind: dense
+encoder:
+  api: cohere
+  model: embed-v4.0
+  # The paper's dense path passed the bare query (see octen.yaml): a task instruction is not sent, so the
+  # config declares the policy explicitly instead of leaving it undeclared (the client refuses an undeclared
+  # one rather than changing a recipe's text silently).
+  instruction: none
+  batch_size: 96

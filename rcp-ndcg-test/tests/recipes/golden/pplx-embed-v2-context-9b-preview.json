@@ -1,0 +1,269 @@
+{
+ "client_config": {
+  "api": "vllm_pooling",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "dim": 2048,
+  "document_split_special_tokens": true,
+  "embed_dtype": "float16",
+  "empty_doc": "send",
+  "instruction": "none",
+  "max_tokens": 131070,
+  "model": "pplx-embed-v2-context-9b-preview",
+  "mrl_dims": [
+   1024,
+   2048
+  ],
+  "mrl_kind": "truncation",
+  "normalize": true,
+  "on_overflow": "cut",
+  "outputs": "per_chunk",
+  "query_split_special_tokens": true,
+  "recipe": "pplx-embed-v2-context-9b-preview",
+  "request_shape": "token_ids",
+  "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "first",
+   "document": [
+    {
+     "fixed": "{special:[D] }"
+    },
+    {
+     "content": "document"
+    }
+   ],
+   "query": [
+    {
+     "fixed": "{special:[Q] }"
+    },
+    {
+     "content": "query"
+    }
+   ]
+  },
+  "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba"
+ },
+ "fingerprint": {
+  "fingerprint": "935bb6a63a87f57d0ef9eeb40c92c17cb2feb19cd9de32ab05a21814aa86070f",
+  "inputs": {
+   "client.api": "vllm_pooling",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.document_split_special_tokens": "true",
+   "client.embed_dtype": "float16",
+   "client.empty_doc": "send",
+   "client.instruction": "none",
+   "client.max_images": "0",
+   "client.max_tokens": "131070",
+   "client.max_videos": "0",
+   "client.media_head_as_system": "false",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_prompt": "",
+   "client.query_split_special_tokens": "true",
+   "client.request_shape": "token_ids",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"first\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:[D] }\"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:[Q] }\"},{\"content\":\"query\"}]}",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
+   "model": "perplexity-ai/pplx-embed-v2-context-9b-preview",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:cd90979e6cbf9def6287355fbbfb51d01b835de7be427b8e555f5e6e5f35db0b",
+   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:36e84e2e87cfe7dd4a5432dc7f0ee8ff7e82722bf1562399099ff2eb9cf304cb",
+   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:caef4d06eb65f3003ca8bc1f3152148e0ae81457b460f43830faf709163ea6c8",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.chunk_rule": "sha256:d1ec59483a0e273b336bee700c78e8960440e1e1b6261b947d82f0265c84651a",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:942cdfeb17a6267c8c24ce67b934948299c940a5fb1f4b320f5f2aeedb52a479",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.model": "sha256:4ca214ea28ce8937dfa27486112f4b5596b05460fdfe6f0ee9c89331f4ce446a",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.pooler": "sha256:73b2fad2e78d5cf40ded6797cd106142e1a9236e7af611e63f289a3838a3b9fe",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.pooling_core": "sha256:181fccca3d8241299f9372cf0d66a128b80be95af0f303743b97d5a1a72b0884",
+   "plugin_sha256.rcp_ndcg_vllm.models.token_pooler": "sha256:d61542d51b5d2bc0d7966e39ec8fa410dbaac4321d3c63193388bd133662a437",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:9e5cafe3eb26b0357184158c443c60a01dffec385cc5db6b9d932e8e1499df48",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:780c032d726428061f3e204d8a7cc2208a46292cfefd764104c7cc5e2eb0ed6d",
+   "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:3625e08399c75147142ccba26c3e774b64a31bd8634ad28ece3f2e5ebb70ba8c",
+   "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:210654602311d992ad803f90261a1d7fe97039b101d19dcf53b4217717f7505a",
+   "plugin_sha256.rcp_ndcg_vllm.patches.pooling_full_context": "sha256:0de99c56e416ced8025eb8635b79804ca7d6b8a565539c86f4de2b07ec73eed8",
+   "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+   "serve.chat_template": "null",
+   "serve.convert": "null",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "null",
+   "serve.max_model_len": "131072",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[\"pooling-full-context\"]",
+   "serve.plugin": "rcp-ndcg-vllm",
+   "serve.plugin_architectures": "[\"PplxContextualModel\"]",
+   "serve.pooler_config": "{\"task\":\"token_embed\"}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "d76b678db762df7761041239ca8950fb190135c94bb66ce8aeff5a0ff2933cf5"
+  },
+  "schema": "rcp-fp/4"
+ },
+ "id": "pplx-embed-v2-context-9b-preview",
+ "recipe": {
+  "client": {
+   "api": "vllm_pooling",
+   "dim": 2048,
+   "document_split_special_tokens": true,
+   "embed_dtype": "float16",
+   "empty_doc": "send",
+   "instruction": "none",
+   "max_tokens": 131070,
+   "model": "pplx-embed-v2-context-9b-preview",
+   "mrl_dims": [
+    1024,
+    2048
+   ],
+   "mrl_kind": "truncation",
+   "normalize": true,
+   "on_overflow": "cut",
+   "outputs": "per_chunk",
+   "query_split_special_tokens": true,
+   "request_shape": "token_ids",
+   "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "first",
+    "document": [
+     {
+      "fixed": "{special:[D] }"
+     },
+     {
+      "content": "document"
+     }
+    ],
+    "query": [
+     {
+      "fixed": "{special:[Q] }"
+     },
+     {
+      "content": "query"
+     }
+    ]
+   },
+   "tokenizer": "perplexity-ai/pplx-embed-v2-context-9b-preview@b667039ee8b438a6350fbc91bbcecd86f9d363ba"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 3600,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "pplx-embed-v2-context-9b-preview",
+  "input": [
+   "text"
+  ],
+  "licence": "MIT",
+  "model": "perplexity-ai/pplx-embed-v2-context-9b-preview",
+  "notes": "Serving: rcp-ndcg-vllm's folded model plugin (the one vllm.general_plugins entry point)\n(rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/, pure Python, installed with pip install\n--no-deps into the unmodified image) registers the checkpoint's\nPplxContextualModel as a pooling model: the language_model.* weight mapper,\nthe contextual_projection head, and a chunk pooler that segments on the\nboundary id 248079 and applies the int8 tanh head. It also registers the\ncheckpoint's transformers config class (hf_config.PplxContextualConfig, the\nremote configuration class restated field for field), so --trust-remote-code\nis unnecessary and the remote config module never executes. The plugin must\nNOT register a multimodal processor (the ColQwen3_5 precedent it is modelled\non does): the embedding code is text-only, and a copy-paste would silently\nembed images into a text model instead of rejecting them.\n\nThe wire contract (request_shape: token_ids). The reference tokenizes the\ndocument with split_special_tokens=True, so the reference's document ids open\nwith the two literal tokens that the \"[D] \" string renders under that parse\n(ids 62724, 60) while a server-side parse of the same text keeps the added\nspecial id 248078 (measured at the pinned revision: 27 vs 26 tokens, divergence\nat index 0); the boundary marker is a NON-special added token and keeps its one\nid 248079 in both parses. The plugin implements the reference's id space and\nrefuses inputs whose first id is neither 248077 (the query prefix) nor\n(62724, 60): queries are [248077] + the split-parsed body; documents are the split\nrender of \"[D] \" + chunks joined by the boundary marker, with 248079 markers\nand the prefix and markers excluded from every pooled span.\n\nPRODUCT GAP (closed by client.document_split_special_tokens: true): the product's token-ids route\nused to tokenise the fitted render with the tokenizer's ADDED-TOKEN parse, which\nopens a document with the one special id 248078 where the reference's\ndocument ids open with (62724, 60) -- and the two parses' first content\npretoken differs as well (the measured 0..+2-token prefix delta). The product's\nids path now requests the reference's split parse for the document side\n(``TextTokenizer.ids(..., split_special_tokens=True)``, transformers'\nsplit_special_tokens over the raw tokenizers ``encode_special_tokens``\ntoggle, consumed by the pooling client's token-id derivation), so the\nclient's document ids open with (62724, 60) exactly as the reference's do and\nthe plugin accepts them. The sent ids are\nwhat the engine reads, so the model-side count is the fit's count plus the\nsplit parse's 0..+2 prefix delta (the max_tokens reservation above). Token ids\nstay the declared wire: it is the only route that can carry the reference ids\nat all. The declared render TEXT is byte-identical to the reference's on both\nshapes (stage 1 proves it).\n\nQuery parse (E2 round 7, client.query_split_special_tokens: true): the query side is NOT one parse of\nthe whole render. The checkpoint's own ``prepare_inputs(task=\"query\")`` tokenizes the query BODY with\n``split_special_tokens=True`` and prepends the ``[Q] `` prefix as the one added id 248077, while the\nadded-token parse of the whole render keeps every added-token spelling inside the body as one id. The\ntwo constructions coincide for spelling-free queries -- which is why the round-2 measurement passed --\nand diverge on the pairs' ``content:special_token_spellings`` row, where the wave measured cosine\n0.576: the engine pooled 71 body ids, the reference 182 (both measured at the pinned tokenizer and\nrevision). The declared query frame is a fixed head followed by the content span, so the client now\nsends the head's added ids followed by the split-parsed body (``TemplateSpec.split_ids``, one home\nwith the harness's render check): a query carrying a literal added-token spelling reads the\nreference's own id sequence on the engine. An unset ``query_split_special_tokens`` leaves every other\nrecipe's whole-render parse untouched.\n\nEmpty document (E2 round 7, the plugin's prefix-space rule): the empty row's document render is\n\"[D] \" alone, and the tokenizer renders the prefix's trailing space as its OWN token (id 220) exactly\nwhen the content's first token cannot carry it or the content is empty (measured: a content-initial\nspace merges into the next token -- 256/262/... -- so a leading 220 in the body is always the\nprefix's). The reference's char spans start at char 4 and pool no token there, so the empty document\nis the model's zero-vector branch; the plugin used to strip only the two literal prefix ids and pooled\nthe space token -- a nonzero vector where the reference pools zero (the wave's 0.0 cosine). The plugin\nnow drops a leading 220 from the document body (``pooling_core.PREFIX_SPACE_TOKEN_ID``), which also\nremoves the one extra token from the first chunk's mean on a document starting with an added-token\nspelling. The harness's vector gate scores two zero vectors 1.0 (an exact agreement of the model's own\ndegenerate output; a zero against a non-zero vector still scores 0.0), so the empty row gates like any\nother.\n\nRole disambiguation on the engine (the plugin's rule): first id 248077 -> query, pooled as the mean over\nthe whole sequence with the prefix token included; leading (62724, 60) ->\ndocument, pooled as one span mean per chunk between 248079 markers, the\nprefix and the markers excluded from every span. A one-chunk document has no\nmarker and is a single span; the leading id is the only role signal. An empty\nchunk (consecutive or trailing markers) pools to the zero vector, the\nreference's own branch for a chunk with no tokens.\n\nChunks: the document content is the model's chunk list joined by the boundary\nmarker - chunk boundaries are input to this model, and the chunker that\nproduces them is declared preprocessing recorded upstream of this recipe. A\nchunk's text must contain no all-special token of this tokenizer; the\nboundary marker is the declared case (the plugin segments on every 248079, so\na marker inside chunk text would create phantom chunks), and the reference's split-side parse makes\nany other all-special token in content diverge from the engine-side parse the\nsame way. reference.py re-splits the content on the marker for the model call.\n\nScores: the card gives per-chunk scores (doc_embeddings @ query_embeddings)\nbut no aggregation; the product's multi-vector scorer (MaxSim with a single\nquery vector) pools by max over chunks. Max is the retrieval reading and\nINFERENCE - the GPU wave confirms it against the vendor's retrieval numbers.\n\ndtype: vLLM v0.31.0 cannot run this model in float32: the GDN prefill kernels\nrefuse it on every backend (flashinfer's _cutlass_io_dtype raises\n\"Unsupported dtype torch.float32, expected bfloat16 or float16\", observed both at\nkernel warmup and on the first forward when the checkpoint was served in float32 on\nthe stock v0.31.0 image; the Triton/FLA path\nasserts \"ChunkGatedDeltaRuleFunction does not support float32. Please use\nbfloat16.\", third_party/flash_linear_attention/ops/chunk.py:213-215 at the\ntag). The recipe therefore serves dtype: bfloat16 (16.8 GB of weights; the\n33,604,334,528-byte fp32 checkpoint is cast at load), and the REFERENCE loads the\nsame bfloat16 (E2 round 4: the fp32 load OOMed the stage-2 subprocess on a long\nrow -- 69.48 GiB allocated by PyTorch, one ~88 GiB allocation -- and the owner's\nlike-for-like precision rule compares the engine and the reference at one dtype;\nthe remote code's _keep_in_fp32_modules keeps the contextual projection fp32 and\nthe pooling casts to fp32 before round(tanh(x) * 127), so the int8-valued vectors\nare unaffected). The first equivalence plan's float32 rung is deleted:\nit is unservable on this engine. The int8 head stays fp32 on both sides (the\nremote code's _keep_in_fp32_modules; the plugin's head_dtype). Skipping the\nunused vision tower saves 1.82 GB fp32 (parsed from the checkpoint's shard\nheaders).\n\nBudget: the model's own limit is 262144 tokens model-side (config\nquery_length and document_length; the model raises beyond it and truncates\nnothing), but the recipe serves at max_model_len 131072. The first GPU wave\nfound the engine dying at startup at the declared 262144: pooling warm-up is\none sequence of max_model_len tokens, q is 262144 x 16 x 256 x 2 B = 2^31\nbytes, and the FlashAttention encoder path faults on the 32-bit byte offset\n(the Triton path surfaces later, in inductor). The arithmetic: the\npost-activation MLP tensor (12288 wide) bounds a forward at 2^31/12288 =\n174762 tokens, and the merged gate_up output (24576 wide) at 87381 elements\n/ 43690 bytes if its GEMM is int32-indexed; the declared 131072 sits below\nthe post-activation bound, and E2's real-request run decides whether the\nmerged tensor forces a further step down. The client budget is 131070: the\nmeasured worst-case prefix delta (2, above) reserved, so no measured render\nhits the engine's declared max_model_len, and the difference from the card's\nown 262144 limit is the declared over_cap_cut_differs deviation (the client\ncuts content-only and the anchor is first, so only the cap differs). The\npooling role client fits every request to the declared tokenizer and budget\nbefore it derives the token ids (rcp-ndcg/src/rcp_ndcg/inference/clients/pool.py:\ncontent-only cuts, every cut census-recorded): the cut is the declared\npolicy. The model card has no over-limit output to compare with (it raises),\nso the pairs files keep every text under the limit; reference.py's render of\nsuch a row is the uncut prompt, which stage 1 reports as a mismatch.\n\nTemplate file: no serve.chat_template. The /pooling completion route applies\nno chat template at the pinned engine (pooling/protocol.py, io_processor.py),\nthe repo's chat_template.jinja is a chat-generation template containing none\nof the embedding prefixes, and a served template file would be inert on this\nroute while the harness's template check renders one string that cannot equal\ntwo declared shapes' different frames. The declared shapes above are the\nframe the client tokenizes and sends as ids.\n\nadd_special_tokens: true declares the pooling route's engine default; this\ntokenizer's post-processor appends nothing (bos is null, measured), so the\nreserved block is empty and the ids are identical either way.\n\nTemplate segments: the two role prefixes are written by NAME\n({special:[Q] } / {special:[D] }): the product's special-name resolution\nkeeps a name's significant whitespace exactly, and these added\ntokens' names carry a significant trailing space. The render check against\nthe reference's constants pins the resolved spelling.\n\nMRL {1024, 2048} IS declared (mrl_kind: truncation, mrl_dims [1024, 2048]):\nthe card's cut takes the first 1024 of the UNNORMALISED values and renormalises, which the\nproduct's client-side mrl_dim implements exactly (the served head is span-mean ->\ncontextual_projection -> slice -> L2, and /pooling refuses a per-request dimensions, so the client\nhead is the one cut). The recipe ships the full 2048-wide vector; a run selects k=1024 from the\ndeclared set and the GPU wave gates it. normalize: true matches the card's usage\n(normalize_embeddings); the plugin's request-level activation L2-normalises\nby default and the end state matches either way. empty_doc: send exercises\nthe model's own empty-chunk branch (the zero vector) instead of substituting\na product-side zero; the wave should confirm the plugin reproduces it - and\nname the one divergence between the plugin and the remote code: the remote code RAISES for a non-empty chunk that yields no tokens, the\nplugin zero-pools it, unreachable under this recipe's declared chunker\nguarantee for this tokenizer. pad_token is the tokenizer's endoftext token\nand there is no bos token (tokenizer_config.json). The card states no\nchunking policy of its own: chunk boundaries are model input, and the\nchunker's guarantee - no all-special token inside chunk text, the boundary\nmarker being the declared case - is declared here.",
+  "reference": {
+   "attn_implementation": null,
+   "device": "cuda",
+   "entry": "reference.py",
+   "kind": "remote_code",
+   "known_deviations": [
+    "over_cap_cut_differs"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+  "role": "multi_vector",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": null,
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": null,
+   "max_model_len": 131072,
+   "mm_processor_kwargs": {},
+   "patches": [
+    "pooling-full-context"
+   ],
+   "plugin": "rcp-ndcg-vllm",
+   "plugin_architectures": [
+    "PplxContextualModel"
+   ],
+   "pooler_config": {
+    "task": "token_embed"
+   },
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/README.md",
+   "README.md at the revision, the Matryoshka section (lines 80-88): 'trained with Matryoshka losses at 1024 and 2048 dimensions. To use 1024-dimensional embeddings, take the first 1024 values of each unnormalized embedding and normalize afterwards' -- the client's mrl_dims [1024, 2048] and the cut-then-renormalise order",
+   "https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/config.json",
+   "https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/modeling_pplx_contextual.py",
+   "https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/configuration_pplx_contextual.py",
+   "https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/tokenizer_config.json",
+   "modeling_pplx_contextual.py at the revision: :16-32 PplxContextualModel (Qwen3_5Model subclass, _keep_in_fp32_modules contextual_projection), :46-75 query prepare_inputs (the [Q] prefix id prepended over a split_special_tokens tokenize of the query text), :77-113 document prepare_inputs (the joined text tokenized split-side; chunk token spans from the offsets), :126-133 the 262144-token raise, :136-167 _pool (masked means; span means via the cumsum over the char spans), :214 round(tanh(x)*127) int8 head",
+   "configuration_pplx_contextual.py at the revision: :6-27 the remote config class the plugin's hf_config.py restates (model_type pplx_contextual_qwen3_5; embedding_dim/prefix/boundary-marker fields; query_length/document_length feeding max_position_embeddings; text_config.use_cache off)",
+   "vllm v0.31.0: vllm/entrypoints/pooling/base/protocol.py:212-220 (completion input takes text and token ids; add_special_tokens defaults true)",
+   "vllm v0.31.0: vllm/entrypoints/pooling/pooling/protocol.py (PoolingCompletionRequest: /pooling text input renders no chat template)",
+   "vllm v0.31.0: vllm/entrypoints/pooling/base/io_processor.py:135-149 (the completion branch applies no template, only tok_params)",
+   "vllm v0.31.0: vllm/config/pooler.py:33,60 (PoolerConfig.task, PoolerConfig.use_activation)",
+   "vllm v0.31.0: vllm/pooling_params.py:55 (use_activation default None -> the token_embed pooler's default activation)",
+   "vllm v0.31.0: vllm/model_executor/models/colqwen3_5.py:133 (is_pooling_model on an out-of-tree pooling precedent)",
+   "vllm v0.31.0, the GDN dtype floors (why serve.dtype is bfloat16): vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:93-130 (_resolve_gdn_prefill_backend: flashinfer on Hopper/Blackwell CUDA, else Triton/FLA) and :242-262 (ChunkGatedDeltaRule binds the chosen kernel); the flashinfer path raises at flashinfer/gdn_kernels/blackwell/gdn_prefill.py:140 (_cutlass_io_dtype: 'Unsupported dtype torch.float32, expected bfloat16 or float16' -- raised both at kernel warmup and on the first forward when the checkpoint was served in float32 on the stock v0.31.0 image) and the Triton/FLA fallback refuses fp32 with 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 at the tag). mamba_ssm_dtype: float32 (config.json) sets only the SSM cache dtype (vllm/model_executor/models/config.py:824-841 at the tag), whose values include float32 (FUSED_GDN_STATE_DTYPES)",
+   "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint: api, request_shape, embed_dtype, dim, outputs, budget fields)",
+   "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens)",
+   "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)",
+   "rcp-ndcg: transformers 5.x tokenization_utils_tokenizers.py:466 and :1055-1060 (split_special_tokens is the raw tokenizers encode_special_tokens toggle: added SPECIAL tokens textify, non-special added tokens like the boundary marker keep their one id) -- behind the measured 27-vs-26 id render the token-ids contract rests on",
+   "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
+  ],
+  "status": {
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "perplexity-ai/pplx-embed-v2-context-9b-preview",
+  "--revision",
+  "b667039ee8b438a6350fbc91bbcecd86f9d363ba",
+  "--served-model-name",
+  "pplx-embed-v2-context-9b-preview",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "131072",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{\"task\": \"token_embed\"}"
+ ]
+}

@@ -1,0 +1,359 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "version": "0.31.0",
+    "image_digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "jinaai/jina-reranker-v3",
+      "--revision",
+      "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
+      "--served-model-name",
+      "jina-reranker-v3",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8101",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "131072",
+      "--hf-overrides",
+      "{}",
+      "--pooler-config",
+      "{\"use_activation\": false}"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+      "VLLM_PORT": "9101",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-10-13T20:27:04+00:00",
+    "ready_wait_s": 78.627,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.31.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "redacted": [
+      {
+        "field_path": "engine.env",
+        "removed": "312 Kubernetes Service-link variables for 39 Services",
+        "reason": "the pod's Kubernetes Service links ride under the same VLLM_ prefix as the engine's own knobs and name internal Services and addresses, which the tracked tree may not carry (AGENTS.md: public names only)",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "cc17396f34649c87cdca70491135fcc10f2b0b31b3a245f066312be6b17a1ff4",
+        "from_manifest_file_sha256": "7f9b424b2830d9c90d44afd722c2881472d367d001b923b7dfa9fae263ee2aaa"
+      }
+    ]
+  },
+  "model": {
+    "id": "jinaai/jina-reranker-v3",
+    "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
+    "weights": {
+      "model.safetensors": "8676449d8393a334e84a2459e77a3c35528e55200bb5422284e64130d6d3f2c0"
+    },
+    "tokenizer_sha256": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803",
+    "template_sha256": {
+      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
+    },
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {},
+    "pooler_config": {
+      "use_activation": false
+    },
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "jina-reranker-v3",
+    "shipped": false,
+    "file_sha256": "54226c66dba813ab3043ee28a4e6dce33416844127ecd318dfc745f860ee04eb",
+    "behaviour_fingerprint": "f00e098f01c54022e0d4bc0eb0f5e8a84b1db1a0f4cd8ea9f095f669d18f911b",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "jinaai/jina-reranker-v3",
+      "revision": "d7d7e73b6ea138ced340b83865931b5dfb6c97aa",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "131072",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{\"use_activation\":false}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "absent",
+      "tokenizer_sha256": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803",
+      "client.api": "rerank",
+      "client.document_max_tokens": "2048",
+      "client.empty_doc": "omit_zero_blank",
+      "client.empty_query": "send",
+      "client.instruction": "none",
+      "client.listwise": "true",
+      "client.max_images": "0",
+      "client.max_tokens": "3219",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "512",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"marker\",\"anchor_markers\":[\"embed_token\",\"rerank_token\"],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nYou are a search relevance expert who can determine a ranking of the passages based on how relevant they are to the query. If the query is a question, how relevant a passage is depends on how well it answers the question. If not, try to analyze the intent of the query and assess how well each passage satisfies the intent. If an instruction is provided, you should follow the instruction when determining the ranking.{special:im_end}\\n{special:im_start}user\\nI will provide you with 1 passages, each indicated by a numerical identifier. Rank the passages based on their relevance to query: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<passage id=\\\"0\\\">\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:embed_token}\\n</passage>\\n<query>\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:rerank_token}\\n</query>{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
+      "client.use_activation": "false"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 2,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 3,
+    "record_schema": 1,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-10-13T20:29:24+00:00",
+    "finished": "2026-10-13T20:30:24+00:00",
+    "host_sha256": "1e637ba8c58b69fd03b0ab559d7d9994e03b46eaddecdce578c3754a5a72e969",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "jina-reranker-v3@2026-10-13T20:27:04+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "jina-reranker-v3@2026-10-13T20:27:04+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "jina-reranker-v3@2026-10-13T20:30:14+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 3,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "content:whitespace_only",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "content:whitespace_only:uncut",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=true",
+      "wire:use_activation=false",
+      "wire:instruction=on",
+      "edge:top_n_over_documents"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 3005
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 6008
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 30040
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": true
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl": {
+        "present": false,
+        "reason": "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+      },
+      "wire:top_n=1": {
+        "present": true
+      },
+      "wire:top_n=all": {
+        "present": true
+      },
+      "wire:use_activation=true": {
+        "present": true
+      },
+      "wire:use_activation=false": {
+        "present": true
+      },
+      "wire:instruction=on": {
+        "present": true
+      },
+      "edge:top_n_over_documents": {
+        "present": true
+      },
+      "wire:encoding_format": {
+        "present": false,
+        "reason": "the /rerank route has no encodings"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "18036c1cbcb7ccb39724d511ea63481080e83f866d522bf59cc899629f10345b",
+        "bytes": 75230
+      },
+      "records.jsonl": {
+        "sha256": "4d9f3c0e8ddff5b7bea2d313a3bb701aeffeb0c6a209a67f0a0e2927aadee312",
+        "bytes": 10650826
+      }
+    },
+    "records_count": 397,
+    "manifest_sha256": "a91fa00d72d6ca91682dbd1cdfe6be6b480c976880421626dbc2aa0279ae4955"
+  }
+}

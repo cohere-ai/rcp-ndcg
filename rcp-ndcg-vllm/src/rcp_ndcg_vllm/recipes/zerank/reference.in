@@ -1,0 +1,24 @@
+# reference.in: this family's reference requirements, resolved to the exact, hashed reference.lock
+# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (the family's one reference environment). The tool
+# constrains torch and the CUDA stack to the engine image's freeze; every other pin installs into
+# the family's reference venv and takes precedence over the image's copy. Never edit the lock by hand.
+# The zerank family's reference environment (one file for all three sizes), in ITS
+# OWN python (never the harness's process, never the engine image). Install with the reference
+# python: pip install -r reference.lock. The wave runner takes it via
+# --reference-python; the reference subprocess runs while the engine on that slot is up and
+# releases its memory when it exits.
+#
+# The pins are the paper reference's (experiments/paper/rerankers/reference/requirements.txt, the
+# package's former [local] extra): the paper-exact zerank reference runs on torch 2.9.1 +
+# transformers 4.57.6. That file's flash-attn and accelerate pins are dropped here: the family's
+# reference.py (the paper's ZerankRerank) imports neither. Stage 1 (--mode render) needs only
+# tokenizers + huggingface_hub (both are transformers' own dependencies). Stage 2 (--mode score)
+# needs torch and the checkpoint weights. The paper's zerank reference computes its sigmoid with
+# scipy.special.expit (a hand-rolled math.exp would overflow on very negative logits); the score
+# head runs in bf16.
+
+torch>=2.9  # the paper pinned 2.9.1; the family's reference.py imports no flash-attn and runs on the image's own torch
+transformers==4.57.6
+scipy>=1.11
+tokenizers>=0.22,<=0.23.0  # transformers 4.57.6 requires <=0.23.0 (the image ships 0.23.2)
+huggingface_hub>=0.30,<1.0  # transformers 4.57.6 requires <1.0 (the image ships 1.33.0)

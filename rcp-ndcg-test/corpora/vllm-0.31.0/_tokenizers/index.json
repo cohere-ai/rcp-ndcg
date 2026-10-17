@@ -1,0 +1,106 @@
+{
+  "Octen/Octen-Embedding-0.6B@d715b32ee68f057b54dff09fc93c23485bc403d3": {
+    "file": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a.json.gz",
+    "sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+  },
+  "Octen/Octen-Embedding-4B@fea468fae3f0caffbae8a12ba792d1c394b6277d": {
+    "file": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d.json.gz",
+    "sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
+  },
+  "Octen/Octen-Embedding-8B@5adcfa292e712091dfc30f0e97f0b2282e6cc66c": {
+    "file": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d.json.gz",
+    "sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
+  },
+  "Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3": {
+    "file": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a.json.gz",
+    "sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+  },
+  "Qwen/Qwen3-Embedding-4B@5cf2132abc99cad020ac570b19d031efec650f2b": {
+    "file": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d.json.gz",
+    "sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
+  },
+  "Qwen/Qwen3-Embedding-8B@1d8ad4ca9b3dd8059ad90a75d4983776a23d44af": {
+    "file": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d.json.gz",
+    "sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d"
+  },
+  "Qwen/Qwen3-Reranker-0.6B@e61197ed45024b0ed8a2d74b80b4d909f1255473": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "Qwen/Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "Qwen/Qwen3-Reranker-8B@77d193c791ed757ca307ee72715aa132723da912": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "Qwen/Qwen3-VL-Embedding-2B@9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda": {
+    "file": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a.json.gz",
+    "sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+  },
+  "Qwen/Qwen3-VL-Embedding-8B@2c4565515e0f265c6511776e7193b22c0968ddc7": {
+    "file": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a.json.gz",
+    "sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a"
+  },
+  "Qwen/Qwen3-VL-Reranker-2B@4bd860ac4f15ad1897a214615cccc700f8f71818": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "Qwen/Qwen3-VL-Reranker-8B@b212dc8c91a8164aef1ea2de9c1a867611e75c04": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "google/embeddinggemma-2@914f7f89142e33e77833254d9c9b90c3cef7303b": {
+    "file": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4.json.gz",
+    "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
+  },
+  "jinaai/jina-embeddings-v5-text-nano@8a7f00aac812071b69403df470f1038ec85f8925": {
+    "file": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069.json.gz",
+    "sha256": "98d4a1d32152d6cedf85b5e88f3b205106dca1fe72aaab34e0ac13c238421069"
+  },
+  "jinaai/jina-embeddings-v5-text-small@dd76d535f5447ca3897a9c893fb1e612ead98192": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "jinaai/jina-reranker-v3@d7d7e73b6ea138ced340b83865931b5dfb6c97aa": {
+    "file": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803.json.gz",
+    "sha256": "4e95945ab0cef486709f760b81efcc7a6e75747f9165d13ead29159737455803"
+  },
+  "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781": {
+    "file": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7.json.gz",
+    "sha256": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7"
+  },
+  "topk-io/topk-embed-v1-xsmall@210ebf2a25fb7128480f9b9c8f228e8d65c433a7": {
+    "file": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7.json.gz",
+    "sha256": "e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7"
+  },
+  "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "zeroentropy/zerank-1-small-reranker@a65fd51c450e9b47fdddab98e31166ecad21af8d": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "zeroentropy/zerank-2-reranker@5eae30d5ee3c6b2df2ef6d723bde45172d761c4c": {
+    "file": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4.json.gz",
+    "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "perplexity-ai/pplx-embed-v1-0.6b@2c4d510dd4a732063c31a0f70193e35067b51fd8": {
+    "file": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5.json.gz",
+    "sha256": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5"
+  },
+  "perplexity-ai/pplx-embed-v1-4b@06456497a00540a582918fe8dcd3a5eabb207772": {
+    "file": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5.json.gz",
+    "sha256": "c6fb5c5bbba5fa5f8332edfb6d8aa67bd7fb3d75365b1765f108201698eaebf5"
+  },
+  "perplexity-ai/pplx-embed-v2-late-0.6b@8fc2de24534aa3610d85fa59c463313a5f096455": {
+    "file": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c.json.gz",
+    "sha256": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c"
+  },
+  "perplexity-ai/pplx-embed-v2-late-9b@0f49a9977fe06b83377d598094c5c0204ce18ad9": {
+    "file": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c.json.gz",
+    "sha256": "a171436d73b1d30b9ba99ff6b7f15efcf45cf428b6ff908842286a8057030b1c"
+  }
+}

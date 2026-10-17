@@ -1,0 +1,376 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "version": "0.31.0",
+    "image_digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-Reranker-0.6B",
+      "--revision",
+      "e61197ed45024b0ed8a2d74b80b4d909f1255473",
+      "--served-model-name",
+      "qwen3-reranker-0.6b",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8102",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "10000",
+      "--hf-overrides",
+      "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"no\", \"yes\"], \"head_dtype\": \"model\", \"is_original_qwen3_reranker\": true}",
+      "--chat-template",
+      "template.jinja",
+      "--pooler-config",
+      "{\"use_activation\": true}"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+      "VLLM_PORT": "9102",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-10-13T20:27:04+00:00",
+    "ready_wait_s": 81.33,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.31.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "redacted": [
+      {
+        "field_path": "engine.env",
+        "removed": "312 Kubernetes Service-link variables for 39 Services",
+        "reason": "the pod's Kubernetes Service links ride under the same VLLM_ prefix as the engine's own knobs and name internal Services and addresses, which the tracked tree may not carry (AGENTS.md: public names only)",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "779da771617fc2cb7219a1048df29b77a6bf7a2be4f3ae75368605fc3400e8e0",
+        "from_manifest_file_sha256": "28839156ba520c483ab9951b1d1cecfb0b55668111ef1954d7242d6918265431"
+      },
+      {
+        "field_path": "engine.serve_argv",
+        "removed": "the pod's staging directory from the --chat-template value (the file name is kept)",
+        "reason": "the serve argv recorded the pod's own staging directory; the family goldens reduce the same --chat-template value to its file name",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "779da771617fc2cb7219a1048df29b77a6bf7a2be4f3ae75368605fc3400e8e0",
+        "from_manifest_file_sha256": "28839156ba520c483ab9951b1d1cecfb0b55668111ef1954d7242d6918265431"
+      }
+    ]
+  },
+  "model": {
+    "id": "Qwen/Qwen3-Reranker-0.6B",
+    "revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473",
+    "weights": {
+      "model.safetensors": "5823af5e3714ed2fb057e4a531f66a2f91edef56fbc0aac1b887a3f3a85da64e"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": "e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "architectures": [
+        "Qwen3ForSequenceClassification"
+      ],
+      "classifier_from_token": [
+        "no",
+        "yes"
+      ],
+      "is_original_qwen3_reranker": true,
+      "head_dtype": "model"
+    },
+    "pooler_config": {
+      "use_activation": true
+    },
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "qwen3-reranker-0.6b",
+    "shipped": false,
+    "file_sha256": "3ecff78261ec0864a39a9472e8a89528a6adb67431c18b57d6f3126f620e707a",
+    "behaviour_fingerprint": "fb5cef35d44a08de4e1494ad404a07375da21d00240f888f4624882050a9a97e",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Qwen/Qwen3-Reranker-0.6B",
+      "revision": "e61197ed45024b0ed8a2d74b80b4d909f1255473",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "template.jinja",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"no\",\"yes\"],\"head_dtype\":\"model\",\"is_original_qwen3_reranker\":true}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "10000",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{\"use_activation\":true}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "sha256:e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
+      "client.empty_doc": "send",
+      "client.empty_query": "send",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\\n<Query>: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>: \"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
+      "client.use_activation": "true"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 2,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 3,
+    "record_schema": 1,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-10-13T20:29:44+00:00",
+    "finished": "2026-10-13T20:30:52+00:00",
+    "host_sha256": "1e637ba8c58b69fd03b0ab559d7d9994e03b46eaddecdce578c3754a5a72e969",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 3,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=true",
+      "wire:use_activation=false",
+      "wire:instruction=on",
+      "edge:top_n_over_documents"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 8052
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 16102
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 80510
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl": {
+        "present": false,
+        "reason": "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+      },
+      "wire:top_n=1": {
+        "present": true
+      },
+      "wire:top_n=all": {
+        "present": true
+      },
+      "wire:use_activation=true": {
+        "present": true
+      },
+      "wire:use_activation=false": {
+        "present": true
+      },
+      "wire:instruction=on": {
+        "present": true
+      },
+      "edge:top_n_over_documents": {
+        "present": true
+      },
+      "wire:encoding_format": {
+        "present": false,
+        "reason": "the /rerank route has no encodings"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "0be0d24e5b302d31671aa39c5880377f7acfad2fa83e1c27bc07b80735d2d4df",
+        "bytes": 76161
+      },
+      "records.jsonl": {
+        "sha256": "2fd884721b88fc48c6c33388b4a37e57e27285da17b7e60075c7306bfa719433",
+        "bytes": 8306254
+      }
+    },
+    "records_count": 400,
+    "manifest_sha256": "bf54da09350f7a51bb7159c6b9092c5f178742f1f1ff62fd0b5e17ecf4ae8326"
+  }
+}

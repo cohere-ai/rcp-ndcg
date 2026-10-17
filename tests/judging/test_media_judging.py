@@ -1,0 +1,693 @@
+"""Page images and videos, from a document to the request an OpenAI-compatible engine receives.
+
+The positional ``doc_N`` contract the parsers depend on holds whatever a document
+is made of; media travel inlined; and a judge not declared to read media, or a
+rubric written for another kind of document, is refused before anything is spent.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+from pathlib import Path
+
+import httpx
+import pytest
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_ndcg_core.records import RankingExample
+
+from rcp_ndcg.data.prepare import prepare_content
+from rcp_ndcg.data.preprocess import Preprocessing
+from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
+from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
+from rcp_ndcg.inference.adapters.chat import build_messages, media_counts
+from rcp_ndcg.judging import RubricSchedule, TournamentSchedule, judge, load_prompt
+from rcp_ndcg.judging._templates import MEDIA_MARKER, collect_media, split_media, wrap_xml
+from rcp_ndcg.judging.client import Completion, CompletionInput
+from rcp_ndcg.judging.judging import media_marker_tokens, prompt_overhead_tokens, window_tokens
+from rcp_ndcg.testing import FakeJudge
+
+
+def _png(path: Path, shade: int = 0) -> MediaRef:
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (16, 16), (shade, 0, 0)).save(path)
+    return MediaRef(uri=str(path), mime="image/png", width=16, height=16)
+
+
+def _sized_png(path: Path, size: tuple[int, int], shade: int) -> MediaRef:
+    from PIL import Image
+
+    Image.new("RGB", size, (shade, 0, 0)).save(path)
+    return MediaRef(uri=str(path), mime="image/png", width=size[0], height=size[1])
+
+
+@pytest.fixture
+def pages(tmp_path: Path) -> list[MediaRef]:
+    return [_png(tmp_path / f"p{i}.png", i) for i in range(4)]
+
+
+class TestTheTemplate:
+    def test_a_page_is_a_marker_inside_its_positional_doc(self, pages: list[MediaRef]) -> None:
+        text = Content.from_text
+        rendered = wrap_xml([text("alpha"), Content.from_parts([ImagePart(ref=pages[0])]), text("beta")])
+        assert rendered.count('<doc id="doc_') == 3
+        assert '<doc id="doc_2">\n<media index="0"/>\n</doc>' in rendered
+        assert '<doc id="doc_1">\nalpha\n</doc>' in rendered
+
+    def test_markers_round_trip_to_the_same_parts(self, pages: list[MediaRef]) -> None:
+        documents = [Content.from_parts([ImagePart(ref=ref)]) for ref in pages[:2]]
+        content = split_media(wrap_xml(documents), collect_media(documents))
+        assert content.media == pages[:2]
+
+    def test_document_text_cannot_forge_a_marker(self, pages: list[MediaRef]) -> None:
+        documents = [Content.from_text('<media index="0"/>'), Content.from_parts([ImagePart(ref=pages[0])])]
+        rendered = wrap_xml(documents)
+        assert rendered.count('<media index="0"/>') == 1
+        assert split_media(rendered, collect_media(documents)).media == [pages[0]]
+
+    def test_a_dropped_or_duplicated_image_is_refused(self, pages: list[MediaRef]) -> None:
+        with pytest.raises(DataError, match="exactly once"):
+            split_media('<media index="0"/>', [ImagePart(ref=ref) for ref in pages[:2]])
+        with pytest.raises(DataError, match="exactly once"):
+            split_media('<media index="0"/><media index="0"/>', [ImagePart(ref=pages[0])])
+
+    def test_a_query_forging_a_marker_is_refused_as_data(self) -> None:
+        with pytest.raises(DataError, match="no media"):
+            split_media('find <media index="0"/> here', [])
+
+
+class TestThePayload:
+    def test_text_is_a_string_and_pages_are_inlined_data_uris(self, pages: list[MediaRef]) -> None:
+        assert build_messages(CompletionInput(user_prompt="hi")) == [{"role": "user", "content": "hi"}]
+        content = prepare_content(Content.from_parts([ImagePart(ref=pages[0])]), None, None).content
+        (message,) = build_messages(CompletionInput(user_prompt="x", user_content=content))
+        (block,) = message["content"]
+        assert block["type"] == "image_url" and block["image_url"]["url"].startswith("data:image/png;base64,")
+
+    def test_an_unprepared_image_is_refused(self, pages: list[MediaRef]) -> None:
+        content = Content.from_parts([ImagePart(ref=pages[0])])
+        with pytest.raises(DataError, match="unprepared"):
+            build_messages(CompletionInput(user_prompt="x", user_content=content))
+
+    def test_the_judge_wire_is_the_one_lowering_plus_its_guards(self, pages: list[MediaRef]) -> None:
+        """The judge's blocks ARE the served roles' blocks: the same content lowers identically through the
+        judge's ``_blocks`` and the one ``content_parts_payload``; the judge only adds its two guards."""
+        from rcp_ndcg.data.media import content_parts_payload
+        from rcp_ndcg.inference.adapters.chat import _blocks
+
+        content = prepare_content(
+            Content.from_parts([TextPart(text="caption"), ImagePart(ref=pages[0])]), None, None
+        ).content
+        assert _blocks(content) == content_parts_payload(content)
+
+    def test_a_container_is_one_video_block_and_frames_are_images(self, tmp_path: Path, pages) -> None:
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        container = VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))
+        framed = VideoPart(frames=pages[:3])
+        content = prepare_content(Content.from_parts([container, framed]), None, None).content
+        (message,) = build_messages(CompletionInput(user_prompt="x", user_content=content))
+        assert [block["type"] for block in message["content"]] == ["video_url", "image_url", "image_url", "image_url"]
+        assert media_counts(content) == (3, 1)
+
+    def test_a_container_s_bytes_are_read_through_the_media_resolver(self) -> None:
+        """The video block reads the container through the media resolver (the one read path) and inlines
+        it with the one data-URI builder: an inline ``data:`` container -- bytes the resolver decodes, no file
+        behind them -- is sent as the same data URI, never looked up on disk."""
+        import base64
+
+        payload = base64.b64encode(b"\x00\x00\x00\x18ftypmp42-inline-clip").decode("ascii")
+        uri = f"data:video/mp4;base64,{payload}"
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=uri, mime="video/mp4", num_bytes=26))])
+        (message,) = build_messages(CompletionInput(user_prompt="x", user_content=content))
+        (block,) = message["content"]
+        assert block == {"type": "video_url", "video_url": {"url": uri}}
+
+    def test_an_oversized_or_unknown_container_is_refused_by_name(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        monkeypatch.setattr("rcp_ndcg.inference.adapters.chat.MAX_VIDEO_BYTES", 10)
+        big = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))])
+        with pytest.raises(DataError, match="RCP_NDCG_MAX_VIDEO_BYTES"):
+            build_messages(CompletionInput(user_prompt="x", user_content=big))
+        odd = Content.from_parts([VideoPart(ref=MediaRef(uri=str(tmp_path / "clip.xyz"), num_bytes=1))])
+        with pytest.raises(DataError, match="video container"):
+            build_messages(CompletionInput(user_prompt="x", user_content=odd))
+
+
+class _Recording(FakeJudge):
+    """The fake judge, keeping every request it answers."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.requests: list[CompletionInput] = []
+
+    async def complete(self, request: CompletionInput) -> Completion:
+        self.requests.append(request)
+        return await super().complete(request)
+
+
+def _page_rows(pages: list[MediaRef]) -> list[RankingExample]:
+    return [
+        RankingExample(
+            query_id="q1",
+            query="what is the yield curve",
+            doc_ids=[f"p{i}" for i in range(len(pages))],
+            contents=[Content.from_parts([ImagePart(ref=ref)]) for ref in pages],
+        )
+    ]
+
+
+SMALL = RubricSchedule(window=2, placements_per_doc=2.0)
+
+
+class TestJudgingPages:
+    def test_a_window_charges_the_prepared_refs_the_wire_sends(self, tmp_path: Path, word_tokenizer_file: Path) -> None:
+        """A stored ref whose recorded size disagrees with the file: the budget counts the decoded, resized
+        bytes the wire carries, so a context the stale metadata would have called a fit is refused."""
+        page = _sized_png(tmp_path / "big.png", (1700, 2200), 0).model_copy(update={"width": 16, "height": 16})
+        content = Content.from_parts([ImagePart(ref=page)])
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["p0"], contents=[content])]
+        words = load_tokenizer(str(word_tokenizer_file))
+        declared = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32)
+        effective = declared.for_processor("qwen3_vl")
+        prepared = prepare_content(content, effective, None)
+        media = content_media_tokens(prepared.content, effective, None, tokenizer=words).tokens
+        media += media_marker_tokens(words)
+        overhead = prompt_overhead_tokens(load_prompt("rubric_vision"), "rubric", "q", 1, words)
+        fake = _Recording()
+        fake.config = fake.config.model_copy(
+            update={
+                "max_images": 1,
+                "context_tokens": overhead + media - 1,
+                "image_processor": "qwen3_vl",
+                "tokenizer": str(word_tokenizer_file),
+            }
+        )
+        with pytest.raises(CapabilityError, match="does not fit"):
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path, schedule=SMALL,
+                preprocessing=Preprocessing(image=declared),
+            )  # fmt: skip
+        assert fake.usage.requests == 0
+
+    def test_a_partial_schedule_keeps_the_page_window(self, tmp_path: Path, pages) -> None:
+        """Naming one schedule field (the seed) keeps the shipped per-modality window: the page rubric runs
+        windows of 8, not the text model default of 10, and the page tournament 5/5."""
+        fake = _Recording()
+        fake.config = fake.config.model_copy(update={"max_images": 8})
+        judge(_page_rows(pages), None, fake, stage="rubric", out=tmp_path / "rubric", schedule=RubricSchedule(seed=7))
+        identity = json.loads((tmp_path / "rubric" / "identity.json").read_text())
+        assert identity["stages"]["rubric"]["identity"]["schedule"]["window"] == 8
+
+        other = _Recording()
+        other.config = other.config.model_copy(update={"max_images": 5})
+        judge(
+            _page_rows(pages), None, other, stage="tournament", out=tmp_path / "tournament",
+            schedule=TournamentSchedule(seed=7),
+        )  # fmt: skip
+        identity = json.loads((tmp_path / "tournament" / "identity.json").read_text())
+        schedule = identity["stages"]["tournament"]["identity"]["schedule"]
+        assert (schedule["window"], schedule["adaptive_window"]) == (5, 5)
+
+    def test_pages_are_judged_with_the_page_rubric_and_sent_as_images(self, tmp_path: Path, pages) -> None:
+        fake = _Recording()
+        fake.config = fake.config.model_copy(update={"max_images": 2})
+        result = judge(_page_rows(pages), None, fake, stage="rubric", out=tmp_path, schedule=SMALL)
+        (family,) = result.families.values()
+        assert family.prompt_hash == load_prompt("rubric_vision").sha256
+        assert all(j.valid for j in result.judgements)
+        assert fake.requests and all(len(request.user_content.media) == 2 for request in fake.requests)
+        assert all('<doc id="doc_2">' in request.user_prompt for request in fake.requests)
+
+    def test_the_image_tokens_are_charged_against_the_windows_text_budget(
+        self, tmp_path: Path, pages, word_tokenizer_file: Path
+    ) -> None:
+        """A page with a long caption: the caption gets the context left after the window's media charge."""
+        policy = ImagePolicy(min_px=448 * 448, max_px=448 * 448, processor="qwen3_vl")
+        contents = [
+            Content.from_parts([TextPart(text=f"caption {i} " + "x " * 5_000), ImagePart(ref=ref)])
+            for i, ref in enumerate(pages)
+        ]
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=[f"p{i}" for i in range(4)], contents=contents)]
+        fake = _Recording()
+        fake.config = fake.config.model_copy(
+            update={
+                "max_images": 2,
+                "context_tokens": 4_000,
+                "image_processor": "qwen3_vl",
+                "tokenizer": str(word_tokenizer_file),
+            }
+        )
+        declared = ImagePolicy(min_px=448 * 448, max_px=448 * 448)
+        preprocessing = Preprocessing(image=declared)
+        judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=preprocessing)
+
+        words = load_tokenizer(str(word_tokenizer_file))
+        media = content_media_tokens(contents[0], policy).tokens + media_marker_tokens(words)
+        assert media > 0
+        overhead = prompt_overhead_tokens(load_prompt("rubric_vision"), "rubric", "q", 2, words)
+        budget = window_tokens(fake.config, 2, overhead_tokens=overhead, media_tokens_per_doc=media)
+        assert budget is not None and budget < window_tokens(fake.config, 2, overhead_tokens=overhead)
+        rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+        cuts = [row for row in rows if row["mechanism"] == "window_budget"]
+        assert cuts and all(row["kept_tokens"] == budget for row in cuts)
+
+    def test_the_marker_is_measured_from_the_template_not_guessed(self, word_tokenizer_file: Path) -> None:
+        """The window budget charges each media part the template's marker; the count is the judge
+        tokenizer's own, of the marker as the stage's template renders it."""
+        words = load_tokenizer(str(word_tokenizer_file))
+        assert media_marker_tokens(words) == words.count(MEDIA_MARKER.format(index=0)) > 0
+
+    def test_a_multi_image_window_that_used_to_overflow_is_refused(
+        self, tmp_path: Path, pages, word_tokenizer_file: Path
+    ) -> None:
+        """The old accounting charged patches only, so a window of image-heavy documents was sized a text
+        budget that, with each image's vision start/end and its media marker, overflowed the context
+        mid-pass. The pass now refuses before anything is spent."""
+        policy = ImagePolicy(min_px=65536, max_px=65536, processor="qwen3_vl")
+        contents = [Content.from_parts([ImagePart(ref=ref)]) for ref in pages]
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=[f"p{i}" for i in range(4)], contents=contents)]
+        fake = _Recording()
+        words = load_tokenizer(str(word_tokenizer_file))
+        overhead = prompt_overhead_tokens(load_prompt("rubric_vision"), "rubric", "q", 2, words)
+        patches = policy.image_tokens(16, 16)
+        per_doc_old = patches  # the pre-fix charge: patches only
+        per_doc_true = patches + 2 + media_marker_tokens(words)  # + vision start/end + the marker
+        # a context that the old accounting called a fit and the true accounting cannot hold
+        slack = (per_doc_true - per_doc_old) * 2
+        fake.config = fake.config.model_copy(
+            update={
+                "max_images": 2,
+                "context_tokens": overhead + 2 * per_doc_old + slack // 2,
+                "image_processor": "qwen3_vl",
+                "tokenizer": str(word_tokenizer_file),
+            }
+        )
+        declared = Preprocessing(image=ImagePolicy(min_px=65536, max_px=65536))
+
+        assert window_tokens(fake.config, 2, overhead_tokens=overhead, media_tokens_per_doc=per_doc_old) is not None
+        with pytest.raises(CapabilityError, match="does not fit"):
+            window_tokens(fake.config, 2, overhead_tokens=overhead, media_tokens_per_doc=per_doc_true)
+        with pytest.raises(CapabilityError, match="does not fit"):
+            judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=declared)
+        assert fake.usage.requests == 0
+
+    def test_pages_are_sent_as_the_judges_processor_would_size_them_and_recorded(self, tmp_path: Path) -> None:
+        pages = [_sized_png(tmp_path / f"big{i}.png", (1700, 2200), i) for i in range(4)]
+        fake = _Recording()
+        fake.config = fake.config.model_copy(update={"max_images": 2, "image_processor": "qwen3_vl"})
+        declared = Preprocessing(image=ImagePolicy(min_px=65536, max_px=1280 * 32 * 32))
+
+        result = judge(
+            _page_rows(pages), None, fake, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=declared
+        )
+
+        sent = [ref for request in fake.requests for ref in request.user_content.media]
+        assert sent and all(ref.uri.startswith("data:image/png;base64,") for ref in sent)
+        assert {(ref.height, ref.width) for ref in sent} == {(1280, 992)}
+        rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+        media = [row for row in rows if row["mechanism"] == "media"]
+        assert sorted(row["doc_id"] for row in media) == ["p0", "p1", "p2", "p3"]
+        assert all(
+            (row["processor"], row["sent_width"], row["sent_height"]) == ("qwen3_vl", 992, 1280) for row in media
+        )
+        (family,) = result.families.values()
+        recorded = Preprocessing(image=ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl"))
+        assert family.preprocessing == recorded.key != declared.key
+
+    def test_a_judge_without_an_image_processor_is_sent_the_stored_pages(self, tmp_path: Path, pages) -> None:
+        fake = _Recording()
+        fake.config = fake.config.model_copy(update={"max_images": 2})
+        declared = Preprocessing(image=ImagePolicy(min_px=65536, max_px=65536))
+
+        result = judge(
+            _page_rows(pages), None, fake, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=declared
+        )
+
+        stored = {base64.b64encode(Path(ref.uri).read_bytes()).decode() for ref in pages}
+        sent = {ref.uri.split(",", 1)[1] for request in fake.requests for ref in request.user_content.media}
+        assert sent <= stored
+        rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+        assert all(row["processor"] is None and not row["resized"] for row in rows if row["mechanism"] == "media")
+        (family,) = result.families.values()
+        assert family.preprocessing == declared.key
+
+    def test_a_hosted_judge_without_tokenizer_or_processor_is_sent_whole_pages(self, tmp_path: Path, pages) -> None:
+        """No tokenizer: no text budget, so images the client cannot count need no count; the endpoint sizes them."""
+        fake = _Recording()
+        fake.config = fake.config.model_copy(update={"max_images": 2, "context_tokens": 100_000})
+        judge(_page_rows(pages), None, fake, stage="rubric", out=tmp_path, schedule=SMALL)
+        assert fake.requests and all(request.user_content.media for request in fake.requests)
+
+    def test_a_window_budget_over_uncountable_images_is_refused(
+        self, tmp_path: Path, pages, word_tokenizer_file: Path
+    ) -> None:
+        fake = _Recording()
+        fake.config = fake.config.model_copy(
+            update={"max_images": 2, "context_tokens": 100_000, "tokenizer": str(word_tokenizer_file)}
+        )
+        with pytest.raises(ConfigError, match="image_processor"):
+            judge(
+                _page_rows(pages),
+                None,
+                fake,
+                stage="rubric",
+                out=tmp_path,
+                schedule=SMALL,
+                preprocessing=Preprocessing(image=ImagePolicy(min_px=65536, max_px=65536)),
+            )
+        assert fake.usage.requests == 0
+
+    def test_a_judge_not_declared_to_read_images_is_refused_before_a_call(self, tmp_path: Path, pages) -> None:
+        fake = _Recording()
+        with pytest.raises(CapabilityError, match="images"):
+            judge(_page_rows(pages), None, fake, stage="rubric", out=tmp_path, schedule=SMALL)
+        assert fake.usage.requests == 0
+
+    @pytest.mark.parametrize("prompt", ["rubric", "rubric_video"])
+    def test_a_rubric_written_for_other_documents_is_refused(self, tmp_path: Path, pages, prompt: str) -> None:
+        with pytest.raises(ConfigError, match="rubric_vision"):
+            judge(
+                _page_rows(pages),
+                None,
+                FakeJudge(),
+                stage="rubric",
+                out=tmp_path,
+                schedule=SMALL.model_copy(update={"prompt": prompt}),
+            )
+
+    def test_the_store_records_the_engine_media_check_outcome(self, tmp_path: Path, pages) -> None:
+        """The check's outcome is store provenance: the client's census writes into the pass's
+        ``preprocessing.jsonl``, so a ``not_checked`` (or ``ok``) row survives beside the media rows."""
+        from rcp_ndcg.judging._fake import _answer_text, _prompt_text
+        from rcp_ndcg.judging.client import JudgeClient, JudgeConfig
+
+        class _NoUsageEngine:
+            """A served engine whose replies carry no usage: the media delta cannot be taken."""
+
+            def __init__(self) -> None:
+                self.fake = FakeJudge()
+
+            async def __call__(self, request: httpx.Request) -> httpx.Response:
+                if request.method == "GET" and request.url.path == "/v1/models":
+                    return httpx.Response(200, json={"object": "list", "data": [{"id": "m"}]})
+                body = json.loads(request.content)
+                try:
+                    answer = _answer_text(
+                        self.fake.seed, self.fake.ability, self.fake.severity, _prompt_text(body.get("messages"))
+                    )
+                except ValueError:  # the probe carries no document window
+                    answer = "{}"
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "x",
+                        "object": "chat.completion",
+                        "created": 0,
+                        "model": body["model"],
+                        "choices": [
+                            {"index": 0, "message": {"role": "assistant", "content": answer}, "finish_reason": "stop"}
+                        ],
+                    },
+                )
+
+        config = JudgeConfig(base_url="http://judge.test/v1", model="m", image_processor="qwen3_vl", max_images=2)
+        client = JudgeClient(config, httpx_transport=httpx.MockTransport(_NoUsageEngine()))
+        declared = Preprocessing(image=ImagePolicy(min_px=65536, max_px=1310720))
+        judge(_page_rows(pages), None, client, stage="rubric", out=tmp_path, schedule=SMALL, preprocessing=declared)
+
+        rows = [json.loads(line) for line in (tmp_path / "preprocessing.jsonl").read_text().splitlines()]
+        assert any(row["doc_id"] == "engine_media_check:not_checked" for row in rows)
+
+
+class TestVideoContainers:
+    def test_a_container_without_a_video_policy_is_refused_without_a_budget(self, tmp_path: Path) -> None:
+        """A judge with no context_tokens (or no tokenizer) used to skip the media count entirely and send a
+        container at the engine's own default sampling, while ``estimate`` refused the same pass; the plan now
+        refuses it whatever the budget settings."""
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))])
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"max_videos": 1})
+
+        with pytest.raises(ConfigError, match="video policy") as caught:
+            judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL)
+        assert "preprocessing.video" in (caught.value.hint or "")
+        assert fake.usage.requests == 0
+
+    def test_a_pinned_qwen2_container_is_refused_whatever_the_budget_settings(self, tmp_path: Path) -> None:
+        """A qwen2_vl/qwen2_5_vl judge with a pinned ``video_url`` container: the family's engine backend
+        samples by fps and ignores ``num_frames``, and its fps rule is not ported here, so no declaration can
+        be counted honestly. The count refuses it, but a pass with no ``context_tokens`` or no tokenizer
+        never reaches that count -- it swallowed the refusal and sent the container while the store recorded
+        ``num_frames: 8`` -- so the plan refuses it now, before any request."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts(
+            [
+                VideoPart(
+                    ref=MediaRef(
+                        uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300, fps=30.0, duration_s=10.0
+                    )
+                )
+            ]
+        )
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"image_processor": "qwen2_5_vl", "max_videos": 1})
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=1003520, processor="qwen2_5_vl"),
+            video=VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True),
+        )
+
+        with pytest.raises(ConfigError, match="num_frames") as caught:
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL,
+                preprocessing=preprocessing,
+            )  # fmt: skip
+        assert "frames" in (caught.value.hint or "")
+        assert fake.usage.requests == 0
+
+    def test_an_fps_qwen2_container_is_refused_before_the_pass(self, tmp_path: Path) -> None:
+        """The engine's fps rule is ported for the qwen3_vl family only: a judge whose processor resolves to
+        a qwen2 family is refused before any request, whatever the budget settings."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"\x00" * 64)
+        content = Content.from_parts(
+            [
+                VideoPart(
+                    ref=MediaRef(
+                        uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=300, fps=30.0, duration_s=10.0
+                    )
+                )
+            ]
+        )
+        rows = [RankingExample(query_id="q1", query="q", doc_ids=["c0"], contents=[content])]
+        fake = FakeJudge()
+        fake.config = fake.config.model_copy(update={"image_processor": "qwen2_5_vl", "max_videos": 1})
+        # The deferred form: the judge's image_processor fills the policy's processor at plan time.
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=1003520),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+
+        with pytest.raises(ConfigError, match="qwen3_vl"):
+            judge(
+                rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL,
+                preprocessing=preprocessing,
+            )  # fmt: skip
+        assert fake.usage.requests == 0
+
+
+def test_a_media_pass_bounds_prepared_media_to_one_query_s_pool(tmp_path: Path, pages, monkeypatch) -> None:
+    """Every prepared page and frame is an inlined PNG data URI; the shared image LRU is sized to one
+    query's pool, but a pass that starts every query before its first answer used to hold one pool per
+    query (the window budget prepared each pool synchronously, before the first await). The pass now runs
+    one media query at a time, so the prepared dict never holds more than one query's pool."""
+    from rcp_ndcg.judging.judging import _Pass
+
+    observed: list[int] = []
+    original = _Pass.ask_all
+
+    async def spy(self: _Pass, *args, **kwargs):
+        observed.append(len(self.prepared))
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(_Pass, "ask_all", spy)
+    rows = [
+        RankingExample(
+            query_id=f"q{index}",
+            query="what is the yield curve",
+            doc_ids=[f"p{page}" for page in range(len(pages))],
+            contents=[Content.from_parts([ImagePart(ref=ref)]) for ref in pages],
+        )
+        for index in (1, 2)
+    ]
+    fake = FakeJudge()
+    fake.config = fake.config.model_copy(update={"max_images": len(pages), "context_tokens": 100_000})
+
+    judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL)
+
+    assert observed, "the pass asked"
+    peak = max(observed)
+    assert peak <= len(pages), f"prepared media peaked at {peak} entries; one query's pool is {len(pages)}"
+
+
+async def test_run_planned_releases_a_query_s_prepared_media(tmp_path: Path, pages) -> None:
+    """The ``judge(windows=...)`` path (calibration insert/rejudge) prepared every query's media and never
+    released it: after the pass returned, every pool was still resident. It releases like the two stage
+    workers do."""
+    from rcp_ndcg_core.schemas import JudgementFamily
+
+    from rcp_ndcg.data.census import TextTruncationCensus
+    from rcp_ndcg.data.prepare import MediaCensus
+    from rcp_ndcg.judging.judging import _Pass, _Query, run_planned
+    from rcp_ndcg.judging.store import JudgementStore
+
+    prompt = load_prompt("rubric_vision")
+    units = [f"p{i}" for i in range(len(pages))]
+    query = _Query(
+        dataset="d",
+        query_id="q1",
+        text="what is the yield curve",
+        units=units,
+        contents={unit: Content.from_parts([ImagePart(ref=ref)]) for unit, ref in zip(units, pages, strict=True)},
+        chunk_mapping=None,
+    )
+    client = FakeJudge()
+    client.config = client.config.model_copy(update={"max_images": len(pages)})
+    run = _Pass(
+        stage="rubric",
+        client=client,
+        prompt=prompt,
+        family=JudgementFamily(
+            stage="rubric", judge_model="fake", prompt_hash=prompt.sha256, criteria=prompt.criteria, parse_version=1
+        ),
+        store=JudgementStore(tmp_path / "store"),
+        existing={},
+        preprocessing=Preprocessing(),
+        census=TextTruncationCensus(),
+        media_census=MediaCensus(),
+        tokenizer=None,
+        schedule_key="schedule",
+        dataset_key="dataset",
+    )
+
+    await run_planned(query, [units], run, mirror=False)
+
+    assert run.prepared == {}, "a planned pass releases the query's prepared media when it returns"
+
+
+async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_path: Path, pages) -> None:
+    """A judging pass cached every prepared page and frame of every query for the whole pass (the shared
+    image LRU cannot release them while the per-pass dict holds references); the cache is now scoped to one
+    query and released when its run returns."""
+    from rcp_ndcg_core.schemas import JudgementFamily
+
+    from rcp_ndcg.data.census import TextTruncationCensus
+    from rcp_ndcg.data.prepare import MediaCensus
+    from rcp_ndcg.judging.judging import _Pass, _Query, run_rubric
+    from rcp_ndcg.judging.store import JudgementStore
+
+    prompt = load_prompt("rubric_vision")
+    query = _Query(
+        dataset="d",
+        query_id="q1",
+        text="what is the yield curve",
+        units=[f"p{i}" for i in range(len(pages))],
+        contents={f"p{i}": Content.from_parts([ImagePart(ref=ref)]) for i, ref in enumerate(pages)},
+        chunk_mapping=None,
+    )
+    client = FakeJudge()
+    client.config = client.config.model_copy(update={"max_images": len(pages)})
+    run = _Pass(
+        stage="rubric",
+        client=client,
+        prompt=prompt,
+        family=JudgementFamily(
+            stage="rubric", judge_model="fake", prompt_hash=prompt.sha256, criteria=prompt.criteria, parse_version=1
+        ),
+        store=JudgementStore(tmp_path / "store"),
+        existing={},
+        preprocessing=Preprocessing(),
+        census=TextTruncationCensus(),
+        media_census=MediaCensus(),
+        tokenizer=None,
+        schedule_key="schedule",
+        dataset_key="dataset",
+    )
+
+    await run_rubric(query, SMALL, run)
+
+    assert run.prepared == {}, "the finished query's prepared media is released, not held for the whole pass"
+
+
+class TestTheFpsFamilyOnPreprocessing:
+    """The engine's fps rule is ported for the qwen3_vl family: an explicit other family is refused, while
+    the deferred-processor form (the judge config fills the processor via ``for_processor``) stays valid,
+    and the window budget's media count uses the judge's tokenizer when it has one."""
+
+    def test_a_deferred_processor_is_allowed(self) -> None:
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=131072),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+
+        assert preprocessing.image is not None
+        assert preprocessing.image.for_processor("qwen3_vl").processor == "qwen3_vl"
+
+    def test_an_explicit_other_family_is_refused(self) -> None:
+        from rcp_ndcg.data.resolution import VideoPolicy
+
+        with pytest.raises(ValueError, match="qwen3_vl"):
+            Preprocessing(
+                image=ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl"),
+                video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+            )
+
+    def test_the_window_media_count_uses_the_judges_tokenizer(self) -> None:
+        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp_ndcg.judging.judging import _media_tokens
+        from tests._tokenizers import vendored_qwen3_vl_tokenizer
+
+        tokenizer = vendored_qwen3_vl_tokenizer()
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=16777216, processor="qwen3_vl"),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+        clip = Content.from_parts(
+            [VideoPart(ref=MediaRef(uri="gs://v/icon.avi", width=64, height=64, num_frames=64, fps=8.0))]
+        )
+
+        assert _media_tokens([clip], preprocessing, tokenizer=tokenizer) == 98
+        assert _media_tokens([clip], preprocessing) == 130
+
+    def test_a_deferred_form_resolved_to_another_family_is_refused(self) -> None:
+        """The deferred processor is only valid when the judge resolves it to qwen3_vl: the effective
+        preprocessing refuses fps beside any other resolved family, before a strict count has to."""
+        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp_ndcg.judging import JudgeConfig
+        from rcp_ndcg.judging.judging import _effective_preprocessing
+
+        preprocessing = Preprocessing(
+            image=ImagePolicy(min_px=65536, max_px=131072),
+            video=VideoPolicy(fps=2.0, wire="video_url", engine_video_pinning=True),
+        )
+        judge = JudgeConfig(base_url="http://h/v1", model="m", image_processor="qwen2_vl")
+
+        with pytest.raises(ConfigError, match="qwen3_vl"):
+            _effective_preprocessing(preprocessing, judge)

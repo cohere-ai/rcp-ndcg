@@ -1,0 +1,14 @@
+{
+  "serve": {
+    "options": [
+      "--dry-run",
+      "--help",
+      "--port",
+      "--set",
+      "--variant"
+    ],
+    "positionals": [
+      "recipe_id"
+    ]
+  }
+}

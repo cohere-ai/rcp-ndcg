@@ -1,0 +1,52 @@
+id: zembed-1-embedding/card-how-to-use
+recipe: zembed-1-embedding
+role: embed
+source:
+  kind: model_card
+  url: https://huggingface.co/zeroentropy/zembed-1-embedding
+  revision: cf13c81f3274394053d166740294f7eea4586f7a
+  section: How to Use
+  quote: |-
+    # Define query and documents
+    query = "What is backpropagation?"
+    documents = [
+        "Backpropagation is a fundamental algorithm for training neural networks by computing gradients.",
+        "Gradient descent is used to optimize model parameters during the training process.",
+        "Neural network training relies on efficient computation of derivatives through backpropagation.",
+    ]
+
+    # Encode query and documents (uses task-specific prompts automatically)
+    query_embeddings = model.encode_query(query)
+    document_embeddings = model.encode_document(documents)
+    # (2560,) (3, 2560)
+
+    # Compute cosine similarities
+    similarities = model.similarity(query_embeddings, document_embeddings)
+    # tensor([[0.7525, 0.5670, 0.6835]])
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: What is backpropagation?
+  documents:
+  - id: d1
+    text: Backpropagation is a fundamental algorithm for training neural networks by computing gradients.
+  - id: d2
+    text: Gradient descent is used to optimize model parameters during the training process.
+  - id: d3
+    text: Neural network training relies on efficient computation of derivatives through backpropagation.
+expected:
+  kind: similarity_matrix
+  values:
+  - - 0.7525
+    - 0.567
+    - 0.6835
+  tolerance:
+    abs: 0.002
+  origin: published
+  status: published_unverified
+notes: 'The card''s only usage example (embed role). Cosine similarities printed to 4 decimals -> rounding abs 5e-4; declared bf16 margin 1.5e-3 (research r-zembed1: bf16-head drift ~1e-3 on 2560-d vectors; cosine of unit vectors keeps ~1e-3) -> tolerance abs 2e-3. The card''s snippet instantiates ''zeroentropy/zembed-1'' (no -embedding suffix); this case pins the recipe''s repo zeroentropy/zembed-1-embedding at revision cf13c81f3274394053d166740294f7eea4586f7a and reproduces the example''s inputs and printed outputs, not the loader call. Vectors are L2-normalized (modules.json module 2), so model.similarity is cosine; shapes printed by the card: (2560,) and (3, 2560). CPU reproduction NOT run: 4.0B params exceeds the brief''s <= 1B / 10-min CPU budget. Tokenizer-only CPU check at the pinned revision: rendered query 17 tokens, documents 26/24/26. GPU wave: verify the three similarities at 2560 dims.'

@@ -1,0 +1,49 @@
+# T4 scenario 1: NanoBEIR one subset through the four phases of one run.
+#
+#   retrieve (served encoder) -> rerank (served reranker) -> tournament + rubric (served judge)
+#   -> calibrate + evaluate (no engine)
+#
+# Run twice into separate run directories (pair: 2): the comparison asserts that two identical runs give
+# identical identities and outputs (see rcp_ndcg_test.e2e.run_facts for exactly what is compared; judged
+# values are compared structurally only, judgements may differ at temperature > 0).
+#
+# Judge (the owner's T4 choice, docs/how-to/release-candidates.md): nvidia/Qwen3.8-Flash-Next-NVFP4 when vLLM v0.31.0 serves it
+# on this node (the T0 smoke in run_scenario decides), else Qwen/Qwen3.8-Flash-Next-FP8.  The revisions
+# are the Hub commits (https://huggingface.co/api/models/<id>), checked 2026-10-07.
+id: text-four-phases
+description: >
+  NanoBEIR (NanoNFCorpusRetrieval), ~10 queries at depth 30: served encoder -> served reranker ->
+  served judge tournament + rubric -> calibrate + evaluate, in the four phases one run renders.  Run
+  twice; the two runs must agree on identities and outputs.
+mode: run
+pair: 2
+dataset:
+  uri: suite:nanobeir
+  subset: NanoNFCorpusRetrieval
+  revision: 4517f2cb9e342479725bf0931a329998b4d35038
+limit: 10
+depth: 30
+steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
+encoder_recipe: qwen3-embedding-0.6b
+rerank_recipe: qwen3-reranker-0.6b
+judge:
+  served_name: judge
+  recipe: qwen3.8-flash-next-nvfp4
+  # The FP8 fallback is TP2 (decision 41's shape for its 185 GB of weights on a B200): its own device
+  # slice. The NVFP4 candidate is TP1.
+  fallback_recipe: qwen3.8-flash-next-fp8
+  fallback_slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0,1", gpus: 2,
+                  startup_timeout_s: 3600, outage_timeout_s: 300}
+  config:
+    # Runtime fields only: the recipe declares the client block (decision 17).
+    concurrency: 256
+    wait_on_outage_s: 300
+  slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0", gpus: 1,
+         startup_timeout_s: 3600, outage_timeout_s: 300}
+slots:
+  encoder: {port: 8100, vllm_port: 9100, cuda_visible_devices: "0", gpus: 1,
+            startup_timeout_s: 1800, outage_timeout_s: 300}
+  reranker: {port: 8110, vllm_port: 9110, cuda_visible_devices: "0", gpus: 1,
+             startup_timeout_s: 1800, outage_timeout_s: 300}
+runner_options:
+  resources: {gpus: 0, cpus: 8, memory_gb: 32, time_limit_s: 28800}

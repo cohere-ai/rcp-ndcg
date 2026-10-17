@@ -1,0 +1,1079 @@
+"""The recipe schema: the client block is plain data that the product validates when it reads it.
+
+Product rules are the product's tests (refusals for template shape rules, budgets, empty_doc pairing and the
+rest happen in the product's own suite); here only the recipe-level rules and the round-trip through the
+product's config loader are tested.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
+from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
+
+from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp_ndcg.judging import JudgeConfig
+
+_SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
+REV = "0123456789abcdef0123456789abcdef01234567"
+
+_ENDPOINTS = {
+    "embed": EmbeddingEndpoint,
+    "multi_vector": PoolingEndpoint,
+    "rerank": RerankEndpoint,
+    "judge": JudgeConfig,
+}
+
+_SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
+REV = "0123456789abcdef0123456789abcdef01234567"
+
+
+def recipe_dirs_path() -> Path:
+    from tests.fixtures import FIXTURES
+
+    return FIXTURES / "recipes"
+
+
+def test_every_fixture_recipe_loads_against_the_product_endpoints() -> None:
+    """Every fixture recipe loads, with the client block constructing the product's endpoint model."""
+    recipes = iter_recipes(recipe_dirs_path())
+    assert {recipe.id for recipe in recipes} == {
+        "fixture-embed",
+        "fixture-embed-cls",
+        "fixture-embed-edge",
+        "fixture-embed-marker",
+        "fixture-embed-mrl",
+        "fixture-multi-vector",
+        "fixture-multi-vector-mrl",
+        "fixture-rerank-pointwise",
+        "fixture-rerank-noisy",
+        "fixture-rerank-listwise",
+        "fixture-vl-embed",
+        "fixture-vl-video",
+        # a judge recipe (decision 15): role judge, client.api chat, no reference
+        "fixture-judge",
+        # the fakes' fixture recipes of this package (same schema, fake:// engines)
+        "fake-pool",
+        "fake-rerank",
+    }
+    # and the product's endpoint model accepts every plain client block (it validates when it reads it)
+    for recipe in recipes:
+        _ENDPOINTS[recipe.role].model_validate(client_config(recipe, base_url=None))
+        if recipe.role == "judge":
+            assert recipe.reference is None, "a judge recipe carries no reference (decision 15)"
+        else:
+            assert recipe.reference is not None, "every non-judge recipe needs its reference"
+
+
+def test_client_config_round_trips_through_the_product_loader() -> None:
+    """client_config() is the product's config: every fixture's block constructs the product model unchanged.
+
+    The fixtures are not shipped recipes (they live outside the package's recipes root), so the ``recipe``
+    pointer is their identity: the content hash of the resolved form, never a shipped id (decision 36).
+    """
+    for recipe in iter_recipes(recipe_dirs_path()):
+        config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
+        assert config["model"] == recipe.id
+        assert recipe.shipped is False
+        assert config["recipe"] == recipe.identity == f"unshipped:sha256:{recipe_digest(recipe)}"
+        endpoint = _ENDPOINTS[recipe.role](**config)
+        assert str(endpoint.base_url) == "http://127.0.0.1:8100/v1"
+        # and through the product's loader (the endpoint config's own model_validate)
+        again = type(endpoint).model_validate(config)
+        assert again.model == recipe.id
+
+
+def test_client_model_and_revision_are_injected(tmp_path: Path) -> None:
+    recipe = load_recipe(recipe_dirs_path() / "fixture-embed")
+    assert recipe.client.get("model") == "fixture-embed"
+    assert recipe.client.get("revision") == recipe.revision
+
+
+def test_client_block_cannot_declare_the_injected_fields(tmp_path: Path) -> None:
+    """client.model and client.revision are the recipe's own ids: declared in the YAML, they are refused."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["model"] = "other-name"
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="drop the field"):
+        load_recipe(copied)
+
+
+def test_the_family_client_block_cannot_declare_the_variant_tokenizer(tmp_path: Path) -> None:
+    """client.tokenizer is the variant's own (model@revision) or the family's shared one; a variant-level
+    override of it is refused (the tokenizer is never a per-size fact)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    family["variants"][0]["overrides"] = {
+        "client": {"tokenizer": "other/tokenizer@0123456789abcdef0123456789abcdef01234567"}
+    }
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="not declared per-size fields"):
+        load_recipe(copied)
+
+
+def test_a_variant_id_not_unique_within_the_family_is_refused(tmp_path: Path) -> None:
+    """Two variants of one family with the same id would resolve to one id twice: refused."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    second = {**family["variants"][0], "model": "fixtures/OtherEmbedder"}
+    family["variants"].append(second)
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="unique"):
+        load_family(copied)
+
+
+def test_a_variant_id_declared_by_two_families_is_refused_by_resolve_recipe(tmp_path: Path) -> None:
+    """g-rcjobs-6: two family directories declaring one variant id would let resolve_recipe pick whichever
+    sorts first (the bootstrap links every staged family directory), so a stale directory could supply the
+    recipe the wave validates.  iter_recipes refuses duplicates; resolve_recipe must refuse them too."""
+    import shutil
+
+    import yaml
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    for name in ("a-family", "b-family"):
+        copied = tmp_path / name
+        shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+        family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+        family["id"] = name
+        (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="two families"):
+        resolve_recipe("fixture-embed", root=tmp_path)
+
+
+def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) -> None:
+    """client.max_tokens must fit the engine's max_model_len: the engine would 400 the rendered prompt."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["max_tokens"] = 4096
+    data["serve"]["max_model_len"] = 512
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="max_model_len"):
+        load_recipe(copied)
+
+
+def test_reference_block_declares_a_required_device(tmp_path: Path) -> None:
+    """GPU-E1: every reference ran on CPU because nothing could require otherwise.  ``reference.device``
+    declares the device the reference must run on (``cpu`` or ``cuda``); the default is ``None`` (the
+    wave runner decides), and a recipe that requires ``cuda`` is one whose CPU reference run the
+    harness refuses (the refusal itself is the harness's test)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["reference"]["device"] = "cuda"
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    recipe = load_recipe(copied)
+    assert recipe.reference.device == "cuda"
+    assert load_recipe(recipe_dirs_path() / "fixture-embed").reference.device is None  # the default
+    data["reference"]["device"] = "gpu8"  # not a device the harness runs
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="device"):
+        load_recipe(copied)
+
+
+def test_engine_block_declares_a_step_budget_floor(tmp_path: Path) -> None:
+    """GPU-E1: a stuck request held a node for hours.  ``engine.step_budget_s`` is the recipe's floor on
+    every harness step's wall-clock budget; the default is ``None`` (the runner's formula from the
+    recipe's request count decides), and a declared value is a positive int."""
+    recipe = load_recipe(recipe_dirs_path() / "fixture-embed")
+    assert recipe.engine.step_budget_s is None  # the default: the runner's formula decides
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["engine"]["step_budget_s"] = 3600
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert load_recipe(copied).engine.step_budget_s == 3600
+    data["engine"]["step_budget_s"] = 0
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="step_budget_s"):
+        load_recipe(copied)
+
+
+def test_a_judge_recipe_with_a_reference_is_refused(tmp_path: Path) -> None:
+    """Decision 15: a judge recipe has no reference, and one that declares it is refused at load."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-judge"
+    shutil.copytree(recipe_dirs_path() / "fixture-judge", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    family["reference"] = {"kind": "transformers", "score_scale": "probability", "entry": "reference.py"}
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="no reference"):
+        load_recipe(copied)
+
+
+def test_a_non_judge_recipe_without_a_reference_is_refused(tmp_path: Path) -> None:
+    """Only role=judge has no reference; an embed/rerank recipe without one is refused at load."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    del family["reference"]
+    (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="needs a reference"):
+        load_recipe(copied)
+
+
+def test_the_equivalence_harness_refuses_a_judge_recipe(tmp_path: Path) -> None:
+    """`reference_of` is the harness's one accessor: a judge recipe is refused by name, never an
+    AttributeError on the None reference."""
+    from rcp_ndcg_test.equivalence.reference import reference_of
+    from rcp_ndcg_test.errors import HarnessError
+
+    with pytest.raises(HarnessError, match="no reference"):
+        reference_of(load_recipe(recipe_dirs_path() / "fixture-judge"))
+    assert reference_of(load_recipe(recipe_dirs_path() / "fixture-embed")).kind == "transformers"
+
+
+def test_json_schema_export_is_current() -> None:
+    assert json.loads(_SCHEMA.read_text(encoding="utf-8")) == recipe_json_schema()
+
+
+def test_an_engine_spec_accepts_a_dev_version_floor() -> None:
+    """A digest-pinned nightly carries a setuptools-scm dev version (``0.31.1.devN``); the floor a recipe
+    declares for it is the dev series, and the digest in ``image`` is the real pin (decision 38)."""
+    from rcp_ndcg_vllm.recipe import EngineSpec
+
+    digest = "sha256:" + "0" * 64
+    spec = EngineSpec(
+        name="vllm",
+        image=f"vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@{digest}",
+        min_version="0.31.1.dev0",
+    )
+    assert spec.min_version == "0.31.1.dev0"
+    with pytest.raises(ValueError):
+        EngineSpec(name="vllm", image="x", min_version="0.31.1.dev")
+    with pytest.raises(ValueError):
+        EngineSpec(name="vllm", image="x", min_version="nightly")
+
+
+def test_family_json_schema_export_is_current() -> None:
+    """The family file format has its own exported schema (decision 34; the spec requires it)."""
+    from rcp_ndcg_vllm.recipe import family_json_schema
+
+    family_schema = _SCHEMA.parent / "family.schema.json"
+    assert json.loads(family_schema.read_text(encoding="utf-8")) == family_json_schema()
+
+
+def test_serve_argv_rerank_pointwise_is_golden() -> None:
+    recipe = load_recipe(recipe_dirs_path() / "fixture-rerank-pointwise")
+    from rcp_ndcg_vllm import serve_argv
+
+    argv = serve_argv(recipe, port=8100, served_model_name="fixture-rerank-pointwise")
+    assert argv[:3] == ["vllm", "serve", "fixtures/PointwiseReranker"]
+    assert argv[argv.index("--revision") + 1] == REV
+    assert argv[argv.index("--pooler-config") + 1] == '{"use_activation": true}'
+    assert "--chat-template" in argv
+
+
+def test_serve_argv_needs_the_recipe_directory_for_a_template() -> None:
+    from rcp_ndcg_vllm import serve_argv
+
+    data = load_recipe(recipe_dirs_path() / "fixture-rerank-pointwise")
+    bare = data.model_copy()
+    bare.__dict__["_dir"] = None
+    with pytest.raises(RecipeError, match="load_recipe"):
+        serve_argv(bare, port=1, served_model_name="x")
+
+
+def _media_recipe(tmp_path: Path, *, client_policy: dict, serve_kwargs: dict) -> Path:
+    """``fixture-embed`` copied with an image modality: the client's image policy and the engine's
+    ``serve.mm_processor_kwargs`` as given (the Qwen3-VL processor family)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["input"] = ["text", "image"]
+    data["client"].update(max_images=1, image_processor="qwen3_vl", image_policy=client_policy or None)
+    data["serve"]["mm_processor_kwargs"] = serve_kwargs
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+#: The Qwen3-VL-Embedding card's pixel budget, below the qwen3_vl processor's stock floor (65536 px).
+_CARD = {"min_px": 4096, "max_px": 1843200}
+_CARD_PIN = {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}}
+
+
+def test_a_pinned_pixel_budget_below_the_stock_floor_loads_when_serve_pins_the_same_numbers(tmp_path: Path) -> None:
+    """H4: the client declares the budget pinned, serve pins the engine to the same numbers (the nested
+    ``images_kwargs`` shape): the recipe loads, and the client counts images under that budget."""
+    recipe = load_recipe(
+        _media_recipe(tmp_path, client_policy={**_CARD, "engine_pixel_pinning": True}, serve_kwargs=_CARD_PIN)
+    )
+    policy = recipe.client.get("image_policy")
+    assert policy is not None and policy["engine_pixel_pinning"]
+
+
+@pytest.mark.parametrize(
+    ("client_policy", "serve_kwargs", "match"),
+    [
+        # Pinned on the client, not on serve: the stock engine would scale the prepared image up again.
+        ({**_CARD, "engine_pixel_pinning": True}, {}, "engine_pixel_pinning"),
+        # Pinned on both sides, to different numbers.
+        (
+            {**_CARD, "engine_pixel_pinning": True},
+            {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}},
+            "max_pixels",
+        ),
+        # A flat key the engine applies to images too, disagreeing with the client.
+        ({**_CARD, "engine_pixel_pinning": True}, {**_CARD_PIN, "min_pixels": 65536}, "min_pixels"),
+        # Serve pins a budget, the client (unpinned, inside the stock range) counts under another one.
+        ({"min_px": 65536, "max_px": 1003520}, _CARD_PIN, "image_policy"),
+        # Serve pins a budget and the client declares none to count under.
+        ({}, _CARD_PIN, "image_policy"),
+        # The HF processor's own size keys pin the budget too.
+        ({**_CARD, "engine_pixel_pinning": True}, {**_CARD_PIN, "size": {"shortest_edge": 65536}}, "shortest_edge"),
+        (
+            {**_CARD, "engine_pixel_pinning": True},
+            {"images_kwargs": {**_CARD_PIN["images_kwargs"], "size": {"longest_edge": 16777216}}},
+            "longest_edge",
+        ),
+    ],
+)
+def test_the_client_and_the_engine_pixel_budgets_must_agree(
+    tmp_path: Path, client_policy: dict, serve_kwargs: dict, match: str
+) -> None:
+    with pytest.raises(RecipeError, match=match):
+        load_recipe(_media_recipe(tmp_path, client_policy=client_policy, serve_kwargs=serve_kwargs))
+
+
+def test_the_client_and_the_engine_video_pixel_budgets_must_agree(tmp_path: Path) -> None:
+    """The client's video pixel budget and the engine's ``videos_kwargs`` pin are the same numbers: a
+    pin in one half only, or a mismatch between the halves, is refused (the client would otherwise count
+    a clip the engine never renders)."""
+    import shutil
+
+    import yaml
+
+    def video_recipe(name: str, *, client_policy: dict, serve_kwargs: dict) -> Path:
+        copied = tmp_path / name / "fixture-embed"
+        copied.mkdir(parents=True)
+        for filename in ("family.yaml", "reference.py"):
+            shutil.copy(recipe_dirs_path() / "fixture-embed" / filename, copied / filename)
+        data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+        data["client"]["video_policy"] = client_policy
+        data["serve"]["mm_processor_kwargs"] = serve_kwargs
+        (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        return copied
+
+    pinned = {
+        "fps": 2,
+        "wire": "video_url",
+        "engine_video_pinning": True,
+        "engine_video_min_pixels": 4096,
+        "engine_video_max_pixels": 7864320,
+    }
+    pin = {"videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320}, "fps": 2}
+    loaded = load_recipe(video_recipe("matching", client_policy=pinned, serve_kwargs=pin))
+    assert loaded.client["video_policy"]["engine_video_max_pixels"] == 7864320
+
+    with pytest.raises(RecipeError, match="pins no video"):
+        load_recipe(video_recipe("client-only", client_policy=pinned, serve_kwargs={}))
+    with pytest.raises(RecipeError, match="clip budget would differ"):
+        load_recipe(
+            video_recipe(
+                "serve-only",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                serve_kwargs=pin,
+            )
+        )
+    with pytest.raises(RecipeError, match="clip budget would differ"):
+        load_recipe(
+            video_recipe(
+                "mismatch",
+                client_policy={**pinned, "engine_video_max_pixels": 25165824},
+                serve_kwargs=pin,
+            )
+        )
+
+
+def _mrl_recipe(tmp_path: Path, *, client: dict, hf_overrides: dict) -> Path:
+    """``fixture-embed`` copied with a client MRL declaration and serve ``hf_overrides`` as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir(exist_ok=True)
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"].update(client)
+    data["serve"]["hf_overrides"] = hf_overrides
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+_TRUNCATION_SET = {"mrl_kind": "truncation", "mrl_dims": [64, 128, 256]}
+_TRUNCATION_RANGE = {"mrl_kind": "truncation", "mrl_range": [32, 256]}
+_MATRYOSHKA_GATE = {"is_matryoshka": True, "matryoshka_dimensions": [64, 128, 256]}
+
+
+def test_the_serve_matryoshka_gate_and_the_client_declaration_are_one_rule(tmp_path: Path) -> None:
+    """The engine's Matryoshka gate and the client's declaration are one rule (owner decision 39).
+
+    vLLM accepts a per-request ``dimensions`` only when the checkpoint's config carries
+    ``is_matryoshka``/``matryoshka_dimensions``, and no card declares either in ``config.json``, so the
+    gate rides ``serve.hf_overrides``.  A declared gate must be backed by the client's ``mrl_kind``
+    declaration: the discrete engine list and the client's ``mrl_dims`` are the same set, and an open gate
+    (``is_matryoshka`` alone -- the prose-range card's shape) still needs a bounded client declaration.
+    """
+    recipe = load_recipe(_mrl_recipe(tmp_path, client=_TRUNCATION_SET, hf_overrides=_MATRYOSHKA_GATE))
+    assert recipe.client["mrl_dims"] == [64, 128, 256]
+    recipe = load_recipe(_mrl_recipe(tmp_path, client=_TRUNCATION_RANGE, hf_overrides={"is_matryoshka": True}))
+    assert recipe.client["mrl_range"] == [32, 256]
+
+
+@pytest.mark.parametrize(
+    ("client", "hf_overrides", "match"),
+    [
+        # the engine list and the client set disagree
+        (_TRUNCATION_SET, {**_MATRYOSHKA_GATE, "matryoshka_dimensions": [64, 128]}, "matryoshka_dimensions"),
+        # a gate with no client declaration: the engine could cut while the client records no head
+        ({}, _MATRYOSHKA_GATE, "mrl_kind"),
+        ({}, {"is_matryoshka": True}, "mrl_kind"),
+        # the engine can only slice; a projection head is applied client-side
+        ({"mrl_kind": "projection", "mrl_dims": [64, 128, 256]}, _MATRYOSHKA_GATE, "projection"),
+        # an explicit false beside a list reads off while the engine's list turns the gate on
+        (_TRUNCATION_SET, {**_MATRYOSHKA_GATE, "is_matryoshka": False}, "is_matryoshka"),
+        # a non-numeric engine list is the rule's own typed refusal, never a raw TypeError
+        (_TRUNCATION_SET, {"is_matryoshka": True, "matryoshka_dimensions": [None]}, "not a list of output"),
+    ],
+)
+def test_a_serve_matryoshka_gate_the_client_cannot_back_is_refused(
+    tmp_path: Path, client: dict, hf_overrides: dict, match: str
+) -> None:
+    with pytest.raises(RecipeError, match=match):
+        load_recipe(_mrl_recipe(tmp_path, client=client, hf_overrides=hf_overrides))
+
+
+def test_the_mrl_declaration_is_a_declared_per_size_field(tmp_path: Path) -> None:
+    """A family's sizes have different widths, so the MRL kind and set are per-variant fields (decision 34)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    first = {**data["variants"][0], "id": "fixture-embed-base"}
+    second = {**data["variants"][0], "id": "fixture-embed-small", "model": "fixtures/SmallEmbedder"}
+    second["overrides"] = {
+        "client": {
+            "mrl_kind": "truncation",
+            "mrl_dims": [64, 128],
+            "mrl_projection": {"source": "hf://org/model@revision/projections.safetensors"},
+        }
+    }
+    data["variants"] = [first, second]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    family = load_family(copied)
+    assert family.variants[1].overrides.client["mrl_dims"] == [64, 128]
+
+
+def test_a_variant_gates_override_merges_field_by_field_over_the_family_block(tmp_path: Path) -> None:
+    """A family's sizes measure different precision floors, so a stage-2 gate bound is a per-size fact
+    (decision 34): the variant's ``overrides.gates`` merges field-by-field over the family's ``gates``
+    -- a set field replaces the family's value, an unset field keeps it, and a variant without the
+    override keeps the family's block untouched."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["gates"] = {"vec_min_cosine": 0.99, "tau_min": 0.9}
+    first = {**data["variants"][0], "id": "fixture-embed-base"}
+    second = {**data["variants"][0], "id": "fixture-embed-small", "model": "fixtures/SmallEmbedder"}
+    second["overrides"] = {"gates": {"vec_min_cosine": 0.9987}}
+    data["variants"] = [first, second]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    base = load_recipe("fixture-embed-base", root=tmp_path)
+    assert base.gates.vec_min_cosine == 0.99
+    assert base.gates.tau_min == 0.9
+    small = load_recipe("fixture-embed-small", root=tmp_path)
+    assert small.gates.vec_min_cosine == 0.9987, "the variant's set field replaces the family's"
+    assert small.gates.tau_min == 0.9, "the variant's unset field keeps the family's value"
+    assert small.gates.prob_max_abs is None, "an unset field still falls back to the published default"
+
+
+def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
+    """YAML keeps the last of two equal keys silently: a recipe declaring a field twice would serve whichever
+    came last. The loader refuses it with a typed error naming the key and its line, and no shipped or fixture
+    recipe declares a key twice."""
+    import shutil
+
+    from rcp_ndcg_vllm import RecipeError
+
+    fixtures = recipe_dirs_path()
+    directory = tmp_path / "fixture-embed"
+    shutil.copytree(fixtures / "fixture-embed", directory)
+    path = directory / "family.yaml"
+    tokenizer = str((fixtures / ".." / "tokenizer.json").resolve())
+    text = path.read_text(encoding="utf-8").replace("../../tokenizer.json", tokenizer)
+    path.write_text(text.replace("  on_overflow: cut\n", "  on_overflow: cut\n  on_overflow: fail\n"), encoding="utf-8")
+    with pytest.raises(RecipeError, match="duplicate key 'on_overflow'"):
+        load_recipe(directory)
+    # and no shipped or fixture recipe declares a key twice (the strict loader would refuse)
+    iter_recipes(fixtures)
+    iter_recipes(default_recipes_root())
+
+
+_ENGINE_SPECIFIC_FIELDS: list[tuple[str, object]] = [
+    ("runner", "pooling"),  # the engine's --runner: a serve field
+    ("max_model_len", 4096),  # the engine's context: a serve field
+    ("pooler_config", {"use_activation": True}),  # the engine-side activation pin
+    ("dtype", "bfloat16"),  # the engine's weights dtype
+    ("image", "vllm/vllm-openai:v0.31.0"),  # the engine image: an engine field
+    ("gpus", 1),  # the tensor-parallel count: a resources field
+]
+"""Keys that name engine-side knobs (owner decision 19): none of them belongs in the engine-neutral client
+block. The serve and engine blocks are already closed models (``extra=forbid``); this pins the plain-data
+client side, which has no schema of its own in the lean package."""
+
+
+@pytest.mark.parametrize(("key", "value"), _ENGINE_SPECIFIC_FIELDS, ids=[key for key, _ in _ENGINE_SPECIFIC_FIELDS])
+def test_an_engine_specific_field_in_the_client_block_is_refused(tmp_path: Path, key: str, value: object) -> None:
+    """Decision 19: the engine-neutral client block stays strictly apart from serve/engine/resources."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"].update({key: value})
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match="engine-specific"):
+        load_recipe(copied)
+
+
+def _serve_field_recipe(tmp_path: Path, *, base: str = "fixture-embed", **serve: object) -> Path:
+    """A fixture recipe copied with the given ``serve`` fields set (the recipe schema's engine half)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / base
+    copied.mkdir(parents=True)
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / base / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["serve"].update(serve)
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+def test_the_engine_dtype_literal_is_vllms_model_dtype(tmp_path: Path) -> None:
+    """vLLM v0.31.0's ``ModelDType`` (what ``--dtype``'s argparse choices come from) is
+    ``auto``/``half``/``float16``/``bfloat16``/``float``/``float32``: the schema accepted ``float8`` (not a
+    ModelDType: the engine refuses it at CLI parse) and refused ``float``."""
+    for dtype in ("auto", "half", "float16", "bfloat16", "float", "float32"):
+        assert load_recipe(_serve_field_recipe(tmp_path / dtype, dtype=dtype)).serve.dtype == dtype
+    with pytest.raises(RecipeError, match="float8"):
+        load_recipe(_serve_field_recipe(tmp_path / "float8", dtype="float8"))
+
+
+def test_pooler_config_keys_are_the_served_images_own(tmp_path: Path) -> None:
+    """The shipped image is vLLM v0.31.0; ``enable_flash_late_interaction`` is a PoolerConfig field only at
+    the checkout 376 commits past that tag, so accepting it renders an argv the engine refuses at parse."""
+    with pytest.raises(RecipeError, match="enable_flash_late_interaction"):
+        load_recipe(_serve_field_recipe(tmp_path / "late", pooler_config={"enable_flash_late_interaction": True}))
+    recipe = load_recipe(_serve_field_recipe(tmp_path / "ok", pooler_config={"use_activation": False}))
+    assert recipe.serve.pooler_config == {"use_activation": False}
+
+
+def test_convert_must_match_the_roles_route(tmp_path: Path) -> None:
+    """``--convert`` selects the engine's pooling task: an embed recipe may only declare ``embed`` (a
+    classify conversion serves a route the embeddings client never calls), and a multi_vector recipe must
+    declare none -- its client speaks the pooling wire over the checkpoint as it is."""
+    assert load_recipe(_serve_field_recipe(tmp_path / "embed", convert="embed")).serve.convert == "embed"
+    with pytest.raises(RecipeError, match="classify"):
+        load_recipe(_serve_field_recipe(tmp_path / "embed-classify", convert="classify"))
+    for convert in ("embed", "classify"):
+        with pytest.raises(RecipeError, match="convert"):
+            load_recipe(
+                _serve_field_recipe(tmp_path / f"multi-{convert}", base="fixture-multi-vector", convert=convert)
+            )
+    assert load_recipe(_serve_field_recipe(tmp_path / "multi-none", base="fixture-multi-vector")).serve.convert is None
+
+
+def _video_pruning_recipe(tmp_path: Path, *, client_policy: dict | None, extra_args: list[str]) -> Path:
+    """``fixture-vl-video`` copied with the client's video policy and the given pruning args added to
+    serve's ``extra_args``; the fixture's own sampling pin is replaced by the one matching the client
+    policy (the declaration's engine half)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-vl-video"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py", "chat.jinja"):
+        shutil.copy(recipe_dirs_path() / "fixture-vl-video" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    if client_policy is None:
+        data["client"].pop("video_policy", None)
+    else:
+        data["client"]["video_policy"] = client_policy
+    policy = client_policy or {}
+    if policy.get("num_frames") is not None:
+        pin: dict[str, dict[str, int]] | None = {"video": {"num_frames": policy["num_frames"]}}
+    elif policy.get("fps") is not None:
+        pin = {"video": {"fps": policy["fps"]}}
+    else:
+        pin = None
+    data["serve"]["extra_args"] = (["--media-io-kwargs", json.dumps(pin)] if pin else []) + list(extra_args)
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+def _video_sampling_recipe(
+    tmp_path: Path,
+    *,
+    client_policy: dict | None,
+    extra_args: list[str] | None = None,
+    mm_processor_kwargs: dict | None = None,
+) -> Path:
+    """``fixture-vl-video`` copied with the client's video policy and the engine's sampling pins as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-vl-video"
+    copied.mkdir(parents=True)
+    for name in ("family.yaml", "reference.py", "chat.jinja"):
+        shutil.copy(recipe_dirs_path() / "fixture-vl-video" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    if client_policy is None:
+        data["client"].pop("video_policy", None)
+    else:
+        data["client"]["video_policy"] = client_policy
+    if extra_args is not None:
+        data["serve"]["extra_args"] = extra_args
+    if mm_processor_kwargs is not None:
+        data["serve"]["mm_processor_kwargs"] = {**data["serve"]["mm_processor_kwargs"], **mm_processor_kwargs}
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+_VIDEO_URL_POLICY = {"num_frames": 4, "wire": "video_url", "engine_video_pinning": True}
+
+
+def test_a_serve_video_sampling_pin_must_match_the_client_policy(tmp_path: Path) -> None:
+    """The client counts the frames the ENGINE samples: a serve pin that differs from
+    ``client.video_policy`` would make the count describe a clip the engine never renders."""
+    with pytest.raises(RecipeError, match="fps"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "fps",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 4}}'],
+            )
+        )
+    with pytest.raises(RecipeError, match="num_frames"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "frames",
+                client_policy=_VIDEO_URL_POLICY,
+                extra_args=["--media-io-kwargs", '{"video": {"num_frames": 8}}'],
+            )
+        )
+
+
+def test_a_declared_fps_refuses_a_competing_frame_count_pin(tmp_path: Path) -> None:
+    """A client that declares the engine's own rate counts every frame that rate yields: a serve pin
+    that also fixes or caps the frame count clamps the realized frame set, so the declared rate would
+    describe a different clip (the ``num_frames`` branch already treats the cap as participating)."""
+    load_recipe(
+        _video_sampling_recipe(
+            tmp_path / "fps-only",
+            client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+            extra_args=["--media-io-kwargs", '{"video": {"fps": 2}}'],
+        )
+    )
+    with pytest.raises(RecipeError, match="max_frames"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "fps-and-cap",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 2, "max_frames": 8}}'],
+            )
+        )
+    with pytest.raises(RecipeError, match="num_frames"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "fps-and-count",
+                client_policy={"fps": 2, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 2, "num_frames": 8}}'],
+            )
+        )
+
+
+def test_a_client_video_sampling_declaration_without_the_serve_pin_is_refused(tmp_path: Path) -> None:
+    """The engine's own default sampling would decide, so a ``video_url`` declaration the serve args do
+    not pin is refused rather than counted against a rule the engine does not run."""
+    with pytest.raises(RecipeError, match="num_frames"):
+        load_recipe(_video_sampling_recipe(tmp_path / "none", client_policy=_VIDEO_URL_POLICY, extra_args=[]))
+
+
+def test_a_serve_video_sampling_pin_without_the_client_declaration_is_refused(tmp_path: Path) -> None:
+    """A pin the client does not declare describes frames the client's count does not describe."""
+    with pytest.raises(RecipeError, match="video_policy"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "pin",
+                client_policy=None,
+                extra_args=["--media-io-kwargs", '{"video": {"num_frames": 4}}'],
+            )
+        )
+
+
+def test_the_flat_and_the_media_io_sampling_pins_are_one_rule(tmp_path: Path) -> None:
+    """The embeddinggemma-2 shape: the engine's decoder pin (``--media-io-kwargs``) and the processor pin
+    (``serve.mm_processor_kwargs``) carry the same numbers, and an fps pin beside ``max_frames`` realizes
+    the declared ``num_frames`` (the checkpoint's processor samples at fps and caps the count)."""
+    recipe = load_recipe(
+        _video_sampling_recipe(
+            tmp_path / "agree",
+            client_policy=_VIDEO_URL_POLICY,
+            extra_args=["--media-io-kwargs", '{"video": {"fps": 60, "max_frames": 4}}'],
+            mm_processor_kwargs={"fps": 60, "max_frames": 4},
+        )
+    )
+    assert recipe.client["video_policy"]["num_frames"] == 4
+    # The flat keys are the pin's other home on their own (the embeddinggemma-2 processor pin).
+    load_recipe(
+        _video_sampling_recipe(
+            tmp_path / "flat",
+            client_policy=_VIDEO_URL_POLICY,
+            extra_args=[],
+            mm_processor_kwargs={"fps": 60, "max_frames": 4},
+        )
+    )
+    with pytest.raises(RecipeError, match="twice"):
+        load_recipe(
+            _video_sampling_recipe(
+                tmp_path / "disagree",
+                client_policy=_VIDEO_URL_POLICY,
+                extra_args=["--media-io-kwargs", '{"video": {"fps": 30, "max_frames": 4}}'],
+                mm_processor_kwargs={"fps": 60, "max_frames": 4},
+            )
+        )
+
+
+#: The fixture's video policy plus a declared pruning rate and method.
+_PRUNED_POLICY = {
+    "num_frames": 4,
+    "wire": "video_url",
+    "engine_video_pinning": True,
+    "engine_video_pruning": 0.5,
+    "engine_video_pruning_method": "evs",
+}
+
+
+def test_a_nonzero_video_pruning_rate_must_be_declared_on_the_client(tmp_path: Path) -> None:
+    """A6: the engine's pruning changes the prompt layout; a serve flag without the client declaration is
+    refused (the counted tokens would describe a prompt the engine never renders)."""
+    with pytest.raises(RecipeError, match="engine_video_pruning"):
+        load_recipe(
+            _video_pruning_recipe(
+                tmp_path,
+                client_policy={"num_frames": 4, "wire": "video_url", "engine_video_pinning": True},
+                extra_args=["--video-pruning-rate", "0.5"],
+            )
+        )
+
+
+def test_a_declared_video_pruning_rate_must_match_serve(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="0.5"):
+        load_recipe(
+            _video_pruning_recipe(
+                tmp_path,
+                client_policy={**_PRUNED_POLICY, "engine_video_pruning": 0.25},
+                extra_args=["--video-pruning-rate", "0.5"],
+            )
+        )
+
+
+def test_a_declared_video_pruning_method_must_match_serve(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="vidcom2"):
+        load_recipe(
+            _video_pruning_recipe(
+                tmp_path,
+                client_policy=_PRUNED_POLICY,
+                extra_args=["--video-pruning-rate", "0.5", "--video-pruning-method", "vidcom2"],
+            )
+        )
+
+
+def test_a_declared_video_pruning_rate_without_the_flag_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="--video-pruning-rate"):
+        load_recipe(_video_pruning_recipe(tmp_path, client_policy=_PRUNED_POLICY, extra_args=[]))
+
+
+def test_a_matching_video_pruning_declaration_loads(tmp_path: Path) -> None:
+    recipe = load_recipe(
+        _video_pruning_recipe(
+            tmp_path,
+            client_policy=_PRUNED_POLICY,
+            extra_args=["--video-pruning-rate", "0.5", "--video-pruning-method", "evs"],
+        )
+    )
+    assert recipe.client["video_policy"]["engine_video_pruning"] == 0.5
+
+
+def _engine_side_skip_recipe(
+    tmp_path: Path, *, client_ids: list[int], engine_ids: object, flag: bool, prefix_id: object = 248078
+) -> Path:
+    """``fixture-multi-vector`` copied with the client's skip rule and the engine's ``hf_overrides`` as given."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-multi-vector"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-multi-vector" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["document_skip_token_ids"] = client_ids
+    data["client"]["document_skip_engine_side"] = flag
+    overrides: dict[str, object] = {}
+    if engine_ids is not None:
+        overrides["document_skip_token_ids"] = engine_ids
+    if prefix_id is not None:
+        overrides["document_skip_prefix_token_id"] = prefix_id
+    data["serve"]["hf_overrides"] = overrides
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+def test_an_engine_side_skip_rule_must_equal_the_client_declaration(tmp_path: Path) -> None:
+    """The rule is one declaration with two readers: the plugin drops the positions the engine half names,
+    the client counts against the client half. A mismatch would make the declared kept count describe a
+    reply the plugin never sends -- refused by name, never served."""
+    with pytest.raises(RecipeError, match="document_skip_token_ids"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1], flag=True))
+
+
+def test_an_engine_rule_without_the_client_flag_is_refused(tmp_path: Path) -> None:
+    """With the flag false the client slices the rule's positions itself; an engine half would drop them
+    first, so the reply would carry neither the prompt's vectors nor the client's kept set."""
+    with pytest.raises(RecipeError, match="document_skip_engine_side"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=False))
+
+
+def test_a_client_flag_without_the_engine_rule_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="hf_overrides"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=None, flag=True))
+
+
+def test_a_malformed_engine_rule_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="list of token ids"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids="1,2", flag=True))
+
+
+def test_a_rule_without_the_document_gate_is_refused(tmp_path: Path) -> None:
+    """The rule is document-side: without the role prefix the plugin would drop a query prompt's positions
+    too (the checkpoint's mask declares skiplist_tasks: ['document'])."""
+    with pytest.raises(RecipeError, match="document_skip_prefix_token_id"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=True, prefix_id=None))
+
+
+def test_a_malformed_document_gate_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="document_skip_prefix_token_id"):
+        load_recipe(
+            _engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=True, prefix_id="[D] ")
+        )
+
+
+def test_an_empty_engine_rule_is_not_a_declaration(tmp_path: Path) -> None:
+    """An empty engine list would drop nothing and the client's kept count would describe a reply the engine
+    never sends: the loader reads it as absent (the product refuses the flag without ids, later)."""
+    with pytest.raises(RecipeError, match="hf_overrides"):
+        load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[], engine_ids=[], flag=True))
+
+
+def test_a_matching_engine_side_declaration_loads(tmp_path: Path) -> None:
+    recipe = load_recipe(_engine_side_skip_recipe(tmp_path, client_ids=[1, 2], engine_ids=[1, 2], flag=True))
+    assert recipe.serve.hf_overrides["document_skip_token_ids"] == [1, 2]
+    assert recipe.serve.hf_overrides["document_skip_prefix_token_id"] == 248078
+    assert recipe.client["document_skip_engine_side"] is True
+
+
+def _media_keep_recipe(tmp_path: Path, *, client_ids: list[int], engine_ids: object) -> Path:
+    """``fixture-multi-vector`` copied with the client's media allowlist and the engine's hf_overrides."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-multi-vector"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-multi-vector" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["media_keep_token_ids"] = client_ids
+    data["serve"]["hf_overrides"] = {} if engine_ids is None else {"document_keep_token_ids": engine_ids}
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return copied
+
+
+def test_a_media_allowlist_must_equal_the_client_declaration(tmp_path: Path) -> None:
+    """The allowlist is one declaration with two readers: the plugin keeps only the engine half's positions,
+    the client counts the client half's. A mismatch would make the declared kept count describe a reply the
+    plugin never sends -- refused by name, never served."""
+    with pytest.raises(RecipeError, match="document_keep_token_ids"):
+        load_recipe(_media_keep_recipe(tmp_path, client_ids=[248056], engine_ids=[248057]))
+
+
+def test_a_client_allowlist_without_the_engine_half_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="hf_overrides"):
+        load_recipe(_media_keep_recipe(tmp_path, client_ids=[248056], engine_ids=None))
+
+
+def test_an_engine_allowlist_without_the_client_half_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="media_keep_token_ids"):
+        load_recipe(_media_keep_recipe(tmp_path, client_ids=[], engine_ids=[248056]))
+
+
+def test_an_empty_engine_allowlist_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="empty"):
+        load_recipe(_media_keep_recipe(tmp_path, client_ids=[248056], engine_ids=[]))
+
+
+def test_a_malformed_engine_allowlist_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(RecipeError, match="list of token ids"):
+        load_recipe(_media_keep_recipe(tmp_path, client_ids=[248056], engine_ids="248056"))
+
+
+def test_a_matching_media_allowlist_loads(tmp_path: Path) -> None:
+    recipe = load_recipe(_media_keep_recipe(tmp_path, client_ids=[248056], engine_ids=[248056]))
+    assert recipe.serve.hf_overrides["document_keep_token_ids"] == [248056]
+    assert recipe.client["media_keep_token_ids"] == [248056]
+
+
+def test_an_embed_recipe_instruction_span_needs_the_fold_policy(tmp_path: Path) -> None:
+    """An embed or multi-vector recipe's template MAY declare an instruction span -- its client fills it --
+    but only when the client block declares `instruction: fold`: without the policy the span would render
+    empty, so the recipe is refused at load (the product's own config rule, restated for a fast failure)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    template = data["client"].get("template")
+    assert template, "the fixture recipe declares no template; fix this test"
+    template["query"] = [
+        {"fixed": "Instruct: "},
+        {"content": "instruction"},
+        {"fixed": "\nQuery: "},
+        {"content": "query"},
+        {"fixed": " [END]"},
+    ]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="instruction policy"):
+        load_recipe(copied)
+
+    data["client"]["instruction"] = "fold"
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert load_recipe(copied).client["instruction"] == "fold"
+
+
+def test_an_embed_recipe_messages_route_refuses_an_instruction_span(tmp_path: Path) -> None:
+    """The messages route sends the content and leaves the frame to the engine's chat template, which cannot
+    render a declared instruction span: a recipe that declares both fails at load, not at its first read."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-embed"
+    copied.mkdir()
+    for name in ("family.yaml", "reference.py"):
+        shutil.copy(recipe_dirs_path() / "fixture-embed" / name, copied / name)
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["instruction"] = "fold"
+    data["client"]["request_shape"] = "messages"
+    data["client"]["template"]["query"] = [
+        {"fixed": "Instruct: "},
+        {"content": "instruction"},
+        {"fixed": "\nQuery: "},
+        {"content": "query"},
+        {"fixed": " [END]"},
+    ]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(RecipeError, match="request_shape: messages"):
+        load_recipe(copied)
+
+
+def test_every_embed_and_multi_vector_recipe_declares_its_instruction_policy() -> None:
+    """A BRIGHT-like instructed dataset is never silently re-formatted: every shipped embed and
+    multi-vector recipe declares ``instruction: none`` (the card's own instruction is baked into the
+    fixed frame) or ``fold`` (the dataset's task instruction goes through the generic frame), so the
+    product's undeclared-policy refusal cannot fire on a shipped recipe. The product's own instructed
+    request handling is pinned by its client tests; this is the recipe-side completeness guard."""
+    for recipe in iter_recipes():
+        if recipe.role not in ("embed", "multi_vector"):
+            continue
+        assert recipe.client.get("instruction") in ("none", "fold"), recipe.id
+        endpoint = _ENDPOINTS[recipe.role].model_validate(recipe.client)
+        assert endpoint.instruction == recipe.client["instruction"], recipe.id

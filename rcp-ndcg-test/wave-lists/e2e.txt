@@ -1,0 +1,9 @@
+# The T4 scenario wave (`submit.sh --script e2e ... e2e`): one scenario id per line, resolved against
+# the staged <stage>/scenarios/ (e2e.py's --scenarios-root).  e2e.sh reads exactly
+# <stage>/wave-lists/e2e.txt for --wave e2e, so this file is what makes the documented command run.
+# The ids are the shipped scenarios' own (rcp-ndcg-test/scenarios/*.yaml; the file stem is the id),
+# pinned by tests/test_wavelist.py::test_the_committed_e2e_list_names_the_shipped_scenarios.
+text-four-phases
+outage
+identity
+vidore

@@ -1,0 +1,474 @@
+"""The wave runner's observation-corpus step and its re-record-changed-only mode (stub engine, CPU)."""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+import pytest
+import rcp_ndcg_test.record as record_module
+from rcp_ndcg_test.fingerprint import behaviour_fingerprint
+from rcp_ndcg_test.jobs import run_wave as run_wave_module
+from rcp_ndcg_test.jobs.run_wave import run_wave
+from rcp_ndcg_vllm.recipe import load_recipe
+
+from tests.conftest import RECIPES, TOKENIZER, sample_pairs, write_pairs
+
+VLLM_CMD = f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'}"
+REFERENCE_PYTHON = sys.executable
+
+
+def _wave(tmp_path: Path, **overrides: object) -> dict:
+    pairs = tmp_path / "pairs"
+    pairs.mkdir(exist_ok=True)
+    write_pairs(pairs / "fixture-embed.jsonl", sample_pairs(documents=2))
+    kwargs: dict = {
+        "recipe_ids": ["fixture-embed"],
+        "recipes_root": RECIPES,
+        "gpus": 1,
+        "out_dir": tmp_path / "wave",
+        "pairs_dir": pairs,
+        "reference_python": REFERENCE_PYTHON,
+        "vllm_cmd": f"{VLLM_CMD} --tokenizer {TOKENIZER}",
+        "port_base": 0,
+    }
+    kwargs.update(overrides)
+    return run_wave(**kwargs)
+
+
+def _checks(step: dict) -> dict[str, dict]:
+    return {check["check"]: check for check in step["checks"]}
+
+
+def test_the_wave_records_an_observation_corpus_at_its_keyed_path(tmp_path: Path) -> None:
+    """``--record-corpus`` writes the corpus at ``observations/<engine>-<version>/<recipe>/<fingerprint>/<at>/``,
+    keyed by the one behaviour fingerprint; the engine restarts between the in-process passes and the
+    after-restart pass (a new run id); the corpus is checked against the equivalence stage's replies."""
+    document = _wave(tmp_path, record_corpus=True)
+    row = document["recipes"][0]
+    step = row["steps"]["observation_corpus"]
+    assert step["state"] == "passed", [check for check in step.get("checks", []) if not check["passed"]] or step
+    fingerprint = behaviour_fingerprint(load_recipe(RECIPES / "fixture-embed"))
+    assert row["behaviour_fingerprint"] == fingerprint == document["fingerprints"]["fixture-embed"]
+    assert document["engine_versions"] == {"fixture-embed": "test-stub"}
+    corpus = Path(step["corpus_dir"])
+    assert corpus.parent == tmp_path / "wave" / "observations" / "vllm-test-stub" / "fixture-embed" / fingerprint
+    manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
+    passes = manifest["collector"]["passes"]
+    assert [entry["repetition"] for entry in passes] == ["same_process_1", "same_process_2", "after_restart"]
+    assert passes[2]["server_run_id"] != passes[0]["server_run_id"]
+    assert manifest["plan"]["strata"]["edge:while_loading"] == {"present": True}
+    consistency = _checks(step)["equivalence_consistent"]
+    assert consistency["passed"] is True and consistency["compared"] > 0, consistency
+
+
+def test_an_abandoned_corpus_body_cannot_restart_the_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The recording pass's ``the engine exited (code 0) while its steps ran`` (pplx-embed-v2-context): the
+    corpus step's body restarts the engine between the in-process passes and the after-restart pass.  A body
+    the step machinery abandoned (an engine death or a step-budget overrun) must not reach that restart: it
+    would stop and start an engine the wave no longer tracks (the recipe's GPUs are released, and the wave
+    may have handed them to another recipe).  This reproduces the interleaving: the body's engine dies (a
+    real death the runner detects), the body waits until the runner has abandoned it, then calls the restart
+    -- which must be refused.  Without the guard the restart runs (or dies on the closed wave, by timing),
+    so the assertion on the refusal is what pins the serialization."""
+    outcomes: list[str] = []
+
+    def fake_record_corpus(recipe, base_url, rows, out_dir, *, restart=None, **kwargs):
+        del base_url, rows, kwargs
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        # The engine's registration races this body under load (the wave registers it as the serve step
+        # starts): wait for it rather than unpacking a bare next(), which raises StopIteration and leaves
+        # the outcomes list empty.
+        engine = None
+        registered_deadline = time.monotonic() + 60.0
+        while engine is None and time.monotonic() < registered_deadline:
+            with run_wave_module._LIVE_LOCK:
+                engine = next((item for item in run_wave_module._LIVE_ENGINES if item.recipe.id == recipe.id), None)
+            if engine is None:
+                time.sleep(0.05)
+        assert engine is not None, "the wave never registered the corpus step's engine"
+        os.killpg(engine.popen.pid, signal.SIGKILL)  # the engine's own death, never the runner's stop
+        # Wait until the runner has abandoned this step body (its teardown removes the engine from the
+        # wave's registry, which happens after the step token is cleared), then reach the restart. The
+        # deadline is generous: the gate runs this suite beside GPU waves and lanes.
+        deadline = time.monotonic() + 120.0
+        while time.monotonic() < deadline:
+            with run_wave_module._LIVE_LOCK:
+                abandoned = engine not in run_wave_module._LIVE_ENGINES
+            if abandoned:
+                break
+            time.sleep(0.1)
+        else:  # pragma: no cover - the runner always abandons a body whose engine died
+            raise AssertionError("the runner never abandoned the corpus step")
+        if restart is not None:
+            try:
+                restart()
+            except Exception as error:  # noqa: BLE001 - the refusal is what this test asserts
+                outcomes.append(f"{type(error).__name__}: {error}")
+            else:
+                outcomes.append("restarted")
+        return {"state": "failed", "error": "the engine died while this step ran"}
+
+    monkeypatch.setattr(record_module, "record_corpus", fake_record_corpus)
+    document = _wave(tmp_path, record_corpus=True)
+    row = document["recipes"][0]
+    assert row["state"] == "failed"
+    assert "exited (code -9) while its steps ran" in (row["steps"]["observation_corpus"].get("error") or "")
+    assert len(outcomes) == 1 and outcomes[0].startswith("HarnessError: "), outcomes
+    assert "no longer in flight" in outcomes[0]
+    starts = [line for line in capsys.readouterr().out.splitlines() if line == "run_wave: fixture-embed serve start"]
+    assert len(starts) == 1, "the abandoned body's restart must not start a fresh engine"
+
+
+def test_a_failed_corpus_step_is_not_published_to_the_changed_since_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wave whose observation-corpus step FAILED must not publish the recipe's behaviour fingerprint or
+    its engine version into ``wave.json``: the document is the ``--changed-since`` index, and a key for a
+    corpus that was never written makes the recovery wave skip the recipe as unchanged -- a recovery wave
+    can then report PASS with no corpus ever recorded."""
+    real_record_corpus = record_module.record_corpus
+
+    def failing_record_corpus(*args: object, **kwargs: object) -> dict:
+        raise RuntimeError("injected corpus failure")
+
+    monkeypatch.setattr(record_module, "record_corpus", failing_record_corpus)
+    first = _wave(tmp_path, record_corpus=True, out_dir=tmp_path / "wave1")
+    row = first["recipes"][0]
+    assert row["state"] == "failed"
+    assert "injected corpus failure" in (row["steps"]["observation_corpus"].get("error") or "")
+    # The fingerprint stays on the row for reporting, but the index maps are for recorded corpora
+    # only: the version is the other half of the corpus key, and a failed row's version must not
+    # enter the index either -- protocol_due would otherwise stop naming the engine version the
+    # release never recorded (the D1 fix gated fingerprints; the version map is the sibling hole).
+    assert row["behaviour_fingerprint"] == behaviour_fingerprint(load_recipe(RECIPES / "fixture-embed"))
+    assert first["fingerprints"] == {}
+    assert first["engine_versions"] == {}
+    # The recovery wave must attempt the recipe again, never skip it as unchanged, and the failed
+    # recording's engine version stays protocol-due.
+    monkeypatch.setattr(record_module, "record_corpus", real_record_corpus)
+    second = _wave(
+        tmp_path,
+        record_corpus=True,
+        out_dir=tmp_path / "wave2",
+        changed_since_index=tmp_path / "wave1" / "wave.json",
+    )
+    assert second["skipped_unchanged"] == []
+    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint", "engine_version"]}
+    assert second["protocol_due"] == ["test-stub"]
+    assert second["recipes"] and second["recipes"][0]["state"] == "verified"
+
+
+def test_a_failed_wave_upload_is_not_published_to_the_changed_since_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The corpus travels only with the WAVE-level upload: ``<out>/observations/...`` is a sibling of the
+    per-recipe directories, so a per-recipe upload that lands and verifies says nothing about the corpus.
+    A wave whose last upload failed therefore leaves no corpus at the destination, and the index must not
+    name the recipe's key anyway: a ``--changed-since`` recovery reading that ``wave.json`` would skip the
+    recipe as recorded and report PASS over a corpus that never left the node (reviews D2: the gate checked
+    the per-recipe upload, which does not carry the corpus at all)."""
+    real_storage = run_wave_module._upload_storage
+    out_dir = tmp_path / "wave1"
+    sources: list[str] = []
+
+    def failing_wave_transfer(source: object, uri: str) -> str | None:
+        sources.append(str(source))
+        if Path(source) == out_dir:  # the wave-level upload's source, never a per-recipe one
+            return "the object store is down"
+        return real_storage(source, uri)
+
+    monkeypatch.setattr(run_wave_module, "_upload_cli", lambda *args: False)
+    monkeypatch.setattr(run_wave_module, "_upload_storage", failing_wave_transfer)
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
+    first = _wave(tmp_path, record_corpus=True, upload=str(tmp_path / "bucket"), out_dir=out_dir)
+    row = first["recipes"][0]
+    # The corpus step passed and the recipe's own directory landed and verified; the wave upload did not.
+    assert row["steps"]["observation_corpus"]["state"] == "passed"
+    assert row["upload"]["ok"] is True
+    assert first["upload"]["ok"] is False and first["verdict"] == "failed"
+    assert sources.count(str(out_dir)) == run_wave_module._UPLOAD_ATTEMPTS
+    # The destination holds the recipe's directory and no corpus at all.
+    assert (tmp_path / "bucket" / "fixture-embed" / "status.json").is_file()
+    assert not (tmp_path / "bucket" / "observations").exists()
+    # So the index -- the local wave.json a later --changed-since reads -- names no key.
+    assert first["fingerprints"] == {}
+    assert first["engine_versions"] == {}
+    index = json.loads((out_dir / "wave.json").read_text(encoding="utf-8"))
+    assert index["fingerprints"] == {} and index["engine_versions"] == {}
+    # The recovery wave attempts the recipe again, never skips it as unchanged.
+    monkeypatch.undo()
+    second = _wave(
+        tmp_path,
+        record_corpus=True,
+        out_dir=tmp_path / "wave2",
+        changed_since_index=out_dir / "wave.json",
+    )
+    assert second["skipped_unchanged"] == []
+    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint", "engine_version"]}
+    assert second["recipes"] and second["recipes"][0]["state"] == "verified"
+
+
+def test_a_failed_recipe_upload_is_not_published_to_the_changed_since_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every upload of a wave fails here (the CLIs answer nothing, the storage path errors): the wave is
+    failed (B1) and no index key survives, because the wave-level upload -- the corpus's carrier -- did not
+    land.  The per-recipe upload carries ``<out>/<recipe_id>`` only and is reported through
+    ``upload_failures``; it is not the index's referent (reviews D2, and the sibling test above pins the
+    per-recipe-ok/wave-failed case).  A ``--changed-since`` recovery from this index attempts the recipe
+    again instead of skipping it as recorded."""
+    monkeypatch.setattr(run_wave_module, "_upload_cli", lambda *args: False)
+    monkeypatch.setattr(run_wave_module, "_upload_storage", lambda *args: "the object store is down")
+    monkeypatch.setattr(run_wave_module, "_UPLOAD_BACKOFF_S", 0)
+    first = _wave(
+        tmp_path,
+        record_corpus=True,
+        upload=str(tmp_path / "bucket"),
+        out_dir=tmp_path / "wave1",
+    )
+    row = first["recipes"][0]
+    # The corpus step itself passed; the failure is the transfer to the destination.
+    assert row["steps"]["observation_corpus"]["state"] == "passed"
+    assert first["upload_failures"]["fixture-embed"]["ok"] is False
+    assert first["verdict"] == "failed"
+    # The destination holds nothing, so the row is not recorded at its key.
+    assert first["fingerprints"] == {}
+    assert first["engine_versions"] == {}
+    # The recovery wave attempts the recipe again, never skips it as unchanged.
+    monkeypatch.undo()
+    second = _wave(
+        tmp_path,
+        record_corpus=True,
+        out_dir=tmp_path / "wave2",
+        changed_since_index=tmp_path / "wave1" / "wave.json",
+    )
+    assert second["skipped_unchanged"] == []
+    assert second["changes"] == {"fixture-embed": ["behaviour_fingerprint", "engine_version"]}
+    assert second["recipes"] and second["recipes"][0]["state"] == "verified"
+
+
+def test_changed_since_skips_the_unchanged_and_records_the_changed(tmp_path: Path) -> None:
+    """--changed-since re-records only what moved (OBSERVATIONS-SPEC 7): an unchanged recipe is listed as
+    skipped_unchanged and never served again; a changed fingerprint or a new engine version records again."""
+    first = _wave(tmp_path, record_corpus=True, out_dir=tmp_path / "wave1")
+    index = tmp_path / "wave1" / "wave.json"
+    assert index.is_file() and first["fingerprints"] and first["engine_versions"]
+    second = _wave(tmp_path, record_corpus=True, out_dir=tmp_path / "wave2", changed_since_index=index)
+    assert second["skipped_unchanged"] == ["fixture-embed"]
+    assert second["recipes"] == []
+    document = json.loads(index.read_text(encoding="utf-8"))
+    document["fingerprints"]["fixture-embed"] = "0" * 64
+    index.write_text(json.dumps(document), encoding="utf-8")
+    third = _wave(tmp_path, record_corpus=True, out_dir=tmp_path / "wave3", changed_since_index=index)
+    assert third["skipped_unchanged"] == []
+    assert third["changes"] == {"fixture-embed": ["behaviour_fingerprint"]}
+    assert third["recipes"] and third["recipes"][0]["recipe"] == "fixture-embed"
+
+
+def test_a_new_engine_version_records_every_recipe_again(tmp_path: Path) -> None:
+    """The behaviour fingerprint does not include the engine: a recording under another engine version is a
+    new corpus key, so an unchanged fingerprint under a new engine records again (and the protocol layer is
+    due for that engine version)."""
+    index = tmp_path / "old-wave.json"
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    index.write_text(
+        json.dumps(
+            {
+                "fingerprints": {"fixture-embed": behaviour_fingerprint(recipe)},
+                "engine_versions": {"fixture-embed": "0.30.0"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    document = _wave(tmp_path, record_corpus=True, changed_since_index=index)
+    assert document["skipped_unchanged"] == []
+    assert document["changes"] == {"fixture-embed": ["engine_version"]}
+    assert document["protocol_due"] == ["test-stub"]
+
+
+def test_the_corpus_is_keyed_by_the_engine_version_the_pod_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B5: the corpus key is the version the RUNNING engine reports (its ``/version``), never the declared
+    image string; with a measured version the status table is checked instead of skipped."""
+    monkeypatch.setattr(run_wave_module, "_pod_engine_version", lambda run, vllm_cmd: "0.31.0")
+    document = _wave(tmp_path, record_corpus=True)
+    row = document["recipes"][0]
+    # The pod's version keys the corpus and is the row's engine version.  The version MAP is the
+    # --changed-since index: only recorded corpora enter it, and this one is not recorded -- the stub
+    # refuses unknown fields with 400 where the measured 0.31.0 table expects 200 (checked below), so the
+    # corpus step fails and its key stays out of the index (the D1 gate).
+    assert row["engine_version"] == "0.31.0"
+    assert document["engine_versions"] == {}
+    corpus = Path(row["steps"]["observation_corpus"]["corpus_dir"])
+    assert corpus.parent.parent.parent.name == "vllm-0.31.0"
+    manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["engine"]["version"] == "0.31.0"
+    # The measured table is APPLIED (the stub is deliberately stricter than real vLLM on unknown fields,
+    # so it records mismatches rather than the vacuous pass an unmeasured version gets), and the failed
+    # check fails the corpus step.
+    statuses = _checks(row["steps"]["observation_corpus"])["statuses_as_expected"]
+    assert statuses["mismatches"], statuses
+    assert row["steps"]["observation_corpus"]["state"] == "failed"
+
+
+def test_a_digest_pinned_recipe_records_the_pod_version_not_the_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recipe declaring a digest-pinned image (the nightly case) still records the version the pod
+    reports: the old key was the digest's 64 hex characters and its status expectations were vacuous."""
+    import shutil
+
+    root = tmp_path / "recipes"
+    shutil.copytree(RECIPES, root)
+    shutil.copy2(RECIPES.parent / "tokenizer.json", root.parent / "tokenizer.json")
+    yaml = root / "fixture-embed" / "family.yaml"
+    yaml.write_text(
+        yaml.read_text(encoding="utf-8").replace(
+            'image: "vllm/vllm-openai:v0.31.0"',
+            'image: "registry.example.com/engine:nightly-abc@sha256:' + "a" * 64 + '"',
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(run_wave_module, "_pod_engine_version", lambda run, vllm_cmd: "0.31.0")
+    document = _wave(tmp_path, record_corpus=True, recipes_root=root)
+    row = document["recipes"][0]
+    # The pod's version keys the corpus and is the row's engine version; the failed stub recording's key
+    # stays out of the --changed-since index (the D1 gate, the same shape as the pod-version test above).
+    assert row["engine_version"] == "0.31.0"
+    assert document["engine_versions"] == {}
+    assert "vllm-0.31.0" in row["steps"]["observation_corpus"]["corpus_dir"]
+    # The status expectations follow the POD's version (0.31.0's measured table), not the digest's
+    # 64-hex "version" that made every expectation return None.
+    assert _checks(row["steps"]["observation_corpus"])["statuses_as_expected"]["mismatches"]
+    assert row["steps"]["observation_corpus"]["state"] == "failed"
+
+
+def test_a_recipe_whose_engine_version_cannot_be_probed_is_not_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When neither the engine's ``/version`` nor the engine environment answers, the corpus cannot be
+    keyed: the recipe fails loudly instead of silently keying by the declared image."""
+    monkeypatch.setattr(run_wave_module, "_pod_engine_version", lambda run, vllm_cmd: None)
+    document = _wave(tmp_path, record_corpus=True)
+    row = document["recipes"][0]
+    assert row["state"] == "failed"
+    assert "/version" in (row.get("error") or "")
+
+
+def test_probe_engine_version_asks_the_running_engine() -> None:
+    """``_probe_engine_version`` reads the version from the live engine's ``/version`` route (the pod),
+    which is what the wave records -- not the recipe's declared image string."""
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - http.server's interface
+            body = json.dumps({"version": "0.31.0"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert run_wave_module._probe_engine_version(server.server_port) == "0.31.0"
+    finally:
+        server.shutdown()
+        thread.join()
+
+
+def test_pod_engine_version_composes_the_route_and_the_engine_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B5's composition, pinned without monkeypatching it: the live ``/version`` route first, the engine
+    environment's own ``vllm`` second, ``None`` when neither answers (so the recording refuses), and the
+    test stub in test mode.  A mutation that reverts to the declared image must fail here."""
+    import http.server
+    import threading
+    import types
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - http.server's interface
+            body = json.dumps({"version": "9.9.9"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args: object) -> None:
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=server.server_port), None) == "9.9.9"
+    finally:
+        server.shutdown()
+        thread.join()
+    # The engine environment's own vllm is the fallback when /version does not answer (a closed port).
+    script = tmp_path / "engine-python"
+    script.write_text("#!/usr/bin/env bash\necho 0.42.0\n", encoding="utf-8")
+    script.chmod(0o755)
+    monkeypatch.setenv("RCP_ENGINE_PYTHON", str(script))
+    assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=1), None) == "0.42.0"
+    monkeypatch.delenv("RCP_ENGINE_PYTHON", raising=False)
+    assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=1), None) is None
+    assert run_wave_module._pod_engine_version(types.SimpleNamespace(port=1), "stub") == "test-stub"
+
+
+def test_the_quality_step_refuses_a_missing_engine_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F4: when neither version probe answered, the T3 quality step fails instead of recording the
+    declared image's tag as the engine version."""
+    monkeypatch.setattr(run_wave_module, "_pod_engine_version", lambda run, vllm_cmd: None)
+    document = _wave(tmp_path, quality=True)
+    step = document["recipes"][0]["steps"]["quality"]
+    assert step["state"] == "failed"
+    assert "/version" in step["error"]
+
+
+def test_an_all_skipped_changed_since_wave_reports_skipped(tmp_path: Path) -> None:
+    """B5: an all-skipped ``--changed-since`` wave verified nothing, so it reports SKIPPED -- never PASS
+    with zero evidence (the old document said ``passed: true`` for an empty recipe list)."""
+    _wave(tmp_path, record_corpus=True, out_dir=tmp_path / "wave1")
+    second = _wave(
+        tmp_path,
+        record_corpus=True,
+        out_dir=tmp_path / "wave2",
+        changed_since_index=tmp_path / "wave1" / "wave.json",
+    )
+    assert second["recipes"] == [] and second["skipped_unchanged"] == ["fixture-embed"]
+    assert second["verdict"] == "skipped" and second["passed"] is False
+    markdown = run_wave_module._wave_markdown(second)
+    assert "Verdict: **SKIPPED**" in markdown
+    assert "fixture-embed" in markdown  # the skipped ids are named, not hidden
+
+
+def test_the_corpus_step_carries_its_budget_and_log_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The corpus step is an ordinary harness step: it carries a declared wall-clock budget (from its
+    request count: three passes over the rows plus the standing probes) and its start/end boundary lands
+    on the pod log like every other step.  It used to bypass the step machinery (no budget, no watch, no
+    log line), so a stuck request in this mode had no bound."""
+    document = _wave(tmp_path, record_corpus=True)
+    step = document["recipes"][0]["steps"]["observation_corpus"]
+    assert step["state"] == "passed"
+    assert step["budget_s"] >= 600  # the formula's base plus three passes over the rows and the probes
+    assert step["secs"] >= 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("run_wave: ")]
+    assert "run_wave: fixture-embed observation_corpus start" in lines
+    assert any(line.startswith("run_wave: fixture-embed observation_corpus passed ") for line in lines)

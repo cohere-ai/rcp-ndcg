@@ -1,0 +1,41 @@
+id: qwen3-vl-reranker-2b/gen-text-short-uniform
+recipe: qwen3-vl-reranker-2b
+role: rerank
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: How do solar panels convert sunlight into electricity?
+  - id: q2
+    text: How do tidal power stations generate electricity?
+  documents:
+  - id: d1
+    text: Solar panels convert sunlight into electricity through photovoltaic cells. When photons strike the semiconductor material, usually silicon, they knock electrons loose, creating a direct current that an inverter turns into usable alternating current.
+  - id: d2
+    text: Tidal power stations generate electricity from the rise and fall of ocean tides. Incoming and outgoing water spins turbines connected to generators, converting the kinetic energy of moving water into electrical power.
+  - id: d3
+    text: Bicycle maintenance keeps the drivetrain clean and lubricated. Wipe the chain after wet rides, apply chain oil link by link, and check tyre pressure and brake pads before long trips.
+  - id: d4
+    text: Wind turbines convert the kinetic energy of moving air into electricity. The rotor blades spin a shaft that drives a generator, and power electronics condition the output for the grid.
+expected:
+  kind: scores
+  values:
+  - - 0.8359375
+    - 0.15234375
+    - 0.044677734375
+    - 0.267578125
+  - - 0.2333984375
+    - 0.85546875
+    - 0.048828125
+    - 0.3125
+  tolerance:
+    abs: 0.035
+  origin: reference
+  status: reproduced
+notes: 'Two queries x four short documents (uniform batch, relevance spread across the matrix: each query has one on-topic and one adjacent document). Every rendered pair measures 106-115 tokens (recipe tokenizer at 4bd860ac4f15ad1897a214615cccc700f8f71818, add_special_tokens=True). Values are the outputs of the reference implementation itself for these inputs (filled on cuda before the wave; the wave conformance run compares the served engine against them); abs 0.035 is the recipe''s measured stage-2 bound gates.prob_p99_abs (the E2 round-10 wave measured max |delta| 0.0332).'

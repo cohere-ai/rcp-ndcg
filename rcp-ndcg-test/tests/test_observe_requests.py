@@ -1,0 +1,1437 @@
+"""The request generator: determinism, the harness pairs format, the strata record and clean output.
+
+Everything here runs offline on the fixture recipes and fixture tokenizer: the source corpora are built
+inline (generation itself reads the Hub at pinned commits, in the operator's one-time run).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+from rcp_ndcg_test.equivalence.fitting import load_pairs, tokenizer_of
+from rcp_ndcg_test.observe.adversarial import (
+    CONTENT_KINDS,
+    checkpoint_vocab_size,
+    omitted_spellings,
+    special_token_spellings,
+    synthetic_text,
+)
+from rcp_ndcg_test.observe.requests import (
+    GENERATOR_SEED,
+    GENERATOR_VERSION,
+    PINNED_DATASET_COMMITS,
+    SEED,
+    PlannedRow,
+    RecipePlan,
+    pairs_jsonl,
+    plan_recipe,
+    write_manifest,
+    write_pairs_file,
+)
+from rcp_ndcg_test.observe.sources import SourceCorpus, SourceDoc, SourceMedia, SourceQuery
+from rcp_ndcg_vllm.recipe import load_family, load_recipe, resolve_recipe
+
+from tests.conftest import RECIPES, token_ids_recipe
+
+_CREDENTIAL = re.compile(
+    r"(hf_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|ya29\.[0-9A-Za-z_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)",
+)
+
+
+def _plan(
+    tmp_path: Path | None = None,
+    *,
+    recipe_id: str = "fixture-embed",
+    deviation: str | None = None,
+    client_updates: dict[str, object] | None = None,
+) -> tuple[object, RecipePlan]:
+    """One fixture recipe's plan over an inline source catalog (offline); ``deviation`` declares an
+    over-cap deviation on its reference block, ``client_updates`` overrides client-block keys."""
+    recipe = load_recipe(RECIPES / recipe_id)
+    if deviation is not None:
+        recipe = recipe.model_copy(
+            update={"reference": recipe.reference.model_copy(update={"known_deviations": [deviation]})}
+        )
+    if client_updates is not None:
+        recipe = recipe.model_copy(update={"client": {**recipe.client, **client_updates}})
+    tokenizer = tokenizer_of(recipe)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={
+            "q1": SourceQuery("q1", "what is the capital of france", None, ("d1", "d2")),
+            "q2": SourceQuery("q2", "rivers in europe", None, ("d1",)),
+        },
+        docs={"d1": SourceDoc("d1", "paris is the capital of france"), "d2": SourceDoc("d2", "the seine")},
+    )
+    vidore = SourceCorpus(
+        suite="vidore",
+        subset="hr__english",
+        commit="1" * 40,
+        queries={"v1": SourceQuery("v1", "how many pages", None, ("p1",))},
+        docs={
+            "p1": SourceDoc(
+                "p1",
+                "the page text",
+                media=(SourceMedia("vidore", "hr__english", "p1", 0, "ab" * 32, "image/png", 1234),),
+            )
+        },
+    )
+    plan = plan_recipe(recipe, tokenizer, {"nanobeir": [corpus], "vidore": [vidore]})
+    return recipe, plan
+
+
+def test_a_sending_empty_policy_plans_the_empty_row() -> None:
+    """The generator reads the recipe's ``client`` block as the mapping it is (decision 34: plain data): a
+    recipe whose ``empty_doc`` sends plans the ``content:empty`` row, and the manifest does not record the
+    false ``empty_doc: unknown`` refusal. A ``getattr`` on the mapping silently reported every empty
+    policy as a refusal, so the new variants' pairs files dropped a stratum their siblings carry."""
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    assert recipe.client.get("empty_doc") == "omit_zero"
+    sending = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "send"}})
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france")},
+    )
+    plan = plan_recipe(sending, tokenizer_of(sending), {"nanobeir": [corpus]})
+    empty_rows = [row for row in plan.rows if "content:empty" in row.strata]
+    assert empty_rows, [row.strata for row in plan.rows]
+    assert plan.strata["content:empty"]["present"] is True
+    assert "empty_doc: unknown" not in str(plan.strata)
+
+
+def test_content_kinds_are_the_specs_eleven() -> None:
+    """OBSERVATIONS-SPEC section 1's content kinds, exactly."""
+    assert CONTENT_KINDS == (
+        "ascii_prose",
+        "code",
+        "cjk",
+        "rtl",
+        "emoji_zwj",
+        "combining_marks",
+        "whitespace_only",
+        "empty",
+        "long_token_url",
+        "long_token_base64",
+        "special_token_spellings",
+    )
+
+
+def test_generation_is_deterministic_in_its_declared_inputs() -> None:
+    """The same (version, seed, pinned commits, recipe) plan the same rows, byte for byte."""
+    _, first = _plan()
+    _, second = _plan()
+    assert pairs_jsonl(first) == pairs_jsonl(second)
+    assert GENERATOR_VERSION >= 1
+    assert set(PINNED_DATASET_COMMITS) == {
+        "fabianschmidt-cohere/rcp-ndcg-nanobeir",
+        "fabianschmidt-cohere/rcp-ndcg-bright",
+        "fabianschmidt-cohere/rcp-ndcg-vidore-v3",
+        "fabianschmidt-cohere/rcp-ndcg-trecdl",
+    }
+    for commit in PINNED_DATASET_COMMITS.values():
+        assert commit.isalnum() and len(commit) == 40
+
+
+@pytest.mark.parametrize("recipe_id", ["fixture-embed", "fixture-rerank-pointwise"])
+@pytest.mark.parametrize("deviation", ["anchor_drop_over_cap", "over_cap_cut_differs"])
+def test_the_over_cap_row_follows_any_declared_deviation_for_every_role(recipe_id: str, deviation: str) -> None:
+    """Stage 2 reports over-cap rows for ANY declared deviation, every role (`deviation =
+    recipe.reference.over_cap_deviation is not None`; the vector gates and the rerank gates both carve the
+    client-changed rows out), so the planner's over-cap row follows every role's declared deviation.  The
+    embed branches used to record it absent with a reason that was false ("stage-2 vector gates have no
+    over-cap exclusion")."""
+    _, plan = _plan(recipe_id=recipe_id, deviation=deviation)
+    record = plan.strata["length:over_cap"]
+    assert record["present"] is True, record
+    assert deviation in record["reason"], record
+    over = [row for row in plan.rows if row.source and row.source.get("content_kind") == "length:over_cap"]
+    assert len(over) == 1, [row.provenance() for row in plan.rows]
+    assert over[0].strata[0] == "length:over_cap"
+
+
+def test_the_over_cap_stratum_is_absent_with_the_true_reason_without_a_deviation() -> None:
+    """A recipe that declares no over-cap deviation gets no over-cap row, and the recorded reason is the
+    true one (an over-cap row would gate on two different cuts) -- never the false "the vector gates have no
+    over-cap exclusion" of the pre-fix embed branch."""
+    _, plan = _plan()
+    record = plan.strata["length:over_cap"]
+    assert record["present"] is False
+    assert "declares no over-cap deviation" in record["reason"], record
+    assert "no over-cap exclusion" not in record["reason"], record
+    assert not [row for row in plan.rows if row.source and row.source.get("content_kind") == "length:over_cap"]
+
+
+def test_the_planner_reads_the_client_block_as_the_mapping_it_is() -> None:
+    """The planner read the client block with ``getattr`` on a plain ``dict``, so every read returned its
+    fallback: the empty row was dropped for recipes that SEND the empty string, ``query_max_tokens`` read 0
+    (long and small content moved onto a query side the declared share cannot hold), and the instruction
+    mode read ``none``.  The mapping reads follow the recipe's declared values."""
+    # empty_doc: send plans the empty row; a refusing policy records it absent naming both policies.
+    _, sending = _plan(client_updates={"empty_doc": "send", "empty_query": "send"})
+    assert sending.strata["content:empty"]["present"] is True, sending.strata["content:empty"]
+    assert any(row.source and row.source.get("content_kind") == "empty" for row in sending.rows)
+    _, refusing = _plan(client_updates={"empty_doc": "refuse", "empty_query": "refuse"})
+    record = refusing.strata["content:empty"]
+    assert record["present"] is False
+    assert "empty_doc: refuse" in record["reason"], record
+    assert "unknown" not in record["reason"], record
+    assert "empty_query" not in record["reason"], record  # an embed recipe has no such field (role-aware)
+    # The instruction mode is the declared one (the read returned 'none' for every recipe before).
+    _, folding = _plan(client_updates={"instruction": "fold"})
+    assert folding.strata["instruction:fold"]["present"] is True
+    assert "instruction:none" not in folding.strata
+
+
+def test_the_empty_policy_follows_the_role_s_own_field() -> None:
+    """``empty_query`` exists on the rerank config only; the embed and pooling roles' ``empty_doc`` governs
+    BOTH sides (``rcp_ndcg.inference.clients._base`` applies it to whatever the client encodes).  The
+    planner's query-side policy follows the role: rerank reads ``empty_query``, embed/multi_vector read
+    ``empty_doc`` -- a send-empty embed recipe's empty kind rides its query side too, and the absent
+    reason names the field it actually read."""
+    template = {
+        "query": [{"fixed": "q: "}, {"content": "query"}],
+        "document": [{"fixed": "d: "}, {"content": "document"}],
+        "anchor": "last",
+    }
+    _, sending = _plan(client_updates={"empty_doc": "send", "template": template})
+    empty_rows = [row for row in sending.rows if row.source and row.source.get("content_kind") == "empty"]
+    assert empty_rows, sending.strata["content:empty"]
+    assert any("content:empty@query" in row.strata for row in empty_rows), [row.strata for row in empty_rows]
+    _, refusing = _plan(client_updates={"empty_doc": "refuse", "template": template})
+    record = refusing.strata["content:empty"]
+    assert record["present"] is False
+    assert "empty_doc: refuse" in record["reason"], record
+    assert "empty_query" not in record["reason"], record  # the embed role has no such field
+
+
+def test_a_declared_query_share_keeps_the_query_side_within_its_room() -> None:
+    """``query_max_tokens`` is the query shape's whole budget: fixture-rerank-pointwise declares 48 and the
+    pair overhead leaves no room, so NO content kind rides its query side.  The read returned 0 before, so
+    the whole 160-token budget was the room and the small kinds were planned on the query side too (the
+    client would have cut them)."""
+    recipe, plan = _plan(recipe_id="fixture-rerank-pointwise")
+    assert recipe.client.get("query_max_tokens") == 48
+    for kind in ("rtl", "combining_marks", "special_token_spellings"):
+        record = plan.strata[f"content:{kind}"]
+        assert record["present"] is True, record
+        for row in plan.rows:
+            if row.source and row.source.get("content_kind") == kind:
+                assert f"content:{kind}@query" not in row.strata, row.strata
+
+
+def test_the_spelling_set_is_bounded_by_the_checkpoints_declared_vocabulary() -> None:
+    """E2 round 4's harrier-oss-v1-270m device assert, as the generator's rule: the checkpoint's tokenizer
+    declares ``<image_soft_token>`` at id 262144 while its ``config.json`` declares ``vocab_size: 262144``
+    (embedding [262144, 640]), so a text carrying that spelling reaches a gather with no such row and kills
+    the engine.  The spelling set is bounded by the declared vocabulary -- the 27b sibling declares 262208
+    for the same token and keeps it -- and the omission is recorded in the stratum, never silent."""
+    import types
+
+    tokenizer = types.SimpleNamespace(
+        backend=types.SimpleNamespace(
+            get_added_tokens_decoder=lambda: {
+                151643: types.SimpleNamespace(content="<|endoftext|>"),
+                262143: types.SimpleNamespace(content="<|video|>"),
+                262144: types.SimpleNamespace(content="<image_soft_token>"),
+            }
+        )
+    )
+    unbounded = special_token_spellings(tokenizer)
+    assert "<image_soft_token>" in unbounded and "<|endoftext|>" in unbounded
+    bounded = special_token_spellings(tokenizer, vocab_size=262144)
+    assert "<image_soft_token>" not in bounded
+    assert "<|endoftext|>" in bounded and "<|video|>" in bounded
+    assert synthetic_text("special_token_spellings", tokenizer, vocab_size=262144) == bounded
+    assert omitted_spellings(tokenizer, vocab_size=262144) == [{"content": "<image_soft_token>", "id": 262144}]
+    # The 27b sibling's declared 262208 covers the same token: nothing is left out.
+    assert special_token_spellings(tokenizer, vocab_size=262208) == unbounded
+    assert omitted_spellings(tokenizer, vocab_size=262208) == []
+    # A fixture recipe names no Hub repository: the bound is unresolved (None), never a crash.
+    assert checkpoint_vocab_size(load_recipe(RECIPES / "fixture-embed")) is None
+
+
+def test_an_omitted_spelling_is_recorded_in_the_stratum() -> None:
+    """The plan's ``content:special_token_spellings`` stratum carries the omitted token and the reason
+    (the checkpoint's embedding has no such row), so the manifest says what was left out and why."""
+    import types
+
+    class _Spelled:
+        """The real fixture tokenizer with one extra out-of-range added token (everything else delegates)."""
+
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+            self.backend = types.SimpleNamespace(
+                get_added_tokens_decoder=lambda: {
+                    151643: types.SimpleNamespace(content="<|endoftext|>"),
+                    262144: types.SimpleNamespace(content="<image_soft_token>"),
+                }
+            )
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._inner, name)
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    _, plan = _plan()
+    bounded = plan_recipe(recipe, _Spelled(tokenizer_of(recipe)), {"nanobeir": []}, embeddable_vocab_size=262144)
+    record = bounded.strata["content:special_token_spellings"]
+    assert record["present"] is True
+    assert record["omitted_added_tokens"] == [{"content": "<image_soft_token>", "id": 262144}]
+    assert "vocab_size 262144" in record["omitted_reason"]
+    assert "omitted_added_tokens" not in plan.strata["content:special_token_spellings"]
+
+
+def test_pairs_rows_are_the_harness_pairs_format(tmp_path: Path) -> None:
+    """The written file is exactly what ``load_pairs`` reads: query str, documents list of strings."""
+    _, plan = _plan()
+    path = write_pairs_file(plan, tmp_path)
+    rows = load_pairs(path)
+    assert len(rows) == len(plan.rows)
+    for row in rows:
+        assert isinstance(row["query"], str)
+        assert row["documents"] and all(isinstance(document, str) for document in row["documents"])
+
+
+def test_a_send_empty_document_policy_plans_the_empty_kind() -> None:
+    """The synthetic planner reads the client policy from the recipe's client DICT.
+
+    ``recipe.client`` is plain data (``dict[str, Any]``); a ``getattr`` on it always returned the
+    default, so a recipe with ``empty_doc: send`` never planned the empty-content row (and an
+    ``instruction`` mode other than ``none`` was never seen). The fixture recipe declares
+    ``empty_doc: send`` and its document side has room for the empty string.
+    """
+    from rcp_ndcg_test.observe.requests import _synthetic_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    assert recipe.client.get("empty_doc") == "send"
+    rows = _synthetic_rows(recipe, tokenizer_of(recipe))
+    assert any("content:empty" in row.strata for row in rows), [row.strata for row in rows]
+
+
+def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
+    """OBSERVATIONS-SPEC section 1: each stratum recorded present or absent (absent only with a why)."""
+    _, plan = _plan()
+    for name, record in plan.strata.items():
+        assert isinstance(record.get("present"), bool), name
+        if not record["present"]:
+            assert record.get("reason"), f"{name}: absent without a reason"
+    # The fixture budget (128 tokens) is too small for the long-single-token kinds: they are recorded
+    # absent with the reason (the corpus request set sends them uncut).  Every small kind is present.
+    for kind in ("whitespace_only", "combining_marks", "emoji_zwj"):
+        assert plan.strata[f"content:{kind}"]["present"] is True, kind
+    # The fixture's empty policy (``empty_doc: omit_zero``) rewrites an empty document: the empty kind
+    # is recorded absent with the policy's reason, never planned into a row the client would rewrite.
+    empty = plan.strata["content:empty"]
+    assert empty["present"] is False and "empty policy" in empty["reason"], empty
+    assert "empty_doc: omit_zero" in empty["reason"], (
+        "the reason names the declared policy, never the family client dict read as an unknown attribute"
+    )
+
+
+def test_a_declared_empty_send_policy_plans_the_empty_row(tmp_path: Path) -> None:
+    """A recipe whose client DECLARES ``empty_doc: send`` plans the empty row.
+
+    The generator read the policy with ``getattr(recipe.client, ...)`` on the plain-dict client block,
+    so every declared ``send`` read as the attribute default (absent, ``unknown``) and the empty kind
+    was recorded absent for recipes that ship it -- the harrier-oss-v1 manifest said
+    ``empty_doc: unknown`` of a client declaring ``empty_doc: send``. The policy is dict-read (the
+    client block is plain data, decision 19), so the record names what the recipe declares.
+    """
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    sending = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "send"}})
+    tokenizer = tokenizer_of(sending)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(sending, tokenizer, {"nanobeir": [corpus]})
+    empty = plan.strata["content:empty"]
+    assert empty is not None and empty["present"] is True, empty
+    assert any(row.source.get("content_kind") == "empty" for row in plan.rows)
+
+
+def test_media_rows_for_a_media_recipe_carry_the_page_refs() -> None:
+    """A media recipe's ViDoRe rows carry ``media`` entries by source coordinates (suite/subset/doc/part)."""
+    recipe, _ = _plan()
+    media_recipe = recipe.model_copy(update={"input": ["text", "image"]})
+    tokenizer = tokenizer_of(recipe)
+    corpus = SourceCorpus(
+        suite="vidore",
+        subset="hr__english",
+        commit="1" * 40,
+        queries={"v1": SourceQuery("v1", "how many pages", None, ("p1",))},
+        docs={
+            "p1": SourceDoc(
+                "p1",
+                "the page text",
+                media=(SourceMedia("vidore", "hr__english", "p1", 0, "ab" * 32, "image/png", 1234),),
+            )
+        },
+    )
+    plan = plan_recipe(media_recipe, tokenizer, {"vidore": [corpus]})
+    media_rows = [row for row in plan.rows if row.media]
+    assert media_rows, "no media rows were planned for the media recipe"
+    entry = media_rows[0].to_pairs_row()["media"]["documents"][0][0]
+    assert entry["suite"] == "vidore" and entry["subset"] == "hr__english" and entry["doc_id"] == "p1"
+    assert entry["sha256"] == "ab" * 32 and entry["mime"] == "image/png" and entry["num_bytes"] == 1234
+    # No machine-local path is ever recorded beside the source coordinates and the content hash.
+    assert "uri" not in entry
+    assert plan.strata["media:page_image"]["present"] is True
+
+
+def test_text_only_recipes_record_the_media_stratum_absent_with_the_reason() -> None:
+    _, plan = _plan()
+    record = plan.strata["media:page_image"]
+    assert record["present"] is False and "text-only" in record["reason"]
+
+
+def test_length_rows_fit_the_declared_budget_uncut() -> None:
+    """Every planned row fits ``client.max_tokens`` without a cut (the product's fit is the judge)."""
+    from rcp_ndcg_test.equivalence.fitting import resolved_tokenizer_spec
+
+    from rcp_ndcg.data.preprocess import TextBudget, TextTruncationCensus, fit
+
+    recipe, plan = _plan()
+    tokenizer = tokenizer_of(recipe)
+    client = dict(recipe.client)
+    budget = TextBudget(
+        tokenizer=resolved_tokenizer_spec(recipe),
+        max_tokens=client["max_tokens"],
+        query_max_tokens=client.get("query_max_tokens"),
+        template=client.get("template"),
+        on_overflow=client.get("on_overflow", "cut"),
+    )
+    census = TextTruncationCensus()
+    for row in plan.rows:
+        fit([row.documents[0]], "document", budget, tokenizer, ids=["x"], census=census)
+    assert not census.cuts(), f"the generator planned rows the product's fit cuts: {census.cuts()}"
+
+
+def test_the_length_ladder_respects_the_declared_document_cap() -> None:
+    """g-observe-6: jina-reranker-v3 declares max_tokens 3219 and document_max_tokens 2048, and its client
+    cuts every document over 2048.  The ladder sized at_90/at_budget by the budget alone (2703/3004
+    tokens), so both rode over the cap and no near-cap uncut document was ever planned or gated."""
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    recipe, plan = _plan(
+        recipe_id="fixture-rerank-listwise",
+        client_updates={"max_tokens": 3219, "document_max_tokens": 2048},
+    )
+    at_budget = plan.strata["length:at_budget"]
+    assert at_budget["present"] is True
+    assert at_budget["content_tokens"] <= 2048 - 4, at_budget  # the guard stays reserved under the cap
+    corpus = corpus_plan(recipe, tokenizer_of(recipe), [])
+    assert corpus.strata["length:over_document_cap"]["content_tokens"] == 2049, corpus.strata
+    assert any(row["request_id"] == "ladder:over_document_cap" for row in corpus.rows), corpus.rows
+
+
+def test_the_committed_pairs_ladder_fits_every_declared_document_cap() -> None:
+    """g-observe-6: the shipped pairs are the generator's artifact and must be regenerated under the
+    declared per-side caps.  jina-reranker-v3's committed manifest still recorded at_90 2703 / at_budget
+    3004 against its 2048 ``document_max_tokens``, so both rows rode over the cap and the near-cap uncut
+    stratum was never planned or gated.  Every committed recipe that declares a document cap is checked,
+    and the committed jina rows themselves are tokenized with the recipe's own tokenizer (the manifest's
+    self-report is not trusted)."""
+    from rcp_ndcg_test.fingerprint import use_tokenizer_store
+
+    pairs_root = Path(__file__).resolve().parents[1] / "pairs"
+    manifest = json.loads((pairs_root / "manifest.json").read_text(encoding="utf-8"))
+    entries = {entry["recipe"]: entry for entry in manifest["files"]}
+    checked = 0
+    for recipe_id, entry in sorted(entries.items()):
+        cap = resolve_recipe(recipe_id).client.get("document_max_tokens")
+        if cap is None:
+            continue
+        for name in ("length:at_90", "length:at_budget"):
+            stratum = entry["strata"].get(name) or {}
+            if stratum.get("present"):
+                assert stratum["content_tokens"] <= int(cap), (recipe_id, name, stratum, cap)
+                checked += 1
+    assert checked, "no committed recipe declares a document cap: the guard would be vacuous"
+
+    # The committed bytes, not only the manifest's self-report: count the shipped jina ladder documents
+    # with the recipe's own tokenizer (the counts the finding cited: 2703 and 3004 before the fix).
+    use_tokenizer_store(Path(__file__).resolve().parents[1] / "corpora" / "vllm-0.31.0" / "_tokenizers")
+    jina = resolve_recipe("jina-reranker-v3")
+    tokenizer = tokenizer_of(jina)
+    cap = int(jina.client["document_max_tokens"])
+    entry = entries["jina-reranker-v3"]
+    rows = [json.loads(line) for line in (pairs_root / entry["path"]).read_text(encoding="utf-8").splitlines()]
+    for name in ("length:at_90", "length:at_budget"):
+        row = next(row for row in rows if name in row["_strata"])
+        counted = tokenizer.count(row["documents"][0])
+        assert counted <= cap, f"{name}: the committed document counts {counted} tokens, over the {cap} cap"
+
+
+def test_no_credential_shaped_string_can_reach_a_pairs_file() -> None:
+    """A scan of every generated byte for credential shapes (tokens, API keys, private key blocks)."""
+    _, plan = _plan()
+    blob = pairs_jsonl(plan)
+    assert _CREDENTIAL.search(blob) is None
+
+
+def test_manifest_records_hashes_provenance_and_pruned_rows(tmp_path: Path) -> None:
+    _, plan = _plan()
+    write_pairs_file(plan, tmp_path)
+    path = write_manifest([plan], tmp_path, pruned=[{"recipe": plan.recipe_id, "reason": "stage 1 red"}])
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["schema_version"] == 1
+    assert document["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
+    assert document["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
+    entry = document["files"][0]
+    assert entry["recipe"] == plan.recipe_id and entry["rows"] == len(plan.rows)
+    assert entry["sha256"] and len(entry["sha256"]) == 64
+    assert entry["provenance"], "every row's source identity must be recorded (the selection manifest)"
+    assert document["pruned"][0]["reason"] == "stage 1 red"
+
+
+def test_a_version_bump_does_not_redraw_a_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The semantic version and the sampling seed are separate: bumping ``GENERATOR_VERSION`` (what every
+    change to the generator's output does) plans the identical rows, because the sampling stream is
+    ``GENERATOR_SEED`` alone.  With the version in the stream, this test redraws every row."""
+    import rcp_ndcg_test.observe.requests as requests_module
+
+    _, before = _plan()
+    monkeypatch.setattr(requests_module, "GENERATOR_VERSION", GENERATOR_VERSION + 1)
+    _, after = _plan()
+    assert pairs_jsonl(before) == pairs_jsonl(after)
+    assert GENERATOR_SEED == f"1/{SEED}", "the sampling stream must keep the value version 1 used"
+
+
+def test_the_committed_pairs_files_match_the_recorded_generator_identity() -> None:
+    """Every committed pairs file is the artifact of ONE recorded generator identity: the manifest names
+    the generator's semantic version and its frozen sampling seed, and each file hashes, sizes and counts
+    to its entry (a file generated under another version fails here -- the integration note after
+    harness-fix).  Regenerate with ``python -m rcp_ndcg_test.observe.requests --out rcp-ndcg-test/pairs
+    --reference-python <python>``."""
+    import hashlib
+
+    pairs = Path(__file__).resolve().parents[1] / "pairs"
+    manifest = json.loads((pairs / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
+    assert manifest["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
+    entries = {entry["path"]: entry for entry in manifest["files"]}
+    committed = {path.name for path in pairs.glob("*.jsonl")}
+    assert set(entries) == committed, "the manifest and the committed pairs files disagree about the set"
+    assert entries, "the manifest lists no pairs file"
+    for name, entry in sorted(entries.items()):
+        data = (pairs / name).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == entry["sha256"], name
+        assert len(data) == entry["bytes"], name
+        assert len(data.decode("utf-8").splitlines()) == entry["rows"], name
+
+
+def test_rows_carry_only_documented_keys() -> None:
+    """The pairs row keys are exactly the documented ones (the reader contract)."""
+    _, plan = _plan()
+    allowed = {"query", "documents", "shape", "instruction", "media", "_strata", "_source"}
+    for row in plan.rows:
+        assert set(row.to_pairs_row()) <= allowed
+
+
+def test_planned_row_without_media_omits_the_key() -> None:
+    row = PlannedRow(query="q", documents=("d",), strata=("length:tiny",), source={"suite": "synthetic"})
+    assert "media" not in row.to_pairs_row()
+
+
+# --- the corpus plan: what a recording sends beyond the pairs rows (OBSERVATIONS-SPEC section 1) ----------------
+
+
+def _corpus_plan(recipe_id: str):
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    recipe = load_recipe(RECIPES / recipe_id)
+    tokenizer = tokenizer_of(recipe)
+    _, plan = _plan()
+    rows = [row.to_pairs_row() for row in plan.rows]
+    return recipe, tokenizer, corpus_plan(recipe, tokenizer, rows)
+
+
+def test_the_corpus_plan_sends_the_over_length_ladder_through_the_client_and_uncut() -> None:
+    """One token over, 2x and 10x the budget in the recipe's own tokens -- each through the client (its cut)
+    and bare (uncut: the engine's own refusal)."""
+    _, tokenizer, plan = _corpus_plan("fixture-embed")
+    rows = {row["request_id"]: row for row in plan.rows}
+    bare = {row["request_id"]: row for row in plan.bare}
+    targets = {name: plan.strata[f"length:{name}"]["content_tokens"] for name in ("over_by_1", "over_2x", "over_10x")}
+    assert targets["over_2x"] == 2 * (targets["over_by_1"] - 1) and targets["over_10x"] == 10 * (
+        targets["over_by_1"] - 1
+    )
+    for name, target in targets.items():
+        text = rows[f"ladder:{name}"]["documents"][0]
+        assert abs(tokenizer.count(text) - target) <= 2, name
+        assert bare[f"ladder:{name}:uncut"]["body"]["input"] == [text], "the uncut request carries the full text"
+    # The rung one token over the budget is over the client's budget once the template's frame is added.
+    assert targets["over_by_1"] > 0
+
+
+def test_the_content_kinds_too_long_for_a_pairs_row_are_sent_both_ways() -> None:
+    """A kind the pairs file had to leave out (it exceeds the budget) is not lost: the corpus sends it."""
+    _, _, plan = _corpus_plan("fixture-embed")
+    ids = set(plan.request_ids())
+    assert "content:long_token_base64" in ids and "content:long_token_base64:uncut" in ids
+    assert plan.strata["content:long_token_base64:uncut"]["present"] is True
+    assert plan.strata["content:code:uncut"]["present"] is False  # its pairs row carries it
+
+
+def test_the_corpus_plan_sends_a_token_ids_recipe_the_document_render_ids(tmp_path: Path) -> None:
+    """A ``request_shape: token_ids`` recipe's bare rows carry the recipe's own render ids of the row's
+    document -- the document side under the declared split parse, the construction the recipe's client
+    sends -- never a bare text: such an engine's pooler refuses a prefix-less input by name, and the
+    refusal kills the EngineCore (the r2 wave's pplx-embed-v2-context corpus failure).  The probe test
+    in ``test_observe_corpus`` drives the same ids through a stub engine that speaks vLLM's token-id
+    prompts."""
+    from rcp_ndcg_test.equivalence import fitting
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    recipe = token_ids_recipe(tmp_path)
+    tokenizer = tokenizer_of(recipe)
+    template = fitting.client_template(recipe)
+    assert template is not None
+    plan = corpus_plan(recipe, tokenizer, [{"request_id": "row-0", "query": "a query", "documents": ["a document"]}])
+    bare = {row["request_id"]: row["body"] for row in plan.bare}
+    rows = {row["request_id"]: row for row in plan.rows}
+    flag = template.adds_special_tokens("document")
+
+    def expected(text: str) -> list[int]:
+        return list(
+            tokenizer.ids(
+                template.render("document", tokenizer, document=text),
+                add_special_tokens=flag,
+                split_special_tokens=True,
+            )
+        )
+
+    # The declared split parse is what ships: the spellings text's added tokens textify (the reference's
+    # parse), so the ids differ from the file's own parse of the same render.
+    spellings = synthetic_text("special_token_spellings", tokenizer)
+    assert bare["content:special_token_spellings:uncut"]["input"] == [expected(spellings)]
+    assert expected(spellings) != list(
+        tokenizer.ids(template.render("document", tokenizer, document=spellings), add_special_tokens=flag)
+    ), "the declared document split parse textifies an added token"
+    # The uncut ladder rung and a wire variant carry the same construction.
+    ladder = rows["ladder:over_by_1"]["documents"][0]
+    assert bare["ladder:over_by_1:uncut"]["input"] == [expected(ladder)]
+    assert bare["wire:encoding_format=float,embed_dtype=float16"]["input"] == [expected("a document")]
+
+
+def test_a_text_shaped_recipe_carries_its_bare_rows_as_text() -> None:
+    """A recipe without ``request_shape: token_ids`` is unchanged: its bare rows carry the text, the
+    construction the token-ids wire alone replaces with the recipe's own render ids."""
+    for recipe_id in ("fixture-embed", "fixture-multi-vector"):
+        _, _, plan = _corpus_plan(recipe_id)
+        bodies = [row["body"]["input"] for row in plan.bare if "input" in row["body"]]
+        assert bodies, recipe_id
+        assert all(isinstance(item, str) for body in bodies for item in body), recipe_id
+
+
+def test_the_wire_variants_and_the_protocol_edges_cover_each_route() -> None:
+    """Every encoding of the route and each adapter-sendable field on and off; the edges the set can send."""
+    _, _, embed = _corpus_plan("fixture-embed")
+    assert {"wire:encoding_format=base64", "wire:dimensions=32"} <= set(embed.strata)
+    _, _, pooling = _corpus_plan("fixture-multi-vector")
+    variants = {row["request_id"] for row in pooling.bare if row["layer"] == "protocol"}
+    for encoding in ("float", "base64", "bytes"):
+        for dtype in ("float16", "float32"):
+            assert f"wire:encoding_format={encoding},embed_dtype={dtype}" in variants
+    assert "edge:invalid_embed_dtype" in variants
+    _, _, rerank = _corpus_plan("fixture-rerank-pointwise")
+    bodies = {row["request_id"]: row["body"] for row in rerank.bare}
+    assert bodies["edge:top_n_over_documents"]["top_n"] > len(bodies["edge:top_n_over_documents"]["documents"])
+    assert bodies["wire:use_activation=false"]["use_activation"] is False
+    assert "instruction" in bodies["wire:instruction=on"]
+    for plan in (embed, pooling, rerank):
+        for name, record in plan.strata.items():
+            assert record["present"] or record.get("reason"), name
+
+
+def test_the_mrl_stratum_probes_every_declared_dimension() -> None:
+    """A declared MRL set records one bare ``dimensions=k`` probe per member (the engine's own cut),
+    read from the declaration -- never a hard-coded 32 -- and the old wire probe is replaced by it."""
+    from rcp_ndcg_test.observe.requests import CORPUS_PLAN_VERSION
+
+    assert CORPUS_PLAN_VERSION == 4, (
+        "the MRL stratum is the corpus request plan's version-2 addition, the media set's video edges are "
+        "version 3's and the per-side cap rungs are version 4's (g-observe-6); the merged plan is 4"
+    )
+    _, _, plan = _corpus_plan("fixture-embed-mrl")
+    assert plan.strata["mrl"]["present"] is True
+    assert plan.strata["mrl"]["kind"] == "truncation"
+    assert plan.strata["mrl"]["dims"] == [2, 4, 8]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    for k in (2, 4, 8):
+        assert f"mrl:dimensions={k}" in plan.strata
+        assert bodies[f"mrl:dimensions={k}"]["dimensions"] == k
+    assert "wire:dimensions=32" not in plan.strata
+    assert "wire:dimensions=4" not in plan.strata
+
+
+def test_the_mrl_stratum_is_absent_with_the_reason_without_a_declaration() -> None:
+    """A recipe with no MRL head records the stratum absent (said why) and keeps the bare undeclared-cut
+    probe, which records the engine's refusal."""
+    _, _, plan = _corpus_plan("fixture-embed")
+    assert plan.strata["mrl"]["present"] is False and plan.strata["mrl"]["reason"]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    assert bodies["wire:dimensions=32"]["dimensions"] == 32
+
+
+@pytest.mark.parametrize(
+    ("source_id", "selection_key"),
+    [("fixture-embed-mrl", "dimensions"), ("fixture-multi-vector-mrl", "mrl_dim")],
+)
+def test_the_mrl_stratum_probes_a_ranges_endpoints(tmp_path: Path, source_id: str, selection_key: str) -> None:
+    """A prose range cannot be enumerated: the stratum records its two endpoints and the run's selection
+    (engine-side ``dimensions`` or client-side ``mrl_dim``) when it is not an endpoint (the interior is not
+    silently claimed to be probed)."""
+    import shutil
+
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    source = RECIPES / source_id
+    directory = tmp_path / "recipes" / f"{source_id}-range"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    (directory / "reference.py").write_text((source / "reference.py").read_text(encoding="utf-8"), encoding="utf-8")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = (
+        manifest.replace(f"id: {source_id}", f"id: {source_id}-range")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+        .replace("mrl_dims: [2, 4, 8]", "mrl_range: [2, 8]")
+        # A range card's engine gate is open (no set): the loader refuses an engine set beside a range.
+        .replace(
+            "hf_overrides: {is_matryoshka: true, matryoshka_dimensions: [2, 4, 8]}",
+            "hf_overrides: {is_matryoshka: true}",
+        )
+    )
+    (directory / "family.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(directory)
+    assert recipe.client.get(selection_key) == 4
+    _, fixture_plan = _plan()
+    plan = corpus_plan(recipe, tokenizer_of(recipe), [row.to_pairs_row() for row in fixture_plan.rows])
+    assert plan.strata["mrl"]["dims"] == [2, 8, 4]
+    bodies = {row["request_id"]: row["body"] for row in plan.bare}
+    assert bodies["mrl:dimensions=2"]["dimensions"] == 2
+    assert bodies["mrl:dimensions=8"]["dimensions"] == 8
+    assert bodies["mrl:dimensions=4"]["dimensions"] == 4
+
+
+def test_stage1_validation_runs_a_skip_list_recipe_on_the_offline_fake(tmp_path: Path) -> None:
+    """A multi-vector recipe that declares ``document_skip_token_ids`` validates on the product's offline fake.
+
+    The pooling client refuses a reply whose vector count is not the count of the ids it sent (the skip
+    positions would not align); the fake counts a text in the recipe's declared tokenizer, as the engine does,
+    so the recipe validates as shipped (the generation once died here on a whitespace-word count).
+    """
+    import shutil
+    import sys
+
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    source = RECIPES / "fixture-multi-vector"
+    target = tmp_path / "recipes" / "fixture-multi-vector-skip"
+    shutil.copytree(source, target)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    manifest = (source / "family.yaml").read_text(encoding="utf-8")
+    manifest = (
+        manifest.replace("id: fixture-multi-vector", "id: fixture-multi-vector-skip")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+        .replace("  dim: 8\n", "  dim: 8\n  document_skip_token_ids: [2]\n")
+    )
+    (target / "family.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(target)
+    assert tuple(recipe.client.get("document_skip_token_ids")) == (2,)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, _ = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows, "validation pruned every row"
+    assert validated.validation["render_check"] == "passed", validated.validation
+
+
+def test_stage1_validation_reloads_a_multi_variant_familys_variant(tmp_path: Path) -> None:
+    """The pairs validator re-reads a variant through its FAMILY directory (decision 34).
+
+    The regression: the validator re-loaded the recipe with ``load_recipe(recipe._dir)``, and ``_dir``
+    is the family directory, which the standalone path refuses for a multi-variant family -- so the
+    documented ``python -m rcp_ndcg_test.observe.requests --reference-python ...`` regeneration failed
+    for every variant of qwen3-reranker, ctxl and zerank.  A two-variant family pins the re-read.
+    """
+    import shutil
+    import sys
+
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    root = tmp_path / "recipes"
+    family = root / "fixture-multi-vector-family"
+    shutil.copytree(RECIPES / "fixture-multi-vector", family)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    text = (family / "family.yaml").read_text(encoding="utf-8")
+    text = re.sub(r"^id: fixture-multi-vector$", "id: fixture-multi-vector-family", text, count=1, flags=re.M)
+    text = text.replace("  - id: fixture-multi-vector\n    model:", "  - id: fixture-multi-vector-first\n    model:")
+    text = text.replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+    second = (
+        "  - id: fixture-multi-vector-second\n"
+        "    model: fixtures/LateInteractionEmbedder\n"
+        '    revision: "0123456789abcdef0123456789abcdef01234567"\n'
+    )
+    text = text.replace("variants:\n", "variants:\n" + second, 1)
+    (family / "family.yaml").write_text(text, encoding="utf-8")
+    recipe = load_recipe("fixture-multi-vector-first", root=root)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france, on the seine")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    validated, _ = _validate_and_prune(recipe, plan, sys.executable)
+    assert validated.rows, "validation pruned every row"
+    assert validated.validation["render_check"] == "passed", validated.validation
+
+
+def test_the_offline_probe_bounds_only_the_pooling_reply_width() -> None:
+    """A ``/pooling`` recipe's ``dim`` sizes the reply only (the adapter decodes by it; no request carries it),
+    so stage 1's offline probe answers 8-wide vectors: the shipped width at 2 x a long budget would be a
+    multi-GiB fake reply per probed text.  Every other client field -- everything a request is built from,
+    and the skip list -- is the recipe's own; a non-pooling recipe is probed as it ships."""
+    from rcp_ndcg_test.observe.requests import _offline_probe
+
+    recipe = load_recipe(RECIPES / "fixture-multi-vector")
+    wide = recipe.model_copy(update={"client": {**recipe.client, "dim": 2048, "document_skip_token_ids": (2,)}})
+    probe = _offline_probe(wide)
+    assert probe.client.get("dim") == 8 and tuple(probe.client.get("document_skip_token_ids")) == (2,)
+    unchanged = {"dim"}
+
+    def without(client: dict) -> dict:
+        return {k: v for k, v in client.items() if k not in unchanged}
+
+    assert without(probe.client) == without(wide.client)
+    assert probe._dir == wide._dir  # noqa: SLF001 - the reference still resolves from the recipe directory
+    embed = load_recipe(RECIPES / "fixture-embed")
+    assert _offline_probe(embed) is embed
+
+
+def test_a_per_token_probe_too_long_for_the_offline_fake_is_recorded_blocked(tmp_path: Path) -> None:
+    """The offline fake seeds each per-token vector with the item's whole body, so a ``/pooling`` probe costs
+    tokens x body bytes; stage 1's over-length samples (twice the budget) make that quadratic cost
+    infeasible on CPU for a long-context budget.  The generator records the recipe's render check as blocked
+    with the reason (the full-budget stage 1 runs against the engine on the GPU wave), never silently
+    passed, and writes the rows unpruned -- in seconds, not hours."""
+    import shutil
+    import sys
+    import time
+
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    source = RECIPES / "fixture-multi-vector"
+    target = tmp_path / "recipes" / "fixture-multi-vector-long"
+    shutil.copytree(source, target)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "deterministic.py")
+    manifest = (
+        (source / "family.yaml")
+        .read_text(encoding="utf-8")
+        .replace("id: fixture-multi-vector", "id: fixture-multi-vector-long")
+        .replace("tokenizer: ../../tokenizer.json", f"tokenizer: {RECIPES.parent / 'tokenizer.json'}")
+        .replace("max_model_len: 512", "max_model_len: 262144")
+        .replace("max_tokens: 64", "max_tokens: 262142")
+    )
+    (target / "family.yaml").write_text(manifest, encoding="utf-8")
+    recipe = load_recipe(target)
+    corpus = SourceCorpus(
+        suite="nanobeir",
+        subset="NanoNQRetrieval",
+        commit="0" * 40,
+        queries={"q1": SourceQuery("q1", "what is the capital of france", None, ("d1",))},
+        docs={"d1": SourceDoc("d1", "paris is the capital of france")},
+    )
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {"nanobeir": [corpus]})
+    started = time.monotonic()
+    validated, pruned = _validate_and_prune(recipe, plan, sys.executable)
+    assert time.monotonic() - started < 30
+    assert validated.rows == plan.rows and pruned == []
+    assert str(validated.validation["render_check"]).startswith("blocked: "), validated.validation
+    assert "GPU wave" in validated.validation["render_check"]
+
+
+def test_a_run_replaces_every_manifest_entry_of_the_recipes_it_touched(tmp_path: Path) -> None:
+    """Runs merge per recipe: a recipe this run generated leaves ``skipped_recipes`` and drops the previous
+    run's pruned rows; a recipe this run skipped leaves ``files``.  Recipes the run did not touch are kept."""
+    _, plan = _plan()
+    write_pairs_file(plan, tmp_path)
+    other = {"recipe": "other", "error": "kept"}
+    write_manifest([], tmp_path, skipped_recipes=[{"recipe": plan.recipe_id, "error": "cannot load"}, other])
+    write_manifest([plan], tmp_path, pruned=[{"recipe": plan.recipe_id, "reason": "old"}])
+    write_manifest([plan], tmp_path, pruned=[{"recipe": plan.recipe_id, "reason": "new"}])
+    document = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert document["skipped_recipes"] == [other]
+    assert [entry["reason"] for entry in document["pruned"]] == ["new"]
+    assert [entry["recipe"] for entry in document["files"]] == [plan.recipe_id]
+    write_manifest([], tmp_path, skipped_recipes=[{"recipe": plan.recipe_id, "error": "blocked"}])
+    document = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert document["files"] == []
+    assert {entry["recipe"] for entry in document["skipped_recipes"]} == {plan.recipe_id, "other"}
+    assert document["pruned"] == []
+
+
+def test_a_recipe_whose_validation_pruned_every_row_is_recorded_not_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty pairs file would let stage 2 pass on nothing: a recipe whose stage-1 validation pruned every
+    row is a skipped recipe with the first failure named, and a previous run's file for it is removed."""
+    import sys
+
+    from rcp_ndcg_test.observe import requests as generator
+
+    out = tmp_path / "pairs"
+    out.mkdir()
+    (out / "fixture-embed.jsonl").write_text('{"query": "stale", "documents": ["stale"]}\n', encoding="utf-8")
+    monkeypatch.setattr("rcp_ndcg_test.observe.sources.load_corpora", lambda *args, **kwargs: [])
+
+    def prune_all(recipe: object, plan: RecipePlan, reference_python: str) -> tuple[RecipePlan, list[dict]]:
+        pruned = [{"row": index, "reason": "tail edge"} for index, _ in enumerate(plan.rows)]
+        return RecipePlan(plan.recipe_id, [], plan.strata, plan.skipped_sources, {"render_check": "passed"}), pruned
+
+    monkeypatch.setattr(generator, "_validate_and_prune", prune_all)
+    argv = ["--recipes-root", str(RECIPES), "--recipes", "fixture-embed", "--out", str(out)]
+    assert generator.main([*argv, "--reference-python", sys.executable, "--suites", "nanobeir"]) == 1
+    assert not (out / "fixture-embed.jsonl").exists()
+    document = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert document["files"] == []
+    (skipped,) = document["skipped_recipes"]
+    assert skipped["recipe"] == "fixture-embed" and "pruned every row" in skipped["error"]
+    assert "tail edge" in skipped["error"]
+
+
+def test_the_media_request_set_is_planned_for_a_media_recipe() -> None:
+    """A recipe with image input plans the synthetic media request set (``MEDIA_SET_VERSION``): one row per
+    image size bucket, a captioned page and a batch mixing a text-only and an image document, the images
+    inline and deterministic, every bucket a present stratum; the text rows keep their positions (the media
+    rows come last) and a text-only recipe plans none."""
+    from PIL import Image
+    from rcp_ndcg_test.observe.media_set import MEDIA_BUCKETS
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    again = plan_recipe(recipe, tokenizer_of(recipe), {})
+    assert pairs_jsonl(plan) == pairs_jsonl(again)
+    media = [row for row in plan.rows if row.media]
+    first_media = next(index for index, row in enumerate(plan.rows) if row.media)
+    assert all(row.media for row in plan.rows[first_media:]), "the media rows come after every text row"
+    assert len(media) == len(MEDIA_BUCKETS) + 2  # the captioned page and the mixed batch beside the buckets
+    sizes = []
+    for row in media:
+        pairs_row = row.to_pairs_row()
+        for entries in pairs_row["media"]["documents"]:
+            for entry in entries:
+                if entry.get("kind") != "image":
+                    continue
+                payload = __import__("base64").b64decode(entry["uri"].split(",", 1)[1])
+                with Image.open(__import__("io").BytesIO(payload)) as handle:
+                    assert handle.size == (entry["width"], entry["height"])
+                sizes.append((entry["width"], entry["height"]))
+    assert {(width, height) for _, width, height in MEDIA_BUCKETS} <= set(sizes)
+    for name, _, _ in MEDIA_BUCKETS:
+        assert plan.strata[f"media:image:{name}"]["present"] is True
+    _, text_plan = _plan()
+    assert all(not row.media or "suite" in str(row.media) for row in text_plan.rows)
+    assert text_plan.strata["media:image:tiny"] == {
+        "present": False,
+        "reason": "the recipe is text-only (recipe.input declares no image)",
+    }
+
+
+def test_the_video_clips_are_structurally_sound_avis() -> None:
+    """The media set's clips are MJPEG AVI containers (RIFF) a video loader reads: the chunks parse back
+    (avih frame count and size, strh rate and handler, one 00dc chunk per frame, an index), every frame
+    decodes with PIL at the declared size, and the product's own header probe reads the same facts."""
+    import base64
+    import io
+    import struct
+
+    from PIL import Image
+    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, video_entry
+
+    from rcp_ndcg.data.media import probe_video_header
+
+    for name, width, height in VIDEO_CLIPS:
+        entry = video_entry(name, width, height, num_frames=12)
+        assert entry["kind"] == "video" and entry["mime"] == "video/x-msvideo"
+        assert entry["width"] == width and entry["height"] == height
+        assert entry["num_frames"] == 12 and entry["fps"] == VIDEO_FPS
+        assert entry["duration_s"] == pytest.approx(12 / VIDEO_FPS)
+        payload = base64.b64decode(entry["uri"].split(",", 1)[1])
+        assert len(payload) == entry["num_bytes"]
+        header = probe_video_header(payload)
+        assert header is not None, "the product's header probe reads the generated container"
+        assert header.width == width and header.height == height
+        assert header.num_frames == 12 and header.fps == pytest.approx(VIDEO_FPS)
+        assert header.duration_s == pytest.approx(12 / VIDEO_FPS)
+        # The RIFF chunks parse back: 'AVI ' root, one hdrl list, one movi list whose 00dc chunks are the
+        # frames, and an idx1 index with one entry per frame.
+        mpos = payload.find(b"movi")
+        assert mpos > 0 and payload[8:12] == b"AVI "
+        list_size = struct.unpack_from("<I", payload, mpos - 4)[0]
+        at, end, frames = mpos + 4, mpos - 8 + 8 + list_size, []
+        while at + 8 <= end:
+            fourcc = payload[at : at + 4]
+            size = struct.unpack_from("<I", payload, at + 4)[0]
+            if fourcc == b"00dc":
+                frames.append(payload[at + 8 : at + 8 + size])
+            at += 8 + size + (size % 2)
+        assert len(frames) == 12, "one 00dc chunk per frame"
+        # The stream header a demuxer reads before decoding: the BITMAPINFOHEADER must be the 40 bytes its
+        # biSize declares (a truncated one makes OpenCV's AVI demuxer drop the first frame of the clip),
+        # and strh's rate/scale and length must state the declared fps and frame count.
+        spos = payload.find(b"strf")
+        assert spos > 0
+        bi_size = struct.unpack_from("<I", payload, spos + 8)[0]
+        strf_size = struct.unpack_from("<I", payload, spos + 4)[0]
+        assert bi_size == 40 and strf_size == 40, f"strf declares biSize {bi_size}, carries {strf_size} bytes"
+        hpos = payload.find(b"strh")
+        scale, rate, _start, length = struct.unpack_from("<4I", payload, hpos + 8 + 20)
+        assert rate / scale == pytest.approx(VIDEO_FPS) and length == 12
+        with Image.open(io.BytesIO(frames[0])) as handle:
+            assert handle.format == "JPEG" and handle.size == (width, height)
+        for frame in frames:  # every frame is a JPEG a loader decodes, at the container's declared size
+            with Image.open(io.BytesIO(frame)) as handle:
+                handle.load()
+                assert handle.size == (width, height)
+        assert payload.find(b"idx1") > mpos, "the index follows the frames"
+
+
+def test_the_video_rows_are_planned_for_a_video_recipe() -> None:
+    """A recipe with video input and a declared video policy plans a clip per size, alone and with text:
+    the container inline with its recorded facts, the generated frame count its declared policy samples
+    from, the strata present with the facts; a recipe without video input plans none and says why."""
+    from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, VIDEO_FRAMES, planned_media_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-video")
+    rows, strata = planned_media_rows(recipe)
+    video_rows = [
+        row
+        for row in rows
+        if any(entry.get("kind") == "video" for entries in row["media"]["documents"] for entry in entries)
+    ]
+    assert [row["strata"] for row in video_rows] == [
+        ["media:video", "media:video:icon"],
+        ["media:video", "media:video:page", "media:video+text"],
+    ], "a clip alone, then a clip with its text"
+    (icon_entry,) = video_rows[0]["media"]["documents"][0]
+    (page_entry,) = video_rows[1]["media"]["documents"][0]
+    assert icon_entry["width"] == 64 and page_entry["width"] == 224
+    for entry in (icon_entry, page_entry):
+        assert entry["num_frames"] == VIDEO_FRAMES, "the clip carries the frames its fps policy samples from"
+        assert (
+            entry["sha256"]
+            == __import__("hashlib").sha256(__import__("base64").b64decode(entry["uri"].split(",", 1)[1])).hexdigest()
+        )
+    assert str(video_rows[1]["documents"][0]), "the captioned clip carries its text"
+    assert strata["media:video"] == {
+        "present": True,
+        "clips": len(VIDEO_CLIPS),
+        "num_frames": VIDEO_FRAMES,
+        "fps": VIDEO_FPS,
+    }
+    assert strata["media:video:icon"] == {"present": True, "width": 64, "height": 64, "num_frames": VIDEO_FRAMES}
+    assert strata["media:video:page"] == {"present": True, "width": 224, "height": 224, "num_frames": VIDEO_FRAMES}
+    assert strata["media:video+text"]["present"] is True
+    again = planned_media_rows(recipe)
+    assert rows == again[0], "deterministic in MEDIA_SET_VERSION"
+
+
+def test_video_without_a_declared_policy_or_capacity_is_absent_with_the_reason() -> None:
+    """A recipe that accepts video but declares no video policy records no clip and the stratum says why;
+    a text-only recipe says the same of every media stratum."""
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-video")
+    no_policy = recipe.model_copy(update={"client": {**recipe.client, "video_policy": None}})
+    rows, strata = planned_media_rows(no_policy)
+    assert not any(
+        entry.get("kind") == "video" for row in rows for entries in row["media"]["documents"] for entry in entries
+    )
+    assert strata["media:video"]["present"] is False and "video_policy" in strata["media:video"]["reason"]
+
+
+def test_the_interleaved_and_mixed_rows_are_planned_per_capacity() -> None:
+    """Per the recipe's ``media_sides`` and ``max_images``: a query-image row when the query side may carry
+    media (and the recipe declares a query shape), a batch mixing a text-only and an image document, an
+    interleaved text-image-text-image document and a several-image document at ``max_images`` -- the last
+    two only when ``max_images`` admits them; the strata record each present or absent with the reason."""
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
+
+    recipe = load_recipe(RECIPES / "fixture-vl-video")  # max_images 2, media_sides default, query shape
+    rows, strata = planned_media_rows(recipe)
+    mixed = next(row for row in rows if "media:mixed_batch" in row["strata"])
+    assert len(mixed["documents"]) == 2
+    assert mixed["media"]["documents"][0] == [] and mixed["media"]["documents"][1], "a text-only and an image document"
+    query_row = next(row for row in rows if "media:query_image" in row["strata"])
+    assert query_row["media"]["query"] and not query_row["media"]["documents"][0]
+    interleaved = next(row for row in rows if "media:interleaved" in row["strata"])
+    kinds = [entry["kind"] for entry in interleaved["media"]["documents"][0]]
+    assert kinds == ["text", "image", "text", "image"], "two images interleaved with text, in order"
+    several = next(row for row in rows if "media:several_images" in row["strata"])
+    assert [entry["kind"] for entry in several["media"]["documents"][0]] == ["image", "image"]
+    assert strata["media:interleaved"] == {"present": True, "images": 2}
+    assert strata["media:several_images"] == {"present": True, "images": 2}
+    assert strata["media:query_image"] == {"present": True, "side": "query"}
+    assert strata["media:mixed_batch"] == {"present": True}
+    # A recipe whose max_images is 1 (fixture-vl-embed) plans the mixed batch but neither of the
+    # multi-image rows, and says why; its query-image row waits for a query shape.
+    single = load_recipe(RECIPES / "fixture-vl-embed")
+    rows, strata = planned_media_rows(single)
+    assert strata["media:interleaved"]["present"] is False
+    assert "max_images is 1" in strata["media:interleaved"]["reason"]
+    assert strata["media:several_images"]["present"] is False
+    assert strata["media:query_image"] == {
+        "present": False,
+        "reason": "the recipe declares no query shape (the client cannot encode a media query)",
+    }
+    assert strata["media:mixed_batch"] == {"present": True}
+    assert any("media:mixed_batch" in row["strata"] for row in rows)
+    # Documents-only media (media_sides) plans no query-image row either.
+    video = load_recipe(RECIPES / "fixture-vl-video")
+    documents_only = video.model_copy(update={"client": {**video.client, "media_sides": ("document",)}})
+    _, strata = planned_media_rows(documents_only)
+    assert strata["media:query_image"]["present"] is False
+    assert "media_sides" in strata["media:query_image"]["reason"]
+
+
+def test_the_corpus_plan_carries_the_media_edges() -> None:
+    """The media request set's protocol edges: more images than ``max_images`` in one request and an
+    undecodable image, each sent bare (the engine's refusal); a recipe without video input says why no clip."""
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    corpus = corpus_plan(recipe, tokenizer_of(recipe), [row.to_pairs_row() for row in plan.rows])
+    bare = {row["request_id"]: row["body"] for row in corpus.bare}
+    parts = bare["edge:too_many_images"]["messages"][0]["content"]
+    assert sum(part["type"] == "image_url" for part in parts) == recipe.client.get("max_images") + 1
+    corrupt = bare["edge:corrupt_image"]["messages"][0]["content"][0]["image_url"]["url"]
+    assert corrupt.startswith("data:image/png;base64,")
+    assert corpus.strata["media:request_set"]["present"] is True
+    assert corpus.strata["edge:too_many_images"]["present"] is True
+    assert corpus.strata["media:video"]["present"] is False and corpus.strata["media:video"]["reason"]
+    assert corpus.strata["edge:too_many_videos"]["present"] is False
+    assert corpus.strata["edge:too_many_videos"]["reason"]
+    assert corpus.strata["edge:corrupt_video"]["present"] is False
+    for name, record in corpus.strata.items():
+        assert record["present"] or record.get("reason"), name
+    assert "BLOCKED" not in json.dumps(corpus.strata)
+
+    # A recipe that takes video gets the container edges too: more clips than max_videos and an undecodable
+    # container, each sent bare -- the video half of the image edges.
+    video = load_recipe(RECIPES / "fixture-vl-video")
+    video_plan = plan_recipe(video, tokenizer_of(video), {})
+    video_corpus = corpus_plan(video, tokenizer_of(video), [row.to_pairs_row() for row in video_plan.rows])
+    video_bare = {row["request_id"]: row["body"] for row in video_corpus.bare}
+    parts = video_bare["edge:too_many_videos"]["messages"][0]["content"]
+    assert sum(part["type"] == "video_url" for part in parts) == video.client.get("max_videos") + 1
+    corrupt_video = video_bare["edge:corrupt_video"]["messages"][0]["content"][0]["video_url"]["url"]
+    assert corrupt_video.startswith("data:video/mp4;base64,")
+    assert video_corpus.strata["edge:too_many_videos"]["present"] is True
+    assert video_corpus.strata["edge:corrupt_video"]["present"] is True
+    for name, record in video_corpus.strata.items():
+        assert record["present"] or record.get("reason"), name
+
+
+def test_the_validation_runs_the_media_stage_on_the_media_rows(tmp_path: Path) -> None:
+    """The generator's validation runs stage 1 on the text rows (their positions kept) and the media stage
+    offline on the media rows; the manifest's validation records the media check."""
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    plan = plan_recipe(recipe, tokenizer_of(recipe), {})
+    validated, pruned = _validate_and_prune(recipe, plan, __import__("sys").executable)
+    assert validated.validation["media_check"] == "passed", validated.validation
+    assert len(validated.rows) + len(pruned) == len(plan.rows)
+    assert all(row.media for row in validated.rows[-len([r for r in plan.rows if r.media]) :])
+
+
+def test_the_offline_media_probe_bounds_the_engine_side_reply_rule(tmp_path: Path) -> None:
+    """The offline media probe bounds the engine-side REPLY rules (the fake answers a conversation with its
+    whitespace fallback, never the prepared media block's count) and the request the client sends is
+    byte-identical either way: the rules act on the reply only, so the stage keeps auditing what is sent,
+    while the engine check with an engine URL probes the shipped declarations."""
+    from typing import Any
+
+    from PIL import Image
+    from rcp_ndcg_core.content import Content
+    from rcp_ndcg_test.equivalence.media import _offline_reply_probe
+    from rcp_ndcg_test.equivalence.wire import role_client
+
+    from rcp_ndcg.errors import RcpNdcgError
+    from rcp_ndcg.inference.types import EncodeRole
+
+    image = tmp_path / "page.png"
+    buffer = __import__("io").BytesIO()
+    Image.new("RGB", (1, 1), (255, 0, 0)).save(buffer, format="PNG")
+    image.write_bytes(buffer.getvalue())
+    recipe = load_recipe(RECIPES / "fake-pool")
+    recipe = recipe.model_copy(
+        update={
+            "client": {
+                **recipe.client,
+                "document_skip_token_ids": [0],
+                "document_skip_engine_side": True,
+                "media_keep_token_ids": [0],
+            }
+        }
+    )
+    bounded = _offline_reply_probe(recipe)
+    assert "document_skip_engine_side" not in bounded.client
+    assert bounded.client["media_keep_token_ids"] == []
+    assert bounded.client["document_skip_token_ids"] == [0], "the client-side rule stays"
+
+    def request_body(target: Any) -> dict[str, Any]:
+        client, capture = role_client(target, None)
+        try:
+            client.encode([Content.from_image(image.as_uri())], EncodeRole.DOCUMENT)
+        except RcpNdcgError:
+            pass  # the unbounded client refuses the fake's fallback reply; the request is what this reads
+        return capture.exchanges[0]["request_body"]
+
+    assert request_body(recipe) == request_body(bounded)
+
+
+def test_the_validation_prunes_the_red_text_row_where_a_media_row_precedes_it(tmp_path: Path) -> None:
+    """Stage 1 reports a red row by its position among the TEXT rows; the validation maps it back to the plan.
+    With a media row first, a red text row's stage-1 index is one less than its plan index: the over-budget
+    row is pruned, the media row and the good text row are kept (without the remap, the good row would go)."""
+    import sys
+
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    recipe = load_recipe(RECIPES / "fixture-vl-embed")
+    media, _ = planned_media_rows(recipe)
+    first = media[0]
+    rows = [
+        PlannedRow(query=first["query"], documents=tuple(first["documents"]), media=first["media"], strata=("media",)),
+        PlannedRow(query="capital of france", documents=("paris is the capital",), strata=("good",)),
+        PlannedRow(query="a long one", documents=(" ".join(["cities and rivers in europe"] * 40),), strata=("long",)),
+    ]
+    plan = RecipePlan(recipe_id=recipe.id, rows=rows)
+    validated, pruned = _validate_and_prune(recipe, plan, sys.executable)
+    assert [row.strata for row in validated.rows] == [("media",), ("good",)]
+    assert [entry["strata"] for entry in pruned] == [["long"]]
+
+
+def test_an_over_length_probe_failure_is_a_recipe_blocker_not_an_indexerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """g-observe-4: stage 1's probe positions run past the plan's text rows (over-length samples,
+    media-template rows); mapping one through ``text_positions`` raised IndexError, which ``main`` recorded
+    as ``generation failed: IndexError`` instead of naming the anchor blocker."""
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    _, plan = _plan()
+    monkeypatch.setattr(
+        "rcp_ndcg_test.equivalence.stages.stage1_prompts",
+        lambda *args, **kwargs: {  # noqa: ARG005
+            "passed": False,
+            "anchor_check": {
+                "passed": False,
+                "failures": [{"row": len(plan.rows), "shape": "document", "check": "markers"}],
+            },
+            "render_check": {"passed": True},
+        },
+    )
+    monkeypatch.setattr("rcp_ndcg_test.equivalence.media.stage_media", lambda *args, **kwargs: None)  # noqa: ARG005
+    validated, pruned = _validate_and_prune(recipe, plan, "python")
+    assert not pruned
+    assert validated.validation["anchor_check"].startswith("blocked: ")
+    assert "over-length" in validated.validation["anchor_check"]
+
+
+def test_a_reference_row_note_maps_through_the_origins_not_the_written_index() -> None:
+    """g-observe-4: a render-check note carries the reference's WRITTEN row dict; an embed reference writes
+    one row per document, so its ``index`` is not a pairs-row index and pruning it hit an unrelated row.
+    The stage-1 document's origin list maps it back to the pairs row."""
+    from rcp_ndcg_test.observe.requests import _red_row_indexes
+
+    document = {
+        "render_check": {
+            "passed": False,
+            "origins": [[0, 0], [0, 1], [1, 0]],
+            "failures": [
+                {
+                    "row": {"index": 2, "text": "x"},
+                    "note": "the reference rendered more texts than the client shipped for the row",
+                }
+            ],
+        }
+    }
+    red, drift = _red_row_indexes(document)
+    assert [index for index, _ in red] == [1]
+    assert not drift
+
+
+def test_a_pruned_stratum_is_recorded_absent_with_the_pruning_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """g-observe-2: ``_validate_and_prune`` carried the pre-pruning ``plan.strata`` into every rebuilt plan,
+    so a stratum whose every row was pruned still said ``present: true`` (the committed manifest had 13
+    such strata in 7 recipes).  Presence is recomputed from the kept rows now."""
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    _, plan = _plan()
+    target = next(index for index, row in enumerate(plan.rows) if "length:tiny" in row.strata)
+    calls = {"n": 0}
+
+    def stage1(*args: object, **kwargs: object) -> dict:
+        calls["n"] += 1
+        if calls["n"] > 1:
+            return {"passed": True, "anchor_check": {"passed": True}, "render_check": {"passed": True}}
+        return {
+            "passed": False,
+            "anchor_check": {
+                "passed": False,
+                "failures": [{"row": target, "shape": "document", "check": "markers"}],
+            },
+            "render_check": {"passed": True},
+        }
+
+    monkeypatch.setattr("rcp_ndcg_test.equivalence.stages.stage1_prompts", stage1)
+    monkeypatch.setattr("rcp_ndcg_test.equivalence.media.stage_media", lambda *args, **kwargs: None)  # noqa: ARG005
+    validated, pruned = _validate_and_prune(recipe, plan, "python")
+    assert [entry["strata"] for entry in pruned] == [list(plan.rows[target].strata)]
+    tiny = validated.strata["length:tiny"]
+    assert tiny["present"] is False
+    assert "pruned by stage-1 validation" in tiny["reason"]
+
+
+def test_corpus_plan_bounds_the_uncut_spelling_probe_by_the_vocab_size() -> None:
+    """g-observe-3: ``corpus_plan`` accepted ``embeddable_vocab_size`` but never applied it, so the uncut
+    special-token probe could send a spelling the checkpoint's embedding has no row for (the E2 round 4
+    engine kill).  The same bound ``plan_recipe`` applies must apply here, and the omission is recorded."""
+    from rcp_ndcg_test.observe.requests import corpus_plan
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    real = tokenizer_of(recipe)
+
+    class FakeToken:
+        def __init__(self, content: str) -> None:
+            self.content = content
+
+    class BoundedBackend:
+        def get_added_tokens_decoder(self) -> dict[int, FakeToken]:
+            return {9: FakeToken("<kept>"), 10: FakeToken("<out-of-vocab>")}
+
+    class Proxied:
+        backend = BoundedBackend()
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(real, name)
+
+    plan = corpus_plan(recipe, Proxied(), [], embeddable_vocab_size=10)
+    uncut = [row for row in plan.bare if row["request_id"] == "content:special_token_spellings:uncut"]
+    assert uncut, plan.bare
+    body = json.dumps(uncut[0]["body"])
+    assert "<out-of-vocab>" not in body, body
+    assert "<kept>" in body, body
+    stratum = plan.strata["content:special_token_spellings:uncut"]
+    assert stratum["present"] is True
+    assert stratum["omitted_added_tokens"] == [{"content": "<out-of-vocab>", "id": 10}]
+
+
+def test_a_failed_generation_removes_the_previous_pairs_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """g-observe-5: a failed pairs generation kept the previous ``<recipe>.jsonl`` on disk (only the
+    'pruned every row' path unlinked), which the wave then read by existence while the manifest listed the
+    recipe as skipped -- a stale plan with no manifest entry driving equivalence and the corpus."""
+    from rcp_ndcg_test.observe import requests as generator
+
+    out = tmp_path / "pairs"
+    out.mkdir()
+    (out / "fixture-embed.jsonl").write_text('{"query": "stale", "documents": ["stale"]}\n', encoding="utf-8")
+    monkeypatch.setattr("rcp_ndcg_test.observe.sources.load_corpora", lambda *args, **kwargs: [])
+
+    def boom(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("plan failed")
+
+    monkeypatch.setattr(generator, "plan_recipe", boom)
+    argv = ["--recipes-root", str(RECIPES), "--recipes", "fixture-embed", "--out", str(out), "--suites", "nanobeir"]
+    assert generator.main(argv) == 1
+    assert not (out / "fixture-embed.jsonl").exists()
+    document = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    assert document["skipped_recipes"][0]["recipe"] == "fixture-embed"
+
+
+def test_main_cancels_the_stall_watchdog_before_it_returns(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """g-ci-1: ``main`` arms the operator's repeating faulthandler stall watchdog; it must cancel it
+    before returning.  This suite calls ``main`` in-process, and a leaked watchdog walks every thread's
+    frames with no GIL on every 60 s tick: at a racing frame that SIGSEGVs the interpreter silently
+    (the CI crash at ~95% of the suite)."""
+    import types
+
+    from rcp_ndcg_test.observe import requests as generator
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        generator,
+        "faulthandler",
+        types.SimpleNamespace(
+            dump_traceback_later=lambda *args, **kwargs: calls.append("arm"),
+            cancel_dump_traceback_later=lambda: calls.append("cancel"),
+        ),
+    )
+    monkeypatch.setattr("rcp_ndcg_test.observe.sources.load_corpora", lambda *args, **kwargs: [])
+    out = tmp_path / "pairs"
+    argv = ["--recipes-root", str(RECIPES), "--recipes", "fixture-embed", "--out", str(out), "--suites", "nanobeir"]
+    assert generator.main(argv) == 0
+    assert calls == ["arm", "cancel"], calls
+    with pytest.raises(SystemExit):
+        generator.main(["--help"])
+    assert calls == ["arm", "cancel", "arm", "cancel"], calls
+
+
+def test_validate_and_prune_accepts_a_multi_variant_family_variant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A variant of a multi-variant family validates: the probe uses the RESOLVED variant it was given.
+
+    ``_validate_and_prune`` used to re-resolve the recipe from ``recipe._dir`` with ``load_recipe``;
+    with decision 34 a family directory holds several variants and ``load_recipe(directory)`` refuses
+    it, so regenerating the pairs of any multi-variant family failed. The probe needs no re-resolution:
+    the caller already holds the resolved variant.
+    """
+    from rcp_ndcg_test.observe.requests import _validate_and_prune
+
+    recipe = resolve_recipe("qwen3-reranker-0.6b")
+    assert len(load_family(recipe._dir).variants) > 1  # the property this test needs
+    plan = RecipePlan(
+        recipe_id=recipe.id,
+        rows=[PlannedRow(query="capital of france", documents=("paris is the capital",), strata=("good",))],
+    )
+    monkeypatch.setattr(
+        "rcp_ndcg_test.equivalence.stages.stage1_prompts",
+        lambda *args, **kwargs: {  # noqa: ARG005
+            "passed": True,
+            "anchor_check": {"passed": True},
+            "render_check": {"passed": True},
+        },
+    )
+    monkeypatch.setattr("rcp_ndcg_test.equivalence.media.stage_media", lambda *args, **kwargs: None)  # noqa: ARG005
+    validated, pruned = _validate_and_prune(recipe, plan, "python")
+    assert not pruned
+    assert [row.strata for row in validated.rows] == [("good",)]
+    assert validated.validation["render_check"] == "passed"

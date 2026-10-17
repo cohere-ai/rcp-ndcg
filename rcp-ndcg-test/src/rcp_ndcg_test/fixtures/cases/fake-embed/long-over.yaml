@@ -1,0 +1,31 @@
+id: fake-embed/long-over
+recipe: fake-embed
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: long_over
+  batch: single
+inputs:
+  queries:
+  - id: q1
+    text: anchors must survive the cut
+  documents:
+  - id: d1
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+      budgetpad budgetpad budgetpad budgetpad budgetpad
+  - id: d2
+    text: a short companion document
+expected:
+  kind: similarity_matrix
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+  values:
+  - - 0.11674993
+    - 0.55263293
+notes: The first document is the word 'budgetpad' joined by single spaces, 15 repeats, measured 135 tokens
+  (over max_tokens 128); the product's fit cuts the span and re-attaches the template's [END] anchor.
+  Values are the shipped fake's answers for the cut render.

@@ -1,0 +1,53 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://YOUR-BUCKET/observations/vllm-0.31.0/octen-embedding-8b",
+    "manifest_file_sha256": "0fcdb3c34b8156188b15f536bdabd7045c909a59365a244e2615c28ed747cbc9",
+    "manifest_sha256": "532bce96dea5f0685c78af77fcedb5610bd1c6ec2f4aad5dc14eca6b79fe7b74"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:dimensions=32",
+      "wire:encoding_format=base64"
+    ],
+    "rows": 47,
+    "of_rows": 634
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "180f948513940a5786c34c926c1e68972cdd03766f474ea7c5d4c70fb7878130",
+      "bytes": 153741
+    },
+    "records.jsonl.gz": {
+      "sha256": "74b0813c550761129e6825afe603f89bbf3e9d10806687cd11433dca1562666b",
+      "bytes": 2070716
+    }
+  }
+}

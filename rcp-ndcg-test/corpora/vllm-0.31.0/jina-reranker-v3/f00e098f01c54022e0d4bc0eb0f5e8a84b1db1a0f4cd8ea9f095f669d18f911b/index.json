@@ -1,0 +1,57 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://YOUR-BUCKET/observations/vllm-0.31.0/jina-reranker-v3",
+    "manifest_file_sha256": "361724e592979e70ca8654e13791804f9ccbe9891eb6063110bf8c027abea3cb",
+    "manifest_sha256": "a91fa00d72d6ca91682dbd1cdfe6be6b480c976880421626dbc2aa0279ae4955"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:top_n_over_documents",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:instruction=on",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=false",
+      "wire:use_activation=true"
+    ],
+    "rows": 397,
+    "of_rows": 397
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "18036c1cbcb7ccb39724d511ea63481080e83f866d522bf59cc899629f10345b",
+      "bytes": 75230
+    },
+    "records.jsonl.gz": {
+      "sha256": "a1eaae9b9575ac9c8d7aded7c1d1b352a46f50b99e6f5cd6400967501e937a33",
+      "bytes": 446569
+    }
+  }
+}

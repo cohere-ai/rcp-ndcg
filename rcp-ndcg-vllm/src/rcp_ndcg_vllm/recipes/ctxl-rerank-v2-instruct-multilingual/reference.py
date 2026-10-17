@@ -1,0 +1,394 @@
+"""The ctxl family's one reference (the paper's exact in-process scorer, per variant).
+
+Derived with unchanged behaviour from the paper's exact in-process implementation,
+``experiments/paper/rerankers/reference/contextual.py`` (``ContextualRerank``, itself moved
+unchanged from the former ``rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py`` when the
+package stopped carrying in-process models; the paper's numbers rest on it). The paper pipeline
+loaded it with ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp_ndcg.retrieval.cross_encoder``),
+the config's per-model ``batch_size`` (:data:`BATCH_SIZES`, 32/16/8 — the original in-process
+forms of ``experiments/paper/rerankers/ctxl_rerank_{1b,2b,6b}.yaml``), the engine's SERVED dtype
+(the pipeline's ``DTYPE`` was bfloat16; E2 round 4's like-for-like decision makes the reference
+compute at ``serve.dtype``, so the 1b/2b load float32 and the 6b keeps bfloat16) and the config's
+revision (the paper configs pin none; the family-expanded recipe pins each variant's commit, read
+from ``--recipe``, so a moved default checkpoint cannot silently break equivalence).
+
+The prompt is the paper's two-line frame (document before query, the " ??" tail the score reads
+out from)::
+
+    Check whether a given document contains information helpful to answer the query.
+    <Document> {document}
+    <Query> {query} ??
+
+The score is the raw logit of vocabulary position 0 at the final position (left-padded, the last
+real token's), computed the way the served engine computes it: the final hidden state cast to
+float32 and projected onto the score row in float32 (``lm_head.weight[0]``), which is vLLM's
+pooling head construction -- the head defaults to fp32 for pooling runners and the recipe no
+longer overrides ``head_dtype`` (``vllm/config/model.py:2047-2057`` at the v0.31.0 tag). The paper
+pipeline's own ``logits[:, -1, 0]`` is the same quantity with the bf16 head's rounding; the
+like-for-like comparison the owner's precision rule asks for reads both sides through the engine's
+fp32 head at the engine's served dtype (E2 r1: 1b 0.2482, 2b 0.1337 against the 0.05 logit bound
+with both heads bf16; E2 round 4 reproduced the residual as the two bf16 attention-kernel stacks
+-- the reference's own CPU-vs-GPU spread on the same rows is 0.21/0.62 -- so those two sizes now
+serve float32 and the reference loads it; the recipe notes record the decisions). Whole-prompt
+right truncation at
+8192 tokens is the paper's own behaviour (``truncation=True, max_length=8192`` on the whole
+prompt): over the cap it drops the trailing " ??" anchor and the query behind it — the recipe
+declares that as ``reference.known_deviations: [anchor_drop_over_cap]`` instead of copying it
+into the served path, whose client-side cut reserves every fixed frame token and cuts only the
+content spans (the product's ``fit``). Under the cap AND within the declared query share the two
+paths render byte-identical prompts (a query over the share is a declared divergence row: the wire
+settles it at the share once per call, the paper keeps it whole).
+
+Declared interface behaviours, neither a scoring change:
+
+- the pairs file's ``instruction`` is ignored: the recipe declares ``instruction: none`` (the
+  paper's served-path mode) and the paper's in-process path itself never set an instruction (its
+  ``instruction=None`` behaviour) — no side folds ``Task: ...\\nQuery: ...``, and the bare query is
+  what both sides use;
+- ``--mode render`` fills the harness's rerank span format (``{"index", "shape": "pair", "query",
+  "documents"}``) with the spans the paper's prompt builder receives: the raw query and the raw
+  documents, uncut -- the paper cuts only at encode (the whole-prompt right truncation in
+  ``_forward_scores``).  Under the cap and within the query share these are the spans the served
+  wire carries, byte for byte; over the cap they differ by declaration (``anchor_drop_over_cap``,
+  stage 1's non-gating table), and a query over the 4096-token share is a declared divergence row
+  (the merged rerank client settles the shared query once per call and ships it at the share
+  whenever it exceeds it; the paper has no query share).  The reference never reproduces
+  the product client's cut.
+
+Run as the harness's reference subprocess (never imported by the harness, which holds no torch)::
+
+    reference.py --mode <render|score> --pairs <file> --out <file> --tokenizer <spec> \
+        --recipe <resolved-recipe.json> [--device <d>]
+
+``--recipe`` is the resolved recipe the harness loaded (one family reference runs
+every variant): the variant's ``id`` selects its paper batch size (:data:`BATCH_SIZES` — a variant
+outside the table is refused, never defaulted) and its ``model``/``revision`` pin the checkpoint
+the score mode loads.  ``render`` writes ``{"rows": [{"index", "shape", "query", "documents"}]}``;
+``score`` writes ``{"rows": [{"index", "scores": [...]}]}`` on the recipe's ``score_scale: logit``
+(one raw logit per document).
+
+Reference environment (``reference.in``/``reference.lock`` beside this file, documented not installed):
+transformers 4.57.6, accelerate (the paper's former ``[local]``
+extra pins, from ``experiments/paper/rerankers/reference/requirements.txt``), on the image's torch;
+flash-attn is dropped -- the
+reference declares ``attn_implementation: sdpa``. The score head is fp32 (see above): the paper's
+bf16 logit rounding is not reproduced, because the comparison's referent is the served engine's fp32
+pooling head (2026-10-10 owner decision, the like-for-like rule). ``render`` is pure
+string work (no tokenizer, no weights); ``score`` needs the weights, the transformers pin and the
+device the harness passes. No rcp-ndcg import: the reference environment is the paper's, not the
+harness's.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+
+#: The paper budget: ``MAX_SEQ_LENGTH``, the whole prompt's right-truncation length at encode (the
+#: recipes' ``client.max_tokens``; their ``query_max_tokens`` 4096 is the served path's share,
+#: which the paper's in-process path never applied).
+MAX_SEQ_LEN = 8192
+
+#: The paper's per-model batch sizes and the shared padded-area budget (``ContextualRerank.__init__``;
+#: the area budget counts *characters*, exactly as the paper code did). A variant outside the table
+#: is refused, never defaulted: the batch size is the paper config's own.
+BATCH_SIZES = {
+    "ctxl-rerank-v2-instruct-multilingual-1b": 32,
+    "ctxl-rerank-v2-instruct-multilingual-2b": 16,
+    "ctxl-rerank-v2-instruct-multilingual-6b": 8,
+}
+BATCH_SIZE_TOKENS = 15_000
+
+#: The score's vocabulary position at the final position (``logits[:, -1, 0]``: vocabulary
+#: position 0 is the checkpoints' relevance logit, ``1_LogitScore/config.json`` true_token_id 0).
+VOCAB_POSITION = 0
+
+#: The declared serving dtypes this reference can load (``serve.dtype`` -> the ``torch`` attribute
+#: name). The mapping is resolved inside ``load`` because the module never imports torch at import
+#: time (render mode is pure string work and runs in any interpreter).
+_DTYPE_NAMES: dict[str, str] = {"bfloat16": "bfloat16", "float32": "float32", "float16": "float16"}
+
+#: The fixed frame, exactly the served template's fixed segments (and the paper's
+#: ``_format_prompts``). The tail is the anchor: the model reads its score at the final
+#: position, so the " ??" tokens must survive every cut (the served cut reserves them;
+#: the paper's whole-prompt truncation does not — the declared deviation).
+HEAD = "Check whether a given document contains information helpful to answer the query.\n<Document> "
+MID = "\n<Query> "
+TAIL = " ??"
+
+
+def _served_dtype(recipe: dict[str, Any]) -> str:
+    """The dtype the engine serves this variant at: ``serve.dtype`` of the resolved recipe.
+
+    One rule for the family's reference: it computes at the engine's dtype (the owner's like-for-like
+    precision rule; the schema default is ``bfloat16``). The 1b/2b declare ``float32`` (E2 round 4:
+    the bf16 attention-kernel stacks diverge further than the logit gate on their small logits), the
+    6b keeps ``bfloat16`` (it verified).
+    """
+    dtype = str((recipe.get("serve") or {}).get("dtype") or "bfloat16")
+    if dtype not in _DTYPE_NAMES:
+        raise SystemExit(f"serve.dtype {dtype!r} is not a dtype this reference can load ({', '.join(_DTYPE_NAMES)})")
+    return dtype
+
+
+def _tokenizer_dir(spec: str) -> str:
+    """The tokenizer location the ``--tokenizer`` spec names, in the form transformers loads.
+
+    The spec is the recipe's ``client.tokenizer``: a Hub id with an optional ``@revision``, a
+    directory of tokenizer files, or a ``tokenizer.json`` path (its directory is used). A Hub id
+    is returned WITHOUT its ``@revision`` — the revision travels separately (the constructor's
+    ``revision`` argument); ``repo@revision`` is not a repo id transformers can resolve.
+    """
+    candidate = Path(spec).expanduser()
+    if candidate.is_file():
+        return str(candidate.parent)
+    if candidate.is_dir():
+        return str(candidate)
+    repo, _, _ = spec.partition("@")
+    return repo
+
+
+class PairTokenizer:
+    """The paper's tokenizer for ``score``: transformers' ``AutoTokenizer`` at the pinned revision.
+
+    Loaded with ``padding_side="left"`` exactly as the paper class's ``__init__``; padding applies to
+    ``score`` batching only (``_forward_scores``).  Needs the reference environment (transformers).
+    """
+
+    def __init__(self, spec: str, *, revision: str) -> None:
+        from transformers import AutoTokenizer
+
+        self._fast = AutoTokenizer.from_pretrained(_tokenizer_dir(spec), padding_side="left", revision=revision)
+        # The paper's fallback (ContextualRerank.__init__); inert for these checkpoints, whose
+        # tokenizer_config.json already carries pad_token "+".
+        if self._fast.pad_token is None:
+            self._fast.pad_token = self._fast.eos_token
+
+
+class CtxlRerankReference:
+    """The paper's in-process scoring recipe for ctxl-rerank-v2, as ``load``/``render``/``score``.
+
+    Behaviour is the paper's (``experiments/paper/rerankers/reference/contextual.py``,
+    ``ContextualRerank``): the same prompt frame, padding side (left), whole-prompt right
+    truncation at ``MAX_SEQ_LEN``, dtype (the engine's served dtype, :func:`_served_dtype` -- float32
+    for 1b/2b, bfloat16 for 6b), the length-descending
+    character-batch permutation with the per-model document cap and the 15,000-character
+    padded-area budget, and the OOM back-off that splits a batch in half. The only changes from
+    that module are the harness's subprocess interface (``--mode`` CLI, pairs file in, JSON out),
+    the pinned revisions (the resolved recipe's, per variant) and the fp32 score head (the paper
+    reads its bf16 ``logits[:, -1, 0]``; this reference projects the final hidden state onto the
+    score row in fp32, the served engine's pooling-head construction -- see the module docstring);
+    the row's instruction is ignored (``instruction: none``, the paper's own path).
+    """
+
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        tokenizer_spec: str,
+        batch_size: int,
+        max_seq_len: int = MAX_SEQ_LEN,
+        batch_size_tokens: int = BATCH_SIZE_TOKENS,
+        dtype: str = "bfloat16",
+        revision: str,
+        attn_implementation: str | None = None,
+    ) -> None:
+        # padding_side="left", exactly the paper class's __init__ (see PairTokenizer).
+        self.tokenizer = PairTokenizer(tokenizer_spec, revision=revision)
+        self.model_name = model_name
+        self.revision = revision
+        self.max_length = max_seq_len
+        self.batch_size = batch_size
+        self.batch_size_tokens = batch_size_tokens
+        self.dtype = dtype
+        self.attn_implementation = attn_implementation
+        self.model: Any = None
+        self.device = "cpu"
+
+    # -- the harness's interface ------------------------------------------------------------
+    def load(self, device: str) -> CtxlRerankReference:
+        """Load the checkpoint (first call) and move it to ``device`` (e.g. ``cuda:0`` or ``cpu``).
+
+        The weights load here, in the reference process: the harness imports no torch. dtype is the
+        engine's SERVED dtype (``serve.dtype`` of the resolved recipe, :func:`_served_dtype`): the
+        owner's like-for-like precision rule compares the two sides at one dtype, and E2 round 4's
+        measurements showed the bf16 attention-kernel stacks diverging further than the logit gate
+        on the 1b/2b's small logits, so those two sizes serve float32 and this reference loads
+        float32 with them (the 6b keeps bfloat16). The attention implementation is the recipe's
+        DECLARED parameter (``reference.attn_implementation``, ``sdpa`` here), never a silent
+        torch.cuda.is_available() choice: the stock reference environment carries the image's torch
+        and no flash-attn, so the paper's flash-attention-2 path cannot load there (GPU-E1). The
+        score head is the engine's fp32 one (``_forward_scores``; see the family notes).
+        """
+        import torch
+        from transformers import AutoModelForCausalLM
+
+        if self.model is None:
+            model_kwargs: dict[str, Any] = {
+                "dtype": getattr(torch, _DTYPE_NAMES[self.dtype]),
+                "revision": self.revision,
+            }
+            if self.attn_implementation is not None:
+                # Only a DECLARED implementation travels: an unset one leaves the choice to transformers
+                # (the config's own default), never a value this reference invented.
+                model_kwargs["attn_implementation"] = self.attn_implementation
+            self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
+            self.model.eval()
+        self.model.to(device)
+        self.device = device
+        return self
+
+    def prompt_text(self, query: str, doc: str) -> str:
+        """The exact prompt string for one pair (the paper's ``_format_prompts`` row).
+
+        The paper's own instruction slot is empty (``ContextualRerank.instruction`` is None on the
+        paper path, and the recipe declares ``instruction: none``): the bare query rides here.
+        """
+        return f"{HEAD}{doc}{MID}{query}{TAIL}"
+
+    def score(self, query: str, docs: list[str], instruction: str | None = None) -> list[float]:
+        """The raw relevance logit per document, aligned with ``docs`` (the paper's ``predict``).
+
+        The instruction is ignored (the recipe declares instruction: none and the paper path
+        received none), then the paper's batching runs unchanged: length-descending permutation,
+        the padded-area character budget with the per-model document cap, and the OOM back-off.
+        Batching affects throughput only, never the per-document score.
+        """
+        del instruction
+        prompts = [self.prompt_text(query, doc) for doc in docs]
+
+        permutation = sorted(range(len(prompts)), key=lambda i: -len(prompts[i]))
+        sorted_prompts = [prompts[i] for i in permutation]
+
+        batches: list[list[str]] = []
+        max_len = 0
+        for text in sorted_prompts:
+            text_len = len(text)
+            over_tokens = bool(batches) and (len(batches[-1]) + 1) * max(max_len, text_len) > self.batch_size_tokens
+            over_count = bool(batches) and len(batches[-1]) >= self.batch_size
+            if not batches or over_tokens or over_count:
+                batches.append([])
+                max_len = 0
+            batches[-1].append(text)
+            max_len = max(max_len, text_len)
+
+        sorted_scores: list[float] = []
+        for batch in batches:
+            sorted_scores.extend(self._forward_scores(batch))
+
+        result = [0.0] * len(docs)
+        for orig_idx, score in zip(permutation, sorted_scores, strict=True):
+            result[orig_idx] = score
+        return result
+
+    # -- the paper's mechanics (unchanged) ----------------------------------------------------
+    def _forward_scores(self, batch: list[str]) -> list[float]:
+        """One batch's raw logits at the final position, vocabulary position 0 (the paper's quantity).
+
+        Whole-prompt right truncation at ``MAX_SEQ_LEN`` (the paper's ``truncation=True,
+        max_length=8192``: over the cap the tail — the " ??" anchor and the query behind it — is
+        dropped; the recipe declares this as ``anchor_drop_over_cap``), left padding to the
+        batch's longest sequence, and the fp32 score head: the final hidden state is cast to float32
+        and projected onto the score row (``lm_head.weight[VOCAB_POSITION]``), also float32 -- the
+        engine's own pooling head computation (``serve.hf_overrides`` carries no ``head_dtype``, so
+        vLLM's pooling default fp32 applies). The paper's ``logits[:, -1, 0]`` is the same quantity
+        with its bf16 head rounding; see the module docstring.
+        """
+        import torch
+
+        try:
+            with torch.no_grad():
+                enc = self.tokenizer._fast(
+                    batch,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=self.max_length,
+                )
+                input_ids = enc["input_ids"].to(self.device)
+                attention_mask = enc["attention_mask"].to(self.device)
+                out = self.model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
+                # Left-padded, so the final position is the last real token for every row; vocab
+                # index 0 is ctxl's relevance logit (the paper's logits[:, -1, 0]). The head is
+                # computed in fp32, exactly as the engine's fp32 pooling head does.
+                hidden = out.hidden_states[-1][:, -1].float()
+                weight = self.model.lm_head.weight[VOCAB_POSITION].float()
+                return (hidden @ weight).tolist()
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            if len(batch) == 1:
+                raise
+            mid = len(batch) // 2
+            return self._forward_scores(batch[:mid]) + self._forward_scores(batch[mid:])
+
+
+def paper_spans(row: dict[str, Any]) -> dict[str, Any]:
+    """One pairs row in the harness's rerank span format: the spans the paper's prompt builder gets.
+
+    The raw query and the raw documents, uncut (the paper cuts only at encode); the row's instruction
+    is ignored (``instruction: none``)."""
+    return {"query": str(row["query"]), "documents": [str(document) for document in row["documents"]]}
+
+
+def device_name(device: str) -> str:
+    """The device string the model is moved to: the harness's ``--device`` (``cpu`` default)."""
+    return device or "cpu"
+
+
+def main() -> int:
+    """The harness's reference CLI: ``--mode render|score`` over a pairs JSONL file."""
+    parser = argparse.ArgumentParser(description="the ctxl-rerank-v2-instruct-multilingual family reference")
+    parser.add_argument("--mode", required=True, choices=["render", "score"])
+    parser.add_argument("--pairs", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--tokenizer", required=True)
+    parser.add_argument(
+        "--recipe",
+        required=True,
+        help="the resolved recipe JSON the harness passed (the variant's id, model and revision)",
+    )
+    parser.add_argument("--device", default="cpu")
+    args = parser.parse_args()
+
+    recipe = json.loads(Path(args.recipe).read_text(encoding="utf-8"))
+    variant_id = recipe["id"]
+    if variant_id not in BATCH_SIZES:
+        raise SystemExit(
+            f"recipe {variant_id!r} is not in this family reference's BATCH_SIZES "
+            f"({', '.join(sorted(BATCH_SIZES))}): add the variant's paper batch size deliberately, never a default"
+        )
+    rows_in = [json.loads(line) for line in Path(args.pairs).read_text(encoding="utf-8").splitlines() if line.strip()]
+    if args.mode == "render":
+        # The harness's rerank span format, filled with the paper's own spans (uncut; see paper_spans).
+        # Pure string work: no tokenizer, no weights, no transformers import (stage 1 runs on CPU).
+        rows = [
+            {"index": index, "shape": str(row.get("shape") or "pair"), **paper_spans(row)}
+            for index, row in enumerate(rows_in)
+        ]
+    else:
+        reference = CtxlRerankReference(
+            recipe["model"],
+            tokenizer_spec=args.tokenizer,
+            batch_size=BATCH_SIZES[variant_id],
+            revision=recipe["revision"],
+            dtype=_served_dtype(recipe),
+            attn_implementation=(recipe.get("reference") or {}).get("attn_implementation"),
+        )
+        reference.load(device_name(args.device))
+        rows = [
+            {
+                "index": index,
+                "scores": reference.score(str(row["query"]), list(row["documents"])),
+            }
+            for index, row in enumerate(rows_in)
+        ]
+    with open(args.out, "w", encoding="utf-8") as handle:
+        json.dump({"rows": rows}, handle, indent=1)
+        handle.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

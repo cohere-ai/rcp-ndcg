@@ -1,0 +1,350 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "version": "0.31.0",
+    "image_digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-Embedding-0.6B",
+      "--revision",
+      "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+      "--served-model-name",
+      "qwen3-embedding-0.6b",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8101",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "32768",
+      "--hf-overrides",
+      "{\"is_matryoshka\": true}",
+      "--pooler-config",
+      "{}"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+      "VLLM_PORT": "9101",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-10-14T11:08:31+00:00",
+    "ready_wait_s": 78.752,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.31.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "redacted": [
+      {
+        "field_path": "engine.env",
+        "removed": "312 Kubernetes Service-link variables for 39 Services",
+        "reason": "the pod's Kubernetes Service links ride under the same VLLM_ prefix as the engine's own knobs and name internal Services and addresses, which the tracked tree may not carry (AGENTS.md: public names only)",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "fb6affeac81c52fed08f771f6cb00ce073a8a63f25fbac74c0fc61caf6ea36f7",
+        "from_manifest_file_sha256": "ddb5099f1c99457c4067b8e97f73e4f550d5bb193a651b301002b5ea3867b5a6"
+      }
+    ]
+  },
+  "model": {
+    "id": "Qwen/Qwen3-Embedding-0.6B",
+    "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+    "weights": {
+      "model.safetensors": "f26bc1cc8f0165387549ed9f0c32730b050c188d06acd72375c2bb7c2ab1381d"
+    },
+    "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+    "template_sha256": {
+      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
+    },
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "is_matryoshka": true
+    },
+    "pooler_config": {},
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "qwen3-embedding-0.6b",
+    "shipped": false,
+    "file_sha256": "f8021bca86cd4c78b9cb0ce268cc9ad9ea168eb5978f3384141aef536682ba47",
+    "behaviour_fingerprint": "3d0c1f1f3c0f7e33d0d4122c1ab007794d5a632a2804d4f7c95c170b0c793800",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Qwen/Qwen3-Embedding-0.6B",
+      "revision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"is_matryoshka\":true}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "32768",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "absent",
+      "tokenizer_sha256": "def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a",
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
+      "client.empty_doc": "send",
+      "client.instruction": "none",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_prompt": "",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Instruct: Given a web search query, retrieve relevant passages that answer the query\\nQuery:\"},{\"content\":\"query\"}]}"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 2,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 3,
+    "record_schema": 1,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-10-14T11:10:35+00:00",
+    "finished": "2026-10-14T11:11:47+00:00",
+    "host_sha256": "1bb84b58116c9e789d5b5b2f7dd50dec0d99ef1de1b3625aa2d648a1c273adaa",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "qwen3-embedding-0.6b@2026-10-14T11:08:31+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "qwen3-embedding-0.6b@2026-10-14T11:08:31+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "qwen3-embedding-0.6b@2026-10-14T11:11:39+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 3,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "mrl:dimensions=32",
+      "mrl:dimensions=1024",
+      "wire:encoding_format=base64"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 8188
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 16374
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 81870
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl:dimensions=32": {
+        "present": true
+      },
+      "mrl:dimensions=1024": {
+        "present": true
+      },
+      "mrl": {
+        "present": true,
+        "kind": "truncation",
+        "dims": [
+          32,
+          1024
+        ],
+        "referent": "the recipe's declared Matryoshka output dimensions, one bare engine request each"
+      },
+      "wire:encoding_format=base64": {
+        "present": true
+      },
+      "edge:invalid_embed_dtype": {
+        "present": false,
+        "reason": "/v1/embeddings takes no embed_dtype (the /pooling route's field)"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "d3d86ee73efb6cac7c6cab8dabf3953da738be37ff70666f452a9077c4fb6d02",
+        "bytes": 151027
+      },
+      "records.jsonl": {
+        "sha256": "8e2ca0cd21d39ce4dd777083b89a3dd89a8754fb4b015f6ef316126d3b02d3a1",
+        "bytes": 52896548
+      }
+    },
+    "records_count": 634,
+    "manifest_sha256": "b7d29e3847dab2603d69f67b05761bf7ab723930e867bed83e24fe998db0c74c"
+  }
+}

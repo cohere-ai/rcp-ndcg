@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "Check": {
+      "description": "One finding. ``missing`` is informational (an optional extra); ``fail`` needs attention.",
+      "properties": {
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "missing",
+            "fail"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "status"
+      ],
+      "title": "Check",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/doctor-report.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The environment, check by check; ``ok`` is false when any check failed.",
+  "properties": {
+    "cache_dir": {
+      "title": "Cache Dir",
+      "type": "string"
+    },
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "platform": {
+      "title": "Platform",
+      "type": "string"
+    },
+    "python": {
+      "title": "Python",
+      "type": "string"
+    },
+    "runs_dir": {
+      "title": "Runs Dir",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.doctor-report.v1",
+      "type": "string"
+    },
+    "versions": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Versions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "ok",
+    "python",
+    "platform",
+    "versions",
+    "cache_dir",
+    "runs_dir",
+    "checks"
+  ],
+  "title": "DoctorReport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.doctor-report.v1"
+}

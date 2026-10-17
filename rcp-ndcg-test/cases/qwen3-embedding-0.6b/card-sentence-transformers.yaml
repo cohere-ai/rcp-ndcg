@@ -1,0 +1,59 @@
+id: qwen3-embedding-0.6b/card-sentence-transformers
+recipe: qwen3-embedding-0.6b
+role: embed
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+  revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+  section: Sentence Transformers Usage
+  quote: |
+    queries = [
+        "What is the capital of China?",
+        "Explain gravity",
+    ]
+    documents = [
+        "The capital of China is Beijing.",
+        "Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.",
+    ]
+
+    # Encode the queries and documents. Note that queries benefit from using a prompt
+    # Here we use the prompt called "query" stored under `model.prompts`, but you can
+    # also pass your own prompt via the `prompt` argument
+    query_embeddings = model.encode(queries, prompt_name="query")
+    document_embeddings = model.encode(documents)
+
+    # Compute the (cosine) similarity between the query and document embeddings
+    similarity = model.similarity(query_embeddings, document_embeddings)
+    print(similarity)
+    # tensor([[0.7646, 0.1414],
+    #         [0.1355, 0.6000]])
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the capital of China?
+  - id: q2
+    text: Explain gravity
+  documents:
+  - id: d1
+    text: The capital of China is Beijing.
+  - id: d2
+    text: |-
+      Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.
+expected:
+  kind: similarity_matrix
+  values:
+  - - 0.7646
+    - 0.1414
+  - - 0.1355
+    - 0.6
+  tolerance:
+    abs: 0.01
+  origin: published
+  status: reproduced
+notes: |-
+  tolerance = card rounding + declared bf16 margin. the card prints the similarity tensor to 4 decimals (rounding half-width 5e-4); the printed values are the 4-decimal rounding of the card's Transformers example. CPU fp32 reproduction of the card's own example (scratch repro_card.py, weights at revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3): [[0.7645565271377563, 0.1414250284433365], [0.1354975402355194, 0.5999548435211182]], max |delta| 3.0e-7 vs the Transformers print and 4.5e-5 vs this rounded print (reproduced). bf16 (serving dtype) differs from the Transformers print by <= 1.7e-3 on CPU; the 0.01 tolerance carries the rounding plus the bf16 margin with headroom for GPU hardware spread.

@@ -1,0 +1,33 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/data-formats.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The registered readers and writers.",
+  "properties": {
+    "readers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Readers",
+      "type": "array"
+    },
+    "schema": {
+      "const": "rcp-ndcg.data-formats.v1",
+      "type": "string"
+    },
+    "writers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Writers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "readers",
+    "writers"
+  ],
+  "title": "DataFormats",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.data-formats.v1"
+}

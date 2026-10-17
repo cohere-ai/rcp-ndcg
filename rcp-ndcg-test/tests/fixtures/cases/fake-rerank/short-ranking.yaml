@@ -1,0 +1,32 @@
+id: fake-rerank/short-ranking
+recipe: fake-rerank
+role: rerank
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  queries:
+  - id: q1
+    text: calibrated relevance
+  documents:
+  - id: d1
+    text: judgements calibrated by an item response theory model
+  - id: d2
+    text: a rank-sensitive metric over graded gains
+  - id: d3
+    text: tournament and rubric judging of pairwise preferences
+expected:
+  kind: ranking
+  values:
+  - - d2
+    - d1
+    - d3
+  tolerance:
+    rank_exact: true
+  origin: engine
+  status: reproduced
+notes: 'kind ranking with rank_exact: the derived order must equal the recorded one (ties toward the lower
+  document index). Values are the tests'' FakeRerankEngine ranking.'

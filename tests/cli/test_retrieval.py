@@ -1,0 +1,285 @@
+"""``rcp-ndcg retrieval``: a dataset URI in, rankings files out, over the retrieval API."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import yaml
+from click.testing import CliRunner
+
+from rcp_ndcg.cli.retrieval import retrieval_group as retrieval
+from rcp_ndcg.data import Rankings, load_rankings
+from rcp_ndcg.errors import ExitCode
+
+
+def _invoke(*args: str) -> dict:
+    result = CliRunner().invoke(retrieval, [*args, "--json"])
+    return {"exit_code": result.exit_code, **json.loads(result.stdout)}
+
+
+@pytest.fixture
+def dataset(tmp_path: Path) -> str:
+    rows = [
+        {"query_id": "q1", "query": "tortoise shell", "doc_ids": ["d1", "d2", "d3"],
+         "docs": ["the tortoise shell", "a hare", "a tortoise"], "qrels": {"d1": 1}},
+        {"query_id": "q2", "query": "hare speed", "doc_ids": ["d1", "d2", "d3"],
+         "docs": ["the tortoise shell", "a hare", "a tortoise"], "qrels": {"d2": 1}},
+    ]  # fmt: skip
+    path = tmp_path / "rows.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    return f"jsonl:{path}"
+
+
+@pytest.fixture
+def bm25(tmp_path: Path) -> str:
+    path = tmp_path / "bm25.yaml"
+    path.write_text(yaml.safe_dump({"kind": "bm25"}), encoding="utf-8")
+    return str(path)
+
+
+def test_search_retrieves_into_a_rankings_file(dataset: str, bm25: str, tmp_path: Path) -> None:
+    out = tmp_path / "bm25.parquet"
+
+    document = _invoke("search", "--dataset", dataset, "--retriever", bm25, "--out", str(out), "--depth", "2")
+
+    assert document["exit_code"] == 0, document
+    assert document["data"] == {
+        "schema": "rcp-ndcg.rankings-file.v1",
+        "out": str(out),
+        "systems": ["bm25"],
+        "queries": 2,
+    }
+    top = load_rankings(out).for_query("q2")
+    assert max(top, key=top.get) == "d2"
+
+
+def test_index_then_search_with_the_index(dataset: str, bm25: str, tmp_path: Path) -> None:
+    built = _invoke("index", "--dataset", dataset, "--retriever", bm25, "--out", str(tmp_path / "index"))
+    searched = _invoke(
+        "search", "--dataset", dataset, "--index", built["data"]["index"], "--out", str(tmp_path / "r.jsonl")
+    )
+
+    assert built["data"]["num_documents"] == 3
+    assert searched["exit_code"] == 0, searched
+    assert load_rankings(tmp_path / "r.jsonl").systems == ["bm25"]
+
+
+def test_search_needs_exactly_one_of_retriever_and_index(dataset: str, tmp_path: Path) -> None:
+    document = _invoke("search", "--dataset", dataset, "--out", str(tmp_path / "r.parquet"))
+
+    assert document["exit_code"] == 2
+    assert document["error"]["code"] == "USAGE"
+
+
+def test_a_recipe_of_the_wrong_role_is_a_config_error(dataset: str, tmp_path: Path) -> None:
+    """A judge recipe in the retriever or reranker slot is a CONFIG refusal naming the recipe and both roles
+    -- not the bare ``KeyError`` that escaped ``expand_role_recipe`` and was reported as an internal bug."""
+    rankings = tmp_path / "first.parquet"
+    Rankings.from_orders({"q1": ["d1"]}, system="first").save(rankings)
+    forms = {
+        "retriever": [
+            "index", "--dataset", dataset, "--retriever", "recipe:gemma-4-12b-it",
+            "--out", str(tmp_path / "index"),
+        ],
+        "reranker": [
+            "rerank", "--dataset", dataset, "--rankings", str(rankings),
+            "--reranker", "recipe:gemma-4-12b-it", "--out", str(tmp_path / "reranked.jsonl"),
+        ],
+    }  # fmt: skip
+    for which, args in forms.items():
+        document = _invoke(*args)
+        assert document["exit_code"] == ExitCode.CONFIG, (which, document)
+        assert document["error"]["code"] == "CONFIG", (which, document)
+        message = document["error"]["message"]
+        assert "gemma-4-12b-it" in message and "judge" in message, (which, message)
+        assert "embed/multi_vector/rerank" in message, (which, message)
+
+
+def test_a_malformed_retriever_is_a_config_error(dataset: str, tmp_path: Path) -> None:
+    path = tmp_path / "old.yaml"
+    path.write_text(yaml.safe_dump({"type": "bm25", "name": "bm25"}), encoding="utf-8")
+
+    document = _invoke("search", "--dataset", dataset, "--retriever", str(path), "--out", str(tmp_path / "r.parquet"))
+
+    assert document["exit_code"] == 3
+    assert "api" in document["error"]["hint"], document["error"]["hint"]
+
+
+def test_a_retriever_yamls_relative_recipe_path_resolves_against_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """g-decisions-6: the retriever YAML loader rebased no path, so ``encoder.recipe: ./my-encoder`` resolved
+    against the working directory instead of the file that names it."""
+    import shutil
+
+    from rcp_ndcg_vllm.recipe import default_recipes_root
+
+    from rcp_ndcg.cli._args import load_yaml_config
+    from rcp_ndcg.retrieval import validate_retriever
+
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    family = configs / "my-encoder"
+    shutil.copytree(default_recipes_root() / "qwen3-embedding", family)
+    family_yaml = family / "family.yaml"
+    data = yaml.safe_load(family_yaml.read_text(encoding="utf-8"))
+    data["id"] = "my-encoder"
+    data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
+    family_yaml.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    path = configs / "retriever.yaml"
+    path.write_text(yaml.safe_dump({"kind": "dense", "encoder": {"recipe": "./my-encoder"}}), encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)  # the working directory is not the config's directory
+    config = validate_retriever(load_yaml_config(str(path), []))
+
+    assert config.encoder.recipe is not None and config.encoder.recipe.startswith("unshipped:sha256:")
+
+
+def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def stub_rerank_many(self, examples, *, instruction=None, checkpoint=None):
+        """The stub endpoint scores each document by its text length."""
+        from rcp_ndcg.inference.types import RerankResult
+
+        results = []
+        for example in examples:
+            scores = tuple(float(len(content.text)) for content in example.doc_contents)
+            if checkpoint is not None:
+                checkpoint(str(example.id), scores)
+            results.append(RerankResult(scores=scores))
+        return results
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
+    first = tmp_path / "first.parquet"
+    Rankings.from_orders({"q1": ["d2", "d3", "d1"]}, system="first").save(first)
+    reranker = tmp_path / "reranker.yaml"
+    from tests.conftest import SESSION_TOKENIZER
+
+    reranker.write_text(
+        yaml.safe_dump(
+            {
+                "api": "rerank",
+                "model": "stub",
+                "tokenizer": str(SESSION_TOKENIZER),
+                "max_tokens": 8192,
+                "use_activation": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    document = _invoke(
+        "rerank", "--dataset", dataset, "--rankings", str(first), "--reranker", str(reranker),
+        "--set", "base_url=http://stub:8000", "--depth", "2", "--out", str(tmp_path / "reranked.parquet"),
+    )  # fmt: skip
+
+    assert document["exit_code"] == 0, document
+    scores = load_rankings(tmp_path / "reranked.parquet").for_query("q1")
+    assert sorted(scores) == ["d2", "d3"]
+    assert scores["d3"] > scores["d2"]
+
+
+def test_rerank_checkpoints_each_scored_query(dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The coverage gap (contract F7): ``retrieval rerank --checkpoints`` records each scored query, and a
+    rerun over the same candidates skips the queries the directory holds."""
+    calls: list[int] = []
+
+    def stub_rerank_many(self, examples, *, instruction=None, checkpoint=None):
+        from rcp_ndcg.inference.types import RerankResult
+
+        calls.append(len(examples))
+        results = []
+        for example in examples:
+            scores = tuple(float(len(content.text)) for content in example.doc_contents)
+            if checkpoint is not None:
+                checkpoint(str(example.id), scores)
+            results.append(RerankResult(scores=scores))
+        return results
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
+    first = tmp_path / "first.parquet"
+    Rankings.from_orders({"q1": ["d2", "d3"]}, system="first").save(first)
+    reranker = tmp_path / "reranker.yaml"
+    from tests.conftest import SESSION_TOKENIZER
+
+    reranker.write_text(
+        yaml.safe_dump(
+            {
+                "api": "rerank",
+                "model": "stub",
+                "tokenizer": str(SESSION_TOKENIZER),
+                "max_tokens": 8192,
+                "use_activation": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    arguments = [
+        "rerank", "--dataset", dataset, "--rankings", str(first), "--reranker", str(reranker),
+        "--set", "base_url=http://stub:8000", "--depth", "2", "--checkpoints", str(tmp_path / "ckpt"),
+        "--out", str(tmp_path / "reranked.parquet"),
+    ]  # fmt: skip
+
+    assert _invoke(*arguments)["exit_code"] == 0
+    assert (tmp_path / "ckpt" / "rank000.jsonl").is_file(), "each scored query is recorded as it finishes"
+    assert calls == [1], "one query in the rankings"
+
+    assert _invoke(*arguments)["exit_code"] == 0
+    assert calls == [1, 0], "the rerun resumes from the checkpoint: the client is asked for no query at all"
+
+
+def test_fuse_combines_every_system(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    Rankings.from_orders({"q1": ["d1", "d2", "d3"]}, system="a").save(a)
+    Rankings.from_orders({"q1": ["d3", "d2", "d1"]}, system="b").save(b)
+
+    document = _invoke("fuse", "--rankings", str(a), "--rankings", str(b), "--out", str(tmp_path / "f.parquet"))
+
+    assert document["data"]["systems"] == ["rrf"]
+    assert set(load_rankings(tmp_path / "f.parquet").for_query("q1")) == {"d1", "d2", "d3"}
+
+
+def test_fuse_needs_two_inputs(tmp_path: Path) -> None:
+    a = tmp_path / "a.jsonl"
+    Rankings.from_orders({"q1": ["d1"]}).save(a)
+
+    document = _invoke("fuse", "--rankings", str(a), "--out", str(tmp_path / "f.parquet"))
+
+    assert document["exit_code"] == 2
+    assert "at least 2" in document["error"]["message"]
+
+
+def test_set_is_refused_with_an_index_whose_retriever_is_already_built(dataset: str, tmp_path: Path) -> None:
+    document = _invoke(
+        "search", "--dataset", dataset, "--index", str(tmp_path / "index"), "--set", "implementation=bm25s",
+        "--out", str(tmp_path / "out.jsonl"),
+    )  # fmt: skip
+    assert document["exit_code"] == 2 and document["error"]["code"] == "USAGE", document
+    assert "--set" in document["error"]["message"]
+
+
+def test_each_commands_set_help_names_the_yaml_it_overrides() -> None:
+    """index and search said 'the retriever or reranker YAML'; neither takes a reranker."""
+    from click.testing import CliRunner
+
+    from rcp_ndcg.cli.main import cli
+
+    for command, kind in (("index", "retriever"), ("search", "retriever"), ("rerank", "reranker")):
+        help_text = " ".join(CliRunner().invoke(cli, ["retrieval", command, "--help"]).output.split())
+        assert f"Override a field of the {kind} YAML" in help_text and "retriever or reranker" not in help_text
+
+
+def test_fuse_refuses_rrf_k_zero_at_the_schema(tmp_path: Path) -> None:
+    """The request model advertised ``k >= 0`` while the API requires ``k >= 1``: the only schema-valid
+    value that was never usable was refused at runtime (exit 3) instead of as a usage error (exit 2)."""
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    Rankings.from_orders({"q1": ["d1", "d2"]}, system="a").save(a)
+    Rankings.from_orders({"q1": ["d2", "d1"]}, system="b").save(b)
+
+    document = _invoke(
+        "fuse", "--rankings", str(a), "--rankings", str(b), "--rrf-k", "0", "--out", str(tmp_path / "f.parquet")
+    )
+
+    assert document["exit_code"] == 2, document
+    assert "rrf_k" in json.dumps(document["error"])

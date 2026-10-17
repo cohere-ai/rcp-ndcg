@@ -1,0 +1,27 @@
+id: qwen3-vl-reranker-2b/card-vllm-script
+recipe: qwen3-vl-reranker-2b
+role: rerank
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B
+  revision: 4bd860ac4f15ad1897a214615cccc700f8f71818
+  section: Using vLLM
+  quote: "queries = [\n    {\"text\": \"A woman playing with her dog on a beach at sunset.\"}\n]\n\ndocuments = [\n    {\"text\": \"A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.\"},\n    {\"image\": \"https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg\"},\n    {\"text\": \"A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.\", \n     \"image\": \"https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg\"}\n]"
+strata:
+  modality: text
+  length: short
+  batch: single
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: A woman playing with her dog on a beach at sunset.
+  documents:
+  - id: d1
+    text: A woman shares a joyful moment with her golden retriever on a sun-drenched beach at sunset, as the dog offers its paw in a heartwarming display of companionship and trust.
+expected:
+  kind: none
+  values: null
+  origin: published
+  status: published_unverified
+notes: 'The card''s ''Using vLLM'' section shows the serving shape (one llm.score call per query-document pair, engine hf_overrides [architectures Qwen3VLForSequenceClassification, classifier_from_token [no, yes], is_original_qwen3_reranker], chat template loaded from file) but shows no printed score values (the script''s own print(scores) output is not shown in the card), so expected.kind: none - the case only exercises the path. The card''s script passes no instruction to llm.score, so the engine''s template default applies, matching this recipe''s instruction: none policy. Only the text document is a case input (the image-bearing documents fetch https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg, no redistributable licence; see card-transformers-text).'

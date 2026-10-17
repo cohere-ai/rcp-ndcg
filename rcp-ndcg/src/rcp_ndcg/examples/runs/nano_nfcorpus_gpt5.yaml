@@ -1,0 +1,18 @@
+# The zero-GPU reference run: BM25 retrieval (bm25s, no extra), a hosted judge.
+#
+#   rcp-ndcg run start nano_nfcorpus_gpt5 --estimate
+#   rcp-ndcg run start nano_nfcorpus_gpt5
+#
+# Needs OPENAI_API_KEY and the [hf] and [calibrate] extras (the dataset is on the
+# HuggingFace Hub; the calibrate step fits with torch). Start with 10 queries (limit) and
+# drop the cap once the estimate looks right. It ships with the
+# package: run it by name.
+label: nano-nfcorpus-gpt5
+dataset: hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoNFCorpusRetrieval
+candidates:
+  from: retrieval
+  retrieval: {kind: bm25}
+  depth: 50
+judge: gpt5_hosted
+steps: [retrieve, tournament, rubric, calibrate, evaluate]
+limit: 10

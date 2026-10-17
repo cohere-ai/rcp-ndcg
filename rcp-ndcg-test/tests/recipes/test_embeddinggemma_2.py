@@ -1,0 +1,903 @@
+"""The embeddinggemma-2 recipe: the contract pinned, stage 1 on CPU, and the media stage against the card.
+
+Every test here is network-gated by the directory's conftest (the client's tokenizer is the Hub spec the
+recipe pins). The contract test pins EVERY field of the resolved ``serve``, ``client`` and ``reference``
+blocks through the shared :func:`._contract.assert_recipe_contract`, and two drift mutants are shown red.
+Stage 1 runs the harness's own checks against the real tokenizer (the fit renders, the anchor audit, the
+engine ``/tokenize`` against the stub) plus the reference subprocess's render mode. The media stage holds
+every image of the media request set to the checkpoint's Gemma 4 resize and every video to the engine's
+pinned frame count -- the client's own decisions, read through the product's role client, never re-derived.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import importlib.util
+import io
+import json
+import re
+import shutil
+import sys
+import types
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+from rcp_ndcg_test.equivalence import stage1_prompts
+from rcp_ndcg_vllm import load_recipe, serve_argv
+from rcp_ndcg_vllm.recipe import default_recipes_root
+
+from ._contract import assert_recipe_contract
+from ._served import fetch_tokenizer
+
+RECIPE_DIR = default_recipes_root() / "embeddinggemma-2"
+RECIPE_ID = "embeddinggemma-2"
+MODEL = "google/embeddinggemma-2"
+REVISION = "914f7f89142e33e77833254d9c9b90c3cef7303b"
+TOKENIZER_SHA256 = "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
+CHAT_TEMPLATE_SHA256 = "4b852efc0b9960283e735363331e6f325b33bc74bdbaa076f595bc4e9b94d85e"
+OVER_LENGTH_PER_SHAPE = 5
+QUERY_PROMPT = "task: search result | query: "
+DOC_PROMPT = "title: none | text: "
+#: The checkpoint's image-placeholder spelling, built (never typed): the tokenizer's added token.
+IMAGE_SPELLING = chr(60) + "|image|" + chr(62)
+
+#: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every field of
+#: ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults included.
+SERVE = {
+    # E2 r1: the digest-pinned nightly's transformers does not carry the checkpoint's embedding_gemma2
+    # classes, so the recipe opts into the plugin's fold patch (the owner's 2026-10-10 backport decision).
+    # E2 round 10: torch-sdpa-attention registers the plugin's encoder-only SDPA backend as
+    # Backend.TORCH_SDPA, which the --attention-backend pin below selects.
+    "patches": ["embeddinggemma2-transformers-fold", "torch-sdpa-attention"],
+    "runner": "pooling",
+    "convert": None,
+    "hf_overrides": {"is_matryoshka": True, "matryoshka_dimensions": [128, 256, 512, 768]},
+    "chat_template": None,
+    "pooler_config": {},
+    "trust_remote_code": False,
+    "max_model_len": 8192,
+    "dtype": "bfloat16",
+    "plugin": "rcp-ndcg-vllm",
+    # E2 round 4: the image reports vLLM 0.31.0 and its registry carries no EmbeddingGemma2Model, so
+    # the plugin also registers the folded model (the transformers-side fold alone was not enough).
+    "plugin_architectures": ["EmbeddingGemma2Config", "EmbeddingGemma2Model"],
+    "io_processor_plugin": None,
+    # E2 round 13: the pod's engine is vLLM v0.31.0 (no EmbeddingGemma2VideoBackend), so the
+    # --media-io-kwargs pin reaches only the generic decoder and the processor resamples at its own
+    # defaults; the same numbers ride the processor's own kwargs here (see the pin test below).
+    "mm_processor_kwargs": {"fps": 60, "max_frames": 32},
+    "limit_mm_per_prompt": {"image": 1, "video": 1},
+    "extra_args": [
+        "--media-io-kwargs",
+        '{"video": {"fps": 60, "max_frames": 32}}',
+        "--attention-backend",
+        # E2 round 10: the plugin's torch-sdpa-attention patch registers an encoder-only SDPA backend
+        # under this enum member (the engine's own error names register_backend(Backend.TORCH_SDPA,
+        # ...)); the image's own backends cannot run the model's heterogeneous head dims and
+        # FLEX_ATTENTION dies in its own compile/CUDAGraph interaction.
+        "TORCH_SDPA",
+        # E2 round 9: FLEX_ATTENTION reaches engine init and dies in a dynamo/CUDAGraph interaction
+        # (the compiled block-mask output overwritten before the compiled flex attention reads it);
+        # --enforce-eager does not stop it (the flex backend compiles independently), so the SDPA
+        # backend compiles nothing and the flag stays as the engine-eager safety pin.
+        "--enforce-eager",
+    ],
+}
+CLIENT = {
+    "api": "openai_embeddings",
+    "instruction": "none",
+    "request_shape": "messages",
+    "max_tokens": 8192,
+    "query_prompt": QUERY_PROMPT,
+    "doc_prompt": DOC_PROMPT,
+    "template": {
+        "query": [{"content": "query"}],
+        "document": [{"content": "document"}],
+        "anchor": "mean",
+        "add_special_tokens": True,
+    },
+    "image_processor": "gemma4",
+    "image_policy": {"max_soft_tokens": 280},
+    "max_images": 1,
+    "max_videos": 1,
+    "video_policy": {"num_frames": 32, "wire": "video_url", "engine_video_pinning": True},
+    "on_overflow": "cut",
+    "empty_doc": "send",
+    "normalize": True,
+    "mrl_kind": "truncation",
+    "mrl_dims": [128, 256, 512, 768],
+    "model": RECIPE_ID,
+    "revision": REVISION,
+    "tokenizer": f"{MODEL}@{REVISION}",
+}
+REFERENCE = {
+    "attn_implementation": None,
+    "kind": "sentence_transformers",
+    "score_scale": "cosine",
+    "entry": "reference.py",
+    "known_deviations": ["over_cap_cut_differs"],
+    "device": None,  # the schema default
+}
+TOP = {
+    "id": RECIPE_ID,
+    "model": MODEL,
+    "revision": REVISION,
+    "role": "embed",
+    "input": ["text", "image", "video"],
+    "licence": "apache-2.0",
+}
+
+_PAIRS: list[dict[str, Any]] = [
+    {"query": "what causes the northern lights", "documents": ["Charged particles from the sun excite gases."]},
+    {"query": "how do vaccines work", "documents": ["A vaccine trains the immune system to recognise a pathogen."]},
+    {"query": "what is a semaphore", "documents": ["A semaphore caps how many workers hold a resource at once."]},
+    {"query": "largest planet in the solar system", "documents": ["Jupiter is the largest planet."]},
+    {"query": "first crewed lunar landing", "documents": ["The first crewed lunar landing happened in July 1969."]},
+    {"query": "what does DNA encode", "documents": ["DNA encodes proteins as nucleotide base sequences."]},
+    {"query": "why is the sky blue", "documents": ["Short wavelengths scatter more strongly in the atmosphere."]},
+    {"query": "boiling point of water", "documents": ["Water boils at one hundred degrees Celsius."]},
+]
+
+
+def _pairs(path: Path, rows: list[dict[str, Any]]) -> Path:
+    path = path / "pairs.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    return path
+
+
+def _reference_module() -> Any:
+    """The recipe's reference.py as a module (its top level imports only the standard library)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("embeddinggemma2_reference", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    return module
+
+
+def _processor_sampled_indices(
+    total: int, source_fps: float, duration: float, fps: float, max_frames: int
+) -> list[int]:
+    """The engine's video sampling rule, transcribed from transformers 5.19.0's
+    ``EmbeddingGemma2VideoProcessor.sample_frames`` (the class the checkpoint's processor_config.json
+    names; its fps-plus-``max_frames``/``overflow_strategy`` path is what the digest-pinned
+    ``EmbeddingGemma2VideoBackend.compute_frames_index_to_sample`` reproduces, and what the checkpoint's
+    processor runs on the pod's vLLM v0.31.0, where no EmbeddingGemma2VideoBackend exists)."""
+    import numpy as np
+
+    step = source_fps / fps
+    sampled = [min(total - 1, int(index * step)) for index in range(max(1, int(duration * fps)))]
+    if len(sampled) <= max_frames:
+        return sampled
+    return [sampled[index] for index in np.linspace(0, len(sampled) - 1, max_frames, dtype=int)]
+
+
+@pytest.fixture(scope="module")
+def tokenizer(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The pinned revision's tokenizer.json, downloaded once for the module through the shared
+    :func:`._served.fetch_tokenizer` (its own urllib download, so a worker's ``HF_HUB_OFFLINE`` from
+    another module cannot reach it); hash-pinned, cached in ``$RCP_NDCG_VLLM_TOKENIZER_CACHE``."""
+    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/tokenizer.json"
+    return fetch_tokenizer(
+        url,
+        "embeddinggemma-2/tokenizer.json",
+        tmp_path_factory.mktemp("embeddinggemma-tokenizer"),
+        sha256=TOKENIZER_SHA256,
+    )
+
+
+@pytest.fixture(scope="module")
+def chat_template(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """The checkpoint's own chat_template.jinja at the pinned revision (hash-pinned, shared cache)."""
+    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/chat_template.jinja"
+    path = fetch_tokenizer(
+        url,
+        "embeddinggemma-2/chat_template.jinja",
+        tmp_path_factory.mktemp("embeddinggemma-template"),
+        sha256=CHAT_TEMPLATE_SHA256,
+    )
+    return path.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def _seed_checkpoint_template(_tokenizer_cache: None, chat_template: str) -> None:
+    """Seed the checkpoint's chat template into the Hub cache the harness reads it from.
+
+    ``_messages_template_check`` reads the checkpoint's own template through ``hf_hub_download``, and a
+    sibling recipe module's import can put a worker into Hub-offline mode; seeding the fetched bytes makes
+    the check resolve offline.  Requested by the two tests that run the harness (stage 1 and the media
+    stage), never autouse: the module's offline pins must not be gated on a Hub download.  The conftest's
+    ``HF_HOME`` fixture runs first (a dependency), so the cache path is the test's own."""
+    import huggingface_hub.constants as constants
+
+    snapshot = Path(constants.HF_HUB_CACHE) / f"models--{MODEL.replace('/', '--')}" / "snapshots" / REVISION
+    snapshot.mkdir(parents=True, exist_ok=True)
+    (snapshot / "chat_template.jinja").write_text(chat_template, encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def recipe_cpu(tmp_path_factory: pytest.TempPathFactory, tokenizer: Path) -> Any:
+    """The shipped recipe, loaded from a pytest-managed copy whose client.tokenizer names the downloaded
+    tokenizer file (the recipe itself pins the Hub repository id and revision; the bytes are hash-equal)."""
+    target = tmp_path_factory.mktemp("embeddinggemma-recipe") / RECIPE_ID
+    shutil.copytree(RECIPE_DIR, target)
+    data = yaml.safe_load((target / "family.yaml").read_text(encoding="utf-8"))
+    data["client"]["tokenizer"] = str(tokenizer)
+    (target / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_recipe(RECIPE_ID, root=target.parent)
+
+
+def test_recipe_contract_pins_every_field() -> None:
+    """Every field of the resolved serve/client/reference blocks, plus the top-level facts, pinned exactly
+    (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert_recipe_contract(recipe, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
+    assert recipe.engine.min_version == "0.31.0"
+    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+    assert not (RECIPE_DIR / "template.jinja").exists(), "no template file ships (serve.chat_template null)"
+
+
+def test_the_verified_engine_is_the_stock_image_the_waves_ran() -> None:
+    """vllm-7 (owner decision 8): the verifying embeddinggemma-2 waves ran stock
+    ``vllm/vllm-openai:v0.31.0`` (the needed pieces were backported), so ``engine.image``,
+    ``status.image`` and every module docstring say that.  The nightly digest remains the fold's source
+    provenance only; no document claims the verified state ran on it."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
+    assert recipe.engine.min_version == "0.31.0"
+    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+    assert "The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint" not in recipe.notes
+    assert "the pinned image is a v0.31.0-based build" not in recipe.notes
+    # The verifying-wave record: the stock image, and the fold as the fallback for images that lack the
+    # classes (the removal condition stays).
+    assert "stock vllm/vllm-openai:v0.31.0" in recipe.notes or "stock `vllm/vllm-openai:v0.31.0`" in recipe.notes
+    assert "backport" in recipe.notes
+    modules = [
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "__init__.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "config.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "attention.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "__init__.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "configuration_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "modeling_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "processing_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "video_processing_embedding_gemma2.py",
+        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "embedding_gemma2.py",
+    ]
+    for path in modules:
+        text = path.read_text(encoding="utf-8")
+        assert "the pinned image is a v0.31.0-based build" not in text, path
+        assert "the digest-pinned engine nightly's transformers does not carry" not in text, path
+        assert "the vLLM nightly the recipe pins" not in text, path
+        assert "nightly-8cbd5d03" not in text, path
+
+
+def test_the_recipe_declares_the_folded_model_the_image_registry_lacks() -> None:
+    """The fold stays as the carrier for an engine image whose registry lacks ``EmbeddingGemma2Model``:
+    the plugin ships the model and the recipe declares its registration beside the transformers fold, with
+    the removal condition recorded.  On the stock v0.31.0 image the verifying waves ran, the backported
+    classes make both probes return early."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.serve.plugin_architectures == ("EmbeddingGemma2Config", "EmbeddingGemma2Model")
+    notes = recipe.notes
+    assert "backport" in notes
+    assert "8cbd5d03006c33185f402249ff2b448efd594986" in notes
+    assert "SWITCH TO RELEASE / REMOVAL" in notes
+
+
+def test_two_contract_mutants_are_red() -> None:
+    """A drifted serve field and a drifted reference field each red the contract pin, naming the field."""
+    recipe = load_recipe(RECIPE_DIR)
+    serve_mutant = recipe.model_copy(update={"serve": recipe.serve.model_copy(update={"max_model_len": 16384})})
+    with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
+        assert_recipe_contract(serve_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+    reference_mutant = recipe.model_copy(
+        update={"reference": recipe.reference.model_copy(update={"kind": "transformers"})}
+    )
+    with pytest.raises(AssertionError, match=r"reference\.kind"):
+        assert_recipe_contract(reference_mutant, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
+
+
+def test_serve_argv_carries_the_pinned_flags() -> None:
+    """The argv the wave runner renders: no template, the pooling runner, the 8K context, the media limit,
+    the video policy's fps/max_frames pin and the round-10 registered-SDPA backend pin."""
+    recipe = load_recipe(RECIPE_DIR)
+    argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
+    assert "--chat-template" not in argv
+    assert "--trust-remote-code" not in argv
+    assert argv[argv.index("--runner") + 1] == "pooling"
+    assert argv[argv.index("--max-model-len") + 1] == "8192"
+    assert argv[argv.index("--dtype") + 1] == "bfloat16"
+    assert json.loads(argv[argv.index("--limit-mm-per-prompt") + 1]) == {"image": 1, "video": 1}
+    assert argv[argv.index("--media-io-kwargs") + 1] == '{"video": {"fps": 60, "max_frames": 32}}'
+    assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {"fps": 60, "max_frames": 32}
+    assert argv[argv.index("--attention-backend") + 1] == "TORCH_SDPA"
+    assert "--enforce-eager" in argv
+
+
+def test_the_video_pin_reaches_the_processor_that_samples_the_clip() -> None:
+    """E2 round 13 (the media stage's rows 36/37).  The pod's engine is vLLM v0.31.0, which has no
+    ``EmbeddingGemma2VideoBackend``: ``--media-io-kwargs`` pins only the generic decoder, which samples the
+    shipped 4.0 s / 8 fps / 32-frame clip whole and reports ``do_sample_frames=True``, and the checkpoint's
+    processor then resamples at its own defaults (fps 1, max_frames 32) -- 4 frames, the wave's
+    ``492 = 4 x 123`` against the client's ``3936 = 32 x 123``.  ``serve.mm_processor_kwargs`` carries the
+    same numbers into the engine's processor call, so the processor samples 32; the CPU-proven rule (the
+    checkpoint's own ``sample_frames``) is the test below, and the wave's media stage is the confirmation."""
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.serve.mm_processor_kwargs == {"fps": 60, "max_frames": 32}
+    assert recipe.client["video_policy"]["num_frames"] == 32
+    assert recipe.client["video_policy"]["engine_video_pinning"] is True
+    # the checkpoint's processor over the shipped clip (32 native frames at 8 fps, 4.0 s): the declared
+    # pin samples the whole clip, the processor's own default is the four frames the wave saw.
+    pinned = _processor_sampled_indices(32, 8.0, 4.0, 60.0, 32)
+    default = _processor_sampled_indices(32, 8.0, 4.0, 1.0, 32)
+    assert len(pinned) == 32 and len(set(pinned)) == 31, pinned
+    assert default == [0, 8, 16, 24], default
+
+
+def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
+    """E2 rounds 7-10: the model's heterogeneous head dimensions (sliding 256, full 512) leave no
+    image backend. TRITON_ATTN cannot compile its prefill kernel for head_dim 512
+    (``triton.runtime.errors.OutOfResources: out of resource: shared memory, Required: 266240,
+    Hardware limit: 232448`` at ``triton_prefill_attention.py`` ``context_attention_fwd``, the
+    round-7 serve log), FA4 -- which the image's own Gemma4 config hook selects for these
+    dimensions -- then dies in its kernel (``FlashAttention forward only supports head dimension at
+    most 256``, the round-8 wave), and TORCH_SDPA's enum value is the empty string on the image
+    ("this tag is only used for ViT"), so the manual-selection path raises ``Backend TORCH_SDPA must
+    be registered before use. Use register_backend(Backend.TORCH_SDPA, 'your.module.YourClass')``
+    (``vllm/v1/attention/backends/registry.py``). FLEX_ATTENTION is the one image backend that clears
+    the head dimensions, and rounds 9-10 show it dying in its own ``torch.compile``/CUDAGraph
+    interaction -- ``torch._dynamo.exc.InternalTorchDynamoError: RuntimeError: Error: accessing
+    tensor output of CUDAGraphs that has been overwritten by a subsequent run`` at
+    ``torch/nn/attention/flex_attention.py:2369`` (``block_mask_q_len = block_mask.shape[-2]``) --
+    because its ``create_block_mask`` compiles with ``mode="reduce-overhead"`` and
+    ``--enforce-eager`` does not reach that backend-owned compile. The shipped path is the
+    mechanism the engine's own error names: the recipe opts into the plugin's
+    ``torch-sdpa-attention`` patch, which registers ``TorchSdpaAttentionBackend`` (encoder-only SDPA
+    over ``torch.nn.functional.scaled_dot_product_attention``, no head-dimension cap) under
+    ``Backend.TORCH_SDPA``, and pins ``--attention-backend TORCH_SDPA``. The plugin suite imports
+    that class against a fake engine interface and the lane's image read runs it against the real
+    one; the wave's T0 model load confirms it on the GPU. The full rejection chain stays recorded in
+    the notes, and an invalid backend still fails loudly at startup instead of silently."""
+    from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
+
+    recipe = load_recipe(RECIPE_DIR)
+    argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
+    assert argv[argv.index("--attention-backend") + 1] == "TORCH_SDPA"
+    assert "--enforce-eager" in argv
+    assert "torch-sdpa-attention" in recipe.serve.patches
+    assert "torch-sdpa-attention" in PATCH_NAMES
+    assert PATCH_MODULES["torch-sdpa-attention"] == "rcp_ndcg_vllm.patches.torch_sdpa_attention"
+    spec = importlib.util.find_spec("rcp_ndcg_vllm.models.embedding_gemma2.attention")
+    assert spec is not None and spec.origin is not None, "the backend module ships with the plugin"
+    source = Path(spec.origin).read_text(encoding="utf-8")
+    assert "class TorchSdpaAttentionBackend" in source and "def register_torch_sdpa_backend" in source
+    for evidence in (
+        "266240",
+        "232448",
+        "FLASH_ATTN",
+        "head_dim 512",
+        "head dimension at most 256",
+        "must be registered before use",
+        "only used for ViT",
+        "register_backend",
+        "CUDAGraphs",
+        "block_mask",
+        "reduce-overhead",
+        "FLEX_ATTENTION",
+        "TORCH_SDPA",
+        "--enforce-eager",
+        "scaled_dot_product_attention",
+    ):
+        assert evidence in recipe.notes, evidence
+
+
+def test_the_client_block_builds_the_product_endpoint() -> None:
+    """The client block is the product's own endpoint config: the product validates it (prompts beside a
+    content-only template, the gemma4 soft-token policy, the pinned video policy)."""
+    from rcp_ndcg_vllm.recipe import client_config
+
+    from rcp_ndcg.inference.config import EmbeddingEndpoint
+
+    recipe = load_recipe(RECIPE_DIR)
+    endpoint = EmbeddingEndpoint(**client_config(recipe, base_url="http://127.0.0.1:8100/v1"))
+    assert endpoint.query_prompt == QUERY_PROMPT and endpoint.doc_prompt == DOC_PROMPT
+    assert endpoint.image_processor == "gemma4" and endpoint.image_policy is not None
+    assert endpoint.image_policy.max_soft_tokens == 280 and endpoint.image_policy.is_native is False
+    assert endpoint.video_policy is not None and endpoint.video_policy.num_frames == 32
+
+
+def test_the_reference_geometry_and_frame_sampling_match_the_checkpoint() -> None:
+    """The reference's Gemma 4 resize and frame sampling, pinned against the checkpoint's processor facts
+    (an icon scales UP to 768x768; a 2480x3508 page scales down to 672x912; a 4 s clip at the pinned
+    60 fps cap shows 32 frames)."""
+    module = _reference_module()
+    assert module.gemma4_resize(16, 16, max_soft_tokens=280) == (768, 768)
+    assert module.gemma4_resize(3508, 2480, max_soft_tokens=280) == (912, 672)
+    assert module.gemma4_resize(1080, 1920, max_soft_tokens=280) == (576, 1056)
+    assert module._sampled_frames({"duration_s": 4.0, "num_frames": 32, "fps": 8.0}, 60.0, 32) == 32
+    assert module._sampled_frames({"duration_s": 10.0, "num_frames": 300, "fps": 30.0}, 60.0, 32) == 32
+    assert module._sampled_frames({"duration_s": 0.25, "num_frames": 8, "fps": 32.0}, 60.0, 32) == 15
+
+
+def test_the_reference_geometry_matches_the_product_over_a_size_grid() -> None:
+    """The reference's Gemma 4 resize is a faithful port of the product's: over a size grid the two
+    copies agree exactly. (The duplication is deliberate -- the reference environment never imports the
+    product -- and this test is its cross-check.)"""
+    from rcp_ndcg.data.resolution import gemma4_resize
+
+    module = _reference_module()
+    for height in range(16, 2048, 97):
+        for width in range(16, 2048, 89):
+            assert module.gemma4_resize(height, width, max_soft_tokens=280) == gemma4_resize(
+                height, width, max_soft_tokens=280
+            ), f"resize diverged at {height}x{width}"
+
+
+def test_the_reference_media_side_is_the_cards_one_pass_resize() -> None:
+    """g-ref-vl-1 (owner decision 9a): the card's ``SentenceTransformer.encode`` hands the RAW image to
+    the Gemma 4 processor, which resizes it ONCE -- it does not iterate to a fixed point.  The
+    reference's media mode reports that one-pass grid, so a 336x200 thumbnail is 1008x576 = 252 pooled
+    patches plus the two vision markers = 254 tokens, not the 1056x576 / 266 the client's fixed-point
+    preparation used to produce."""
+    from PIL import Image
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (336, 200), (10, 20, 30)).save(buffer, format="PNG")
+    entry = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    side = module.media_side(
+        "caption",
+        [entry],
+        prompt=DOC_PROMPT,
+        image_budget=280,
+        video_fps=60.0,
+        video_max_frames=32,
+    )
+    assert side["media"] == [{"kind": "image", "width": 1008, "height": 576, "tokens": 254}]
+
+
+def test_the_reference_hands_the_card_processor_the_raw_image(tmp_path: Path) -> None:
+    """g-ref-vl-1 (owner decision 9a): the embed mode hands the card's processor the decoded RAW image
+    (the card's own input); the processor's single pass is the card's resize.  A pre-resized fixed-point
+    image would make the processor's resize a no-op on the wrong grid."""
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    module = _reference_module()
+    entry = image_entry("thumbnail", 336, 200)
+    side = module.side_input("", [entry], work=tmp_path, clip_name="document-0-0")
+    assert side[0]["content"][0]["image"].size == (336, 200)
+
+
+def test_the_reference_embed_input_is_the_image_the_client_sends(tmp_path: Path) -> None:
+    """g-ref-vl-1 (owner decision 9a): the reference and the client send the same RAW pixels.
+
+    The card's processor resizes the raw image once; the client sends the decoded image unchanged and the
+    engine's processor applies that one-pass resize, so the reference's raw input is pixel-identical to
+    the client's prepared image.  The one-pass grids are the ones the finding measured: 576x4096 ->
+    2112x288 (264 patches + 2 = 266 tokens), 3000x20 -> 48x9792 (204 + 2 = 206), 16x16 -> 768x768
+    (256 + 2 = 258); the old fixed point was 2160x288 / 48x13344."""
+    from PIL import Image, ImageChops
+    from rcp_ndcg_core.content import MediaRef
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    from rcp_ndcg.data.prepare import prepare_image
+    from rcp_ndcg.data.resolution import ImagePolicy
+
+    module = _reference_module()
+    policy = ImagePolicy(processor="gemma4", max_soft_tokens=280)
+    for name, width, height, tokens in (
+        ("tall_receipt", 576, 4096, 266),
+        ("extreme_aspect", 3000, 20, 206),
+        ("tiny", 16, 16, 258),
+    ):
+        entry = image_entry(name, width, height)
+        side = module.side_input("", [entry], work=tmp_path, clip_name=f"document-0-{name}")
+        prepared = side[0]["content"][0]["image"]
+        client = prepare_image(
+            MediaRef(uri=entry["uri"], sha256=entry["sha256"], mime=entry["mime"], width=width, height=height),
+            policy,
+        )
+        client_image = Image.open(io.BytesIO(base64.b64decode(client.sent.uri.split(",", 1)[1]))).convert("RGB")
+        assert prepared.size == client_image.size == (width, height), (
+            f"{name}: the reference sends {prepared.size}, the client {client_image.size}"
+        )
+        assert ImageChops.difference(prepared, client_image).getbbox() is None, (
+            f"{name}: the reference's pixels differ from the client's prepared image"
+        )
+        assert policy.image_tokens(prepared.height, prepared.width) + 2 == tokens, name
+
+
+def test_the_reference_never_reports_the_old_fixed_point(tmp_path: Path) -> None:
+    """g-ref-vl-1 (owner decision 9a): the media mode reports the card's ONE-PASS grid, never the fixed
+    point the old client preparation used; the two extreme rows are exactly where they differ."""
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    module = _reference_module()
+    for name, width, height, expected in (
+        ("tall_receipt", 576, 4096, {"kind": "image", "width": 288, "height": 2112, "tokens": 266}),
+        ("extreme_aspect", 3000, 20, {"kind": "image", "width": 9792, "height": 48, "tokens": 206}),
+    ):
+        entry = image_entry(name, width, height)
+        side = module.media_side(
+            "caption",
+            [entry],
+            prompt=DOC_PROMPT,
+            image_budget=280,
+            video_fps=60.0,
+            video_max_frames=32,
+        )
+        assert side["media"] == [expected], name
+
+
+def test_the_tokenizer_is_the_pinned_revision_bytes() -> None:
+    """The recipe's tokenizer spec is covered by the vendored store (the golden test's offline tokenizer
+    source) and its bytes hash to the pinned SHA-256."""
+    from rcp_ndcg_test.fingerprint import stored_tokenizer, use_tokenizer_store
+
+    store = Path(__file__).resolve().parents[2] / "corpora" / "vllm-0.31.0" / "_tokenizers"
+    use_tokenizer_store(store)
+    found = stored_tokenizer(f"{MODEL}@{REVISION}")
+    assert found is not None, f"the tokenizer store {store} does not cover {MODEL}@{REVISION}"
+    data, sha = found
+    assert sha == TOKENIZER_SHA256 and hashlib.sha256(data).hexdigest() == TOKENIZER_SHA256
+
+
+def test_the_reference_media_side_is_the_card_geometry() -> None:
+    """One 16x16 image: the checkpoint's processor scales it to 768x768 and the prompt gets 256 pooled
+    patches plus the two vision markers; the placement mirrors the client's parts (the prompt text, the
+    media, the body text -- every text part where it stands)."""
+    from PIL import Image
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
+    entry = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    side = module.media_side(
+        "caption",
+        [entry],
+        prompt=DOC_PROMPT,
+        image_budget=280,
+        video_fps=60.0,
+        video_max_frames=32,
+    )
+    assert side["placement"] == ["text", "image", "text"]
+    assert side["media"] == [{"kind": "image", "width": 768, "height": 768, "tokens": 258}]
+
+
+@pytest.mark.network
+def test_the_declared_prompts_are_the_checkpoint_prompts() -> None:
+    """The recipe's query/document prompts are the checkpoint's own config_sentence_transformers.json
+    entries at the pinned revision (the card's SearchQuery/Document prompt names)."""
+    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/config_sentence_transformers.json"
+    with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 - the pinned public file
+        prompts = json.loads(response.read())["prompts"]
+    recipe = load_recipe(RECIPE_DIR)
+    assert recipe.client["query_prompt"] == prompts["SearchQuery"] == prompts["query"]
+    assert recipe.client["doc_prompt"] == prompts["Document"] == prompts["document"]
+
+
+@pytest.mark.network
+def test_the_checkpoint_chat_template_is_the_declared_frame(tmp_path: Path) -> None:
+    """The checkpoint's chat_template.jinja (hash-pinned) renders a user turn to exactly its content: no
+    role markers, no default system turn, so the declared content-only frame is the engine's own render."""
+    from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+    url = f"https://huggingface.co/{MODEL}/resolve/{REVISION}/chat_template.jinja"
+    with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 - the pinned public file
+        template_text = response.read().decode("utf-8")
+    assert hashlib.sha256(template_text.encode()).hexdigest() == CHAT_TEMPLATE_SHA256
+    environment = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
+    rendered = environment.from_string(template_text).render(
+        messages=[{"role": "user", "content": [{"type": "text", "text": "hello world"}]}],
+        add_generation_prompt=False,
+    )
+    assert rendered == "hello world"
+
+
+@pytest.mark.network
+def test_stage1_on_cpu(recipe_cpu: Any, _seed_checkpoint_template: None, tmp_path: Path) -> None:
+    """The harness's stage 1 over the real tokenizer: the client's renders equal the reference's, the
+    anchor audit reads every sampled input (a mean-pooling shape has no anchor token), and the
+    over-length samples' cuts are audited under the declared deviation."""
+    document = stage1_prompts(
+        recipe_cpu,
+        _pairs(tmp_path, _PAIRS),
+        sys.executable,
+        over_length_per_shape=OVER_LENGTH_PER_SHAPE,
+    )
+    assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:2]
+    assert document["anchor_check"]["checked"] > 0, "the audit read no input"
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:2]
+    assert document["passed"] is True
+
+
+@pytest.mark.network
+def test_the_media_stage_holds_the_client_to_the_card(
+    recipe_cpu: Any, _seed_checkpoint_template: None, tmp_path: Path
+) -> None:
+    """Offline (no engine): the product's client and the card's reference agree on every image of the media
+    request set -- the placement, the prepared geometry under the 280-soft-token budget and the tokens --
+    and on every video's declared frame count."""
+    from rcp_ndcg_test.equivalence.media import stage_media
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
+
+    rows, _ = planned_media_rows(recipe_cpu)
+    media_pairs = _pairs(tmp_path, [{key: row[key] for key in ("query", "documents", "media")} for row in rows])
+    document = stage_media(recipe_cpu, media_pairs, sys.executable)
+    assert document is not None and document["passed"] is True, document["failures"][:3]
+    assert document["items"] == 13, (
+        "eight image buckets, the captioned page, the mixed batch, the query image and two clips"
+    )
+    assert document["refusals"] == []
+    assert document["engine_check"]["status"] == "not_run"
+
+
+def test_shipped_recipe_files_carry_no_internal_labels() -> None:
+    """Every shipped file reads as a self-contained public statement: no internal process shorthand, private
+    work directory or undefined rule id."""
+    hits = [
+        f"{path.name}:{number}: {line.strip()[:120]}"
+        for path in sorted(RECIPE_DIR.iterdir())
+        if path.is_file()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if re.search(
+            r"fam-(?:dense|ctxl|vl|late)|\bsweep|lanes' base|\bresearch\b|\blanes?\b|REVIEW-LOG|\boperator\b"
+            r"|\.refs/|recipe-common",
+            line,
+        )
+    ]
+    assert not hits, "\n".join(hits)
+
+
+def test_the_family_yaml_is_the_only_recipe_file() -> None:
+    """The family directory's shape (decision 34): family.yaml, reference.py, reference.in and its
+    reference.lock, no standalone recipe.yaml and no template file."""
+    names = sorted(path.name for path in RECIPE_DIR.iterdir() if path.is_file())
+    assert names == ["family.yaml", "reference.in", "reference.lock", "reference.py"]
+
+
+def test_the_reference_reads_media_rows_into_the_cards_own_inputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The reference's media path reads the harness's ``media`` entries into the card's own ST inputs: a
+    text-only side is its text (the card prepends the declared prompt), a media side is a one-user-turn
+    conversation with the parts in order (the prompt rides the card's own system message), an inline image
+    is a loaded PIL image handed to the card's processor RAW (the card resizes it once), and a container is
+    written to a scratch file the checkpoint's processor reads at the recipe's declared
+    video pin. No model weights: the row reading, the preparation and the pin are the plumbing."""
+    import base64
+    import io
+
+    from PIL import Image
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
+    image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    clip = video_entry("icon", 64, 64, 64)
+    assert module.side_input("the body", [], work=tmp_path, clip_name="query-0") == "the body"
+    conversation = module.side_input("the body", [image], work=tmp_path, clip_name="query-1")
+    assert conversation[0]["role"] == "user"
+    assert conversation[0]["content"][0]["type"] == "image"
+    assert conversation[0]["content"][0]["image"].size == (16, 16), "the card's processor gets the raw image"
+    assert conversation[0]["content"][1] == {"type": "text", "text": "the body"}
+    interleaved = module.side_input(
+        "", [{"kind": "text", "text": "lead "}, image], work=tmp_path, clip_name="document-0-0"
+    )
+    assert [part["type"] for part in interleaved[0]["content"]] == ["text", "image"]
+    video = module.side_input("", [clip], work=tmp_path, clip_name="document-0-1")
+    video_path = Path(video[0]["content"][0]["video"])
+    assert video_path.is_file()
+    assert video_path.read_bytes() == base64.b64decode(str(clip["uri"]).split(",", 1)[1])
+    # The declared video pin is the one the recipe serves the engine (fps 60, max_frames 32): the card's
+    # processor samples the container with it, so the reference's frames follow the engine's.
+    recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
+    assert module._video_pin(recipe) == (60.0, 32)
+
+
+def test_the_media_modes_refuse_the_retired_media_columns() -> None:
+    """A row carrying the retired per-column media fields is refused loudly by the embed and media modes
+    (the module docstring promises the refusal): the harness's media rows carry the ``media`` field."""
+    module = _reference_module()
+    row = {"query": "q", "documents": ["d"], "documents_images": ["data:image/png;base64,AA=="]}
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.mode_media({}, [row])
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.mode_embed({}, [row], "cpu")
+
+
+def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The engine's EmbeddingGemma2 video rule is fps-plus-cap, NOT the generic uniform rule: for the
+    shipped 32-frame/8 fps rows the engine shows ``[0, 0, 2, 3, ..., 31]`` (frame 0 twice, frame 1
+    skipped) where the product's generic ``uniform_frame_indices`` gives ``[0, 1, 2, ..., 31]``. The
+    reference therefore hands the checkpoint's own processor the declared pin -- fps, the frame cap and the
+    checkpoint's uniform overflow strategy -- whose ``sample_frames`` reproduces the engine's rule exactly
+    (W2 re-verification); it must never sample with the generic rule. No weights: a fake
+    sentence-transformers records the ``encode`` call."""
+    import base64
+    import sys
+
+    import numpy as np
+    from rcp_ndcg_test.observe.media_set import video_entry
+
+    from rcp_ndcg.data.resolution import uniform_frame_indices
+
+    module = _reference_module()
+
+    shipped = video_entry("icon", 64, 64, 32)  # the recipe's declared num_frames, at the media set's 8 fps
+    indices = _processor_sampled_indices(32, 8.0, 4.0, 60.0, 32)
+    assert indices == [0, 0, *range(2, 32)], indices
+    assert indices != uniform_frame_indices(32, 32), "the generic rule is a different instrument"
+
+    recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
+    assert module._video_pin(recipe) == (60.0, 32)
+    assert module.video_processing_kwargs(60.0, 32) == {
+        "video": {"fps": 60.0, "max_frames": 32, "overflow_strategy": "uniform"}
+    }
+
+    calls: list[dict[str, Any]] = []
+    seen: dict[str, Any] = {}
+
+    class FakeTokenizer:
+        """The card's own tokenizer stand-in: the text path's features, recorded by the module call."""
+
+        def __call__(self, texts: list[str], **kwargs: Any) -> dict[str, Any]:
+            import torch
+
+            return {
+                "input_ids": torch.ones((len(texts), 3), dtype=torch.long),
+                "attention_mask": torch.ones((len(texts), 3), dtype=torch.long),
+            }
+
+    class FakeSentenceTransformer:
+        prompts: dict[str, str] = {"SearchQuery": QUERY_PROMPT, "Document": DOC_PROMPT}
+        device = "cpu"
+        tokenizer = FakeTokenizer()
+
+        def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
+            self.model = model
+
+        def encode(self, sides: list[Any], **kwargs: Any) -> Any:
+            calls.append({"sides": sides, **kwargs})
+            for side in sides:
+                if isinstance(side, list):
+                    for part in side[0]["content"]:
+                        if part.get("type") == "video":
+                            seen["path"] = Path(part["video"])
+                            seen["existed"] = seen["path"].is_file()
+                            seen["bytes"] = seen["path"].read_bytes()
+            return np.ones((len(sides), 3), dtype=np.float32)
+
+        def __call__(self, features: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            import torch
+
+            return {"sentence_embedding": torch.ones((len(features["input_ids"]), 3))}
+
+    fake = types.ModuleType("sentence_transformers")
+    fake.SentenceTransformer = FakeSentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+    util = types.ModuleType("sentence_transformers.util")
+    util.batch_to_device = lambda features, device: features  # the card's own device move, a no-op here
+    monkeypatch.setitem(sys.modules, "sentence_transformers.util", util)
+
+    pairs = [{"query": "q", "documents": [""], "media": {"documents": [[shipped]]}}]
+    module.mode_embed(recipe, pairs, "cpu")
+    media_calls = [call for call in calls if "processing_kwargs" in call]
+    assert len(media_calls) == 1, calls
+    assert media_calls[0]["processing_kwargs"] == module.video_processing_kwargs(60.0, 32)
+    part = media_calls[0]["sides"][0][0]["content"][0]
+    assert part["type"] == "video" and isinstance(part["video"], str)
+    assert seen["existed"], "the container path is on disk while the processor reads it"
+    assert seen["path"].name == "document-0-0.avi"
+    assert seen["bytes"] == base64.b64decode(str(shipped["uri"]).split(",", 1)[1])
+    assert calls == media_calls, "the text-only query takes the tokenizer path, never the validating encode"
+
+
+def test_the_reference_takes_the_card_tokenizer_path_for_a_text_only_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A text-only row goes through the card's own tokenizer path, not ST's validating ``encode``.
+
+    ``SentenceTransformer.encode`` hands a text-only input to the checkpoint's multimodal processor (its
+    ``sentence_bert_config.json`` declares the ``message`` modality), whose ``validate_inputs`` counts the
+    checkpoint's placeholder spellings in the text and refuses a text-only row that carries one -- the
+    harness's spelling stratum, and the wave's reference failure (``Found 1 <...> tokens in the text but
+    no images were passed.``). The engine has no such check: its tokenizer matches the spelling as the
+    checkpoint's own added token and the model reads that token. The reference therefore tokenizes a
+    text-only side with the checkpoint's own tokenizer -- the call the processor's text path makes, over
+    the prompt-prefixed text -- and runs the card's own module stack; a media side keeps the card's
+    ``encode`` and its validation. No weights: a fake sentence-transformers mirrors the refusal and
+    records both paths."""
+
+    import torch
+    from PIL import Image
+
+    module = _reference_module()
+    recipe = load_recipe(RECIPE_DIR).model_dump(mode="json")
+    spelling = "a caption carrying the placeholder " + IMAGE_SPELLING + " with no image"
+
+    calls: dict[str, list[dict[str, Any]]] = {"tokenize": [], "encode": [], "forward": []}
+
+    class FakeTokenizer:
+        def __call__(self, texts: list[str], **kwargs: Any) -> dict[str, Any]:
+            calls["tokenize"].append({"texts": list(texts), **kwargs})
+            return {
+                "input_ids": torch.ones((len(texts), 3), dtype=torch.long),
+                "attention_mask": torch.ones((len(texts), 3), dtype=torch.long),
+            }
+
+    class FakeSentenceTransformer:
+        prompts: dict[str, str] = {"SearchQuery": QUERY_PROMPT, "Document": DOC_PROMPT}
+        device = "cpu"
+
+        def __init__(self, model: str, revision: str | None = None, device: str | None = None) -> None:
+            self.tokenizer = FakeTokenizer()
+
+        def encode(self, sides: list[Any], **kwargs: Any) -> Any:
+            calls["encode"].append({"sides": sides, **kwargs})
+            for side in sides:
+                if isinstance(side, str) and IMAGE_SPELLING in side:
+                    raise ValueError(
+                        f"Found {side.count(IMAGE_SPELLING)} {IMAGE_SPELLING} tokens in the text but no "
+                        "images were passed."
+                    )
+            return torch.ones((len(sides), 4))
+
+        def __call__(self, features: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+            calls["forward"].append(features)
+            return {"sentence_embedding": torch.ones((len(features["input_ids"]), 4))}
+
+    fake = types.ModuleType("sentence_transformers")
+    fake.SentenceTransformer = FakeSentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+    util = types.ModuleType("sentence_transformers.util")
+    util.batch_to_device = lambda features, device: features  # the card's own device move, a no-op here
+    monkeypatch.setitem(sys.modules, "sentence_transformers.util", util)
+
+    rows = module.mode_embed(recipe, [{"query": spelling, "documents": [spelling]}], "cpu")["rows"]
+    assert len(rows) == 1
+    assert calls["encode"] == [], "a text-only row never enters the processor's validating path"
+    assert [call["texts"][0] for call in calls["tokenize"]] == [
+        QUERY_PROMPT + spelling,
+        DOC_PROMPT + spelling,
+    ], "the checkpoint's tokenizer reads the prompt-prefixed text"
+    assert all(
+        call["padding"] is True and call["truncation"] == "longest_first" and call["return_tensors"] == "pt"
+        for call in calls["tokenize"]
+    ), "the processor's own text kwargs"
+    assert len(calls["forward"]) == 2, "the card's module stack runs per side"
+    # encode(normalize_embeddings=True) is the card's own normalisation: ones(4) -> 1/2 per component.
+    assert all(abs(value - 0.5) < 1e-6 for value in rows[0]["query_vectors"][0])
+    assert all(abs(value - 0.5) < 1e-6 for value in rows[0]["document_vectors"][0])
+
+    # A media row keeps the card's own path: a text's spelling beside an image is the card's manual
+    # placeholder rule, and the processor's validation is the one that reads it.
+    buffer = io.BytesIO()
+    Image.new("RGB", (16, 16), (10, 20, 30)).save(buffer, format="PNG")
+    image = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    module.mode_embed(
+        recipe,
+        [{"query": "q", "documents": [spelling], "media": {"documents": [[image]]}}],
+        "cpu",
+    )
+    media_calls = [call for call in calls["encode"] if "processing_kwargs" in call]
+    assert len(media_calls) == 1, calls["encode"]
+    assert media_calls[0]["prompt_name"] == "Document"
+    assert [part["type"] for part in media_calls[0]["sides"][0][0]["content"]] == ["image", "text"]
+    assert media_calls[0]["sides"][0][0]["content"][0]["image"].size == (16, 16), (
+        "the embed mode hands the processor the RAW image, which resizes it once"
+    )

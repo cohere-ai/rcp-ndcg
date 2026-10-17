@@ -1,0 +1,646 @@
+"""The media stage: what the served client sends for image and video inputs, against what the reference consumes.
+
+Stages 1 and 2 compare texts and numbers; neither sends media, so nothing there proves that a vision-language
+recipe's served path shows the model the same images as its reference.  This stage does, for every pairs row
+that carries media (the ``media`` field, :func:`media_rows`), side by side:
+
+- **the client** -- the recipe's role client (the product: its media preparation, ``rcp_ndcg.data.prepare``
+  under the declared policy, ``rcp_ndcg.data.resolution``, and its budget fit) sends each media side, captured
+  through the product's injection point; from the captured request the stage reads what crossed the wire:
+  the parts in order (the **placement**), every image's prepared **geometry** (decoded from the sent bytes),
+  every video's declared **frame count** (the policy's sampling; the container's own facts are read off the
+  sent bytes for the count), and the **token count** the client reserved for each item (the product's
+  :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the client's effective policies; a container's
+  count from its probed header, so it is exact);
+- **the reference** -- the recipe's reference subprocess in ``--mode media`` reports the same facts for the
+  same rows as the model card consumes them (its own processor's resize, its own placement, its own count);
+- **the engine** (with ``--base-url``) -- each captured media request is sent again without its media parts,
+  and the difference of the two ``usage.prompt_tokens`` reports is the engine's own media count (everything
+  else cancels): an engine whose pixel pin is missing re-resizes the prepared image and counts other tokens.
+
+Every media item gates exactly: the count, the placement, the geometry and the tokens must be equal on every
+side; a video's declared frame count gates against the reference (the sampling both sides declare), and a
+video container's token count gates against the engine -- the engine's ``usage.prompt_tokens`` difference to
+the same request without its media is its own count of what it decoded and sampled, which must equal what the
+client counted (an engine not pinned to the declared sampling counts other frames).  A media recipe whose
+pairs carry no media row fails the stage (it checked nothing); a recipe that declares no media input has no
+media stage.
+
+The pairs file's ``media`` field: ``{"query": [entry, ...], "documents": [[entry, ...], ...]}``, each entry
+an :class:`~rcp_ndcg_core.content.MediaRef` object plus its ``kind`` (``image`` or ``video``) -- the bytes
+inline (a ``data:`` URI) or at a resolvable URI -- or, in a part sequence, a ``text`` entry (``{"kind":
+"text", "text": ...}``): an interleaved row's text segments, standing where they stand.  A side's content
+is its entries in order, then its text when it has one (:func:`side_content`): the order the card consumes
+(the product's fit keeps every text part in its own place around the media).
+"""
+
+from __future__ import annotations
+
+import json
+import tempfile
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+from rcp_ndcg_vllm.recipe import Recipe
+
+from rcp_ndcg_test.errors import HarnessError
+
+from .reference import reference_entry, run_reference
+from .wire import prompt_tokens, role_client
+
+__all__ = [
+    "MEDIA_GATE_SCOPE",
+    "MEDIA_GATE_SCOPE_NOTE",
+    "MEDIA_KINDS",
+    "media_rows",
+    "sent_media_content",
+    "side_content",
+    "side_contents",
+    "stage_media",
+    "takes_media",
+    "text_rows",
+]
+
+MEDIA_KINDS = ("image", "video")
+"""The media kinds a pairs entry names."""
+
+MEDIA_GATE_SCOPE = "input"
+"""What this stage gates: the media **inputs**, never the model's media outputs.
+
+It compares what the client sends (the parts in order, each image's prepared geometry, each clip's declared
+frame count, the tokens the client counted) with what the reference consumes, and -- with an engine -- the
+engine's own ``usage.prompt_tokens`` difference with the client's count.  No vector or score for any image,
+video or interleaved input is compared with the reference here: that half is a separate media output stage
+(owner decision 2026-10-09; the ref-envs lane owns it).  A recipe's media-equivalence claim must say so.
+"""
+
+MEDIA_GATE_SCOPE_NOTE = (
+    "an INPUT gate: what the client sends and what the engine counts, against the reference's consumption; "
+    "no media vector or score is compared (the media output stage is separate), so a passing media stage "
+    "proves the served path shows the model the same media -- never that the model returns the same numbers"
+)
+"""The one-line statement of :data:`MEDIA_GATE_SCOPE`, carried in every stage document and the report."""
+
+_REF_FIELDS = ("uri", "sha256", "mime", "width", "height", "num_bytes", "num_frames", "duration_s", "fps")
+
+
+def takes_media(recipe: Recipe) -> bool:
+    """Whether the recipe declares an image or video input (it then has a media stage)."""
+    return bool({"image", "video"} & set(recipe.input))
+
+
+def _entries(row: dict[str, Any]) -> list[dict[str, Any]]:
+    media = row.get("media") or {}
+    documents = [entry for entries in media.get("documents") or [] for entry in entries or []]
+    return [entry for entry in [*(media.get("query") or []), *documents] if isinstance(entry, dict)]
+
+
+def media_rows(rows: Sequence[dict[str, Any]]) -> list[tuple[int, dict[str, Any]]]:
+    """The pairs rows that carry inline media (an entry with its bytes' ``uri``), with their positions in the
+    file: this stage's rows.  A row whose media are source coordinates only (a suite page, resolved at
+    ingest) stays a text row of stages 1 and 2 and is counted here as unresolved."""
+    return [(index, row) for index, row in enumerate(rows) if any(entry.get("uri") for entry in _entries(row))]
+
+
+def text_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The pairs rows without inline media: what stages 1 and 2 compare (the media rows are this stage's)."""
+    media = {index for index, _ in media_rows(rows)}
+    return [row for index, row in enumerate(rows) if index not in media]
+
+
+def _part(entry: dict[str, Any]) -> Any:
+    """One pairs media entry as the product's content part: a media entry (``image``/``video``, with its
+    bytes) or a text segment (``{"kind": "text", "text": ...}``), at its position in the sequence."""
+    from rcp_ndcg_core.content import ImagePart, MediaRef, TextPart, VideoPart
+
+    kind = entry.get("kind", "image")
+    if kind == "text":
+        return TextPart(text=str(entry.get("text", "")))
+    if kind not in MEDIA_KINDS:
+        raise HarnessError(f"a media entry's kind must be one of {['text', *MEDIA_KINDS]}, got {kind!r}")
+    if not entry.get("uri"):
+        raise HarnessError(
+            "a media entry needs its bytes (a uri: inline data: or a resolvable path); a source coordinate "
+            f"(suite/subset/doc_id) is resolved at ingest, not here: {sorted(entry)}"
+        )
+    ref = MediaRef.model_validate({key: entry[key] for key in _REF_FIELDS if entry.get(key) is not None})
+    return ImagePart(ref=ref) if kind == "image" else VideoPart(ref=ref)
+
+
+def side_content(text: str, entries: Sequence[dict[str, Any]]) -> Any:
+    """One side of a media row as the product's :class:`~rcp_ndcg_core.content.Content`: its entries in
+    order (media parts and text segments of a part sequence), then its text when it has one."""
+    from rcp_ndcg_core.content import Content, TextPart
+
+    parts: list[Any] = [_part(entry) for entry in entries]
+    if text:
+        parts.append(TextPart(text=text))
+    return Content.from_parts(parts) if parts else Content.from_text("")
+
+
+def side_contents(row: dict[str, Any]) -> tuple[Any, list[Any]]:
+    """A media row's query and documents as content (:func:`side_content` per side)."""
+    media = row.get("media") or {}
+    documents_media = list(media.get("documents") or [])
+    query = side_content(str(row["query"]), list(media.get("query") or []))
+    documents = [
+        side_content(str(text), documents_media[position] if position < len(documents_media) else [])
+        for position, text in enumerate(row["documents"])
+    ]
+    return query, documents
+
+
+# ---------------------------------------------------------------------------
+# The client's side: what crossed the wire.
+# ---------------------------------------------------------------------------
+
+
+def _sent_bytes(url: str) -> bytes:
+    """The bytes of one sent inline media item: the product's own resolver reads the ``data:`` URI (the one
+    form the package inlines media as), so the stage and the emulator decode it identically."""
+    from rcp_ndcg_core.content import MediaRef
+
+    from rcp_ndcg.data.media import default_resolver
+
+    if not url.startswith("data:"):
+        raise HarnessError(
+            f"the client sent a media item that is not inline ({url[:40]}...): the harness reads the sent bytes"
+        )
+    return default_resolver().bytes_of(MediaRef(uri=url))
+
+
+def sent_media_content(part: Mapping[str, Any]) -> tuple[str, Any]:
+    """One media part as the client sent it, as the product's content: ``(kind, Content)`` with the facts the
+    sent bytes state -- an image's size from the product's own header reader, a container's geometry, frame
+    count and rate from the product's own probe.
+
+    The one reader of a sent media part: the media stage's per-item facts and the verified emulator's media
+    model both use it, so a part is decoded, probed and priced identically wherever the harness reads it
+    (R30).  The content carries no URI bytes (the policies never fetch); its geometry and rate are what the
+    count needs.
+
+    Raises:
+        HarnessError: the part is not an inline media item, or its bytes state no geometry (an image whose
+            header does not decode, a container the probe cannot read).
+    """
+    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
+
+    from rcp_ndcg.data.media import image_dimensions, probe_video_header
+
+    kind = "image" if part.get("type") == "image_url" else "video"
+    url = str((part.get("image_url") or {}).get("url") if kind == "image" else (part.get("video_url") or {}).get("url"))
+    payload = _sent_bytes(url)
+    if kind == "image":
+        width, height = image_dimensions(payload)
+        if not width or not height:
+            raise HarnessError(f"the client sent an image whose header states no geometry ({url[:40]}...)")
+        return kind, Content.from_parts([ImagePart(ref=MediaRef(uri="data:,", width=width, height=height))])
+    header = probe_video_header(payload)
+    if header is None or not header.width or not header.height:
+        raise HarnessError("the client sent a video container whose header does not state its geometry")
+    return kind, Content.from_parts(
+        [
+            VideoPart(
+                ref=MediaRef(
+                    uri="data:,",
+                    mime="video/mp4",
+                    width=header.width,
+                    height=header.height,
+                    num_frames=header.num_frames,
+                    fps=header.fps,
+                )
+            )
+        ]
+    )
+
+
+def _parts_of(value: Any) -> list[dict[str, Any]]:
+    """A sent side as its content parts: a messages user turn's content, a rerank side's ``{"content": [...]}``
+    or a plain string (one text part)."""
+    if isinstance(value, str):
+        return [{"type": "text", "text": value}]
+    if isinstance(value, dict) and isinstance(value.get("content"), list):
+        value = value["content"]
+    if not isinstance(value, list):
+        return []
+    return [{"type": "text", "text": part} if isinstance(part, str) else part for part in value]
+
+
+def _video_frames(video_policy: Any, num_frames: int | None, original_fps: float | None) -> int | None:
+    """The frames the engine shows for a sent container: the pinned count, or the declared fps rule's
+    realised count from the clip's recorded frame count and rate (:func:`qwen3_vl_video_frame_indices`).
+    ``None`` when the policy or the clip's metadata cannot realise one (reported as a failure)."""
+    from rcp_ndcg.data.resolution import qwen3_vl_video_frame_indices
+
+    if video_policy is None:
+        return None
+    if video_policy.num_frames is not None:
+        return int(video_policy.num_frames)
+    if num_frames is None or original_fps is None or not video_policy.fps:
+        return None
+    return len(qwen3_vl_video_frame_indices(num_frames, original_fps, fps=video_policy.fps))
+
+
+def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) -> dict[str, Any]:
+    """The facts of one sent side: the placement (part kinds in order), and per media item its kind, geometry
+    or frame count and the tokens the client counted for it (the product's own count, exact when the recipe's
+    tokenizer is passed -- an fps container's timestamp lines are tokenizer-dependent).
+
+    An image's geometry is the geometry the ENGINE consumes, not the bytes' own: a ``gemma4`` policy sends
+    the raw image, whose processor resizes it once (g-ref-vl-1), so the reference's one-pass grid is
+    computed here with the product's own public rule; the other families' prepared image is already the
+    engine's output (its policy keeps it)."""
+    from rcp_ndcg.data.prepare import media_policies_for
+    from rcp_ndcg.data.resolution import PROCESSORS, ImagePolicy, content_media_tokens, gemma4_resize
+
+    image_policy, video_policy = media_policies_for(client.config)
+
+    def consumed_geometry(height: int, width: int) -> tuple[int, int]:
+        # Bind the policy once: ``resizes`` implies a known processor, but a checker cannot narrow a property's
+        # implication, and the later calls need the policy itself non-optional.
+        policy = image_policy
+        if policy is None or policy.processor is None or not policy.resizes:
+            return height, width
+        if PROCESSORS[policy.processor].resize == "gemma4":
+            assert policy.max_soft_tokens is not None
+            return gemma4_resize(height, width, max_soft_tokens=policy.max_soft_tokens)
+        return policy.target_size(height, width)
+
+    def tokens_of(content: Any) -> int | None:
+        try:
+            return content_media_tokens(
+                content, image_policy or ImagePolicy.native(), video_policy, tokenizer=tokenizer
+            ).tokens
+        except Exception:  # noqa: BLE001 - a policy that cannot count: reported as None, compared as a failure
+            return None
+
+    placement: list[str] = []
+    items: list[dict[str, Any]] = []
+    for part in parts:
+        kind = part.get("type")
+        if kind == "text":
+            if part.get("text"):
+                placement.append("text")
+        elif kind in ("image_url", "video_url"):
+            sent_kind, content = sent_media_content(part)
+            placement.append(sent_kind)
+            ref = content.parts[0].ref
+            assert ref is not None  # sent_media_content always builds a ref
+            if sent_kind == "image":
+                height, width = consumed_geometry(ref.height or 0, ref.width or 0)
+                items.append({"kind": "image", "width": width, "height": height, "tokens": tokens_of(content)})
+            else:
+                frames = _video_frames(video_policy, ref.num_frames, ref.fps)
+                items.append({"kind": "video", "frames": frames, "tokens": tokens_of(content)})
+    return {"placement": placement, "media": items}
+
+
+def _offline_reply_probe(recipe: Recipe) -> Recipe:
+    """The recipe with its engine-side REPLY rules bounded, for a media probe through the offline fake.
+
+    The fake answers a media item's ``messages`` request with its fallback count -- it cannot render the chat
+    template or count the prepared media block -- so a client that declares an engine-side rule would refuse
+    the reply.  The rules act on the reply only: the requests are byte-identical either way (the recipe
+    tests' offline probes state the same), so bounding them keeps this stage auditing what the client SENDS,
+    which is the stage's referent.  With an engine (``base_url`` set) the shipped declarations are probed
+    unchanged, and the engine check compares the engine's own media count.
+    """
+    client = dict(recipe.client)
+    client.pop("document_skip_engine_side", None)
+    if client.get("media_keep_token_ids"):
+        client["media_keep_token_ids"] = []
+    return recipe.model_copy(update={"client": client})
+
+
+def _client_facts(
+    recipe: Recipe, rows: list[tuple[int, dict[str, Any]]], base_url: str | None
+) -> tuple[dict[tuple[int, str], dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], Any]:
+    """Send every media side through the role client; return the sent facts per ``(row, side)``, the
+    refusals, the captured media requests (each with the ``(row, side)`` keys it carries) and the recipe's
+    loaded tokenizer (``None`` when it cannot be loaded: the engine check then reads no render merge)."""
+    from rcp_ndcg.errors import RcpNdcgError
+    from rcp_ndcg.inference.types import EncodeRole
+
+    from .fitting import tokenizer_of
+
+    client, capture = role_client(recipe if base_url else _offline_reply_probe(recipe), base_url)
+    try:
+        # the recipe's own loaded tokenizer: an fps container's timestamp lines are tokenizer-dependent, so
+        # the counted tokens the engine check compares are the exact ones the client counts with
+        tokenizer = tokenizer_of(recipe)
+    except Exception:  # noqa: BLE001 - a recipe without a resolvable tokenizer counts at the family's bound
+        tokenizer = None
+    facts: dict[tuple[int, str], dict[str, Any]] = {}
+    refusals: list[dict[str, Any]] = []
+    requests: list[dict[str, Any]] = []
+    for index, row in rows:
+        query, documents = side_contents(row)
+        calls: list[tuple[list[str], Any]] = []
+        if recipe.role == "rerank":
+            # One pair per request: the engine's prompt-token report is then that pair's alone.
+            for position, document in enumerate(documents):
+                if query.has_media or document.has_media:
+                    keys = ["query"] if query.has_media else []
+                    keys += [f"document {position}"] if document.has_media else []
+                    calls.append((keys, (query, [document], row.get("instruction"))))
+        else:
+            if query.has_media:
+                calls.append((["query"], ([query], EncodeRole.QUERY)))
+            for position, document in enumerate(documents):
+                if document.has_media:
+                    calls.append(([f"document {position}"], ([document], EncodeRole.DOCUMENT)))
+        for keys, call in calls:
+            start = len(capture.exchanges)
+            try:
+                if recipe.role == "rerank":
+                    client.rerank(call[0], call[1], instruction=call[2])
+                else:
+                    client.encode(*call)
+            except RcpNdcgError as error:
+                refusals.append({"row": index, "sides": keys, "error": f"{type(error).__name__}: {error}"})
+                continue
+            for exchange in capture.exchanges[start:]:
+                body = exchange.get("request_body") or {}
+                if recipe.role == "rerank":
+                    document_parts = _parts_of((body.get("documents") or [""])[0])
+                    sent = {key: _parts_of(body.get("query")) if key == "query" else document_parts for key in keys}
+                else:
+                    conversation = body.get("messages") or []
+                    conversation = (
+                        conversation[0] if conversation and isinstance(conversation[0], list) else conversation
+                    )
+                    turn = next((m for m in conversation if isinstance(m, dict) and m.get("role") == "user"), {})
+                    sent = {keys[0]: _parts_of(turn.get("content") if turn else body.get("input"))}
+                counted = 0
+                for side, parts in sent.items():
+                    side_facts = _sent_side(parts, client, tokenizer)
+                    facts[(index, side)] = side_facts
+                    counted += sum(int(item["tokens"] or 0) for item in side_facts["media"])
+                requests.append({"row": index, "sides": keys, "exchange": exchange, "counted": counted})
+    return facts, refusals, requests, tokenizer
+
+
+# ---------------------------------------------------------------------------
+# The engine's side: the media count it reports.
+# ---------------------------------------------------------------------------
+
+
+def _without_media(body: dict[str, Any]) -> dict[str, Any]:
+    """The request without its media parts -- the baseline whose prompt-token report the media count is the
+    difference to (a side left with no part keeps one empty text part, as the product's lowering does)."""
+
+    def strip(value: Any) -> Any:
+        if isinstance(value, dict) and isinstance(value.get("content"), list):
+            return {**value, "content": strip(value["content"])}
+        if isinstance(value, list) and value and all(isinstance(part, dict) and "type" in part for part in value):
+            kept = [part for part in value if part.get("type") not in ("image_url", "video_url")]
+            return kept or [{"type": "text", "text": ""}]
+        return value
+
+    out = json.loads(json.dumps(body))
+    if isinstance(out.get("messages"), list):
+        conversations = out["messages"]
+        nested = conversations and isinstance(conversations[0], list)
+        for conversation in conversations if nested else [conversations]:
+            for message in conversation:
+                if isinstance(message, dict):
+                    message["content"] = strip(message.get("content"))
+    for key in ("query",):
+        if key in out:
+            out[key] = strip(out[key])
+    if isinstance(out.get("documents"), list):
+        out["documents"] = [strip(document) for document in out["documents"]]
+    return out
+
+
+def _engine_render_merge(recipe: Recipe, body: dict[str, Any], tokenizer: Any) -> int:
+    """The engine's own render's boundary merge for one captured request, in tokens
+    (:func:`~rcp_ndcg_test.equivalence.stages.engine_render_merge`).
+
+    The engine's prompt is its render (the served template over the conversation's parts, each media part a
+    placeholder) with every placeholder replaced by the media's expansion; the client's render drops the
+    media.  The two renders differ by the placeholders and by the boundary tokens their presence moves, and
+    the client's count covers only the expansion: this merge is what the engine's media count may exceed the
+    client's by.  Zero for a body with no conversation (a rerank pair's own wire) and for a recipe whose
+    tokenizer cannot be loaded: the check then compares the counts directly, as it always did.
+    """
+    messages = body.get("messages")
+    if tokenizer is None or not isinstance(messages, list) or not messages:
+        return 0
+    from .stages import engine_render_merge, served_chat_template
+
+    try:
+        _, template_text = served_chat_template(recipe)
+    except HarnessError:
+        return 0
+    conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+    flag = bool(body.get("add_generation_prompt", False))
+    return sum(
+        engine_render_merge(template_text, conversation, tokenizer, add_generation_prompt=flag)
+        for conversation in conversations
+    )
+
+
+def _engine_check(
+    recipe: Recipe, requests: list[dict[str, Any]], base_url: str | None, tokenizer: Any
+) -> dict[str, Any]:
+    """Per captured media request: the engine's media count (the prompt-token difference to the same request
+    without its media, less the engine's own render merge) against the client's count; ``not_run`` without an
+    engine, never passed."""
+    if base_url is None:
+        return {"status": "not_run", "passed": None, "reason": "no engine URL: the engine's media count is the wave's"}
+    import httpx
+
+    failures: list[dict[str, Any]] = []
+    checked = 0
+    with httpx.Client(timeout=120.0) as http:
+        for request in requests:
+            exchange = request["exchange"]
+            with_media = prompt_tokens(exchange)
+            merge = _engine_render_merge(recipe, exchange.get("request_body") or {}, tokenizer)
+            reply = http.post(exchange["url"], json=_without_media(exchange.get("request_body") or {}))
+            try:
+                without = prompt_tokens({"response_json": reply.json()})
+            except ValueError:
+                without = None
+            checked += 1
+            if with_media is None or without is None:
+                failures.append(
+                    {"row": request["row"], "sides": request["sides"], "note": "the engine reported no prompt tokens"}
+                )
+                continue
+            if with_media - without != request["counted"] + merge:
+                failures.append(
+                    {
+                        "row": request["row"],
+                        "sides": request["sides"],
+                        "engine_media_tokens": with_media - without,
+                        "client_media_tokens": request["counted"],
+                        "render_merge": merge,
+                    }
+                )
+    return {
+        "status": "run",
+        "checked": checked,
+        "passed": bool(checked) and not failures,
+        "failures": failures,
+        "referent": "per media request, the engine's usage.prompt_tokens minus the same request's without its "
+        "media parts, less the engine's own render merge (the served template's placeholders aside, how many "
+        "tokens their presence moves at the text boundaries), must equal the media tokens the client counted "
+        "(an unpinned or re-resizing engine differs)",
+    }
+
+
+# ---------------------------------------------------------------------------
+# The stage.
+# ---------------------------------------------------------------------------
+
+
+def _reference_facts(
+    recipe: Recipe, reference_python: str, rows: list[tuple[int, dict[str, Any]]]
+) -> dict[tuple[int, str], dict[str, Any]]:
+    """The reference subprocess's media facts for the media rows (``--mode media``), keyed by the rows'
+    positions in the pairs file and the side."""
+    from .fitting import resolved_tokenizer_spec
+
+    entry = reference_entry(recipe)
+    # ignore_cleanup_errors: the scratch files are written, read by the reference subprocess and closed; on
+    # a network-backed tempdir an entry can turn visible after the cleanup's scan, and a scratch cleanup
+    # race must never fail the stage.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        pairs_path = Path(work) / "pairs.jsonl"
+        public = [{key: value for key, value in row.items() if not key.startswith("_")} for _, row in rows]
+        pairs_path.write_text("".join(json.dumps(row) + "\n" for row in public), encoding="utf-8")
+        document = run_reference(
+            reference_python,
+            entry,
+            mode="media",
+            pairs_path=pairs_path,
+            out_path=Path(work) / "reference.json",
+            tokenizer_spec=resolved_tokenizer_spec(recipe),
+            recipe=recipe,
+        )
+    out: dict[tuple[int, str], dict[str, Any]] = {}
+    for entry in document.get("rows", []):
+        position = int(entry["index"])
+        if not 0 <= position < len(rows):
+            raise HarnessError(f"the reference reported media for row {position}, which it was not given")
+        out[(rows[position][0], str(entry["side"]))] = {
+            "placement": list(entry.get("placement") or []),
+            "media": list(entry.get("media") or []),
+            **({"refused": str(entry["refused"])} if entry.get("refused") else {}),
+        }
+    return out
+
+
+def _compare(key: tuple[int, str], client: dict[str, Any], reference: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every difference between the client's and the reference's facts of one side (each item gates)."""
+    where = {"row": key[0], "side": key[1]}
+    if reference.get("refused"):
+        # The card cannot consume this input (e.g. an image and a text in one late-interaction document):
+        # what the client sends here reaches the model as an input its reference never defines.
+        return [{**where, "check": "reference_refused", "reason": reference["refused"]}]
+    failures: list[dict[str, Any]] = []
+    if client["placement"] != reference["placement"]:
+        failures.append(
+            {**where, "check": "placement", "client": client["placement"], "reference": reference["placement"]}
+        )
+    if len(client["media"]) != len(reference["media"]):
+        failures.append(
+            {**where, "check": "count", "client": len(client["media"]), "reference": len(reference["media"])}
+        )
+        return failures
+    for position, (sent, consumed) in enumerate(zip(client["media"], reference["media"], strict=True)):
+        names = ("kind", "width", "height", "frames") + (("tokens",) if sent["kind"] == "image" else ())
+        for name in names:
+            counted = name != "tokens" or all(
+                isinstance(value, int) and not isinstance(value, bool) for value in (sent.get(name), consumed.get(name))
+            )  # an image's tokens gate as counts: uncounted on either side is a failure, never None == None
+            if not counted or sent.get(name) != consumed.get(name):
+                failures.append(
+                    {
+                        **where,
+                        "item": position,
+                        "check": name,
+                        "client": sent.get(name),
+                        "reference": consumed.get(name),
+                    }
+                )
+    return failures
+
+
+def stage_media(
+    recipe: Recipe, pairs_path: str | Path, reference_python: str | None, *, base_url: str | None = None
+) -> dict[str, Any] | None:
+    """The media stage of one recipe (see the module docstring); ``None`` for a recipe without media input.
+
+    Inputs: the recipe, the pairs file (its media rows), the reference interpreter and the engine's URL.
+    Output: ``{"status", "scope", "scope_note", "rows", "sides", "items", "unresolved_rows",
+    "failures", "refusals", "engine_check", "passed", "referent"}`` (``unresolved_rows``: rows whose
+    media are source coordinates, reported, not compared): ``passed`` only when every media item of every
+    side matched the reference (count, placement, geometry or frames, tokens), the client refused no media
+    row and -- with an engine -- the engine counted what the client counted.  Without ``reference_python``
+    the stage is ``not_run`` (neutral, as stage 1's render check); a media recipe whose pairs carry no media
+    row fails.
+    """
+    from .fitting import load_pairs
+
+    if not takes_media(recipe):
+        return None
+    loaded = load_pairs(pairs_path)
+    rows = media_rows(loaded)
+    unresolved = sum(1 for row in text_rows(loaded) if _entries(row))
+    if not rows:
+        return {
+            "status": "no_media_rows",
+            "passed": False,
+            "scope": MEDIA_GATE_SCOPE,
+            "scope_note": MEDIA_GATE_SCOPE_NOTE,
+            "reason": f"the recipe declares input {list(recipe.input)} and the pairs file carries no media row: "
+            "the media gate checked nothing",
+        }
+    if not reference_python:
+        return {
+            "status": "not_run",
+            "passed": None,
+            "scope": MEDIA_GATE_SCOPE,
+            "scope_note": MEDIA_GATE_SCOPE_NOTE,
+            "reason": "no --reference-python: the reference's media facts",
+        }
+    client, refusals, requests, tokenizer = _client_facts(recipe, rows, base_url)
+    reference = _reference_facts(recipe, reference_python, rows)
+    failures: list[dict[str, Any]] = []
+    for key in sorted(set(client) | set(reference)):
+        if key not in reference:
+            failures.append(
+                {"row": key[0], "side": key[1], "check": "reference", "note": "the reference reported no media facts"}
+            )
+        elif reference[key].get("refused"):
+            # The card does not define this input: that decides the row (the generator prunes it), whether or
+            # not the client sent it.
+            failures.append(
+                {"row": key[0], "side": key[1], "check": "reference_refused", "reason": reference[key]["refused"]}
+            )
+        elif key not in client:
+            failures.append({"row": key[0], "side": key[1], "check": "client", "note": "the client sent no such side"})
+        else:
+            failures.extend(_compare(key, client[key], reference[key]))
+    engine = _engine_check(recipe, requests, base_url, tokenizer)
+    items = sum(len(facts["media"]) for facts in client.values())
+    return {
+        "status": "run",
+        "scope": MEDIA_GATE_SCOPE,
+        "scope_note": MEDIA_GATE_SCOPE_NOTE,
+        "rows": len(rows),
+        "sides": len(client),
+        "items": items,
+        "unresolved_rows": unresolved,
+        "failures": failures,
+        "refusals": refusals,
+        "engine_check": engine,
+        "passed": bool(items) and not failures and not refusals and engine.get("passed") is not False,
+        "referent": "per media row and side, what the client sent (the parts in order, each image's prepared "
+        "geometry and each video's frames, the tokens it counted) must equal what the reference consumes; with "
+        "an engine, the engine's own media count must equal the client's",
+    }

@@ -1,0 +1,37 @@
+{
+ "_source": "topk-embed-v1-small on the final RC's wave (the engine image vllm/vllm-openai:v0.31.0): each image document row's FULL-WIDTH (mrl_dim null) minimum per-token cosine, read from the wave's equivalence.json (stage2.per_vector) -- the statistic the probe's E6 computes. The nine image document rows (20-28) are the calibration numbers the probe's E1/E6 compare against; the row-28 entry is its image document (document 1). _minima_over_all_widths holds each row's minimum over EVERY mrl width the wave measured; this file carried those values under the top-level keys until lane topkrun relabelled them, because its first _source called them 'mrl_dim null' and that was wrong (row 23's -0.35538 is the k=64 minimum, not the full-width -0.068241).",
+ "_gate_minima": {
+  "full_2048": -0.11344692890060686,
+  "64": -0.35537964710105385,
+  "128": -0.2848102523636812,
+  "256": -0.1478045449199848,
+  "512": -0.14398048332058655,
+  "1024": -0.12270265446270309
+ },
+ "_minima_over_all_widths": {
+  "20": 0.909417,
+  "21": 0.547347,
+  "22": 0.00517,
+  "23": -0.35538,
+  "24": -0.151226,
+  "25": -0.093863,
+  "26": -0.326979,
+  "27": 0.033662,
+  "28": 0.547347
+ },
+ "_sub_0_9": {
+  "total_token_vectors": 11296,
+  "of_comparisons": 209188,
+  "image_rows": 10880,
+  "rows_17_18_text": 416
+ },
+ "20": 0.911091,
+ "21": 0.551438,
+ "22": 0.038961,
+ "23": -0.068241,
+ "24": -0.080812,
+ "25": -0.034801,
+ "26": -0.113447,
+ "27": 0.057685,
+ "28": 0.551438
+}

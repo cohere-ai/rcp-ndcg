@@ -1,0 +1,38 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/index-build.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "An index on disk.",
+  "properties": {
+    "dataset": {
+      "title": "Dataset",
+      "type": "string"
+    },
+    "identity": {
+      "title": "Identity",
+      "type": "string"
+    },
+    "index": {
+      "description": "The index directory (pass it to `retrieval search --index`).",
+      "title": "Index",
+      "type": "string"
+    },
+    "num_documents": {
+      "title": "Num Documents",
+      "type": "integer"
+    },
+    "schema": {
+      "const": "rcp-ndcg.index-build.v1",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "index",
+    "dataset",
+    "num_documents",
+    "identity"
+  ],
+  "title": "IndexBuild",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.index-build.v1"
+}

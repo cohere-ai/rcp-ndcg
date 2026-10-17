@@ -1,0 +1,101 @@
+"""Clip-level frame directories as a document corpus: one directory of frames per document.
+
+The layout pre-extracted video benchmarks ship in -- every clip a directory of
+JPEG/PNG frames -- read so that each clip becomes one
+``VideoPart(frames=[...], frame_indices=[...])``::
+
+    root/
+      movie_a/clip_001/000001.jpg 000002.jpg ...   -> document "movie_a/clip_001"
+      movie_a/clip_002/...                         -> document "movie_a/clip_002"
+
+A clip is any directory that directly holds frame images; its id is that
+directory's path relative to the root. Frames are ordered by the numbers in
+their file names (``frame_2`` before ``frame_10``) and ``frame_indices`` records
+each frame's number in its file name -- which frame of the source it was sampled
+at, the same rule the class docstring states. A clip whose numbers do not
+strictly increase is refused: they could not say which frame of the source was
+shown.
+
+This is the video shape every OpenAI-compatible endpoint can judge: the sampled
+frames are sent as images, and no video decoder is involved anywhere.
+"""
+
+from __future__ import annotations
+
+import itertools
+import re
+from collections.abc import Iterator
+from typing import ClassVar
+
+from rcp_ndcg_core.content import Content, Modality, VideoPart
+from rcp_ndcg_core.records import Document
+
+from rcp_ndcg import storage
+from rcp_ndcg.data.io.image_dir import ImageDirReader
+from rcp_ndcg.errors import DataError
+
+_NUMBER = re.compile(r"(\d+)")
+
+
+def _natural_key(uri: str) -> list[int | str]:
+    """``frame_2`` sorts before ``frame_10``."""
+    return [int(chunk) if chunk.isdigit() else chunk for chunk in _NUMBER.split(uri)]
+
+
+class FrameDirReader(ImageDirReader):
+    """Reads a tree of per-clip frame directories as one-clip documents.
+
+    Takes the same arguments as :class:`~rcp_ndcg.data.io.image_dir.ImageDirReader`;
+    ``hash_media`` hashes and sizes every frame. ``frame_indices`` records each frame's number in
+    its file name -- which frame of the source it was sampled at -- not its position in the directory.
+    """
+
+    name = "frames"
+    modality: ClassVar[Modality] = Modality.VIDEO
+
+    def documents(self) -> Iterator[Document]:
+        for clip_id, uris in self._clips():
+            indices = [_frame_number(uri) for uri in uris]
+            repeated = [f"{earlier}->{later}" for earlier, later in itertools.pairwise(indices) if later <= earlier]
+            if repeated:
+                raise DataError(
+                    f"the frames of clip {clip_id!r} do not carry strictly increasing numbers "
+                    f"({', '.join(repeated[:5])}); frame_indices could not say which frame of the source "
+                    "was shown",
+                    hint="name each frame after the source frame it was sampled at (000001.jpg, 000002.jpg, "
+                    "...), with the clip name holding no number of its own before the frame's",
+                )
+            frames = [self._ref(uri) for uri in uris]
+            part = VideoPart(frames=frames, frame_indices=indices)
+            yield Document(doc_id=clip_id, content=Content.from_parts([part]))
+
+    def _clips(self) -> Iterator[tuple[str, list[str]]]:
+        """``(clip id, frame uris in order)`` for every directory that holds frames."""
+        clips: dict[str, list[str]] = {}
+        for uri in self._media_uris():
+            clip_id, _, _ = storage.relative(uri, self.uri).rpartition("/")
+            if not clip_id:
+                raise DataError(
+                    f"{uri} sits directly in the frame root {self.uri}; a frame directory corpus holds one "
+                    "directory per clip. Move each clip's frames into their own directory."
+                )
+            clips.setdefault(clip_id, []).append(uri)
+        for clip_id in sorted(clips):
+            yield clip_id, sorted(clips[clip_id], key=_natural_key)
+
+
+def _frame_number(uri: str) -> int:
+    """The frame's number in its file name: the last digit run (``000007.jpg`` -> 7, ``clip1_frame_0007``
+    -> 7, ``img_1080p_000123.png`` -> 123), what ``frame_indices`` records.
+
+    Raises:
+        DataError: the file name holds no number -- the record could not say which frame it is.
+    """
+    stem = uri.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    numbers = _NUMBER.findall(stem)
+    if not numbers:
+        raise DataError(f"{uri}: a frame file name carries no number; frame_indices cannot name the source frame")
+    return int(numbers[-1])
+
+
+__all__ = ["FrameDirReader"]

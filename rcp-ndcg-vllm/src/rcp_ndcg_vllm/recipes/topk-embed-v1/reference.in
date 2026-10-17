@@ -1,0 +1,74 @@
+# reference.in: this family's reference requirements, resolved to the exact, hashed reference.lock
+# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (the family's one reference environment). The tool
+# constrains torch and the CUDA stack to the engine image's freeze; every other pin installs into
+# the family's reference venv and takes precedence over the image's copy. Never edit the lock by hand.
+# own-torch: true
+# own-torch-evidence: the checkpoint's own requirements.txt at the pinned revision pins torch==2.11.0 and torchvision==0.26.0 beside flash-linear-attention 0.5.1 (a compiled extension); the card's published path is the reference, so the family owns its stack
+# The reference environment for recipes/topk-embed-v1/reference.py, in ITS OWN
+# python (never the harness's process, never the engine image):
+#   pip install -r reference.lock
+# The wave runner points --reference-python at this environment (the node's bootstrap
+# installs it); the reference subprocess runs while the engine on that slot is up.
+# `--mode render` needs only huggingface_hub and tokenizers (it reads the pinned config.json,
+# tokenizer_config.json, sentence_bert_config.json and tokenizer.json, and runs the card's cut
+# in the tokenizers library) and runs in any interpreter that has them.
+#
+# These are the checkpoint's own requirements.txt pins at revision
+# e54485ebab921f2c18c4d092b3f4c40dcca26781 -- the model card's published path is
+# sentence-transformers MultiVectorEncoder over the checkpoint's trusted code.  The family is
+# own-torch, so the bootstrap builds its reference venv WITHOUT --system-site-packages
+# (jobs/bootstrap.sh) and installs exactly these pins: the image's transformers is never involved.
+# E2 round 9 pinned transformers==5.9.0, the checkpoint's own release, after the remote
+# hf_backbone.py:111 call `self.chunk_gated_delta_rule(...)` died on the image's stack with
+# `AttributeError: 'PackedGatedDeltaNet' object has no attribute 'chunk_gated_delta_rule'`:
+# 5.9.0's `Qwen3_5GatedDeltaNet.__init__` assigns that instance attribute
+# (`self.chunk_gated_delta_rule = chunk_gated_delta_rule or torch_chunk_gated_delta_rule`,
+# modeling_qwen3_5.py:422) and its forward calls it (:535); 5.17.0 removed the attribute (its
+# forward calls the module-level `torch_chunk_gated_delta_rule`, :639), whose signature takes
+# `**kwargs` and never reads the `cu_seqlens` the remote code passes to keep packed documents
+# apart -- delegating the call to the 5.17 name would silently change packed-document numerics.
+# The earlier range (>=5.10.4,<5.18.0, "the image's stack") no longer holds: it was written to
+# avoid installing transformers into the reference venv, but this family's venv is its own and
+# reads nothing from the image.  reference.py's declared `_alias_qwen3_5_layer_type` and
+# `_promote_qwen3_5_rope_position_ids` shims are inert under 5.9.0 (it carries `layer_type` and
+# the 2-D rope promotion); they stay as the conditional aliases they are.
+torch==2.11.0
+torchvision==0.26.0
+# torch 2.11.0's Linux CUDA stack, pinned here because this family owns its torch (own-torch): torch
+# requires `cuda-toolkit[cublas,cudart,cufft,cufile,cupti,curand,cusolver,cusparse,nvjitlink,nvrtc,nvtx]
+# ==13.0.2` plus the four nvidia-* wheels below directly.  The bootstrap installs the lock with
+# `--no-deps` and the completion installs a planned requirement the same way, so an extras-bearing
+# requirement would install only the cuda-toolkit meta-package and leave libcufile.so.0 and the other
+# runtime libraries out (the r4 wave's `import torch` failure: `libcufile.so.0: cannot open shared
+# object file`).  The versions are torch 2.11.0's own requirements at the pinned revision.
+nvidia-cublas==13.1.0.3
+nvidia-cuda-cupti==13.0.85
+nvidia-cuda-nvrtc==13.0.88
+nvidia-cuda-runtime==13.0.96
+nvidia-cufft==12.0.0.61
+nvidia-cufile==1.15.1.6
+nvidia-curand==10.4.0.35
+nvidia-cusolver==12.0.4.66
+nvidia-cusparse==12.6.3.3
+nvidia-nvjitlink==13.0.88
+nvidia-nvtx==13.0.85
+nvidia-cudnn-cu13==9.19.0.56
+nvidia-cusparselt-cu13==0.8.0
+nvidia-nccl-cu13==2.28.9
+nvidia-nvshmem-cu13==3.4.5
+transformers==5.9.0
+sentence-transformers==6.0.1
+flash-linear-attention==0.5.1
+kernels==0.14.1
+safetensors>=0.7.0
+Pillow>=12.0
+# The render mode's dependencies besides the stdlib: this and tokenizers.  tokenizers is pinned
+# inside transformers 5.9.0's own range (Requires-Dist: tokenizers<=0.23.0,>=0.22.0): with the name
+# left unpinned, `uv pip compile --no-deps` resolves the newest release, which the family's own pin
+# forbids -- the bootstrap's completion step then fails the import check (the r4 wave's
+# huggingface-hub incident: `huggingface-hub is installed at 1.33.0, the lock pins 2.2.0`).  The
+# pinned range resolves to 0.22.2, the newest release the range allows (0.23.0 was never published);
+# huggingface-hub 1.33.0 (inside 5.9.0's own >=1.5.0,<2.0 range) is what the staged wheelhouse
+# carries.
+huggingface-hub>=1.5,<2.0
+tokenizers>=0.22.0,<=0.23.0

@@ -1,0 +1,1367 @@
+"""The ``topk-embed-v1`` family: contract, stage 1 on CPU, the keep-mask and wrapper pins, per
+variant (decision 34: one family module, parametrized over its variant ids).
+
+The hub-dependent tests share module fixtures that fetch each variant's pinned tokenizer (and the
+checkpoint's config files) once; offline or hub-less environments skip them with the reason.
+Nothing downloads weights: stage 1 on CPU is a tokenizer-and-config check, never a model run.
+
+The contract test pins every resolved ``serve``, ``client`` and ``reference`` field through the
+shared helper (``tests/recipes/_contract.py``); its two mutant tests show a drifted recipe going
+red by name. Stage 1 was re-run after the G5 tokenizer-loading fix with over-length inputs above
+1024 tokens (queries past the cap, documents past the old counting ceiling to 8192).
+
+The two sizes differ only in their per-size fields: ``client.dim`` (2048 for -small, 1024 for
+-xsmall; the checkpoint's ``dim``/``output_dim``), the backbone/vision dimensions, and the weights;
+the architecture, the remote config class, the tokenizer file, the chat template, the processor
+config, the prompts, the skip ids and the caps are identical at the pinned revisions.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import sys
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+from rcp_ndcg_test.equivalence import stage1_prompts
+from rcp_ndcg_test.equivalence.fitting import load_pairs
+from rcp_ndcg_vllm import load_recipe
+from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe, serve_argv
+
+from rcp_ndcg.data.tokenizer import load_tokenizer
+
+from ._contract import assert_recipe_contract
+from ._served import served_rows, served_texts
+
+FAMILY_ID = "topk-embed-v1"
+RECIPE_DIR = default_recipes_root() / FAMILY_ID
+QUERY_HEAD = "Query: "
+DOCUMENT_HEAD = "Document: "
+
+#: The family's variants (decision 34): the per-size facts the tests pin. ``dim`` is the checkpoint's
+#: ``dim``/``output_dim`` (the client's per-token vector width), ``head`` its ``head.weight`` shape
+#: and ``weights_bytes`` its ``model.safetensors`` size at the pinned revision (stated in the
+#: variant's notes). Both sizes share the tokenizer file (byte-identical) and all other blocks.
+VARIANTS: dict[str, dict[str, Any]] = {
+    "topk-embed-v1-small": {
+        "repo": "topk-io/topk-embed-v1-small",
+        "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
+        "dim": 2048,
+        "head": [2048, 2048],
+        "weights_bytes": "4,434,947,552",
+        "mrl_dims": [64, 128, 256, 512, 1024, 2048],
+    },
+    "topk-embed-v1-xsmall": {
+        "repo": "topk-io/topk-embed-v1-xsmall",
+        "revision": "210ebf2a25fb7128480f9b9c8f228e8d65c433a7",
+        "dim": 1024,
+        "head": [1024, 1024],
+        "weights_bytes": "1,708,127,768",
+        "mrl_dims": [64, 128, 256, 512, 1024],
+    },
+}
+VARIANT_IDS = list(VARIANTS)
+
+
+def tokenizer_spec(variant_id: str) -> str:
+    """The variant's ``client.tokenizer`` spec (the recipe injects ``model@revision``)."""
+    variant = VARIANTS[variant_id]
+    return f"{variant['repo']}@{variant['revision']}"
+
+
+# Twenty realistic retrieval pairs; several documents carry standalone punctuation, which is what
+# makes the reference's document-side keep-mask load-bearing (see test_document_keep_mask).
+_PAIRS: list[tuple[str, str]] = [
+    ("What was Q3 revenue?", "Q3 revenue was $12 million, up 20% year over year."),
+    ("capital of france", "Paris is the capital and largest city of France."),
+    ("who wrote pride and prejudice", "Pride and Prejudice is an 1813 novel written by Jane Austen."),
+    ("boiling point of water", "Water boils at 100 degrees Celsius at standard atmospheric pressure."),
+    ("largest planet", "Jupiter is the largest planet in the solar system, more than twice as massive as Saturn."),
+    ("speed of light", "The speed of light in a vacuum is exactly 299,792,458 metres per second."),
+    ("first moon landing", "Apollo 11 landed on the Moon on July 20, 1969; Armstrong stepped out six hours later."),
+    ("python list vs tuple", "A tuple is immutable while a list is mutable, so tuples can serve as dictionary keys."),
+    ("how vaccines work", "Vaccines train the immune system to recognize pathogens without causing the disease."),
+    ("the great wall length", "The Great Wall of China stretches over 21,000 kilometers, built across many dynasties."),
+    ("causes of inflation", "Inflation rises when demand outpaces supply, or when production costs increase."),
+    ("photosynthesis inputs", "Photosynthesis converts carbon dioxide and water into glucose using light energy."),
+    ("black hole definition", "A black hole is a region where gravity is so strong that nothing can escape it."),
+    ("eiffel tower height", "The Eiffel Tower stands about 330 metres tall and was completed in 1889."),
+    ("what is dna", "DNA carries the genetic instructions used in the growth and development of organisms."),
+    ("olympics origin", "The Olympic Games began in ancient Greece at Olympia in 776 BC."),
+    ("restful api meaning", "A REST API exposes resources over HTTP using standard verbs and stateless requests."),
+    ("avogadro number", "Avogadro's number, 6.02214076e23, counts particles in one mole of a substance."),
+    ("why is the sky blue", "Air molecules scatter shorter blue wavelengths of sunlight more than longer red ones."),
+    ("sql join types", "INNER JOIN keeps matches; LEFT JOIN keeps all rows of the left table with nulls."),
+]
+
+
+@pytest.fixture(scope="module", params=VARIANT_IDS)
+def variant_id(request: pytest.FixtureRequest) -> str:
+    """The variant under test: every test that needs a tokenizer, a checkpoint or the contract runs once
+    per variant (decision 34)."""
+    return str(request.param)
+
+
+@pytest.fixture(scope="module")
+def tokenizer(variant_id: str):
+    """The variant's tokenizer (the product's loader, its Hub cache); skip when it cannot be fetched."""
+    spec = tokenizer_spec(variant_id)
+    try:
+        return load_tokenizer(spec)
+    except Exception as error:  # offline CI, or the hub extra is not installed
+        pytest.skip(f"cannot fetch the recipe tokenizer {spec!r} ({error}); stage 1 on CPU is skipped")
+
+
+@pytest.fixture(scope="module")
+def checkpoint(variant_id: str, tokenizer) -> dict:
+    """The variant's pinned config files (config.json, tokenizer_config.json, chat_template.jinja).
+
+    Render mode needs only these (no weights, no torch); the tokenizer fixture has already proven the
+    hub is reachable, so a failure here is a real fetch error, reported as such.
+    """
+    from huggingface_hub import hf_hub_download
+
+    variant = VARIANTS[variant_id]
+
+    def fetch(name: str) -> dict | str:
+        path = hf_hub_download(variant["repo"], name, revision=variant["revision"])
+        text = Path(path).read_text(encoding="utf-8")
+        return json.loads(text) if name.endswith(".json") else text
+
+    return {
+        "config": fetch("config.json"),
+        "tokenizer_config": fetch("tokenizer_config.json"),
+        "chat_template": fetch("chat_template.jinja"),
+    }
+
+
+def _pairs_file(tmp_path: Path) -> Path:
+    """The twenty pairs as a JSONL file."""
+    path = tmp_path / "pairs.jsonl"
+    path.write_text(
+        "".join(json.dumps({"query": query, "documents": [document]}) + "\n" for query, document in _PAIRS),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _mutated_family(tmp_path: Path, change: Callable[[dict], dict]) -> Path:
+    """A copy of the family directory with one YAML mutation applied (the mutations run as recipes).
+
+    Returns the recipes root (``tmp_path``) the mutated family directory lives under; the caller
+    resolves its variant with ``resolve_recipe(variant_id, root=...)``.
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    target = tmp_path / RECIPE_DIR.name
+    target.mkdir()
+    shutil.copy(RECIPE_DIR / "reference.py", target / "reference.py")
+    data = yaml.safe_load((RECIPE_DIR / "family.yaml").read_text(encoding="utf-8"))
+    (target / "family.yaml").write_text(yaml.safe_dump(change(data), sort_keys=False), encoding="utf-8")
+    return tmp_path
+
+
+def _probe_recipe(tmp_path: Path, variant_id: str, change: Callable[[dict], dict] | None = None) -> Path:
+    """A probe copy of the recipe for the offline fake: the reply-side fields bounded, the requests unchanged.
+
+    Stage 1 audits what the role client SENDS; the offline fake's answer is scaffolding. Two reply-side
+    fields of the shipped recipe make that answer heavy or unanswerable, so the probe copy changes exactly
+    those two and nothing a request carries:
+
+    - ``dim: 8`` -- the answer's size: the fake answers one ``dim``-wide vector per token (one seeded
+      draw per vector, so the shipped width costs seconds, not minutes), and the stage-1 samples run to
+      2 x 8192 tokens per probed text, so the shipped width is a large float32 matrix per text for
+      nothing the audit reads (the variant's own ``overrides.client.dim`` is bounded too);
+    - ``document_skip_token_ids: []`` and ``media_keep_token_ids: []`` (with the engine's allowlist half
+      dropped) -- the fake counts one token per whitespace word, not the recipe tokenizer's tokens, and
+      the pooling client refuses a document answer whose vector count is not the count of the ids it sent
+      (the skip ids would not align); the engine-side media allowlist would make the media answer's count
+      the patch run, which the fake never sends. Both rules act on the reply only.
+
+    Every assertion these tests make reads requests (texts, ids, cuts, anchors, the render comparison);
+    the shipped values are pinned by ``test_recipe_contract``. ``test_cut_preserves_the_frame_head``
+    additionally shrinks ``max_tokens`` (its point is the budget).
+
+    Args:
+        tmp_path: the test's temporary directory (the recipe copy lives there).
+        variant_id: the variant the probe resolves (its override dim is bounded too).
+        change: an optional further YAML mutation, applied after the probe bounds.
+    """
+
+    def bound(data: dict) -> dict:
+        overrides = {
+            key: value for key, value in data["serve"]["hf_overrides"].items() if key != "document_keep_token_ids"
+        }
+        narrowed = {
+            **data,
+            "serve": {**data["serve"], "hf_overrides": overrides},
+            "client": {
+                **data["client"],
+                "dim": 8,
+                "document_skip_token_ids": [],
+                "media_keep_token_ids": [],
+            },
+        }
+        for variant in narrowed["variants"]:
+            client = (variant.get("overrides") or {}).get("client")
+            if isinstance(client, dict) and "dim" in client:
+                client["dim"] = 8  # the variant override replaces the family's; bound it too
+        return change(narrowed) if change else narrowed
+
+    return _mutated_family(tmp_path, bound)
+
+
+def _write_reference_pairs(sampled: list[dict[str, Any]], work: Path) -> Path:
+    """The pairs-file rows of a sampled set, as the pairs file the reference subprocess reads."""
+    work.mkdir(parents=True, exist_ok=True)
+    path = work / "pairs.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in sampled if "shape" not in row), encoding="utf-8")
+    return path
+
+
+EXPECTED_SERVE = {
+    "runner": "pooling",
+    "convert": None,
+    "hf_overrides": {"document_keep_token_ids": [248056]},
+    "chat_template": None,
+    "pooler_config": {},
+    "trust_remote_code": False,
+    "max_model_len": 8448,
+    "dtype": "bfloat16",
+    "plugin": "rcp-ndcg-vllm",
+    "patches": [],
+    "plugin_architectures": ["TopkEmbedModel"],
+    "io_processor_plugin": None,
+    "mm_processor_kwargs": {"images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}},
+    "limit_mm_per_prompt": {
+        "image": 1,
+    },
+    "extra_args": [],
+}
+
+EXPECTED_CLIENT_SHARED = {
+    "api": "vllm_pooling",
+    "instruction": "none",
+    "max_tokens": 8192,
+    "query_max_tokens": 1024,
+    "document_skip_token_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        90,
+        91,
+        92,
+        93,
+        248044,
+        248046,
+        248053,
+        248054,
+        248056,
+        248057,
+        248070,
+        248071,
+        248076,
+    ],
+    "media_sides": ["document"],
+    "media_keep_token_ids": [248056],
+    "image_processor": "qwen3_vl",
+    "image_policy": {"min_px": 65536, "max_px": 1310720},
+    "max_images": 1,
+    "max_videos": 0,
+    "template": {
+        "query": [{"fixed": "Query: "}, {"content": "query"}],
+        "document": [{"fixed": "Document: "}, {"content": "document"}],
+        "anchor": "mean",
+        "add_special_tokens": True,
+        "normalize": ["strip"],
+    },
+    "on_overflow": "cut",
+    "empty_doc": "omit_zero",
+    "normalize": True,
+    "mrl_kind": "truncation",
+    "embed_dtype": "float16",
+}
+
+EXPECTED_REFERENCE = {
+    "kind": "sentence_transformers",
+    "score_scale": "cosine",
+    "entry": "reference.py",
+    "known_deviations": ["over_cap_cut_differs"],
+    "device": "cuda",
+    "attn_implementation": None,
+}
+
+EXPECTED_ENGINE = {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "min_version": "0.31.0",
+    "startup_timeout_s": 1800,
+    "step_budget_s": None,  # the schema default
+}
+
+EXPECTED_RESOURCES = {
+    "gpus": 1,
+}
+
+
+def _expected_client(variant_id: str) -> dict[str, Any]:
+    """The variant's client block: the family's shared fields plus the variant's identity and dim."""
+    variant = VARIANTS[variant_id]
+    return {
+        **EXPECTED_CLIENT_SHARED,
+        "tokenizer": tokenizer_spec(variant_id),
+        "dim": variant["dim"],
+        "mrl_dims": variant["mrl_dims"],
+        "model": variant_id,
+        "revision": variant["revision"],
+    }
+
+
+def _expected_top(variant_id: str) -> dict[str, Any]:
+    """The variant's top-level pins."""
+    variant = VARIANTS[variant_id]
+    return {
+        "id": variant_id,
+        "licence": "apache-2.0",
+        "revision": variant["revision"],
+        "role": "multi_vector",
+        "input": ["text", "image"],
+        "model": variant["repo"],
+    }
+
+
+def _assert_contract(recipe: object, variant_id: str) -> None:
+    assert_recipe_contract(
+        recipe,
+        serve=EXPECTED_SERVE,
+        client=_expected_client(variant_id),
+        reference=EXPECTED_REFERENCE,
+        top=_expected_top(variant_id),
+    )
+
+
+def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """An image document rides the messages route and the recorder's model layer records the media request
+    set's first row as sent, never a refusal and never an exception that would end the corpus step and lose
+    the text rows with it. The engine-side media allowlist is dropped for the offline fake (the fake counts
+    one token per whitespace word and never applies the allowlist, so the declared patch-run count could
+    not match); the shipped allowlist's count check is pinned by the product's own tests and the recipe
+    contract, and the media row stays sendable either way."""
+    from rcp_ndcg_test.equivalence.fitting import tokenizer_of
+    from rcp_ndcg_test.observe.media_set import planned_media_rows
+    from rcp_ndcg_test.record import _Collector, _model_layer
+
+    def narrow(data: dict) -> dict:
+        overrides = {
+            key: value for key, value in data["serve"]["hf_overrides"].items() if key != "document_keep_token_ids"
+        }
+        return {
+            **data,
+            "serve": {**data["serve"], "hf_overrides": overrides},
+            "client": {**data["client"], "dim": 8, "media_keep_token_ids": []},
+        }
+
+    root = _mutated_family(tmp_path, narrow)
+    recipe = resolve_recipe(variant_id, root=root)
+    assert recipe.client.get("document_skip_token_ids"), "the media row needs the shipped skip ids"
+    assert not recipe.client.get("media_keep_token_ids"), "the fake applies no allowlist"
+    rows, _ = planned_media_rows(recipe)
+    row = {**{key: rows[0][key] for key in ("query", "documents", "media")}, "request_id": "pairs:21"}
+    collected = _Collector(recipe, tokenizer_of(recipe))
+    _model_layer(recipe, "", [row], collected, (1,))
+    (record,) = collected.records
+    assert record["inputs"]["probe"] == "ok" and record["inputs"]["request_id"] == "pairs:21"
+    assert record["response"]["status"] == 200
+
+
+def test_the_reference_refuses_a_resolved_recipe_of_another_checkpoint(tmp_path: Path, variant_id: str) -> None:
+    """The reference reads ``--recipe``: a resolved recipe naming another checkpoint is refused.
+
+    The checkpoint loads from the tokenizer spec's repository (the variant's ``client.tokenizer``);
+    the resolved recipe is the variant's identity, so a mismatch means the harness resolved a
+    different variant than this reference would serve -- refused loudly, never served silently.
+    """
+    import json as _json
+    import subprocess
+
+    recipe = load_recipe(variant_id)
+    resolved = recipe.model_dump(mode="json")
+    resolved["revision"] = "0" * 40
+    resolved["client"]["revision"] = "0" * 40
+    recipe_file = tmp_path / "reference.recipe.json"
+    recipe_file.write_text(_json.dumps(resolved), encoding="utf-8")
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(RECIPE_DIR / "reference.py"),
+            "--mode",
+            "render",
+            "--pairs",
+            str(pairs),
+            "--out",
+            str(tmp_path / "out.json"),
+            "--tokenizer",
+            str(recipe.client["tokenizer"]),
+            "--recipe",
+            str(recipe_file),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode != 0
+    assert "would load a different checkpoint" in completed.stderr + completed.stdout
+
+
+def test_recipe_contract(variant_id: str) -> None:
+    """Every resolved serve/client/reference field is pinned (the shared helper, both directions).
+
+    The engine and resources blocks carry their own pin (the helper's top-level comparison is for
+    scalars): min_version is the image actually verified, startup_timeout_s the schema default.
+    """
+    recipe = load_recipe(variant_id)
+    _assert_contract(recipe, variant_id)
+    assert recipe.engine.model_dump(mode="json") == EXPECTED_ENGINE
+    assert recipe.resources.model_dump(mode="json") == EXPECTED_RESOURCES
+    # The wave ran and the per-token gate failed in every run (rc0-202610120045..
+    # rc0-202610131205-record), and the re-verification on the final candidate
+    # (waves-rc0-202610140620/plugin-carriers-vllm) failed the same gate at the current fingerprint:
+    # the schema's `failed`, with the image/date/report of the latest wave that measured it. Never
+    # `unverified` (the measurement exists) and never `verified` without a green re-run; the gate, its
+    # dtype and the disposition stay the owner's.
+    assert recipe.status.state == "failed"
+    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+    assert recipe.status.date == "2026-10-14"
+    assert recipe.status.report is not None and "waves-rc0-202610140620" in recipe.status.report
+    assert recipe.sources
+
+
+def test_contract_mutant_serve_max_model_len_is_red(tmp_path: Path, variant_id: str) -> None:
+    """Mutant 1 (the sweep reviewer's): serve.max_model_len 8448 -> 16384 must red, naming the field."""
+
+    def mutate(data: dict) -> dict:
+        data["serve"]["max_model_len"] = 16384
+        return data
+
+    drifted = resolve_recipe(variant_id, root=_mutated_family(tmp_path / "mutant", mutate))
+    with pytest.raises(AssertionError, match=r"serve\.max_model_len"):
+        _assert_contract(drifted, variant_id)
+
+
+def test_contract_mutant_reference_kind_is_red(tmp_path: Path, variant_id: str) -> None:
+    """Mutant 2 (the sweep reviewer's): reference.kind sentence_transformers -> transformers must red."""
+
+    def mutate(data: dict) -> dict:
+        data["reference"]["kind"] = "transformers"
+        return data
+
+    drifted = resolve_recipe(variant_id, root=_mutated_family(tmp_path / "mutant", mutate))
+    with pytest.raises(AssertionError, match=r"reference\.kind"):
+        _assert_contract(drifted, variant_id)
+
+
+def test_serve_argv_carries_the_serving_facts(variant_id: str) -> None:
+    """The rendered argv: the revision, the pixel cap (the nested R20 shape), one image per prompt, no
+    template file.
+
+    R10 considered (recipe notes, note 5): the checkpoint ships its own chat template at the pinned
+    revision and vLLM resolves it through AutoProcessor for the pooling-chat path, so no
+    --chat-template flag is rendered here; the absence is recorded by this test. And no
+    --trust-remote-code: the plugin's registered config class parses config.json locally (the wave's
+    fla canary proves no remote code ran).
+    """
+    argv = serve_argv(load_recipe(variant_id), port=8100, served_model_name=variant_id)
+    assert "--chat-template" not in argv
+    assert "--trust-remote-code" not in argv
+    assert json.loads(argv[argv.index("--mm-processor-kwargs") + 1]) == {
+        "images_kwargs": {"min_pixels": 65536, "max_pixels": 1310720}
+    }
+    assert argv[argv.index("--limit-mm-per-prompt") + 1] == json.dumps({"image": 1}, sort_keys=True)
+    assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
+    assert argv[argv.index("--max-model-len") + 1] == "8448"
+    assert not any("rcp-ndcg-vllm" in argument for argument in argv)  # the plugin never reaches the argv
+
+
+def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """The harness's stage 1 on CPU: fits, anchor audit and the reference render all agree.
+
+    The G5 re-run: the over-length samples are padded ABOVE 1024 tokens (the old counting ceiling;
+    query samples over the 1024-budget, document samples over the 8192-budget) and the anchor and
+    render checks pass on them.
+    """
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id))
+    document = stage1_prompts(
+        recipe,
+        _pairs_file(tmp_path),
+        sys.executable,
+        over_length_per_shape=5,
+    )
+    assert document["sampled"] >= 25, document["sampled"]  # 20 pairs + 5 over-length per shape
+    assert document["anchor_check"]["passed"] is True, document["anchor_check"]["failures"][:1]
+    assert document["anchor_check"]["checked"] == 2 * 20 + 10  # one text per shape per pairs row + samples
+    assert document["render_check"]["status"] == "run"
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["render_check"]["rows"] == 2 * 20  # one render per declared shape per pair
+    assert document["template_render_check"] is None  # no served chat template (see test_serve_argv)
+    assert document["engine_tokenize_check"]["status"] == "not_run"  # no engine on CPU; never "passed"
+    assert document["passed"] is True
+
+
+def test_the_layer_type_shim_aliases_only_the_new_name() -> None:
+    """The checkpoint's remote code reads transformers 5.9's ``layer.layer_type``, which 5.10+ renamed to
+    ``block_type``: the declared CPU shim aliases the old name to the new one. transformers 5.17's
+    ``Qwen3_5DecoderLayer`` sets ``block_type`` on the INSTANCE (``__init__``: ``self.block_type =
+    config.layer_types[layer_idx]``), so the class carries no ``block_type`` and a class-level check never
+    fired -- the r4 wave's ``hf_backbone.py:178`` ``AttributeError: 'PackedQwen3_5DecoderLayer' object has
+    no attribute 'layer_type'``, whose subclass inherits whatever the shim installed on the base class.
+    The shim reads the new name from the class OR from the attribute its ``__init__`` assigns; a class
+    that still carries ``layer_type`` is untouched, and a class with neither name is a no-op (the remote
+    code fails loudly at its own call, as it did before the shim)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("topk_reference_shim", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+
+    class InstanceAttribute:
+        """transformers 5.17's shape: the renamed attribute is set by ``__init__``, never on the class."""
+
+        def __init__(self) -> None:
+            self.block_type = "full_attention"
+
+    module._alias_qwen3_5_layer_type(InstanceAttribute)
+    assert InstanceAttribute().layer_type == "full_attention"
+
+    class ClassAttribute:
+        block_type = "full_attention"
+
+    module._alias_qwen3_5_layer_type(ClassAttribute)
+    assert ClassAttribute().layer_type == "full_attention"
+
+    class OldName:
+        layer_type = "kept"
+        block_type = "renamed"
+
+    module._alias_qwen3_5_layer_type(OldName)
+    assert OldName.layer_type == "kept", "an existing layer_type is never overwritten"
+
+    class Neither:
+        pass
+
+    module._alias_qwen3_5_layer_type(Neither)
+    assert not hasattr(Neither, "layer_type"), "no new name: nothing to alias"
+
+
+def test_the_rope_shim_promotes_the_cards_two_dimensional_position_ids() -> None:
+    """E2 round 7: the checkpoint's remote code builds 2-D position ids for text-only rows (the
+    measured ``topk_embed_st.py`` text branch: ``within.unsqueeze(0)``, shape ``(1, total)``; its
+    image branch already stacks to ``(3, 1, total)``), while transformers 5.17's
+    ``Qwen3_5TextRotaryEmbedding.forward`` indexes a 3-D ``(3, bs, positions)`` tensor
+    (``position_ids[:, :, None, :]``, ``modeling_qwen3_5.py:192``): every text-only embed died with
+    ``IndexError: too many indices for tensor of dimension 2`` (the r4 wave). The declared shim
+    promotes a 2-D input to ``(3, bs, positions)`` -- the three grids equal, which is the text-only
+    case -- and leaves a 3-D input untouched, so the remote code's image path is unchanged. A class
+    the shim already wrapped is not wrapped again."""
+    import importlib.util
+
+    import torch
+
+    spec = importlib.util.spec_from_file_location("topk_reference_rope_shim", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+
+    class Rope517:
+        """transformers 5.17's shape: the forward indexes a 3-D ``(3, bs, positions)`` tensor."""
+
+        seen: torch.Tensor | None = None
+
+        def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+            self.seen = position_ids
+            return position_ids[:, :, None, :]
+
+    module._promote_qwen3_5_rope_position_ids(Rope517)
+
+    rope = Rope517()
+    text = torch.tensor([[0, 1, 2]])
+    out = rope.forward(torch.zeros(1), text)
+    assert rope.seen is not None and tuple(rope.seen.shape) == (3, 1, 3)
+    assert torch.equal(rope.seen[0], text), "the promoted grid is the 2-D input"
+    assert torch.equal(rope.seen[1], text) and torch.equal(rope.seen[2], text), (
+        "a text-only row uses the same grid on all three mrope axes"
+    )
+    assert tuple(out.shape) == (3, 1, 1, 3)
+
+    rope = Rope517()
+    stacked = torch.stack([text, text + 10, text + 20]).unsqueeze(1)  # the remote code's image shape
+    rope.forward(torch.zeros(1), stacked)
+    assert rope.seen is not None and torch.equal(rope.seen, stacked), "a 3-D input is never re-promoted"
+
+    # Installing twice does not nest the wrappers: the seen tensor is still the promoted shape once.
+    module._promote_qwen3_5_rope_position_ids(Rope517)
+    rope = Rope517()
+    rope.forward(torch.zeros(1), text)
+    assert rope.seen is not None and tuple(rope.seen.shape) == (3, 1, 3)
+
+
+def test_the_rope_shim_resolves_the_class_the_remote_code_actually_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """E2 round 8: the round-7 shim imported ``Qwen3_5RotaryEmbedding`` -- a name no transformers
+    release defines (5.9.0, the checkpoint's own pin, and 5.17.0 both carry
+    ``Qwen3_5TextRotaryEmbedding``) -- so the import raised and the shim returned silently; the wave
+    still died with the same ``IndexError`` at ``modeling_qwen3_5.py:192``. The class the remote code
+    calls is the text rotary embedding: ``Qwen3_5TextModel.__init__`` assigns ``self.rotary_emb =
+    Qwen3_5TextRotaryEmbedding(config=config)`` and the remote ``PackedQwen3_5TextModel.forward`` calls
+    ``self.rotary_emb(inputs_embeds, position_ids)``. This resolves the class the way the reference
+    does -- through the transformers module, here a module shaped like 5.17's, which carries no
+    ``Qwen3_5RotaryEmbedding`` -- and requires the wrapper on the class the remote code calls, plus a
+    loud error when the module exists without the class (the silent no-op that hid round 7's miss)."""
+    import importlib.util
+    import types
+
+    import torch
+
+    spec = importlib.util.spec_from_file_location("topk_reference_rope_symbol", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+
+    class TextRope517:
+        """transformers 5.17's text rotary embedding: the forward indexes a 3-D ``(3, bs, positions)``."""
+
+        seen: torch.Tensor | None = None
+
+        def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+            self.seen = position_ids
+            position_ids_expanded = position_ids[:, :, None, :].float()  # modeling_qwen3_5.py:192
+            inv_freq_expanded = torch.zeros(3, position_ids.shape[1], 2, 1)
+            return (inv_freq_expanded @ position_ids_expanded).transpose(2, 3)
+
+    modeling_517 = types.ModuleType("transformers.models.qwen3_5.modeling_qwen3_5")
+    modeling_517.Qwen3_5TextRotaryEmbedding = TextRope517  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, modeling_517.__name__, modeling_517)
+
+    module._promote_qwen3_5_rope_position_ids()
+
+    rope = TextRope517()
+    text = torch.tensor([[0, 1, 2]])
+    out = rope.forward(torch.zeros(1), text)
+    assert rope.seen is not None and tuple(rope.seen.shape) == (3, 1, 3)
+    assert torch.equal(rope.seen[0], text), "the promoted grid is the 2-D input"
+    assert tuple(out.shape) == (3, 1, 3, 2)
+
+    # A module that exists without the class is a loud error, not a silent no-op (round 7's miss).
+    renamed = types.ModuleType("transformers.models.qwen3_5.modeling_qwen3_5")
+    monkeypatch.setitem(sys.modules, renamed.__name__, renamed)
+    with pytest.raises(RuntimeError, match="Qwen3_5TextRotaryEmbedding"):
+        module._promote_qwen3_5_rope_position_ids()
+
+
+def test_the_reference_environment_pins_the_checkpoints_own_transformers() -> None:
+    """E2 round 9: the checkpoint's remote ``hf_backbone.py:111`` calls
+    ``self.chunk_gated_delta_rule`` -- the instance attribute transformers 5.9.0's
+    ``Qwen3_5GatedDeltaNet.__init__`` assigns (``self.chunk_gated_delta_rule = chunk_gated_delta_rule
+    or torch_chunk_gated_delta_rule``, ``modeling_qwen3_5.py:422``) and its own forward calls
+    (``modeling_qwen3_5.py:535``). transformers 5.17.0 -- the release the previous
+    ``>=5.10.4,<5.18.0`` range resolved to -- removed the attribute: its forward calls the module-level
+    ``torch_chunk_gated_delta_rule`` directly (``modeling_qwen3_5.py:639``) and that function takes
+    ``**kwargs`` and never reads the ``cu_seqlens`` the remote code passes to keep packed documents
+    apart, so delegating the call to the 5.17 name would silently change packed-document numerics.
+    The family's reference venv is its own (``# own-torch: true``; the bootstrap builds it without
+    ``--system-site-packages``), so the declared stack is the checkpoint's own pin rather than the
+    image's: ``reference.in``/``reference.lock`` must pin ``transformers==5.9.0``; the render-mode
+    names' ranges are checked beside the lock's own pins by
+    :func:`test_the_reference_lock_pins_huggingface_hub_inside_transformers_own_range`."""
+    from rcp_ndcg_test.jobs.reference_env import parse_lock
+
+    reference_in = (RECIPE_DIR / "reference.in").read_text(encoding="utf-8")
+    assert "transformers==5.9.0" in reference_in, reference_in
+    lock = parse_lock(RECIPE_DIR / "reference.lock")
+    assert lock.pins["transformers"] == "5.9.0"
+
+
+def test_over_length_fitted_render_is_a_prefix_of_the_reference_render(
+    tmp_path: Path, tokenizer, variant_id: str
+) -> None:
+    """Token-id and text equality against the reference over the full sample, over-length included.
+
+    In-budget renders are byte-identical (stage 1's render check compares the same thing). For the
+    over-length samples the reference's render mode emits the uncut formatted prompt, so the fitted
+    (served) text must be a verbatim prefix of it -- the cut is a text prefix of the content span,
+    with the fixed head the model reads intact at the front. The samples are padded above 1024
+    tokens (the G5 re-run's range) and the fit cuts each shape at its declared budget.
+    """
+    from rcp_ndcg_test.equivalence.reference import run_reference
+    from rcp_ndcg_test.equivalence.stages import _sampled_rows
+
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id))
+    rows = load_pairs(_pairs_file(tmp_path))
+    sampled = _sampled_rows(recipe, rows, tokenizer, 5)
+    fitted = served_rows(recipe, sampled, tokenizer)
+    work = tmp_path / "ref"
+    reference = run_reference(
+        sys.executable,
+        str(RECIPE_DIR / "reference.py"),
+        mode="render",
+        pairs_path=_write_reference_pairs(sampled, work),
+        out_path=work / "reference.json",
+        tokenizer_spec=tokenizer_spec(variant_id),
+        recipe=recipe,
+    )
+    reference_text = {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
+    n_over_length = 0
+    for shape, body in fitted["per_shape"].items():
+        # The head's trailing space merges into the first content token (" What"), so the stable id
+        # prefix of the head is the head without its join boundary.
+        head_ids = tokenizer.ids((QUERY_HEAD if shape == "query" else DOCUMENT_HEAD).rstrip(), add_special_tokens=True)
+        budget = recipe.client.get("query_max_tokens") if shape == "query" else recipe.client.get("max_tokens")
+        for position, text in zip(body["row_indexes"], body["texts"], strict=True):
+            if position < len(rows):
+                assert text == reference_text[(position, shape)]  # in-budget: byte-identical
+                continue
+            n_over_length += 1
+            sampled_row = sampled[position]
+            raw = str(sampled_row["query"]) if shape == "query" else str(sampled_row["documents"][0])
+            uncut = format_uncut(raw, shape)  # the fitted uncut render of the padded sample
+            assert uncut.startswith(text), (shape, text[:60])  # the cut is a verbatim prefix
+            assert text.startswith(QUERY_HEAD if shape == "query" else DOCUMENT_HEAD)
+            ids = tokenizer.ids(text, add_special_tokens=True)
+            assert ids[: len(head_ids)] == head_ids  # the fixed head survived
+            # The sample is genuinely over the declared budget (and over the old 1024-token
+            # counting ceiling) and the cut fired there: G5 is FIXED in the product's tokenizer
+            # loading (the file's embedded truncation is reset at load), so the counter sees past
+            # 1024 and the fit cuts at the shape's declared budget.
+            whole_count = len(tokenizer.backend.encode(uncut).ids)
+            true_count = len(tokenizer.backend.encode(text).ids)
+            assert whole_count > 1024, (whole_count, shape)  # the G5 re-run's range
+            assert whole_count > budget, (whole_count, budget, shape)
+            assert true_count <= budget, (true_count, budget, shape)
+            assert len(text) < len(uncut)  # the cut fired: a true prefix
+    assert n_over_length == 10  # 5 per declared shape
+
+
+def _reference_render(rows: list[dict[str, Any]], work: Path, variant_id: str) -> dict[tuple[int, str], str]:
+    """The reference subprocess's render mode over ``rows``, keyed by ``(row index, shape)``."""
+    from rcp_ndcg_test.equivalence.reference import run_reference
+
+    recipe = load_recipe(variant_id)
+    work.mkdir(parents=True, exist_ok=True)
+    pairs = work / "pairs.jsonl"
+    pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    reference = run_reference(
+        sys.executable,
+        str(RECIPE_DIR / "reference.py"),
+        mode="render",
+        pairs_path=pairs,
+        out_path=work / "reference.json",
+        tokenizer_spec=tokenizer_spec(variant_id),
+        recipe=recipe,
+    )
+    return {(int(row["index"]), str(row["shape"])): str(row["text"]) for row in reference["rows"]}
+
+
+def test_over_cap_pairs_rows_of_each_shape_render_the_card_cut(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """Decision 9: the reference renders the card's own cut, and stage 1 passes on over-cap pairs rows.
+
+    The card's wrapper right-cuts the formatted prompt at query_length 1024 / document_length 8192
+    (topk_embed_st.py:75-77, the processor's ``truncation=True``). An over-cap query row and an over-cap
+    document row: the reference's render is a verbatim prefix of the uncut prompt that fills the shape's
+    cap (the fixed head kept), equal here to what the role client ships, and stage 1 is green.
+    """
+    rows = [
+        {"query": "what is a lighthouse", "documents": ["A lighthouse is a tower."]},
+        {"query": "lighthouse " * 1500, "documents": ["harbour lighthouse restored " * 3000]},
+    ]
+    reference = _reference_render(rows, tmp_path / "ref", variant_id)
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path / "probe", variant_id))
+    for shape, cap, raw in (
+        ("query", 1024, rows[1]["query"]),
+        ("document", 8192, rows[1]["documents"][0]),
+    ):
+        text = reference[(1, shape)]
+        uncut = format_uncut(raw, shape)
+        assert uncut.startswith(text) and len(text) < len(uncut), f"{shape}: a verbatim prefix, cut"
+        assert len(tokenizer.ids(text, add_special_tokens=True)) == cap, f"{shape}: the card fills its cap"
+        assert text.startswith(QUERY_HEAD if shape == "query" else DOCUMENT_HEAD), f"{shape}: the head is kept"
+        assert served_texts(recipe, [raw], shape) == [text], f"{shape}: the client's cut is the card's here"
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    document = stage1_prompts(recipe, pairs, sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["passed"] is True, document["render_check"]["failures"][:1]
+    assert document["passed"] is True
+
+
+def test_the_card_cut_differs_where_it_splits_a_character(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """Why the recipe declares ``over_cap_cut_differs``: the card cuts ids, the client cuts text.
+
+    An emoji spans several byte-level tokens; when the card's 1024th id falls inside one, the card's model
+    reads that emoji's leading byte token, which no text carries. The reference's text keeps whole tokens of
+    whole characters -- a strict prefix of the card's ids, the head kept -- and the client ships the same
+    text here: the render check sees equal texts, while the model inputs differ by that one id (a stage-2
+    difference on the vector, inside the declared deviation).
+    """
+    raw = "emoji \U0001f680 test " * 1500
+    reference = _reference_render([{"query": raw, "documents": ["d"]}], tmp_path / "ref", variant_id)[(0, "query")]
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path / "probe", variant_id))
+    shipped = served_texts(recipe, [raw], "query")[0]
+    prompt = format_uncut(raw, "query")
+    backend = tokenizer.backend
+    backend.enable_truncation(max_length=1024, strategy="longest_first", direction="right")
+    try:
+        card_ids = backend.encode(prompt, add_special_tokens=True).ids
+    finally:
+        backend.no_truncation()
+    reference_ids = tokenizer.ids(reference, add_special_tokens=True)
+    assert prompt.startswith(reference) and reference.startswith(QUERY_HEAD)
+    assert len(card_ids) == 1024 and card_ids[: len(reference_ids)] == reference_ids
+    assert len(reference_ids) < len(card_ids), "the card reads an id (the emoji's leading bytes) no text carries"
+    assert shipped == reference, "the client's text cut keeps the same whole tokens here"
+    assert load_recipe(variant_id).reference.known_deviations == ["over_cap_cut_differs"]
+
+
+def _card_ids(tokenizer: Any, prompt: str, cap: int) -> list[int]:
+    """The card's ids for one prompt: the right cut at ``cap`` the processor's fast tokenizer runs."""
+    backend = tokenizer.backend
+    backend.enable_truncation(max_length=cap, strategy="longest_first", direction="right")
+    try:
+        return list(backend.encode(prompt, add_special_tokens=True).ids)
+    finally:
+        backend.no_truncation()
+
+
+@pytest.mark.parametrize("repeats", [1030, 1031, 1100])
+def test_a_decomposed_character_at_the_cut_keeps_the_card_ids(
+    tmp_path: Path, tokenizer, variant_id: str, repeats: int
+) -> None:
+    """NFD content at the cut: the tokenizer's NFC normaliser reports a token's offsets without its combining
+    mark (" cafe" + U+0301 -> offsets cover " cafe"), so the kept text must run to the next kept token's start,
+    not the last kept token's end -- otherwise the mark is lost and the text re-tokenizes to different ids.
+    Both shapes: the reference's ids equal the card's exactly."""
+    raw = "caf" + " cafe\u0301" * repeats
+    reference = _reference_render([{"query": raw, "documents": [raw * 8]}], tmp_path / "ref", variant_id)
+    for shape, cap in (("query", 1024), ("document", 8192)):
+        text = reference[(0, shape)]
+        prompt = format_uncut(raw if shape == "query" else raw * 8, shape)
+        assert prompt.startswith(text), shape
+        assert tokenizer.ids(text, add_special_tokens=True) == _card_ids(tokenizer, prompt, cap), shape
+
+
+def format_uncut(text: str, shape: str) -> str:
+    """The fitted UNcut render of one sample's raw text (the frame + the normalised content).
+
+    The reference's own render of the same text is byte-identical here except at the two declared
+    normalisation corners (see test_the_declared_normalisation_corners); the over-length samples
+    carry no edge whitespace, so the two coincide on every sample.
+    """
+    if shape == "query":
+        return QUERY_HEAD + text.strip()
+    return DOCUMENT_HEAD + text.strip()
+
+
+def test_the_declared_normalisation_corners(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """The [strip] normalisation: exact on the query and the document's trailing edge; two declared
+    corners where the reference's whole-render strip cannot be a content-span strip.
+
+    The reference formats query as head + text.strip() and document as (head + text).strip()
+    (topk_embed_st.py:56-60). Content-span [strip] reproduces the query render for EVERY input and
+    the document render except (a) leading-whitespace content (the wrapper keeps it: the frame's own
+    leading text shields it) and (b) empty / whitespace-only content ("Document:", the
+    empty-document note). Those two rows are the recipe's declared divergence rows (the notes,
+    "Content normalisation"); pinning both sides here is what keeps the declaration true.
+    """
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id))
+    assert served_texts(recipe, ["  what was q3 revenue?  "], "query") == [QUERY_HEAD + "what was q3 revenue?"]
+    assert served_texts(recipe, ["q3 revenue was $12 million  "], "document") == [
+        DOCUMENT_HEAD + "q3 revenue was $12 million"
+    ]
+    # Declared corner (a): leading whitespace in document content keeps on the reference side,
+    # goes through the content-span strip on the fitted side -- a divergence row by declaration.
+    fitted = served_texts(recipe, ["  indented passage"], "document")[0]
+    reference = format_uncut_reference("  indented passage", "document")
+    assert fitted == DOCUMENT_HEAD + "indented passage"
+    assert reference == DOCUMENT_HEAD + "  indented passage"
+    assert fitted != reference
+
+
+def format_uncut_reference(text: str, shape: str) -> str:
+    """The reference's own format_query/format_document of the raw text (pinned in the over-length
+    test's subprocess comparison: the render mode emits exactly these two functions' output)."""
+    if shape == "query":
+        return QUERY_HEAD + (text or "").strip()
+    return (DOCUMENT_HEAD + (text or "")).strip() or "."
+
+
+def test_reference_empty_document_keeps_one_token(tmp_path: Path, tokenizer, checkpoint, variant_id: str) -> None:
+    """The reference's empty document renders as 'Document:' -- one kept token, not the eos fallback.
+
+    The wrapper's `or eos or "."` chain is dead code for this checkpoint (the stripped render of an
+    empty document is non-empty), so the reference scores MaxSim against exactly one vector. The
+    recipe declares empty_doc omit_zero (never sent, 0.0) as a recorded approximation of that edge,
+    never reference equivalence; this pins the fact the declaration rests on.
+    """
+    from rcp_ndcg_test.equivalence.reference import run_reference
+
+    recipe = load_recipe(variant_id)
+    work = tmp_path / "empty"
+    pairs_path = work / "pairs.jsonl"
+    pairs_path.parent.mkdir(parents=True)
+    pairs_path.write_text(json.dumps({"query": "q", "documents": [""]}) + "\n", encoding="utf-8")
+    reference = run_reference(
+        sys.executable,
+        str(RECIPE_DIR / "reference.py"),
+        mode="render",
+        pairs_path=pairs_path,
+        out_path=work / "reference.json",
+        tokenizer_spec=tokenizer_spec(variant_id),
+        recipe=recipe,
+    )
+    document_text = next(row["text"] for row in reference["rows"] if row["shape"] == "document")
+    assert document_text == DOCUMENT_HEAD.rstrip()  # "Document:": the eos fallback never fired
+    config = checkpoint["config"]
+    skip = {int(value) for value in config["scoring_skip_ids"]}
+    kept = [value for value in tokenizer.ids(document_text, add_special_tokens=True) if value not in skip]
+    assert len(kept) == 1  # exactly one kept vector for an empty document in the reference
+
+
+def test_image_wrapper_is_pinned(tokenizer, checkpoint) -> None:
+    """The chat template's image-only user message renders the exact wrapper ids; a text part diverges.
+
+    The harness's stage-1 template check cannot render a messages-based template (it renders
+    query/document variables), so the recipe's test pins the image wrapper here: the ids the client's
+    media path must produce through the served chat template, at the pinned revision.
+    """
+    from jinja2.sandbox import ImmutableSandboxedEnvironment
+
+    environment = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=False)
+    environment.globals["raise_exception"] = _raise
+    template = environment.from_string(checkpoint["chat_template"])
+    rendered = template.render(messages=[{"role": "user", "content": [{"type": "image"}]}], add_generation_prompt=False)
+    ids = tokenizer.ids(rendered, add_special_tokens=True)
+    specials = {
+        name: tokenizer.special_id(name) for name in ("im_start", "im_end", "vision_start", "vision_end", "image_pad")
+    }
+    newline = tokenizer.ids("\n", add_special_tokens=False)
+    user = tokenizer.ids("user", add_special_tokens=False)
+    expected = [specials["im_start"], *user, *newline, specials["vision_start"]]
+    expected += [specials["image_pad"]]
+    expected += [specials["vision_end"], specials["im_end"], *newline]
+    assert ids == expected, [tokenizer.backend.decode([value]) for value in ids]
+    assert ids.count(specials["image_pad"]) == 1  # exactly one image placeholder
+
+    with_text = template.render(
+        messages=[{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": DOCUMENT_HEAD + "x"}]}],
+        add_generation_prompt=False,
+    )
+    assert tokenizer.ids(with_text, add_special_tokens=True) != ids  # the image-ONLY message is the contract
+
+
+def _raise(message: str) -> None:
+    """The chat templates' raise_exception helper, as the engine's jinja environment provides it."""
+    raise ValueError(message)
+
+
+def test_the_media_allowlist_is_the_references_image_keep_rule(checkpoint, variant_id: str) -> None:
+    """The declared media allowlist is the checkpoint's own image keep-mask: the reference's image documents
+    keep only the image-patch positions (``topk_embed_st.py:124``: ``keep = ids == image_token_id``), so
+    both halves of the declaration are that one id -- the engine half the plugin's pooler applies
+    (``serve.hf_overrides.document_keep_token_ids``) and the client half its count checks
+    (``client.media_keep_token_ids``). The image token is IN the text skip list (the reference's text rule
+    drops it); the allowlist is what keeps it for an image document."""
+    recipe = load_recipe(variant_id)
+    image_token = int(checkpoint["config"]["image_token_id"])
+    assert image_token == 248056
+    assert recipe.client["media_keep_token_ids"] == [image_token]
+    assert recipe.serve.hf_overrides["document_keep_token_ids"] == [image_token]
+    assert image_token in set(recipe.client["document_skip_token_ids"])
+
+
+def test_document_keep_mask_drops_skip_positions(tokenizer, checkpoint, variant_id: str) -> None:
+    """The keep-mask asymmetry at token level: documents drop skip positions, queries keep everything.
+
+    The mask is the reference's own (topk_embed_st.py:81) and the recipe now DECLARES it
+    (client.document_skip_token_ids == config.json scoring_skip_ids, pinned here and in the
+    contract): the client drops the vectors at the ids it sent and cross-checks the counts.
+    """
+    config = checkpoint["config"]
+    skip = {int(value) for value in config["scoring_skip_ids"]}
+    assert len(skip) == 41
+    assert tuple(sorted(skip)) == tuple(load_recipe(variant_id).client.get("document_skip_token_ids"))
+    # Completeness: every single-char non-alnum ASCII token in the vocabulary is skipped...
+    dropped = 0
+    for token, value in tokenizer.backend.get_vocab().items():
+        if len(token) == 1 and ord(token) < 128 and not token.isalnum():
+            assert value in skip, (value, token)
+            dropped += 1
+    assert dropped == 32  # ...and they are exactly the 32 punctuation ids of the 41
+    ascii_skip = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 25, 26, 27, 28, 29, 30, 31}
+    ascii_skip |= {58, 59, 60, 61, 62, 63, 90, 91, 92, 93}
+    assert {value for value in skip if value < 248044} == ascii_skip  # the other 9 are specials (>= 248044)
+    # Asymmetry on a real pair: the document drops positions (its own colon included), the query
+    # keeps every token of the same characters.
+    document_text = DOCUMENT_HEAD + "Q3 revenue was $12 million, up 20% year over year."
+    query_text = QUERY_HEAD + "What was Q3 revenue?"
+    document_ids = tokenizer.ids(document_text, add_special_tokens=True)
+    query_ids = tokenizer.ids(query_text, add_special_tokens=True)
+    kept_document = [value for value in document_ids if value not in skip]
+    kept_query = [value for value in query_ids if value not in skip]
+    assert len(kept_document) < len(document_ids), (len(kept_document), len(document_ids))
+    assert 25 in document_ids and 25 in skip  # the prompt's own colon is dropped on the document side
+    # The asymmetry is real: the same doc-side mask applied to the QUERY would drop its punctuation
+    # too -- the reference never does that (queries keep everything), so one shared mask is wrong in
+    # both directions (the research's R10 risk).
+    assert kept_query != query_ids
+    assert [value for value in query_ids if value not in skip] == kept_query
+
+
+def test_cut_preserves_the_frame_head(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """At a budget the counting can see, the cut hits the content span only and the head survives.
+
+    The test shrinks both shape budgets to 64 in a mutated copy so the cut path runs cheaply (the
+    declared budgets fire too -- see the over-length test) and asserts the anchor rule on its
+    output: the fixed head ("Query: " / "Document: ") opens every cut render, and the render stays
+    within the budget.
+    """
+    from rcp_ndcg_test.equivalence.stages import _over_length
+
+    def small_budget(data: dict) -> dict:
+        data["client"]["max_tokens"] = 64
+        data["client"]["query_max_tokens"] = 64
+        return data
+
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id, small_budget))
+    budget = 64
+    for shape in ("query", "document"):
+        head = QUERY_HEAD if shape == "query" else DOCUMENT_HEAD
+        head_ids = tokenizer.ids(head.rstrip(), add_special_tokens=True)  # the join boundary merges forward
+        seed = "What was Q3 revenue?" if shape == "query" else "Q3 revenue was $12 million."
+        padded = _over_length(seed, 8192, tokenizer, 0)
+        row = {
+            "query": padded if shape == "query" else "What was Q3 revenue?",
+            "documents": [padded if shape == "document" else "Q3 revenue was $12 million."],
+            "shape": shape,
+        }
+        fitted = served_rows(recipe, [row], tokenizer)
+        body = fitted["per_shape"][shape]
+        assert body["cuts"] == 1, body  # the cut fired
+        text = body["texts"][0]
+        assert text.startswith(head)  # the frame's text survived the cut
+        ids = tokenizer.ids(text, add_special_tokens=True)
+        assert ids[: len(head_ids)] == head_ids, text[:60]  # the fixed head survived the cut
+        assert len(ids) <= budget, len(ids)  # the render honours the budget
+
+
+def test_mutation_anchor_to_last_makes_the_anchor_check_red(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """A wrong anchor declaration is red: `last` demands the fixed head at the tail of every render.
+
+    The declared anchor is `mean` (per-token pooling reads every kept position, so no position is the
+    anchor); flipping it to `last` must turn the audit red, proving the check asserts positions and
+    does not pass vacuously.
+    """
+
+    def mutate(data: dict) -> dict:
+        data["client"]["template"]["anchor"] = "last"
+        return data
+
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id, mutate))
+    document = stage1_prompts(recipe, _pairs_file(tmp_path), None, over_length_per_shape=1)
+    assert document["anchor_check"]["passed"] is False
+    failures = document["anchor_check"]["failures"]
+    assert failures and failures[0]["check"] == "tail"
+    assert document["passed"] is False
+
+
+def test_mutation_drop_frame_segments_makes_the_render_check_red(tmp_path: Path, tokenizer, variant_id: str) -> None:
+    """Dropping the fixed head segments loses the prompts the model reads: the render check fires.
+
+    The fixed segments are the frame the budget reserves and the prompt the model was trained with;
+    dropping them (the head analogue of dropping a trailing anchor segment) must be red, not silent.
+    """
+
+    def mutate(data: dict) -> dict:
+        data["client"]["template"]["query"] = [{"content": "query"}]
+        data["client"]["template"]["document"] = [{"content": "document"}]
+        return data
+
+    recipe = resolve_recipe(variant_id, root=_probe_recipe(tmp_path, variant_id, mutate))
+    document = stage1_prompts(recipe, _pairs_file(tmp_path), sys.executable, over_length_per_shape=1)
+    assert document["render_check"]["status"] == "run"
+    assert document["render_check"]["passed"] is False
+    assert document["render_check"]["failures"], "the reference render must disagree with a frameless fit"
+    assert document["passed"] is False
+
+
+def test_variant_notes_carry_the_per_size_facts(variant_id: str) -> None:
+    """The variant's notes state its vector width, its head shape and its weight size, so a size
+    cannot ride with another size's numbers."""
+    notes = load_recipe(variant_id).notes
+    variant = VARIANTS[variant_id]
+    assert f"dim/output_dim {variant['dim']}" in notes
+    assert f"head.weight is ({variant['head'][0]}, {variant['head'][1]})" in notes
+    assert variant["weights_bytes"] in notes
+
+
+def test_the_reference_lock_pins_huggingface_hub_inside_transformers_own_range() -> None:
+    """The r4 wave's bootstrap failure: the lock pinned ``huggingface-hub==2.2.0`` while the same
+    lock pins transformers, whose METADATA declares ``huggingface-hub<2.0,>=1.5.0``.  The name was
+    unpinned in ``reference.in``, and ``uv pip compile --no-deps`` resolves an unpinned name to the
+    newest release without consulting another pin's requirements, so the completion step moved the
+    venv's copy to a wheelhouse version and the import check failed with only the version mismatch.
+    Both render-mode names sit inside the range the family's own transformers pin declares (5.9.0,
+    E2 round 9: ``huggingface-hub<2.0,>=1.5.0`` and ``tokenizers<=0.23.0,>=0.22.0``), and the lock
+    pins the image's 1.33.0 and tokenizers 0.22.2 -- the newest release 5.9.0's range allows, since
+    0.23.0 was never published; the check names any future violation."""
+    from rcp_ndcg_test.jobs.reference_deps import satisfies
+    from rcp_ndcg_test.jobs.reference_env import parse_lock
+
+    text = (RECIPE_DIR / "reference.in").read_text(encoding="utf-8")
+    assert "huggingface-hub>=1.5,<2.0" in text
+    assert "tokenizers>=0.22.0,<=0.23.0" in text
+    lock = parse_lock(RECIPE_DIR / "reference.lock")
+    assert lock.pins["huggingface-hub"] == "1.33.0"
+    assert lock.pins["transformers"] == "5.9.0"
+    assert satisfies("huggingface-hub<2.0,>=1.5.0", lock.pins["huggingface-hub"])
+    assert satisfies("tokenizers<=0.23.0,>=0.22.0", lock.pins["tokenizers"])
+
+
+def _reference_module() -> Any:
+    """The recipe's reference.py as a module (its top level imports only the standard library)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("topk_embed_v1_reference", RECIPE_DIR / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    bytecode = sys.dont_write_bytecode  # exec_module must not drop a __pycache__ into the recipe dir
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    return module
+
+
+def test_the_reference_media_embed_reads_documents_and_keeps_their_positions() -> None:
+    """The reference's media path: a document whose entry is one image and whose text is empty is the loaded
+    PIL image -- the wrapper's image-only render, whose own keep-mask keeps exactly the image-patch positions
+    (the declared allowlist the plugin applies engine-side) -- while a text document stays its text. The two
+    kinds of one row are encoded in separate batches (the wrapper refuses a mixed batch) and every matrix
+    goes back to its own document position. The forms the wrapper refuses (a query with media, a mixed
+    text+image document, an interleaved text part) fail loudly. No model weights: the fake encoder returns
+    synthetic per-token matrices."""
+    import base64
+    import io
+
+    from PIL import Image
+
+    module = _reference_module()
+    buffer = io.BytesIO()
+    Image.new("RGB", (32, 32), (1, 2, 3)).save(buffer, format="PNG")
+    entry = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
+    row = {"query": "a query", "documents": ["a text document", ""], "media": {"documents": [[], [entry]]}}
+    inputs = module.document_inputs(row)
+    assert inputs[0] == "a text document"
+    assert not isinstance(inputs[1], str) and inputs[1].size == (32, 32)
+
+    class FakeModel:
+        """The card's encode surface: records each batch and returns synthetic per-token matrices."""
+
+        def __init__(self) -> None:
+            self.calls: list[list[Any]] = []
+
+        def encode_query(self, texts: list[str]) -> list[Any]:
+            assert len(texts) == 1
+            return [[[1.0, 0.0]]]
+
+        def encode_document(self, items: list[Any]) -> list[Any]:
+            self.calls.append(items)
+            if isinstance(items[0], str):
+                return [[[0.5, 0.5]]]  # one kept token per text document
+            return [[[1.0, 0.0]] * 4]  # one vector per kept image-patch position
+
+    model = FakeModel()
+    document = module.embed_rows(model, [row])
+    assert len(model.calls) == 2, "the text and image documents must ride separate batches"
+    assert document["rows"][0]["document_vectors"][0] == [[0.5, 0.5]]
+    assert len(document["rows"][0]["document_vectors"][1]) == 4
+    for bad in (
+        {"query": "q", "documents": [""], "media": {"query": [entry]}},
+        {"query": "q", "documents": ["caption"], "media": {"documents": [[entry]]}},
+        {"query": "q", "documents": [""], "media": {"documents": [[{"kind": "text", "text": "x"}, entry]]}},
+    ):
+        with pytest.raises(SystemExit):
+            module.embed_rows(model, [bad])
+
+
+def test_the_reference_embeds_one_query_matrix_per_query_text() -> None:
+    """The harness's reference contract pairs one matrix per query text positionally: ``query_vectors`` is
+    a one-element list holding the row's single query matrix, exactly as ``document_vectors`` holds one
+    matrix per document, and the served client returns one matrix per text too. A flat list of per-token
+    vectors reads as N matrices and fails the harness's count check (the same defect the E2 r3 wave found
+    in the pplx-embed-v2-late reference). No model weights: the fake encoder returns a synthetic
+    per-token query matrix."""
+    module = _reference_module()
+
+    class FakeModel:
+        """The wrapper's encode surface: a three-token query matrix and a one-token document matrix."""
+
+        def encode_query(self, texts: list[str]) -> list[Any]:
+            assert len(texts) == 1
+            return [[[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]]]
+
+        def encode_document(self, items: list[Any]) -> list[Any]:
+            return [[[1.0, 0.0]]]
+
+    document = module.embed_rows(FakeModel(), [{"query": "a query", "documents": ["a document"]}])
+    query_vectors = document["rows"][0]["query_vectors"]
+    assert len(query_vectors) == 1, "one matrix per query text, never one entry per token"
+    assert len(query_vectors[0]) == 3, "the one matrix holds the query's per-token vectors"
+    assert len(document["rows"][0]["document_vectors"]) == 1
+
+
+class _CudaLikeTensor:
+    """A torch-like CUDA tensor: numpy refuses it until the reference moves it to the host.
+
+    ``__array__`` raises the E2 round-10 wave's own error (``TypeError: can't convert cuda:0 device type
+    tensor to numpy``), so an unfixed conversion site fails exactly as the GPU reference did; ``detach``
+    and ``cpu`` record the calls, and ``cpu`` hands back the host values (what a real tensor's
+    ``detach().cpu()`` does).
+    """
+
+    def __init__(self, values: list[list[float]]) -> None:
+        self.values = values
+        self.calls: list[str] = []
+
+    def detach(self) -> _CudaLikeTensor:
+        self.calls.append("detach")
+        return self
+
+    def cpu(self) -> list[list[float]]:
+        self.calls.append("cpu")
+        return self.values
+
+    def __array__(self, dtype: Any = None) -> Any:
+        raise TypeError(
+            "can't convert cuda:0 device type tensor to numpy. Use Tensor.cpu() to copy the tensor to "
+            "host memory first."
+        )
+
+
+class _CpuLikeTensor:
+    """A torch-like CPU tensor: ``detach``/``cpu`` are the tensor's own no-ops (already on the host)."""
+
+    def __init__(self, values: list[list[float]]) -> None:
+        self.values = values
+
+    def detach(self) -> _CpuLikeTensor:
+        return self
+
+    def cpu(self) -> _CpuLikeTensor:
+        return self
+
+    def __array__(self, dtype: Any = None) -> Any:
+        import numpy as np
+
+        return np.asarray(self.values, dtype=dtype)
+
+
+def test_the_reference_host_helper_moves_a_cuda_tensor_and_passes_a_device_less_one() -> None:
+    """The one conversion helper: a torch tensor (CUDA included) is detached from its graph and moved to
+    CPU storage -- the E2 round-10 wave died with ``TypeError: can't convert cuda:0 device type tensor to
+    numpy`` because ``np.asarray`` read the wrapper's CUDA output directly -- while a device-less matrix
+    (a nested list, a numpy array) and a CPU tensor (whose own ``detach``/``cpu`` are no-ops) pass through
+    unchanged. The helper never casts: the fp16 conversion stays with the caller."""
+    module = _reference_module()
+    cuda = _CudaLikeTensor([[1.0, 0.5], [0.0, -1.0]])
+    assert module._host_matrix(cuda) == [[1.0, 0.5], [0.0, -1.0]]
+    assert cuda.calls == ["detach", "cpu"], "a torch tensor is detached, then moved to the host"
+    device_less = [[0.25, 0.5]]
+    assert module._host_matrix(device_less) is device_less
+    cpu = _CpuLikeTensor([[0.5, 0.25]])
+    assert module._host_matrix(cpu) is cpu
+    assert module._fp16_lists(cpu) == [[0.5, 0.25]]
+
+
+def test_the_reference_embed_path_converts_every_matrix_through_the_host_helper() -> None:
+    """Both output paths -- the query matrix and every document matrix -- convert through the host helper:
+    the same CUDA-like tensor the wave's GPU run produced encodes a row without numpy ever reading a CUDA
+    tensor, and every conversion site is counted through the helper."""
+    module = _reference_module()
+
+    class FakeModel:
+        """The wrapper's encode surface: CUDA-like query and document matrices."""
+
+        def encode_query(self, texts: list[str]) -> list[Any]:
+            assert len(texts) == 1
+            return [_CudaLikeTensor([[1.0, 0.0], [0.0, 1.0]])]
+
+        def encode_document(self, items: list[Any]) -> list[Any]:
+            return [_CudaLikeTensor([[0.5, 0.5]])]
+
+    seen: list[Any] = []
+    original = module._host_matrix
+    module._host_matrix = lambda matrix: (seen.append(matrix), original(matrix))[1]
+    try:
+        document = module.embed_rows(FakeModel(), [{"query": "a query", "documents": ["a document"]}])
+    finally:
+        module._host_matrix = original
+    row = document["rows"][0]
+    assert row["query_vectors"] == [[[1.0, 0.0], [0.0, 1.0]]]
+    assert row["document_vectors"] == [[[0.5, 0.5]]]
+    assert len(seen) == 2, "the query path and the document path both convert through the helper"
+    assert all(isinstance(matrix, _CudaLikeTensor) for matrix in seen)
+
+
+def test_the_media_modes_refuse_the_retired_media_columns() -> None:
+    """A row carrying the retired per-column media fields is refused loudly by the embed and media modes:
+    the harness's media rows carry the ``media`` field, and a silently ignored column would encode a
+    different prompt."""
+    module = _reference_module()
+    row = {"query": "q", "documents": ["d"], "documents_images": ["data:image/png;base64,AA=="]}
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.media([row], "model@revision")
+    with pytest.raises(SystemExit, match="retired media columns"):
+        module.embed([row], "cpu", "model", "revision", 2048)

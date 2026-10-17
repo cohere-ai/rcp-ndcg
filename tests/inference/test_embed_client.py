@@ -1,0 +1,742 @@
+"""The embedding role client: prompts per side, batching, concurrency and reassembly, normalisation, and what it
+refuses.
+
+Offline: the client is exercised against a fake :class:`~rcp_ndcg.inference.transport.Sender`
+(:class:`tests.inference._embed.FakeSender`) that records every call and replies with the profiles' shapes.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from typing import Any, ClassVar
+
+import httpx
+import numpy as np
+import pytest
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
+
+from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, RequestRejectedError
+from rcp_ndcg.inference import EmbeddingClient, EncodeRole
+from rcp_ndcg.inference.types import Call, Embeddings, Reply
+from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
+from tests.inference._embed import FakeSender, embeddings_data, vendor_payload
+
+#: Every profile under its registered api name.
+APIS = ("openai_embeddings", "cohere", "voyage", "gemini")
+
+KEY_ENV_NAMES = (
+    "OPENAI_API_KEY",
+    "CO_API_KEY",
+    "COHERE_API_KEY",
+    "VOYAGE_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _vendor_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A key for every profile's default variables (tests that need one absent delete it)."""
+    for name in KEY_ENV_NAMES:
+        monkeypatch.setenv(name, f"test-{name.lower()}")
+
+
+def input_texts(api: str, call: Call) -> list[str]:
+    """The texts one call carries, per profile (a token-ids item by its ids, stringified)."""
+    body = call.json
+    if api in ("openai_embeddings", "voyage"):
+        if "input" in body:
+            items = body["input"]
+        else:
+            # The chat-embed shape sends ONE conversation for a single item and a list of conversations for
+            # a batch (``messages``, adapters/embeddings.py): both nestings are read.
+            messages = body["messages"]
+            conversations = messages if messages and isinstance(messages[0], list) else [messages]
+            items = [
+                " ".join(
+                    part["text"] for message in conversation for part in message["content"] if part["type"] == "text"
+                )
+                for conversation in conversations
+            ]
+        return [text if isinstance(text, str) else " ".join(str(i) for i in text) for text in items]
+    if api == "cohere":
+        return list(body["texts"])
+    return [entry["content"]["parts"][0]["text"] for entry in body["requests"]]
+
+
+def handler(api: str, values: dict[str, float], *, shuffle: bool = False) -> Callable[[Call], Reply]:
+    """A handler that answers each text with the vector ``[value, 1.0]`` it maps to.
+
+    With ``shuffle``, the OpenAI-shaped replies name their entries' ``index`` fields in reverse order, so a
+    reassembly that trusts reply order produces a wrong matrix.
+    """
+
+    def one(call: Call) -> Reply:
+        batch = input_texts(api, call)
+        vectors = [[values.get(text, 1.0), 1.0] for text in batch]
+        if shuffle and api in ("openai_embeddings", "voyage"):
+            body = embeddings_data(vectors, indices=list(reversed(range(len(vectors)))))
+        else:
+            body = vendor_payload(api, vectors)
+        return Reply(200, body, {})
+
+    return one
+
+
+def endpoint(api: str = "openai_embeddings", **overrides: Any) -> Any:
+    """An embedding endpoint for tests: model ``m``, any profile, any overrides."""
+    from tests.inference._embed import endpoint as make
+
+    return make(api, **overrides)
+
+
+def texts(*items: str) -> list[Content]:
+    """Plain-text contents."""
+    return [Content.from_text(item) for item in items]
+
+
+class TestProfiles:
+    @pytest.mark.parametrize("api", APIS)
+    def test_every_profile_round_trips_l2_normalised(self, api: str) -> None:
+        sender = FakeSender(handler(api, {"a document about foxes": 3.0}))
+        client = EmbeddingClient(endpoint(api), sender=sender)
+
+        vectors = client.encode(texts("a document about foxes"), EncodeRole.DOCUMENT)
+
+        assert vectors.as_matrix().shape == (1, 2)
+        expected = np.asarray([3.0, 1.0]) / np.linalg.norm([3.0, 1.0])
+        assert vectors.as_matrix()[0].tolist() == pytest.approx(expected.tolist())
+        assert vectors.vectors.dtype == np.float32
+
+    @pytest.mark.parametrize("api", ("openai_embeddings", "voyage"))
+    def test_a_shuffled_reply_is_reassembled_by_index(self, api: str) -> None:
+        """The mutation probe: drop the adapters' reorder by ``index`` and this goes red."""
+        sender = FakeSender(handler(api, {"one": 1.0, "two": 2.0}, shuffle=True))
+
+        vectors = EmbeddingClient(endpoint(api, batch_size=2, normalize=False), sender=sender).encode(
+            texts("one", "two"), EncodeRole.DOCUMENT
+        )
+
+        assert vectors.as_matrix()[:, 0].tolist() == [1.0, 2.0]
+
+
+class TestContentDecisions:
+    def test_prompts_are_applied_per_side(self) -> None:
+        config = endpoint(query_prompt="Q: ", doc_prompt="D: ")
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = EmbeddingClient(config, sender=sender)
+
+        client.encode(texts("what is nDCG"), EncodeRole.QUERY)
+        client.encode(texts("a passage"), EncodeRole.DOCUMENT)
+
+        assert input_texts("openai_embeddings", sender.calls[0]) == ["Q: what is nDCG"]
+        assert input_texts("openai_embeddings", sender.calls[1]) == ["D: a passage"]
+
+    def test_without_prompts_the_text_is_sent_as_given(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = EmbeddingClient(endpoint(), sender=sender)
+
+        client.encode(texts("as written"), EncodeRole.QUERY)
+
+        assert input_texts("openai_embeddings", sender.calls[0]) == ["as written"]
+
+    def test_dimensions_is_sent_only_when_the_config_sets_one(self) -> None:
+        with_dimensions = FakeSender(handler("openai_embeddings", {}))
+        EmbeddingClient(endpoint(dimensions=2, mrl_kind="truncation", mrl_dims=(2,)), sender=with_dimensions).encode(
+            texts("x"), EncodeRole.QUERY
+        )
+        without = FakeSender(handler("openai_embeddings", {}))
+        EmbeddingClient(endpoint(), sender=without).encode(texts("x"), EncodeRole.QUERY)
+
+        assert input_texts("openai_embeddings", with_dimensions.calls[0]) == ["x"]
+        assert with_dimensions.calls[0].json["dimensions"] == 2
+        assert "dimensions" not in without.calls[0].json
+
+    def test_empty_input_makes_no_request(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {}))
+        vectors = EmbeddingClient(endpoint(), sender=sender).encode([], EncodeRole.DOCUMENT)
+
+        assert vectors.num_items == 0
+        assert sender.calls == []
+
+    def test_empty_input_needs_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An empty call makes no request, so a missing key must not fail it (the hosted path's behaviour)."""
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        client = EmbeddingClient(endpoint("cohere"), sender=FakeSender(handler("cohere", {})))
+
+        assert client.encode([], EncodeRole.DOCUMENT).num_items == 0
+
+    def test_media_is_refused_with_its_media_type_and_nothing_is_sent(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = EmbeddingClient(endpoint(), sender=sender)
+        page = Content(root=[ImagePart(ref=MediaRef(uri="gs://bucket/page_1.png"))])
+
+        with pytest.raises(CapabilityError, match="image"):
+            client.encode([page], EncodeRole.DOCUMENT)
+        assert sender.calls == []
+
+
+class TestBatching:
+    def test_items_are_split_at_the_batch_size(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {name: 1.0 for name in "abcde"}))
+        client = EmbeddingClient(endpoint(batch_size=2), sender=sender)
+
+        client.encode(texts(*"abcde"), EncodeRole.DOCUMENT)
+
+        assert [len(call.json["input"]) for call in sender.calls] == [2, 2, 1]
+
+    def test_a_batch_size_above_the_profile_cap_is_refused(self) -> None:
+        with pytest.raises(ConfigError, match="at most 96 texts per request"):
+            EmbeddingClient(endpoint("cohere", batch_size=1000), sender=FakeSender(handler("cohere", {})))
+
+    def test_a_per_call_batch_size_overrides_the_config_up_to_the_cap(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {name: 1.0 for name in "abcd"}))
+        client = EmbeddingClient(endpoint(batch_size=4), sender=sender)
+
+        client.encode(texts(*"abcd"), EncodeRole.DOCUMENT, batch_size=2)
+        assert [len(call.json["input"]) for call in sender.calls] == [2, 2]
+
+        # The hosted cap is a HOSTED fact: a served engine answers its own over-count batch (HTTP 413 ->
+        # CapabilityError naming batch_size), so a stale client-side 128 never fires here.
+        client.encode(texts(*"abcde"), EncodeRole.DOCUMENT, batch_size=200)
+        assert [len(call.json["input"]) for call in sender.calls][-1] == 5
+        with pytest.raises(ConfigError, match="at least 1"):
+            client.encode(texts(*"abcd"), EncodeRole.DOCUMENT, batch_size=0)
+
+    def test_the_hosted_openai_route_refuses_no_batch_client_side(self) -> None:
+        """At its own default host (the hosted OpenAI API) an ``openai_embeddings`` config is still not
+        HOSTED, so no client-side cap applies: 129 texts go out as one request, the route answers its own
+        refusal if it has one."""
+        items = [f"t{index}" for index in range(129)]
+        sender = FakeSender(handler("openai_embeddings", dict.fromkeys(items, 1.0)))
+        client = EmbeddingClient(endpoint(batch_size=129), sender=sender)
+        assert client.config.base_url is None  # the profile's default host, https://api.openai.com/v1
+
+        client.encode(texts(*items), EncodeRole.DOCUMENT)
+
+        assert [len(call.json["input"]) for call in sender.calls] == [129]
+
+    def test_a_hosted_profile_still_enforces_its_published_cap(self) -> None:
+        with pytest.raises(ConfigError, match="at most 96"):
+            EmbeddingClient(
+                endpoint("cohere", max_tokens=1024, batch_size=129), sender=FakeSender(handler("cohere", {}))
+            )
+
+    def test_a_media_batch_splits_at_the_endpoints_media_caps(self, tmp_path: Any) -> None:
+        """``max_images``/``max_videos`` cap what ONE wire request carries, so the client that packs the
+        requests splits a media-bearing batch at them: three page images with ``max_images: 1`` leave as
+        three requests, one image each.
+
+        The T4's vidore run is the red evidence: its VL encoder declares ``max_images: 1`` (the served
+        engine's ``limit_mm_per_prompt``) and the client packed 32 page images into one request, refused
+        with "this request carries 32 images and the endpoint accepts 1 per request".
+        """
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = TestRequestShapes._messages_client(sender, max_images=1)
+        pages = [TestRequestShapes._png(tmp_path, f"page-{index}.png") for index in range(3)]
+
+        vectors = client.encode(pages, EncodeRole.DOCUMENT)
+
+        assert vectors.num_items == 3
+        assert len(sender.calls) == 3  # one image per request: the declared cap
+        for call in sender.calls:
+            parts = call.json["messages"][0]["content"]
+            assert sum(part["type"] == "image_url" for part in parts) == 1
+
+    def test_a_text_only_batch_keeps_its_plain_packing(self) -> None:
+        """The caps bind media, not items: a text-only batch keeps the ``batch_size`` packing (the same
+        requests today's runs send), so the split costs nothing where there is no media."""
+        sender = FakeSender(handler("openai_embeddings", {name: 1.0 for name in "abcde"}))
+        client = TestRequestShapes._messages_client(sender, max_images=1, batch_size=8)
+
+        client.encode(texts(*"abcde"), EncodeRole.DOCUMENT)
+
+        assert [len(call.json["messages"]) for call in sender.calls] == [5]  # one request: no media, no split
+
+
+class TestConcurrency:
+    def test_at_most_concurrency_requests_are_in_flight(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {name: 1.0 for name in "abcdef"}), delay_fn=lambda call: 0.01)
+        client = EmbeddingClient(endpoint(batch_size=1, concurrency=2), sender=sender)
+
+        client.encode(texts(*"abcdef"), EncodeRole.DOCUMENT)
+
+        assert sender.peak == 2
+
+    def test_batches_overlap_and_reassemble_in_input_order(self) -> None:
+        items = list("abcd")
+        values = {name: float(index + 1) for index, name in enumerate(items)}
+
+        def delays(call: Call) -> float:
+            return 0.02 * (len(items) - items.index(call.json["input"][0]))
+
+        sender = FakeSender(handler("openai_embeddings", values), delay_fn=delays)
+        client = EmbeddingClient(endpoint(batch_size=1, normalize=False), sender=sender)
+
+        vectors = client.encode(texts(*items), EncodeRole.DOCUMENT)
+
+        assert sender.peak > 1, "the batches did not overlap"
+        assert vectors.as_matrix()[:, 0].tolist() == [1.0, 2.0, 3.0, 4.0]
+
+    def test_batches_of_differing_dimension_are_refused(self) -> None:
+        """Two well-formed batches of different width (replicas serving different models) cannot share a
+        matrix: the reassembly refuses instead of crashing with a raw numpy error."""
+        values = {"a": 1.0, "b": 2.0}
+
+        def varying(call: Call) -> Reply:
+            width = 2 if input_texts("openai_embeddings", call) == ["a"] else 3
+            vectors = [[values[text], 1.0] + [0.0] * (width - 2) for text in input_texts("openai_embeddings", call)]
+            return Reply(200, vendor_payload("openai_embeddings", vectors), {})
+
+        sender = FakeSender(varying)
+        client = EmbeddingClient(endpoint(batch_size=1, normalize=False), sender=sender)
+
+        with pytest.raises(RequestRejectedError, match="differing dimension"):
+            client.encode(texts("a", "b"), EncodeRole.DOCUMENT)
+
+    def test_one_batch_sends_one_request(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {"only": 1.0}))
+        client = EmbeddingClient(endpoint(concurrency=1), sender=sender)
+
+        vectors = client.encode(texts("only"), EncodeRole.DOCUMENT)
+
+        assert sender.peak == 1
+        assert len(sender.calls) == 1
+        assert vectors.num_items == 1
+
+
+class TestNormalisation:
+    def test_vectors_are_l2_normalised_by_default(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {"x": 3.0, "y": 0.0}))
+        vectors = EmbeddingClient(endpoint(), sender=sender).encode(texts("x", "y"), EncodeRole.DOCUMENT)
+
+        assert np.linalg.norm(vectors.as_matrix(), axis=1).tolist() == pytest.approx([1.0, 1.0])
+
+    def test_normalize_false_keeps_the_raw_vectors(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {"x": 3.0, "y": 0.0}))
+        vectors = EmbeddingClient(endpoint(normalize=False), sender=sender).encode(texts("x", "y"), EncodeRole.DOCUMENT)
+
+        assert vectors.as_matrix()[:, 0].tolist() == [3.0, 0.0]
+
+
+class TestSyncBridge:
+    def test_encode_runs_on_the_sender_bridge_and_matches_aencode(self) -> None:
+        sender = FakeSender(handler("openai_embeddings", {"a": 1.0, "b": 2.0}))
+        client = EmbeddingClient(endpoint(batch_size=1), sender=sender)
+
+        sync = client.encode(texts("a", "b"), EncodeRole.DOCUMENT)
+        async_ = asyncio.run(client.aencode(texts("a", "b"), EncodeRole.DOCUMENT))
+
+        assert isinstance(sync, Embeddings)
+        assert sync.as_matrix().tolist() == async_.as_matrix().tolist()
+        assert len(sender.calls) == 4  # two batches, run twice
+
+
+class TestConstruction:
+    def test_max_tokens_is_the_budget_the_client_fits_to(self) -> None:
+        """The text-budget mechanism is wired: a declared budget cuts the content (tests/inference/
+        test_client_budget.py pins the cuts, the census and the re-attached template); a client is built."""
+        client = EmbeddingClient(endpoint(max_tokens=8192), sender=FakeSender(handler("openai_embeddings", {})))
+        assert client.config.max_tokens == 8192
+
+    @pytest.mark.parametrize("api", ("cohere", "voyage", "gemini"))
+    def test_a_hosted_config_refuses_a_dimensions_cut(self, api: str) -> None:
+        """The hosted profiles have no dimensions parameter; a cut that silently never reaches the wire would
+        change the vectors without an error."""
+        with pytest.raises(ConfigError, match="dimensions"):
+            EmbeddingClient(endpoint(api, dimensions=256), sender=FakeSender(handler(api, {})))
+
+    def test_an_explicit_api_key_env_that_is_unset_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The config names the variable: the transport refuses an unset one, before anything is queued."""
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.delenv("MISSING_KEY_ENV", raising=False)
+        config = endpoint(base_url="http://127.0.0.1:8000/v1", api_key_env="MISSING_KEY_ENV")
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_httpx()))
+
+        with pytest.raises(CredentialsError, match="MISSING_KEY_ENV"):
+            client.encode(texts("x"), EncodeRole.DOCUMENT)
+
+    def test_an_unknown_api_names_the_known_adapters(self) -> None:
+        with pytest.raises(ConfigError) as caught:
+            EmbeddingClient(endpoint(api="not_an_adapter"), sender=FakeSender(handler("openai_embeddings", {})))
+
+        assert "openai_embeddings" in (caught.value.hint or "")
+        assert "embed" in (caught.value.hint or "")  # the hint stays inside the role's namespace
+
+    def test_an_adapter_of_another_role_is_refused(self) -> None:
+        """A registered adapter of the wrong role (a judge's, say, selected by typo) is unknown in the embed
+        registry, and the error names where the name does live."""
+        from rcp_ndcg.inference import adapters as registry
+        from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+
+        class _JudgeAdapter:
+            """A minimal adapter of another role, registered for this test."""
+
+            name = "probe_judge"
+            role: ClassVar[AdapterRole] = "judge"
+            HOSTED = False
+            API_KEY_ENV = ()
+            KEY_REQUIRED = False
+            AUTH_HEADER = None
+            DEFAULT_BASE_URL = None
+
+            def calls(self, request: Any, *, model: str) -> list[Call]:
+                return []
+
+            def interpret(self, request: Any, replies: list[Reply]) -> str:
+                return ""
+
+            def usage(self, reply: Reply) -> None:
+                return None
+
+        saved = dict(registry.base._BUILTINS)
+        register_adapter(_JudgeAdapter)  # type: ignore[arg-type]
+        try:
+            with pytest.raises(ConfigError, match="unknown embed adapter 'probe_judge'"):
+                EmbeddingClient(endpoint(api="probe_judge"), sender=FakeSender(handler("openai_embeddings", {})))
+        finally:
+            registry.base._BUILTINS.clear()
+            registry.base._BUILTINS.update(saved)
+
+
+class TestRequestShapes:
+    """``request_shape`` (2e, 3): media rides the ``messages`` wire (the chat-embed form, per shape), and
+    ``token_ids`` sends the ids the fit produced, end to end."""
+
+    @staticmethod
+    def _png(tmp_path: Any, name: str) -> Content:
+        from PIL import Image
+
+        path = tmp_path / f"{name}.png"
+        Image.new("RGB", (4, 4), (1, 2, 3)).save(path, format="PNG")
+        return Content.from_image(path.as_uri())
+
+    @staticmethod
+    def _messages_client(sender: FakeSender, **overrides: Any) -> EmbeddingClient:
+        from tests.inference import _budget
+
+        settings: dict[str, Any] = {
+            "request_shape": "messages",
+            "image_policy": {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+            "max_images": 2,
+            "tokenizer": _budget.DEFAULT_TOKENIZER,
+            "max_tokens": 8192,
+        }
+        settings.update(overrides)
+        return EmbeddingClient(endpoint("openai_embeddings", **settings), sender=sender)
+
+    @pytest.mark.parametrize("role", [EncodeRole.QUERY, EncodeRole.DOCUMENT])
+    def test_media_travels_as_messages_per_shape(self, tmp_path: Any, role: EncodeRole) -> None:
+        """A test per shape: the query and the document side both lower to chat parts (the side's prompt
+        prefixed, the image part beside the text) and carry their media census rows."""
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender)
+        image = self._png(tmp_path, f"{role.value}.png")
+        caption = Content.from_parts([TextPart(text="a caption"), ImagePart(ref=image.media[0])])
+
+        vectors = client.encode([caption], role)
+
+        assert vectors.num_items == 1
+        body = sender.calls[0].json
+        parts = body["messages"][0]["content"]
+        assert [part["type"] for part in parts] == ["text", "image_url"]
+        assert parts[0]["text"] == "a caption"  # the side's prompt (empty) changed nothing
+        assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+    def test_the_media_placement_survives_the_fit(self, tmp_path: Any) -> None:
+        """The order of an item's parts is information the model reads (a page before its caption is another
+        input than the caption before the page, and the vision-language cards put the media first): the fit
+        replaces the text in place, so a media-first item goes out media-first -- cut or not."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(document=(Segment(fixed="doc: "), Segment(content="document")))
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender, template=template, max_tokens=12)
+        image = self._png(tmp_path, "page.png")
+        for text in ("a caption", " ".join(["the"] * 40)):
+            client.encode(
+                [Content.from_parts([ImagePart(ref=image.media[0]), TextPart(text=text)])], EncodeRole.DOCUMENT
+            )
+            parts = sender.calls[-1].json["messages"][0]["content"]
+            assert [part["type"] for part in parts] == ["image_url", "text"], text
+
+    def test_media_on_the_text_wire_is_still_refused(self, tmp_path: Any) -> None:
+        from tests.inference import _budget
+
+        client = EmbeddingClient(
+            endpoint(
+                "openai_embeddings",
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=2,
+            ),
+            sender=FakeSender(handler("openai_embeddings", {})),
+        )
+        with pytest.raises(CapabilityError, match="image"):
+            client.encode([self._png(tmp_path, "page.png")], EncodeRole.DOCUMENT)
+
+    def test_media_over_the_fake_engine_per_shape(self, tmp_path: Any) -> None:
+        """End to end over the fake engine (``fake://`` under the real transport): a media query and a media
+        document, each answered one vector per item."""
+        from tests.inference import _budget
+
+        for role in (EncodeRole.QUERY, EncodeRole.DOCUMENT):
+            config = endpoint(
+                "openai_embeddings",
+                base_url="fake://seed/7?dim=4",
+                request_shape="messages",
+                image_policy={"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"},
+                max_images=2,
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+            )
+            client = EmbeddingClient(config)
+            vectors = client.encode([self._png(tmp_path, f"fake-{role.value}.png")], role)
+            client.close()
+            assert vectors.num_items == 1 and vectors.dim == 4
+
+    def test_token_ids_are_sent_end_to_end(self) -> None:
+        """3 (pplx): the model must receive token ids -- the client sends the ids its fit tokenised, per
+        item, in the OpenAI ``input`` list."""
+        from tests._tokenizers import word_tokenizer
+        from tests.inference import _budget
+
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = EmbeddingClient(
+            endpoint(
+                "openai_embeddings",
+                tokenizer=_budget.DEFAULT_TOKENIZER,
+                max_tokens=8192,
+                request_shape="token_ids",
+            ),
+            sender=sender,
+        )
+        text = "the a of to"
+        vectors = client.encode(texts(text), EncodeRole.DOCUMENT)
+
+        assert vectors.num_items == 1
+        assert sender.calls[0].json["input"] == [word_tokenizer().ids(text)]
+
+    def test_the_messages_route_sends_the_content_and_the_engine_frames_it_once(self, tmp_path: Any) -> None:
+        """H5: vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through its chat template
+        (vllm/entrypoints/pooling/embed/io_processor.py:302-355), and a media part's placeholder lands where the
+        part sits in the message -- inside the template's user turn. So the client sends each item's CONTENT
+        (the prompt and the cut content span, its media parts beside it), never the framed render: framed, the
+        engine would frame it a second time. The engine's frame (here the declared template's own head and
+        tail around the user turn, as the served chat template renders them) then equals the declared render
+        exactly once; the declared ``add_special_tokens`` rides along (the chat route's default is false)."""
+        from rcp_ndcg.data.templates import Segment, TemplateSpec
+
+        template = TemplateSpec(
+            query=(Segment(fixed="query turn: "), Segment(content="query"), Segment(fixed=" end of turn")),
+            document=(Segment(fixed="document turn: "), Segment(content="document"), Segment(fixed=" end of turn")),
+        )
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender, template=template, max_tokens=20)
+        image = self._png(tmp_path, "page.png")
+        long_text = " ".join(["the"] * 40)
+        for role, shape in ((EncodeRole.QUERY, "query"), (EncodeRole.DOCUMENT, "document")):
+            client.encode([Content.from_parts([TextPart(text=long_text), ImagePart(ref=image.media[0])])], role)
+            body = sender.calls[-1].json
+            (message,) = body["messages"]
+            parts = message["content"]
+            assert [part["type"] for part in parts] == ["text", "image_url"]
+            sent = parts[0]["text"]
+            assert long_text.startswith(sent) and sent != long_text, "the cut content span, unframed"
+            assert body["add_special_tokens"] is template.adds_special_tokens(shape)
+            head, tail = (segment.fixed for segment in template.segments(shape) if segment.fixed is not None)
+            engine_render = head + sent + tail  # the served chat template's user turn around the message text
+            declared = template.render(shape, word_tokenizer(), query=sent, document=sent)
+            assert engine_render == declared
+            assert engine_render.count(head) == 1 and engine_render.count(tail) == 1, "framed exactly once"
+
+    def test_a_declared_generation_prompt_rides_the_messages_route(self) -> None:
+        """vLLM v0.31.0's chat routes default ``add_generation_prompt`` to false
+        (vllm/entrypoints/pooling/base/protocol.py:230-237), and a checkpoint whose declared frame ends with the
+        assistant header renders that header only with it true: the declared flag travels on every messages
+        request, and an undeclared one sends nothing (the engine's default applies)."""
+        sender = FakeSender(handler("openai_embeddings", {}))
+        client = self._messages_client(sender, add_generation_prompt=True)
+        client.encode([Content.from_text("a query")], EncodeRole.QUERY)
+        client.encode([Content.from_text("a document")], EncodeRole.DOCUMENT)
+        assert [call.json["add_generation_prompt"] for call in sender.calls] == [True, True]
+        plain_sender = FakeSender(handler("openai_embeddings", {}))
+        self._messages_client(plain_sender).encode([Content.from_text("a query")], EncodeRole.QUERY)
+        assert "add_generation_prompt" not in plain_sender.calls[0].json
+
+    def test_a_generation_prompt_off_the_messages_route_is_refused_and_false_declares_nothing(self) -> None:
+        """The flag frames a chat render, so a route that renders no chat template would carry it inertly:
+        refused on the text route and on the pooling role (whose media lowering sends no such field); ``false``
+        is the engine's own default, stored as ``None``, so it never re-keys an identity."""
+        from rcp_ndcg.inference.config import PoolingEndpoint
+        from tests.inference import _budget
+
+        budget = {"tokenizer": _budget.DEFAULT_TOKENIZER, "max_tokens": 64}
+        with pytest.raises(ConfigError, match="add_generation_prompt"):
+            endpoint("openai_embeddings", add_generation_prompt=True, **budget)
+        with pytest.raises(ConfigError, match="add_generation_prompt"):
+            PoolingEndpoint(
+                model="m", base_url="http://x", dim=4, request_shape="messages", add_generation_prompt=True, **budget
+            )
+        declared = endpoint("openai_embeddings", request_shape="messages", add_generation_prompt=False, **budget)
+        undeclared = endpoint("openai_embeddings", request_shape="messages", **budget)
+        from rcp_ndcg.support.identity import identity_payload
+
+        assert declared.add_generation_prompt is None
+        assert identity_payload(declared) == identity_payload(undeclared)
+        sent = endpoint("openai_embeddings", request_shape="messages", add_generation_prompt=True, **budget)
+        assert identity_payload(sent) == {**identity_payload(undeclared), "add_generation_prompt": True}
+
+    def test_token_ids_without_a_tokenizer_are_refused(self) -> None:
+        with pytest.raises(ConfigError, match="token_ids"):
+            EmbeddingClient(endpoint("cohere", request_shape="token_ids"), sender=FakeSender(handler("cohere", {})))
+
+    def test_messages_on_a_wire_that_implements_text_only_are_refused_at_construction(self) -> None:
+        with pytest.raises(ConfigError, match="implements"):
+            EmbeddingClient(endpoint("cohere", request_shape="messages"), sender=FakeSender(handler("cohere", {})))
+
+
+class TestEndpoints:
+    @pytest.mark.parametrize(
+        ("api", "url"),
+        [
+            ("openai_embeddings", "https://api.openai.com/v1"),
+            ("cohere", "https://api.cohere.com/v2"),
+            ("voyage", "https://api.voyageai.com/v1"),
+            ("gemini", "https://generativelanguage.googleapis.com/v1beta"),
+        ],
+    )
+    def test_a_hosted_config_defaults_to_the_profile_url(self, api: str, url: str) -> None:
+        client = EmbeddingClient(endpoint(api), sender=FakeSender(handler(api, {})))
+
+        assert client.endpoint.base_url == url
+        assert client.config.base_url is None  # the config itself is untouched
+
+    def test_an_explicit_base_url_is_kept(self) -> None:
+        client = EmbeddingClient(
+            endpoint(base_url="http://127.0.0.1:8000/v1"), sender=FakeSender(handler("openai_embeddings", {}))
+        )
+
+        assert client.endpoint.base_url == "http://127.0.0.1:8000/v1"
+
+    def test_the_transport_sees_the_api_key_env(self) -> None:
+        """The key decision is the transport's (R6): the config's variable reaches it un-cleared, and the
+        client points an injected transport at the profile's facts."""
+        from rcp_ndcg.inference.transport import Transport
+
+        config = endpoint(api_key_env="MY_KEY_ENV", base_url="http://127.0.0.1:9000/v1")
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_httpx()))
+
+        assert client.config.api_key_env == "MY_KEY_ENV"
+        assert client.endpoint.api_key_env == "MY_KEY_ENV"
+        # the profile carries the config's named variable (an unset named one is an error), not the profile's
+        assert client._sender._auth.variables == ("MY_KEY_ENV",)
+        assert client._sender._auth.required is True
+
+
+class TestCredentials:
+    """The key is the transport's decision now (R6): the client resolves nothing. The per-profile header
+    tests live with the transport (tests/inference/test_transport.py::TestAdapterAuth); here the refusals."""
+
+    def test_an_empty_api_key_env_is_a_config_error(self) -> None:
+        """An empty variable name would silently send no header; the endpoint config refuses it."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="api_key_env"):
+            endpoint(api_key_env="")
+
+    def test_a_hosted_profile_on_its_own_host_without_a_key_names_its_variables(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Through a real transport at the vendor's own root: a missing required key is refused before
+        anything is queued."""
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        config = endpoint("cohere")  # the profile's own host: https://api.cohere.com/v2
+        resolved = config.model_copy(update={"base_url": "https://api.cohere.com/v2"})
+        client = EmbeddingClient(config, sender=Transport(resolved, httpx_transport=_null_httpx()))
+
+        with pytest.raises(CredentialsError) as caught:
+            client.encode(texts("x"), EncodeRole.DOCUMENT)
+
+        assert "CO_API_KEY" in (caught.value.hint or "")
+        assert "COHERE_API_KEY" in (caught.value.hint or "")
+
+    def test_a_hosted_profile_at_a_foreign_host_sends_no_key_and_the_server_refuses(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A hosted profile pointed at another URL resolves no key (the vendor's variable never crosses to a
+        third party): the request goes out unauthenticated and the 401 is what refuses it."""
+        import httpx
+
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("CO_API_KEY", "co-secret-key")
+        seen: list[httpx.Request] = []
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(401, json={"message": "no key"})
+
+        config = endpoint("cohere", base_url="http://127.0.0.1:9000/v1", wait_on_outage_s=0)
+        client = EmbeddingClient(config, sender=Transport(config, httpx_transport=httpx.MockTransport(answer)))
+
+        with pytest.raises(CredentialsError, match="no key"):
+            client.encode(texts("x"), EncodeRole.DOCUMENT)
+        client.close()
+        assert seen and "Authorization" not in seen[0].headers
+
+    def test_the_transport_sends_the_profile_header(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One header per profile, resolved by the transport from the profile's own variables."""
+        import httpx
+
+        from rcp_ndcg.inference.transport import Transport
+
+        monkeypatch.setenv("CO_API_KEY", "test-fake-cohere")
+        seen: list[httpx.Request] = []
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"embeddings": {"float": [[1.0, 1.0]]}})
+
+        config = endpoint("cohere")  # the profile's own host, where its variables resolve
+        resolved = config.model_copy(update={"base_url": "https://api.cohere.com/v2"})
+        EmbeddingClient(config, sender=Transport(resolved, httpx_transport=httpx.MockTransport(answer))).encode(
+            texts("x"), EncodeRole.DOCUMENT
+        )
+
+        assert seen[0].headers["Authorization"] == "Bearer test-fake-cohere"
+
+
+def _null_httpx() -> httpx.AsyncBaseTransport:
+    """A mock endpoint that answers nothing useful; credentials fail before anything is queued."""
+    return httpx.MockTransport(lambda request: httpx.Response(500, json={}))
+
+
+class TestTokenizerIdentity:
+    def test_identity_extra_carries_the_tokenizer_sha256(self, tmp_path: Any) -> None:
+        (tmp_path / "tokenizer").mkdir()
+        directory = save(word_tokenizer(), tmp_path / "tokenizer")
+        config = endpoint(tokenizer=str(directory))
+
+        assert config.identity_extra() == {"tokenizer_sha256": word_tokenizer().sha256}
+
+    def test_the_sha_is_of_the_bytes_not_the_name(self, tmp_path: Any) -> None:
+        for name in ("one", "two", "three"):
+            (tmp_path / name).mkdir()
+        first = save(word_tokenizer(), tmp_path / "one")
+        second = save(word_tokenizer(), tmp_path / "two")
+        other = save(byte_bpe_tokenizer(), tmp_path / "three")
+
+        same = endpoint(tokenizer=str(first)).identity_extra()
+        assert same == endpoint(tokenizer=str(second)).identity_extra()  # same bytes, different path
+        assert same != endpoint(tokenizer=str(other)).identity_extra()  # different bytes
+
+    def test_no_tokenizer_no_extra_identity(self) -> None:
+        assert endpoint("cohere").identity_extra() == {}  # a hosted profile declares none

@@ -1,0 +1,14 @@
+# A hosted judge through the OpenAI API: set OPENAI_API_KEY.
+# Reasoning models reject a temperature, so none is sent.
+base_url: https://api.openai.com/v1
+model: gpt-5-2025-08-07
+api_key_env: OPENAI_API_KEY
+temperature: null
+max_output_tokens: 16384
+# The input limit, not the 400,000-token window, which includes up to 128,000 tokens of output.
+context_tokens: 272000
+# No tokenizer: OpenAI publishes none on the Hugging Face Hub, so documents are sent whole (text policy keep), and
+# estimates approximate tokens from characters. Name one with judge.tokenizer to cut text in tokens.
+concurrency: 8
+# The OpenAI API constrains each answer to the stage's JSON schema (response_format json_schema, strict).
+decoding: json_schema

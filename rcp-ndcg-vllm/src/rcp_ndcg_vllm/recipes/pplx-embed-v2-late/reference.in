@@ -1,0 +1,32 @@
+# reference.in: this family's reference requirements, resolved to the exact, hashed reference.lock
+# beside this file by `python -m rcp_ndcg_test.jobs.reference_lock` (the family's one reference environment). The tool
+# constrains torch and the CUDA stack to the engine image's freeze; every other pin installs into
+# the family's reference venv and takes precedence over the image's copy. Never edit the lock by hand.
+# The reference environment for the family's shared
+# recipes/pplx-embed-v2-late/reference.py (one reference serves both sizes; its
+# model and revision come from the harness's --recipe), in
+# ITS OWN python (never the harness's process, never the engine image):
+#   pip install -r reference.lock
+# The wave runner points --reference-python at this environment (the node's
+# bootstrap installs it over the image's torch -- run on the image's
+# torch, install only what is missing); the reference subprocess runs while the
+# engine on that slot is up and releases its memory when it exits. `--mode
+# render` needs only huggingface_hub and tokenizers (it reads the pinned
+# config_sentence_transformers.json, sentence_bert_config.json and tokenizer.json,
+# and runs the card's cut in the tokenizers library) and runs in any interpreter
+# that has them.
+#
+# These are the checkpoints' own requirements.txt pins at both pinned
+# revisions (8fc2de24534aa3610d85fa59c463313a5f096455 for the 0.6b and
+# 0f49a9977fe06b83377d598094c5c0204ce18ad9 for the 9b; the two requirements.txt
+# files are byte-identical) -- the model cards' published path is
+# a native sentence-transformers MultiVectorEncoder (the checkpoint carries no
+# custom Python code), so nothing beyond the two card pins is needed: no torch
+# pin (the reference venv sits over the image's torch), no flash-linear-attention
+# (the checkpoint has no remote code importing it), no safetensors pin (it is a
+# sentence-transformers dependency).
+sentence-transformers>=6.0.0,<7.0.0
+transformers>=5.4.0,<6.0.0
+huggingface_hub>=1.5,<2.0  # the render mode's dependencies besides the stdlib: this and
+tokenizers       # tokenizers (a transformers dependency, listed for the render mode)
+Pillow>=12.0     # the media mode's image reads

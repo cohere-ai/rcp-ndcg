@@ -1,0 +1,46 @@
+# T4 scenario 4: one ViDoRe v3 subset with media — served VL encoder -> served VL judge.
+#
+# retrieve (Qwen3-VL-Embedding-2B over page images) -> tournament + rubric (served VL judge) ->
+# calibrate + evaluate.  Media budgets on: the judge declares its image processor and per-request media
+# limits, and the preprocessing pins the page-image pixel budget within the qwen3_vl engine budget
+# (rcp_ndcg.data.resolution.PROCESSORS).
+#
+# Judge: the Flash-Next judge of the four-phase run (the owner named judges for the outage, identity and
+# four-phase runs; the visual run uses the same judge as the four-phase run, see the lane report's open
+# questions).  The Hub commits are checked 2026-10-07.
+id: vidore
+description: >
+  One ViDoRe v3 subset (computer_science) with page images: served VL encoder -> served VL judge, media
+  budgets on.
+mode: run
+dataset:
+  uri: suite:vidore
+  subset: computer_science
+  revision: 4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e
+limit: 10
+depth: 30
+steps: [retrieve, tournament, rubric, calibrate, evaluate]
+encoder_recipe: qwen3-vl-embedding-2b
+preprocessing:
+  # The page-image pixel budget (both bounds, within the qwen3_vl engine budget): images are resized to
+  # it as the judge's processor would, so the engine keeps the prepared size.
+  image: {min_px: 65536, max_px: 1048576}
+judge:
+  served_name: judge
+  recipe: qwen3.8-flash-next-nvfp4
+  # The FP8 fallback is TP2 (decision 41's shape for its 185 GB of weights on a B200): its own device
+  # slice. The NVFP4 candidate is TP1.
+  fallback_recipe: qwen3.8-flash-next-fp8
+  fallback_slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0,1", gpus: 2,
+                  startup_timeout_s: 3600, outage_timeout_s: 300}
+  config:
+    # Runtime fields only: the recipe declares the client block (decision 17).
+    concurrency: 256
+    wait_on_outage_s: 300
+  slot: {port: 8120, vllm_port: 9120, cuda_visible_devices: "0", gpus: 1,
+         startup_timeout_s: 3600, outage_timeout_s: 300}
+slots:
+  encoder: {port: 8100, vllm_port: 9100, cuda_visible_devices: "0", gpus: 1,
+            startup_timeout_s: 1800, outage_timeout_s: 300}
+runner_options:
+  resources: {gpus: 0, cpus: 8, memory_gb: 32, time_limit_s: 28800}

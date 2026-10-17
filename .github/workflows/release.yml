@@ -1,0 +1,221 @@
+# Publish a release: on a tag v<version>, build the three distributions (rcp-ndcg, rcp-ndcg-core, rcp-ndcg-vllm),
+# check each version against the tag, publish every package to its own PyPI project with trusted publishing (OIDC,
+# no secret), and attach the constraints file to the GitHub release.
+#
+# Each package publishes through its own GitHub environment, because PyPI identifies a pending trusted publisher by
+# owner, repository, workflow file and environment only (not the project name). One-time setup on pypi.org, done:
+# for each project in the table below, add a trusted publisher (a pending one before the first upload) with owner
+# cohere-ai, repository rcp-ndcg, workflow release.yml and the environment from the table; the environments exist in
+# the repository's settings (one protection rule each, set by the owner).
+#
+#   | PyPI project  | GitHub environment |
+#   |---------------|--------------------|
+#   | rcp-ndcg      | pypi               |
+#   | rcp-ndcg-core | pypi-core          |
+#   | rcp-ndcg-vllm | pypi-vllm          |
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # The release checklist's tag-vs-RC check (decision 16 / g-rcjobs-7): dispatch the tag with the wave
+  # document(s) whose evidence flipped the statuses; the step below refuses a tag whose commit is not the
+  # tested RC's.  A bare tag push runs every other check (a push event carries no input).
+  workflow_dispatch:
+    inputs:
+      rc_wave:
+        description: "Path to a tested RC's wave.json (the release checklist downloads it first)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - name: build rcp-ndcg-core, rcp-ndcg and rcp-ndcg-vllm
+        run: |
+          # The three published distributions, one --package per invocation (uv refuses a repeated flag),
+          # so the unpublished fourth workspace member, rcp-ndcg-test, is never swept in. No plugin
+          # wheels: the folded models ship inside rcp-ndcg-vllm (layout-move item 3).
+          uv build --package rcp-ndcg-core --out-dir dist
+          uv build --package rcp-ndcg --out-dir dist
+          uv build --package rcp-ndcg-vllm --out-dir dist
+      - name: the versions are the tag's
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          expected=(
+            "dist/rcp_ndcg-${version}-py3-none-any.whl" "dist/rcp_ndcg-${version}.tar.gz"
+            "dist/rcp_ndcg_core-${version}-py3-none-any.whl" "dist/rcp_ndcg_core-${version}.tar.gz"
+            "dist/rcp_ndcg_vllm-${version}-py3-none-any.whl" "dist/rcp_ndcg_vllm-${version}.tar.gz"
+          )
+          ls -a dist
+          for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
+          test "$(find dist -type f -not -name '.*' | wc -l)" -eq "${#expected[@]}" || { echo "dist/ holds other versions"; exit 1; }
+      - name: the manifests, the citation and the pins are the tag's
+        run: |
+          # One home (.github/scripts/check_release.py) shared with rc_build.sh: the candidate build runs
+          # the same checks the tag will, so a node-passed RC cannot fail at the tag (g-rcjobs-5).
+          python3 .github/scripts/check_release.py "${GITHUB_REF_NAME#v}"
+      - name: the tag commit is the tested RC's commit
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # decision 16 / g-rcjobs-7: the wave document records the RC's commit; the tag must be that
+          # commit.  The release checklist dispatches the tag with the wave documents it verified.
+          python3 .github/scripts/check_release.py "${GITHUB_REF_NAME#v}" --commit "$GITHUB_SHA" \
+            --wave "${{ inputs.rc_wave }}"
+      - name: the requirements-constraints.txt is the lock's export
+        run: python3 .github/scripts/check_constraints.py
+      - name: twine check every file
+        run: uvx twine check dist/*
+      # The tag pipeline installs what it built: twine checks metadata only, so a wheel with broken entry
+      # points or missing package data would otherwise publish unchecked (CI's wheel-smoke job does not run
+      # on tag pushes). Each published distribution installs from its built wheel -- never from the checkout
+      # -- into its own fresh venv and must import and work there. rcp-ndcg's wheel pins rcp-ndcg-core
+      # exactly, so the sibling wheel comes from --find-links dist, under the lock's constraints file.
+      - name: the core wheel installs alone and computes the metric
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-core" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/rcp_ndcg_core-*.whl
+          "$RUNNER_TEMP/wheel-core/bin/python" - <<'PY'
+          import sys
+
+          from rcp_ndcg_core import PROTOCOLS, gain, ndcg, score_query
+
+          items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
+          gains = {d: gain(t, items) for d, t in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}
+          scores = {"d1": 0.9, "d2": 0.7, "d3": 0.2}
+          assert abs(ndcg(scores, gains, k=10) - score_query(scores, gains, protocol=PROTOCOLS["plain"])) < 1e-12
+          assert "torch" not in sys.modules, "rcp_ndcg_core imported torch"
+          print("rcp_ndcg_core wheel alone:", ndcg(scores, gains, k=10))
+          PY
+      - name: the vllm wheel installs alone, serves and lists every recipe
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-vllm" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_ndcg_vllm-*.whl
+          "$RUNNER_TEMP/wheel-vllm/bin/python" - <<'PY'
+          from rcp_ndcg_vllm.recipe import iter_recipes
+
+          recipes = list(iter_recipes())
+          assert len(recipes) == 44, len(recipes)
+          print("rcp_ndcg_vllm wheel alone:", len(recipes), "recipes")
+          PY
+          # Release gate 2 (AGENTS.md): the --no-deps install must leave pip freeze unchanged in the
+          # stock image, and must declare nothing the image does not ship.
+          python3 rcp-ndcg-vllm/tests/models/check_no_deps_install.py dist/rcp_ndcg_vllm-*.whl
+          # Release gate 3 (AGENTS.md): every recipe must dry-run from the installed wheel, so a
+          # template.jinja or package-data path that resolves only in the checkout fails here.
+          for id in $("$RUNNER_TEMP/wheel-vllm/bin/python" -c \
+            'from rcp_ndcg_vllm.recipe import iter_recipes; print(" ".join(r.id for r in iter_recipes()))'); do
+            "$RUNNER_TEMP/wheel-vllm/bin/rcp-ndcg-vllm" serve "$id" --dry-run >/dev/null
+          done
+      - name: the rcp-ndcg wheel installs (its core pin from dist/) and works
+        run: |
+          uv venv "$RUNNER_TEMP/wheel-rcp" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/wheel-rcp/bin/python" \
+            dist/rcp_ndcg-*.whl --find-links dist --constraints requirements-constraints.txt
+          "$RUNNER_TEMP/wheel-rcp/bin/rcp-ndcg" --version
+          "$RUNNER_TEMP/wheel-rcp/bin/python" - <<'PY'
+          from rcp_ndcg.judging.prompts import load_prompt
+
+          prompt = load_prompt("rubric")
+          assert prompt.text, "the shipped rubric prompt is empty"
+          print("rcp-ndcg wheel alone: rubric prompt", len(prompt.text), "chars")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist-rcp-ndcg-core
+          path: dist/rcp_ndcg_core-*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist-rcp-ndcg
+          path: dist/rcp_ndcg-*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist-rcp-ndcg-vllm
+          path: dist/rcp_ndcg_vllm-*
+
+  # One publish job per package, each with its own environment: the PyPI project in it is a pending trusted publisher
+  # identified by owner, repository, workflow file and environment only.
+  publish-core:
+    name: publish rcp-ndcg-core to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi-core
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-rcp-ndcg-core
+          path: dist/rcp-ndcg-core
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
+        with:
+          packages-dir: dist/rcp-ndcg-core
+
+  # rcp-ndcg pins rcp-ndcg-core==<version> exactly, so the core must exist on PyPI first.
+  publish-rcp-ndcg:
+    name: publish rcp-ndcg to PyPI
+    needs: publish-core
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-rcp-ndcg
+          path: dist/rcp-ndcg
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
+        with:
+          packages-dir: dist/rcp-ndcg
+
+  # rcp-ndcg-vllm names no sibling (decision 18: the lean package pins nothing), but every moment of the
+  # rollout must install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a
+  # published rcp-ndcg-vllm whose siblings failed would be uninstallable forever).
+  publish-vllm:
+    name: publish rcp-ndcg-vllm to PyPI
+    needs: [build, publish-core, publish-rcp-ndcg]
+    runs-on: ubuntu-latest
+    environment: pypi-vllm
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-rcp-ndcg-vllm
+          path: dist/rcp-ndcg-vllm
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
+        with:
+          packages-dir: dist/rcp-ndcg-vllm
+
+  github-release:
+    name: GitHub release with the constraints file
+    needs: [publish-core, publish-rcp-ndcg, publish-vllm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-rcp-ndcg
+          path: dist/rcp-ndcg
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-rcp-ndcg-core
+          path: dist/rcp-ndcg-core
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-rcp-ndcg-vllm
+          path: dist/rcp-ndcg-vllm
+      # The rendered jobs install against the constraints file attached here.
+      - run: gh release create "$GITHUB_REF_NAME" requirements-constraints.txt dist/*/* --verify-tag --notes-from-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

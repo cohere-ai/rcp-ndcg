@@ -1,0 +1,381 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "version": "0.31.0",
+    "image_digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "Qwen/Qwen3-Reranker-8B",
+      "--revision",
+      "77d193c791ed757ca307ee72715aa132723da912",
+      "--served-model-name",
+      "qwen3-reranker-8b",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8104",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "10000",
+      "--hf-overrides",
+      "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"no\", \"yes\"], \"head_dtype\": \"model\", \"is_original_qwen3_reranker\": true}",
+      "--chat-template",
+      "template.jinja",
+      "--pooler-config",
+      "{\"use_activation\": true}"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+      "VLLM_PORT": "9104",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-10-13T20:30:40+00:00",
+    "ready_wait_s": 85.277,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.31.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "redacted": [
+      {
+        "field_path": "engine.env",
+        "removed": "312 Kubernetes Service-link variables for 39 Services",
+        "reason": "the pod's Kubernetes Service links ride under the same VLLM_ prefix as the engine's own knobs and name internal Services and addresses, which the tracked tree may not carry (AGENTS.md: public names only)",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "feca88088e3a644aac3cc02fe325587653915d8f766d4adc1b28aa9543f7c249",
+        "from_manifest_file_sha256": "b7cdecb18799ab6b41f9a76f974d21eda39c1b91d141e99590e674bb426f5dde"
+      },
+      {
+        "field_path": "engine.serve_argv",
+        "removed": "the pod's staging directory from the --chat-template value (the file name is kept)",
+        "reason": "the serve argv recorded the pod's own staging directory; the family goldens reduce the same --chat-template value to its file name",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "feca88088e3a644aac3cc02fe325587653915d8f766d4adc1b28aa9543f7c249",
+        "from_manifest_file_sha256": "b7cdecb18799ab6b41f9a76f974d21eda39c1b91d141e99590e674bb426f5dde"
+      }
+    ]
+  },
+  "model": {
+    "id": "Qwen/Qwen3-Reranker-8B",
+    "revision": "77d193c791ed757ca307ee72715aa132723da912",
+    "weights": {
+      "model-00001-of-00005.safetensors": "4f4ca89173f0f56ec46338a9f8a4e2731c5f511f5dd023d4da24ab862909303a",
+      "model-00002-of-00005.safetensors": "314b4d25badff95c06fb1b76ada8bd361127a9da47ac9528d8ef264679e5add9",
+      "model-00003-of-00005.safetensors": "39cbf6e6f6881ad5ca5460c28b452eb1686169e2f91a0957a503deed55fb1318",
+      "model-00004-of-00005.safetensors": "b0140babd811993c6fad9c78704c4b2f9f824e03dc8a4da5afff802275d0d300",
+      "model-00005-of-00005.safetensors": "d5079a6c0ddad3c5b35248b7265ffb87b900173e0d2ec748c8980faca4a9d4bc",
+      "model.safetensors.index.json": "8a22e7ffd6001796256c0be7c73594835b6f907eec442fde691301ebf35087d9"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": "e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "architectures": [
+        "Qwen3ForSequenceClassification"
+      ],
+      "classifier_from_token": [
+        "no",
+        "yes"
+      ],
+      "is_original_qwen3_reranker": true,
+      "head_dtype": "model"
+    },
+    "pooler_config": {
+      "use_activation": true
+    },
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "qwen3-reranker-8b",
+    "shipped": false,
+    "file_sha256": "3ecff78261ec0864a39a9472e8a89528a6adb67431c18b57d6f3126f620e707a",
+    "behaviour_fingerprint": "5c21684d7e382a7e01a15af42b7c340e1a052928fe9386983cef78c3305f286d",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Qwen/Qwen3-Reranker-8B",
+      "revision": "77d193c791ed757ca307ee72715aa132723da912",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "template.jinja",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"no\",\"yes\"],\"head_dtype\":\"model\",\"is_original_qwen3_reranker\":true}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "10000",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{\"use_activation\":true}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "sha256:e1f4d1a21a33c635ab6c4a496e3f51333073f1af8d6856f075a58090baa656eb",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
+      "client.empty_doc": "send",
+      "client.empty_query": "send",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\\n<Query>: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>: \"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
+      "client.use_activation": "true"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 2,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 3,
+    "record_schema": 1,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-10-13T20:32:38+00:00",
+    "finished": "2026-10-13T20:34:08+00:00",
+    "host_sha256": "1e637ba8c58b69fd03b0ab559d7d9994e03b46eaddecdce578c3754a5a72e969",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "qwen3-reranker-8b@2026-10-13T20:30:40+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "qwen3-reranker-8b@2026-10-13T20:30:40+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "qwen3-reranker-8b@2026-10-13T20:33:52+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 3,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=true",
+      "wire:use_activation=false",
+      "wire:instruction=on",
+      "edge:top_n_over_documents"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 8052
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 16102
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 80510
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl": {
+        "present": false,
+        "reason": "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+      },
+      "wire:top_n=1": {
+        "present": true
+      },
+      "wire:top_n=all": {
+        "present": true
+      },
+      "wire:use_activation=true": {
+        "present": true
+      },
+      "wire:use_activation=false": {
+        "present": true
+      },
+      "wire:instruction=on": {
+        "present": true
+      },
+      "edge:top_n_over_documents": {
+        "present": true
+      },
+      "wire:encoding_format": {
+        "present": false,
+        "reason": "the /rerank route has no encodings"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "f870da775182dede07f7047559d10806275b532cb96b9ce264841a7da7bbd314",
+        "bytes": 76189
+      },
+      "records.jsonl": {
+        "sha256": "4c5c1df1a06453bd67223b7a3e93b9a990dd680a97e901c2dd944e322ab8b870",
+        "bytes": 7618321
+      }
+    },
+    "records_count": 400,
+    "manifest_sha256": "7b2257f834d7af360d582f6254a59ffff7b42cf2da480530aec36643618c2f34"
+  }
+}

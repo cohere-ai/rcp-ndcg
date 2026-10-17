@@ -1,0 +1,22 @@
+# Octen-Embedding-8B, served: one of the paper's three first-stage retrievers: a retriever config
+# (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`.
+# Served by recipe `octen-embedding-8b` (last-token pooling with L2 normalisation, the pooling
+# runner of rcp-ndcg-vllm; reference: experiments/paper/rerankers/reference/octen.py).
+# `base_url` is the placeholder the runner's engines overlay (serve.encoder) replaces. Documents are
+# encoded as "- " + text and queries as they are, as in the paper -- the recipe's template declares
+# exactly that frame -- and `max_tokens: 8192` is the paper's truncation budget, cut on the client.
+kind: dense
+encoder:
+  # The mapping form (docs-firstcontact Q1, owner decision 17): the client block comes from the shipped
+  # recipe (api, model/revision, tokenizer, the "- "-prefixed document frame as the paper encodes it,
+  # the budget, normalisation); base_url is the placeholder the runner's engines overlay replaces, and
+  # `recipe` is the pointer itself. `batch_size` is a request-packing CONTENT field (a bf16 batch's
+  # composition can move the vectors) and stays here.
+  base_url: http://127.0.0.1:8000/v1
+  recipe: octen-embedding-8b
+  # The paper's dense path passed the bare query (`encoders/hosted_api.py` prepends only the profile's empty
+  # query_prefix; the pre-unified `_api.py` folded a PER-QUERY instruction, and the paper's datasets carry
+  # none), so a task instruction (BRIGHT's per-domain prompt, which the `mteb:` reader lifts) is not sent:
+  # `none` is the value the paper's numbers were produced with.
+  instruction: none
+  batch_size: 32

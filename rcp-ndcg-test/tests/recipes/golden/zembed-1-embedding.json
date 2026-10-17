@@ -1,0 +1,271 @@
+{
+ "client_config": {
+  "api": "openai_embeddings",
+  "base_url": "http://127.0.0.1:8100/v1",
+  "empty_doc": "send",
+  "instruction": "none",
+  "max_tokens": 32768,
+  "model": "zembed-1-embedding",
+  "mrl_dims": [
+   1280,
+   640,
+   320,
+   160,
+   80,
+   40
+  ],
+  "mrl_kind": "projection",
+  "mrl_projection": {
+   "source": "hf://zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a/projections.safetensors"
+  },
+  "normalize": true,
+  "on_overflow": "cut",
+  "recipe": "zembed-1-embedding",
+  "request_shape": "text",
+  "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+  "template": {
+   "add_special_tokens": true,
+   "anchor": "last",
+   "document": [
+    {
+     "fixed": "{special:im_start}system\ndocument{special:im_end}\n{special:im_start}user\n"
+    },
+    {
+     "content": "document"
+    },
+    {
+     "fixed": "{special:im_end}\n"
+    }
+   ],
+   "query": [
+    {
+     "fixed": "{special:im_start}system\nquery{special:im_end}\n{special:im_start}user\n"
+    },
+    {
+     "content": "query"
+    },
+    {
+     "fixed": "{special:im_end}\n"
+    }
+   ]
+  },
+  "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
+ },
+ "fingerprint": {
+  "fingerprint": "db7a5387c4e69c70c042a728e6d392172eae0b9cee7bd8ba49e2c8ab6f97591e",
+  "inputs": {
+   "client.api": "openai_embeddings",
+   "client.batch_size": "32",
+   "client.doc_prompt": "",
+   "client.empty_doc": "send",
+   "client.instruction": "none",
+   "client.max_images": "0",
+   "client.max_tokens": "32768",
+   "client.max_videos": "0",
+   "client.media_sides": "[\"query\",\"document\"]",
+   "client.on_overflow": "cut",
+   "client.query_prompt": "",
+   "client.request_shape": "text",
+   "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"{special:im_start}system\\ndocument{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n\"}],\"normalize\":[],\"query\":[{\"fixed\":\"{special:im_start}system\\nquery{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n\"}]}",
+   "engine.image": "vllm/vllm-openai:v0.31.0",
+   "engine.min_version": "0.31.0",
+   "fingerprint_schema": "rcp-fp/4",
+   "model": "zeroentropy/zembed-1-embedding",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:cd90979e6cbf9def6287355fbbfb51d01b835de7be427b8e555f5e6e5f35db0b",
+   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:36e84e2e87cfe7dd4a5432dc7f0ee8ff7e82722bf1562399099ff2eb9cf304cb",
+   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:caef4d06eb65f3003ca8bc1f3152148e0ae81457b460f43830faf709163ea6c8",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:5200de7922fe5aba81ec7e2a7b06bacfa4fdaf0097dba4fa6fe62ac15eb2448b",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
+   "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:942cdfeb17a6267c8c24ce67b934948299c940a5fb1f4b320f5f2aeedb52a479",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:9e5cafe3eb26b0357184158c443c60a01dffec385cc5db6b9d932e8e1499df48",
+   "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:780c032d726428061f3e204d8a7cc2208a46292cfefd764104c7cc5e2eb0ed6d",
+   "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:3625e08399c75147142ccba26c3e774b64a31bd8634ad28ece3f2e5ebb70ba8c",
+   "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:210654602311d992ad803f90261a1d7fe97039b101d19dcf53b4217717f7505a",
+   "plugin_sha256.rcp_ndcg_vllm.patches.pooling_full_context": "sha256:0de99c56e416ced8025eb8635b79804ca7d6b8a565539c86f4de2b07ec73eed8",
+   "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+   "serve.chat_template": "null",
+   "serve.convert": "embed",
+   "serve.dtype": "bfloat16",
+   "serve.extra_args": "[]",
+   "serve.hf_overrides": "{}",
+   "serve.io_processor_plugin": "null",
+   "serve.limit_mm_per_prompt": "null",
+   "serve.max_model_len": "32768",
+   "serve.mm_processor_kwargs": "{}",
+   "serve.patches": "[\"pooling-full-context\"]",
+   "serve.plugin": "rcp-ndcg-vllm",
+   "serve.plugin_architectures": "[]",
+   "serve.pooler_config": "{}",
+   "serve.runner": "pooling",
+   "serve.trust_remote_code": "false",
+   "template_file": "absent",
+   "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+  },
+  "schema": "rcp-fp/4"
+ },
+ "id": "zembed-1-embedding",
+ "recipe": {
+  "client": {
+   "api": "openai_embeddings",
+   "empty_doc": "send",
+   "instruction": "none",
+   "max_tokens": 32768,
+   "model": "zembed-1-embedding",
+   "mrl_dims": [
+    1280,
+    640,
+    320,
+    160,
+    80,
+    40
+   ],
+   "mrl_kind": "projection",
+   "mrl_projection": {
+    "source": "hf://zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a/projections.safetensors"
+   },
+   "normalize": true,
+   "on_overflow": "cut",
+   "request_shape": "text",
+   "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+   "template": {
+    "add_special_tokens": true,
+    "anchor": "last",
+    "document": [
+     {
+      "fixed": "{special:im_start}system\ndocument{special:im_end}\n{special:im_start}user\n"
+     },
+     {
+      "content": "document"
+     },
+     {
+      "fixed": "{special:im_end}\n"
+     }
+    ],
+    "query": [
+     {
+      "fixed": "{special:im_start}system\nquery{special:im_end}\n{special:im_start}user\n"
+     },
+     {
+      "content": "query"
+     },
+     {
+      "fixed": "{special:im_end}\n"
+     }
+    ]
+   },
+   "tokenizer": "zeroentropy/zembed-1-embedding@cf13c81f3274394053d166740294f7eea4586f7a"
+  },
+  "engine": {
+   "image": "vllm/vllm-openai:v0.31.0",
+   "min_version": "0.31.0",
+   "name": "vllm",
+   "startup_timeout_s": 1800,
+   "step_budget_s": null
+  },
+  "gates": {
+   "cos_max_abs": null,
+   "logit_rel_abs": null,
+   "metrics_max_abs": null,
+   "prob_max_abs": null,
+   "prob_p99_abs": null,
+   "tau_min": null,
+   "vec_min_cosine": null
+  },
+  "id": "zembed-1-embedding",
+  "input": [
+   "text"
+  ],
+  "licence": "apache-2.0",
+  "model": "zeroentropy/zembed-1-embedding",
+  "notes": "Serving: vllm serve zeroentropy/zembed-1-embedding --runner pooling --convert embed\n--max-model-len 32768, on the stock vllm/vllm-openai:v0.31.0 image with the rcp-ndcg-vllm plugin\nwheel (the pooling-full-context patch; no custom image).\n1. Runner/convert are explicit for robustness: at v0.31.0 a bare serve already resolves this\n   checkpoint to pooling + embed, because the sentence-transformers modules.json wins over the\n   generative Qwen3ForCausalLM architecture and convert falls through to embed for a pooling\n   runner on a CausalLM arch. The flags equal what auto resolves; they pin the intent.\n2. pooler_config stays empty on purpose: the engine reads modules.json + 1_Pooling/config.json\n   (last-token pooling, L2 normalize) from the checkpoint itself, and the embed conversion\n   normalizes server-side. There is no chat template on the serving path: the prompts are\n   literal client-side text, the checkpoint's own chat_template.jinja stays unused, and\n   serve.chat_template is null. Never route this model through /v2/embed with input_type: that\n   route renders chat messages through the Qwen3 chat template, a different token sequence\n   (measured when the recipe was written). The engine never imports the remote module, so trust_remote_code is false.\n3. The render is prefix + content + suffix, declared as data in client.template: the query and\n   document prompts come from config_sentence_transformers.json, and the suffix (the im_end\n   marker plus a newline) is appended by the checkpoint's remote code (modeling_zembed.py:13,\n   ZembedTransformer.tokenize). The suffix is load-bearing: the pooler reads the last token, so\n   it is the template's trailing fixed segment and the anchor the budget reserves. The template\n   writes specials by name ({special:im_start}, {special:im_end}), never literally.\n4. Budget: the whole rendered prompt is capped at 32768 tokens (sentence_bert_config.json\n   max_seq_length, the same number as serve.max_model_len). on_overflow: cut trims the content\n   spans only, after reserving every fixed template token, and re-attaches the frame, so the\n   anchor survives every cut (docs/how-to/add-a-model.md, \"Anchors\"). The engine never truncates: vLLM\n   defaults to no truncation and 400s over-length inputs, so the client-side cut (the merged\n   product's embedding client fitting every request to the declared budget,\n   rcp_ndcg.data.preprocess.fit) is the only one. Per-shape query caps (whether\n   query_max_tokens applies): no separate query cap exists in the referent - the reference cuts\n   queries and documents alike at 32768 tokens - so query_max_tokens is not declared and both\n   shapes draw on max_tokens.\n5. The reference is the model's published path verbatim and never ports the client's cut\n   (docs/how-to/add-a-model.md): over-cap, the remote tokenize's whole-prompt right cut drops the\n   pooled suffix token, while the served side keeps the anchor\n   by the declared client cut. The reference's over-cap cut therefore differs from the client's\n   AND drops the anchor, so the recipe declares reference.known_deviations: [anchor_drop_over_cap]:\n   over-cap pairs ride the non-gating table and stage 2 gates only the under-cap rows.\n6. Dimensions: 2560 only, and MRL is declared. The card's smaller sizes\n   (1280..40) come from projections.safetensors - six chained learned F32 matrices\n   (4,368,000 params; params x 4 B + 456 B header = 17,472,456 B exactly) - not Matryoshka\n   slices, so the client head is mrl_kind: projection with mrl_projection.source\n   (hf://zeroentropy/zembed-1-embedding@<revision>/projections.safetensors; the file's tensor\n   names are their target widths) and mrl_dims [1280, 640, 320, 160, 80, 40]. The checkpoint\n   declares no matryoshka_dimensions, so vLLM refuses a dimensions parameter outright; do not\n   set client.dimensions for this model - the client-side mrl_dim is the one cut, and a run\n   selects k from the declared set (the GPU wave gates each k).\n7. Reference environment (the reference's own python, per reference.in/reference.lock):\n   torch>=2.0, transformers>=4.51 (Qwen3's floor; the image's transformers serves it), numpy,\n   and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls the remote\n   tokenize; from 5.4.0 the preprocess-first pipeline bypasses the tokenize-only remote module\n   and silently drops the suffix. 5.1.x would require transformers<5 and could not reuse the\n   image's transformers (>=5.10.4,<5.18.0 at v0.31.0); 5.3.x accepts it, so the reference venv\n   (--system-site-packages over the image) installs only sentence-transformers. The reference loads the checkpoint with trust_remote_code=True (the model card's\n   usage); the served engine never imports that code.\n8. Status verified. The render was proved token-exact on CPU (8/8 cases measured when the\n   recipe was written, constants bound to the checkpoint's config files). The first GPU wave\n   measured every served vector differing from the card's (cosine 0.08-0.4 on all 68 vectors,\n   with the renders equal) and the engine hanging at exactly max_model_len. The root cause was\n   the reference environment, not the served pooling path: the node's shared reference venv\n   installed an unbounded sentence-transformers, and 6.1.0's preprocess-first pipeline drops the\n   suffix (min cosine 0.081024 over the same 68 vectors), while under the pinned 5.3.x line the\n   same comparison is min 0.999203; the direct transformers path and the card's encode_query\n   agree with the recorded engine vector at 0.999884-0.999890. The served path is correct, the\n   recipe now opts into the pooling-full-context patch for the hang, and E2 re-measured stage 2\n   under the pinned reference environment (rc0-202610140620, plugin-carriers: min cosine\n   0.9992174, PASS).\n",
+  "reference": {
+   "attn_implementation": null,
+   "device": null,
+   "entry": "reference.py",
+   "kind": "sentence_transformers",
+   "known_deviations": [
+    "anchor_drop_over_cap"
+   ],
+   "score_scale": "cosine"
+  },
+  "resources": {
+   "gpus": 1
+  },
+  "revision": "cf13c81f3274394053d166740294f7eea4586f7a",
+  "role": "embed",
+  "schema_version": "1",
+  "scoring": null,
+  "serve": {
+   "chat_template": null,
+   "convert": "embed",
+   "dtype": "bfloat16",
+   "extra_args": [],
+   "hf_overrides": {},
+   "io_processor_plugin": null,
+   "limit_mm_per_prompt": null,
+   "max_model_len": 32768,
+   "mm_processor_kwargs": {},
+   "patches": [
+    "pooling-full-context"
+   ],
+   "plugin": "rcp-ndcg-vllm",
+   "plugin_architectures": [],
+   "pooler_config": {},
+   "runner": "pooling",
+   "trust_remote_code": false
+  },
+  "sources": [
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/tree/cf13c81f3274394053d166740294f7eea4586f7a",
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config.json",
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config_sentence_transformers.json",
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/sentence_bert_config.json",
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modules.json",
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/1_Pooling/config.json",
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modeling_zembed.py",
+   "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/README.md (the card's projection sentence at line 33: 'The model supports flexible dimension projections (2560, 1280, 640, 320, 160, 80, 40)')",
+   "projections.safetensors at the pinned revision (the safetensors header read at cf13c81f...): six F32 tensors named by their target widths, 1280 [2560,1280], 640 [1280,640], 320 [640,320], 160 [320,160], 80 [160,80], 40 [80,40] -- the chain the client's mrl_projection applies, widest first, to reach k",
+   "vllm/config/model.py:1242-1244 at the v0.31.0 tag (db9527a) - the checkpoint's sentence-transformers modules.json resolves the pooling runner before the architecture registry",
+   "vllm/config/model.py:1307-1311 at the v0.31.0 tag (db9527a) - convert falls through to embed for a pooling runner on a CausalLM arch",
+   "vllm/transformers_utils/config.py:991-1068 - the pooler settings (last-token, normalize) are read from modules.json + 1_Pooling/config.json, so pooler_config stays empty; verified at both revisions (v0.31.0 tag: get_pooling_config at :982)",
+   "vllm/model_executor/layers/pooler/seqwise/poolers.py:97-108 - last-token pooling with server-side normalize for the embed conversion (verified at both revisions)",
+   "vllm/renderers/params.py:469-476 - the engine's right-truncation slice; :485-509 - the no-truncation default 400s over-length inputs, so the client cut is the only truncation (verified at both revisions)",
+   "vllm/pooling_params.py:175 - a checkpoint without matryoshka_dimensions refuses a dimensions parameter (verified at both revisions)",
+   "vllm/entrypoints/pooling/base/protocol.py:218 - /v1/embeddings add_special_tokens defaults to true (verified at both revisions)",
+   "vllm/entrypoints/pooling/embed/io_processor.py:530-536 - /v2/embed with input_type renders chat messages through the checkpoint's chat template; this recipe never routes there (verified at both revisions)"
+  ],
+  "status": {
+   "date": "2026-10-14",
+   "image": "vllm/vllm-openai:v0.31.0",
+   "report": "docs/reference/gpu-validation.md",
+   "state": "verified"
+  }
+ },
+ "serve_argv": [
+  "vllm",
+  "serve",
+  "zeroentropy/zembed-1-embedding",
+  "--revision",
+  "cf13c81f3274394053d166740294f7eea4586f7a",
+  "--served-model-name",
+  "zembed-1-embedding",
+  "--host",
+  "0.0.0.0",
+  "--port",
+  "8100",
+  "--tensor-parallel-size",
+  "1",
+  "--runner",
+  "pooling",
+  "--convert",
+  "embed",
+  "--dtype",
+  "bfloat16",
+  "--max-model-len",
+  "32768",
+  "--hf-overrides",
+  "{}",
+  "--pooler-config",
+  "{}"
+ ]
+}

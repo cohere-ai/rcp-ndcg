@@ -1,0 +1,317 @@
+"""The client seam: the product's role clients, observed through one ``httpx`` transport hook.
+
+Stage 1 and stage 2 both talk to the engine through the product's role clients
+(:class:`~rcp_ndcg.inference.clients.EmbeddingClient`, :class:`~rcp_ndcg.inference.clients.PoolingClient`,
+:class:`~rcp_ndcg.inference.clients.RerankClient`), built from :func:`~rcp_ndcg_vllm.recipe.client_config` with
+the recipe's real budget: the client prompts, fits and settles exactly as the served path does. The harness
+never re-derives a render, a cut or a settlement.
+
+The observation seam is the product's own injection point: a
+:class:`~rcp_ndcg_test.equivalence.wire.CapturingTransport` is handed to the client's
+:class:`~rcp_ndcg.inference.transport.Transport` as its ``httpx_transport``, so every request the client
+produces crosses it once -- raw request and reply bodies for the recorder, and the request texts stage 1
+tokenizes (the engine is the tokenization truth, R29).  Without an engine the transport answers through the
+product's own offline fake (``rcp_ndcg.inference.fake``): the requests are still the client's.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import contextlib
+import contextvars
+import json
+from collections.abc import Iterator, Mapping
+from typing import Any
+
+import httpx
+from rcp_ndcg_core.content import TEXT_JOIN
+from rcp_ndcg_vllm.recipe import Recipe
+
+from rcp_ndcg_test.errors import HarnessError
+from rcp_ndcg_test.stepwatch import StepBudgetExceeded, current_watch
+
+from .fitting import resolved_tokenizer_spec
+
+__all__ = ["CapturingTransport", "Capture", "patched_wire", "prompt_tokens", "recipe_config", "role_client"]
+
+
+def prompt_tokens(exchange: Mapping[str, Any]) -> int | None:
+    """The engine's ``usage.prompt_tokens`` one captured exchange reports, or ``None`` when it reports none
+    (a binary reply, a body without usage, a non-object body).  The one reader of the captured usage: the
+    media stage's engine check and stage 1's prompt-token probe both compare it against the client's own
+    count of the same request."""
+    reply = exchange.get("response_json")
+    usage = reply.get("usage") if isinstance(reply, dict) else None
+    value = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+_WIRE_PATCH: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar(
+    "rcp_ndcg_vllm_wire_patch", default=None
+)
+
+
+@contextlib.contextmanager
+def patched_wire(patch: dict[str, dict[str, Any]]) -> Iterator[None]:
+    """Within the block, every JSON request a role client sends to a path ending in one of ``patch``'s keys
+    carries that key's fields too -- the negative controls' wire breakages (an engine-side cut, a misread
+    ``embed_dtype``; :mod:`rcp_ndcg_test.observe.controls`).  The capture records the patched bytes: what crossed
+    the wire.  Never used outside the controls."""
+    token = _WIRE_PATCH.set(patch)
+    try:
+        yield
+    finally:
+        _WIRE_PATCH.reset(token)
+
+
+_CAPTURE_BASE = "fake://harness"
+"""The ``fake://`` base URL a client probes through when the harness gave no engine: the product's offline
+fake answers, so the client completes and its requests are captured."""
+
+
+def _openai_base(base_url: str) -> str:
+    """The OpenAI-style base URL the embed wire speaks: the root plus the version segment (``.../v1``)."""
+    root = base_url.rstrip("/")
+    return root if root.endswith(("/v1", "/v2")) else f"{root}/v1"
+
+
+def _capture_base(recipe: Recipe) -> str:
+    """The probe URL for ``recipe``: the offline fake's, with the declared vector width in its query."""
+    dim = recipe.client.get("dim")
+    return f"{_CAPTURE_BASE}?dim={dim}" if dim else _CAPTURE_BASE
+
+
+class CapturingTransport(httpx.AsyncBaseTransport):
+    """An ``httpx`` transport that records every request and reply, then answers through ``delegate``.
+
+    The product's injection point: :class:`~rcp_ndcg.inference.transport.Transport` takes it as its
+    ``httpx_transport`` and wraps it in its own client (timeouts, pool limits, routing and retries stay the
+    product's).  There is no second request path: the requests are the role client's, byte for byte.
+    """
+
+    def __init__(self, delegate: httpx.AsyncBaseTransport | httpx.BaseTransport) -> None:
+        super().__init__()
+        self.exchanges: list[dict[str, Any]] = []
+        self._delegate = delegate
+        self._patch = _WIRE_PATCH.get()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        """Send through the delegate and record the exchange (request body decoded, reply bytes kept).
+
+        A step watch on the calling thread (the wave runner's step budget) sees the request before it is
+        sent, and bounds it: an over-budget step fails right here, naming this request -- and a request
+        still in flight when the budget runs out is cancelled at the budget's edge, so one stuck request
+        never holds the step (GPU-E1: one stuck request held a node for hours)."""
+        watch = current_watch()
+        if watch is None:
+            return await self._send(request)
+        watch.begin(request.method, request.url.path)
+        try:
+            try:
+                return await asyncio.wait_for(self._send(request), timeout=watch.remaining_s())
+            except TimeoutError:
+                raise StepBudgetExceeded(
+                    f"step {watch.step} exceeded {watch.budget_s:.0f}s; in flight: {watch.describe()}"
+                ) from None
+        finally:
+            watch.end()
+
+    async def _send(self, request: httpx.Request) -> httpx.Response:
+        raw = request.read()
+        try:
+            body: Any = json.loads(raw) if raw else None
+        except (ValueError, UnicodeDecodeError):
+            body = {"base64": base64.b64encode(raw).decode("ascii")}
+        patch = next(
+            (fields for suffix, fields in (self._patch or {}).items() if request.url.path.endswith(suffix)), None
+        )
+        if patch and isinstance(body, dict):
+            body = {**body, **patch}
+            raw = json.dumps(body).encode("utf-8")
+            headers = {key: value for key, value in request.headers.items() if key.lower() != "content-length"}
+            request = httpx.Request(request.method, request.url, headers=headers, content=raw)
+        async_handle = getattr(self._delegate, "handle_async_request", None)
+        if async_handle is not None:
+            response = await async_handle(request)
+        else:
+            # A sync-only delegate (an httpx.MockTransport): answered off the event loop's thread.
+            sync_handle = getattr(self._delegate, "handle_request", None)
+            if sync_handle is None:  # pragma: no cover - a delegate with neither handler
+                raise HarnessError("the capture transport's delegate speaks neither the sync nor the async wire")
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(None, sync_handle, request)
+        await response.aread()
+        try:
+            response_json: Any = response.json()
+        except ValueError:
+            response_json = None
+        self.exchanges.append(
+            {
+                "url": str(request.url),
+                "method": request.method,
+                "request_bytes": base64.b64encode(raw).decode("ascii"),
+                "request_body": body,
+                "status": response.status_code,
+                "headers": {
+                    **{key: response.headers.get(key, "") for key in ("content-type", "server")},
+                    # A /pooling ``bytes`` reply's framing: its vectors do not decode without it.
+                    **({"metadata": response.headers["metadata"]} if "metadata" in response.headers else {}),
+                },
+                "response_bytes": base64.b64encode(response.content).decode("ascii"),
+                "response_json": response_json,
+            }
+        )
+        return response
+
+
+class Capture:
+    """The captured wire of one client session, with the request texts extracted per role.
+
+    Attributes:
+        role: The recipe's role: which wire shape the captured bodies speak.
+        exchanges: Every request the client produced, in order (the recorder writes these as fixtures).
+    """
+
+    def __init__(self, recipe: Recipe) -> None:
+        self.role = recipe.role
+        self.exchanges: list[dict[str, Any]] = []
+
+    def texts(self, exchange: dict[str, Any]) -> dict[str, Any]:
+        """The texts one captured request carries: ``input`` for the embed roles, ``query``/``documents``
+        for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span).
+
+        A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``) is
+        read as vLLM v0.31.0 reads it: a list of messages is ONE conversation and a list of conversations a
+        batch.  It yields one ``input`` per conversation -- its messages' text parts joined in order with
+        ``TEXT_JOIN`` (``"\n"``, vLLM's *string* content format's join,
+        ``chat_utils.py``'s ``_get_full_multimodal_text_prompt``; the ``openai`` content format hands the
+        template the parts instead and the template joins them, so the render check compares on the parts:
+        :func:`~rcp_ndcg_test.equivalence.stages.engine_render_merge`'s walk): the content the client sent,
+        which the engine's
+        chat template frames -- ``conversations``, the conversations as sent (the served template renders
+        them), ``add_generation_prompt``, the flag the engine renders them with (false when the body sends
+        none, the chat routes' default), and ``media``: per conversation, the placeholders of its media
+        parts in order (their part ``type``, e.g. ``image_url``), which ride beside the text and are never
+        part of it.  A ``token_ids``
+        body yields its id lists as sent.
+        """
+        body = exchange.get("request_body") or {}
+        if self.role == "rerank":
+            documents = body.get("documents", [])
+            if isinstance(documents, str):
+                documents = [documents]
+            return {"query": body.get("query"), "documents": [str(document) for document in documents]}
+        if "input" not in body and isinstance(body.get("messages"), list) and body["messages"]:
+            messages = body["messages"]
+            conversations = messages if all(isinstance(entry, list) for entry in messages) else [messages]
+            texts: list[str] = []
+            media: list[list[str]] = []
+            for conversation in conversations:
+                parts: list[dict[str, Any]] = []
+                for message in conversation:
+                    content = message.get("content") if isinstance(message, dict) else None
+                    raw = [{"type": "text", "text": content}] if isinstance(content, str) else list(content or [])
+                    # A bare string part is a text part (vLLM's chat_utils reads it so).
+                    parts += [{"type": "text", "text": part} if isinstance(part, str) else part for part in raw]
+                # The string content format's join (vLLM's chat_utils): the product's TEXT_JOIN.  The
+                # openai content format (this checkpoint's) hands the template the parts themselves.
+                texts.append(TEXT_JOIN.join(str(part.get("text", "")) for part in parts if part.get("type") == "text"))
+                media.append([str(part.get("type")) for part in parts if part.get("type") != "text"])
+            return {
+                "input": texts,
+                "media": media,
+                "conversations": conversations,
+                # The chat routes' default is false (vllm/entrypoints/pooling/base/protocol.py:230-237).
+                "add_generation_prompt": bool(body.get("add_generation_prompt", False)),
+            }
+        inputs = body.get("input", body.get("texts"))
+        return {"input": [inputs] if isinstance(inputs, str) else list(inputs or [])}
+
+
+def recipe_config(
+    recipe: Recipe, base_url: str | None = None, *, full_width: bool = False, served_model_name: str | None = None
+) -> Any:
+    """The product's validated endpoint config the recipe's ``client`` block implies.
+
+    One home for the construction :func:`role_client` uses: :func:`~rcp_ndcg_vllm.recipe.client_config`'s
+    dict (the recipe's client block plus its identity and ``base_url``) with the recipe's resolved
+    tokenizer, validated by the product's role endpoint model.  A caller that needs the recipe's declared
+    media processing (its effective image and video policies) reads them off this config -- the same object
+    the role client applies them with, never a second reading of the block.  With ``full_width``, the
+    config's Matryoshka SELECTION (``dimensions``/``mrl_dim``) is stripped before the endpoint is built --
+    stage 2's ex-post gate needs one full-width pass, while the declaration
+    (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.  ``served_model_name`` overrides the endpoint's
+    ``model`` (the recipe's id) for an engine serving the recipe under another ``--served-model-name``.
+    """
+    from rcp_ndcg_vllm.recipe import client_config
+
+    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+
+    data = client_config(recipe, base_url=base_url)
+    if full_width:
+        # Stage 2's ex-post gate runs one full-width pass: the selection fields go, the declaration stays.
+        data.pop("dimensions", None)
+        data.pop("mrl_dim", None)
+    if served_model_name is not None:
+        data["model"] = served_model_name
+    data["tokenizer"] = resolved_tokenizer_spec(recipe)
+    classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
+    return classes[recipe.role](**data)
+
+
+def role_client(
+    recipe: Recipe,
+    base_url: str | None,
+    *,
+    census: Any | None = None,
+    full_width: bool = False,
+    served_model_name: str | None = None,
+) -> tuple[Any, Capture]:
+    """The product's role client for the recipe, sending through a :class:`CapturingTransport`.
+
+    Inputs: the recipe and the engine's base URL (``None`` probes through the product's offline fake: no
+    engine needed, the requests are still the client's).  With ``full_width``, the config's Matryoshka
+    SELECTION (``dimensions``/``mrl_dim``) is stripped before the endpoint is built -- stage 2's ex-post gate
+    needs one full-width pass, while the declaration (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.
+    ``served_model_name`` overrides the endpoint's ``model`` (the recipe's id) for an engine serving the
+    recipe under another ``--served-model-name``.  Outputs: the client (its config is
+    :func:`~rcp_ndcg_vllm.recipe.client_config`'s, with the recipe's real
+    budget -- prompts, text budget, ``query_max_tokens``, the reranker's settle-once) and the
+    :class:`Capture` whose ``exchanges`` carry every request and reply, in order.
+    """
+    from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
+    from rcp_ndcg.inference.transport import Transport
+
+    url = base_url if base_url else _capture_base(recipe)
+    if base_url and recipe.role == "embed":
+        url = _openai_base(url)
+    config = recipe_config(recipe, url, full_width=full_width, served_model_name=served_model_name)
+    if base_url:
+        delegate: httpx.AsyncBaseTransport | httpx.BaseTransport = httpx.AsyncHTTPTransport()
+    else:
+        from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
+
+        # The engine-side document skip rule is a serve-side declaration the endpoint config does not carry
+        # (its role gate lives in ``serve.hf_overrides.document_skip_prefix_token_id``), so the harness passes
+        # the recipe's rule to the fake: a document row then answers with the kept positions only -- exactly
+        # what the client's declared kept count expects -- and a query row (any other leading id) keeps every
+        # position.  Without the flag the client applies the rule itself and the reply must be whole.
+        engine_side = bool(getattr(config, "document_skip_engine_side", False))
+        skip_ids = tuple(getattr(config, "document_skip_token_ids", ()) or ()) if engine_side else ()
+        delegate = fake_transport(
+            url.removeprefix(FAKE_SCHEME),
+            model=str(getattr(config, "model", None) or recipe.id),
+            tokenizer=config.tokenizer,
+            document_skip_token_ids=skip_ids,
+            document_skip_prefix_token_id=recipe.serve.hf_overrides.get("document_skip_prefix_token_id")
+            if skip_ids
+            else None,
+        )
+    capturing = CapturingTransport(delegate)
+    sender = Transport(config, httpx_transport=capturing)
+    clients = {"embed": EmbeddingClient, "multi_vector": PoolingClient, "rerank": RerankClient}
+    client = clients[recipe.role](config, sender=sender, census=census)
+    capture = Capture(recipe)
+    capture.exchanges = capturing.exchanges
+    return client, capture

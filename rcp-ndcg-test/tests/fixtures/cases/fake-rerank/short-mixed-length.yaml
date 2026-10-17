@@ -1,0 +1,32 @@
+id: fake-rerank/short-mixed-length
+recipe: fake-rerank
+role: rerank
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: mixed_length
+inputs:
+  queries:
+  - id: q1
+    text: mixed candidate sets
+  documents:
+  - id: d1
+    text: a short candidate
+  - id: d2
+    text: a longer candidate that still fits comfortably inside the pair budget
+  - id: d3
+    text: budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad budgetpad
+expected:
+  kind: scores
+  values:
+  - - 0.70599461
+    - 0.95616683
+    - 0.90308115
+  tolerance:
+    abs: 0.0001
+  origin: engine
+  status: reproduced
+notes: 'A mixed-length candidate set: documents of 3, 11 and 63 tokens in one request. Values are the
+  tests'' FakeRerankEngine answers.'

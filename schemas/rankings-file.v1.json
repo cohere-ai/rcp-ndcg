@@ -1,0 +1,38 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/rankings-file.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A rankings file that a command wrote.",
+  "properties": {
+    "out": {
+      "description": "Where the rankings are.",
+      "title": "Out",
+      "type": "string"
+    },
+    "queries": {
+      "description": "Number of ranked queries.",
+      "title": "Queries",
+      "type": "integer"
+    },
+    "schema": {
+      "const": "rcp-ndcg.rankings-file.v1",
+      "type": "string"
+    },
+    "systems": {
+      "description": "The systems in the file.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Systems",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "out",
+    "systems",
+    "queries"
+  ],
+  "title": "RankingsFile",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.rankings-file.v1"
+}

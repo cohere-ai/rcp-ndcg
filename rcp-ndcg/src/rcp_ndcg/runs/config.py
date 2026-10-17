@@ -1,0 +1,1020 @@
+"""The configuration of one run: which dataset, which candidates, which judge, which steps.
+
+One YAML file validates into :class:`RunConfig`. Every section is typed and
+unknown keys are refused (``extra="forbid"``), so a typo fails at load instead
+of being ignored; the free-form exceptions are a dataset reader's ``options``
+and a plugin runner's ``options``, which that reader or runner checks. A config
+may start from another with ``extends: <path>`` (deep-merged, see
+:mod:`rcp_ndcg.support.config`), and ``--set key=value`` overrides one field::
+
+    extends: ../base.yaml
+    dataset: hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoNFCorpusRetrieval
+    candidates:
+      from: retrieval
+      retrieval: {kind: bm25}
+      depth: 150
+    judge: recipe:gpt-oss-120b
+    steps: [retrieve, tournament, rubric, calibrate, evaluate]
+
+The dataset is a URI of :func:`rcp_ndcg.data.load_dataset` (or a mapping with ``uri``, ``subset``, ``revision``
+and reader ``options``). A ``judge:`` names a shipped judge **recipe** (``recipe:<recipe-id>``, or a bare recipe
+id), a shipped vendor profile (:mod:`rcp_ndcg.judging.judges`), ``fake``, or gives a path to a judge config
+YAML; a recipe's or a file's fields are read when an override names one of them
+(``--set judge.base_url=...``), so the override applies to the resolved values.
+
+The schedules default to the paper's (:class:`~rcp_ndcg.judging.TournamentSchedule`,
+:class:`~rcp_ndcg.judging.RubricSchedule`); the number of rubric criteria is the
+rubric prompt's, never a config field.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Annotated, Any, ClassVar, Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, field_validator, model_validator
+from rcp_ndcg_core.irt import Priors
+
+from rcp_ndcg.data.revisions import dataset_content_digest, dataset_local_locations
+from rcp_ndcg.data.text_policy import Preprocessing
+from rcp_ndcg.errors import ConfigError, MissingInputError
+from rcp_ndcg.judging.client import JudgeConfig
+from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
+from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig
+from rcp_ndcg.runners.kubernetes import KubernetesOptions
+from rcp_ndcg.runners.local import LocalOptions
+from rcp_ndcg.runners.slurm import SlurmOptions
+from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
+from rcp_ndcg.support.identity import FieldRole
+from rcp_ndcg.support.resources import REDACTED, carries_a_key, looks_like_secret, no_control_characters
+from rcp_ndcg.support.serve import ENGINES_ENV, EngineRole, ServeByRole, ServeConfig
+from rcp_ndcg.support.urls import safe_url
+
+#: The steps of a run, in the order they run.
+StepName = Literal["retrieve", "fuse", "rerank", "tournament", "rubric", "calibrate", "evaluate"]
+STEPS: tuple[StepName, ...] = ("retrieve", "fuse", "rerank", "tournament", "rubric", "calibrate", "evaluate")
+
+#: Steps that call the judge.
+JUDGE_STEPS: frozenset[str] = frozenset({"tournament", "rubric"})
+
+_FORBID = ConfigDict(extra="forbid", populate_by_name=True)
+_CONTENT = FieldRole.CONTENT
+
+
+class DatasetSource(BaseModel):
+    """The dataset of a run: a :func:`~rcp_ndcg.data.load_dataset` URI and its arguments.
+
+    Written as the URI alone (``dataset: jsonl:rows.jsonl``) or as a mapping.
+
+    Attributes:
+        uri: The dataset URI (``hf://``, ``suite:``, ``beir:``, ``jsonl:``, ``images:``, ...).
+        subset: The subset of a ``hf://`` repository or ``suite:``.
+        revision: The Hub revision.
+        options: Reader options of the reader schemes (e.g. ``qrels_uri`` for ``images:``).
+    """
+
+    model_config = _FORBID
+
+    uri: str
+    subset: str | None = None
+    revision: str | None = None
+    options: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _a_uri_alone(cls, value: Any) -> Any:
+        return {"uri": value} if isinstance(value, str) else value
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema: Any, handler: Any) -> dict[str, Any]:
+        """The JSON Schema accepts both forms: the URI alone, or the mapping."""
+        return {"anyOf": [{"type": "string", "description": "The dataset URI alone."}, handler(core_schema)]}
+
+    def load(self):
+        """The :class:`~rcp_ndcg.data.Dataset` (read lazily: queries and corpus on first access)."""
+        from rcp_ndcg.data import load_dataset
+
+        return load_dataset(self.uri, subset=self.subset, revision=self.revision, **self.options)
+
+    def identity(self) -> dict[str, Any]:
+        """What names the data: the source and, for a Hub dataset, the commit it resolves to now.
+
+        A local source has no commit, so its *content* names it: the digest of the files the reader reads (the
+        dataset location and every local ``*_uri`` option; the rule and its one home are
+        :func:`rcp_ndcg.data.revisions.dataset_content_digest`), so an edited ``rows.jsonl`` makes every step
+        that read it stale on resume -- retrieve, rerank and the judging steps alike.  Hub and suite sources
+        are pinned by their resolved commit and carry no content digest (the commit *is* the content).
+        """
+        from rcp_ndcg.data.revisions import dataset_uri_revision
+
+        # The identity is content-only: a credential in the URI or a reader option names no content, so it is
+        # stripped before the payload is hashed or recorded (a resume with the credentials in the environment
+        # hashes the same).
+        payload = redact_dataset_payload(self.model_dump(mode="json", exclude_defaults=True))
+        commit = dataset_uri_revision(self.uri, self.revision)
+        if commit is not None:
+            return {**payload, "resolved": commit}
+        content = self.content_digest()
+        return {**payload, "content": content} if content else payload
+
+    def content_digest(self) -> dict[str, str]:
+        """``{name: digest}`` of the local files this source reads (empty for a remote or unreadable one).
+
+        :func:`rcp_ndcg.data.revisions.dataset_content_digest` owns the rule; its names (``dataset``,
+        ``dataset.options.<key>``) are the same locations :meth:`local_inputs` reports for a mirror.
+        """
+        return dataset_content_digest(self.uri, self.options)
+
+
+class FuseConfig(BaseModel):
+    """The systems a run fuses with reciprocal rank fusion, and the fusion's parameters.
+
+    Attributes:
+        systems: ``{name: location}`` of the systems to fuse, at least two. A location is a rankings file
+            (``rcp-ndcg retrieval search`` output, another run's rankings, ...), or ``<file>#<system>`` for one
+            system of a file that holds several (the selector :class:`EvaluationOptions` uses).
+        rrf_k: The RRF constant ``k`` in ``1 / (k + rank)``, ranks from 1 (the paper's 60).
+    """
+
+    model_config = _FORBID
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {"systems": _CONTENT, "rrf_k": _CONTENT}
+
+    systems: dict[str, str]
+    rrf_k: int = Field(default=60, ge=1)
+
+    @model_validator(mode="after")
+    def _at_least_two_systems(self) -> Self:
+        """A fusion of one system is not a fusion: the ranking would silently be that system's own."""
+        if len(self.systems) < 2:
+            raise ValueError(
+                f"a fusion needs at least two systems to fuse, and this one names {len(self.systems)} "
+                f"({', '.join(self.systems) or 'none'}): ranking by one system is not a fusion"
+            )
+        return self
+
+
+class CandidatesConfig(BaseModel):
+    """Where each query's candidate pool comes from.
+
+    Every field changes the numbers (the retriever and the reranker declare their own roles, runtime fields and
+    all, in :mod:`rcp_ndcg.retrieval.config`), so the whole section is content: a run's step identities hold it by
+    :func:`rcp_ndcg.support.identity.identity_payload`.
+
+    Attributes:
+        source: ``"dataset"`` (the dataset's own pools, else its judged documents), ``"rankings"`` (a rankings
+            file of :func:`~rcp_ndcg.data.load_rankings`), ``"retrieval"`` (first-stage retrieval) or ``"fuse"``
+            (the RRF of ``fuse.systems``). Written ``from:`` in YAML.
+        rankings: The rankings file, for ``from: rankings``.
+        system: The system of a rankings file that holds several.
+        retrieval: The retriever (:data:`~rcp_ndcg.retrieval.RetrieverConfig`), for ``from: retrieval``.
+        rerank: A reranker applied to the pools (the ``rerank`` step).
+        fuse: The systems and parameters of the fusion, for ``from: fuse`` (the ``fuse`` step).
+        depth: Candidates per query kept for judging.
+    """
+
+    model_config = _FORBID
+
+    IDENTITY_ROLES: ClassVar[dict[str, FieldRole]] = {
+        "source": _CONTENT,
+        "rankings": _CONTENT,
+        "system": _CONTENT,
+        "retrieval": _CONTENT,
+        "rerank": _CONTENT,
+        "fuse": _CONTENT,
+        "depth": _CONTENT,
+    }
+
+    source: Literal["dataset", "rankings", "retrieval", "fuse"] = Field(default="dataset", alias="from")
+    rankings: str | None = None
+    system: str | None = None
+    retrieval: RetrieverConfig | None = None
+    rerank: RerankerConfig | None = None
+    fuse: FuseConfig | None = None
+    depth: int = Field(default=150, ge=1)
+
+    @model_validator(mode="after")
+    def _source_has_its_input(self) -> Self:
+        if self.source == "rankings" and not self.rankings:
+            raise ValueError("candidates.from: rankings needs candidates.rankings (a rankings file)")
+        if self.source == "retrieval" and self.retrieval is None:
+            raise ValueError("candidates.from: retrieval needs candidates.retrieval (a retriever config)")
+        if self.source == "fuse" and self.fuse is None:
+            raise ValueError("candidates.from: fuse needs candidates.fuse (the systems to fuse and the RRF constant)")
+        if self.fuse is not None and self.source != "fuse":
+            raise ValueError(
+                f"candidates.fuse is the fusion a from: fuse run's candidates come from, and this run is from: "
+                f"{self.source}: set candidates.from: fuse, or drop candidates.fuse"
+            )
+        if self.source == "fuse":
+            unused = sorted(
+                name
+                for name, value in (("rankings", self.rankings), ("system", self.system), ("retrieval", self.retrieval))
+                if value is not None
+            )
+            if unused:
+                raise ValueError(
+                    f"candidates.from: fuse ranks by the fused systems, and candidates.{unused[0]} is not used by "
+                    "it: drop it, or set candidates.from to the source that reads it"
+                )
+        return self
+
+
+class CalibrationOptions(BaseModel):
+    """How the calibrate step fits (see :func:`rcp_ndcg.calibration.calibrate`)."""
+
+    model_config = _FORBID
+
+    mode: Literal["auto", "tournament", "rubric_only"] = "auto"
+    judges: Literal["single", "pooled"] = "single"
+    priors: Priors = Priors()
+
+
+class EvaluationOptions(BaseModel):
+    """What the evaluate step scores.
+
+    Attributes:
+        k: The metric cutoff.
+        systems: ``{name: rankings file}`` of further systems to score with the run's calibration, next to the
+            run's reference systems (``candidates``, the pool order, and ``judge``, the judge's own abilities).
+            A file of one system is scored under ``name``; ``<file>#<system>`` picks one system of a file that
+            holds several; a file of several systems without ``#`` scores each under its own name.
+    """
+
+    model_config = _FORBID
+
+    k: int = Field(default=10, ge=1)
+    systems: dict[str, str] = Field(default_factory=dict)
+
+
+class _Runner(BaseModel):
+    model_config = _FORBID
+
+    def option_values(self) -> dict[str, Any]:
+        """The options the config sets (a runner's own defaults apply to the rest), as keyword arguments."""
+        options: Any = self.options  # type: ignore[attr-defined]
+        return dict(options) if isinstance(options, dict) else options.model_dump(exclude_unset=True)
+
+
+class LocalRunnerConfig(_Runner):
+    """Run on this host (in this process, unless ``run start --runner local`` or ``--detach``)."""
+
+    name: Literal["local"] = "local"
+    options: LocalOptions = LocalOptions()
+
+
+class SlurmRunnerConfig(_Runner):
+    """Run as one ``sbatch`` job."""
+
+    name: Literal["slurm"]
+    options: SlurmOptions = SlurmOptions()
+
+
+class KubernetesRunnerConfig(_Runner):
+    """Run as one Kubernetes ``batch/v1`` Job."""
+
+    name: Literal["kubernetes"]
+    options: KubernetesOptions = KubernetesOptions()
+
+
+_PUBLIC_RUNNERS = ("local", "slurm", "kubernetes")
+
+
+class PluginRunnerConfig(_Runner):
+    """Run on a runner another installed package registers under the ``rcp_ndcg.runners`` entry-point group; its
+    options are that runner's (``resources``, ``image`` and ``env`` describe the job). Its name is none of the
+    public runners', whose options are typed, so the JSON Schema of a runner section is one branch exactly."""
+
+    name: str = Field(json_schema_extra={"not": {"enum": list(_PUBLIC_RUNNERS)}})
+    options: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _options_leave_the_phase_overlay_alone(self) -> Self:
+        """A plugin's free-form ``env`` is the job's env (``JOB_OPTIONS``), so it obeys the same refusal."""
+        env = self.options.get("env")
+        if isinstance(env, dict) and ENGINES_ENV in env:
+            raise ValueError(
+                f"env names {ENGINES_ENV}, which the phase overlay owns: the runner exports the current phase's "
+                "engines under it, so a job's own value would be silently overridden"
+            )
+        return self
+
+
+def _runner_tag(value: Any) -> str:
+    name = value.get("name", "local") if isinstance(value, dict) else getattr(value, "name", "local")
+    return name if name in _PUBLIC_RUNNERS else "plugin"
+
+
+#: Where the steps run: a public runner with its typed options, or a plugin's with free ones.
+RunnerConfig = Annotated[
+    Annotated[LocalRunnerConfig, Tag("local")]
+    | Annotated[SlurmRunnerConfig, Tag("slurm")]
+    | Annotated[KubernetesRunnerConfig, Tag("kubernetes")]
+    | Annotated[PluginRunnerConfig, Tag("plugin")],
+    Discriminator(_runner_tag),
+]
+
+
+class RunConfig(BaseModel):
+    """The resolved configuration of one run.
+
+    Attributes:
+        label: A readable fragment of the run id.
+        dataset: The dataset (its queries, corpus, labels and pools), by URI.
+        candidates: Where the candidate pools come from, and their depth.
+        judge: The judge: an inline :class:`JudgeConfig`, a shipped config's name, a path to one, or
+            ``"fake"`` for the offline judge.
+        steps: The steps to run (run in :data:`STEPS` order whatever order they are listed in).
+        tournament: The tournament schedule; ``None`` is the paper's for the corpus's modality.
+        rubric: The rubric schedule; ``None`` is the paper's for the corpus's modality.
+        calibration: How the calibrate step fits.
+        evaluation: What the evaluate step scores.
+        preprocessing: The text policy, chunking and image policy the judging steps apply.
+        mirror: Any fsspec URI (e.g. ``s3://bucket/runs/<run-id>``) the run directory is mirrored to while it
+            runs, and restored from on resume (:mod:`rcp_ndcg.runs.mirror`). The mirror is run-scoped: point
+            each run at its own prefix, since a flush refuses a prefix that holds another run's manifest.
+        mirror_interval_s: Seconds between two uploads of the mirror.
+        step_budget_s: Wall-clock budget of each step, seconds, checked at the request seams (before a
+            transport request and after every park, and before a judging phase's windows): a step over budget
+            stops with :class:`~rcp_ndcg.errors.StepBudgetExceededError` at the next seam, and the store keeps
+            what it wrote. A step that makes no request is not interrupted. ``None`` (the default) leaves every
+            step unbudgeted.
+        seed: The run's seed: of the judging schedules that set none (default: the schedules' own), of the
+            offline judge (``judge: fake``) and of the evaluation's bootstrap intervals.
+        limit: Judge only the first ``limit`` queries.
+        runner: Where the steps run.
+        serve: The engines the run's job starts, by role (``judge`` serves the judge, ``encoder`` the retrieval
+            config's encoder, ``reranker`` its reranker; :class:`~rcp_ndcg.support.serve.ServeByRole`). A job runs
+            the run in phases, each starting only the engines its steps use; the engines' URLs reach the steps at
+            runtime, through ``RCP_NDCG_ENGINES`` (never through this config). Omit it to bring your own endpoints
+            (the role configs' ``base_url``).
+    """
+
+    model_config = _FORBID
+
+    label: str | None = None
+    dataset: DatasetSource
+    candidates: CandidatesConfig = CandidatesConfig()
+    judge: JudgeConfig | str | None = None
+    steps: list[StepName] = Field(default_factory=lambda: ["tournament", "rubric", "calibrate", "evaluate"])
+    tournament: TournamentSchedule | None = None
+    rubric: RubricSchedule | None = None
+    calibration: CalibrationOptions = CalibrationOptions()
+    evaluation: EvaluationOptions = EvaluationOptions()
+    preprocessing: Preprocessing | None = None
+    mirror: str | None = None
+    mirror_interval_s: float = Field(default=DEFAULT_INTERVAL_S, gt=0)
+    step_budget_s: float | None = Field(default=None, gt=0)
+    seed: int = TournamentSchedule.model_fields["seed"].default
+    limit: int | None = Field(default=None, ge=1)
+    runner: RunnerConfig = LocalRunnerConfig()
+    serve: ServeByRole | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _serve_names_roles(cls, data: Any) -> Any:
+        """Refuse the old single-engine ``serve:`` shape and unknown roles, with the shape that replaced them."""
+        if not isinstance(data, dict) or data.get("serve") is None:
+            return data
+        serve = data["serve"]
+        if not isinstance(serve, dict):
+            return data
+        roles = ("judge", "encoder", "reranker")
+        unknown = sorted(str(key) for key in serve if key not in roles)
+        if not unknown:
+            return data
+        named = sorted(str(key) for key in serve if key in roles)
+        if named:
+            raise ConfigError(
+                f"serve.{unknown[0]}: unexpected key beside the role(s) {', '.join(named)}",
+                hint="an engine's fields belong under its role: serve: {<role>: {image: ..., command: [...]}}",
+            )
+        if set(unknown) <= set(ServeConfig.model_fields):
+            raise ConfigError(
+                f"serve: is the old single-engine shape (fields {', '.join(unknown)} at the top); since "
+                "serve-by-role it maps one engine per role",
+                hint=f"serve: {{judge: {{image: ..., command: [...]}}}} names the role whose config the engine "
+                f"serves: one of {', '.join(roles)}",
+            )
+        raise ConfigError(
+            f"serve.{unknown[0]}: unknown engine role (known roles: {', '.join(roles)})",
+            hint="a role is one of judge, encoder, reranker; the engine under it is "
+            "{image: ..., command: [...], resources: ...}",
+        )
+
+    @model_validator(mode="after")
+    def _served_roles_serve_this_run(self) -> Self:
+        """A served role must name a config the job's engine can serve, for a step that calls it.
+
+        The served model name is the role config's ``model``. A role config whose engine is served names no
+        ``base_url``: the runner sets it at runtime (through ``RCP_NDCG_ENGINES``), and setting both is refused
+        rather than silently overridden. A hosted or in-process model is not served by a job's engine at all.
+        """
+        serve = self.serve
+        if serve is None:
+            return self
+        if serve.judge is not None:
+            if self.judge is None:
+                raise ConfigError("serve.judge starts the judge's engine, and this run has no judge (judge: <config>)")
+            if self.judge == "fake" or (isinstance(self.judge, JudgeConfig) and self.judge.is_fake):
+                raise ConfigError(
+                    "serve: starts the judge's engine, and this run has no served judge (judge: fake | none)",
+                    hint="the offline fake judge is answered in process: judge: <config>",
+                )
+            if not JUDGE_STEPS & set(self.steps):
+                raise ConfigError(
+                    f"serve.judge: no step of this run calls the judge (steps: {', '.join(self.ordered_steps)})"
+                )
+            self._refuse_unservable_judge_url(serve.judge)
+        if serve.encoder is not None:
+            self._refuse_unservable_encoder()
+            if serve.encoder.replicas != 1:
+                raise ConfigError(
+                    f"serve.encoder: {serve.encoder.replicas} replicas, and the retrieval client addresses one "
+                    "replica URL",
+                    hint="run one replica (replicas: 1) for a served encoder or reranker",
+                )
+            if "retrieve" not in self.steps:
+                raise ConfigError(
+                    f"serve.encoder: no step of this run uses the encoder (steps: {', '.join(self.ordered_steps)})",
+                    hint="drop serve.encoder, or add the retrieve step",
+                )
+        if serve.reranker is not None:
+            self._refuse_unservable_reranker()
+            if serve.reranker.replicas != 1:
+                raise ConfigError(
+                    f"serve.reranker: {serve.reranker.replicas} replicas, and the rerank client addresses one "
+                    "replica URL",
+                    hint="run one replica (replicas: 1) for a served encoder or reranker",
+                )
+            if "rerank" not in self.steps:
+                raise ConfigError(
+                    f"serve.reranker: no step of this run uses the reranker (steps: {', '.join(self.ordered_steps)})",
+                    hint="drop serve.reranker, or add the rerank step",
+                )
+        return self
+
+    def _refuse_unservable_judge_url(self, engine: ServeConfig) -> None:
+        """A served judge that names a URL must name the job's engine itself (the validator's judge half).
+
+        A judge may name no ``base_url`` (a recipe's config does): the runtime overlay sets it. A value that is
+        not the engine's own loopback URL is refused rather than silently overridden by the overlay: it names an
+        endpoint the job does not serve.
+        """
+        try:
+            judge = self.judge_config()
+        except MissingInputError:
+            # A judge path that is not there: loading it is the run's own error, not this check's.
+            return
+        if not judge.urls:
+            return  # the job's engine supplies the URL at runtime
+        expected = (engine.url("127.0.0.1"), engine.url("localhost"))
+        if len(judge.urls) != 1 or judge.urls[0] not in expected:
+            raise ConfigError(
+                f"serve.judge: the judge config's base_url does not name the job's engine ({engine.url('127.0.0.1')})",
+                hint="a served judge's base_url must be the engine's own loopback URL "
+                f"({engine.url('127.0.0.1')}): the job's engine sets it at runtime, so another base_url would be "
+                "silently overridden; drop serve.judge to use an endpoint you run yourself",
+            )
+
+    def _refuse_unservable_encoder(self) -> None:
+        """Refuse ``serve.encoder`` for a config no engine can serve (the validator's encoder half)."""
+        from rcp_ndcg.retrieval.config import BM25Config, ServedEmbedding, ServedPooling
+
+        retrieval = self.candidates.retrieval
+        if retrieval is None:
+            raise ConfigError("serve.encoder: this run has no encoder (candidates.retrieval)")
+        if isinstance(retrieval, BM25Config):
+            raise ConfigError("serve.encoder: this run retrieves with BM25, which calls no encoder")
+        encoder = retrieval.encoder
+        if not isinstance(encoder, ServedEmbedding | ServedPooling):
+            raise ConfigError(
+                f"serve.encoder: the {encoder.api} encoder is not reached at a URL",
+                hint="serve.encoder starts an engine for a served (openai_embeddings or vllm_pooling) encoder; "
+                "a hosted encoder is reached at its vendor's API, so drop serve.encoder",
+            )
+        if encoder.base_url is not None:
+            raise ConfigError(
+                "serve.encoder: the encoder config sets base_url, and the job's engine sets it at runtime",
+                hint="drop encoder.base_url: the served URLs reach the step through RCP_NDCG_ENGINES",
+            )
+
+    def _refuse_unservable_reranker(self) -> None:
+        """Refuse ``serve.reranker`` for a config no engine can serve (the validator's reranker half)."""
+        from rcp_ndcg.retrieval.config import ServedReranker
+
+        reranker = self.candidates.rerank
+        if reranker is None:
+            raise ConfigError("serve.reranker: this run has no reranker (candidates.rerank)")
+        if not isinstance(reranker, ServedReranker):
+            raise ConfigError(
+                f"serve.reranker: the {reranker.api} reranker is not reached at a URL",
+                hint="serve.reranker starts an engine for a served (api: rerank) reranker; a hosted reranker "
+                "is reached at its vendor's API, so drop serve.reranker",
+            )
+        if reranker.base_url is not None:
+            raise ConfigError(
+                "serve.reranker: the reranker config sets base_url, and the job's engine sets it at runtime",
+                hint="drop rerank.base_url: the served URLs reach the step through RCP_NDCG_ENGINES",
+            )
+
+    def engine_uses(self) -> dict[str, frozenset[EngineRole]]:
+        """Per step, the engine roles the step calls (the ``uses`` of :func:`rcp_ndcg.support.serve.plan_phases`).
+
+        A step absent from the mapping calls no model of a servable role: BM25 retrieval and the hosted APIs call
+        their models at URLs no engine of this run serves, and ``calibrate`` and ``evaluate`` call none. A role a
+        step uses but ``serve`` does not start is ignored for that step when the plan is built.
+        """
+        from rcp_ndcg.retrieval.config import DenseConfig, LateInteractionConfig
+
+        uses: dict[str, frozenset[EngineRole]] = {}
+        if self.judge is not None and self.judge != "fake":
+            for step in sorted(JUDGE_STEPS & set(self.steps), key=STEPS.index):
+                uses[step] = frozenset({"judge"})
+        if self.candidates.source == "retrieval" and isinstance(
+            self.candidates.retrieval, (DenseConfig, LateInteractionConfig)
+        ):
+            # Only a `from: retrieval` run's retrieve step calls the encoder: with `from: rankings` the step
+            # reads the rankings file, and the job used to start a GPU engine it never called.
+            uses["retrieve"] = frozenset({"encoder"})
+        if self.candidates.rerank is not None:
+            uses["rerank"] = frozenset({"reranker"})
+        return uses
+
+    @model_validator(mode="after")
+    def _steps_have_their_inputs(self) -> Self:
+        if "retrieve" in self.steps and self.candidates.source in ("dataset", "fuse"):
+            raise ValueError("the retrieve step needs candidates.from: retrieval or rankings")
+        if "fuse" in self.steps and self.candidates.source != "fuse":
+            raise ValueError("the fuse step needs candidates.from: fuse (the systems to fuse and the RRF constant)")
+        if self.candidates.source == "fuse" and "fuse" not in self.steps:
+            raise ValueError(
+                "candidates.from: fuse needs the fuse step: nothing else writes the fused candidates "
+                "(add fuse to steps, before rerank; `run start --only` must name it too)"
+            )
+        if "rerank" in self.steps and self.candidates.rerank is None:
+            raise ValueError("the rerank step needs candidates.rerank (the reranker's settings)")
+        if "rerank" in self.steps and "retrieve" not in self.steps and self.candidates.source == "retrieval":
+            raise ValueError(
+                "the rerank step needs the retrieve step when candidates.from is 'retrieval': nothing but the "
+                "retrieve step runs the first stage the rerank step rescores (add retrieve to steps, before "
+                "rerank, or set candidates.from: dataset or rankings)"
+            )
+        if JUDGE_STEPS & set(self.steps) and self.judge is None:
+            raise ValueError("the tournament and rubric steps need a judge (judge: <config path> | fake | {...})")
+        return self
+
+    @model_validator(mode="after")
+    def _schedules_take_the_runs_seed(self) -> Self:
+        # Written into the config, so the recorded config (and a resume) carries the seed the schedule ran with.
+        for stage in ("tournament", "rubric"):
+            schedule = getattr(self, stage)
+            if schedule is not None and "seed" not in schedule.model_fields_set:
+                setattr(self, stage, schedule.model_copy(update={"seed": self.seed}))
+        return self
+
+    @property
+    def ordered_steps(self) -> list[StepName]:
+        """The configured steps in run order."""
+        return [step for step in STEPS if step in self.steps]
+
+    @classmethod
+    def load(cls, path: str | Path, *, overrides: Sequence[str] = ()) -> RunConfig:
+        """Read a run config YAML (``extends:`` resolved, ``key=value`` overrides applied).
+
+        Relative paths in the file (the dataset, a rankings file, evaluation systems, a judge config, a prompt
+        file) are relative to the file that declares them (a base config's to the base); the overrides' paths
+        stay relative to the working directory.
+
+        Args:
+            path: A YAML file, or the name of a packaged run config (:mod:`rcp_ndcg.examples`: ``tiny``,
+                ``rejudge_nfcorpus``, ...).
+            overrides: ``dotted.key=value`` overrides.
+
+        Raises:
+            ConfigError: the file does not validate; the message names the fields.
+            MissingInputError: ``path`` is neither a file nor a packaged config's name.
+        """
+        from pydantic import ValidationError
+
+        from rcp_ndcg.support.config import apply_overrides, config_error, load_config
+
+        path = _config_file(path)
+        data = load_config(path, relative=_relative_to)
+        data = inline_judge(data, overrides, base=path.parent)
+        try:
+            return cls.model_validate(apply_overrides(data, overrides))
+        except ValidationError as exc:
+            raise config_error(exc, model=cls, source=str(path), overrides=overrides) from exc
+
+    @classmethod
+    def from_data(cls, data: dict[str, Any], *, overrides: Sequence[str] = ()) -> RunConfig:
+        """Validate a config mapping (e.g. a manifest's recorded config) with ``key=value`` overrides applied.
+
+        Raises:
+            ConfigError: the result does not validate.
+        """
+        from pydantic import ValidationError
+
+        from rcp_ndcg.support.config import apply_overrides, config_error
+
+        try:
+            return cls.model_validate(apply_overrides(inline_judge(data, overrides), overrides))
+        except ValidationError as exc:
+            raise config_error(exc, model=cls, source="the run's config", overrides=overrides) from exc
+
+    @field_validator("mirror")
+    @classmethod
+    def _safe_mirror(cls, value: str | None) -> str | None:
+        """No control character reaches the job's argv (the mirror URI is rendered into every job script).
+
+        An empty string is refused: it is not a mirror, and resolving it would silently mirror to (and restore
+        from) the current working directory.
+        """
+        if value is None:
+            return None
+        if not value.strip():
+            raise ValueError(
+                "mirror: '' is not a mirror URI (an empty value resolves to the working directory): use null "
+                "to run without a mirror"
+            )
+        return no_control_characters(value)
+
+    def resolved(self) -> dict[str, Any]:
+        """The config as JSON-ready data: the live form, credentials and all.
+
+        This is what :func:`~rcp_ndcg.runs.run.prepare` builds the pipeline from, so it keeps the full mirror
+        URI (the job must reach the store with it) and a plugin runner's ``env`` values. Use :meth:`recorded`
+        for anything written down: ``run.yaml``, the manifest and every mirror copy redact there.
+        """
+        return self.model_dump(mode="json", by_alias=True, exclude_none=True)
+
+    def recorded(self) -> dict[str, Any]:
+        """The config as it is written down: :meth:`resolved` with every credential redacted.
+
+        A secret-looking ``env`` name's value is replaced by
+        :data:`~rcp_ndcg.support.resources.REDACTED` (the config boundary refuses one when it is read; this is
+        the recording path's backstop for a plugin runner's free-form options), and every URI -- the mirror, the
+        dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems, the runner's
+        ``wheelhouse``/``constraints``, and the judge's and the role endpoints' ``base_url`` -- is passed
+        through :func:`~rcp_ndcg.support.urls.safe_url`: userinfo,
+        query and fragment never reach ``run.yaml``, the manifest or a mirror copy. The live config keeps the
+        full URI, and the job receives it on its command line; a resume that reads the redacted ``run.yaml``
+        takes the credentials from the environment (or a ``--mirror`` override).
+        """
+        data = self.resolved()
+        _redact_env(data)
+        _redact_uris(data)
+        if self.mirror is not None:
+            data["mirror"] = safe_url(self.mirror)
+        return data
+
+    def local_inputs(self) -> list[str]:
+        """``"<field>: <path>"`` of every input the config reads from this host's filesystem.
+
+        A job whose runner does not share this host's files (Kubernetes) cannot read them: the dataset (a local
+        reader scheme, or a reader option ``*_uri``), a rankings file, evaluation systems, a judge config file and a
+        prompt file. A remote URI (``hf://``, ``s3://``, ``https://``, ...) and a shipped name are not local.
+        """
+        from rcp_ndcg.inference.recipes import recipe_source
+        from rcp_ndcg.judging.judges import judge_names
+        from rcp_ndcg.judging.prompts import PROMPT_FILES
+        from rcp_ndcg.storage import is_remote
+
+        found: list[str] = []
+
+        def local(field: str, location: str | None) -> None:
+            if location and not is_remote(location):
+                found.append(f"{field}: {location}")
+
+        # The dataset's local locations are the data layer's rule (one home: rcp_ndcg.data.revisions), the same
+        # names its content digest uses.
+        for name, location in dataset_local_locations(self.dataset.uri, self.dataset.options).items():
+            local(name, location)
+        local("candidates.rankings", self.candidates.rankings)
+        for name, location in (self.candidates.fuse.systems if self.candidates.fuse is not None else {}).items():
+            local(f"candidates.fuse.systems.{name}", location.partition("#")[0])
+        for name, location in self.evaluation.systems.items():
+            local(f"evaluation.systems.{name}", location.partition("#")[0])
+        if isinstance(self.judge, str) and self.judge != "fake" and self.judge not in judge_names():
+            source = recipe_source(self.judge)
+            if source is None:
+                local("judge", self.judge)
+            elif source.startswith((".", "/")):  # a recipe path is a file of the operator's own on this host
+                local("judge", source)
+        for name, location in (
+            ("candidates.retrieval.encoder.recipe", _recipe_path(self.candidates.retrieval)),
+            ("candidates.rerank.recipe", _recipe_path(self.candidates.rerank)),
+        ):
+            if location is not None:
+                local(name, location)
+        for stage in ("tournament", "rubric"):
+            schedule = getattr(self, stage)
+            if schedule is not None and schedule.prompt is not None and schedule.prompt not in PROMPT_FILES:
+                local(f"{stage}.prompt", schedule.prompt)
+        return found
+
+    def judge_config(self) -> JudgeConfig:
+        """The judge as a :class:`JudgeConfig`.
+
+        Raises:
+            ConfigError: no judge is configured.
+        """
+        if self.judge is None:
+            raise ConfigError("this run has no judge", hint="set judge: <config path> | fake")
+        if isinstance(self.judge, JudgeConfig):
+            return self.judge
+        if self.judge == "fake":
+            return JudgeConfig.fake(self.seed)
+        return JudgeConfig.load(self.judge)
+
+
+def redact_dataset_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a dataset identity payload with its URI and reader ``*_uri`` options redacted.
+
+    The identity is content-only: a credential in a URI names no content, so it is stripped before the payload
+    is hashed or recorded, and a resume whose credentials come from the environment hashes the same.
+    """
+    data = dict(payload)
+    if isinstance(data.get("uri"), str):
+        data["uri"] = safe_url(data["uri"])
+    options = data.get("options")
+    if isinstance(options, dict):
+        data["options"] = {
+            key: safe_url(value) if key.endswith("_uri") and isinstance(value, str) else value
+            for key, value in options.items()
+        }
+    return data
+
+
+def safe_systems_location(location: str) -> str:
+    """safe_url for a system's location: its ``#<system>`` selector is semantic, not a credential."""
+    path, separator, system = location.partition("#")
+    return safe_url(path) + (separator + system if separator else "")
+
+
+def redact_fuse_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a fusion identity payload with every system's URI redacted (the selector kept)."""
+    data = dict(payload)
+    systems = data.get("systems")
+    if isinstance(systems, dict):
+        data["systems"] = {
+            name: safe_systems_location(location) if isinstance(location, str) else location
+            for name, location in systems.items()
+        }
+    return data
+
+
+def redact_endpoint_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of an endpoint payload with its ``base_url`` (a string or a replica list) redacted.
+
+    A served endpoint's ``base_url`` can carry userinfo (a gateway) or a query (a signed URL), and a hosted
+    profile's proxy URL can too; the live config keeps it, the recorded one strips it like every other URI.
+    """
+    data = dict(payload)
+    base = data.get("base_url")
+    if isinstance(base, str):
+        data["base_url"] = safe_url(base)
+    elif isinstance(base, list):
+        data["base_url"] = [safe_url(item) if isinstance(item, str) else item for item in base]
+    return data
+
+
+def redact_candidates_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a candidates identity payload with the rankings URI, the fusion systems' URIs and the role
+    endpoints' URLs redacted."""
+    data = dict(payload)
+    if isinstance(data.get("rankings"), str):
+        data["rankings"] = safe_url(data["rankings"])
+    fuse = data.get("fuse")
+    if isinstance(fuse, dict):
+        data["fuse"] = redact_fuse_payload(fuse)
+    retrieval = data.get("retrieval")
+    if isinstance(retrieval, dict):
+        retrieval = dict(retrieval)
+        encoder = retrieval.get("encoder")
+        if isinstance(encoder, dict):
+            retrieval["encoder"] = redact_endpoint_payload(encoder)
+        data["retrieval"] = retrieval
+    rerank = data.get("rerank")
+    if isinstance(rerank, dict):
+        data["rerank"] = redact_endpoint_payload(rerank)
+    return data
+
+
+def redact_evaluation_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """A copy of an evaluation identity payload with every system's URI redacted (the selector kept)."""
+    data = dict(payload)
+    systems = data.get("systems")
+    if isinstance(systems, dict):
+        data["systems"] = {
+            name: safe_systems_location(location) if isinstance(location, str) else location
+            for name, location in systems.items()
+        }
+    return data
+
+
+def redact_runner_options(options: Mapping[str, Any]) -> dict[str, Any]:
+    """A copy of a runner-options mapping with the install-source URIs redacted (a wheelhouse, constraints)."""
+    data = dict(options)
+    for key in ("wheelhouse", "constraints"):
+        if isinstance(data.get(key), str):
+            data[key] = safe_url(data[key])
+    return data
+
+
+def _redact_uris(data: dict[str, Any]) -> None:
+    """Route every URI a config records through :func:`~rcp_ndcg.support.urls.safe_url`, in place.
+
+    The dataset and its reader ``*_uri`` options, the rankings file, the evaluation systems, the runner's
+    ``wheelhouse``/``constraints``, the judge's and the role endpoints' ``base_url`` can all carry userinfo, a
+    query or a fragment (a pre-signed URL). The live
+    config keeps them (:meth:`resolved`) so the job and the submitting host's store reach what they need; a
+    resume that reads the recorded ``run.yaml`` takes the credentials from the environment. The evaluation's
+    ``#<system>`` selector is kept: it names what is scored, not a credential.
+    """
+    dataset = data.get("dataset")
+    if isinstance(dataset, dict):
+        data["dataset"] = redact_dataset_payload(dataset)
+    judge = data.get("judge")
+    if isinstance(judge, dict):
+        data["judge"] = redact_endpoint_payload(judge)
+    candidates = data.get("candidates")
+    if isinstance(candidates, dict):
+        data["candidates"] = redact_candidates_payload(candidates)
+    evaluation = data.get("evaluation")
+    if isinstance(evaluation, dict):
+        data["evaluation"] = redact_evaluation_payload(evaluation)
+    runner = data.get("runner")
+    if isinstance(runner, dict) and isinstance(runner.get("options"), dict):
+        runner["options"] = redact_runner_options(runner["options"])
+
+
+def _redact_env(data: dict[str, Any]) -> None:
+    """Replace a secret-looking ``env`` value with :data:`REDACTED`, in place, in a resolved config's data.
+
+    The config boundary refuses such a name when it is read; this is the recording path's own backstop (a plugin
+    runner's options are free-form, and the value would be mirrored with ``run.yaml``).
+    """
+    runner = data.get("runner")
+    if isinstance(runner, dict) and isinstance(runner.get("options"), dict):
+        _redact_mapping(runner["options"].get("env"))
+    serve = data.get("serve")
+    if isinstance(serve, dict):
+        for engine in serve.values():
+            if isinstance(engine, dict):
+                _redact_mapping(engine.get("env"))
+
+
+def _redact_mapping(env: Any) -> None:
+    """``{name: value}`` with every secret-looking name's value replaced by :data:`REDACTED`, a value carrying a
+    credential by shape (``AccountKey=``, ``sig=``) replaced too, and every other value stripped of a URL's
+    userinfo, query and fragment (:func:`~rcp_ndcg.support.urls.safe_url`).
+
+    The name rule alone leaves a credential that rides the VALUE: ``serve.judge.env.HF_ENDPOINT:
+    https://user:pw@proxy`` looks like no secret name, and the mirrored ``run.yaml`` kept the password.  The
+    URL form keeps the host and path the environment variable names (a resume reads it back from the redacted
+    file), which is why it is stripped rather than replaced; a value whose shape is a credential (a connection
+    string, a signed URL) is replaced whole.
+    """
+    if not isinstance(env, dict):
+        return
+    for name, value in env.items():
+        if not isinstance(value, str):
+            continue
+        env[name] = REDACTED if looks_like_secret(name) or carries_a_key(value) else safe_url(value)
+
+
+def _recipe_path(config: Any) -> str | None:
+    """The local path of a role config's ``recipe``, when it names a file of the operator's own (else ``None``).
+
+    A shipped recipe id is package data and not an input; a path form is a file the job's host owns, which a
+    runner whose jobs do not see this host's files cannot read.
+    """
+    from rcp_ndcg.inference.recipes import recipe_source
+
+    encoder = getattr(config, "encoder", None)
+    value = getattr(encoder if encoder is not None else config, "recipe", None)
+    if not isinstance(value, str):
+        return None
+    source = recipe_source(value)
+    return source if source is not None and source.startswith((".", "/")) else None
+
+
+def _config_file(path: str | Path) -> Path:
+    """The run config file: ``path`` itself, or the packaged config of that name when no such file exists."""
+    candidate = Path(path)
+    if candidate.is_file() or candidate.suffix in (".yaml", ".yml") or len(candidate.parts) > 1:
+        return candidate
+    from rcp_ndcg.examples import run_config_path
+
+    return run_config_path(str(path))
+
+
+def _relative_to(data: dict[str, Any], base: Path) -> dict[str, Any]:
+    """``data`` with the relative paths a run config names made relative to ``base`` (the config's directory)."""
+    from rcp_ndcg.inference.recipes import rebase_recipe_path
+
+    data = dict(data)
+
+    def local(location: Any) -> Any:
+        if not isinstance(location, str) or not location or "://" in location or Path(location).is_absolute():
+            return location
+        return str((base / location).resolve())
+
+    def uri(value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        location = dataset_local_locations(value).get("dataset")
+        if location is None:  # a remote source: nothing to make relative
+            return value
+        scheme, _, _ = value.partition(":")
+        return f"{scheme}:{local(location)}"
+
+    dataset = data.get("dataset")
+    if isinstance(dataset, str):
+        data["dataset"] = uri(dataset)
+    elif isinstance(dataset, dict):
+        options = {k: local(v) if k.endswith("_uri") else v for k, v in (dataset.get("options") or {}).items()}
+        data["dataset"] = {**dataset, "uri": uri(dataset.get("uri")), **({"options": options} if options else {})}
+    candidates = data.get("candidates")
+    if isinstance(candidates, dict):
+        updates: dict[str, Any] = {}
+        if candidates.get("rankings"):
+            updates["rankings"] = local(candidates["rankings"])
+        fuse = candidates.get("fuse")
+        if isinstance(fuse, dict) and isinstance(fuse.get("systems"), dict):
+            updates["fuse"] = {**fuse, "systems": {k: local(v) for k, v in fuse["systems"].items()}}
+        retrieval = candidates.get("retrieval")
+        if isinstance(retrieval, dict) and isinstance(retrieval.get("encoder"), dict):
+            encoder = retrieval["encoder"]
+            if isinstance(encoder.get("recipe"), str):
+                updates["retrieval"] = {
+                    **retrieval,
+                    "encoder": {**encoder, "recipe": rebase_recipe_path(encoder["recipe"], base)},
+                }
+        rerank = candidates.get("rerank")
+        if isinstance(rerank, dict) and isinstance(rerank.get("recipe"), str):
+            updates["rerank"] = {**rerank, "recipe": rebase_recipe_path(rerank["recipe"], base)}
+        if updates:
+            data["candidates"] = {**candidates, **updates}
+    evaluation = data.get("evaluation")
+    if isinstance(evaluation, dict) and isinstance(evaluation.get("systems"), dict):
+        data["evaluation"] = {**evaluation, "systems": {k: local(v) for k, v in evaluation["systems"].items()}}
+    judge = data.get("judge")
+    if isinstance(judge, str):
+        if judge.startswith("recipe:"):
+            data["judge"] = rebase_recipe_path(judge, base)
+        elif (base / judge).is_file():  # else a shipped judge's name (or fake)
+            data["judge"] = local(judge)
+    for stage in ("tournament", "rubric"):
+        schedule = data.get(stage)
+        if (
+            isinstance(schedule, dict)
+            and isinstance(schedule.get("prompt"), str)
+            and (base / schedule["prompt"]).is_file()
+        ):
+            data[stage] = {**schedule, "prompt": local(schedule["prompt"])}
+    return data
+
+
+def inline_judge(data: dict[str, Any], overrides: Sequence[str], *, base: Path | None = None) -> dict[str, Any]:
+    """``data`` with a ``judge:`` recipe, name or path replaced by its mapping when an override names a judge field.
+
+    ``--set judge.base_url=...`` then applies to the resolved values instead of failing on a string.
+
+    Args:
+        data: A run config mapping.
+        overrides: The ``key=value`` overrides about to be applied.
+        base: The directory a relative judge path is read from first (the run config's); else the working
+            directory.
+    """
+    judge = data.get("judge")
+    if not isinstance(judge, str) or judge == "fake" or not any(o.startswith("judge.") for o in overrides):
+        return data
+    from rcp_ndcg.judging.judges import judge_config_data
+
+    path = Path(judge)
+    if base is not None and not path.is_absolute() and (base / path).is_file():
+        path = base / path
+    return {**data, "judge": judge_config_data(path)}
+
+
+__all__ = [
+    "JUDGE_STEPS",
+    "STEPS",
+    "CalibrationOptions",
+    "CandidatesConfig",
+    "DatasetSource",
+    "EvaluationOptions",
+    "FuseConfig",
+    "KubernetesRunnerConfig",
+    "LocalRunnerConfig",
+    "PluginRunnerConfig",
+    "RunConfig",
+    "RunnerConfig",
+    "SlurmRunnerConfig",
+    "StepName",
+    "inline_judge",
+]

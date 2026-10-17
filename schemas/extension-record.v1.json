@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "DocumentEstimate": {
+      "additionalProperties": false,
+      "description": "One document's estimated ability.",
+      "properties": {
+        "flags": {
+          "$ref": "#/$defs/EstimateFlags",
+          "default": {
+            "degenerate": null,
+            "low_information": false
+          },
+          "description": "What to read before comparing it with others."
+        },
+        "information": {
+          "description": "The Fisher information of the document's own evidence at ``theta`` (logits^-2).",
+          "title": "Information",
+          "type": "number"
+        },
+        "se": {
+          "description": "Its standard error (logits).",
+          "title": "Se",
+          "type": "number"
+        },
+        "theta": {
+          "description": "The ability (logits) on the scale of the items or abilities it was estimated against.",
+          "title": "Theta",
+          "type": "number"
+        }
+      },
+      "required": [
+        "theta",
+        "se",
+        "information"
+      ],
+      "title": "DocumentEstimate",
+      "type": "object"
+    },
+    "EstimateFlags": {
+      "additionalProperties": false,
+      "description": "What to read before comparing a document's estimated ability with others'.",
+      "properties": {
+        "degenerate": {
+          "anyOf": [
+            {
+              "enum": [
+                "all_fail",
+                "all_pass"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``\"all_fail\"`` or ``\"all_pass\"`` when the document failed (passed) every criterion in every placement: the likelihood has no interior maximum and the estimate rests on the prior. ``None`` otherwise.",
+          "title": "Degenerate"
+        },
+        "low_information": {
+          "default": false,
+          "description": "The document's own evidence falls short of the standard-error target.",
+          "title": "Low Information",
+          "type": "boolean"
+        }
+      },
+      "title": "EstimateFlags",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/extension-record.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One document added to a calibration: one line of a calibration's ``extensions.jsonl``\n(``rcp-ndcg.extension-record.v1``).",
+  "properties": {
+    "calibration": {
+      "description": "The fingerprint of the calibration it was computed against.",
+      "title": "Calibration",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "When it was computed.",
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dataset": {
+      "description": "The dataset of the query.",
+      "title": "Dataset",
+      "type": "string"
+    },
+    "doc_id": {
+      "description": "The document.",
+      "title": "Doc Id",
+      "type": "string"
+    },
+    "estimate": {
+      "$ref": "#/$defs/DocumentEstimate",
+      "description": "The ability on the calibration's scale (logits), its standard error and information, and its flags. An inserted document has no flag set: an insertion that fails a check is refused."
+    },
+    "judgements": {
+      "description": "Digest of the judgement records it was computed from.",
+      "title": "Judgements",
+      "type": "string"
+    },
+    "query_id": {
+      "description": "The query (not namespaced).",
+      "title": "Query Id",
+      "type": "string"
+    },
+    "record_key": {
+      "default": "",
+      "description": "Digest of the slot, the source, the calibration, the judgements and the estimate.",
+      "title": "Record Key",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.extension-record.v1",
+      "default": "rcp-ndcg.extension-record.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "source": {
+      "description": "``\"scored\"`` (from its own rubric answers, items frozen: the posterior mean and SD) or ``\"inserted\"`` (from tournament comparisons, opponents frozen: the conditional MLE).",
+      "enum": [
+        "scored",
+        "inserted"
+      ],
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "dataset",
+    "query_id",
+    "doc_id",
+    "estimate",
+    "calibration",
+    "judgements",
+    "created_at"
+  ],
+  "title": "ExtensionRecord",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.extension-record.v1"
+}

@@ -1,0 +1,477 @@
+#!/usr/bin/env python3
+"""Re-lay the published RCP-nDCG datasets in MTEB's exact push layout (decision 40), for the owner to push.
+
+For every published repository (``rcp-ndcg-nanobeir``, ``rcp-ndcg-bright``, ``rcp-ndcg-trecdl``,
+``rcp-ndcg-vidore-v3``) this re-writes every subset its published task definitions read -- all 48 ViDoRe v3
+language subsets, not only the eight native-language ones the paper scores -- with
+:class:`rcp_ndcg.data.io.mteb.MtebWriter`, each at the split its task definition pins (NanoBEIR ``train``,
+BRIGHT ``standard``, ViDoRe v3 ``test``; the PR's split names; decision 40 dropped the earlier
+re-lay-everything-to-``test`` rule), and validates each written directory by loading it back with mteb's own
+``RetrievalDatasetLoader`` and comparing against the loaded :class:`~rcp_ndcg.data.Dataset`: the qrels as
+integers, the queries, the corpus (media included), and the pool mteb reads (``top_ranked``, exclusions folded
+out). A corpus shared by several subsets (ViDoRe v3's language subsets read their domain's page images, and
+TREC-DL 2019 and 2020 read the same corpus) is written once, as the published repository stores it.
+
+Usage::
+
+    python tools/republish_mteb.py --out /tmp/republish
+    python tools/republish_mteb.py --out /tmp/republish --repo rcp-ndcg-nanobeir --no-card
+
+The reads go to the Hugging Face Hub at the revisions the checks were published against
+(``experiments/fetch_data.py``); nothing is pushed anywhere: the owner reviews ``--out`` and pushes each
+repository themselves (``hf upload <owner>/<repo> <out>/<repo> . --repo-type dataset``) together with the move
+to a Hugging Face organisation. The written card comes from the repository's published task metadata (mteb's
+own template); the current repositories' hand-written usage cards are not reproduced -- the owner may merge
+them.
+
+The task definitions (each published ``rcp_ndcg_tasks.py``) carry the task prompt (mteb's
+``TaskMetadata.prompt``) and the real split; the converter refuses a definition whose subset or split does not
+match the data (mteb itself silently falls back to a config's only split, so the mismatch would otherwise be a
+wrong label, not an error), in either direction: a defined subset the data lacks and a data subset no
+definition reads. The owner bumps the task file's ``_REVISION``/``dataset.revision`` to the pushed commit
+after uploading: the new SHA cannot exist before the push.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import sys
+import tempfile
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+from rcp_ndcg.data.dataset import Dataset, load_dataset
+from rcp_ndcg.data.io.mteb import MtebWriter
+from rcp_ndcg.errors import DataError
+
+OWNER = "fabianschmidt-cohere"
+"""The owner the published repositories live under today; the push moves them to an organisation."""
+
+REPOS: tuple[str, ...] = ("rcp-ndcg-nanobeir", "rcp-ndcg-bright", "rcp-ndcg-trecdl", "rcp-ndcg-vidore-v3")
+"""The published MTEB retrieval repositories (``rcp-ndcg-external-validation`` holds no retrieval dataset)."""
+
+TASK_FILE = "rcp_ndcg_tasks.py"
+"""The published task definitions of a repository: read as data, never executed."""
+
+_REVISIONS: dict[str, str] = {}
+"""repo -> the revision the checks were published at, read lazily from ``experiments/fetch_data.py``."""
+
+
+def _published_revision(repo: str) -> str | None:
+    global _REVISIONS
+    if not _REVISIONS:
+        import importlib.util
+
+        # tools/ is not a package and the script's sys.path[0] is tools/, so the import cannot go through the
+        # package tree: the file is loaded by path from the repository root this tool ships in.
+        source = Path(__file__).resolve().parents[1] / "experiments" / "fetch_data.py"
+        spec = importlib.util.spec_from_file_location("rcp_fetch_data", source)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"cannot load {source}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _REVISIONS = dict(module.DATASETS)
+    return _REVISIONS.get(repo)
+
+
+def republish(
+    repo: str, out: Path, *, owner: str = OWNER, revision: str | None = None, card: bool = True
+) -> dict[str, Any]:
+    """Re-lay one published repository under ``out/<repo>`` and validate it with mteb's loader.
+
+    Args:
+        repo: The published repository name (a member of :data:`REPOS`, or any other with the same layout).
+        out: The output directory; ``out/<repo>`` is written.
+        owner: The Hub owner the published repositories live under.
+        revision: The revision to read; the default is the one the checks were published at.
+        card: Render the README's card from the repository's published task metadata (mteb's template).
+
+    Returns:
+        ``{"repo", "revision", "documents", "subsets": {name: {"queries", "documents", "qrels", "pool"}}}``.
+
+    Raises:
+        DataError: A task definition and the data disagree, or the written layout does not load back to the
+            dataset mteb's own loader reads.
+        ConfigError: A subset cannot be written (an interleaved media document, for instance).
+    """
+    uri = f"hf://{owner}/{repo}"
+    revision = revision or _published_revision(repo)
+    source = _task_source(repo, owner, revision)
+    repo_subsets = list(_repo_subsets(f"{owner}/{repo}", revision))
+    _check_subsets(repo, repo_subsets, _data_subsets(source))
+    parts = tuple(_load(f"{uri}/{subset}", revision=revision) for subset in repo_subsets)
+    dataset = Dataset(
+        name=repo,
+        uri=uri,
+        revision=parts[0].revision if parts else revision,
+        subsets=parts,
+    )
+    _check_task_definitions(repo, dataset, source)
+    groups = _corpus_groups(repo_subsets, _corpus_entries(f"{owner}/{repo}", revision)) or {}
+    target = out / repo
+    written = MtebWriter().write_dataset(
+        dataset,
+        str(target),
+        card=_card(repo, dataset, source) if card else None,
+        corpus_group=groups or None,
+    )
+    if written == 0:
+        raise DataError(f"{repo}: no corpus rows were written")
+    corpus_cache: dict[str, Any] = {}
+    summaries = {
+        part.name: _validate(part, target, group=groups.get(part.name, part.name), cache=corpus_cache)
+        for part in dataset.parts
+    }
+    return {"repo": repo, "revision": dataset.revision, "documents": written, "subsets": summaries}
+
+
+def _load(uri: str, revision: str | None) -> Dataset:
+    """The published dataset at one commit: one subset, named in the URI."""
+    return load_dataset(uri, revision=revision)
+
+
+def _repo_subsets(repo: str, revision: str | None) -> tuple[str, ...]:
+    """The subsets the published repository's card declares (mteb's config-name prefixes)."""
+    from rcp_ndcg.data.io.hub import hub_subsets
+
+    return hub_subsets(repo, revision)
+
+
+def _corpus_entries(repo: str, revision: str | None) -> dict[str, tuple[tuple[str | None, str], ...]]:
+    """``{subset: the card's corpus (split, pattern) entries}``; subsets with identical entries share one corpus.
+
+    The card is the product's own parsing (``rcp_ndcg.data.io.hub``); a repository without a card yields none.
+    """
+    from rcp_ndcg.data.io.hub import _card_configs
+
+    entries: dict[str, tuple[tuple[str | None, str], ...]] = {}
+    for name, config in _card_configs(repo, revision).items():
+        if name == "corpus" or name.endswith("-corpus"):
+            subset = "default" if name == "corpus" else name[: -len("-corpus")]
+            entries[subset] = config.entries
+    return entries
+
+
+def _task_source(repo: str, owner: str, revision: str | None) -> str:
+    """The text of the repository's published ``rcp_ndcg_tasks.py`` at the owner and revision the data is
+    read at (the task definitions, read as data, never executed)."""
+    from rcp_ndcg.eval.mteb import _hub_text
+
+    return _hub_text(f"{owner}/{repo}", TASK_FILE, revision)
+
+
+def _definitions(source: str, subset: str) -> list[dict[str, Any]]:
+    """Every task definition of *subset* in a published task file, in file order.
+
+    The 2026-10 files key ``_TASK_METADATA`` by published task name and ship ``_SUBSETS``; older files key it
+    by the subset names themselves. A task's ``eval_langs`` keys are the language subsets (ViDoRe v3's are
+    ``domain__language``), so a dataset part matches by its own name; the alias map covers a subset the
+    languages do not spell out. ViDoRe v3 maps a subset to two tasks (the page-image one and its OCR view), so
+    every match is returned and every one's split is checked.
+    """
+    from rcp_ndcg.eval.mteb import task_metadata, task_subsets
+
+    _, table = task_metadata(source)
+    aliases = task_subsets(source)
+    matches = [fields for fields in table.values() if subset in (fields.get("eval_langs") or {})]
+    task_name = aliases.get(subset)
+    if task_name in table:
+        matches.append(table[task_name])
+    if subset in table:  # an older file keyed by the subset names themselves
+        matches.append(table[subset])
+    return matches
+
+
+def _data_subsets(source: str) -> list[str]:
+    """The data subsets the published definitions read, name-sorted.
+
+    Every task's ``eval_langs`` keys are the language subsets (ViDoRe v3's are ``domain__language``; 48 across
+    its eight domains), so this is the full set the republished repository must hold -- not only the eight
+    native-language subsets the paper scores. An older file whose ``eval_langs`` is a language list falls back
+    to the table and alias keys.
+    """
+    from rcp_ndcg.eval.mteb import task_metadata, task_subsets
+
+    _, table = task_metadata(source)
+    aliases = task_subsets(source)
+    names: set[str] = set()
+    for fields in table.values():
+        languages = fields.get("eval_langs")
+        if isinstance(languages, dict):
+            names.update(languages)
+    if not names:
+        names.update(aliases)
+        names.update(table)
+    return sorted(names)
+
+
+def _corpus_groups(
+    subsets: Sequence[str], entries: dict[str, tuple[tuple[str | None, str], ...]]
+) -> dict[str, str] | None:
+    """``{subset: group}`` for subsets whose card points their ``-corpus`` config at the same files, or
+    ``None`` when none share a corpus.
+
+    The published repositories store one corpus per domain: ViDoRe v3's six languages read their domain's page
+    images, and TREC-DL 2019 and 2020 read the same corpus. The group is the first subset of the pattern (the
+    writer writes that config once); NanoBEIR and BRIGHT declare one corpus per subset and group nothing.
+    """
+    by_pattern: dict[tuple[tuple[str | None, str], ...], str] = {}
+    groups: dict[str, str] = {}
+    for subset in subsets:
+        pattern = entries.get(subset)
+        if pattern is None:
+            continue
+        group = by_pattern.setdefault(pattern, subset)
+        if group != subset:
+            groups[subset] = group
+    return groups or None
+
+
+def _check_subsets(repo: str, repo_subsets: Sequence[str], task_subsets: Sequence[str]) -> None:
+    """Refuse a task file whose subset set and the repository's config subsets disagree (decision 40, R7).
+
+    Both directions: a definition's subset the repository does not have, and a repository subset no definition
+    reads (the latter is what catches a converter that writes only part of ViDoRe v3's language subsets).
+    """
+    missing = sorted(set(task_subsets) - set(repo_subsets))
+    if missing:
+        raise DataError(
+            f"{repo}: the published task file defines subsets the repository does not have: {missing}",
+            hint=f"the repository's subsets: {sorted(repo_subsets)}",
+        )
+    extra = sorted(set(repo_subsets) - set(task_subsets))
+    if extra:
+        raise DataError(
+            f"{repo}: the repository has subsets the published task file defines no task for: {extra}",
+            hint=f"the task file's subsets: {sorted(task_subsets)}",
+        )
+
+
+def _check_task_definitions(repo: str, dataset: Dataset, source: str) -> None:
+    """Refuse a task definition whose split does not match the data (decision 40, review R7).
+
+    mteb silently falls back to the only split a config declares, so a wrong split name is not an error there,
+    just a wrong result label; the converter is where the mismatch is caught. The subset sets are checked by
+    :func:`_check_subsets` before any write.
+    """
+    for part in dataset.parts:
+        for fields in _definitions(source, part.name):
+            splits = [str(split) for split in fields.get("eval_splits") or []]
+            if part.split not in splits:
+                raise DataError(
+                    f"{repo}: subset {part.name!r} is published at split {part.split!r}, and its task "
+                    f"definition {fields.get('name')!r} names {splits}",
+                    hint="fix the task definition's `eval_splits` (the split the data really has), or the data",
+                )
+
+
+def _card(repo: str, dataset: Dataset, source: str) -> Any:
+    """The published task metadata of the repository's first subset (name-sorted, deterministic), pointed at
+    the target repository: mteb's own card template renders it. The task prompt rides in the metadata mteb
+    reads (``TaskMetadata.prompt``); the dataset card template itself does not render it."""
+    name = _data_subsets(source)[0]
+    fields = dict(_definitions(source, name)[0])
+    fields["dataset"] = {"path": f"{OWNER}/{repo}", "revision": dataset.revision}
+    return fields
+
+
+@contextmanager
+def _unique_layout(target: Path) -> Iterator[Path]:
+    """A uniquely named symlink view of the written layout.
+
+    ``datasets`` keys a local directory's built-dataset cache by the directory basename (content, size and
+    mtime are not in the key), so validating from ``out/<repo>`` twice could read the first run's build -- a
+    false pass or a false failure. The unique view gives every validation run its own cache key.
+    """
+    view = Path(tempfile.mkdtemp(prefix="rcp-ndcg-validate-"))
+    try:
+        for child in target.resolve().iterdir():
+            (view / child.name).symlink_to(child)
+        yield view
+    finally:
+        shutil.rmtree(view, ignore_errors=True)
+
+
+def _validate(part: Dataset, target: Path, *, group: str, cache: dict[str, Any]) -> dict[str, Any]:
+    """The subset's written layout must load back, through mteb's own ``RetrievalDatasetLoader``, to what we
+    hold: the qrels as integers, the queries (mteb keeps the qrels-bearing ones), the corpus (media included),
+    and the pool (the candidates, exclusions folded out).
+
+    A corpus shared by a group of subsets is loaded once and reused, so ViDoRe v3's six languages of one
+    domain do not rebuild the domain's page images six times.
+    """
+    from mteb.abstasks.retrieval_dataset_loaders import RetrievalDatasetLoader
+
+    class _SharedCorpusLoader(RetrievalDatasetLoader):
+        """mteb's loader with one corpus build per group."""
+
+        def _load_corpus(self, num_proc: int | None = None):  # noqa: ANN202 - mteb's return type
+            if group not in cache:
+                cache[group] = super()._load_corpus(num_proc)
+            return cache[group]
+
+    with _unique_layout(target) as view:
+        loaded = _SharedCorpusLoader(hf_repo=str(view), revision="main", split=part.split, config=part.name).load()
+    integer_qrels = {q: {d: int(g) for d, g in docs.items()} for q, docs in part.qrels.items()}
+    if loaded["relevant_docs"] != integer_qrels:
+        raise DataError(
+            f"{part.name}: mteb's loader reads qrels that differ from the dataset's "
+            f"({len(loaded['relevant_docs'])} queries vs {len(integer_qrels)})"
+        )
+    queries = dict(zip(loaded["queries"]["id"], loaded["queries"]["text"], strict=True))
+    ours = {query_id: query.text for query_id, query in part.queries.items() if query_id in part.qrels}
+    if queries != ours:
+        raise DataError(f"{part.name}: mteb's loader reads {len(queries)} queries, ours are {len(ours)}")
+    instructions = (
+        dict(zip(loaded["queries"]["id"], loaded["queries"]["instruction"], strict=True))
+        if "instruction" in loaded["queries"].column_names
+        else {}
+    )
+    if isinstance(part.task_instruction, str):
+        # The writer fills a string task instruction on every query (the Hub reader lifts a uniform column
+        # back); a loss here is a lost task frame, so every kept query must carry it.
+        expected_instructions = {query_id: part.task_instruction for query_id in ours}
+    else:
+        expected_instructions = {
+            query_id: query.instruction
+            for query_id, query in part.queries.items()
+            if query_id in part.qrels and query.instruction is not None
+        }
+    if instructions != expected_instructions:
+        raise DataError(f"{part.name}: mteb's loader reads instructions that differ from the dataset's")
+    corpus = dict(zip(loaded["corpus"]["id"], loaded["corpus"]["text"], strict=True))
+    expected_corpus = {doc_id: document.text for doc_id, document in part.corpus.items()}
+    if corpus != expected_corpus:
+        raise DataError(f"{part.name}: mteb's loader reads {len(corpus)} documents, ours are {len(expected_corpus)}")
+    if "title" in loaded["corpus"].column_names:
+        titles = dict(zip(loaded["corpus"]["id"], loaded["corpus"]["title"], strict=True))
+        expected_titles = {doc_id: document.title or "" for doc_id, document in part.corpus.items()}
+        if titles != expected_titles:
+            raise DataError(f"{part.name}: mteb's loader reads {len(titles)} titles, ours are {len(expected_titles)}")
+    _validate_written_extras(part, target)
+    for column in ("image", "video"):
+        if column not in loaded["corpus"].column_names:
+            continue
+        written_media = _written_media(loaded, column)
+        expected_media = _expected_media(part, column)
+        if written_media != expected_media:
+            raise DataError(
+                f"{part.name}: mteb's loader reads {len(written_media)} {column} assets, ours are {len(expected_media)}"
+            )
+    if part.candidates is None and not part.excluded:
+        expected_pool = None
+    else:
+        # the pool mteb reads: the candidates, exclusions folded out; without candidates, the corpus minus
+        # them (the writer's derivation)
+        pooled = part.candidates if part.candidates is not None else {q: list(part.corpus) for q in part.qrels}
+        expected_pool = {
+            query_id: [doc_id for doc_id in ids if doc_id not in part.excluded.get(query_id, ())]
+            for query_id, ids in pooled.items()
+        }
+    if loaded["top_ranked"] != expected_pool:
+        raise DataError(f"{part.name}: mteb's loader reads a pool that differs from ours")
+    return {
+        "queries": len(integer_qrels),
+        "documents": len(expected_corpus),
+        "qrels": sum(len(docs) for docs in integer_qrels.values()),
+        "pool": len(expected_pool) if expected_pool else 0,
+    }
+
+
+def _validate_written_extras(part: Dataset, target: Path) -> None:
+    """The extras mteb's own loader drops: the ``gain``/``theta`` qrels columns and the ``-excluded`` config.
+
+    mteb's loader keeps three qrels columns and reads no ``-excluded`` config, so the checks above cannot see
+    them; the written parquet is read directly (the writer's own config and shard names), so a title, gain,
+    theta or exclusion loss cannot pass the owner's pre-push gate.
+    """
+    import pyarrow.parquet as pq
+
+    from rcp_ndcg.data.io.mteb import SHARD, _config_prefix
+
+    prefix = _config_prefix(part.name)
+    rows = pq.read_table(target / f"{prefix}qrels" / SHARD.format(split=part.split)).to_pylist()
+    for column, table in (("gain", part.gains), ("theta", part.thetas)):
+        written = {
+            (str(row["query-id"]), str(row["corpus-id"])): row[column] for row in rows if row.get(column) is not None
+        }
+        expected = {
+            (str(query_id), str(doc_id)): float(value)
+            for query_id, judged in (table or {}).items()
+            for doc_id, value in judged.items()
+        }
+        if written != expected:
+            raise DataError(f"{part.name}: the written qrels' {column} column differs from the dataset's")
+    excluded_path = target / f"{prefix}excluded" / SHARD.format(split=part.split)
+    written_excluded = (
+        {
+            str(row["query-id"]): [str(doc) for doc in row["excluded-corpus-ids"]]
+            for row in pq.read_table(excluded_path).to_pylist()
+        }
+        if excluded_path.is_file()
+        else {}
+    )
+    expected_excluded = {str(q): [str(doc) for doc in ids] for q, ids in part.excluded.items()}
+    if written_excluded != expected_excluded:
+        raise DataError(f"{part.name}: the written -excluded config differs from the dataset's")
+
+
+def _written_media(loaded: dict[str, Any], column: str) -> dict[str, bytes]:
+    """``{doc_id: bytes}`` of one media column, as mteb's loader reads it back (raw, no decode)."""
+    from datasets import Image, Video
+
+    feature = Image if column == "image" else Video
+    raw = loaded["corpus"].cast_column(column, feature(decode=False))
+    return {str(doc_id): cell["bytes"] for doc_id, cell in zip(raw["id"], raw[column], strict=True) if cell is not None}
+
+
+def _expected_media(part: Dataset, column: str) -> dict[str, bytes]:
+    """``{doc_id: bytes}`` of one media column, from the dataset's content parts (what the writer resolves)."""
+    from rcp_ndcg_core.content import ImagePart, VideoPart
+
+    from rcp_ndcg.data.media import default_resolver
+
+    part_type = ImagePart if column == "image" else VideoPart
+    expected: dict[str, bytes] = {}
+    for doc_id, document in part.corpus.items():
+        content = document.content
+        if content is None:
+            continue
+        refs = [p.ref for p in content.parts if isinstance(p, part_type) and p.ref is not None]
+        if refs:
+            expected[str(doc_id)] = default_resolver().bytes_of(refs[0])
+    return expected
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--out", type=Path, required=True, help="the output directory; one subdirectory per repo")
+    parser.add_argument(
+        "--repo", action="append", choices=sorted(REPOS), help="a repo to convert (repeatable; default: all)"
+    )
+    parser.add_argument("--revision", default=None, help="the revision to read; default: the published one")
+    parser.add_argument("--owner", default=OWNER, help="the Hub owner the published repositories live under")
+    parser.add_argument("--no-card", action="store_true", help="write the configs front matter only, no card")
+    args = parser.parse_args(argv)
+
+    failures: dict[str, str] = {}
+    for repo in args.repo or REPOS:
+        try:
+            summary = republish(repo, args.out, owner=args.owner, revision=args.revision, card=not args.no_card)
+        except Exception as exc:  # noqa: BLE001 - one repo's failure must not stop the others
+            failures[repo] = f"{type(exc).__name__}: {exc}"
+            print(f"[FAIL] {repo}: {failures[repo]}", file=sys.stderr, flush=True)
+            continue
+        parts = ", ".join(f"{name}: {part['queries']} queries" for name, part in summary["subsets"].items())
+        print(f"[ok] {summary['repo']} @ {summary['revision']}: {summary['documents']} documents ({parts})")
+    if failures:
+        print(f"{len(failures)} of {len(args.repo or REPOS)} repositories failed; nothing was pushed", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

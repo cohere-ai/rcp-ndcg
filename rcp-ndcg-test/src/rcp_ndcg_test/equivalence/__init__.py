@@ -1,0 +1,124 @@
+"""The three-stage equivalence harness: prompts (CPU), scores and vectors (the gates), and metrics.
+
+Public entry points: :func:`run` (all requested stages, writes the report, returns the document) plus the stage
+functions in :mod:`.stages` and :mod:`.metrics`.  The CLI lives at :mod:`rcp_ndcg_test.equivalence.__main__`::
+
+    python -m rcp_ndcg_test.equivalence --recipe <dir> --base-url <url> --pairs <file> --out <dir> \\
+        --reference-python <python>
+
+``--reference-python`` is required when stage 2 runs (the reference never imports into the harness's process);
+with it, stage 1 also compares the reference's ``render`` against the product's ``fit``.  A recipe that declares
+image or video input also runs the media stage (:mod:`.media`) with stage 1 or 2: the pairs file's media rows,
+the client's sent media against the reference's ``--mode media``, and with stage 2 the engine's media count.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from rcp_ndcg_vllm.recipe import load_recipe
+
+from rcp_ndcg_test.errors import HarnessError
+
+from .gates import ResolvedGates, kendall_tau_b, resolve_gates
+from .media import stage_media, takes_media
+from .metrics import stage3_metrics
+from .stages import MRL_GATE_VERSION, load_pairs, stage1_prompts, stage2_scores
+
+__all__ = [
+    "MRL_GATE_VERSION",
+    "ResolvedGates",
+    "kendall_tau_b",
+    "load_pairs",
+    "load_recipe",
+    "resolve_gates",
+    "run",
+    "stage1_prompts",
+    "stage2_scores",
+    "stage3_metrics",
+    "stage_media",
+]
+
+
+def run(
+    recipe: Any,
+    *,
+    base_url: str | None,
+    pairs_path: str,
+    out_dir: str,
+    stages: list[int],
+    reference_python: str | None = None,
+    rankings_dir: str | None = None,
+    served_model_name: str | None = None,
+    limit: int | None = None,
+    device: str = "cpu",
+    reference_gpu: int | None = None,
+    recorder: list[dict[str, Any]] | None = None,
+    reference_store: str | None = None,
+    reference_environment: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run the requested stages of the equivalence check for one recipe; write and return the report document.
+
+    Inputs: the recipe, the engine's base URL (only stage 2 needs it), the pairs file, the output directory,
+    the stage numbers to run (1 and 2 by default; 3 needs ``rankings_dir``), the reference interpreter
+    (``--reference-python``; required for stage 2, and used by stage 1's render comparison when given), the
+    rankings directory for stage 3, and the device (with the physical GPU index) the reference subprocess runs
+    on -- recorded in the report and pinned to its own GPU via ``CUDA_VISIBLE_DEVICES`` (GPU-E1: the wave's
+    references all ran on CPU, where the Qwen3.5-based ones cannot run at all; the wave runner gives each
+    reference a GPU of its own, and a recipe declaring ``reference.device: cuda`` refuses a CPU run).
+    ``recorder`` collects stage 2's captured exchanges.  A recipe with media input also gets ``media``
+    (:func:`~rcp_ndcg_test.equivalence.media.stage_media`, with the engine's media count when stage 2 runs).
+    Output: the report document; ``passed`` is true only when every requested stage passed and the media
+    stage did not fail.  Also writes ``equivalence.json``
+    and ``EQUIVALENCE.md`` under ``out_dir``.  The document records the engine URL with the placeholder host
+    (no hostname is ever recorded) and the pairs file's name.
+    """
+    from ..record import placeholder_url
+    from .report import write_report
+
+    document: dict[str, Any] = {
+        "recipe": recipe.id,
+        "image": recipe.engine.image,
+        # The engine URL with the placeholder host: the report never records a hostname (the recorder's own
+        # rule, one home), while the path stays so the route is still visible.
+        "base_url": placeholder_url(base_url) if base_url else None,
+        "pairs": Path(pairs_path).name if pairs_path else None,
+        "stages": stages,
+        "device": device,
+        **({"reference_gpu": reference_gpu} if reference_gpu is not None else {}),
+    }
+    if 1 in stages:
+        document["stage1"] = stage1_prompts(recipe, pairs_path, reference_python, base_url=base_url, limit=limit)
+    if 2 in stages:
+        if base_url is None:
+            raise HarnessError("stage 2 needs the engine's --base-url")
+        document["stage2"] = stage2_scores(
+            recipe,
+            pairs_path,
+            reference_python or "",
+            base_url=base_url,
+            served_model_name=served_model_name or recipe.id,
+            device=device,
+            reference_gpu=reference_gpu,
+            recorder=recorder,
+            reference_store=reference_store,
+            reference_environment=reference_environment,
+        )
+        document["reference_outputs"] = document["stage2"].get("reference_outputs")
+    if reference_environment is not None:
+        document["reference_environment"] = reference_environment
+    if (1 in stages or 2 in stages) and takes_media(recipe):
+        document["media"] = stage_media(
+            recipe, pairs_path, reference_python, base_url=base_url if 2 in stages else None
+        )
+    if 3 in stages:
+        if rankings_dir is None:
+            raise HarnessError("stage 3 needs --rankings-dir with <subset>.{served,reference}.jsonl rankings")
+        document["stage3"] = stage3_metrics(rankings_dir, resolve_gates(recipe))
+    document["passed"] = (
+        all(bool(document[stage]["passed"]) for stage in ("stage1", "stage2", "stage3") if stage in document)
+        and (document.get("media") or {}).get("passed") is not False
+    )
+    write_report(out_dir, document)
+    return document

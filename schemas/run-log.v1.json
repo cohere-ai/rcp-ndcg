@@ -1,0 +1,27 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-log.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A run's log: its jobs' output from the runner, or the pipeline's logs/run.log.",
+  "properties": {
+    "run_dir": {
+      "title": "Run Dir",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.run-log.v1",
+      "type": "string"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "run_dir",
+    "text"
+  ],
+  "title": "RunLog",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.run-log.v1"
+}

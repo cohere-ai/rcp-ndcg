@@ -1,0 +1,375 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 1,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.31.0",
+    "version": "0.31.0",
+    "image_digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "zeroentropy/zerank-1-small-reranker",
+      "--revision",
+      "a65fd51c450e9b47fdddab98e31166ecad21af8d",
+      "--served-model-name",
+      "zerank-1-small-reranker",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8102",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "32768",
+      "--hf-overrides",
+      "{\"architectures\": [\"Qwen3ForSequenceClassification\"], \"classifier_from_token\": [\"Yes\"], \"method\": \"no_post_processing\"}",
+      "--chat-template",
+      "template.jinja",
+      "--pooler-config",
+      "{\"logit_sigma\": 5, \"use_activation\": true}"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "db9527a46873454610df6dbedf79a36d6bf1a7f6",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/7746",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+      "VLLM_PORT": "9102",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-10-14T11:08:31+00:00",
+    "ready_wait_s": 85.027,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.31.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0",
+    "redacted": [
+      {
+        "field_path": "engine.env",
+        "removed": "312 Kubernetes Service-link variables for 39 Services",
+        "reason": "the pod's Kubernetes Service links ride under the same VLLM_ prefix as the engine's own knobs and name internal Services and addresses, which the tracked tree may not carry (AGENTS.md: public names only)",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "4ea800a06413511239e1af671a9da834cf4321dfb2baa8b9e07f37896d4ff32a",
+        "from_manifest_file_sha256": "6adf139774b2d803893984ff77c99c9a0bf43260fb2a176db6cc1f448074b942"
+      },
+      {
+        "field_path": "engine.serve_argv",
+        "removed": "the pod's staging directory from the --chat-template value (the file name is kept)",
+        "reason": "the serve argv recorded the pod's own staging directory; the family goldens reduce the same --chat-template value to its file name",
+        "date": "2026-10-14",
+        "from_manifest_sha256": "4ea800a06413511239e1af671a9da834cf4321dfb2baa8b9e07f37896d4ff32a",
+        "from_manifest_file_sha256": "6adf139774b2d803893984ff77c99c9a0bf43260fb2a176db6cc1f448074b942"
+      }
+    ]
+  },
+  "model": {
+    "id": "zeroentropy/zerank-1-small-reranker",
+    "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
+    "weights": {
+      "model.safetensors": "aa272c5e9784d97cc4a5b07fba800c90d16e75b64e737b3f4bab8b8ac57c5c1d"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": "9ea5a7bf0b1dda6fb4dbdc068320c797134d9de1b6046466f2cb4ca7ffed4320",
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {
+      "architectures": [
+        "Qwen3ForSequenceClassification"
+      ],
+      "classifier_from_token": [
+        "Yes"
+      ],
+      "method": "no_post_processing"
+    },
+    "pooler_config": {
+      "logit_sigma": 5,
+      "use_activation": true
+    },
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "zerank-1-small-reranker",
+    "shipped": false,
+    "file_sha256": "a0c283585de05f4df8397f61678956147fedb6e7e651a90f2a113bceff1d6c55",
+    "behaviour_fingerprint": "e13348f43de3dab2969834ee41b24287aa2340be51178d31e5436c78a45f3b98",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "zeroentropy/zerank-1-small-reranker",
+      "revision": "a65fd51c450e9b47fdddab98e31166ecad21af8d",
+      "engine.image": "vllm/vllm-openai:v0.31.0",
+      "engine.min_version": "0.31.0",
+      "serve.chat_template": "template.jinja",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"architectures\":[\"Qwen3ForSequenceClassification\"],\"classifier_from_token\":[\"Yes\"],\"method\":\"no_post_processing\"}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "32768",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{\"logit_sigma\":5,\"use_activation\":true}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "sha256:9ea5a7bf0b1dda6fb4dbdc068320c797134d9de1b6046466f2cb4ca7ffed4320",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "rerank",
+      "client.empty_doc": "send",
+      "client.empty_query": "send",
+      "client.instruction": "none",
+      "client.listwise": "false",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_max_tokens": "4096",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
+      "client.use_activation": "true"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 2,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 3,
+    "record_schema": 1,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-10-14T11:10:40+00:00",
+    "finished": "2026-10-14T11:11:37+00:00",
+    "host_sha256": "1bb84b58116c9e789d5b5b2f7dd50dec0d99ef1de1b3625aa2d648a1c273adaa",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "zerank-1-small-reranker@2026-10-14T11:08:31+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "zerank-1-small-reranker@2026-10-14T11:08:31+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "zerank-1-small-reranker@2026-10-14T11:11:34+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 3,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=true",
+      "wire:use_activation=false",
+      "wire:instruction=on",
+      "edge:top_n_over_documents"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 8112
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 16222
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 81110
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl": {
+        "present": false,
+        "reason": "a rerank endpoint declares no Matryoshka head: the route carries no dimensions field"
+      },
+      "wire:top_n=1": {
+        "present": true
+      },
+      "wire:top_n=all": {
+        "present": true
+      },
+      "wire:use_activation=true": {
+        "present": true
+      },
+      "wire:use_activation=false": {
+        "present": true
+      },
+      "wire:instruction=on": {
+        "present": true
+      },
+      "edge:top_n_over_documents": {
+        "present": true
+      },
+      "wire:encoding_format": {
+        "present": false,
+        "reason": "the /rerank route has no encodings"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "bf92b917723edc5a86a3261f9088902cfe996960fcf90de73d90c7b624a2eb9a",
+        "bytes": 76905
+      },
+      "records.jsonl": {
+        "sha256": "57470be9b2efa93e09d9c4b468c380066f842dca0563683ae0892ccad12e1d37",
+        "bytes": 8642550
+      }
+    },
+    "records_count": 397,
+    "manifest_sha256": "181ee352f11724643412bde5b47ab64c92a489f72bbb274b5bc67b27e437a84b"
+  }
+}

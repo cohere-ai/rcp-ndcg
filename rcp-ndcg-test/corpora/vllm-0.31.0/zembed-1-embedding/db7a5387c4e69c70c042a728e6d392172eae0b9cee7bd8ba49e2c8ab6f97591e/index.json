@@ -1,0 +1,58 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://YOUR-BUCKET/rcp-ndcg/waves-rc3-20261015/all-retrieval/vllm-vllm-openai-v0-31-0/observations/vllm-0.31.0/zembed-1-embedding/db7a5387c4e69c70c042a728e6d392172eae0b9cee7bd8ba49e2c8ab6f97591e/2026-10-16T004019Z0000/",
+    "manifest_file_sha256": "840c6a0b2e5e59ed7f68bacb1cd12e9bf100b0616e4e001c5c5c314f22316145",
+    "manifest_sha256": "67012054bae11c404d9a3f9abda8688c5876377f5566f9faa883847e8161cac8"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "mrl:dimensions=1280",
+      "mrl:dimensions=160",
+      "mrl:dimensions=320",
+      "mrl:dimensions=40",
+      "mrl:dimensions=640",
+      "mrl:dimensions=80",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:encoding_format=base64"
+    ],
+    "rows": 55,
+    "of_rows": 649
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "dcbf0efbca99e01c3085a5367d4e4ca2849a1219b90016bb65b749393cded1fa",
+      "bytes": 158249
+    },
+    "records.jsonl.gz": {
+      "sha256": "7a3ee4dce4604b1c95f7339002f8a57dbf445779c3788611abec250909138fda",
+      "bytes": 2036558
+    }
+  }
+}

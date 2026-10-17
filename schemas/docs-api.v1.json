@@ -1,0 +1,31 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/docs-api.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What ``docs api`` wrote.",
+  "properties": {
+    "out": {
+      "title": "Out",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.docs-api.v1",
+      "type": "string"
+    },
+    "written": {
+      "description": "The page paths written, module-sorted.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Written",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "out",
+    "written"
+  ],
+  "title": "DocsApi",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.docs-api.v1"
+}

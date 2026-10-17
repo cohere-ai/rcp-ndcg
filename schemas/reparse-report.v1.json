@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "ReparseStage": {
+      "description": "What parsing one stage's stored answers again changed.",
+      "properties": {
+        "changed": {
+          "description": "Valid before, and now invalid or with another observation.",
+          "title": "Changed",
+          "type": "integer"
+        },
+        "family_key": {
+          "description": "The new store's family key of this stage.",
+          "title": "Family Key",
+          "type": "string"
+        },
+        "invalid_categories": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "The still-invalid records by category.",
+          "title": "Invalid Categories",
+          "type": "object"
+        },
+        "records": {
+          "description": "Window records read and written.",
+          "title": "Records",
+          "type": "integer"
+        },
+        "recovered": {
+          "description": "Invalid before, valid now.",
+          "title": "Recovered",
+          "type": "integer"
+        },
+        "stage": {
+          "enum": [
+            "tournament",
+            "rubric"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "still_invalid": {
+          "description": "Invalid before and now.",
+          "title": "Still Invalid",
+          "type": "integer"
+        },
+        "unchanged": {
+          "description": "Valid before and now, with the same observation.",
+          "title": "Unchanged",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "stage",
+        "records",
+        "recovered",
+        "still_invalid",
+        "unchanged",
+        "changed",
+        "invalid_categories",
+        "family_key"
+      ],
+      "title": "ReparseStage",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/reparse-report.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What ``judge reparse`` wrote: the new store, its parse version and the per-stage counts.",
+  "properties": {
+    "out": {
+      "title": "Out",
+      "type": "string"
+    },
+    "parse_version": {
+      "description": "The parser version the new store's records were read with.",
+      "title": "Parse Version",
+      "type": "integer"
+    },
+    "schema": {
+      "const": "rcp-ndcg.reparse-report.v1",
+      "type": "string"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "stages": {
+      "items": {
+        "$ref": "#/$defs/ReparseStage"
+      },
+      "title": "Stages",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "out",
+    "parse_version",
+    "stages"
+  ],
+  "title": "ReparseReport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.reparse-report.v1"
+}

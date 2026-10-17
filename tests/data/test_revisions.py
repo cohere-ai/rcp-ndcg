@@ -1,0 +1,383 @@
+"""Resolved HuggingFace commits in the dataset identity and in the run steps' identities.
+
+The Hub is faked at the boundary production calls: the ``huggingface_hub`` module
+(``HfApi().dataset_info``) and the hub cache's
+``refs/<revision>`` files. Nothing here reaches the network: the suite's conftest
+keeps ``HF_HUB_OFFLINE=1`` and an empty cache unless a test sets up otherwise.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import types
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+
+from rcp_ndcg.data.revisions import resolve_revision
+from rcp_ndcg.errors import RcpNdcgWarning
+from rcp_ndcg.runs import Pipeline, RunConfig
+from rcp_ndcg.support.identity import hash_payload
+
+SHA_A = "a" * 40
+SHA_B = "b" * 40
+
+
+class FakeHub:
+    """A stand-in ``huggingface_hub`` whose refs can move, counting every lookup."""
+
+    def __init__(self) -> None:
+        self.refs: dict[tuple[str, str, str], str] = {}
+        self.calls: list[tuple[str, str, str]] = []
+
+    def module(self) -> types.ModuleType:
+        hub = self
+
+        class HfApi:
+            def dataset_info(self, repo_id: str, revision: str | None = None):
+                return hub._info("dataset", repo_id, revision)
+
+        module = types.ModuleType("huggingface_hub")
+        module.HfApi = HfApi  # type: ignore[attr-defined]
+        return module
+
+    def _info(self, repo_type: str, repo_id: str, revision: str | None):
+        key = (repo_type, repo_id, revision or "main")
+        self.calls.append(key)
+        if key not in self.refs:
+            raise OSError(f"no such revision {key}")
+        return types.SimpleNamespace(sha=self.refs[key])
+
+    def move(self, repo_type: str, repo_id: str, sha: str, revision: str = "main") -> None:
+        """Point a ref at a new commit, as a push to the Hub would, and forget this process's lookups."""
+        self.refs[(repo_type, repo_id, revision)] = sha
+        resolve_revision.cache_clear()
+
+
+@pytest.fixture
+def hub(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> FakeHub:
+    fake = FakeHub()
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake.module())
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    # An online resolution records refs/<ref> in the hub cache; keep that out of the shared empty cache.
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    return fake
+
+
+# ---------------------------------------------------------------------------
+# The resolver
+# ---------------------------------------------------------------------------
+
+
+class TestResolveRevision:
+    def test_a_full_commit_is_its_own_answer_without_a_lookup(self, hub: FakeHub) -> None:
+        resolved = resolve_revision("org/data", SHA_A)
+        assert (resolved.commit, resolved.verified) == (SHA_A, True)
+        assert hub.calls == []
+
+    def test_a_branch_resolves_on_the_hub_once_per_process(self, hub: FakeHub) -> None:
+        hub.move("dataset", "org/data", SHA_A)
+        for _ in range(5):
+            assert resolve_revision("org/data", None).commit == SHA_A
+        assert hub.calls == [("dataset", "org/data", "main")]
+
+    def test_offline_reads_the_cache_ref(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+        ref = tmp_path / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_text(SHA_B)
+        assert resolve_revision("BeIR/fiqa", None).commit == SHA_B
+
+    def test_an_unreachable_hub_falls_back_to_the_cache(
+        self, hub: FakeHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+        ref = tmp_path / "datasets--org--data" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_text(SHA_A)
+        resolved = resolve_revision("org/data", None)  # the fake Hub has no such ref: it raises
+        assert resolved.commit == SHA_A
+        assert hub.calls == [("dataset", "org/data", "main")]
+
+    def test_unresolvable_is_unverified_and_warns_with_the_code(self) -> None:
+        """Offline with nothing to resolve, the run warns UNPINNED_REVISION naming the revision fix."""
+        with pytest.warns(RcpNdcgWarning) as seen:
+            resolved = resolve_revision("org/data", "main")
+        assert (resolved.commit, resolved.verified) == (None, False)
+        (record,) = seen
+        warning = record.message
+        assert isinstance(warning, RcpNdcgWarning) and warning.code == "UNPINNED_REVISION"
+        assert "--revision" in str(warning) and "full sha" in str(warning)
+
+    def test_a_corrupt_cache_ref_is_sanitized_not_fatal(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A ref file that is not valid UTF-8 is removed before resolution, never crashes it."""
+        import os
+
+        monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+        ref = Path(os.environ["HF_HUB_CACHE"]) / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_bytes(b"\xff\xfe not utf-8")
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+
+        with pytest.warns(RcpNdcgWarning):  # offline with the corrupt ref gone, nothing is resolved: it warns
+            resolved = resolve_revision("BeIR/fiqa", None)
+
+        assert (resolved.commit, resolved.verified) == (None, False)
+        assert not ref.exists(), "the corrupt ref is gone; the next online resolution rewrites it"
+
+    def test_a_corrupt_cache_ref_offline_warns_unpinned(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """The sanitized-offline resolution still warns UNPINNED_REVISION: nothing is resolved."""
+        import os
+
+        monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+        ref = Path(os.environ["HF_HUB_CACHE"]) / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_bytes(b"\xff\xfe not utf-8")
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+
+        with pytest.warns(RcpNdcgWarning) as seen:
+            resolve_revision("BeIR/fiqa", None)
+
+        assert [record.message.code for record in seen] == ["UNPINNED_REVISION"]
+
+    def test_a_corrupt_cache_ref_is_rewritten_online_and_absent_offline(
+        self, hub: FakeHub, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ref file that is not valid text never breaks a resolution: the online resolve writes over it."""
+        import os
+
+        ref = Path(os.environ["HF_HUB_CACHE"]) / "datasets--BeIR--fiqa" / "refs" / "main"
+        ref.parent.mkdir(parents=True)
+        ref.write_bytes(b"\xff\xfe not utf-8")
+        hub.move("dataset", "BeIR/fiqa", SHA_A)
+
+        assert resolve_revision("BeIR/fiqa", None).commit == SHA_A
+        assert ref.read_text() == SHA_A
+
+        resolve_revision.cache_clear()  # the offline run is another process
+        monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+        assert resolve_revision("BeIR/fiqa", None).commit == SHA_A
+
+
+# ---------------------------------------------------------------------------
+# The corpus: dataset identity
+# ---------------------------------------------------------------------------
+
+
+class TestDatasetRevision:
+    def test_a_moved_upstream_makes_a_finished_run_step_stale(self, hub: FakeHub, tmp_path: Path) -> None:
+        pipeline = _pipeline(tmp_path)
+        hub.move("dataset", "BeIR/fiqa", SHA_A)
+        before = pipeline._identity("tournament")
+        assert before["dataset"]["resolved"] == {"repo": "BeIR/fiqa", "commit": SHA_A, "verified": True}
+        hub.move("dataset", "BeIR/fiqa", SHA_B)
+        assert hash_payload(pipeline._identity("tournament")) != hash_payload(before)
+
+    def test_a_moved_upstream_is_refused_by_the_judgement_store(self, hub: FakeHub, tmp_path: Path) -> None:
+        from rcp_ndcg_core.records import Document, Query
+
+        from rcp_ndcg.data import Dataset
+        from rcp_ndcg.errors import IdentityError
+        from rcp_ndcg.judging import RubricSchedule, judge
+        from rcp_ndcg.testing import FakeJudge
+
+        loaded = Dataset(
+            name="fiqa", uri="hf://BeIR/fiqa/fiqa", qrels={"q0": {"d1": 1.0}}, candidates={"q0": ["d1", "d2"]}
+        )
+        loaded._load_queries = lambda: [Query(query_id="q0", query="q")]
+        loaded._load_corpus = lambda: [Document(doc_id="d1", text="one d1"), Document(doc_id="d2", text="two d2")]
+        schedule = RubricSchedule(window=2, placements_per_doc=1.0, random_share=1.0)
+        hub.move("dataset", "BeIR/fiqa", SHA_A)
+        judge(loaded, None, FakeJudge(), stage="rubric", out=tmp_path, schedule=schedule)
+        hub.move("dataset", "BeIR/fiqa", SHA_B)
+        with pytest.raises(IdentityError, match="dataset.revision.commit"):
+            judge(loaded, None, FakeJudge(), stage="rubric", out=tmp_path, schedule=schedule)
+
+
+def _pipeline(tmp_path: Path) -> Pipeline:
+    rankings = tmp_path / "rankings.jsonl"
+    rankings.write_text(json.dumps({"query_id": "q0", "query": "q", "doc_ids": ["d1"]}))
+    return Pipeline(
+        RunConfig.model_validate(
+            {
+                "dataset": "hf://BeIR/fiqa/fiqa",
+                "candidates": {"from": "rankings", "rankings": str(rankings)},
+                "judge": "fake",
+                "steps": ["retrieve", "tournament", "rubric"],
+            }
+        ),
+        runs_dir=str(tmp_path / "runs"),
+    )
+
+
+def test_resume_checks_cost_one_lookup_per_repository(hub: FakeHub, tmp_path: Path) -> None:
+    """A pipeline computes each step's identity on every resume check; the resolution
+    behind it is one metadata call per repository per process."""
+    hub.move("dataset", "BeIR/fiqa", SHA_B)
+    pipeline = _pipeline(tmp_path)
+    for _ in range(3):
+        for step in ("retrieve", "tournament", "rubric"):
+            pipeline._identity(step)
+    assert hub.calls == [("dataset", "BeIR/fiqa", "main")]
+
+
+def test_is_commit_is_public_and_the_private_pattern_stays_home() -> None:
+    """The commit-shape check is public API (`is_commit`); no other module imports the private `_COMMIT`."""
+    import inspect
+
+    import rcp_ndcg.data.dataset as dataset_module
+    from rcp_ndcg.data.revisions import is_commit
+
+    sha = "b" * 40
+    assert is_commit(sha)
+    assert not is_commit("main"), "a branch is not a commit"
+    assert not is_commit(sha.upper()), "a sha is lowercase hex"
+    assert not is_commit("g" * 40), "hex, not just any 40 characters: a mutated class slipped through"
+    assert not is_commit(sha[:39]) and not is_commit(sha + "0"), "exactly 40 characters"
+    assert not is_commit(sha + "\n"), "no trailing newline"
+    assert not is_commit(None)
+    assert "_COMMIT" not in inspect.getsource(dataset_module), "dataset.py reads revisions through the public name"
+
+
+def test_a_revision_that_is_not_exactly_a_commit_is_resolved_not_echoed(hub: FakeHub) -> None:
+    """A 40-hex string with a trailing newline is no commit: it resolves (here: warns unverified), never echoes."""
+    with pytest.warns(RcpNdcgWarning, match="resolved to no commit") as seen:
+        resolved = resolve_revision("BeIR/fiqa", "a" * 40 + "\n")
+
+    assert seen[0].message.code == "UNPINNED_REVISION"
+    assert resolved.commit is None and resolved.verified is False
+
+
+def test_the_mteb_identity_records_the_mteb_version_and_only_a_commit_is_verified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ``mteb:`` identity recorded the metadata revision alone: ``main`` counted as verified, and an
+    mteb upgrade that changed a task's ids or texts at the same revision was invisible to a resume."""
+    from rcp_ndcg.data.io import mteb_task as mteb_task_module
+    from rcp_ndcg.data.io.mteb_task import MtebTaskReader
+    from rcp_ndcg.data.revisions import ResolvedRevision
+
+    class FakeTask:
+        class metadata:
+            name = "PublicHealthQARetrieval"
+            dataset = {"path": "mteb/public-health-qa", "revision": "main"}
+
+    module = types.ModuleType("mteb")
+    module.get_task = lambda name: FakeTask()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mteb", module)
+    monkeypatch.setattr(mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, None))
+    monkeypatch.setattr(mteb_task_module, "_mteb_version", lambda: "2.21.6")
+
+    payload = MtebTaskReader("PublicHealthQARetrieval").revision_payload()
+
+    assert payload["repo"] == "mteb/public-health-qa"
+    assert (payload["commit"], payload["verified"]) == (None, False), "a branch is not verified"
+    assert payload["mteb_version"] == "2.21.6"
+    assert payload["task"].endswith("FakeTask"), "the task class's qualified name is part of the identity"
+
+    monkeypatch.setattr(mteb_task_module, "_mteb_version", lambda: "2.22.0")
+    assert MtebTaskReader("PublicHealthQARetrieval").revision_payload() != payload
+
+    monkeypatch.setattr(mteb_task_module, "resolve_revision", lambda repo, revision=None: ResolvedRevision(repo, SHA_A))
+    resolved = MtebTaskReader("PublicHealthQARetrieval").revision_payload()
+    assert (resolved["commit"], resolved["verified"]) == (SHA_A, True)
+
+
+# ---------------------------------------------------------------------------
+# A local source's content: the one home the run and the judgement store share
+# ---------------------------------------------------------------------------
+
+
+class TestTheLocalDatasetContentDigest:
+    """A local source has no commit: :func:`dataset_content_digest` names it by what its reader reads, in a
+    deterministic order. A remote non-Hub object has no commit either, so the backend's own metadata names it;
+    a remote location the backend cannot answer for is refused."""
+
+    def test_a_file_digests_as_its_bytes_and_an_edit_moves_the_digest(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data.revisions import dataset_content_digest
+
+        rows = tmp_path / "rows.jsonl"
+        rows.write_text('{"query_id": "q"}\n', encoding="utf-8")
+        before = dataset_content_digest(f"jsonl:{rows}")
+        assert set(before) == {"dataset"} and len(before["dataset"]) == 64
+
+        rows.write_text('{"query_id": "q", "docs": ["a longer body"]}\n', encoding="utf-8")
+        assert dataset_content_digest(f"jsonl:{rows}") != before, "an edited file is another dataset"
+
+    def test_a_directory_digests_its_sorted_listing(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data.revisions import dataset_content_digest
+
+        stamp = 1_700_000_000_000_000_000  # the same mtimes, so only the listing's own rule is compared
+
+        def build(root: Path, names: tuple[str, ...]) -> Path:
+            (root / "corpus").mkdir(parents=True)
+            for name in names:
+                (root / "corpus" / name).write_text(f"{name[0]}\n", encoding="utf-8")
+            for entry in (root / "corpus").iterdir():
+                os.utime(entry, ns=(stamp, stamp))
+            return root
+
+        first = dataset_content_digest(f"beir:{build(tmp_path / 'one', ('a.jsonl', 'b.jsonl'))}")
+        second = dataset_content_digest(f"beir:{build(tmp_path / 'two', ('b.jsonl', 'a.jsonl'))}")
+        assert first == second, "the listing is sorted and relative: the creation order is not in it"
+        assert set(first) == {"dataset"}
+
+        (tmp_path / "two" / "corpus" / "c.jsonl").write_text("c\n", encoding="utf-8")
+        assert dataset_content_digest(f"beir:{tmp_path / 'two'}") != first, "an added file moves the digest"
+
+    def test_a_remote_source_and_a_local_reader_option(self, tmp_path: Path) -> None:
+        from rcp_ndcg.data.revisions import dataset_content_digest, dataset_local_locations
+
+        for committed in ("hf://org/repo", "suite:bright", "mteb:NanoNFCorpus"):
+            assert dataset_content_digest(committed) == {}, committed
+
+        qrels = tmp_path / "qrels.jsonl"
+        qrels.write_text("{}\n", encoding="utf-8")
+        assert dataset_content_digest("images:/no-such-dir", {"qrels_uri": str(qrels)}) == {
+            "dataset.options.qrels_uri": dataset_content_digest(f"jsonl:{qrels}")["dataset"]
+        }
+        # The locations are listed without being read (a mirror refusal needs them before they exist).
+        assert dataset_local_locations("images:/no-such-dir", {"qrels_uri": str(qrels), "other_uri": "s3://b/x"}) == {
+            "dataset": "/no-such-dir",
+            "dataset.options.qrels_uri": str(qrels),
+        }
+
+    def test_a_remote_object_is_fingerprinted_and_a_replaced_one_moves_the_digest(self) -> None:
+        """A remote non-Hub source has no commit to pin it: the object's own metadata (or its bytes, when the
+        backend reports neither a size nor a change stamp) names it, so a replaced object at the same URI is
+        another dataset."""
+        import fsspec
+
+        from rcp_ndcg.data.revisions import dataset_content_digest
+
+        root = f"rev-{uuid4().hex}"
+        fs = fsspec.filesystem("memory")
+        try:
+            fs.pipe(f"/{root}/rows.jsonl", b'{"query_id": "q", "docs": ["a"]}\n')
+            before = dataset_content_digest(f"jsonl:memory://{root}/rows.jsonl")
+            assert set(before) == {"dataset"}
+            fs.pipe(f"/{root}/rows.jsonl", b'{"query_id": "q", "docs": ["a longer body"]}\n')
+            assert dataset_content_digest(f"jsonl:memory://{root}/rows.jsonl") != before
+
+            # A remote directory is its sorted listing, the remote form of the local rule.
+            fs.pipe(f"/{root}/corpus/a.jsonl", b"a\n")
+            fs.pipe(f"/{root}/corpus/b.jsonl", b"b\n")
+            directory = dataset_content_digest(f"beir:memory://{root}")
+            fs.pipe(f"/{root}/corpus/c.jsonl", b"c\n")
+            assert dataset_content_digest(f"beir:memory://{root}") != directory
+        finally:
+            fs.rm(f"/{root}", recursive=True)
+
+    def test_a_remote_location_that_cannot_be_fingerprinted_is_refused(self) -> None:
+        """An unreachable or missing remote location has no content identity to record: keying on the URI
+        alone would reuse work over bytes nobody checked, so the identity refuses with a hint."""
+        from rcp_ndcg.data.revisions import dataset_content_digest
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="fingerprint"):
+            dataset_content_digest(f"jsonl:memory://rev-{uuid4().hex}/missing.jsonl")
+
+    resolve_revision.cache_clear()

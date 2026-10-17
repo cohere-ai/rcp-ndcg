@@ -1,0 +1,2941 @@
+{
+  "normalisation_version": 1,
+  "per_input": {
+    "01d2b6d32cc07f0c857bd328e466de6b75bb1eb49524f4c077245f02e5614e69": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0234e95dd573869f297ca71bab5812e357e2710b8362620aeb169067cbae6d0e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/v1/models"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": true,
+      "bodies_differ": true
+    },
+    "08da2e686b430acd667f8da189eb9f1133f0310591bb932b5ad18f0d151543db": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0a4e6a2dab1eb18c14e8fcfba9ac9e27c1a0d7c1bbe005bd43d811838a5a3767": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0a8719a8a7d86d35c7c0c2805b50ee5cf68b2f919e710c126e6ec06af2926840": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:23"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0d97df6594c82b309024d63f6fa50b5d063612eb1c57ad638cbbc55281cec40c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0fa345223e824bbbd3be0869f9b3c829eb4804e3b1ed34f4c18bcc8415d810c5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:over_length"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0fc2773df02be930db23c8b7723c1fd47d8d97d7ddbcefdebab843a8a76a8389": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "101871f347118bc5ab0dd9722d8a646254ffdb90d2d1b7b65435183bc2c52517": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "10fd07ae7a3fc2bfd3d87aae7d3ffbd16bc7dbc4d9e6e5281f07ceb4c9adc381": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "12a9abe51b094d419a1decfd1bce2d8e6e0872401e9fdec89e447349e63c102f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "12fc99530dedfdf1d280db3aee56223e66b56f0eb2676c7be609b1857bd3118d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "13cb02ae6c263e56b47b89a3cb943b19694f4c244144eae663addd3030d57375": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "191f7ee65f88c96cfe4448abaed7f020c377a529f7c7cd01ff62e1a9ac91ef41": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1955b70ca770cd0832049dd8a406de25520521a75695e792f26eba001b2d4b3f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1a3c0b54a6cd4cb61baeccabf0066896be64e4c27b6406f90477a1cdc33f688d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1b2575f7ca2918935e1a9c64ac377ab3c9f14a61d1371902b00b219a6e870310": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_10x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1c96f7ec729c978dcae7b62647716eb8712131d54b9281ebbb85b033f1694074": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1cb057cf19042cfb1aa8890c9bf04e546b92559db7cb3260dcd52ce83f431ddb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1dc7b564712bcdc5d6c9ea1d9f5ab24769f06e909c8ea530320a5dd7f173ad1b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "20c6b1a0d2f90280722198a6bf07813cbf7437c475464061c8a952bcb654ebba": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "20daea9d0c7cd024494addffd5370724f79ece5cd097053181f93ba1bb85eae5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "25ce463f5e9ea2d33fd16a497aac5757be76cb60f8d16b27a3ede183d6d2b656": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "26e6fe5004eef6bd1b3b8ed7e67b8bcbddb24c815d410833e4942ae88752c380": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "29c4e0d6e3ce54e08cfafcbd0e163b32671a20b85975c8938d4d34efc01dfbea": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "29d8a375f12177b2e132bf814b7a0598f262f6176fb69e0f2e2dd865a27b9393": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2bc4b2d447bdb5b803a0b4f05999d6693770ef8182933a0e578f5dab25007263": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2d980ecd04b47e3ab2672a19cac59adef025216d5fabc5adcdc3342c2e696c5b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "322caa8ac0c08a245ec9013c8343aad050259d49922079558fcaf56c3dc47a9a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:24"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "395cf2226feb0c7140adcb7f656c2cee9e3693ab7259704ed1dada545c8ad910": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3d4f4bf182aa28d2c5db4ce374b8d5a153da0add3ef1c02606db912384e42f4d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:top_n=1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00048828125,
+      "max_rel_diff": 0.03162055335968379,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3db5bed07f65dc5e84addc39342f7d2df67892acab19c5082b91080428e75282": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:unknown_field"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00048828125,
+      "max_rel_diff": 0.03162055335968379,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3dfaa7ad5f900be0384810b2ea11a8ed662a5641b4512264abffe114fb92b49d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3eef46492aa864eb9a9f9c6ba301784ed74207332b00cf9ad740f0bbfa6e196e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:top_n=all"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3f489595d01c106932963448fc0530042ba0722017b46b2163d778423e8e4143": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "40e668fbaabed1503163a6fe1d1e89e2ced42c19cc3a346039a454894d86a932": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "43092f297c1e25163580dc66e4748786ff9bf263ea05f2435bc7b7bb73301cb6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "44781379326d21c0127378c06034cf7ef273eddc9595f86f7aab328ec6bf4278": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4602c14696e3a6794c6036c5ec5daef38f8e3116ad6d483abb17bbcb9fd6c761": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4b236b4de840e1c923265aa737630bd3bd28a77f8ccad700f2175c7362b277e4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4b2922cb4168038b70da14df83fdd5bc7eb5c2aba4c0c3347cc5bba79ae8d0c6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4d810fb0f107b6cb07cf88b259d4e6bcbf49285fcaca75621e2681b282012831": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:wrong_model"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "50e009235362866074105cd43c17f5ce3fc370a7ffe470c96f5f88bf189aba6a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5292c9abeab6383610eb28085e87b955f253751f38c452fff869ee43ae7b3d44": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53b291433f107095a2ef9e9ba7964055350a0e16f89788c0a6287846699110fb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53f27f91f2be87fbfbf73b209e12cf998f872894639bb81287679fb45e282c22": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/health"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "55e8261f6859d55186d25b6c4584d3b95f3b2bcbab70471e6ba08099887f8fdb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "582ef28af15960c53717f2003bdda292b95398043b41617b2192069f0b55a7f6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "58648a95c7fb801c317d9d74fa40867255604d161904cdf19e22dc23daa36425": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "58b36928a8a84615dde214510b15270b87b823f5779da65c298c73405eb4c1a9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5f014607807e5c37aed8f29b57112dfe3e4e259efc43f49f8f39324edfad9a0a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6270cd808ccef4b551f904c7626b870058a9105b505520014249a0945ed167b8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6302fda98f959f48ca19e6bf22992f4a8ef55671d81862423f217d18c14464a7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "64deff7f42ec64d3e376296790b9d0d18fc6cd703d64a37bcec3b5a9a4d35f57": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "65a6749cb0f03549c01bd69672a301425268946ba587e7d9e329957889ed4e00": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6e2464edb6cc12c4c45131a3eabbd9bdd5c92f71d8f6e45a3543183a47f4255d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "716cb334b466098c199151466c2d0205a26d074c4ed407b0b31ba374b6fc0228": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "724948169011839ba5f3dbc6005dd9d3d56716378fa5e66b27f812a182befe13": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "72ecd211eb40d412e44d05b79324a7f5d6e8a79f644d7ebbf2e46aed78e8d166": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "735301f74a36e62be2ca20860c9b2117bad0963e92d06e5e8a8672c78c48bfcd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "78bb2b771cd02b54d9e830cff667a00fbfe80e293ac5cca72f2c0e92d3256c9a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "797d2b35da682cb53e068affa37cb863ac39707cf19856eb340b0b4fa3d9a5c4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7ca1ea6867ba07903b92b40e795895e3fa6f4c7be964ba6ce5a662b21700995f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7dc0ecc93ab5497f275b3b1769622c586ac68c0a8aa39592beb6e690f6ee58ce": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7e743c2589b020f00390e3ff5f366cdc0e7bf1cdb84846553e0cd1c8ba8c4a99": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "80e409671699a2bda30892d7d11e2a8bb76c9e9a1c216e8ad35a5604f2aa7f83": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "817f218d11d35b2642cb17209786fc26f2a7aea8c944ae20c353463b3703ee3a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8455d9dc70eb43c5afa63fac27bac4dce18e5172b75cc965b8a9052cdd461458": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:use_activation=true"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00048828125,
+      "max_rel_diff": 0.03162055335968379,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "8903e9de11f3fd817c50f3c3f574283992d55a793ba29176353cc75cf632ad0a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "89d954529f0b6a46ab901600225475cb3b994d49ec8f06b19d49fc24b7f28e16": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8db72b83e2ae4f1a9e5bd6f654d90bf8cc5ae10e963e864476f09770cccfe795": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:24/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8f16f498b411d9dad68d24e784ac1f35f02eaf3e2657813a75610b1d708df4fa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "90ded2fd5fbedc559a5f930ff6f2eb3006ccc2d6972a6fb10d4e5e5dc4a6a23e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:instruction=on"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00048828125,
+      "max_rel_diff": 0.03162055335968379,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9613275c364da735ab11c12c06ba38459475667cf0a0747ca3f837ee34f731ce": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "965cb2c2074f3b3ac30d5227d0df1c26dd4ae181ed4edef813e0788f71d57ab5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "edge:top_n_over_documents"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00048828125,
+      "max_rel_diff": 0.03162055335968379,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9d7057116b3ec6452b4fbc0d1c528df26e154f89e9a11094d1edb76ae834e7bc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a5987b2a07a84183f1170880edea838ae97adc8840021f386989faa0218abea1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a5d68a97667bc7c602d455a0c1c0e17cd342517dcd559427d688cb3e185efb4d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a6f0a857f78619183e2b3ae4a525b41e258a775712f2235e5fa9c2fc7ac40880": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a70a0f7de85bc1fda3a2485f49b539a0e8fb35ca2c4763aabe33c08ff899ecc6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a84ae707289042e629917529ae72e248f5fddba396d7d6c61748b325de8d53a6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:malformed_json"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a90ceea812d47a89c489671bf9f390ea3f8b533ee724492ee5e565319eea4229": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a98d3c713be415aeb4502045e25ddae02c74a2e69d1b82508c5005beb69a6ddb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ac96f0d2f7f9aa7673cd1804c81d5a24ed6c66bee76913581e6ce5c0a11dd54b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "af2b7ffd1a3af77501eedf7ad42ca181b890306d9c5e2f1881c50c90b9abcbbd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "afcd39fcaabf164395419fb5e768a9eec45058d32d23511e0f978406b1ac1d7d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b14c072baf3e151f3d76e7efb2f71b789a7484a6ed5672f4869a2d3fc02c9c75": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bdf3828043e7eb5b7937e35ac78d54b56d654cf18610ae6a7fd643a33d240236": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "be342fed87e70e108570c941335771b0790c9c64fee36efdf317d8c3e714ef13": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_2x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c170d23334479ebcfa52bce47095ea4e9b24385353db44d0aa99bf28fc48e15c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c32ae051f15da2d6b32934c04e83733272de54078587a548e39505b795fc75d2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c35cfa256a3e081cc01b2e409d7cfd17f04ce1714e06fc5464c9a5b75629adfd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c57119a64caf6cf47f3ca573922f6a9daaf7c592dc54f907448af6a955de5904": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c6ee1d5c3648c27473e8346b1ce439e070142e042199b28c781a12693b9673e9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cb55fdbab3c7254a80f4e679b93fc1de1388589d41dd1f72dd41e14e626b5919": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:23/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ccd87a5ca77cd1207d142d0f5b2cff4c7abe68dc9c32b2bfb460425da49c1aa9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cd7ef0929553811b42fb6d1f8f95a9e66f11ca6f3da24e380be0b65a004e5176": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d20356006a7f53603f3595eac77e6c3ed1fdc02ce96ecab17db229c743024fe4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d3569baf36cc2267a57eab0b4b3d732b331bfaf50efee362f64ba65a67430356": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dd0851b18cbe024a17195056bf2a93da53ca234646e2c08e12bd64643088f1d1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dd356c64d2f6fcdb4cceaa4a44968bb6bf36ff3077148e7db5bb88f4530aee9f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dda860098ec2e64bbcf57a5ebf87b60d21c04eb810e70c66f7d785c747f67899": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:empty_input"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e2d91e44aa1716eea0cca208a5e375618fbf74485bdfd08212cb1eb4997cb91b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e53f2709d109187ca4f3359919c442ef8f9a56bfaa7f7b93078b77d4b67a7f0d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e9a7dfabfc72d33e3f974fcf2afc34e0551c7ec2681fc08fd56a586711ac8fe7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:use_activation=false"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.03125,
+      "max_rel_diff": 0.007462686567164179,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ef6a4ad1819201784926aa0d162229206efc2cce0eeb6209a6ce38dd2942f5b3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/query"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f026f48db2f2aab903bce2bc563726b7e6d8038bea3c48e30b577bc8fb930e81": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f70d44c9141e33e90f6e93110b90200e1236b90fcaa3e5f97b49b54386ed8dbd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f74e9f0157c0e572bda3e4bb29b9de5ed7f4f850d9a18a49f539da8700455b74": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f96aa5b885af6af2c12fc8b0f5723f7cbf01fbde607bba21fbb23d08d715d29b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "given"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fa586cce44014c2724cddd851813b64121ff7cba8b3c0f3f68a138727626d751": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fa885324ebafb4b1ecafb811a5ddf3ad04b6b7b53baccbd74084a8dc03d19bee": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fabfe86312c92ab7688cf2372086508b4388e71dc07e54140b53c71f924f20b9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "qwen3-reranker-0.6b@2026-10-13T20:27:04+00:00",
+        "qwen3-reranker-0.6b@2026-10-13T20:30:47+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "positions": [
+          0
+        ],
+        "order": "reversed"
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    }
+  },
+  "summary": {
+    "max_abs_diff": 0.03125,
+    "max_rel_diff": 0.03162055335968379,
+    "min_cosine": null
+  },
+  "derived": {
+    "rule": "verification tolerance = 3x the maximum difference measured between repeated sendings of the SAME request (exchange_id: twice in one engine process and once after a restart), with absolute floor 1e-9 and relative floor 1e-6; no repeated request measured means no tolerance (declared unmeasured, never invented)",
+    "measured": true,
+    "repeated_requests": 113,
+    "statuses_differ": true,
+    "bodies_differ": true,
+    "abs_tolerance": 0.09375,
+    "rel_tolerance": 0.09486166007905138
+  }
+}

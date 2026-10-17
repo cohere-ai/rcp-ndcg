@@ -1,0 +1,232 @@
+"""``rcp-ndcg doctor``: what this environment can do, before a long command finds out the hard way.
+
+It reports the Python and package versions, which optional extras are installed (without importing them, so
+the check itself stays fast), the cache and runs directories, which credential variables are set (names only,
+never values), and, given ``--endpoint``, whether an OpenAI-compatible endpoint answers (any role's URL).
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+import importlib.util
+import os
+import platform
+from typing import Literal
+
+import click
+from pydantic import BaseModel, Field
+
+from rcp_ndcg.cli.command import command
+from rcp_ndcg.errors import EXTRA_FOR_MODULE
+from rcp_ndcg.support.paths import cache_dir, runs_dir
+from rcp_ndcg.support.urls import redact_urls, safe_url
+
+#: extra -> the imports that prove it is installed (from the one table, :data:`rcp_ndcg.errors.EXTRA_FOR_MODULE`).
+_EXTRAS: dict[str, tuple[str, ...]] = {
+    extra: tuple(module for module, owner in EXTRA_FOR_MODULE.items() if owner == extra)
+    for extra in dict.fromkeys(EXTRA_FOR_MODULE.values())
+}
+
+#: Credential variables the shipped configs and hosted backends read (the hosted judge, the Cohere and Voyage
+#: rerankers and embedders, the Gemini embedder, gated Hub datasets). Only whether they are set is reported.
+#: Each vendor's alternative names are listed too (the adapters accept them), so a working setup does not show
+#: 'missing'.
+_CREDENTIALS = (
+    "OPENAI_API_KEY",
+    "CO_API_KEY",
+    "COHERE_API_KEY",
+    "VOYAGE_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "HF_TOKEN",
+)
+
+Status = Literal["ok", "missing", "fail"]
+
+
+class DoctorRequest(BaseModel):
+    endpoint: str | None = Field(
+        default=None,
+        description="An OpenAI-compatible base URL (.../v1) to probe with GET /models: any role's endpoint "
+        "(a judge, a served encoder or reranker). The probe authenticates with the shipped hosted profile's "
+        "own key variable when the host is that profile's default (e.g. OPENAI_API_KEY for api.openai.com), "
+        "and reports a 401 without a key as reachable-needs-a-key, never a failure.",
+    )
+    timeout_s: float = Field(default=5.0, gt=0, description="Seconds to wait for --endpoint.")
+
+
+class Check(BaseModel):
+    """One finding. ``missing`` is informational (an optional extra); ``fail`` needs attention."""
+
+    name: str
+    status: Status
+    detail: str = ""
+
+
+class DoctorReport(BaseModel):
+    """The environment, check by check; ``ok`` is false when any check failed."""
+
+    ok: bool
+    python: str
+    platform: str
+    versions: dict[str, str | None]
+    cache_dir: str
+    runs_dir: str
+    checks: list[Check]
+
+
+def _version(dist: str) -> str | None:
+    try:
+        return importlib.metadata.version(dist)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _installed(module: str) -> bool:
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _models_url(url: str) -> str:
+    """The probe URL: ``/models`` joined onto the PATH, with the query kept after it (``http://h/v1?sig=x`` ->
+    ``http://h/v1/models?sig=x``). Appending to the string put ``/models`` after the query, which mangled a
+    signed gateway URL."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/") + "/models", parts.query, ""))
+
+
+def _probe_auth(url: str) -> tuple[dict[str, str], tuple[str, ...]]:
+    """The headers to probe ``url`` with, by the transport's own credential rule.
+
+    The shipped adapters' declared facts are the one home: a hosted profile's variables travel only to the
+    profile's own default host, and a host no profile owns gets no header (the probe then reports a 401 as
+    reachable-but-needs-a-key, never as a failure).
+
+    Returns:
+        ``(headers, variables)``: the credential header to send (empty when no key is set, or the host is no
+        shipped profile's) and the variables that would authenticate the host, for the detail.
+    """
+    from rcp_ndcg.inference import AuthProfile
+    from rcp_ndcg.inference.adapters import embeddings as _shipped_embeddings  # noqa: F401  # registers them
+    from rcp_ndcg.inference.adapters.base import AdapterRole, get_adapter, known_adapters
+
+    roles: tuple[AdapterRole, ...] = ("judge", "embed", "rerank", "multi_vector")
+    for role in roles:
+        for name in known_adapters(role):
+            adapter = get_adapter(name, role=role)
+            default = getattr(adapter, "DEFAULT_BASE_URL", None)
+            if default is None:
+                continue
+            profile = AuthProfile(
+                variables=tuple(getattr(adapter, "API_KEY_ENV", ())),
+                required=bool(getattr(adapter, "KEY_REQUIRED", False)),
+                header=getattr(adapter, "AUTH_HEADER", None),
+                homes=(default,),
+            )
+            if not profile.applies_to(url):
+                continue
+            value = next((os.environ[var] for var in profile.variables if os.environ.get(var)), None)
+            if value is None:
+                return {}, profile.variables
+            if profile.header is not None:
+                return {profile.header: value}, profile.variables
+            return {"Authorization": f"Bearer {value}"}, profile.variables
+    return {}, ()
+
+
+def _probe(url: str, timeout_s: float) -> Check:
+    import httpx
+
+    target = _models_url(url)
+    # The detail names the URL through safe_url (userinfo, query and fragment stripped): the report reaches
+    # --json output and gets pasted into issues. The probe itself uses the full URL.
+    shown = safe_url(target)
+    headers, variables = _probe_auth(url)
+    try:
+        response = httpx.get(target, timeout=timeout_s, headers=headers)
+    except httpx.HTTPError as exc:
+        reason = redact_urls(f"{type(exc).__name__}: {exc}")
+        return Check(name="endpoint", status="fail", detail=f"{shown}: {reason}")
+    if response.status_code in (401, 403):
+        if not headers:
+            named = " or ".join(variables) if variables else "the endpoint's own API key variable"
+            return Check(
+                name="endpoint",
+                status="missing",
+                detail=f"{shown}: HTTP {response.status_code} (reachable; needs a key: set {named})",
+            )
+        return Check(
+            name="endpoint",
+            status="fail",
+            detail=f"{shown}: HTTP {response.status_code} (the key from the environment was refused)",
+        )
+    if response.status_code >= 400:
+        return Check(name="endpoint", status="fail", detail=f"{shown}: HTTP {response.status_code}")
+    try:
+        models = [str(row.get("id")) for row in response.json().get("data", [])]
+    except (ValueError, AttributeError):
+        models = []
+    served = ", ".join(models) or "no models listed"
+    return Check(name="endpoint", status="ok", detail=f"{shown}: serving {served}")
+
+
+def _text(report: DoctorReport) -> str:
+    lines = [
+        f"{'python':<15}{report.python} ({report.platform})",
+        *(f"{dist:<15}{version or 'not installed'}" for dist, version in report.versions.items()),
+        f"{'cache dir':<15}{report.cache_dir}",
+        f"{'runs dir':<15}{report.runs_dir}",
+        "",
+    ]
+    lines += [f"{check.status:<8} {check.name:<22} {check.detail}".rstrip() for check in report.checks]
+    return "\n".join(lines)
+
+
+@command("doctor", request=DoctorRequest, result=DoctorReport, text=_text)
+def doctor(request: DoctorRequest) -> DoctorReport:
+    """Check the environment: versions, installed extras, directories, credentials present, endpoint reachable."""
+    versions = {dist: _version(dist) for dist in ("rcp-ndcg", "rcp-ndcg-core", "pydantic", "click", "torch")}
+    checks = []
+    if versions["rcp-ndcg"] is not None and versions["rcp-ndcg-core"] != versions["rcp-ndcg"]:
+        checks.append(
+            Check(
+                name="rcp-ndcg-core",
+                status="fail",
+                detail=f"rcp-ndcg {versions['rcp-ndcg']} needs rcp-ndcg-core {versions['rcp-ndcg']}, "
+                f"found {versions['rcp-ndcg-core']}",
+            )
+        )
+    for extra, modules in _EXTRAS.items():
+        absent = [module for module in modules if not _installed(module)]
+        checks.append(
+            Check(
+                name=f"extra [{extra}]",
+                status="missing" if absent else "ok",
+                detail=f'not installed: {", ".join(absent)} (pip install "rcp-ndcg[{extra}]")' if absent else "",
+            )
+        )
+    for variable in _CREDENTIALS:
+        present = bool(os.environ.get(variable))
+        checks.append(
+            Check(name=f"${variable}", status="ok" if present else "missing", detail="set" if present else "")
+        )
+    if request.endpoint is not None:
+        checks.append(_probe(request.endpoint, request.timeout_s))
+    return DoctorReport(
+        ok=not any(check.status == "fail" for check in checks),
+        python=platform.python_version(),
+        platform=platform.platform(),
+        versions=versions,
+        cache_dir=str(cache_dir()),
+        runs_dir=str(runs_dir()),
+        checks=checks,
+    )
+
+
+doctor_cmd: click.Command = doctor
+
+__all__ = ["Check", "DoctorReport", "DoctorRequest", "doctor_cmd"]

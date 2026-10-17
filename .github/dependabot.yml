@@ -1,0 +1,25 @@
+# Dependabot: one weekly pull request per ecosystem, grouped, so the lock and the actions are kept
+# current without a PR per package. The workspace's dependencies live in uv.lock (the four members'
+# manifests are workspace members), so the `uv` ecosystem at the root covers all of them; the generated
+# requirements-constraints.txt is never an update source (it is the lock's export, checked by CI).
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

@@ -1,0 +1,43 @@
+id: qwen3-reranker-0.6b/card-transformers
+recipe: qwen3-reranker-0.6b
+role: rerank
+strata:
+  modality: text
+  length: short
+  batch: mixed_length
+inputs:
+  instruction: Given a web search query, retrieve relevant passages that answer the query
+  queries:
+  - id: q1
+    text: What is the capital of China?
+  - id: q2
+    text: Explain gravity
+  documents:
+  - id: d1
+    text: The capital of China is Beijing.
+  - id: d2
+    text: Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.
+source:
+  kind: model_card
+  url: https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
+  revision: e61197ed45024b0ed8a2d74b80b4d909f1255473
+  section: Using Transformers
+  quote: |-
+    task = 'Given a web search query, retrieve relevant passages that answer the query'
+
+    queries = ["What is the capital of China?",
+        "Explain gravity",
+    ]
+
+    documents = [
+        "The capital of China is Beijing.",
+        "Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.",
+    ]
+
+    pairs = [format_instruction(task, query, doc) for query, doc in zip(queries, documents)]
+expected:
+  kind: none
+  values: null
+  origin: published
+  status: published_unverified
+notes: 'The card''s Transformers example (the runtime this recipe''s reference implements: AutoModelForCausalLM, the manual prefix/suffix frame, truncation longest_first at max_length 8192). The card prints no output for this example, so the case exercises the card''s own path: expected.kind none, nothing compared. The card pairs queries[i] with documents[i] (zip): the pairs are (q1, d1) and (q2, d2). The recipe declares instruction: none and its template frame carries exactly this instruction, so the recipe''s render equals the card''s construction; the GPU wave runs the pairs through the served endpoint to exercise the card frame (no numbers compared). The card''s vLLM Usage section (0.6B and 4B cards) is a different runtime (generation logprobs, a double-newline frame) and is listed in the lane report, not made a case. Lane CPU fp32 reproduction of this example''s own output (torch 2.9.1+cpu, transformers 4.57.6, fp32, CPU): softmax([no, yes])[yes] per zip pair = [0.999498, 0.999362] (raw logit differences [7.596951, 7.356449]); the card prints none, so nothing is compared - recorded for the GPU wave''s cross-check and in the report only.'

@@ -1,0 +1,100 @@
+# The uv workspace root: the workspace members and the tooling config only. The distributions carry
+# their own manifests (rcp-ndcg/pyproject.toml and the project directories beside it); tools/
+# layout_move.py keeps this split and the member list current.
+
+[tool.uv.workspace]
+members = ["rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-test", "rcp-ndcg-vllm"]
+
+[tool.uv.sources]
+# An inter-member requirement resolves to the checkout, never to an index.
+rcp-ndcg = { workspace = true }
+rcp-ndcg-core = { workspace = true }
+rcp-ndcg-test = { workspace = true }
+rcp-ndcg-vllm = { workspace = true }
+
+[tool.ruff.lint.isort]
+known-first-party = ["rcp_ndcg"]
+
+[dependency-groups]
+dev = [
+  "rcp-ndcg-test",
+]
+
+# The one extension seam: job runners. The public ones are registered here like any plugin would be.
+
+[tool.pytest.ini_options]
+# Collect the test tree only (experiments/ and examples/ are exercised through tests/).
+testpaths = ["tests"]
+# The judging client and the execution layers are async end to end; `auto` mode keeps
+# `async def test_...` working without an @pytest.mark.asyncio on each one.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+  "network: needs the public HuggingFace Hub; the test also skips itself unless RCP_NDCG_NETWORK_TESTS=1",
+]
+# A test whose code raises one of the package's warnings must assert it (pytest.warns, or a recorded set in the
+# docs snippets): an unasserted RcpNdcgWarning is an error, not a line in the warnings summary.
+filterwarnings = ["error::rcp_ndcg.errors.RcpNdcgWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# A recipe's vendored card script (rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/qwen3_vl_embedding.py) is a model's
+# published code, kept byte-identical to the Hub file and hash-pinned by the recipe's test: it is never
+# reformatted or linted. The pattern names that exact filename only (a differently named vendored file
+# would need its own entry), so nothing else can hide behind it; force-exclude keeps the exclusion
+# working when the file is named explicitly on the command line.
+# The embeddinggemma-2 fold (rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/) is the same
+# case: transformers 5.19.0's four embedding_gemma2 modules and vLLM nightly 8cbd5d03's
+# embedding_gemma2 model, kept byte-identical to the upstream files (only a header is added) and loaded
+# under their upstream names (the transformers modules) or by the registry's lazy string (the model) by
+# the plugin; upstream's own layout is never reformatted. Nothing else lives under that directory.
+force-exclude = true
+extend-exclude = [
+  "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/qwen3_vl_embedding.py",
+  "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/*.py",
+]
+
+[tool.ruff.format]
+# ruff >= 0.16 also formats fenced Python blocks inside Markdown. The snippets in
+# the docs are laid out for a reader; tests/docs runs them instead. `ruff check`
+# does not lint Markdown either way.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.basedpyright]
+include = ["rcp-ndcg/src", "rcp-ndcg-core/src", "rcp-ndcg-vllm/src", "rcp-ndcg-test/src"]
+# The recipes' reference subprocesses were outside the type-checked sources before the layout move (they
+# ran as subprocesses in their own environment, never imported); the move parked them inside a src tree,
+# and the exclusions keep the checked scope what it was. Same for the node scripts the move merged
+# into the test package from the old top-level jobs/ tree, and for topk_probe.py, the one-family GPU
+# probe, which runs in the pod's environment and is never imported by the suite. The embeddinggemma-2
+# fold is the vendored upstream modules (transformers 5.19.0's and vLLM nightly 8cbd5d03's
+# embedding_gemma2 files, kept byte-identical, loaded by the engine's plugin, never imported by the
+# harness): upstream's own optional-typing style is not this tree's to fix.
+exclude = [
+    "**/__pycache__",
+    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/**",
+    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/**",
+    "rcp-ndcg-test/src/rcp_ndcg_test/jobs/reference_deps.py",
+    "rcp-ndcg-test/src/rcp_ndcg_test/jobs/report.py",
+    "rcp-ndcg-test/src/rcp_ndcg_test/jobs/topk_probe.py",
+]
+# "standard" rather than basedpyright's default "all": the strict-adjacent rules
+# (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands
+# of times across code that is correct, and a check that always fails is a check
+# nobody reads.
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+# The optional stacks are absent by design in the environment CI type-checks in
+# (that is the point of the zero-GPU spine), so an unresolved import of torch or
+# vllm is expected rather than a defect. Real type errors in the code that
+# *uses* them are still reported.
+reportMissingImports = "none"
+reportMissingModuleSource = "none"
+# torch's stubs do not list `tensor`, `sum`, `device` and friends in __all__, so
+# this rule flags most of the torch API as a private import. It says nothing
+# about our code.
+reportPrivateImportUsage = "none"

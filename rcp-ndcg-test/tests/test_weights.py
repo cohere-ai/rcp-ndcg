@@ -1,0 +1,165 @@
+"""The HF weight helpers: measure, decide, evict (node-runtime item 8) — offline, on a fake cache."""
+
+from __future__ import annotations
+
+import os
+import types
+from pathlib import Path
+from typing import Any
+
+import pytest
+from rcp_ndcg_test.jobs import weights
+
+#: The real helper, captured before the autouse offline fixture replaces the module attribute.
+_REAL_MODEL_WEIGHT_FILES = weights.model_weight_files
+
+
+@pytest.fixture()
+def cache_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An HF cache root in tmp_path, selected the way the engines select it ($HF_HUB_CACHE)."""
+    root = tmp_path / "hub"
+    root.mkdir()
+    monkeypatch.setenv("HF_HUB_CACHE", str(root))
+    return root
+
+
+def _model(cache_root: Path, model: str, *, megabytes: int) -> Path:
+    """A fake downloaded model: blobs, snapshots and refs, the layout huggingface_hub writes."""
+    directory = cache_root / f"models--{model.replace('/', '--')}"
+    (directory / "refs").mkdir(parents=True)
+    (directory / "blobs").mkdir()
+    snapshots = directory / "snapshots" / "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
+    snapshots.mkdir(parents=True)
+    (snapshots / "model.safetensors").write_bytes(b"0" * (megabytes * 1 << 20))
+    return directory
+
+
+def test_hf_cache_root_honours_the_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """$HF_HUB_CACHE wins over $HF_HOME, and neither gives the home default."""
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    assert weights.hf_cache_root() == tmp_path / "hub"
+    monkeypatch.delenv("HF_HUB_CACHE")
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "home"))
+    assert weights.hf_cache_root() == tmp_path / "home" / "hub"
+    monkeypatch.delenv("HF_HOME")
+    assert weights.hf_cache_root() == Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def test_snapshot_bytes_measures_a_cached_model(cache_root: Path) -> None:
+    """The cache's own bytes: 4 MiB here, 0 for a model that was never served."""
+    _model(cache_root, "org/model", megabytes=4)
+    assert weights.snapshot_bytes("org/model") >= 4 << 20
+    assert weights.snapshot_bytes("org/absent") == 0
+
+
+def test_evict_removes_only_the_model_directory(cache_root: Path) -> None:
+    """One eviction frees the model's bytes and touches nothing else in the cache root."""
+    _model(cache_root, "org/model", megabytes=8)
+    keep = cache_root / "models--org--other"
+    keep.mkdir()
+    eviction = weights.evict("org/model")
+    assert eviction.removed
+    assert eviction.freed_bytes >= 8 << 20
+    assert eviction.error is None
+    assert not (cache_root / "models--org--model").exists()
+    assert keep.is_dir()
+
+
+def test_evict_of_an_absent_model_is_a_recorded_noop(cache_root: Path) -> None:
+    """A model that was never served: removed=False, no error, the wave goes on."""
+    eviction = weights.evict("org/absent")
+    assert eviction.removed is False
+    assert eviction.freed_bytes == 0
+    assert eviction.error is None
+
+
+def test_evict_frees_readonly_blobs(cache_root: Path) -> None:
+    """HF marks blobs read-only; an eviction still removes them."""
+    directory = _model(cache_root, "org/model", megabytes=1)
+    os.chmod(directory / "snapshots" / "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3" / "model.safetensors", 0o444)
+    assert weights.evict("org/model").removed
+    assert not directory.exists()
+
+
+def test_disk_free_bytes_measures_a_not_yet_created_cache_at_its_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh pod's HF cache does not exist before the first download: the measurement lands on the
+    nearest existing parent (the same filesystem), never a FileNotFoundError crash.
+
+    The resolved path is pinned on the argument ``shutil.disk_usage`` receives and the free bytes are
+    read once: the volume is shared (other lanes and the gate's own steps write while this test runs),
+    so two live readings taken microseconds apart differ by whatever landed in between.
+    """
+    import shutil
+
+    missing = tmp_path / "deep" / "not" / "created" / "hub"
+    assert not missing.exists()
+    asked: list[Path] = []
+    real_usage = shutil.disk_usage
+
+    def recording_usage(path: str | Path) -> Any:
+        asked.append(Path(path))
+        return real_usage(path)
+
+    monkeypatch.setattr(shutil, "disk_usage", recording_usage)
+    free = weights.disk_free_bytes(missing)
+    assert asked == [tmp_path], asked
+    assert free > 0
+
+
+def test_will_fit_refuses_a_model_that_measurably_does_not_fit() -> None:
+    """The one-line early failure: the model's size plus headroom against the free disk."""
+    free = 2 << 30
+    ok, reason = weights.will_fit(free, (4 << 30))
+    assert not ok
+    assert "GiB" in reason and "free" in reason
+    ok, reason = weights.will_fit(free, (1 << 30))
+    assert ok and reason == ""
+    ok, reason = weights.will_fit(free, None)
+    assert ok and reason == ""  # unknown size: the caller records it and decides
+
+
+def test_model_disk_bytes_counts_only_the_format_the_engine_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """g-rcjobs-8: vLLM downloads one weight format (the first of safetensors/bin/pt at the repo root,
+    ignoring ``original/**``) plus the small files beside it.  Summing every sibling sized
+    openai/gpt-oss-120b at 182.3 GiB against the 60.8 GiB it downloads, so a node with 62-183 GiB free
+    false-failed the judge recipe."""
+    import huggingface_hub
+
+    siblings = [
+        types.SimpleNamespace(rfilename="model-00001.safetensors", size=10 << 30),
+        types.SimpleNamespace(rfilename="original/model-00001.safetensors", size=10 << 30),
+        types.SimpleNamespace(rfilename="metal/model.bin", size=10 << 30),
+        types.SimpleNamespace(rfilename="config.json", size=1024),
+    ]
+    info = types.SimpleNamespace(siblings=siblings)
+    monkeypatch.setattr(weights, "model_weight_files", _REAL_MODEL_WEIGHT_FILES)
+    monkeypatch.setattr(
+        huggingface_hub.HfApi,
+        "model_info",
+        lambda self, model, revision=None, files_metadata=False: info,  # noqa: ARG005
+    )
+    expected = (10 << 30) + 1024
+    assert weights.model_disk_bytes("openai/gpt-oss-120b", "b5c939de") == expected
+    found = weights.model_weight_files("openai/gpt-oss-120b", "b5c939de")
+    assert found == ("*.safetensors", expected)
+
+
+def test_model_weight_files_falls_back_to_bin_when_no_safetensors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No root-level safetensors: the loader's next pattern decides, so a repo that ships only
+    ``pytorch_model.bin`` (plus another format's copy) is sized by the bin files alone."""
+    import huggingface_hub
+
+    siblings = [
+        types.SimpleNamespace(rfilename="pytorch_model.bin", size=4 << 30),
+        types.SimpleNamespace(rfilename="model.pt", size=9 << 30),
+        types.SimpleNamespace(rfilename="tokenizer.json", size=512),
+    ]
+    monkeypatch.setattr(weights, "model_weight_files", _REAL_MODEL_WEIGHT_FILES)
+    monkeypatch.setattr(
+        huggingface_hub.HfApi,
+        "model_info",
+        lambda self, model, revision=None, files_metadata=False: types.SimpleNamespace(siblings=siblings),  # noqa: ARG005
+    )
+    assert weights.model_weight_files("org/model") == ("*.bin", (4 << 30) + 512)

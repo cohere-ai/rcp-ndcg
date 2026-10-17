@@ -1,0 +1,75 @@
+id: topk-embed-v1-small/card-usage-sentencetransformers
+recipe: topk-embed-v1-small
+role: multi_vector
+source:
+  kind: model_card
+  url: https://huggingface.co/topk-io/topk-embed-v1-small
+  revision: e54485ebab921f2c18c4d092b3f4c40dcca26781
+  section: Usage with SentenceTransformers
+  quote: |
+    ```python
+    from PIL import Image
+    from sentence_transformers import MultiVectorEncoder
+
+    model = MultiVectorEncoder(
+        "topk-io/topk-embed-v1-small",
+        trust_remote_code=True,
+        device="cuda",
+    )
+
+    query_embeddings = model.encode_query(["What was Q3 revenue?"])
+
+    # Encode text and image documents in separate batches.
+    text_embeddings = model.encode_document([
+        "Q3 revenue was $12 million, up 20% year over year.",
+        "The company opened a new office in October.",
+    ])
+    with Image.open("page.png") as page:
+        image_embeddings = model.encode_document([page.convert("RGB")])
+
+    # MaxSim scores: one row per query, one column per document.
+    text_scores = model.similarity(query_embeddings, text_embeddings)    # (1, 2)
+    image_scores = model.similarity(query_embeddings, image_embeddings)  # (1, 1)
+    ```
+strata:
+  modality: mixed
+  length: short
+  batch: mixed_modality
+inputs:
+  instruction: null
+  queries:
+  - id: q1
+    text: What was Q3 revenue?
+  documents:
+  - id: d1
+    text: Q3 revenue was $12 million, up 20% year over year.
+  - id: d2
+    text: The company opened a new office in October.
+  - id: d3
+    image: media/card_page.png
+expected:
+  kind: none
+  values: null
+  tolerance: null
+  origin: published
+  status: published_unverified
+notes: >-
+  The card's only input/output example ("Usage with SentenceTransformers", README @
+  e54485ebab921f2c18c4d092b3f4c40dcca26781). It prints no numeric outputs -- only the batch-shape
+  comments "(1, 2)" and "(1, 1)" for model.similarity over the text-document and image-document
+  batches -- so expected.kind is none (case-format rule) and no tolerance applies; the GPU wave
+  checks the shapes (2 text docs + 1 image doc, 1 query) and that the image path runs. The card's
+  "page.png" is a user-provided file the repo does not ship (Hub tree @ the revision has no such
+  file); it is replaced by the deterministic synthetic page media/card_page.png from
+  media/make_media.py, which is not card content. The card encodes text and image documents in
+  separate batches; the wave must keep that split (the image row is an image-only user message
+  through the checkpoint's chat template, no "Document: " head). The paragraph after the example
+  states the caps this recipe serves: 1024 tokens per query, 8192 per text document, 2048
+  dimensions. Measured with the pinned tokenizer (embedded truncation reset, G5): the query
+  renders to 8 tokens (all kept; queries never drop), d1 to 20 (16 kept after the document-side
+  scoring_skip_ids mask), d2 to 11 (9 kept); the image prompt's patch count follows the
+  processor's resize of card_page.png (850x1100 px). No CPU reproduction: the card requires a
+  CUDA GPU with bfloat16, the model is about 2.2B parameters (4.4 GB bf16 weights) -- above the
+  cases lane's 1B/10-minute CPU limit -- and the reference environment (torch 2.11.0,
+  flash-linear-attention 0.5.1) has no CPU path. Media are synthetic (media/make_media.py,
+  geometric page pattern, no third-party material).

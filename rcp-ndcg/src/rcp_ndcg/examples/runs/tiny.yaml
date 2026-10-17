@@ -1,0 +1,19 @@
+# The whole pipeline on the tiny dataset, judged offline by the fake judge: judge (tournament, rubric), calibrate,
+# evaluate. It ships with the package, so it runs from anywhere by name:
+#
+#   rcp-ndcg run start tiny --estimate
+#   rcp-ndcg run start tiny
+#
+# Paths in a run config are relative to the config file: the dataset is the tiny example next to this directory.
+# The fake judge answers from a hidden ability per document; its numbers mean nothing about the documents. Swap
+# `judge: fake` for a judge config (or pass --judge-url and --judge-model) to judge for real. The schedules are
+# shrunk to the eight documents per query; the paper's are the defaults when these sections are left out.
+label: tiny
+dataset: jsonl:../tiny/rows.jsonl
+judge: fake
+steps: [tournament, rubric, calibrate, evaluate]
+# Placements per document: at eight documents, 4 random, 2 stratified and 2 adaptive windows of 4, and 8 rubric windows.
+tournament: {window: 4, random_placements: 2.0, stratified_placements: 1.0, adaptive_window: 4, adaptive_batches: 1, adaptive_placements: 1.0}
+rubric: {window: 4, placements_per_doc: 4.0, random_share: 0.5}
+evaluation:
+  k: 5

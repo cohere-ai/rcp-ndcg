@@ -1,0 +1,11 @@
+# flash-attn, installed AFTER requirements.txt (torch 2.9.1) and with build isolation off:
+#
+#     .venv/bin/pip install --no-build-isolation -r requirements-flash-attn.txt
+#
+# PyPI ships flash-attn 2.8.3 as an sdist whose setup.py imports torch at build time. Under pip's
+# default build isolation that import fails (``ModuleNotFoundError: torch``) while pip is still
+# resolving, because the target environment's torch is hidden from the build. With
+# ``--no-build-isolation`` the sdist builds against the installed torch and downloads the official
+# Dao-AILab prebuilt wheel for this pin.
+
+flash-attn==2.8.3 ; sys_platform == "linux"

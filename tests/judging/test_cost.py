@@ -1,0 +1,398 @@
+"""The estimate of a judging pass before it runs: calls, tokens and wall time."""
+
+from __future__ import annotations
+
+import warnings
+from pathlib import Path
+
+import pytest
+from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_ndcg_core.records import RankingExample
+
+from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp_ndcg.errors import CapabilityError, ConfigError
+from rcp_ndcg.judging import CostEstimate, JudgeConfig, RubricSchedule, TournamentSchedule, estimate, judge
+from rcp_ndcg.judging.client import Completion, CompletionInput
+from rcp_ndcg.judging.judging import CHAT_TEMPLATE_TOKENS
+from rcp_ndcg.judging.tokens import APPROX_TOKENS_PER_IMAGE, APPROXIMATION_NOTE, IMAGE_APPROXIMATION_NOTE
+from rcp_ndcg.testing import FakeJudge, tiny_rows
+
+
+def test_the_estimate_counts_the_schedules_calls() -> None:
+    rows, _ = tiny_rows()
+    judge = JudgeConfig(base_url="http://h/v1", model="m", concurrency=4)
+    result = estimate(rows, None, judge)
+    pools = [len(row.doc_ids) for row in rows]
+    assert result.stages["tournament"].calls == sum(TournamentSchedule().calls_per_query(n) for n in pools)
+    assert result.stages["rubric"].calls == sum(RubricSchedule().calls_per_query(n) for n in pools)
+    assert result.calls == result.stages["tournament"].calls + result.stages["rubric"].calls
+    assert result.input_tokens > 0 and result.wall_s > 0
+
+
+def test_an_estimate_reports_calls_and_tokens_and_no_usd() -> None:
+    """Judges run on the user's own engines: an estimate counts calls, tokens and time, never dollars."""
+    rows, _ = tiny_rows()
+    projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m"), stages=["rubric"])
+    payload = projected.model_dump(mode="json", by_alias=True)
+    assert set(payload) == {
+        "schema", "calls", "requests_min", "requests_max", "input_tokens", "output_tokens", "wall_s",
+        "stages", "input_token_count", "assumptions",
+    }  # fmt: skip
+    assert set(payload["stages"]["rubric"]) == {"calls", "input_tokens", "output_tokens"}
+    assert projected.calls > 0 and projected.input_tokens > 0 and projected.output_tokens > 0
+    assert not any("usd" in note.lower() or "price" in note.lower() for note in projected.assumptions)
+    assert "price" not in JudgeConfig.model_fields
+
+
+def test_the_estimate_reports_retries_as_a_range() -> None:
+    """A window's answer is retried up to ``MAX_ATTEMPTS`` times, and every retry re-sends the prompt: the
+    requests (and the tokens) are a range, not the one-attempt count the estimate used to print."""
+    from rcp_ndcg.judging.judging import MAX_ATTEMPTS
+
+    rows, _ = tiny_rows()
+    projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m"), stages=["rubric"])
+    assert projected.requests_min == projected.calls
+    assert projected.requests_max == projected.calls * MAX_ATTEMPTS
+    assert any("retr" in note for note in projected.assumptions)
+
+
+def test_a_context_window_caps_the_text_counted(word_tokenizer_file: Path) -> None:
+    rows, _ = tiny_rows()
+    long_rows = [row.model_copy(update={"docs": [(text + " ") * 500 for text in row.docs]}) for row in rows]
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", tokenizer=str(word_tokenizer_file))
+    whole = estimate(long_rows, None, judge_cfg, stages=["rubric"])
+    capped = estimate(long_rows, None, judge_cfg.model_copy(update={"context_tokens": 4_096}), stages=["rubric"])
+    assert capped.input_tokens < whole.input_tokens
+    assert capped.input_tokens <= capped.calls * 4_096
+
+
+def test_without_a_tokenizer_the_context_cuts_nothing_and_the_count_is_labelled_approximate() -> None:
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m")
+    whole = estimate(rows, None, judge_cfg, stages=["rubric"])
+    with_context = estimate(rows, None, judge_cfg.model_copy(update={"context_tokens": 4_096}), stages=["rubric"])
+    assert with_context.input_tokens == whole.input_tokens
+    assert whole.input_token_count == "approximate" and APPROXIMATION_NOTE in whole.assumptions[0]
+
+
+class _Recording(FakeJudge):
+    """The fake judge, keeping every request it answers."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.requests: list[CompletionInput] = []
+
+    async def complete(self, request: CompletionInput) -> Completion:
+        self.requests.append(request)
+        return await super().complete(request)
+
+
+def test_with_a_tokenizer_the_estimate_counts_the_prompts_exactly(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """Every window shows all three documents, so each call's prompt is the estimate's per-call count exactly."""
+    docs = {"a": "the evidence & the answer, " * 20, "b": "one two three " * 30, "c": "a query of the page"}
+    rows = [RankingExample(query_id="q", query="the query", doc_ids=list(docs), docs=list(docs.values()))]
+    schedule = RubricSchedule(window=3, placements_per_doc=4.0)
+    fake = _Recording(lambda text: 0.0)
+    fake.config = fake.config.model_copy(update={"tokenizer": str(word_tokenizer_file)})
+
+    projected = estimate(rows, None, fake.config, stages=["rubric"], schedules={"rubric": schedule})
+    judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=schedule)
+
+    words = load_tokenizer(str(word_tokenizer_file))
+    assert projected.calls == len(fake.requests)
+    assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
+    assert projected.input_token_count == "exact" and str(word_tokenizer_file) in projected.assumptions[0]
+
+
+def test_the_estimate_counts_the_query_text_the_pass_sends(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """The task instruction (its generic prefix) and the title rule shape what the judge reads: the estimate
+    counts those strings, so its ``exact`` label is the pass's own count."""
+    from rcp_ndcg.data import Dataset
+
+    dataset = Dataset.from_records(
+        name="sample",
+        corpus=[{"doc_id": "d1", "title": "Tortoises", "text": "a tortoise is a reptile " * 10}],
+        queries=[{"query_id": "q", "text": "find docs", "instruction": "about turtles"}],
+        qrels=[{"query_id": "q", "doc_id": "d1", "grade": 1.0}],
+        candidates={"q": ["d1"]},
+        task_instruction="Given a claim, find documents that refute the claim",
+    )
+    schedule = RubricSchedule(window=1, placements_per_doc=2.0, random_share=1.0)
+    fake = _Recording(lambda text: 0.0)
+    fake.config = fake.config.model_copy(update={"tokenizer": str(word_tokenizer_file), "title": "separate"})
+
+    projected = estimate(dataset, None, fake.config, stages=["rubric"], schedules={"rubric": schedule})
+    judge(dataset, None, fake, stage="rubric", out=tmp_path, schedule=schedule)
+
+    words = load_tokenizer(str(word_tokenizer_file))
+    assert projected.calls == len(fake.requests)
+    assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
+    assert projected.input_token_count == "exact"
+
+
+def test_the_estimate_counts_each_planned_window_at_its_own_size(tmp_path: Path, word_tokenizer_file: Path) -> None:
+    """A planned pass renders each window at its own size's budget; the estimate groups the plan by size and
+    counts each group at its own window, so an 'exact' count is the prompts the pass sends."""
+    docs = {f"d{index}": f"doc {index} " + "word " * (400 if index == 0 else 10) for index in range(10)}
+    rows = [RankingExample(query_id="q", query="q", doc_ids=list(docs), docs=list(docs.values()))]
+    plan = [list(docs), list(docs)[:1], list(docs)[1:2], list(docs)[:1]]  # one 10-doc, one 1-doc, and a repeat
+    schedule = RubricSchedule(window=10, placements_per_doc=1.0, random_share=1.0)
+    fake = _Recording(lambda text: 0.0)
+    fake.config = fake.config.model_copy(
+        update={"tokenizer": str(word_tokenizer_file), "context_tokens": 2_000, "max_output_tokens": 100}
+    )
+
+    projected = estimate(
+        rows, None, fake.config, stages=["rubric"], schedules={"rubric": schedule}, windows={"q": plan}
+    )
+    judge(rows, None, fake, stage="rubric", out=tmp_path, schedule=schedule, windows={"q": plan})
+
+    words = load_tokenizer(str(word_tokenizer_file))
+    assert projected.calls == len(fake.requests) == 3  # the repeated window is asked once
+    assert projected.input_tokens == sum(words.count(r.user_prompt) + CHAT_TEMPLATE_TOKENS for r in fake.requests)
+
+
+def _image_rows(images_per_doc: int, docs: int = 3) -> list[RankingExample]:
+    """One query whose ``docs`` documents each carry ``images_per_doc`` images."""
+
+    def page(index: int) -> Content:
+        refs = [ImagePart(ref=MediaRef(uri=f"p{index}-{k}.png")) for k in range(images_per_doc)]
+        return Content.from_parts([TextPart(text=f"page {index}"), *refs])
+
+    return [
+        RankingExample(
+            query_id="q",
+            query="q",
+            doc_ids=[f"d{index}" for index in range(docs)],
+            contents=[page(index) for index in range(docs)],
+        )
+    ]
+
+
+def test_a_planned_window_over_the_max_images_is_refused_as_the_pass_refuses_it() -> None:
+    """The estimate is a pre-flight of the pass: a window carrying more images than the judge's
+    ``max_images`` is refused with the pass's own :class:`CapabilityError` -- naming the cap, the window and
+    the fix -- instead of projecting a pass whose first call the endpoint would refuse. The measured run
+    needed 150 images in one window against a shipped cap of 10."""
+    rows = _image_rows(50)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=10, context_tokens=272_000)
+
+    with pytest.raises(CapabilityError) as caught:
+        estimate(rows, None, hosted, stages=["rubric"], windows={"q": [["d0", "d1", "d2"]]})
+
+    error = caught.value
+    assert error.details == {"query_id": "q", "window": 3, "images": 150, "max_images": 10}
+    assert "150" in error.message and "10" in error.message and "q" in error.message
+    assert "max_images" in (error.hint or "")
+    assert error.cli_hint == "--set judge.max_images=150"
+
+
+def test_a_scheduled_window_over_the_max_images_is_refused() -> None:
+    """Without a plan the schedule picks the window's documents, so the gate checks the most images any
+    window of that size could carry (the rubric's image window is three documents here, 150 images)."""
+    rows = _image_rows(50)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=10, context_tokens=272_000)
+
+    with pytest.raises(CapabilityError, match="150 images"):
+        estimate(rows, None, hosted, stages=["rubric"])
+
+
+def test_a_window_at_the_max_images_is_estimated() -> None:
+    """The cap is inclusive: a window carrying exactly ``max_images`` images is the pass's own limit, not a
+    refusal, and a judge declared to read none refuses any window carrying an image."""
+    from rcp_ndcg.errors import RcpNdcgWarning
+
+    rows = _image_rows(50)
+    at_cap = JudgeConfig(base_url="http://h/v1", model="m", max_images=150, context_tokens=272_000)
+    with pytest.warns(RcpNdcgWarning):
+        projected = estimate(rows, None, at_cap, stages=["rubric"], windows={"q": [["d0", "d1", "d2"]]})
+    assert projected.calls == 1
+
+    reads_none = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=272_000)
+    with pytest.raises(CapabilityError, match="max_images: 0"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        estimate(rows, None, reads_none, stages=["rubric"], windows={"q": [["d0", "d1", "d2"]]})
+
+
+def _video_rows(docs: int, *, frames: int, container: bool) -> list[RankingExample]:
+    """One query whose ``docs`` documents are each a frame directory (``frames`` frames) or a container."""
+
+    def video(index: int) -> Content:
+        if container:
+            ref = MediaRef(uri=f"clip{index}.mp4", mime="video/mp4", num_bytes=64, num_frames=8, fps=4.0)
+            return Content.from_parts([VideoPart(ref=ref)])
+        refs = [MediaRef(uri=f"frame{index}_{i}.jpg", mime="image/jpeg", width=64, height=64) for i in range(frames)]
+        return Content.from_parts([VideoPart(frames=refs, frame_indices=list(range(frames)))])
+
+    return [
+        RankingExample(
+            query_id="q", query="q", doc_ids=[f"d{i}" for i in range(docs)], contents=[video(i) for i in range(docs)]
+        )
+    ]
+
+
+def test_the_estimate_counts_the_sampled_frames_a_frames_policy_sends() -> None:
+    """The gate counted every raw frame of a clip, so a 60-frame directory under ``num_frames: 4`` was
+    refused against a cap the pass's own pre-send gate (which counts the sampled frames) accepts."""
+    from rcp_ndcg.data.preprocess import Preprocessing
+    from rcp_ndcg.data.resolution import VideoPolicy
+
+    rows = _video_rows(5, frames=60, container=False)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=20)
+    policy = Preprocessing(video=VideoPolicy(num_frames=4, wire="frames"))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # the approximation warning
+        projected = estimate(rows, None, hosted, stages=["rubric"], preprocessing=policy)
+
+    assert projected.calls == RubricSchedule.for_modality("video").calls_per_query(5, n_units=5)
+
+
+def test_the_estimate_gates_videos_against_max_videos() -> None:
+    """A ``video_url`` window of five containers was blessed while every window is refused at its first call
+    (the pass's gate checks ``max_videos``); the estimate must check it like the pass does."""
+    from rcp_ndcg.data.preprocess import Preprocessing
+    from rcp_ndcg.data.resolution import VideoPolicy
+
+    rows = _video_rows(5, frames=0, container=True)
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_videos=1, context_tokens=272_000)
+    policy = Preprocessing(video=VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True))
+
+    with pytest.raises(CapabilityError, match="max_videos") as caught:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # the approximation warning
+            estimate(rows, None, hosted, stages=["rubric"], preprocessing=policy)
+
+    assert caught.value.details["videos"] == 5 and caught.value.cli_hint == "--set judge.max_videos=5"
+
+
+def test_the_wall_time_is_labelled_a_floor_in_the_assumptions_and_the_schema() -> None:
+    """The wall time has no term for what a call carries (a 150-image window took 18.9x the projection on
+    the measured run), so the estimate calls it a floor in the assumptions and in the schema's docstring
+    rather than printing a number that reads as an expectation."""
+    import math
+
+    from rcp_ndcg.judging.cost import SECONDS_PER_CALL
+    from rcp_ndcg.schemas import show
+
+    rows, _ = tiny_rows()
+    projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m", concurrency=4))
+
+    assert any("floor" in note and "wall" in note for note in projected.assumptions)
+    assert projected.wall_s == math.ceil(projected.calls / 4) * SECONDS_PER_CALL
+    assert "floor" in show("cost-estimate")["properties"]["wall_s"]["description"]
+    assert "floor" in (CostEstimate.__doc__ or "")
+
+
+def test_the_text_only_numbers_do_not_move(word_tokenizer_file: Path) -> None:
+    """Pin the text-only arithmetic the media gate and the floor label must not touch.
+
+    The measured run's 5,719 + 2,660 calls and 154,506,135 input tokens came from a cluster corpus outside
+    this repository; what is reproducible here is the same path on a fixed plan, frozen below, plus the
+    paper's own per-query counts at a pool of 150. Any change to the text counting moves them.
+    """
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(
+        base_url="http://h/v1", model="m", concurrency=4, tokenizer=str(word_tokenizer_file), max_images=0
+    )
+    projected = estimate(rows, None, judge_cfg)
+
+    assert (projected.calls, projected.input_tokens, projected.output_tokens, projected.wall_s) == (
+        53,
+        85_277,
+        15_120,
+        280.0,
+    )
+    assert projected.input_token_count == "exact"
+    assert (TournamentSchedule().calls_per_query(150), RubricSchedule().calls_per_query(150)) == (216, 100)
+
+
+def _pages(images_per_page: int) -> list[RankingExample]:
+    def page(index: int) -> Content:
+        refs = [ImagePart(ref=MediaRef(uri=f"p{index}-{k}.png")) for k in range(images_per_page)]
+        return Content.from_parts([TextPart(text=f"page {index}"), *refs])
+
+    return [RankingExample(query_id="q", query="q", doc_ids=["p0", "p1", "p2"], contents=[page(i) for i in range(3)])]
+
+
+def test_a_hosted_judges_images_are_approximated_and_labelled() -> None:
+    """No image_processor: the engine sizes the images, so their tokens are an assumption, stated as one."""
+    from rcp_ndcg.errors import RcpNdcgWarning
+
+    hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=6, context_tokens=272_000)
+    with pytest.warns(RcpNdcgWarning, match="image tokens are approximate") as warned:
+        one, two = (estimate(_pages(n), None, hosted, stages=["rubric"]) for n in (1, 2))
+    window = min(RubricSchedule.for_modality("image").window, 3)
+    assert two.input_tokens - one.input_tokens == two.calls * window * APPROX_TOKENS_PER_IMAGE
+    assert f"image tokens {IMAGE_APPROXIMATION_NOTE}" in two.assumptions
+    assert {w.message.code for w in warned} == {"APPROXIMATE_IMAGE_TOKENS"}  # type: ignore[union-attr]
+
+
+def test_the_assumptions_name_only_the_stages_estimated() -> None:
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m")
+    rubric = " ".join(estimate(rows, None, judge_cfg, stages=["rubric"]).assumptions)
+    both = " ".join(estimate(rows, None, judge_cfg).assumptions)
+    assert "tournament" not in rubric and "rubric window" in rubric
+    assert "tournament window" in both and "adaptive tournament phase" in both
+
+
+def test_a_text_budget_over_uncountable_images_is_refused_as_the_pass_refuses_it(word_tokenizer_file: Path) -> None:
+    budgeted = JudgeConfig(
+        base_url="http://h/v1", model="m", max_images=6, context_tokens=272_000, tokenizer=str(word_tokenizer_file)
+    )
+    with pytest.raises(ConfigError, match="native-size image policy"):
+        estimate(_pages(1), None, budgeted, stages=["rubric"])
+
+
+@pytest.mark.parametrize("stage", ["tournament", "rubric"])
+def test_the_estimate_of_a_subset_counts_the_calls_the_pass_makes(stage: str, tmp_path) -> None:
+    from rcp_ndcg.judging import judge
+    from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge
+
+    rows, ability = tiny_rows()
+    fake = FakeJudge(lambda text: ability[text.split()[-1]])
+    pools = {row.id: list(row.doc_ids) for row in rows if row.id == "q2"}
+    docs = {"q2": ["q2-d10", "q2-d11", "q2-d03"]}
+    schedule = TINY_TOURNAMENT if stage == "tournament" else TINY_RUBRIC
+    projected = estimate(rows, pools, fake.config, stages=(stage,), docs=docs, schedules={stage: schedule})
+    judge(rows, pools, fake, stage=stage, out=tmp_path, docs=docs, schedule=schedule)
+    assert projected.calls == fake.usage.requests
+
+
+def test_the_character_approximation_is_labelled_a_heuristic_not_a_bound() -> None:
+    assert "heuristic" in APPROXIMATION_NOTE and "bound" not in APPROXIMATION_NOTE
+
+
+def test_the_output_cap_holds_at_max_output_tokens() -> None:
+    """The estimate's per-call output is at most ``max_output_tokens`` when the window's per-document share
+    would exceed it (the cap is not a floor): the estimate must not drift under a small declared budget."""
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m")
+    whole = estimate(rows, None, judge_cfg, stages=["rubric"])
+    capped = estimate(rows, None, judge_cfg.model_copy(update={"max_output_tokens": 8}), stages=["rubric"])
+    assert capped.output_tokens == capped.calls * 8, "every call is capped at the declared budget"
+    assert whole.output_tokens > capped.output_tokens
+
+
+def test_the_estimate_passes_the_judges_tokenizer_to_the_media_count(
+    monkeypatch: pytest.MonkeyPatch, word_tokenizer_file: Path
+) -> None:
+    """An fps container's timestamp lines are tokenizer-dependent: the estimate must pass the judge's
+    tokenizer into the media count (dropping the pass silently reverts to the family's bound)."""
+    from rcp_ndcg.judging import judging as judging_module
+
+    seen: dict[str, object] = {}
+    real = judging_module._media_tokens
+
+    def recorder(contents, preprocessing, **kwargs):
+        seen.update(kwargs)
+        return real(contents, preprocessing, **kwargs)
+
+    monkeypatch.setattr(judging_module, "_media_tokens", recorder)
+    rows, _ = tiny_rows()
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", tokenizer=str(word_tokenizer_file), context_tokens=4096)
+
+    estimate(rows, None, judge_cfg, stages=["rubric"])
+
+    assert seen.get("tokenizer") is not None, "the estimate's media count must use the judge's tokenizer"

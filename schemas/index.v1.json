@@ -1,0 +1,4188 @@
+{
+  "$defs": {
+    "BM25Config": {
+      "additionalProperties": false,
+      "description": "Okapi BM25 with ``bm25s``.",
+      "properties": {
+        "kind": {
+          "const": "bm25",
+          "default": "bm25",
+          "title": "Kind",
+          "type": "string"
+        },
+        "stemmer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A Snowball stemmer language of PyStemmer (``english``, ``german``, ``french``, ...) that corpus and queries are stemmed with, or ``None`` for no stemming. The stop list follows the language (``english`` keeps the ``en`` list, ``german`` the ``de`` one, ...); a language bm25s keeps no list for keeps no stop words. The list is recorded in the index beside the stemmer and read back at search time.",
+          "title": "Stemmer"
+        }
+      },
+      "title": "BM25Config",
+      "type": "object"
+    },
+    "ChunkPolicy": {
+      "additionalProperties": false,
+      "description": "How a long document is split for judging, in tokens of the judge's tokenizer.\n\nA document longer than ``max_tokens`` is split into consecutive chunks of at\nmost ``max_tokens`` tokens, each repeating the last ``overlap_tokens``\ntokens of the previous one, so evidence straddling a boundary is seen\nwhole by one chunk. A chunk is a verbatim slice of the document between\ntoken boundaries. Chunk ``k`` of document ``d`` has the id ``d#k`` (``k``\nfrom 0). The judge sees every chunk, and a document's judgements are pooled\nby ``aggregate``: within one window, a document passes a criterion when any\nof its chunks does, and its tournament score is its best chunk's.",
+      "properties": {
+        "aggregate": {
+          "const": "max",
+          "default": "max",
+          "description": "How chunk judgements pool onto their document (``\"max\"``).",
+          "title": "Aggregate",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "The largest chunk, and the length above which a document is split (tokens).",
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "overlap_tokens": {
+          "description": "Tokens shared by consecutive chunks (``< max_tokens``).",
+          "minimum": 0,
+          "title": "Overlap Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_tokens",
+        "overlap_tokens"
+      ],
+      "title": "ChunkPolicy",
+      "type": "object"
+    },
+    "CohereEmbedding": {
+      "additionalProperties": false,
+      "description": "Cohere's public API: Embed v4 (``embed-v4.0``, which also embeds page images). The key is read from\n``api_key_env``, else ``CO_API_KEY`` or ``COHERE_API_KEY``; ``base_url`` is omitted (the profile's public\nURL) unless it names a proxy.",
+      "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "api": {
+          "const": "cohere",
+          "default": "cohere",
+          "description": "The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own config).",
+          "title": "Api",
+          "type": "string"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. One URL, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest in flight; the offline fakes are one URL, never a list). The scheme must be ``http://``, ``https://`` or ``fake://``: a schemeless or mistyped URL is refused with a typed ``ConfigError`` rather than retried and parked as an outage. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "default": 32,
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
+          "title": "Dimensions"
+        },
+        "doc_prompt": {
+          "default": "",
+          "description": "Text prepended to every document. Content.",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "omit_zero_blank",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
+          "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. One of mrl_dims and mrl_range is declared when mrl_kind is declared; a projection kind needs the discrete set (the learned chain's tensor names are target widths).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+        },
+        "mrl_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose (\"output dimensions ranging from 32 to 1024\") rather than a table: every ``k`` in the closed interval is selectable and the client enforces the floor (the engine checks only ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of mrl_dims and mrl_range, not both.",
+          "title": "Mrl Range"
+        },
+        "normalize": {
+          "default": true,
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
+        },
+        "query_prompt": {
+          "default": "",
+          "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
+          "title": "Recipe"
+        },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
+          "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "CohereEmbedding",
+      "type": "object"
+    },
+    "DenseConfig": {
+      "additionalProperties": false,
+      "description": "One vector per text, searched by inner product.",
+      "properties": {
+        "encoder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServedEmbedding"
+            },
+            {
+              "$ref": "#/$defs/CohereEmbedding"
+            },
+            {
+              "$ref": "#/$defs/VoyageEmbedding"
+            },
+            {
+              "$ref": "#/$defs/GeminiEmbedding"
+            },
+            {
+              "$ref": "#/$defs/PluginEmbedding"
+            }
+          ],
+          "title": "Encoder"
+        },
+        "kind": {
+          "const": "dense",
+          "default": "dense",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encoder"
+      ],
+      "title": "DenseConfig",
+      "type": "object"
+    },
+    "GeminiEmbedding": {
+      "additionalProperties": false,
+      "description": "Google's Gemini embedding API (``gemini-embedding-001``). The key is read from ``api_key_env``, else\n``GEMINI_API_KEY`` or ``GOOGLE_API_KEY``; ``base_url`` is omitted unless it names a proxy.",
+      "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "api": {
+          "const": "gemini",
+          "default": "gemini",
+          "description": "The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own config).",
+          "title": "Api",
+          "type": "string"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. One URL, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest in flight; the offline fakes are one URL, never a list). The scheme must be ``http://``, ``https://`` or ``fake://``: a schemeless or mistyped URL is refused with a typed ``ConfigError`` rather than retried and parked as an outage. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "default": 32,
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
+          "title": "Dimensions"
+        },
+        "doc_prompt": {
+          "default": "",
+          "description": "Text prepended to every document. Content.",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "omit_zero_blank",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
+          "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. One of mrl_dims and mrl_range is declared when mrl_kind is declared; a projection kind needs the discrete set (the learned chain's tensor names are target widths).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+        },
+        "mrl_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose (\"output dimensions ranging from 32 to 1024\") rather than a table: every ``k`` in the closed interval is selectable and the client enforces the floor (the engine checks only ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of mrl_dims and mrl_range, not both.",
+          "title": "Mrl Range"
+        },
+        "normalize": {
+          "default": true,
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
+        },
+        "query_prompt": {
+          "default": "",
+          "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
+          "title": "Recipe"
+        },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
+          "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "GeminiEmbedding",
+      "type": "object"
+    },
+    "ImagePolicy": {
+      "additionalProperties": false,
+      "description": "The budget every page image and video frame is resized to, and the processor whose resize is used.\n\nBudget both or neither: without one, images go at their stored size and the engine's processor decides\n(native), so their token cost cannot be counted. With a known processor the budget must lie within\nthe engine's default budget for it (PROCESSORS), so the engine keeps the prepared size -- unless the\nengine is pinned to the budget itself (engine_pixel_pinning).",
+      "properties": {
+        "engine_pixel_pinning": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the engine serving this policy is pinned to exactly this budget (vLLM ``--mm-processor-kwargs '{\"images_kwargs\": {\"min_pixels\": <min_px>, \"max_pixels\": <max_px>}}'``; a serving recipe checks that both sides carry the same numbers). Then the budget is the engine's own and may lie outside the family's stock range -- the Qwen3-VL-Embedding card's 4096 px floor under qwen3_vl's stock 65536 -- and the engine keeps the prepared size. ``False`` is the absence of the declaration (stored as ``None``, so a policy that never names it keeps its identity).",
+          "title": "Engine Pixel Pinning"
+        },
+        "max_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The most pixels an image is scaled down to (the pixel-budget shape).",
+          "title": "Max Px"
+        },
+        "max_soft_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor resizes toward ``max_soft_tokens`` pooled patches, and the client prepares that resize's fixed point. Mutually exclusive with ``min_px``/``max_px``.",
+          "title": "Max Soft Tokens"
+        },
+        "min_px": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The fewest pixels an image is scaled up to (the pixel-budget shape).",
+          "title": "Min Px"
+        },
+        "processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The judge's image processor family (ImageProcessor). Left unset in a declared policy: the judging pass takes it from the judge config's ``image_processor`` (for_processor), so the recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are sent unchanged.",
+          "title": "Processor"
+        }
+      },
+      "title": "ImagePolicy",
+      "type": "object"
+    },
+    "LateInteractionConfig": {
+      "additionalProperties": false,
+      "description": "One vector per token, searched by MaxSim; the encoder is a served ``vllm_pooling`` endpoint.",
+      "properties": {
+        "encoder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServedPooling"
+            },
+            {
+              "$ref": "#/$defs/PluginPooling"
+            }
+          ],
+          "title": "Encoder"
+        },
+        "kind": {
+          "const": "late_interaction",
+          "default": "late_interaction",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "encoder"
+      ],
+      "title": "LateInteractionConfig",
+      "type": "object"
+    },
+    "MrlProjection": {
+      "additionalProperties": false,
+      "description": "Where a projection-kind head's learned matrices live (one naming convention).\n\nThe file's tensors are named by their TARGET WIDTH, and the head applies the chain of them from the\nwidest declared dimension down to ``k`` (each a matrix ``(in_width, out_width)`` in the file). The\ndeclared ``mrl_dims`` are therefore the projected sizes (the full width is served without a head and\nis not declared): for a set ``(1280, 640, 320)``, ``k=640`` applies the ``1280`` tensor (full width ->\n1280) and then the ``640`` tensor (1280 -> 640). One convention, no per-declaration tensor names.",
+      "properties": {
+        "source": {
+          "description": "The safetensors file holding the learned matrices: a storage URI (``hf://org/model@revision/projections.safetensors``, a ``gs://`` object, an ``https://`` URL) or a local path. The declared revision is part of the URI, so the bytes are immutable.",
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "MrlProjection",
+      "type": "object"
+    },
+    "PluginEmbedding": {
+      "additionalProperties": false,
+      "description": "A third-party embed wire: ``api`` names a registered adapter of the embed role that is not a shipped\none, and the role's generic config carries it (the shipped names select their own classes).\n\nThe registry check happens where the config is read (_resolve_embed_api); this class is the shape a\nregistered plugin name builds, every other field inherited from\nEmbeddingEndpoint. A shipped ``api`` is refused here, and ``api`` has\nno default: a plugin config names its adapter, or it does not build.",
+      "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "api": {
+          "description": "The registered adapter name of the third-party wire (required: a plugin is its api)",
+          "title": "Api",
+          "type": "string"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. One URL, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest in flight; the offline fakes are one URL, never a list). The scheme must be ``http://``, ``https://`` or ``fake://``: a schemeless or mistyped URL is refused with a typed ``ConfigError`` rather than retried and parked as an outage. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "default": 32,
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
+          "title": "Dimensions"
+        },
+        "doc_prompt": {
+          "default": "",
+          "description": "Text prepended to every document. Content.",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "omit_zero_blank",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
+          "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. One of mrl_dims and mrl_range is declared when mrl_kind is declared; a projection kind needs the discrete set (the learned chain's tensor names are target widths).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+        },
+        "mrl_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose (\"output dimensions ranging from 32 to 1024\") rather than a table: every ``k`` in the closed interval is selectable and the client enforces the floor (the engine checks only ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of mrl_dims and mrl_range, not both.",
+          "title": "Mrl Range"
+        },
+        "normalize": {
+          "default": true,
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
+        },
+        "query_prompt": {
+          "default": "",
+          "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
+          "title": "Recipe"
+        },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
+          "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "api",
+        "model"
+      ],
+      "title": "PluginEmbedding",
+      "type": "object"
+    },
+    "PluginPooling": {
+      "additionalProperties": false,
+      "description": "A third-party multi-vector wire: ``api`` names a registered adapter of the ``multi_vector`` role that is\nnot a shipped one, and the role's generic config carries it. See PluginEmbedding; a shipped\n``api`` is refused here, so ``vllm_pooling`` always selects ServedPooling.",
+      "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "api": {
+          "description": "The registered adapter name of the third-party wire (required: a plugin is its api)",
+          "title": "Api",
+          "type": "string"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. One URL, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest in flight; the offline fakes are one URL, never a list). The scheme must be ``http://``, ``https://`` or ``fake://``: a schemeless or mistyped URL is refused with a typed ``ConfigError`` rather than retried and parked as an outage. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "default": 32,
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The width of one token vector -- the checkpoint's late-interaction dimension (ColBERT-style checkpoints project to a fixed width, e.g. 128). Content: it is the served checkpoint's own output width. Needed to decode the base64 frame of ``/pooling``, which is flat and carries no shape (``vllm/utils/serial_utils.py::tensor2binary`` flattens); the response's token counts are checked against it, so a mistyped width fails loudly instead of silently mis-shaping every vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding makes it unnecessary (its metadata carries each item's ``shape``).",
+          "title": "Dim"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
+          "title": "Dimensions"
+        },
+        "doc_prompt": {
+          "default": "",
+          "description": "Text prepended to every document. Content.",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "document_skip_engine_side": {
+          "default": false,
+          "description": "Whether the SERVED PLUGIN applies document_skip_token_ids engine-side (the pplx-late plugin's pooler; the recipe declares the same ids for the engine in its ``serve.hf_overrides.document_skip_token_ids``, which the recipe loader cross-checks against this rule): the engine drops the excluded positions from the token ids it sees before the reply, so the wire carries only the kept vectors -- for a text document and for a media document's chat-template render alike. The client then does not slice: it counts the declared kept vectors (kept_vector_count) and refuses a reply whose count disagrees (never silent). ``False`` (the default): the client applies the rule itself, as before. Refused without document_skip_token_ids (there is no rule to apply) and beside ``outputs: per_chunk`` (a per-chunk layout has no per-token count to check). Content: it changes the engine's output.",
+          "title": "Document Skip Engine Side",
+          "type": "boolean"
+        },
+        "document_skip_token_ids": {
+          "default": [],
+          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment). The skip rule at image positions: a MEDIA document's positions are the server's chat-template render, which the client cannot tokenise -- the image positions are exempt (the vision tokens are what the model reads for the media), the client keeps every returned vector of a media document, and the deviation is recorded on the row's processing record (``skip_unapplied``) -- never silently unskipped. A declared media_keep_token_ids changes that: the engine then applies the media allowlist, the client counts its positions and writes no deviation. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Document Skip Token Ids",
+          "type": "array"
+        },
+        "document_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
+          "title": "Document Split Special Tokens"
+        },
+        "embed_dtype": {
+          "default": "float16",
+          "description": "The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision) halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the vectors. MaxSim computes in float32 either way.",
+          "enum": [
+            "float16",
+            "float32"
+          ],
+          "title": "Embed Dtype",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "omit_zero_blank",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
+          "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "media_head_as_system": {
+          "default": false,
+          "description": "For a media document, send the shape's leading fixed template segments (the trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a system message, so a media document rendered without it loses the trained prefix. The head is resolved from the template (specials by name), the user turn keeps only the content span, and the budget's fixed overhead already reserves the head's tokens. Refused without a template (no head exists to send) or without media (inert). Content: it changes the prompt the model reads.",
+          "title": "Media Head As System",
+          "type": "boolean"
+        },
+        "media_keep_token_ids": {
+          "default": [],
+          "description": "The token ids a MEDIA document's kept vectors are restricted to (the checkpoint's own ``keep_only_token_ids``: topk-embed-v1's image-patch token, the only positions its reference keeps for an image document -- ``topk_embed_st.py:_image_row``'s ``keep = ids == image_token_id``). The SERVED PLUGIN applies it engine-side (the recipe declares the same ids for the engine in ``serve.hf_overrides.document_keep_token_ids``, which the recipe loader cross-checks against this allowlist): a media render keeps only the allowlist's positions, so the chat template's structural tokens, the trained head and a caption drop -- exactly what the reference keeps. The client then does not keep the media vectors whole: it counts the declared kept vectors (the media block's patch run, the wrapper and the head/caption positions being outside the allowlist) and refuses a reply whose per-item count disagrees (never silent); no ``skip_unapplied`` record is written for a media item. Empty (the default): no allowlist, and a media render follows document_skip_token_ids (kept whole, on record, when that rule is the client's). Content: it changes the engine's output.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Media Keep Token Ids",
+          "type": "array"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. One of mrl_dims and mrl_range is declared when mrl_kind is declared; a projection kind needs the discrete set (the learned chain's tensor names are target widths).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+        },
+        "mrl_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose (\"output dimensions ranging from 32 to 1024\") rather than a table: every ``k`` in the closed interval is selectable and the client enforces the floor (the engine checks only ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of mrl_dims and mrl_range, not both.",
+          "title": "Mrl Range"
+        },
+        "normalize": {
+          "default": true,
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "outputs": {
+          "default": "per_token",
+          "description": "What one input yields (2g, plug-pplx): ``\"per_token\"`` (the default) is the token_embed contract -- one vector per prompt token, which the reply's ``usage`` cross-checks; ``\"per_chunk\"`` is a per-chunk multi-output model -- several outputs per input, one slice of chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.",
+          "enum": [
+            "per_token",
+            "per_chunk"
+          ],
+          "title": "Outputs",
+          "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
+        },
+        "query_prompt": {
+          "default": "",
+          "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "query_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the QUERY side's content span of a ``request_shape: token_ids`` wire with the reference's split parse, keeping the fixed head under the file's own parse: the sent ids are then the head's added ids (the reference's own prefix id, e.g. ``[Q] ``) followed by the split-parsed body -- exactly the checkpoint's own construction (``prefix_id + tokenizer(body, split_special_tokens=True)``; pplx-embed-v2-context's remote ``prepare_inputs`` splits the query body too, so a query carrying a literal added-token spelling would otherwise read a different id sequence on the engine and in the reference). The whole-render added-token parse is what this replaces: the prefix must still cross as its added id, which is why the head is tokenized separately (``TemplateSpec.split_ids``, the one home of the rule the client and the harness share). ``None`` (the default) leaves the file's own parse -- unset, so no other run is re-keyed; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` and the template's query shape is a fixed head followed by one content span (the construction has no fixed tail). Content: it changes the ids the model reads.",
+          "title": "Query Split Special Tokens"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
+          "title": "Recipe"
+        },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
+          "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "api",
+        "model"
+      ],
+      "title": "PluginPooling",
+      "type": "object"
+    },
+    "Segment": {
+      "additionalProperties": false,
+      "description": "One segment of a rendered request shape: a piece of fixed frame text or a content span.\n\nExactly one of the two is set. A fixed segment writes its special tokens by name\n(``{special:<name>}``); a content span names the role whose text fills it\n(ContentSpan).",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "enum": [
+                "query",
+                "document",
+                "instruction"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The role whose text fills the span.",
+          "title": "Content"
+        },
+        "fixed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The frame text, with specials written ``{special:<name>}``.",
+          "title": "Fixed"
+        }
+      },
+      "title": "Segment",
+      "type": "object"
+    },
+    "ServedEmbedding": {
+      "additionalProperties": false,
+      "description": "A served embedding model: vLLM (``vllm serve``), TEI, Infinity, or OpenAI's own API, through\n``POST <base_url>/embeddings``.",
+      "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "api": {
+          "const": "openai_embeddings",
+          "default": "openai_embeddings",
+          "description": "The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own config).",
+          "title": "Api",
+          "type": "string"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the engine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused rather than silently overridden.",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "default": 32,
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
+          "title": "Dimensions"
+        },
+        "doc_prompt": {
+          "default": "",
+          "description": "Text prepended to every document. Content.",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "omit_zero_blank",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
+          "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. One of mrl_dims and mrl_range is declared when mrl_kind is declared; a projection kind needs the discrete set (the learned chain's tensor names are target widths).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+        },
+        "mrl_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose (\"output dimensions ranging from 32 to 1024\") rather than a table: every ``k`` in the closed interval is selectable and the client enforces the floor (the engine checks only ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of mrl_dims and mrl_range, not both.",
+          "title": "Mrl Range"
+        },
+        "normalize": {
+          "default": true,
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
+        },
+        "query_prompt": {
+          "default": "",
+          "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
+          "title": "Recipe"
+        },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
+          "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "ServedEmbedding",
+      "type": "object"
+    },
+    "ServedPooling": {
+      "additionalProperties": false,
+      "description": "A served multi-vector (late interaction) model, through vLLM's ``POST <base_url>/pooling`` with\n``task: token_embed``.\n\n``base_url`` is ``None`` only when the run's job starts the encoder's engine (``serve.encoder``): the\nengine's URLs then reach the step at runtime, through ``RCP_NDCG_ENGINES``, and setting both is refused\nrather than silently overridden.",
+      "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "api": {
+          "const": "vllm_pooling",
+          "default": "vllm_pooling",
+          "description": "The wire adapter; ``\"vllm_pooling\"`` by default.",
+          "title": "Api",
+          "type": "string"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. One URL, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest in flight; the offline fakes are one URL, never a list). The scheme must be ``http://``, ``https://`` or ``fake://``: a schemeless or mistyped URL is refused with a typed ``ConfigError`` rather than retried and parked as an outage. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "default": 32,
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The width of one token vector -- the checkpoint's late-interaction dimension (ColBERT-style checkpoints project to a fixed width, e.g. 128). Content: it is the served checkpoint's own output width. Needed to decode the base64 frame of ``/pooling``, which is flat and carries no shape (``vllm/utils/serial_utils.py::tensor2binary`` flattens); the response's token counts are checked against it, so a mistyped width fails loudly instead of silently mis-shaping every vector. The self-describing float and bytes frames decode without it, and the ``bytes`` encoding makes it unnecessary (its metadata carries each item's ``shape``).",
+          "title": "Dim"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
+          "title": "Dimensions"
+        },
+        "doc_prompt": {
+          "default": "",
+          "description": "Text prepended to every document. Content.",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "document_skip_engine_side": {
+          "default": false,
+          "description": "Whether the SERVED PLUGIN applies document_skip_token_ids engine-side (the pplx-late plugin's pooler; the recipe declares the same ids for the engine in its ``serve.hf_overrides.document_skip_token_ids``, which the recipe loader cross-checks against this rule): the engine drops the excluded positions from the token ids it sees before the reply, so the wire carries only the kept vectors -- for a text document and for a media document's chat-template render alike. The client then does not slice: it counts the declared kept vectors (kept_vector_count) and refuses a reply whose count disagrees (never silent). ``False`` (the default): the client applies the rule itself, as before. Refused without document_skip_token_ids (there is no rule to apply) and beside ``outputs: per_chunk`` (a per-chunk layout has no per-token count to check). Content: it changes the engine's output.",
+          "title": "Document Skip Engine Side",
+          "type": "boolean"
+        },
+        "document_skip_token_ids": {
+          "default": [],
+          "description": "The token ids whose DOCUMENT vectors the model scores nothing by (2, the topk hand-off): the client drops the vector at every position whose token id is listed, before MaxSim (topk-embed-v1-small drops 41 ids -- standalone punctuation and specials; queries keep all their vectors). The positions are the ids the client sent: it tokenises the fitted document text with the declared tokenizer, and checks the returned vector count against them (a mismatch is a typed error, never a silent misalignment). The skip rule at image positions: a MEDIA document's positions are the server's chat-template render, which the client cannot tokenise -- the image positions are exempt (the vision tokens are what the model reads for the media), the client keeps every returned vector of a media document, and the deviation is recorded on the row's processing record (``skip_unapplied``) -- never silently unskipped. A declared media_keep_token_ids changes that: the engine then applies the media allowlist, the client counts its positions and writes no deviation. Needs the declared tokenizer; a hosted profile without one cannot apply it (refused as inert). Content.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Document Skip Token Ids",
+          "type": "array"
+        },
+        "document_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the DOCUMENT side of a ``request_shape: token_ids`` wire with the reference's split parse (transformers' ``split_special_tokens``, the raw tokenizers ``encode_special_tokens`` toggle): an added SPECIAL token is textified instead of matched as one id, so ``[D] `` opens as the two literal tokens the reference's own tokenization produces (the pplx-embed-v2-context plugin's document contract). ``None`` (the default) leaves the file's own parse -- an unset optional field is the absence of a declaration, so it never re-keys a run that does not set it; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` (the text/messages wires send no ids, so the declaration would be inert). Content: it changes the ids the model reads.",
+          "title": "Document Split Special Tokens"
+        },
+        "embed_dtype": {
+          "default": "float16",
+          "description": "The precision the vectors cross the wire in; ``\"float16\"`` (the owner's Q11 decision) halves the bytes of a ragged buffer, ``\"float32\"`` is the lossless opt-in. Content: it changes the vectors. MaxSim computes in float32 either way.",
+          "enum": [
+            "float16",
+            "float32"
+          ],
+          "title": "Embed Dtype",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "omit_zero_blank",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
+          "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "media_head_as_system": {
+          "default": false,
+          "description": "For a media document, send the shape's leading fixed template segments (the trained role prefix, e.g. ``[D] ``) as a leading ``system`` message instead of inside the user turn, for a checkpoint whose engine chat template injects no frame of its own (a pass-through template: pplx-embed-v2-late). The card's sentence-transformers path sends the prompt as a system message, so a media document rendered without it loses the trained prefix. The head is resolved from the template (specials by name), the user turn keeps only the content span, and the budget's fixed overhead already reserves the head's tokens. Refused without a template (no head exists to send) or without media (inert). Content: it changes the prompt the model reads.",
+          "title": "Media Head As System",
+          "type": "boolean"
+        },
+        "media_keep_token_ids": {
+          "default": [],
+          "description": "The token ids a MEDIA document's kept vectors are restricted to (the checkpoint's own ``keep_only_token_ids``: topk-embed-v1's image-patch token, the only positions its reference keeps for an image document -- ``topk_embed_st.py:_image_row``'s ``keep = ids == image_token_id``). The SERVED PLUGIN applies it engine-side (the recipe declares the same ids for the engine in ``serve.hf_overrides.document_keep_token_ids``, which the recipe loader cross-checks against this allowlist): a media render keeps only the allowlist's positions, so the chat template's structural tokens, the trained head and a caption drop -- exactly what the reference keeps. The client then does not keep the media vectors whole: it counts the declared kept vectors (the media block's patch run, the wrapper and the head/caption positions being outside the allowlist) and refuses a reply whose per-item count disagrees (never silent); no ``skip_unapplied`` record is written for a media item. Empty (the default): no allowlist, and a media render follows document_skip_token_ids (kept whole, on record, when that rule is the client's). Content: it changes the engine's output.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Media Keep Token Ids",
+          "type": "array"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served (2g, plug-pplx), at or below dim when set: applied CLIENT-side as cut-then-renormalise (the card's order -- slice the model's vectors to it, then L2-normalise the cut), because ``/pooling`` refuses per-request ``dimensions``. A ``k`` equal to dim is the **identity selection**: the head is not applied, no ``mrl_cut`` record is written, and the full-width reply is served as the client's pipeline produced it; wider is refused. ``None`` (the default) serves the checkpoint's own dim. Content.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. One of mrl_dims and mrl_range is declared when mrl_kind is declared; a projection kind needs the discrete set (the learned chain's tensor names are target widths).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+        },
+        "mrl_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose (\"output dimensions ranging from 32 to 1024\") rather than a table: every ``k`` in the closed interval is selectable and the client enforces the floor (the engine checks only ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of mrl_dims and mrl_range, not both.",
+          "title": "Mrl Range"
+        },
+        "normalize": {
+          "default": true,
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "outputs": {
+          "default": "per_token",
+          "description": "What one input yields (2g, plug-pplx): ``\"per_token\"`` (the default) is the token_embed contract -- one vector per prompt token, which the reply's ``usage`` cross-checks; ``\"per_chunk\"`` is a per-chunk multi-output model -- several outputs per input, one slice of chunk vectors per input, so the usage cross-check cannot apply and is skipped. Content.",
+          "enum": [
+            "per_token",
+            "per_chunk"
+          ],
+          "title": "Outputs",
+          "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
+        },
+        "query_prompt": {
+          "default": "",
+          "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "query_split_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tokenize the QUERY side's content span of a ``request_shape: token_ids`` wire with the reference's split parse, keeping the fixed head under the file's own parse: the sent ids are then the head's added ids (the reference's own prefix id, e.g. ``[Q] ``) followed by the split-parsed body -- exactly the checkpoint's own construction (``prefix_id + tokenizer(body, split_special_tokens=True)``; pplx-embed-v2-context's remote ``prepare_inputs`` splits the query body too, so a query carrying a literal added-token spelling would otherwise read a different id sequence on the engine and in the reference). The whole-render added-token parse is what this replaces: the prefix must still cross as its added id, which is why the head is tokenized separately (``TemplateSpec.split_ids``, the one home of the rule the client and the harness share). ``None`` (the default) leaves the file's own parse -- unset, so no other run is re-keyed; ``False`` declares the same parse explicitly. Refused unless ``request_shape: token_ids`` and the template's query shape is a fixed head followed by one content span (the construction has no fixed tail). Content: it changes the ids the model reads.",
+          "title": "Query Split Special Tokens"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
+          "title": "Recipe"
+        },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
+          "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "ServedPooling",
+      "type": "object"
+    },
+    "TemplateSpec": {
+      "additionalProperties": false,
+      "description": "The frame of every request a role sends, declared as data.\n\nPer request shape, an ordered list of segments; at render time the fixed segments are joined with\nthe content spans filled from the call's texts. The template is content: two configs whose\ntemplates differ never share an identity (its canonical JSON is what the identity hashes).",
+      "properties": {
+        "add_special_tokens": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "type": "object"
+            }
+          ],
+          "default": true,
+          "description": "What the engine does to the rendered string per shape -- ``True`` (the default) when the route adds the tokenizer's post-processor tokens (vLLM's pooling and scoring routes), ``False`` where it adds none (the chat-embed form). A bool for every shape, or a mapping shape -> bool naming every declared shape. The budget reserves those tokens: measured on the empty render, they are part of the fixed overhead.",
+          "title": "Add Special Tokens"
+        },
+        "anchor": {
+          "default": "last",
+          "description": "The position the model reads its output from (``last`` by default: the last-token poolers, the pointwise rerankers scored at the last position). ``last_content`` declares a model that pools the last real token of raw text (jina-embeddings-v5): no fixed tail exists, the shape may end on a content span, and every fixed segment (a head marker) is still reserved by the budget -- the prefix a cut keeps always carries the last content token. Declared so the budget knows what must survive and the golden-render tests what to assert.",
+          "enum": [
+            "last",
+            "first",
+            "last_content",
+            "mean",
+            "marker"
+          ],
+          "title": "Anchor",
+          "type": "string"
+        },
+        "anchor_markers": {
+          "default": [],
+          "description": "For ``anchor: marker``: the special tokens' *names* (resolved like ``{special:...}``), e.g. a listwise reranker's per-passage markers.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Anchor Markers",
+          "type": "array"
+        },
+        "document": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Segment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``document`` shape's segments (an embedder's document side).",
+          "title": "Document"
+        },
+        "normalize": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "strip",
+                  "lowercase"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "items": {
+                  "enum": [
+                    "strip",
+                    "lowercase"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            }
+          ],
+          "default": [],
+          "description": "The declared content normalisation, applied by rcp_ndcg.data.preprocess.fit to a shape's content spans before measuring -- so the reference and the engine see the same text. ``(\"strip\",)`` strips the spans (the topk wrapper strips the query text and the whole document); ``(\"strip\", \"lowercase\")`` strips then lowers them (a checkpoint trained on lowercased text); the ops run in the declared order. A tuple for every declared shape, or a mapping shape -> tuple naming every declared shape. Empty (the default): the text goes in as it is.",
+          "title": "Normalize"
+        },
+        "pair": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Segment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``pair`` shape's segments (a reranker's request; its order is the model's).",
+          "title": "Pair"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Segment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's segments (an embedder's query side).",
+          "title": "Query"
+        }
+      },
+      "title": "TemplateSpec",
+      "type": "object"
+    },
+    "VideoPolicy": {
+      "additionalProperties": false,
+      "description": "Which frames of a video the judge is shown, and which videos it may be shown at all.\n\nTwo declared sampling rules, one per wire. ``wire: frames`` shows ``num_frames``\nuniformly spaced frames of the clip's pre-extracted frames\n(uniform_frame_indices). ``wire: video_url`` sends the container and the\nengine samples it: a pinned uniform ``num_frames``, or the engine's own fps rule\n(fps) -- a rate shows a 10-second clip 20 frames and a 10-minute clip\n1200, so two runs \"at 2 fps\" share a judgement family only while every clip's\nrealised count is the engine's own (qwen3_vl_video_frame_indices). Exactly\none of the two is declared; a policy that declares neither, or both, is refused.\n\nA clip that cannot supply a declared ``num_frames`` is refused, not shown whole:\nvLLM would resample it at its processor's own rate, so no single number of frames\ncould be recorded for it. A container's frame count must therefore be recorded at\ningest (``hash_media=True``) before it can be judged over ``video_url``.\n\n``wire`` is how the judge receives the frames, and it is part of the\ninstrument. ``frames`` (client-sampled, the default and the exact one): the\nclient picks the frames from the corpus's pre-extracted frames and sends each,\nsized by the image policy, as its own image, which any OpenAI-compatible\nendpoint accepts -- so the frames counted are the frames sent.\n``video_url`` (engine-sampled, an opt-in for models with a native video encoder):\nthe container is sent unchanged and the engine decodes and samples it (Qwen-VL\ntowers then merge frame pairs in time and see timestamps). A stock engine samples\nits own default -- the checkpoint's own processor rate on the Qwen-VL backends,\nwhose loaders are fps-driven and ignore ``num_frames``; the default loader's own\ncount elsewhere -- so ``video_url`` is refused unless\nengine_video_pinning declares the engine pinned -- to a uniform\nnum_frames, or to the engine's own fps rule (fps, the vLLM v0.31.0\n``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped\nto its bounds, qwen3_vl_video_frame_indices). The two are different\nmeasurements, so exactly one is declared: a policy that declares neither, or both,\nis refused rather than silently picking one. The same clips judged both ways are\ndifferent measurements, so the wire is part of the policy and a corpus whose videos\ndo not match it is refused.\n\n``max_duration_s`` is a refusal, not a cut: uniform sampling of a long clip\nspreads the same frame budget ever thinner, so a corpus that declares it refuses\nany container whose recorded duration exceeds it -- or whose duration was never\nrecorded -- rather than judging it at a density nobody chose. It is a container\nlimit: a frame set carries no duration to check.",
+      "properties": {
+        "engine_video_max_pixels": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Max Pixels"
+        },
+        "engine_video_min_pixels": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Min Pixels"
+        },
+        "engine_video_pinning": {
+          "default": false,
+          "title": "Engine Video Pinning",
+          "type": "boolean"
+        },
+        "engine_video_pruning": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Pruning"
+        },
+        "engine_video_pruning_method": {
+          "anyOf": [
+            {
+              "enum": [
+                "evs",
+                "vidcom2"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine Video Pruning Method"
+        },
+        "fps": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fps"
+        },
+        "max_duration_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Duration S"
+        },
+        "num_frames": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Num Frames"
+        },
+        "wire": {
+          "enum": [
+            "frames",
+            "video_url"
+          ],
+          "title": "Wire",
+          "type": "string"
+        }
+      },
+      "required": [
+        "wire"
+      ],
+      "title": "VideoPolicy",
+      "type": "object"
+    },
+    "VoyageEmbedding": {
+      "additionalProperties": false,
+      "description": "Voyage AI's public API (``voyage-3-large``, ...). The key is read from ``api_key_env``, else\n``VOYAGE_API_KEY``; ``base_url`` is omitted unless it names a proxy.",
+      "properties": {
+        "add_generation_prompt": {
+          "anyOf": [
+            {
+              "const": true,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``true`` sends ``add_generation_prompt: true`` with every ``messages`` request, so the engine's chat template renders its generation prompt (the assistant header) after the user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding). vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other route renders a chat template); ``false`` is that default and declares nothing (stored as ``None``, no re-key). Content.",
+          "title": "Add Generation Prompt"
+        },
+        "aggregation": {
+          "const": "max",
+          "default": "max",
+          "description": "How a chunked document's scores pool back onto it: ``max``, its best chunk's -- the same rule as ``max_pool_scores_by_document``, recorded on every chunked census row. Content.",
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "api": {
+          "const": "voyage",
+          "default": "voyage",
+          "description": "The wire adapter; ``\"openai_embeddings\"`` by default (a hosted profile overrides it in its own config).",
+          "title": "Api",
+          "type": "string"
+        },
+        "api_key_env": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variable holding the API key, resolved by the transport; when ``None`` (the default), the wire adapter profile's own variables are tried in order, in the profile's header (a hosted profile requires one). A variable the config names must be set. An empty name is refused (it would silently send no header).",
+          "title": "Api Key Env"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The endpoint, e.g. ``http://localhost:8000/v1``; ``None`` for a provider's own public API. One URL, or a list of replica URLs of the same served model (each request goes to the live replica with the fewest in flight; the offline fakes are one URL, never a list). The scheme must be ``http://``, ``https://`` or ``fake://``: a schemeless or mistyped URL is refused with a typed ``ConfigError`` rather than retried and parked as an outage. A role that reaches replicas over several URLs lists them in its own config (the judge: one URL or a replica list).",
+          "title": "Base Url"
+        },
+        "batch_size": {
+          "default": 32,
+          "description": "Items per request. Content: request packing, and a bf16 batch's composition can move the numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it changes the request bytes).",
+          "minimum": 1,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "chunk": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The chunk geometry for ``on_overflow: chunk`` (a ChunkPolicy reused, not copied). Content."
+        },
+        "concurrency": {
+          "default": 64,
+          "description": "Requests in flight at once.",
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "connect_timeout_s": {
+          "default": 5.0,
+          "description": "TCP connect timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Connect Timeout S",
+          "type": "number"
+        },
+        "dimensions": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka cut served by the engine, when the config sets one (the dense ``/embeddings`` route). Content. Only on ``mrl_kind: truncation`` (the engine slices the raw output before its own normalisation -- the card's order) and only for a ``k`` in mrl_dims or mrl_range; refused beside mrl_dim (one cut, one home).",
+          "title": "Dimensions"
+        },
+        "doc_prompt": {
+          "default": "",
+          "description": "Text prepended to every document. Content.",
+          "title": "Doc Prompt",
+          "type": "string"
+        },
+        "empty_doc": {
+          "default": "send",
+          "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
+          "enum": [
+            "omit_zero",
+            "omit_zero_blank",
+            "send",
+            "send_text"
+          ],
+          "title": "Empty Doc",
+          "type": "string"
+        },
+        "empty_doc_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The placeholder text ``empty_doc: send_text`` sends. Content.",
+          "title": "Empty Doc Text"
+        },
+        "headers_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Header name -> environment variable name (e.g. ``{\"X-Gateway-Key\": \"GATEWAY_KEY\"}``); the values are read from the environment only, never from a config, and the variable names are validated.",
+          "title": "Headers Env",
+          "type": "object"
+        },
+        "image_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_processor": {
+          "anyOf": [
+            {
+              "enum": [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen3_vl",
+                "gemma4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Processor"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "enum": [
+                "fold",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "max_images": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Images",
+          "type": "integer"
+        },
+        "max_retries": {
+          "default": 2,
+          "description": "Retries of a transient failure before it counts as an outage.",
+          "minimum": 0,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the budget counts is the model's whole input sequence as the engine sees it -- the rendered template, its special tokens, the instruction (the prompts) and the content together, in the declared tokenizer's tokens. The content is cut on the client, in a budget computed after reserving every fixed template token (the anchors a model reads its output from: for a last-token pooler, the trailing end-of-turn marker), and the template is re-attached after the cut, so the anchors always survive. The cut is never left to the engine: an engine-side truncation of the rendered prompt drops anchors from one end or the other. ``None`` sends every item whole -- which a self-hosted role config refuses (declare the budget); a hosted vendor profile with no tokenizer sends content uncut. Content: it caps the ``document`` shape (an embedder's document side); the ``query`` shape is capped by query_max_tokens when that is declared, by this budget when it is not.",
+          "title": "Max Tokens"
+        },
+        "max_videos": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max Videos",
+          "type": "integer"
+        },
+        "media_sides": {
+          "default": [
+            "query",
+            "document"
+          ],
+          "items": {
+            "enum": [
+              "query",
+              "document"
+            ],
+            "type": "string"
+          },
+          "title": "Media Sides",
+          "type": "array"
+        },
+        "model": {
+          "description": "The served model name, sent as the request's ``model``.",
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "mrl_dim": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "title": "Mrl Dim"
+        },
+        "mrl_dims": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card-supported set of output dimensions, once, in the recipe. Content: it bounds every selection (``dimensions`` and ``mrl_dim`` must be members; nothing is selected unless it is declared) and keys the ex-post sweep's per-k artifacts. One of mrl_dims and mrl_range is declared when mrl_kind is declared; a projection kind needs the discrete set (the learned chain's tensor names are target widths).",
+          "title": "Mrl Dims"
+        },
+        "mrl_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "truncation",
+                "projection",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What kind of Matryoshka head the checkpoint has, from its model card: ``truncation`` (a Matryoshka-trained checkpoint: cut the full-width output to ``k`` and renormalise), ``projection`` (the smaller sizes come from the checkpoint's own learned matrices, applied client-side) or ``none``; ``None`` (the default) declares no head and is omitted from every identity. Content: it decides what a selected ``k`` computes. A declared kind needs mrl_dims or mrl_range.",
+          "title": "Mrl Kind"
+        },
+        "mrl_projection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MrlProjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a ``projection`` kind's learned matrices live (MrlProjection: a safetensors source whose tensor names are their target widths; the declared mrl_dims are the projected sizes). Content. Required for ``mrl_kind: projection``, refused for the other kinds."
+        },
+        "mrl_range": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The card's output-dimension RANGE, ``[min, max]``, for a card that declares prose (\"output dimensions ranging from 32 to 1024\") rather than a table: every ``k`` in the closed interval is selectable and the client enforces the floor (the engine checks only ``1 <= k <= width`` when a checkpoint sets ``is_matryoshka`` without a set). Content. One of mrl_dims and mrl_range, not both.",
+          "title": "Mrl Range"
+        },
+        "normalize": {
+          "default": true,
+          "description": "Whether the client L2-normalises the vectors. Content: it changes the vectors (normalising twice is harmless, so a server that already normalised is unaffected). ``false`` is refused beside mrl_dim: the Matryoshka head renormalises its output, so the declaration would be a lie.",
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "on_overflow": {
+          "default": "cut",
+          "description": "What an input over the budget does: ``cut`` (the default: the content is cut to the budget the template's fixed tokens leave, every cut recorded in the census under ``text_budget``), ``chunk`` (the document is split into chunk pieces, each carrying the full template, scores pooled back by ``max`` -- a rerank-only mode, refused by the vector clients: an embedding has no score to pool), or ``fail`` (the input is refused). Content.",
+          "enum": [
+            "cut",
+            "chunk",
+            "fail"
+          ],
+          "title": "On Overflow",
+          "type": "string"
+        },
+        "query_max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``query`` shape's budget, in the declared tokenizer's tokens (per-shape budgets: a late-interaction or asymmetric embedder caps queries and documents differently -- topk-embed-v1-small reads 1024 tokens of query, 8192 of document). It is the query shape's WHOLE budget there: the fixed frame is reserved out of it exactly as max_tokens reserves the document shape's. Must not exceed max_tokens -- the model's whole input budget, which no shape's render can be sent over. ``None`` (the default): both shapes are capped by max_tokens. On a RerankEndpoint the field keeps its pair-share meaning instead. Content.",
+          "title": "Query Max Tokens"
+        },
+        "query_prompt": {
+          "default": "",
+          "description": "Text prepended to every query (an asymmetric embedder's instruction prefix). Content.",
+          "title": "Query Prompt",
+          "type": "string"
+        },
+        "recipe": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The server-side settings the package cannot read (the pooling, the template, the overrides), as a free string chosen from the engine's docs; ``None`` records none. Content: two recipes never share a cache.",
+          "title": "Recipe"
+        },
+        "request_shape": {
+          "default": "text",
+          "description": "How a request crosses the wire: ``text`` (the default: the rendered string), ``messages`` (chat parts, the chat-embed form), or ``token_ids`` (pre-tokenised ids, for the routes that take them). Declares what the adapter sends; the client refuses a shape its wire adapter does not implement. Content.",
+          "enum": [
+            "text",
+            "messages",
+            "token_ids"
+          ],
+          "title": "Request Shape",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The checkpoint commit the served weights resolved to; recorded in identities, so two checkpoints served under one name are never mistaken for each other.",
+          "title": "Revision"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemplateSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The request template as data (TemplateSpec): per request shape (``query``, ``document``, ``pair``), an ordered list of fixed frame segments and content spans, with the special tokens written by name and resolved from the tokenizer, the anchor the model reads its output from, and the ``add_special_tokens`` flag per shape (the engine's behaviour for that route). ``None`` fits raw text: the budget then reserves only the tokenizer post-processor's tokens (the pooling routes' default). Content."
+        },
+        "timeout_s": {
+          "default": 600.0,
+          "description": "Per-request timeout, seconds.",
+          "exclusiveMinimum": 0,
+          "title": "Timeout S",
+          "type": "number"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "enum": [
+                "join",
+                "separate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "tokenizer": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's tokenizer, in whose tokens ``max_tokens`` is counted: a Hugging Face repository id with an optional ``@revision``, or a local path to a ``tokenizer.json``. Runtime by its name; the file's SHA-256 enters the identity (``Endpoint.identity_extra()``), as the judge's already does.",
+          "title": "Tokenizer"
+        },
+        "video_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "wait_on_outage_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1800.0,
+          "description": "How long a request waits while every replica is down before BackendUnavailableError, counted from the request's first unavailable failure (time spent queued behind the concurrency limit never counts); the default 1800 s covers an engine restart plus a large model's load, and ``None`` waits indefinitely.",
+          "title": "Wait On Outage S"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "title": "VoyageEmbedding",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/index.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A built index: where it is, what it indexes, and its identity.",
+  "properties": {
+    "behaviour_version": {
+      "default": "2",
+      "description": "INDEX_BEHAVIOUR_VERSION as recorded, for diagnostics.",
+      "title": "Behaviour Version",
+      "type": "string"
+    },
+    "dataset": {
+      "description": "The dataset the corpus came from.",
+      "title": "Dataset",
+      "type": "string"
+    },
+    "identity": {
+      "description": "The index identity: the retriever's content fields, the tokenizer digest, the corpus and INDEX_BEHAVIOUR_VERSION.",
+      "title": "Identity",
+      "type": "string"
+    },
+    "num_documents": {
+      "description": "Corpus rows in the payload.",
+      "title": "Num Documents",
+      "type": "integer"
+    },
+    "path": {
+      "description": "The directory this record was loaded from (``load_index``) or built in (``index``): the I/O root of the payload.  ``index.json``'s own ``path`` records where the index was *built* -- provenance -- and load_index returns the record with the directory it read, so a copied, moved or restored index directory is searched where it now is.",
+      "title": "Path",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "``{relative name: sha256}`` of every payload file (``vectors.npy``, ``offsets.npy``, the ``bm25s/`` model files).  search recomputes it, so a killed or concurrent build -- whose record describes another payload -- is refused, never scored.",
+      "title": "Payload",
+      "type": "object"
+    },
+    "retriever": {
+      "description": "The retriever that built the payload.",
+      "discriminator": {
+        "mapping": {
+          "bm25": "#/$defs/BM25Config",
+          "dense": "#/$defs/DenseConfig",
+          "late_interaction": "#/$defs/LateInteractionConfig"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BM25Config"
+        },
+        {
+          "$ref": "#/$defs/DenseConfig"
+        },
+        {
+          "$ref": "#/$defs/LateInteractionConfig"
+        }
+      ],
+      "title": "Retriever"
+    },
+    "schema": {
+      "const": "rcp-ndcg.index.v1",
+      "default": "rcp-ndcg.index.v1",
+      "title": "Schema",
+      "type": "string"
+    }
+  },
+  "required": [
+    "path",
+    "dataset",
+    "retriever",
+    "identity",
+    "num_documents"
+  ],
+  "title": "Index",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.index.v1"
+}

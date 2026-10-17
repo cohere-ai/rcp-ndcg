@@ -1,0 +1,547 @@
+"""The run config: typed sections, unknown keys refused, ``extends:``, ``key=value`` overrides."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import yaml
+from pydantic import ValidationError
+
+from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.judging import JudgeConfig, TournamentSchedule
+from rcp_ndcg.runs import RunConfig
+from rcp_ndcg.support.config import apply_overrides, load_config
+from tests.conftest import SESSION_TOKENIZER
+
+_SERVED_BUDGET = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
+
+
+DATASET = "jsonl:rows.jsonl"
+
+
+def _write(path: Path, data: dict) -> Path:
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return path
+
+
+class TestComposition:
+    def test_extends_merges_deeply_relative_to_the_extending_file(self, tmp_path: Path) -> None:
+        (tmp_path / "base").mkdir()
+        _write(tmp_path / "base" / "base.yaml", {"dataset": DATASET, "evaluation": {"k": 5, "systems": {"a": "a"}}})
+        child = _write(tmp_path / "child.yaml", {"extends": "base/base.yaml", "evaluation": {"k": 20}})
+        assert load_config(child) == {"dataset": DATASET, "evaluation": {"k": 20, "systems": {"a": "a"}}}
+
+    def test_an_extends_cycle_is_refused(self, tmp_path: Path) -> None:
+        _write(tmp_path / "a.yaml", {"extends": "b.yaml"})
+        _write(tmp_path / "b.yaml", {"extends": "a.yaml"})
+        with pytest.raises(ConfigError, match="extends itself"):
+            load_config(tmp_path / "a.yaml")
+
+    def test_overrides_parse_their_values_as_yaml(self) -> None:
+        original = {"a": {"b": 1}}
+        merged = apply_overrides(original, ["a.b=2", "a.c=null", "d.e=[1, 2]", "f=text"])
+        assert merged == {"a": {"b": 2, "c": None}, "d": {"e": [1, 2]}, "f": "text"}
+        assert original == {"a": {"b": 1}}  # the input (e.g. a manifest's recorded config) is left alone
+        with pytest.raises(ConfigError, match="not key=value"):
+            apply_overrides({}, ["novalue"])
+        with pytest.raises(ConfigError, match="is not a mapping"):
+            apply_overrides({"a": 1}, ["a.b=2"])
+
+
+class TestValidation:
+    def test_an_unknown_key_is_refused_at_load(self, tmp_path: Path) -> None:
+        path = _write(tmp_path / "run.yaml", {"dataset": DATASET, "num_criteria": 5})
+        with pytest.raises(ConfigError, match="num_criteria"):
+            RunConfig.load(path)
+        with pytest.raises(ConfigError, match="depht"):
+            RunConfig.load(_write(tmp_path / "r2.yaml", {"dataset": DATASET}), overrides=["candidates.depht=10"])
+
+    def test_steps_run_in_pipeline_order(self) -> None:
+        config = RunConfig(dataset=DATASET, judge="fake", steps=["evaluate", "rubric", "calibrate", "tournament"])
+        assert config.ordered_steps == ["tournament", "rubric", "calibrate", "evaluate"]
+
+    @pytest.mark.parametrize(
+        ("fields", "message"),
+        [
+            ({"steps": ["retrieve"]}, "retrieve step needs"),
+            ({"steps": ["rerank"]}, "rerank step needs"),
+            ({"steps": ["tournament"]}, "need a judge"),
+            ({"candidates": {"from": "rankings"}}, "needs candidates.rankings"),
+            ({"candidates": {"from": "retrieval"}}, "needs candidates.retrieval"),
+            ({"steps": ["teleport"]}, "teleport"),
+        ],
+    )
+    def test_steps_need_their_inputs(self, fields: dict, message: str) -> None:
+        with pytest.raises(ValueError, match=message):
+            RunConfig.model_validate({"dataset": DATASET, **fields})
+
+    def test_a_retrieval_sourced_rerank_step_without_a_retrieve_step_is_refused_at_config_time(self) -> None:
+        """`from: retrieval` has no first stage until the retrieve step runs it: the combination is refused in
+        the config. (`from: rankings` runs fine without one -- its rankings file IS the first stage; a dataset
+        run's preamble writes its own pools.)"""
+        with pytest.raises(ValueError, match="rerank"):
+            RunConfig.model_validate(
+                {
+                    "dataset": DATASET,
+                    "judge": "fake",
+                    "candidates": {
+                        "from": "retrieval",
+                        "retrieval": {"kind": "bm25"},
+                        "rerank": {"api": "cohere", "model": "rerank-v4.0"},
+                    },
+                    "steps": ["rerank", "calibrate", "evaluate"],
+                }
+            )
+
+    def test_schedules_default_to_none_and_validate_when_given(self) -> None:
+        from rcp_ndcg.judging import RubricSchedule
+
+        config = RunConfig(dataset=DATASET, judge="fake", tournament={"window": 5}, rubric={"placements_per_doc": 13.0})
+        assert isinstance(config.tournament, TournamentSchedule) and config.tournament.window == 5
+        assert isinstance(config.rubric, RubricSchedule) and config.rubric.placements_per_doc == 13.0
+        assert RunConfig(dataset=DATASET, judge="fake").tournament is None
+
+    def test_the_step_budget_defaults_to_unbudgeted_and_must_be_positive(self) -> None:
+        assert RunConfig(dataset=DATASET, judge="fake").step_budget_s is None
+        assert RunConfig(dataset=DATASET, judge="fake", step_budget_s=120.0).step_budget_s == 120.0
+        with pytest.raises(ValidationError):
+            RunConfig(dataset=DATASET, judge="fake", step_budget_s=0)
+
+    def test_an_empty_mirror_is_refused_rather_than_defaulted_to_the_cwd(self) -> None:
+        """runs-9: ``--set mirror=`` turned into '', which resolved to the current working directory and
+        mirrored the run there (and restored the cwd tree into the run)."""
+        assert RunConfig(dataset=DATASET, judge="fake").mirror is None
+        with pytest.raises(ValidationError, match="mirror"):
+            RunConfig.model_validate({"dataset": DATASET, "judge": "fake", "mirror": ""})
+        with pytest.raises(ConfigError, match="mirror"):
+            RunConfig.from_data({"dataset": DATASET, "judge": "fake"}, overrides=["mirror="])
+
+
+class TestServe:
+    """``serve:`` names one engine per role; a served role must name a config the engine can serve."""
+
+    SERVED = {
+        "from": "retrieval",
+        "retrieval": {"kind": "dense", "encoder": {"api": "openai_embeddings", "model": "e", **_SERVED_BUDGET}},
+    }
+    ENGINE = {"command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8000"]}
+
+    def test_a_served_encoder_needs_no_judge(self) -> None:
+        """A retrieval-only run serves its encoder without a judge at all (the old any-serve check is gone)."""
+        config = RunConfig.model_validate(
+            {"dataset": DATASET, "candidates": self.SERVED, "steps": ["retrieve"], "serve": {"encoder": self.ENGINE}}
+        )
+        assert config.serve is not None and config.serve.encoder is not None
+        assert RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": self.SERVED,
+                "steps": ["retrieve"],
+                "serve": {"encoder": self.ENGINE},
+            }
+        ).engine_uses()["retrieve"] == frozenset({"encoder"})
+
+    def test_a_from_rankings_run_starts_no_encoder_engine(self) -> None:
+        """E: a `from: rankings` run's retrieve step only reads the rankings file, so the job must not start a
+        GPU encoder engine it never calls (it used to, and a broken engine image failed the job for nothing)."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": {
+                    "from": "rankings",
+                    "rankings": "rankings.jsonl",
+                    "retrieval": self.SERVED["retrieval"],
+                },
+                "steps": ["retrieve"],
+                "serve": {"encoder": self.ENGINE},
+            }
+        )
+
+        assert "retrieve" not in config.engine_uses()
+
+    def test_a_served_role_with_base_url_is_refused(self) -> None:
+        from rcp_ndcg.errors import ConfigError
+
+        served = {
+            "from": "retrieval",
+            "retrieval": {
+                "kind": "dense",
+                "encoder": {
+                    "api": "openai_embeddings",
+                    "model": "e",
+                    "base_url": "http://elsewhere/v1",
+                    **_SERVED_BUDGET,
+                },
+            },
+        }
+        with pytest.raises(ConfigError, match="sets base_url") as refused:
+            RunConfig.model_validate(
+                {"dataset": DATASET, "candidates": served, "steps": ["retrieve"], "serve": {"encoder": self.ENGINE}}
+            )
+        assert "RCP_NDCG_ENGINES" in (refused.value.hint or "")
+
+    def test_a_served_judge_with_a_foreign_base_url_is_refused(self) -> None:
+        """A judge is always reached at a URL, so its ``base_url`` is required -- but when the job starts the
+        judge's engine, the overlay replaces it at runtime: a different endpoint was silently overridden, and the
+        docs promised a refusal."""
+        served = {
+            "dataset": DATASET,
+            "judge": {"base_url": "http://elsewhere:9000/v1", "model": "m"},
+            "steps": ["tournament"],
+            "serve": {"judge": self.ENGINE},
+        }
+        with pytest.raises(ConfigError, match="serve.judge") as refused:
+            RunConfig.model_validate(served)
+        assert "127.0.0.1:8000" in (refused.value.hint or "") and "silently" in (refused.value.hint or "")
+        # the engine's own loopback URL (the value the runtime overlay sets on its node) is accepted
+        accepted = {**served, "judge": {"base_url": "http://127.0.0.1:8000/v1", "model": "m"}}
+        assert RunConfig.model_validate(accepted).serve is not None
+        # a served judge on another port names that port's loopback URL (the command's own --port agrees)
+        engine_8009 = {
+            **self.ENGINE,
+            "port": 8009,
+            "command": ["vllm", "serve", "e", "--host", "0.0.0.0", "--port", "8009"],
+        }
+        other_port = {
+            **accepted,
+            "judge": {"base_url": "http://127.0.0.1:8009/v1", "model": "m"},
+            "serve": {"judge": engine_8009},
+        }
+        assert RunConfig.model_validate(other_port).serve is not None
+        with pytest.raises(ConfigError, match="serve.judge"):
+            RunConfig.model_validate({**accepted, "serve": {"judge": engine_8009}})
+
+    def test_a_served_judge_may_name_no_base_url(self) -> None:
+        """A judge recipe's config names no URL: the job's engine supplies it at runtime."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": {"model": "m"},
+                "steps": ["tournament"],
+                "serve": {"judge": self.ENGINE},
+            }
+        )
+        assert config.serve is not None and config.judge_config().urls == ()
+
+    def test_a_served_judge_path_that_is_not_there_is_left_to_the_run(self) -> None:
+        """The docs' placeholder (``judge: my-judge.yaml``) must not fail config validation: the check only
+        compares a judge it can load."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "my-judge.yaml",
+                "steps": ["tournament"],
+                "serve": {"judge": self.ENGINE},
+            }
+        )
+        assert config.serve is not None and config.judge == "my-judge.yaml"
+
+    def test_the_recorded_config_round_trip_re_validates_the_defaults_it_dumps(self) -> None:
+        """run.yaml holds a full dump; re-validating it (a resume, run status) must not refuse its own defaults."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": {
+                    "from": "retrieval",
+                    "retrieval": {"kind": "dense", "encoder": {"api": "cohere", "model": "embed-v4.0"}},
+                },
+                "steps": ["retrieve"],
+            }
+        )
+        assert RunConfig.from_data(config.resolved()).candidates.retrieval == config.candidates.retrieval
+
+
+class TestJudge:
+    def test_a_recipe_judge_refuses_a_content_override(self) -> None:
+        """g-decisions-1 / decision 13(a): ``--set judge.temperature=...`` on a recipe judge was applied over
+        the expanded block while the shipped recipe id stayed recorded; a content override is refused, naming
+        both values (decision 17 for judges)."""
+        with pytest.raises(ConfigError, match="temperature: 1.5 disagrees with recipe"):
+            RunConfig.from_data(
+                {"dataset": DATASET, "judge": "recipe:gpt-oss-120b", "steps": ["tournament"]},
+                overrides=["judge.temperature=1.5"],
+            )
+        with pytest.raises(ConfigError, match="max_output_tokens: 7 disagrees with recipe"):
+            RunConfig.from_data(
+                {"dataset": DATASET, "judge": "recipe:gpt-oss-120b", "steps": ["tournament"]},
+                overrides=["judge.max_output_tokens=7"],
+            )
+
+    def test_an_inline_recipe_judge_mapping_refuses_a_content_override(self) -> None:
+        """g-judges-1: a hand-written mapping that names ``recipe`` while carrying its own content is
+        expanded through the recipe (the whole client block) and its disagreements are refused."""
+        with pytest.raises(ConfigError, match="temperature: 1.5 disagrees with recipe"):
+            RunConfig.from_data(
+                {
+                    "dataset": DATASET,
+                    "judge": {"recipe": "gpt-oss-120b", "temperature": 1.5},
+                    "steps": ["tournament"],
+                }
+            )
+
+    def test_an_inline_recipe_judge_mapping_without_model_takes_the_recipes_block(self) -> None:
+        """g-judges-1's red test: a hand-written mapping with ``recipe`` and no content used to fail with a
+        bare 'model Field required'; with ``model`` added it silently dropped the recipe's sampling,
+        decoding, budget and tokenizer while recording the recipe id.  It now takes the whole client
+        block."""
+        config = RunConfig.model_validate(
+            {"dataset": DATASET, "judge": {"recipe": "gpt-oss-120b", "base_url": "http://h:8000/v1"}}
+        )
+        judge = config.judge_config()
+        assert judge.recipe == "gpt-oss-120b"
+        assert judge.decoding == "json_schema"
+        assert judge.temperature == 1.0
+        assert judge.max_output_tokens == 8192
+        assert judge.context_tokens == 131072
+        assert judge.tokenizer == "openai/gpt-oss-120b@b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
+
+    def test_a_runtime_override_on_a_recipe_judge_still_applies(self) -> None:
+        """RUNTIME fields stay the config's: base_url (and the served model name) apply; the recipe's client
+        block fills everything else (decision 13's content rule)."""
+        config = RunConfig.from_data(
+            {"dataset": DATASET, "judge": "recipe:gpt-oss-120b", "steps": ["tournament"]},
+            overrides=["judge.base_url=http://h:8000/v1", "judge.model=judge"],
+        )
+        judge = config.judge_config()
+        assert judge.base_url == "http://h:8000/v1" and judge.model == "judge"
+        assert judge.recipe == "gpt-oss-120b"
+        assert judge.decoding == "json_schema" and judge.context_tokens == 131072, "the recipe's block filled in"
+
+    def test_the_extra_body_thinking_switch_is_the_one_allowed_override(self) -> None:
+        """Decision 13(a)'s one named exception: the extra_body thinking switch (the documented
+        ``chat_template_kwargs.enable_thinking`` toggle), the recipe's own extra_body kept."""
+        config = RunConfig.from_data(
+            {"dataset": DATASET, "judge": "recipe:qwen3.5-397b-a17b-nvfp4", "steps": ["tournament"]},
+            overrides=[
+                'judge.extra_body={"top_p": 0.95, "top_k": 20, "chat_template_kwargs": {"enable_thinking": true}}'
+            ],
+        )
+        assert config.judge_config().extra_body == {
+            "top_p": 0.95,
+            "top_k": 20,
+            "chat_template_kwargs": {"enable_thinking": True},
+        }
+        # Anything else in extra_body is a content override: dropping the recipe's sampling is refused.
+        with pytest.raises(ConfigError, match="extra_body"):
+            RunConfig.from_data(
+                {"dataset": DATASET, "judge": "recipe:qwen3.5-397b-a17b-nvfp4", "steps": ["tournament"]},
+                overrides=['judge.extra_body={"chat_template_kwargs": {"enable_thinking": true}}'],
+            )
+
+    def test_fake_is_the_offline_judge_with_the_run_seed(self) -> None:
+        judge = RunConfig(dataset=DATASET, judge="fake", seed=3).judge_config()
+        assert judge.is_fake and judge == JudgeConfig.fake(3)
+
+    def test_a_path_and_an_inline_mapping(self, tmp_path: Path) -> None:
+        path = _write(tmp_path / "judge.yaml", {"base_url": "http://h/v1", "model": "m"})
+        assert RunConfig(dataset=DATASET, judge=str(path)).judge_config().model == "m"
+        inline = RunConfig.model_validate({"dataset": DATASET, "judge": {"base_url": "http://h/v1", "model": "n"}})
+        assert inline.judge_config().model == "n"
+
+    def test_a_judge_path_takes_overrides_of_its_fields(self, tmp_path: Path) -> None:
+        """``--set judge.base_url=...`` on a config whose judge is a file once failed on the string."""
+        (tmp_path / "judges").mkdir()
+        _write(tmp_path / "judges" / "j.yaml", {"base_url": "http://h/v1", "model": "m", "concurrency": 4})
+        path = _write(tmp_path / "run.yaml", {"dataset": DATASET, "judge": "judges/j.yaml"})
+
+        config = RunConfig.load(path, overrides=["judge.base_url=http://other:8000/v1"])
+
+        judge = config.judge_config()
+        assert (judge.base_url, judge.model, judge.concurrency) == ("http://other:8000/v1", "m", 4)
+        assert RunConfig.load(path).judge == str(tmp_path / "judges" / "j.yaml"), "relative to the config file"
+
+    def test_a_relative_recipe_path_is_relative_to_the_config_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """g-decisions-6: every other relative path in a run config resolves against the config file, but
+        ``judge: recipe:./my-judge`` resolved against the working directory, so starting the run from anywhere
+        but the config's directory failed ('no family at ./my-judge')."""
+        import shutil
+
+        from rcp_ndcg_vllm.recipe import default_recipes_root
+
+        configs = tmp_path / "configs"
+        configs.mkdir()
+        family = configs / "my-judge"
+        shutil.copytree(default_recipes_root() / "gpt-oss-120b", family)
+        family_yaml = family / "family.yaml"
+        data = yaml.safe_load(family_yaml.read_text(encoding="utf-8"))
+        data["id"] = "my-judge"
+        data["variants"] = [data["variants"][0]]  # a one-size family: the file form resolves it
+        family_yaml.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        path = _write(
+            configs / "run.yaml",
+            {"dataset": DATASET, "judge": "recipe:./my-judge", "steps": ["tournament"]},
+        )
+
+        monkeypatch.chdir(tmp_path)  # the working directory is not the config's directory
+        config = RunConfig.load(path)
+
+        judge = config.judge_config()
+        assert judge.recipe is not None and judge.recipe.startswith("unshipped:sha256:")
+        assert any(str(family) in entry for entry in config.local_inputs()), config.local_inputs()
+
+    def test_a_base_configs_paths_are_relative_to_the_base(self, tmp_path: Path) -> None:
+        """They resolved against the extending file: the base's dataset was missed, or another file read silently."""
+        (tmp_path / "base" / "data").mkdir(parents=True)
+        (tmp_path / "exp").mkdir()
+        (tmp_path / "exp" / "data").mkdir()  # a decoy at the wrong relative location
+        _write(
+            tmp_path / "base" / "base.yaml",
+            {"dataset": "jsonl:data/rows.jsonl", "evaluation": {"systems": {"bm25": "data/bm25.jsonl"}}},
+        )
+        child = _write(
+            tmp_path / "exp" / "run.yaml",
+            {
+                "extends": "../base/base.yaml",
+                "candidates": {"from": "rankings", "rankings": "pools.parquet"},
+                "steps": ["retrieve"],
+            },
+        )
+        config = RunConfig.load(child)
+        assert config.dataset.uri == f"jsonl:{tmp_path / 'base' / 'data' / 'rows.jsonl'}"
+        assert config.evaluation.systems == {"bm25": str(tmp_path / "base" / "data" / "bm25.jsonl")}
+        assert config.candidates.rankings == str(tmp_path / "exp" / "pools.parquet")
+
+    def test_paths_in_a_config_are_relative_to_the_config_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A config once read its dataset relative to the working directory, so it ran only from one place."""
+        (tmp_path / "cfg").mkdir()
+        path = _write(
+            tmp_path / "cfg" / "run.yaml",
+            {
+                "dataset": "jsonl:../data/rows.jsonl",
+                "candidates": {"from": "rankings", "rankings": "pools.parquet"},
+                "evaluation": {"systems": {"mine": "systems.jsonl#bm25"}},
+                "steps": ["retrieve"],
+            },
+        )
+        monkeypatch.chdir(tmp_path / "cfg")
+        here = RunConfig.load("run.yaml")
+        monkeypatch.chdir("/")
+        anywhere = RunConfig.load(path)
+        assert here == anywhere
+        assert anywhere.dataset.uri == f"jsonl:{tmp_path / 'data' / 'rows.jsonl'}"
+        assert anywhere.candidates.rankings == str(tmp_path / "cfg" / "pools.parquet")
+        assert anywhere.evaluation.systems == {"mine": f"{tmp_path / 'cfg' / 'systems.jsonl'}#bm25"}
+        overridden = RunConfig.load(path, overrides=["dataset=jsonl:other.jsonl"])
+        assert overridden.dataset.uri == "jsonl:other.jsonl", "--set paths stay relative to the working directory"
+
+    def test_a_fuse_systems_path_is_relative_to_the_config_file(self, tmp_path: Path) -> None:
+        """A fused run's systems are paths like any other config input: relative to the file that names them,
+        with the ``#<system>`` selector kept."""
+        (tmp_path / "cfg").mkdir()
+        path = _write(
+            tmp_path / "cfg" / "run.yaml",
+            {
+                "dataset": "jsonl:rows.jsonl",
+                "judge": "fake",
+                "candidates": {"from": "fuse", "fuse": {"systems": {"a": "a.jsonl", "b": "b.jsonl#s"}}},
+                "steps": ["fuse"],
+            },
+        )
+        assert RunConfig.load(path).candidates.fuse.systems == {
+            "a": str(tmp_path / "cfg" / "a.jsonl"),
+            "b": str(tmp_path / "cfg" / "b.jsonl#s"),
+        }
+
+    def test_local_inputs_lists_the_fusion_systems(self) -> None:
+        """A job that does not see this host's files must refuse a fused run whose systems are local paths."""
+        config = RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "judge": "fake",
+                "candidates": {
+                    "from": "fuse",
+                    "fuse": {"systems": {"here": "/host/a.jsonl", "remote": "s3://bucket/b.jsonl#s"}},
+                },
+                "steps": ["fuse"],
+            }
+        )
+        assert "candidates.fuse.systems.here: /host/a.jsonl" in config.local_inputs()
+        assert not [item for item in config.local_inputs() if "remote" in item]
+
+    def test_a_shipped_judge_by_name_takes_overrides_from_any_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        path = _write(tmp_path / "run.yaml", {"dataset": DATASET, "judge": "recipe:gpt-oss-120b"})
+        assert RunConfig.load(path).judge_config().model == "gpt-oss-120b"
+        judge = RunConfig.load(path, overrides=["judge.concurrency=3"]).judge_config()
+        assert (judge.model, judge.concurrency) == ("gpt-oss-120b", 3)
+
+    def test_no_judge_is_a_config_error(self) -> None:
+        with pytest.raises(ConfigError, match="no judge"):
+            RunConfig(dataset=DATASET, steps=["evaluate"]).judge_config()
+
+
+def test_the_shipped_configs_validate() -> None:
+    root = Path(__file__).resolve().parents[2]
+    for path in sorted((root / "configs" / "run").glob("*.yaml")):
+        config = RunConfig.load(path)
+        assert isinstance(config.judge, str) and isinstance(config.judge_config(), JudgeConfig)
+
+
+class TestRunnerOptions:
+    @pytest.mark.parametrize("name", ["local", "slurm", "kubernetes"])
+    def test_the_typed_options_are_the_runners_own_model(self, name: str) -> None:
+        # One model per runner: the config's options are exactly what the runner validates.
+        from rcp_ndcg.runners import get_runner
+
+        config = RunConfig.model_validate({"dataset": DATASET, "steps": ["evaluate"], "runner": {"name": name}})
+        runner = get_runner(name)
+        assert type(config.runner.options) is type(runner.options)
+
+    def test_a_misspelt_runner_option_fails_at_load(self) -> None:
+        with pytest.raises(ValidationError, match="partiton"):
+            RunConfig.model_validate({"dataset": DATASET, "runner": {"name": "slurm", "options": {"partiton": "g"}}})
+        mine = {"name": "mine", "options": {"x": 1}}
+        plugin = RunConfig.model_validate({"dataset": DATASET, "steps": ["evaluate"], "runner": mine})
+        assert plugin.runner.option_values() == {"x": 1}
+
+    def test_a_job_env_naming_the_engines_overlay_is_refused_at_load(self, tmp_path: Path) -> None:
+        """The phase overlay owns ``RCP_NDCG_ENGINES``: a job env entry of that name silently defeated every
+        phase's own URLs, so the config refuses it instead of letting the runner's value be overridden."""
+        from rcp_ndcg.support.serve import ENGINES_ENV
+
+        data = {
+            "dataset": DATASET,
+            "runner": {"name": "slurm", "options": {"env": {ENGINES_ENV: "{}"}}},
+        }
+        with pytest.raises(ValidationError, match=ENGINES_ENV):
+            RunConfig.model_validate(data)
+        path = _write(tmp_path / "run.yaml", data)
+        with pytest.raises(ConfigError, match=ENGINES_ENV) as refused:
+            RunConfig.load(path)
+        assert "phase overlay owns" in refused.value.message
+        # a job's own env is otherwise its own: only the phase-owned name is reserved
+        assert RunConfig.model_validate(
+            {
+                "dataset": DATASET,
+                "steps": ["evaluate"],
+                "runner": {"name": "slurm", "options": {"env": {"HF_HOME": "/cache"}}},
+            }
+        ).runner.option_values() == {"env": {"HF_HOME": "/cache"}}
+
+    def test_a_plugin_option_named_env_cannot_carry_the_overlay(self) -> None:
+        """A plugin runner's options are free-form, so the refusal must reach them at config load, not only
+        when the job is built."""
+        from rcp_ndcg.support.serve import ENGINES_ENV
+
+        with pytest.raises(ValidationError, match=ENGINES_ENV):
+            RunConfig.model_validate(
+                {
+                    "dataset": DATASET,
+                    "steps": ["evaluate"],
+                    "runner": {"name": "mine", "options": {"env": {ENGINES_ENV: "{}"}}},
+                }
+            )
+        # a plugin's other env names stay its own
+        assert RunConfig.model_validate(
+            {"dataset": DATASET, "steps": ["evaluate"], "runner": {"name": "mine", "options": {"env": {"A": "b"}}}}
+        ).runner.option_values() == {"env": {"A": "b"}}

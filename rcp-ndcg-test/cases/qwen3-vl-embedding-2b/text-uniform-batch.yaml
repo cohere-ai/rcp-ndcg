@@ -1,0 +1,60 @@
+id: qwen3-vl-embedding-2b/text-uniform-batch
+recipe: qwen3-vl-embedding-2b
+role: embed
+source:
+  kind: generated
+strata:
+  modality: text
+  length: short
+  batch: uniform
+inputs:
+  instruction: Represent the user's input.
+  queries:
+    - id: q1
+      text: What is the capital of France?
+    - id: q2
+      text: Which river runs through Paris?
+    - id: q3
+      text: What language is spoken in Brazil?
+  documents:
+    - id: d1
+      text: Paris is the capital of France.
+    - id: d2
+      text: The Seine flows through Paris.
+    - id: d3
+      text: The capital of France is Paris.
+    - id: d4
+      text: Portuguese is the official language of Brazil.
+    - id: d5
+      text: Berlin is the capital of Germany.
+    - id: d6
+      text: The Seine is a river in northern France.
+expected:
+  kind: similarity_matrix
+  values:
+  - - 0.7892610536988385
+    - 0.514105998115921
+    - 0.7978197938800249
+    - 0.3877092454943476
+    - 0.5550764170162859
+    - 0.5239830695018162
+  - - 0.6311043366154608
+    - 0.7504845794194258
+    - 0.6144098322993308
+    - 0.3386057921998694
+    - 0.4404264695726518
+    - 0.7347153504137434
+  - - 0.33237732075750803
+    - 0.23280334018521742
+    - 0.3306161789451577
+    - 0.7812122840306812
+    - 0.32018516955332443
+    - 0.2689557223812896
+  tolerance: {abs: 0.002}
+  origin: reference
+  status: reproduced
+notes: >-
+  Generated short/uniform cell: one batch of same-shape items (all short text, one sentence each;
+  full prompt tokens 26-30 per item with the recipe's frame of 20). Queries near-duplicate two
+  documents (d1, d3) so the wave can sanity-check ordering, not just magnitudes. Tokenizer revision
+  9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda; tolerance abs 2e-3 is the declared bf16 margin. status reproduced (values filled from the reference implementation on cuda, 2026-10-13).

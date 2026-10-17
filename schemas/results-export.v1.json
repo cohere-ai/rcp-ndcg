@@ -1,0 +1,40 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/results-export.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What ``results export`` wrote.",
+  "properties": {
+    "out": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Out"
+    },
+    "records": {
+      "description": "The number of records emitted (one per system, dataset, metric and cutoff).",
+      "title": "Records",
+      "type": "integer"
+    },
+    "schema": {
+      "const": "rcp-ndcg.results-export.v1",
+      "type": "string"
+    },
+    "sink": {
+      "title": "Sink",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "sink",
+    "records"
+  ],
+  "title": "ResultsExport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.results-export.v1"
+}

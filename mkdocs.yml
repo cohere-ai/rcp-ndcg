@@ -1,0 +1,101 @@
+# The documentation is plain Markdown, read on GitHub. This file only serves a local preview
+# (`mkdocs serve`) and the CI check that every page is in the navigation and every link resolves.
+# The pages follow one three-tier structure: Concepts (what the machinery is), How-to (one task end to
+# end), Reference (an exact name, flag or id), entered through Home, Quickstart and Data.
+site_name: RCP-nDCG
+site_description: RCP-nDCG, nDCG with calibrated relevance gains from an LLM judge.
+repo_url: https://github.com/cohere-ai/rcp-ndcg
+repo_name: rcp-ndcg
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Data: data.md
+  - Concepts:
+      - "The metric: RCP-nDCG": concepts/metric.md
+      - "Scoring protocols and tie rules": concepts/protocols.md
+      - "Stage A: the tournament": concepts/tournament.md
+      - "Stage B: the rubric": concepts/rubric.md
+      - "The calibration": concepts/calibration.md
+      - "Primitives: re-annotation, insertion and several judges": concepts/primitives.md
+      - "Preprocessing and chunking": concepts/preprocessing.md
+      - "Text budgets for served roles": concepts/text-budgets.md
+      - "The inference layer: one transport for every role": concepts/inference.md
+      - "Retrieval and reranking": concepts/retrieval.md
+      - "Embedding endpoints": concepts/embeddings.md
+      - "Late interaction: pooling and MaxSim": concepts/late-interaction.md
+      - "Matryoshka heads and the dimension sweep": concepts/matryoshka.md
+      - "Judges, the judgement store and estimates": concepts/judges.md
+      - "Runs, engines and runners": concepts/runs.md
+  - How-to:
+      - "Calibrate your benchmark": how-to/calibrate-your-benchmark.md
+      - "MTEB integration": how-to/mteb-integration.md
+      - "Export evaluation results": how-to/export-results.md
+      - "Reproduce the paper": how-to/reproduce-the-paper.md
+      - "Serve a retrieval model": how-to/serve-a-model.md
+      - "Add a serving recipe": how-to/add-a-model.md
+      - "Adopt a model: the four classes and the parity bar": how-to/adopt-a-model.md
+      - "Validate a recipe on GPUs": how-to/validate-a-recipe.md
+      - "Use the verified fake engines": how-to/use-verified-fake-engines.md
+      - "Release candidates and the GPU waves": how-to/release-candidates.md
+  - Reference:
+      - "Command line": reference/cli.md
+      - "Recipes and serving models": reference/recipes.md
+      - "The GPU validation ledger": reference/gpu-validation.md
+      - "The results record: a compatibility contract": reference/results-record.md
+      - "Compatibility and versioning": reference/versioning.md
+      - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
+      - "The public surface, frozen": reference/public-surface.md
+      - "rcp_ndcg_core": api/metric.md
+      - "rcp_ndcg.eval": api/evaluate.md
+      - "rcp_ndcg.inference (the rerank wire and client)": api/inference.md
+      - "API reference (generated)":
+          - "rcp_ndcg_core": reference/api/rcp_ndcg_core.md
+          - "rcp_ndcg_core.gain": reference/api/rcp_ndcg_core.gain.md
+          - "rcp_ndcg_core.irt": reference/api/rcp_ndcg_core.irt.md
+          - "rcp_ndcg_core.metric": reference/api/rcp_ndcg_core.metric.md
+          - "rcp_ndcg_core.protocol": reference/api/rcp_ndcg_core.protocol.md
+          - "rcp_ndcg_core.records": reference/api/rcp_ndcg_core.records.md
+          - "rcp_ndcg": reference/api/rcp_ndcg.md
+          - "rcp_ndcg.calibration": reference/api/rcp_ndcg.calibration.md
+          - "rcp_ndcg.data": reference/api/rcp_ndcg.data.md
+          - "rcp_ndcg.data.preprocess": reference/api/rcp_ndcg.data.preprocess.md
+          - "rcp_ndcg.data.revisions": reference/api/rcp_ndcg.data.revisions.md
+          - "rcp_ndcg.errors": reference/api/rcp_ndcg.errors.md
+          - "rcp_ndcg.eval": reference/api/rcp_ndcg.eval.md
+          - "rcp_ndcg.eval.mteb": reference/api/rcp_ndcg.eval.mteb.md
+          - "rcp_ndcg.examples": reference/api/rcp_ndcg.examples.md
+          - "rcp_ndcg.inference": reference/api/rcp_ndcg.inference.md
+          - "rcp_ndcg.judging": reference/api/rcp_ndcg.judging.md
+          - "rcp_ndcg.results": reference/api/rcp_ndcg.results.md
+          - "rcp_ndcg.retrieval": reference/api/rcp_ndcg.retrieval.md
+          - "rcp_ndcg.runners": reference/api/rcp_ndcg.runners.md
+          - "rcp_ndcg.runs": reference/api/rcp_ndcg.runs.md
+          - "rcp_ndcg.testing": reference/api/rcp_ndcg.testing.md
+          - "rcp_ndcg_vllm.recipe": reference/api/rcp_ndcg_vllm.recipe.md
+
+# Links to files outside docs/ (experiments/, the repository root) resolve on GitHub, not in the local preview.
+validation:
+  links:
+    not_found: info
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

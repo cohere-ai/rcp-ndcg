@@ -1,0 +1,6107 @@
+{
+  "normalisation_version": 1,
+  "per_input": {
+    "0234e95dd573869f297ca71bab5812e357e2710b8362620aeb169067cbae6d0e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/v1/models"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": true,
+      "bodies_differ": true
+    },
+    "034a45e3c3e4db7d4fcf8b45b7a0f0ba6fffcef63aafdbbc83ae412f041adf37": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001064017415046692,
+      "max_rel_diff": 1.9108451440459187,
+      "min_cosine": 0.9999636133346214,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "03719a278b033edf54c9bbaef21282b74310a53856f6f39a214803a6af127e37": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0509d5f990fcb535f871e5d75282816782d9d277c540520a6eb5ea996245e9a4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "06fce9f544e274fa8fc365e82e441811fd01966aba9c51be8318c8252177c8a6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0ac484e77764c7ebde50e46607b5b4de8ca227a9cb6e3fce35e83c43b91f075a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0010102689266204834,
+      "max_rel_diff": 1.9998173943243527,
+      "min_cosine": 0.9999730895240558,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0d27aef6daabde6f4db8aae0f5d0d2428a86c14c60312c6f648577f78f534530": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:wrong_model"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0d5137399391286d3d4f94f25811f8c5ed5b944c70ae975a5a7038f8d63f6615": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0e54655c8eeaedf816956537455b2b368badcc1103113ec061eb1f1f5dbe83b8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0007361955940723419,
+      "max_rel_diff": 1.6667060553159139,
+      "min_cosine": 0.9999634219901711,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0e618a9448476e3861e5ee3ed880f66b436f81b7ecc7e0fa8d2fcf02a891c35d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:24",
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "0f0cd366b2994868b558caccf767dcbdbade3ba1171889a509a28745b6741f95": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0008123517036437988,
+      "max_rel_diff": 1.8017278860252286,
+      "min_cosine": 0.9999723073943851,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "0f2b4bbe62cc1ec086b7737a262d080ed77bda783100716a9e00f68e7daefdcb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0018812939524650574,
+      "max_rel_diff": 1.59777185357904,
+      "min_cosine": 0.9999601702513976,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1159aa49bcc859705e86637d3581f6757dfce923a03929c6de00c3111ad4ebb1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "11919b543b896874be2aedb2f657e8d6f09159f610a6b49ac4dc52847a7fd53d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1277d1cf2115d7623f15e824ad94df47cd2f33e1762fab9bb1b14ef80c099f0f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "12e445aa8b04e812f46c9acffb410f33b87e8366ec74d06e1076f8eebf9f75d6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0006576068699359894,
+      "max_rel_diff": 1.9998871341789282,
+      "min_cosine": 0.999970404306234,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "14ad106311b35c28654edae76301df43fc459781dc18744693eb74151f358d5e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1601cdb9401a6dec18533732b99f4e8a43c44b549fcdcc750fb98a157e2b2f2b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "16eb71fbce80680a541d919042148fe2b2c7b8f7227a5f5db77446ec6dcb81c6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "17a8b59df0510d7a7ceef8e5e0622df7bab278588402b944b35e58c6c0adc2e2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "17d39a5b56e5d5cd5c3b5a9d8c9718ef1a50ff5806003af258695b707a951b8b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0020263371989130974,
+      "max_rel_diff": 1.5686892454366614,
+      "min_cosine": 0.9999671812274985,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "187c61ba48967d2b1ab6f9fb3215a70768a20d126a0c8b521e7276d27ce20142": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0013969801366329193,
+      "max_rel_diff": 1.9963013682295503,
+      "min_cosine": 0.9999601454735444,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "18856dcfe469134f532bb7565c850349b737b52f013e2dead5fbbd84a709c258": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "1888c3e3e88e7efff057d1510decfe1be51c9e2e316e998a07df839634974c5f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:9"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0011816918849945068,
+      "max_rel_diff": 1.3988707434996115,
+      "min_cosine": 0.9999726790793757,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1c83787397ce480533a41bcba6af8767a4e5827723967e0bfce70a5bcbd157b4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0008497443050146103,
+      "max_rel_diff": 1.9998795864792362,
+      "min_cosine": 0.9999738714834403,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1debaed862387334b2d175b894e731e1c32c638734a7908a2e971ab749470d86": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0011908262968063354,
+      "max_rel_diff": 1.9418428741563631,
+      "min_cosine": 0.9999383922043864,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1e19bc3881c48ab03a319667263e11d633e1522b40e27bb3bbdbe84dfef93617": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0015667974948883057,
+      "max_rel_diff": 1.8396043049095703,
+      "min_cosine": 0.999971067850489,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "1eb6440f6de1203e7d4503a43f1a41df68dcc746d8a4e797c5c57595c388b854": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2196ef91481f77bdae4782d530bc565bc3c16a7a2bd4256d3f000d6a04f68ee0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "21c01bc078e87f6b71dc2eebcd453a107166a3120b0cab2a1226b6fa6c731629": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "23213b4772483cbb3e8693158ba00b844945d525535729acccc05e6954477325": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2450fd3f217b3418a193d16895be0cfb09fb57b17968e2abe93cd84ff07f9206": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:13/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "257e8c621789e034b946654d3202ce5aa0529b93c931910147f3cf6aea5be311": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.003468143753707409,
+      "max_rel_diff": 1.9197177969652706,
+      "min_cosine": 0.9998348412808443,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "26e155d7f0c9f019e61ceb52ef5f28d2b2f39e787f0b89825b1696540c34e24b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00215810164809227,
+      "max_rel_diff": 1.93465151979578,
+      "min_cosine": 0.9996312586355944,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "27c54d83a2544482903458425984dab8e0d9ed1c4455ecac2cf09fa99814e2b2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "29b4cdc1c00592f1ff8dec75a61b782b739253b2b6a65ad05ce327cdf321503a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2af69a778f6f77c0417975461a1736b0eef6e5f9cb9f32a1ebff89023bc1a211": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0005968213081359863,
+      "max_rel_diff": 1.998654097464048,
+      "min_cosine": 0.9999725948189756,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "2b6c32598b8208366049f0e21380a6b566adff482256e86e630e06c50eadef01": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2c88208924f8d681abe39ba1e63e6b46cfc67d19fa71b1415be844c525810614": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2cf7728b095748abd98dd2fbd5250e9493061a09d7cc472b4462cd76c6b446f0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "2d61c0fae1eeb26063429535e7c12d6f19a16fb590c5381b4ecfa3057c6d6cca": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001252438873052597,
+      "max_rel_diff": 1.8842403582827794,
+      "min_cosine": 0.9999585176188773,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "347d2b7f1f8380dd84ab1745ff885a5fc5d5a37048f517939d72d64d780154fb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001257648691534996,
+      "max_rel_diff": 1.8770419526468705,
+      "min_cosine": 0.9999570349494242,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3499e2e8e945b7810b565195f021eae5e4db0163a5467c8dec35232f88ab4cc7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "350d8b0e6d94654073525dfcc935e2514c600e927f1b8f7e0f40888dc29afd66": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001265503466129303,
+      "max_rel_diff": 1.9946516596738328,
+      "min_cosine": 0.9999681254832637,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "3557a13de7cc5957e90f104c1823b3d52bbdd82e1fd6f47dfc550b9785199a87": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:empty_input"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3cb9b077cba794a76fa174b5799564bc3817d8a3fa61d3650ddc94cc7f3b3715": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3ce3d4a26323432c7d458a598ef307d61d5c39d9e4443a85e31dd288ee5d69a5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "3ea9afc96fbf7cc1ec6ac16721309ee8be4fff9bce62c6fea0b31fa4201d63c5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0008021695539355278,
+      "max_rel_diff": 1.5330734726813473,
+      "min_cosine": 0.9999657591676583,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "42b640c2bc51db63785f22bfae8e6febf17b11d757ed1eed97a9da65fc907f35": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0018541067838668823,
+      "max_rel_diff": 1.9996315604830617,
+      "min_cosine": 0.9999655684496987,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "44a84356ff6c423e1f175638e660a0dabaa4e2414e4dd8e2f026ed18f6df0ecf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "45cbd1c9d011097d5c7008695938775ea507458768a9d1bdef7d8d959fa7c442": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0009562578052282333,
+      "max_rel_diff": 1.8586014098081542,
+      "min_cosine": 0.9999719799959473,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "465d23760135b9421a36695de3bdfd3856433678fb50a968526ddb13a906f2d9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:17"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001327522099018097,
+      "max_rel_diff": 1.777099255226007,
+      "min_cosine": 0.9999646084719302,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "486eeea9c7c520eeb13a0a87ebb887445c4fae2587cfcff4fdd1d65d3c73086f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "49e933bb3556145ddb935ee1fbe29b359486b354d11f4e4417e90201a46701ac": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0011816918849945068,
+      "max_rel_diff": 1.3988707434996115,
+      "min_cosine": 0.9999726790793757,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "4c5c689c1a24610d37bd0188b0886cea0f789d908d90cf726cb055d1613500bd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4ce74fceeb382a9812fa94b8874b81ad1d95b1320f785d47eefdf796dbde6f6e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4d7687cb974d2eec6a9ea070e7b22a5e87424c46fbcf05b22b79c6bd4d066c4f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4e0ca272a36ba41bf1885e2e500e13f0f31c5a35981132c703b4a082ba126da2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "4fb73727ee9e58e0298ae96e66cf770103b57cfea736e5fcff670587c66f6de3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0017338171601295471,
+      "max_rel_diff": 1.9996220819922312,
+      "min_cosine": 0.999969542256965,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "511392e1083e5dd28e607cd197bcd24ec52d3db7b32323ace31b73badbbbc793": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0024045370519161224,
+      "max_rel_diff": 1.9999457788305475,
+      "min_cosine": 0.9998763026142313,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "527f3958bcdbd2e982378b1081abec4253f4e9199fbf09a0d764b60cb4ec9874": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012382641434669495,
+      "max_rel_diff": 1.9067936526487608,
+      "min_cosine": 0.9999730193306462,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "53203c5d4029ceb24de3289efb74b479d1b7b1d832eb5eea8ae933fc260261a0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5394e41bfdd5fcb87ff8e8e1ff4bdb5ee5999c6f26da7a582cfcd7e9acd48ae7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:3"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0010240264236927032,
+      "max_rel_diff": 1.9995530268508344,
+      "min_cosine": 0.9999600362567878,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "53cfff0ee02ace375d72ad5cadd6fa6b4d45e5d8196dba778afee4e509956082": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "53f27f91f2be87fbfbf73b209e12cf998f872894639bb81287679fb45e282c22": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:/health"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "54330cc43e08e1af11ba39c89a60b9417fcb51f8a15c8322cd85bca497a17d2f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:15"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5519948fc0f5a24ca298d2ff567fd89a832d9f2ceb4dcba9d7914617402f13bc": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "565a9b8fef974120674454fcd4c9d1cd30c27e4c87ab9ec50100fc05ffc52598": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "57a830c249a9e9ca17b26fe0ab904203f1e127d2fc7cef10f5211322c0d76339": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5924b5bce5fa9bcc0a3044da34b89864f863089f12fcd86c15ec3c94848dfd3d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0015667900443077087,
+      "max_rel_diff": 1.8396043957232555,
+      "min_cosine": 0.9999674570752487,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "59af4116adff82b7692714e364e7c5475dffc583aef3c8604883d72482f9d00b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:14/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "59ced78fff34961de869cb3291fb8913c1081e10ef9fead6975e46e27da0ed50": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "59fd8492c45bcdea27bfe7ea0bf643714da24bd2fd9b461390c8907979de1ea3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5ae2679e5cf221e877be6305f8782a904242f3637754a8a79cc7eb3684995816": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:19/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5d69460860ea63a9e57ad4cf5fa8e1f8c68b60bc386265691e3f6d1f3444fee8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:24"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0014776857569813728,
+      "max_rel_diff": 1.9936310275609217,
+      "min_cosine": 0.9999654077202252,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "5dd830ab03ffd941844aed3d18a40f0869c69fa72cb2b1671615e1440bc9f75e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5f35934951f246f21d67fa35a5b7d204f6d524af0ca856086bf19557063d4868": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:22/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "5fe3c8231fd3551a412ea8cdea704b2681a617f3303dd1fd826ebd13696062f4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "602b58a21edc595c009a531566c99f02bfbb14503d8dd38f37cc98038f051878": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "608a548f7232e49195d6738c1eaa2faa43ab2402545f37912057f3ebf07e5842": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 32,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:2",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:3",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:6",
+          "pairs:6",
+          "pairs:7",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ]
+      },
+      "max_abs_diff": 0.0029625967144966125,
+      "max_rel_diff": 1.9919363712233444,
+      "min_cosine": 0.9999417157813177,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "6274a3f8895cd76dde1518f3ff59f9259634bcb60fdac23fe10463f369ee7526": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "63181cf43e471ff83f4f3e4c7f736583925fb3d1004fdc27c704328734ea9ba6": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6357cf184a87686f754df99d3941c0d4bb9fa6f49bafd8d2d21fdc1fd97e1db9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 7.450580596923828e-09,
+      "max_rel_diff": 1.1906131109839536e-07,
+      "min_cosine": 0.9999999999999996,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "64ae951c618fe4a5f258dcbf17f36f8bb8e4b08300551bd9ee103406ab6f7c65": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "65e04662dee68223c898e9262ef42b5ccd509b7f9749a1ef3c0c6bf684ffa3b3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001065678894519806,
+      "max_rel_diff": 1.3202795133599021,
+      "min_cosine": 0.999970630824657,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "66d91eb86d9cc89b3fb196e29242446a533af4129769e64b04adf1a7d18e8a6a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:16/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "674ddbb151031e9cad00305eff8ff906ecf277829ac6cb8fa86f2da645f7f633": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:2"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "69037ed828f56cfa31fc8425654d694b2830981af0769884b1fee22b760b7b73": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0006146728992462158,
+      "max_rel_diff": 1.995655719454652,
+      "min_cosine": 0.9999651922014869,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "692b4ec0f2c85291bb949ae8583ca18f364b6817f20a2f96c6e41085b90c9457": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:6",
+          "pairs:6",
+          "pairs:7",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:1",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 7.450580596923828e-09,
+      "max_rel_diff": 1.1920674586206563e-07,
+      "min_cosine": 0.9999999999999996,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "6cc88c95fe207499205ca6615b9371a40e8931c2da3ecf985b20bfcd1e09ff2f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "6cc9769dfa0bb01c83a0f925d8682a39868058e2b634990f3732969e8b64fffb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0016815140843391418,
+      "max_rel_diff": 1.9939293859297493,
+      "min_cosine": 0.9999738978853748,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "6dc4e4375c43c412060ab2fa2c2159d71b85b7e43cf752ca33de35b137aac99b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:14"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "700589ce56428d69f6f207fabc349ed7ea5f4333c3d0ce627b65f798cef07fbf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:18/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "70b1df3d20886bae1b9e444720c65c04d442b818ea7e5c536987b0a48cfa45aa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 28,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1",
+          "pairs:2",
+          "pairs:3",
+          "pairs:4",
+          "pairs:5",
+          "pairs:6",
+          "pairs:7",
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11",
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27
+        ]
+      },
+      "max_abs_diff": 0.0010897144675254822,
+      "max_rel_diff": 1.7484033798897045,
+      "min_cosine": 0.9999654878101089,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "74abd4b02a409ad8b1ebbecf55ebb6e12820bdbc5ceab72036d02209abc3fba0": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010823402553796768,
+      "max_rel_diff": 1.9971481707230445,
+      "min_cosine": 0.9999614306660756,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "74c24fd5176ccf9cb7650165a05d8f1a562819b824dfd9b66b581fff9d37d3b1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "75aac3508536be1309b0369b7c5e3e9cb26fc5de3d2e15011214d54052a7a209": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "79ca19ab7870083726ec6430ded6487af2e247458afc6642c98d79c6d87ce060": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "7f2b5a27e76b6ef03b4f5282eafe46a1114b82c2c1ba9ea2cfd5f90612e3502e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:24",
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.001818094402551651,
+      "max_rel_diff": 1.9966210513009028,
+      "min_cosine": 0.9999657591676583,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "81052f5c1a17f98de0e0b110af558e09f3d7477f29a82063c9408187cec30b71": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8175dbfb17ee7e5053404badb646b81f45103712e3920f27a0b4b5b4368f9bcb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:0/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "82c4849e3defad22dab0b93b1c6395e2a8d2e2ad05721a25dfd13e9817557182": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:20/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "83c46f3fba76d81036e3204a1e1e1db5546c30283df013dae90884dc029dd52e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "86ef2417c33ded6d73c3783079064e8df5c07aa7de6879e1934f34afa6f8a337": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 4,
+        "request_ids": [
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "876820342bb95f4be00efb4015c58a0caaaad4859509fcdcd5c91f3e1198e938": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "88f4830773864b1823515b29ea755b1dea84f1437aa74e33c0915fabcd688019": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0008282288908958435,
+      "max_rel_diff": 1.9952102181682076,
+      "min_cosine": 0.9999727702194661,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "892c17330c9677e6a6c81f27cccab11352a50a5893bf8cadc13968c97031cb21": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:4",
+          "pairs:5"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8a9411ede8bd9a78392ea8d40697c1b0b547312880abc2973311f8a41658e731": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8b696c3b662d66f78b4dff7dcf4369fe8d7793d3879e97598bd1503ed5799aef": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "8cf83c18b1faf8bd4ac4da3f59444008c378317073c2bbad6852e645e0786a5d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:21"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00170840322971344,
+      "max_rel_diff": 1.9996207382275248,
+      "min_cosine": 0.9999623120490017,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "907decb215777335544c2491b74db65bbe599f66015f185d767c4d39df903538": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9",
+          "pairs:10",
+          "pairs:11",
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.003468143753707409,
+      "max_rel_diff": 1.9992192235145696,
+      "min_cosine": 0.9998348412808443,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "90e4b11e88a66462ab8a2fc7f491c08e7d952e0e2fab9c5ff011ddc91342734c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "910217a6526dc3c9630c7924b4e2d46868e453b79a62a2d84e3e12a4e7ea7051": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:0",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "92957fcd0ce24d9f83a6a55475ca9ae1153feb9976a738e9825a40790d1007d5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:encoding_format=base64"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "974ce6f1275fadf27daa8ef48b8be2292d624a3452498e2d7c11d600b2e227be": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9802d8375b7c5aa94def204280b47e303b2dda3b9039d3a75e006c23ad2a17a3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "983521c417ba015dfc171ba3eb47321903f2caf11da4ea75731735e2a06c9209": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9960daeab1da5ecac7d6fd1d14276b3a0a9cd01528c285df89583fa2289d8009": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "999bc653bc1e71a720ef9e4392cccdb2c73b363a0d2d07256e02be9adb57c29f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0018812939524650574,
+      "max_rel_diff": 1.59777185357904,
+      "min_cosine": 0.9999601702513976,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9a64c79877543fdc6a17d7fee611ab60fd21f729bbfefee508d46499aa5e3e21": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:8/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9b121982061ae55c7fd53b1986b834c36c87ef2ba1cf2ed9ade653fd0aa9e592": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012317933142185211,
+      "max_rel_diff": 1.927325776168548,
+      "min_cosine": 0.9999694474420419,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "9bd3d3a922ffa43cee4a1cba0a94f3ce6c68c538bd84b911717f77bfa9101e6c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:6",
+          "pairs:7"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9cd8928c00c62f0b3512ea9c36e14fcb8a163102fe7b50fe68e03129102b47d2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_2x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9eb627802d46ab396e1d46dc749427b3a2fd977a13d5092e602d3f05c0fe25a4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "9f070559322c27f672031dcdb299364cf75188d056c3a7d8fa721e33175ff761": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a055465bf4e4343a4751a5160e26a2a18369a289a481f531c5c61afd31f33597": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a3a1baf14ee368adae421b70f33d1fd70fc15d8e2bce3391fe5e49b7faf582ec": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a594488487364ad90d88bc262e40e1bf88c115a8811909b47870c7bc9799a3b8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:15/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a6652ecc74b0ac40f9c77173ce1f11a554cdad3c7988cf73f0877a55410a3b58": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a73da2bfd52c74f4b766e3bf3020b9131fee64bb8266a07512f2c6ed39978075": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:9/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a8295b1307d26b6b2b176d0515cab2fbd6e08d7f71c5430fd1dc3498bc41e7e2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a89d417880295c11b2c4aa26931e040d7434267cdad22c1006bdf75d81710d60": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "a89dfae98cbaf4e71989f303e0db4f05c2c141a7eea083de5c37d6f5ae3001fb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.00110645592212677,
+      "max_rel_diff": 1.997085080631862,
+      "min_cosine": 0.9999705187472426,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "aa8c83377a0ff332179bdf557eb8a63c9c4bfc88c02e57ea1d7f5f117656b780": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0006305798888206482,
+      "max_rel_diff": 1.6935134286863902,
+      "min_cosine": 0.9999789913873807,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "aadc6f1242886d8ca2b9bdf64611b6a68c9ea6ec48a41f4221604d27b6d35f36": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "aae3757359ab9a7cfb0c82c6dc08e6c37a3b62beacd57d73fc77f902712dcbd3": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:22"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0020360443741083145,
+      "max_rel_diff": 1.7528930693211933,
+      "min_cosine": 0.9999627946708362,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "aaf1604185d1c47e97cec42348cb5cb96ff68726350c35b4ad9f6483eee9fbae": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0008343160152435303,
+      "max_rel_diff": 1.7130523099125083,
+      "min_cosine": 0.9999673920453004,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ad10567e992e7de15dafdea120cb63d078c6b13c67240b5ed7bfa3230f5ae9bb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ae3e39a1dcee187dc9d8869653a35fe5e14888455b031a38d109b4956ea016fb": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:23/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ae52d5d6b47305a4d646210bff7270492ce93c98998d84738107354abebd5230": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0025504250079393387,
+      "max_rel_diff": 1.9971212234325337,
+      "min_cosine": 0.9999674273415219,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b0457ec3793268a95294a48b933a9a18bc0a8f7408d9b574a1b30cb1d4ef5365": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0017703566700220108,
+      "max_rel_diff": 1.9279983367923257,
+      "min_cosine": 0.9999006706828951,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b187fa773f7088b93dfa9352c4ab822818e95a0e33b587e654d6f5498c5ac7ab": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:unknown_field"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b2f51c636ebd6687e97f29d908c9af92a2174438420a5b0c48bdb78c7a12676f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b4b6db6f08952b8a5c4d38f0dca413f7d1d0220df1c31f1e45689b6d3e62c623": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:11"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010816436260938644,
+      "max_rel_diff": 1.810884721597068,
+      "min_cosine": 0.9999432114736045,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b64f83ae0e58d95ac60f685ed3055d57b050246b7a857459a03d68632b6a6c73": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010102689266204834,
+      "max_rel_diff": 1.9998173943243527,
+      "min_cosine": 0.9999730895240558,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b88b843592eee884ca7cef86c36bb0d94f4c534aaf585e505641ceab36825763": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "wire:dimensions=32"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b88c8d50fdc6f0d588310b8d20b6eb65bf192960547c9154bd9dba2f06c1ad62": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.001216065138578415,
+      "max_rel_diff": 1.9657953408128899,
+      "min_cosine": 0.9999395764777914,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "b90fdee6f1642d9feafed5307405b114dd03e57d008e3a554c4f231b3b70833d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:over_length"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "b9166376e492906903817a0162968973660f05dd3cfacaa1c2deb65a2ccb38bd": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_by_1/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bbaaaa7ca5701edf81407f4c0b33eddccb1a9ea119bd2d04a00ad5460f7dfc93": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:19"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bc8ae4b2f471a5b698efc03a882dd8102421614858847191205a54f1d8911a0c": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "bd831ec6e262a27df24993b5f012528b4ac6aafa15df84dd88290a8297ffffad": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0016248207539319992,
+      "max_rel_diff": 1.9991177884549989,
+      "min_cosine": 0.9999657224608178,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "bf06097a14a800eb7220de9cee8fef2671127ca14efa156bf7020289c16c7a29": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:6",
+          "pairs:6"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 7.450580596923828e-09,
+      "max_rel_diff": 1.1920674586206563e-07,
+      "min_cosine": 0.9999999999999996,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c022f5b235c3878a2fceb85836ba4bc4cadc14a1ae85cddb03298f6c8b004a3f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_2x:uncut"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c06ad2f4e43edb4994d51c36df8a228dab9f41211e1d99668aef02a691a81267": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:8"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c16e9b8b0ea7ecf4339f890ec9e386b56624d5200d84b7f5b911863bf57397a4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:ladder:over_10x/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c19df8a7625b0ed4e4253efe3e3b604d4e8daa4dd2c91562ba8ebe9ab6ce92db": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001216065138578415,
+      "max_rel_diff": 1.9657953408128899,
+      "min_cosine": 0.9999395764777914,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c2fccf81da1a8a97b92a551e0333dcb38aa6a6e59800186dd683055483d53810": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0016796775162220001,
+      "max_rel_diff": 1.7469152293359245,
+      "min_cosine": 0.9999662087628267,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c36304f36ad123526b61ac5384cc5398b14ae39f729da719a01d4525928113af": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c438fe10eeabe4eb4200fd4baa69c162c0ff6955cdfbf2f242c0e4224e0fbddf": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:8",
+          "pairs:9"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0020263371989130974,
+      "max_rel_diff": 1.5686892454366614,
+      "min_cosine": 0.9999671812274985,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c55db564bfff73ee1d58895376ccb3824a93d4bfe0d459c871949a624e0bb5d5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:3/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c57efe94af620c92c7850d620b422d30bfa0ae3c379560ad76844374619c4584": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:11/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c5e997abdf099891fa106b2289926af3d2ea16eb251485d0e19a79ab31bb7113": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c74b9af4197315e6b545bd9839c641fe5b262201616bc4798d1932ddb5962d51": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "c7870e7f04ab0e57f231991c6983d91f373e5ec984f82b5a9787c75c9415f130": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:16"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0028086677193641663,
+      "max_rel_diff": 1.6375167674503261,
+      "min_cosine": 0.9999663620607481,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "c89f397b5963d7b1ac15543470a5c93bb486f6d5d028172d7f4222fa63cd7e26": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:12/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cb78e67c86af378dd96a4aa8db63b84da290f83869f4b8b8f7b644b63131dc06": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:3"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010240264236927032,
+      "max_rel_diff": 1.9995530268508344,
+      "min_cosine": 0.9999600362567878,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "cba20e769e3bdf90d4c410216e319c39bfefdf6df7944d25b1bba1101a20fb43": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:7"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0011379420757293701,
+      "max_rel_diff": 1.9968961683879767,
+      "min_cosine": 0.9999696956203338,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ce6f3c7195d94fbf95729b82e80e30aa4ac60cdb28311fa987ac2de026e785e7": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:5"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010328814387321472,
+      "max_rel_diff": 1.6379975840755279,
+      "min_cosine": 0.9999705075310152,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ce7c9d84a7f8e1392f6b2e9558d5133252f60e349549bcb003e59ab0dc6a95f5": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:17/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "cedbc394d332b637be06563b8f25f162097e454da0a6a05672adbc69376d4d62": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:10"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0009168842807412148,
+      "max_rel_diff": 1.8528011325215208,
+      "min_cosine": 0.9999496544903423,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d0fbd20574d0b0c2e1fcbe934927f611f8241866b2ef29ed50f750defd1744b8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:4",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5",
+          "pairs:5"
+        ],
+        "items": [
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3",
+          "document:0",
+          "document:1",
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0009294375777244568,
+      "max_rel_diff": 1.5354764062378312,
+      "min_cosine": 0.9999674570752487,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d1ac1d56dc411ab7c0f72b973e1b2cf29878afd25c70289a28e47572a133de78": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:0"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0010897144675254822,
+      "max_rel_diff": 1.7484033798897045,
+      "min_cosine": 0.9999654878101089,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d231a652370bc893082f119343672a8ce92f035f8dd3802daf22e59819cbe6a1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d3099f9900d16bec4719a5554a0ed32fae24dfa9a156b9b7fbc50d102e2b3817": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:18",
+          "pairs:19"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d3a8b750906f4f28afff43199a313b4e9eb2323683fdfc328a9f0eb06219c9e9": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.0035826899111270905,
+      "max_rel_diff": 1.998438759580007,
+      "min_cosine": 0.999956129003419,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d544e5ec96134985866dca5fdbf73c81176b772d35c4f52e74a3e3e4685c9e14": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.001818094402551651,
+      "max_rel_diff": 1.9966210513009028,
+      "min_cosine": 0.9999723922444659,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d561bfd395e67a71e5fdc5d238b2a168a805600fa47a841348a2f9e032504ec2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:4"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0009294375777244568,
+      "max_rel_diff": 1.5354764062378312,
+      "min_cosine": 0.9999674570752487,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "d58d67c0cc8b593cc63b6b21e8d49465cfe63749c811a135e79dcbe289abf498": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:7/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "d9596adc4957af9a74357931da1a8fb5e6993770b8b93f1158e7a2903dc0c10e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "da6b038c3ac252a4b70dfef87a586f44e84aa1a1066e82f840ef7ce9e11e8e9d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "probe:malformed_json"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dbb0361e3ca227e7d2f0b30d320d4a7b81e666c3cad63e01bec7cabbf803f77d": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "de0d9e74dc37d04e78d87fcb2da2acf6589ce0aa617a259670612f8be6f9de2b": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:7",
+          "pairs:7"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "de7eccc0a984f2647c7917ce060990873a068c923db89dc9705ac36f3853419f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:4/document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "dfccaa27f7dd4850d5b3fa7cd844b7598ff239497e4688aaaa9debc090088a07": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:23"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0019252561032772064,
+      "max_rel_diff": 1.750272192179287,
+      "min_cosine": 0.9999622596260239,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "dffc3d0d38f80260718258852cec215e223f0efb861fce6530092487c0f0f12a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 16,
+        "request_ids": [
+          "pairs:12",
+          "pairs:13",
+          "pairs:14",
+          "pairs:15",
+          "pairs:16",
+          "pairs:17",
+          "pairs:18",
+          "pairs:19",
+          "pairs:20",
+          "pairs:21",
+          "pairs:22",
+          "pairs:23",
+          "pairs:24",
+          "ladder:over_by_1",
+          "ladder:over_2x",
+          "ladder:over_10x"
+        ],
+        "items": [
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      },
+      "max_abs_diff": 0.0015260577201843262,
+      "max_rel_diff": 1.7973864326112772,
+      "min_cosine": 0.9999727687733623,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "e23e93cbf2389e606201ae48e8c66279ed5c4f58ba31a1d69638d5bbf0ee019a": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:1"
+        ],
+        "items": [
+          "document:3"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.001721501350402832,
+      "max_rel_diff": 1.940649064987005,
+      "min_cosine": 0.9999539490561197,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "e2d7fab05931b0ded48001448bf98fe889b1da603e45bf7290b8b30afbf88811": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:1/document:1"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e3c3b36dfbe5d63160491b1198fc57f645a0f67301872b548416bbe02faa176f": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:6"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e683fcd973761b4b510370671ff7aa9211ea19cdf9ebffb4d3aad65f345ffbc8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:10",
+          "pairs:11"
+        ],
+        "items": [
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "e6df313b6ee188ac4f181111cfa23582d64f931a7947e3e4d591857285efab6e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:5/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "eb076f0edc54e071b4db40a570a8743f503e992b9c55cb9bd8babc15399c35ac": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:10/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "eba8e021e3be2bfb280a7fa5dfac6c570f188b68f4f7ebf9797ef20602bc03a1": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 8,
+        "request_ids": [
+          "pairs:0",
+          "pairs:1",
+          "pairs:2",
+          "pairs:3",
+          "pairs:4",
+          "pairs:5",
+          "pairs:6",
+          "pairs:7"
+        ],
+        "items": [
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0",
+          "query:0"
+        ],
+        "positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "max_abs_diff": 0.00110645592212677,
+      "max_rel_diff": 1.997085080631862,
+      "min_cosine": 0.9999654878101089,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "edcec77ef719264ff0b9bd78c2992ebc1e768ed4f1bc97278d598fce61b18514": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:18"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ede8a0b9cf7ce0c8afadd6860d3c52194c26cc59894fe69d7b7f8f95720da621": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:3",
+          "pairs:3"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0012003681622445583,
+      "max_rel_diff": 1.5901548593938706,
+      "min_cosine": 0.9999651228511213,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ee3f11c062e29a993c67a426956afb0e057b3446a495cbc18741ff67f54dcd44": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:1",
+          "pairs:1"
+        ],
+        "items": [
+          "document:0",
+          "document:1"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0024586543440818787,
+      "max_rel_diff": 1.2985644213474685,
+      "min_cosine": 0.9999533289262224,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "ef3b34a4859cf16bc5fb692d498f2b60cfb50febb56ca97ae68d7d2f31e789e2": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:2",
+          "pairs:2"
+        ],
+        "items": [
+          "document:2",
+          "document:3"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ef4f964ce9159264df5a64712553b7071f67e4042c675429bd093c19b0d78540": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_1",
+        "same_process_1",
+        "same_process_2",
+        "same_process_2",
+        "same_process_2",
+        "after_restart",
+        "after_restart",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "ladder:over_by_1"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0012441426515579224,
+      "max_rel_diff": 1.9443223881201697,
+      "min_cosine": 0.9999736717339144,
+      "statuses_differ": false,
+      "bodies_differ": true
+    },
+    "efc5f30a098b6f834aa24f6bbf3949a6c4b75391a8b5c7133853326761a16ffa": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:21/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f27ec0a5bc9ae3b0868d5a0a9b78b67fb3db8fab0169acc3136f6a1a1f4d42a4": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:24/document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f3056535711779838603a823990ea208561315c6473e2b62053e9d9039c78ebe": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0000000000000002,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f4f8f5a7d7ead23effca852471f802f824db9b156bbb891862a0ff86f7edad12": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:6/query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "f78243de494d2e43b0f8bfc2d0c7a91e307790c2b6f1633791a322e3709ca095": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:12"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 1.0,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fba864239b6d9d2222119b38fcd3c067cbe9fce93dd60da11238055f4be6d820": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 2,
+        "request_ids": [
+          "pairs:20",
+          "pairs:21"
+        ],
+        "items": [
+          "document:0",
+          "document:0"
+        ],
+        "positions": [
+          0,
+          1
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999999,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fcd6a5d06e19018b37d3b9f984b1b18cdebce07c3381e7068a9b37464b611622": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "tokenize:pairs:2/document:2"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": null,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "fe30deb6a2eed71447d07a15fb70e07eef9b1b6f4a431bd686a6b338d13e863e": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:13"
+        ],
+        "items": [
+          "document:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0,
+      "max_rel_diff": 0.0,
+      "min_cosine": 0.9999999999999998,
+      "statuses_differ": false,
+      "bodies_differ": false
+    },
+    "ffa7130c654980b0c8ffa231bf219c28765891c6dec204bf16bf567cbd5e0fe8": {
+      "repetitions": [
+        "same_process_1",
+        "same_process_2",
+        "after_restart"
+      ],
+      "server_run_ids": [
+        "octen-embedding-8b@2026-10-14T11:08:31+00:00",
+        "octen-embedding-8b@2026-10-14T11:12:01+00:00"
+      ],
+      "batch_context": {
+        "size": 1,
+        "request_ids": [
+          "pairs:20"
+        ],
+        "items": [
+          "query:0"
+        ],
+        "positions": [
+          0
+        ]
+      },
+      "max_abs_diff": 0.0013905074447393417,
+      "max_rel_diff": 1.6677451924553401,
+      "min_cosine": 0.9999684184166078,
+      "statuses_differ": false,
+      "bodies_differ": true
+    }
+  },
+  "summary": {
+    "max_abs_diff": 0.0035826899111270905,
+    "max_rel_diff": 1.9999457788305475,
+    "min_cosine": 0.9996312586355944
+  },
+  "derived": {
+    "rule": "verification tolerance = 3x the maximum difference measured between repeated sendings of the SAME request (exchange_id: twice in one engine process and once after a restart), with absolute floor 1e-9 and relative floor 1e-6; no repeated request measured means no tolerance (declared unmeasured, never invented)",
+    "measured": true,
+    "repeated_requests": 207,
+    "statuses_differ": true,
+    "bodies_differ": true,
+    "abs_tolerance": 0.010748069733381271,
+    "rel_tolerance": 5.999837336491643
+  }
+}

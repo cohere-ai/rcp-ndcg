@@ -1,0 +1,211 @@
+{
+  "$defs": {
+    "PairComparison": {
+      "description": "System B against system A on one metric.",
+      "properties": {
+        "ci_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Upper bootstrap bound of ``delta``.",
+          "title": "Ci High"
+        },
+        "ci_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Lower bootstrap bound of ``delta``.",
+          "title": "Ci Low"
+        },
+        "delta": {
+          "description": "``value_b - value_a``.",
+          "title": "Delta",
+          "type": "number"
+        },
+        "num_queries": {
+          "description": "The number of paired queries.",
+          "title": "Num Queries",
+          "type": "integer"
+        },
+        "p_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its two-sided p-value (``None`` when undefined; such a pair is not significant).",
+          "title": "P Value"
+        },
+        "sign_flips": {
+          "default": [],
+          "description": "Queries where RCP-nDCG and qrel-nDCG disagree about the sign of the delta.",
+          "items": {
+            "$ref": "#/$defs/SignFlip"
+          },
+          "title": "Sign Flips",
+          "type": "array"
+        },
+        "significant": {
+          "description": "``p_value < alpha``.",
+          "title": "Significant",
+          "type": "boolean"
+        },
+        "system_a": {
+          "description": "The baseline (A).",
+          "title": "System A",
+          "type": "string"
+        },
+        "system_b": {
+          "description": "The compared system (B).",
+          "title": "System B",
+          "type": "string"
+        },
+        "t": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The paired t statistic (``None`` when it is undefined, e.g. the differences have no variance).",
+          "title": "T"
+        },
+        "value_a": {
+          "description": "A's aggregate over the paired queries.",
+          "title": "Value A",
+          "type": "number"
+        },
+        "value_b": {
+          "description": "B's aggregate over the paired queries.",
+          "title": "Value B",
+          "type": "number"
+        }
+      },
+      "required": [
+        "system_a",
+        "system_b",
+        "value_a",
+        "value_b",
+        "delta",
+        "ci_low",
+        "ci_high",
+        "t",
+        "p_value",
+        "significant",
+        "num_queries"
+      ],
+      "title": "PairComparison",
+      "type": "object"
+    },
+    "SignFlip": {
+      "description": "A query where RCP-nDCG and qrel-nDCG prefer different systems of a pair (deltas are B minus A).",
+      "properties": {
+        "dataset": {
+          "title": "Dataset",
+          "type": "string"
+        },
+        "delta_qrel_ndcg": {
+          "title": "Delta Qrel Ndcg",
+          "type": "number"
+        },
+        "delta_rcp_ndcg": {
+          "title": "Delta Rcp Ndcg",
+          "type": "number"
+        },
+        "query_id": {
+          "title": "Query Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "query_id",
+        "delta_rcp_ndcg",
+        "delta_qrel_ndcg"
+      ],
+      "title": "SignFlip",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/comparison.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The result of compare: every compared pair of one metric at one cutoff.",
+  "properties": {
+    "alpha": {
+      "title": "Alpha",
+      "type": "number"
+    },
+    "baseline": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Baseline"
+    },
+    "bootstrap": {
+      "title": "Bootstrap",
+      "type": "integer"
+    },
+    "k": {
+      "title": "K",
+      "type": "integer"
+    },
+    "metric": {
+      "enum": [
+        "rcp_ndcg",
+        "qrel_ndcg",
+        "count_ndcg"
+      ],
+      "title": "Metric",
+      "type": "string"
+    },
+    "pairs": {
+      "items": {
+        "$ref": "#/$defs/PairComparison"
+      },
+      "title": "Pairs",
+      "type": "array"
+    },
+    "schema": {
+      "const": "rcp-ndcg.comparison.v1",
+      "default": "rcp-ndcg.comparison.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "metric",
+    "k",
+    "alpha",
+    "baseline",
+    "bootstrap",
+    "seed",
+    "pairs"
+  ],
+  "title": "Comparison",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.comparison.v1"
+}

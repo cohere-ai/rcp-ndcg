@@ -1,0 +1,434 @@
+"""``recipe: <id>``: a role config that names a shipped serving recipe takes its client block from it.
+
+One home for the mapping form (docs-firstcontact Q1). The shipped recipes live in ``rcp-ndcg-vllm``'s package
+data (``rcp_ndcg_vllm.recipe``); this module imports that package **lazily** (the layering charter's exemption:
+rcp-ndcg may read rcp-ndcg-vllm's recipe data, rcp-ndcg-vllm never imports rcp-ndcg). When it is absent, the
+refusal is a typed :class:`~rcp_ndcg.errors.ConfigError` with the exact install line (docs-site OQ-6).
+
+The recipe **file format is the versioned contract** between the two packages (owner decision 18): every
+recipe carries ``schema_version``, and this module refuses a recipe whose version it cannot read — the check
+runs before the merge, so a newer rcp-ndcg-vllm and an older rcp-ndcg fail with a versioned message instead of
+a schema surprise (there is no lockstep version pin between the packages; core and rcp-ndcg keep theirs).
+
+The merge (Q1), over the recipe's plain ``client`` block:
+
+- the CONTENT fields (per the endpoint's ``IDENTITY_ROLES`` declarations) come from the recipe — every CONTENT
+  field the config sets explicitly must equal the recipe's declared value or the refusal is a
+  :class:`~rcp_ndcg.errors.ConfigError` naming **both** values; a field the recipe leaves undeclared accepts
+  the config's explicit value (nothing it declares can conflict);
+- ``model`` and ``revision`` come from the recipe's ids and are checked the same way;
+- the RUNTIME fields (``base_url`` and the rest) stay on the config — a serve-by-role run leaves ``base_url``
+  unset and the engines' URLs reach the step through ``RCP_NDCG_ENGINES``.
+
+The ``recipe`` pointer itself is replaced by the recipe's **identity**: the shipped id, or
+``unshipped:sha256:<hex>`` for a recipe loaded from a path — the content hash of its resolved form, so two runs
+whose files differ never share a run identity and the config's own spelling of the path is not part of it.
+
+``recipe:`` names a shipped variant id, or **a file of the operator's own**: ``recipe:./my-family``,
+``recipe:../my-family/family.yaml`` or ``recipe:/abs/path`` load a family directory through rcp-ndcg-vllm's own
+loader (the same schema, families included), marked unshipped with ``status: unverified``.  The
+``schema_version`` check below applies to both unchanged.
+
+The CLI shorthand ``--retriever recipe:<id>`` / ``--reranker recipe:<id>`` (Q1) is the same mapping in one
+string: :func:`shorthand_config` expands it and ``--set`` fills the runtime fields (e.g.
+``--set base_url=http://127.0.0.1:8000/v1``).
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.support.identity import FieldRole, declared_roles
+
+
+def _same_tokenizer(given: str, expected: str) -> bool:
+    """Whether a config's tokenizer spec is provably the recipe's tokenizer content.
+
+    A local copy is compared by the ``tokenizer.json`` digest both specs load to (:func:`tokenizer_identity`,
+    the one tokenizer-identity helper); another Hub name is a different tokenizer whatever its content might
+    be, and a spec that cannot be loaded here is not proven equal -- either way the caller refuses, naming
+    both, rather than letting a run cut and render with a tokenizer the recipe was never validated with.
+    """
+    from rcp_ndcg.data.tokenizer import _local_path, tokenizer_identity
+
+    if _local_path(given) is None:
+        return False  # another Hub name is not the recipe's tokenizer
+    try:
+        return tokenizer_identity(given) == tokenizer_identity(expected)
+    except Exception:  # noqa: BLE001 - any load failure means "not proven equal"
+        return False
+
+
+__all__ = [
+    "RECIPE_SCHEMA_VERSIONS",
+    "available_recipe_ids",
+    "expand_role_recipe",
+    "recipe_client_data",
+    "recipe_role",
+    "recipe_source",
+    "shorthand_config",
+]
+
+_INSTALL_LINE = "pip install rcp-ndcg-vllm"
+
+_IDENTITY_POINTER = re.compile(r"^unshipped:sha256:[0-9a-f]{64}$")
+"""An unshipped recipe's identity exactly as :attr:`~rcp_ndcg_vllm.recipe.Recipe.identity` writes it.
+
+A config whose ``recipe`` carries one has already been expanded from the file: every client field of the
+recipe is in the mapping, and the file it came from may not even exist on the machine reading the config
+again (a run config's resume, a retrieval index's reload), so it is passed through untouched -- there is
+nothing left to resolve."""
+
+_MRL_SELECTION_FIELDS = frozenset({"mrl_dim", "dimensions"})
+"""The client fields a run selects a Matryoshka width with: ``mrl_dim`` (the client head, both wires) and
+``dimensions`` (the engine-side cut, dense only).  A recipe declares the kind and the card's set once and
+ships the checkpoint's full width (``dimensions: null``, no ``mrl_dim``); the selection is the run's, so a
+``k`` inside the declared set is not a CONTENT disagreement with the recipe's own ``null``."""
+
+RECIPE_SCHEMA_VERSIONS = frozenset({"1"})
+"""The recipe file-format versions this rcp-ndcg reads (decision 18: the recipe file format is the versioned
+contract, so the reader names the versions it understands instead of pinning the sibling package)."""
+
+
+def _vllm_recipe_module():
+    """``rcp_ndcg_vllm.recipe``, or a typed refusal with the install line when the package is absent."""
+    try:
+        from rcp_ndcg_vllm import recipe as vllm_recipe  # noqa: PLC0415 -- lazy by the charter's exemption
+    except ModuleNotFoundError as error:
+        raise ConfigError(
+            f"recipe: ... needs the serving recipes of rcp-ndcg-vllm ({error})",
+            hint=f"install it alongside rcp-ndcg: {_INSTALL_LINE} (it depends on pydantic and PyYAML only)",
+        ) from error
+    return vllm_recipe
+
+
+def available_recipe_ids() -> frozenset[str]:
+    """The ids of every shipped recipe (the variant ids of ``rcp-ndcg-vllm``'s family directories).
+
+    Loads each family and collects its variant ids; a family that fails to load is skipped (its error
+    surfaces when someone resolves one of its recipes), so one broken family must not hide the rest of
+    the catalogue (the wave runner's promise, HARNESS-1). RecipeFamily ids are never listed: they are never
+    served (decision 34).
+    """
+    module = _vllm_recipe_module()
+    root = module.default_recipes_root()
+    ids: set[str] = set()
+    from rcp_ndcg_vllm.errors import RecipeError
+
+    for directory in sorted(root.iterdir()):
+        if not (directory / "family.yaml").is_file():
+            continue
+        try:
+            family = module.load_family(directory)
+        except RecipeError:
+            continue
+        ids.update(variant.id for variant in family.variants)
+    return frozenset(ids)
+
+
+def _looks_like_a_path(recipe_id: str) -> bool:
+    """Whether ``recipe_id`` is a filesystem path rather than a shipped recipe id.
+
+    The shipped ids never start with a dot or a slash (``^[a-z0-9][a-z0-9.-]*$``), so the path forms
+    ``./dir``, ``../dir`` and ``/abs/dir`` are unambiguous; anything else is an id.  ``~`` is not a path form
+    here: nothing expands it, so it is refused like any unknown id.
+    """
+    return recipe_id.startswith((".", "/"))
+
+
+def _load(recipe_id: str):
+    """The recipe ``recipe_id``: a shipped variant id, or a path of the operator's own.
+
+    A shipped id resolves under the package's recipes root; a path form loads the family directory (or
+    ``family.yaml``) through rcp-ndcg-vllm's own loader, which marks it unshipped and unverified and gives it
+    the content-hash identity :func:`expand_role_recipe` puts in the config.  Either way the recipe's
+    ``schema_version`` must be one this rcp-ndcg reads (:data:`RECIPE_SCHEMA_VERSIONS`): the recipe file format
+    is the versioned contract between rcp-ndcg and rcp-ndcg-vllm (decision 18) -- there is no lockstep version
+    pin between the two packages, so the check is here, at the read.  RecipeFamily ids are refused by the resolver
+    itself (they are never served, decision 34).
+    """
+    module = _vllm_recipe_module()
+    if _looks_like_a_path(recipe_id):
+        try:
+            loaded = module.load_recipe(recipe_id)
+        except module.RecipeError as error:
+            raise ConfigError(
+                f"recipe: {recipe_id}: {error}",
+                hint="a recipe path names a family directory (or its family.yaml): the file must satisfy the "
+                "family schema and name the files it references beside it",
+            ) from error
+    else:
+        try:
+            loaded = module.resolve_recipe(recipe_id)
+        except module.RecipeError as error:
+            known = ", ".join(sorted(available_recipe_ids()))
+            raise ConfigError(
+                f"recipe: {recipe_id}: no shipped recipe of that id",
+                hint=f"the shipped recipes are: {known} (the resolver said: {error})",
+            ) from error
+    version = getattr(loaded, "schema_version", None)
+    if version is not None and str(version) not in RECIPE_SCHEMA_VERSIONS:
+        known = ", ".join(sorted(RECIPE_SCHEMA_VERSIONS))
+        raise ConfigError(
+            f"recipe: {recipe_id}: schema_version {version!r} is not one this rcp-ndcg reads ({known})",
+            hint="the recipe file format is the versioned contract between rcp-ndcg and rcp-ndcg-vllm "
+            "(decision 18): upgrade rcp-ndcg, or ship recipes of a schema version it reads",
+        )
+    return loaded
+
+
+def rebase_recipe_path(value: str, base: Path) -> str:
+    """A recipe value's relative path made absolute against ``base``; anything else unchanged.
+
+    Both spellings are accepted: the string form ``recipe:./my-family`` (a run config's ``judge:``) and the
+    mapping value ``./my-family`` (a config's ``recipe:`` key, or a retriever/reranker YAML). A recipe named
+    by path is a file of the operator's own, so it is relative to the file that names it, like every other
+    relative path in a config; a shipped id names package data and is returned as it is.
+    """
+    prefix, source = "", value
+    if value.startswith("recipe:"):
+        prefix, source = "recipe:", value.split(":", 1)[1].strip()
+    if not source.startswith((".", "/")):
+        return value
+    return f"{prefix}{(base / source).resolve()}"
+
+
+def recipe_source(value: str) -> str | None:
+    """The recipe ``value`` names, or ``None`` when it names no recipe.
+
+    Inputs: a string a role config or CLI option was given.  Outputs: ``value`` itself when it is a shipped
+    recipe variant id, ``recipe:<id-or-path>``'s payload (stripped) when it carries the ``recipe:`` form, and
+    ``None`` when it names no recipe -- a shipped config's name, a file path, ``fake``, or an empty
+    ``recipe:``.  With rcp-ndcg-vllm absent, no id can name a recipe, so the answer is ``None`` (the
+    resolver's own install-line refusal stays where a recipe is actually read).
+    """
+    if value.startswith("recipe:"):
+        return value.split(":", 1)[1].strip() or None
+    try:
+        return value if value in available_recipe_ids() else None
+    except ConfigError:
+        return None
+
+
+def recipe_role(recipe_id: str) -> str:
+    """The role of the recipe ``recipe_id``: ``embed``, ``multi_vector``, ``rerank`` or ``judge``."""
+    return str(_load(recipe_id).role)
+
+
+def recipe_client_data(recipe_id: str) -> dict[str, Any]:
+    """The product's client block of the recipe ``recipe_id``: the recipe's plain ``client`` dict with its
+    ``model`` and ``revision`` injected (what :func:`expand_role_recipe` merges into a config)."""
+    return dict(_load(recipe_id).client)
+
+
+def _mrl_declaration(client: dict[str, Any]) -> tuple[str, Any] | None:
+    """The recipe's declared Matryoshka set or range, as ``(text, membership)``, or ``None``.
+
+    Reads the plain ``client`` block through the product's one MRL head home
+    (:class:`~rcp_ndcg.data.mrl.MrlHead`): its ``declaration`` text and ``supports`` membership are what
+    the refusal names and checks, so the loader never restates the set's spelling or the range rule.
+    ``None`` when the recipe declares no set/range (there is nothing to select from; the endpoint's own
+    validation names the kind then) or when the declaration is not the shape the head reads, which the
+    product's endpoint validation refuses with a better message.
+    """
+    dims = client.get("mrl_dims")
+    mrl_range = client.get("mrl_range")
+    if dims is None and mrl_range is None:
+        return None
+    from rcp_ndcg.data.mrl import MrlHead, MrlProjection
+
+    kind = client.get("mrl_kind")
+    projection = client.get("mrl_projection")
+    try:
+        head = MrlHead(
+            kind=kind if kind in ("truncation", "projection", "none") else "none",
+            dims=tuple(int(dim) for dim in dims) if dims is not None else (),
+            mrl_range=(int(mrl_range[0]), int(mrl_range[1])) if mrl_range is not None else None,
+            projection=MrlProjection(**projection) if isinstance(projection, dict) else None,
+        )
+    except (ConfigError, TypeError, ValueError, IndexError, OverflowError):
+        return None
+    return head.declaration, head.supports
+
+
+def _selected_dimension(key: str, given: Any, config_cls: type) -> int | None:
+    """The positive integer ``given`` selects for the field ``key``, or ``None`` when it is not one.
+
+    Validates through the field's own pydantic annotation, so a YAML string (``mrl_dim: "512"``) selects
+    like the integer it coerces to and a value the field would refuse falls through to the ordinary merge
+    and the endpoint's own validation.
+    """
+    from pydantic import TypeAdapter, ValidationError
+
+    try:
+        value = TypeAdapter(config_cls.model_fields[key].annotation).validate_python(given)
+    except ValidationError:
+        return None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dict[str, Any]:
+    """The mapping form (Q1): a config mapping whose ``recipe`` names a recipe takes its client block from it.
+
+    Inputs: the parsed config mapping (``recipe`` a shipped variant id or a path: ``./dir``, ``/abs/dir``) and
+    the role -> endpoint-class map to read the CONTENT declarations from.  Outputs: a new mapping — the recipe's
+    declared CONTENT plus the config's explicit fields (CONTENT equal or refused, with **both** values named;
+    RUNTIME untouched), with ``recipe`` replaced by the recipe's identity (its shipped id, or
+    ``unshipped:sha256:<hex>``).  One exception, the MRL selection (owner decision 39): the recipe declares its
+    Matryoshka kind and the card's set (``mrl_kind`` with ``mrl_dims``/``mrl_range``) and ships the checkpoint's
+    full width, so a config's ``mrl_dim``/``dimensions`` is a *selection* — accepted when ``k`` is in the
+    declared set, refused naming the set otherwise — not a disagreement with the recipe's declared ``null``.
+    One field the recipe leaves out of its client block is still implied, not free: a rerank recipe declares
+    its scoring mode at recipe level (``pointwise``/``listwise``) and the loader ties it to ``client.listwise``,
+    so a config's ``listwise`` must agree with that scoring. And the loader injects the recipe's checkpoint
+    tokenizer (``<model>@<revision>``): a config's ``tokenizer`` is accepted only when it names the same
+    content (a local copy of the same ``tokenizer.json``), and refused naming both otherwise.
+    A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes through unchanged.  Raises
+    :class:`~rcp_ndcg.errors.ConfigError`: unknown recipe id (the shipped ids named), a path rcp-ndcg-vllm's
+    loader refuses, rcp-ndcg-vllm absent (the install line), an unreadable recipe ``schema_version``
+    (:data:`RECIPE_SCHEMA_VERSIONS`), a recipe whose role the config does not take (the recipe, its role and
+    the roles ``classes`` names are all in the message), a CONTENT field that disagrees with the recipe, or an
+    MRL selection outside the recipe's declared set.
+    """
+    if not isinstance(data, dict):
+        return data
+    recipe_id = data.get("recipe")
+    if not isinstance(recipe_id, str) or not recipe_id:
+        return data
+    if _IDENTITY_POINTER.fullmatch(recipe_id):
+        # An already-expanded config (a recorded run config, a written index): the pointer is the recipe's
+        # identity and the block beside it is the recipe's own, so there is nothing to load again.
+        return data
+    loaded = _load(str(recipe_id))
+    if loaded.role not in classes:
+        # A recipe of a role this config does not take (a judge recipe in the retriever's encoder slot, a
+        # reranker in the judge slot): a typed refusal naming the recipe, the role it has and the roles the
+        # config takes, never the bare ``KeyError`` a lookup of ``classes[loaded.role]`` would raise.
+        wanted = "/".join(sorted(classes))
+        raise ConfigError(
+            f"recipe {recipe_id!r} has role {loaded.role!r}, but this config takes {wanted} recipes",
+            hint=f"name a recipe of role {wanted}, or configure a {loaded.role}",
+        )
+    client = dict(loaded.client)
+    config_cls = classes[loaded.role]
+    content = {name for name, role in declared_roles(config_cls).items() if role is FieldRole.CONTENT}
+    merged: dict[str, Any] = {**client}
+    for key, given in data.items():
+        if key == "recipe":
+            # The pointer is the recipe's identity, never the config's own spelling of it: the shipped id, or
+            # ``unshipped:sha256:<hex>`` for a file of the operator's own -- the content hash of its resolved
+            # form, so two runs whose files differ never share a run identity (and the path itself is not in
+            # the identity: the same file at two paths is one recipe).
+            merged[key] = loaded.identity
+            continue
+        if key in ("model", "revision") or key in content:
+            if key in _MRL_SELECTION_FIELDS and client.get(key) is None:
+                # The recipe ships the full width and declares no selection of its own: the run selects k.
+                # A recipe that DOES declare one is CONTENT, and the ordinary equality check below keeps it
+                # (an in-set config selection must not silently replace the recipe's declared value).
+                declaration = _mrl_declaration(client)
+                selected = _selected_dimension(key, given, config_cls)
+                if selected is not None:
+                    if declaration is not None:
+                        declared_text, supports = declaration
+                        if supports(selected):
+                            # A declared selection, not a disagreement with the recipe's own (undeclared)
+                            # one: the recipe declares the kind and the card's set, the run selects k.
+                            merged[key] = selected
+                            continue
+                        raise ConfigError(
+                            f"{key}: {selected} is not in recipe {recipe_id!r}'s declared {declared_text}",
+                            hint=f"select a k in {declared_text}, or drop {key} (the recipe serves the "
+                            "checkpoint's full width; the declared set bounds every selection)",
+                        )
+                    if client.get("mrl_kind") in (None, "none"):
+                        raise ConfigError(
+                            f"{key}: {selected} selects a Matryoshka output, but recipe {recipe_id!r} "
+                            f"declares mrl_kind {client.get('mrl_kind') or 'none'!r}: the checkpoint's card "
+                            "declares no Matryoshka head",
+                            hint=f"drop {key} (the recipe serves the checkpoint's full width), or name a "
+                            "recipe that declares the card's set",
+                        )
+            expected = client.get(key)
+            implied = key not in client
+            if implied:
+                if key == "listwise":
+                    # A rerank recipe declares its scoring mode at recipe level, and the loader ties it to the
+                    # client's listwise flag (rcp_ndcg_vllm/recipe.py): an undeclared client.listwise is
+                    # implied by the recipe, not free to take any value.
+                    expected = getattr(loaded, "scoring", None) == "listwise"
+                else:
+                    merged[key] = given  # nothing the recipe declares can conflict
+                    continue
+            if _content_equal(given, expected, config_cls.model_fields[key].annotation):
+                merged[key] = expected
+            else:
+                declared = (
+                    f"whose scoring is {getattr(loaded, 'scoring', None)!r}"
+                    if implied
+                    else f"which declares {expected!r}"
+                )
+                raise ConfigError(
+                    f"{key}: {given!r} disagrees with recipe {recipe_id!r}, {declared}",
+                    hint=f"drop {key} (the client block comes from recipe: {recipe_id}) or name a recipe that "
+                    f"declares {given!r}; both values are: config {given!r} vs recipe {expected!r}",
+                )
+        elif key == "tokenizer" and "tokenizer" in client:
+            # The loader injects the recipe's checkpoint tokenizer (``<model>@<revision>``); the field is
+            # RUNTIME by NAME (a local copy of the same tokenizer.json stands in) and CONTENT by digest (the
+            # cut points and special-token renders depend on it), so a differing spec is accepted only when
+            # its content is proven the same.
+            expected = client["tokenizer"]
+            if given != expected and not _same_tokenizer(given, expected):
+                raise ConfigError(
+                    f"tokenizer: {given!r} disagrees with recipe {recipe_id!r}, which declares {expected!r}",
+                    hint="drop tokenizer (the client block comes from the recipe), or point it at a local copy "
+                    "of the same tokenizer.json (the digest is what the cut points and special-token renders "
+                    "depend on)",
+                )
+            merged[key] = given
+        else:
+            merged[key] = given  # RUNTIME (and the endpoint's own machinery): the config's
+    merged.setdefault("recipe", recipe_id)
+    return merged
+
+
+def _content_equal(given: Any, expected: Any, annotation: Any) -> bool:
+    """Whether a config's explicit CONTENT value agrees with the recipe's declared one.
+
+    Plain equality first; for nested declarations (a template, a media policy) the compared forms may differ
+    only in the schema defaults the endpoint model fills (a re-validated dump carries ``anchor_markers: []``
+    where the recipe's YAML omits the key), so both sides go through the field's own pydantic type: two
+    values the product cannot distinguish agree.
+    """
+    if given == expected:
+        return True
+    if isinstance(given, dict) and isinstance(expected, dict) and annotation is not None:
+        from pydantic import TypeAdapter, ValidationError
+
+        adapter = TypeAdapter(annotation)
+        try:
+            return bool(adapter.validate_python(given) == adapter.validate_python(expected))
+        except ValidationError:
+            return False
+    return False
+
+
+def shorthand_config(value: str) -> dict[str, Any]:
+    """The CLI shorthand (Q1): the string ``recipe:<id-or-path>`` as the mapping ``{"recipe": <id-or-path>}``;
+    ``--set`` overrides (``key=value``, dotted) are applied to it by the caller (e.g. ``--set base_url=...``).
+
+    Inputs: the ``--retriever``/``--reranker`` value.  Outputs: the mapping form's dict.  Raises
+    :class:`~rcp_ndcg.errors.ConfigError` for an empty id (an id is ``rcp-ndcg-vllm``'s to validate; a path
+    form -- ``./dir``, ``/abs/dir`` -- is resolved by :func:`expand_role_recipe`).
+    """
+    recipe_id = value.split(":", 1)[1].strip()
+    if not recipe_id:
+        raise ConfigError(
+            "recipe:<id> names no recipe",
+            hint="the form is recipe:<recipe-id>, e.g. --reranker recipe:qwen3-reranker-0.6b",
+        )
+    return {"recipe": recipe_id}

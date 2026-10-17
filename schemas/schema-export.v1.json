@@ -1,0 +1,30 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/schema-export.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What `schema export` wrote.",
+  "properties": {
+    "out": {
+      "title": "Out",
+      "type": "string"
+    },
+    "schema": {
+      "const": "rcp-ndcg.schema-export.v1",
+      "type": "string"
+    },
+    "written": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Written",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "out",
+    "written"
+  ],
+  "title": "SchemaExport",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.schema-export.v1"
+}
