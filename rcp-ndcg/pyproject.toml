@@ -26,7 +26,7 @@ dependencies = [
   # error when the fit is reached without it.
   # The core is released in lockstep with this package: the same version, pinned.
   "rcp-ndcg-core==0.0.1",
-  "numpy>=1.26",
+  "numpy>=2.5.4",
   "pandas>=2.2",
   # Parquet artifacts (calibration queries/thetas tables).
   "pyarrow>=15.0",
