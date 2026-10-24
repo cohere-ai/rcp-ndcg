@@ -290,7 +290,7 @@ scipy==1.18.1
     # via
     #   bm25s
     #   rcp-ndcg
-setuptools==84.0.0
+setuptools==84.1.0
     # via torch
 six==1.17.0
     # via python-dateutil
