@@ -5,8 +5,8 @@ This folder recomputes the main tables and headline numbers of
 from the public datasets on the Hugging Face Hub. No LLM is called and no credentials are needed. The folder is
 not part of the installed `rcp_ndcg` package: the scripts import the library, and the library never imports them.
 
-Each script prints the paper's value next to the reproduced one and exits with status 1 if any value falls
-outside its stated tolerance.
+The existing table-reproduction scripts print the paper's value next to the reproduced one and exit with status 1
+if any value falls outside its stated tolerance. The calibration pilot below reports measured diagnostics instead.
 
 ## Run
 
@@ -30,6 +30,28 @@ Stage A parse and refit behind arXiv v2 (see
 history. arXiv v2 credits tied reranker scores with their group's mean gain on every suite and for both metrics, as
 the library's presets do, and leaves out the judged cases that no longer have, under the v2 fit, the property they
 were selected for.
+
+## Calibration refit pilot
+
+`refit_calibration.py` exercises the released 2PL calibration API on the pinned public NanoBEIR Stage A tournament scores and Stage B rubric verdicts. The default example is one 50-query subset, not the paper's shared fit across all NanoBEIR subsets:
+
+```bash
+python -m experiments.refit_calibration --subset NanoSciFactRetrieval --holdout
+```
+
+The script fetches only that subset's two provenance files, chooses the `Qwen3.5-397B-A17B-NVFP4 (tournament, judge)` Stage A scores, and joins every rubric verdict by `(subset, query-id, corpus-id)`. It rejects missing or non-finite scores and any rubric document without a score, rather than silently accepting a partial fit. The data revision is the NanoBEIR commit pinned in `fetch_data.py` (`cb6c981c80a70b6a46f8b7ba3a60206a9fab5d8e`). No LLM, Cohere key, or GPU is needed. Install the `calibrate` extra (CPU PyTorch is enough) for the 2PL fit.
+
+`--holdout` chooses 20% of distinct documents *within each query* by a stable SHA-256 ordering and removes all of those documents' repeated Stage B placements from the fit. Held-out Brier score and 10-bin expected calibration error use the existing library diagnostics. Two references use the same training placements: per-criterion training pass rates (deliberately weak, no tournament score) and one pooled logistic curve per criterion on raw tournament scores (no per-query affine map). This checks predictions for new judged documents within queries already fitted, given their public tournament scores. Without `--holdout`, the diagnostics are explicitly in-sample. `--all-nanobeir` fits one model across all 13 subsets; it is more costly and should be run before comparing item parameters with any paper-wide result. A fresh fit is not expected to reproduce the released gains byte for byte.
+
+On a Linux CPU run of the command above, SciFact had 50 queries, 7,500 scored documents and 49,860 rubric placements. The document split left 6,000 documents and 39,873 placements for fitting, then 1,500 documents and 9,987 placements for evaluation; the fit skipped no observations and converged. All five criteria give 49,935 held-out binary verdicts. Lower Brier/ECE is better:
+
+| Fit or reference | Pooled held-out Brier | Pooled held-out ECE (10 bins) |
+|---|---:|---:|
+| 2PL with per-query affine calibration | 0.016325 | 0.002706 |
+| Per-criterion logistic on raw tournament score | 0.019570 | 0.004913 |
+| Per-criterion training pass rate | 0.029294 | 0.004126 |
+
+This is one fixed split of one subset, not a paper-wide claim. The 2PL Brier is lower than the raw-score logistic reference on C1-C3 but **higher on C4 and C5** (0.005353 vs 0.003840 and 0.005432 vs 0.004889). The command prints every criterion's counts and scores so those differences remain visible.
 
 ## What is reproduced
 
@@ -72,7 +94,7 @@ These results need LLM calls or inputs that are not public, or are not covered b
 | Result | Status |
 |---|---|
 | Re-judging a pool (Stage A tournament, Stage B criteria) | Needs an LLM endpoint; use the `rcp-ndcg` pipeline (see the main README). |
-| Refitting the 2PL calibration and its diagnostics (ICCs, item parameters, calibration ablations, Brier and ECE) | Not covered. The inputs are public (the judge's tournament scores are the `is_judge` runs in `provenance-runs`, the Stage B verdicts are `provenance-judge-criteria`), and the fit is the library's calibration API. |
+| Full-suite refitting of the 2PL calibration, ICCs, item-parameter comparison and calibration ablations | Not covered by `run_all.py`. `refit_calibration.py` provides a bounded subset refit and a document-held-out Brier/ECE diagnostic; its `--all-nanobeir` mode can fit the shared NanoBEIR model, but it does not compare its parameters to the paper. The inputs are public (the tournament judge strategy in `provenance-runs` and the Stage B verdicts in `provenance-judge-criteria`). |
 | Leaderboards with the second judge (gpt-oss-120b) and the TREC-DL calibrations CAL-B and CAL-C | Those gains are not in the public datasets. |
 | TREC-DL analyses over 18 systems (the 14 rerankers plus 4 first-stage runs) | The first-stage runs are not released. |
 | Count-nDCG leaderboards and sensitivity analyses | Not covered. |

@@ -25,6 +25,13 @@ incompatibly, independently of the package version. All four distributions carry
 
 ## Unreleased
 
+### Added
+
+- **A pinned NanoBEIR calibration refit experiment** joins the released Stage A tournament scores and Stage B
+  rubric verdicts, fits the existing 2PL estimator, and reports document-held-out Brier/ECE alongside pooled
+  raw-score logistic and constant-rate references. The default SciFact run is a bounded diagnostic, not a
+  reproduction of the paper's suite-wide item parameters.
+
 ### Fixed
 
 - **A committed corpus never names the private stage** (the repository subset): `subset_for_repository` wrote
