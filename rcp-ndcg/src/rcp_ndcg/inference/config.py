@@ -1,9 +1,12 @@
 """The role endpoint configs: an :class:`~rcp_ndcg.inference.endpoint.Endpoint` per role, with its wire default.
 
 Each role sets the fields its wire protocol needs; every field is declared CONTENT or RUNTIME, so
-:func:`rcp_ndcg.support.identity.check_declarations` passes and the roles' configs can feed identities. These
-configs are not wired into :mod:`rcp_ndcg.retrieval.config` yet (the retrieval-config wiring does
-that); they are the frozen shapes the later lanes build against.
+:func:`rcp_ndcg.support.identity.check_declarations` passes and the roles' configs can feed identities. They
+are the base classes of :mod:`rcp_ndcg.retrieval.config`'s role configs -- ``ServedEmbedding``,
+``CohereEmbedding``, ``VoyageEmbedding``, ``GeminiEmbedding`` and ``PluginEmbedding`` subclass
+:class:`EmbeddingEndpoint`, ``ServedPooling`` and ``PluginPooling`` subclass :class:`PoolingEndpoint`, and
+``ServedReranker``, the hosted rerankers and ``PluginReranker`` subclass :class:`RerankEndpoint` -- so their
+fields are the exported run-config schema (``schemas/run-config.v1.json``, under ``$defs``).
 
 The text budget is explicit: a self-hosted role names its tokenizer and its ``max_tokens`` -- without
 them the config is refused, with the two fields in the hint. A hosted vendor profile without a

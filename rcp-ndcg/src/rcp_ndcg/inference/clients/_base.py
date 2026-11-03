@@ -957,6 +957,11 @@ class RoleClient[C: Endpoint]:
     ) -> tuple[list[Content], list[int]]:
         """The request's empty documents as the config's ``empty_doc`` policy sends them.
 
+        The DOCUMENT side's policy only: ``empty_doc`` says what an empty document becomes, and an empty
+        query is not an empty document -- the vector roles declare no query policy, so their caller runs
+        this for the document side alone (:meth:`_prepare_rows`) and a query goes out as it was given; the
+        rerank role declares ``empty_query`` and applies it to its own query.
+
         An empty document is one with no text and no media left (a document whose every media item the
         budget dropped is one, exactly like an empty text document), decided on the content -- before the
         template frames it, and under the side's prompt ``prefix`` (the content then carries the prompt alone):
@@ -1216,8 +1221,14 @@ class RoleClient[C: Endpoint]:
         changes: dict[str, list[ChangeMechanism]] = {}  # per input id, for the rows' processing records
         # empty: decided on the content AS GIVEN -- before the template frames it (a framed empty document
         # is a non-empty turn and the policy would never fire) and before any media is fetched. omit_zero
-        # never sends an empty item; the caller places the missing result at its position.
-        kept, omitted = self._apply_empty_documents(prepared, changes=changes, prefix=prompt)
+        # never sends an empty item; the caller places the missing result at its position. ``empty_doc`` is a
+        # DOCUMENT policy: an empty query is not an empty document, and the vector roles declare no
+        # ``empty_query`` (a role that has one applies it itself, as the rerank does), so a query is never
+        # omitted -- it goes out as it was given.
+        if side == "document":
+            kept, omitted = self._apply_empty_documents(prepared, changes=changes, prefix=prompt)
+        else:
+            kept, omitted = list(prepared), []
         # media: one preparation of the kept items, then the media fit. A document whose every media item
         # the budget dropped is empty -- exactly like an empty text document -- so the same empty policy
         # applies to the fitted contents (the media stage's contract; the policy never sees a framed
@@ -1239,7 +1250,7 @@ class RoleClient[C: Endpoint]:
         # the record ids and the positions are the caller's coordinates, always).
         kept = fitted
         dropped_empty: list[int] = []
-        if any("media_drop" in applied for applied in changes.values()):
+        if side == "document" and any("media_drop" in applied for applied in changes.values()):
             re_changes: dict[str, list[ChangeMechanism]] = {}
             kept, dropped_empty_kept = self._apply_empty_documents(fitted, changes=re_changes, prefix=prompt)
             for kept_id, applied in re_changes.items():

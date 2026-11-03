@@ -32,7 +32,7 @@ from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
 
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.data.rankings import ordered_documents
-from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
+from rcp_ndcg.errors import ConfigError, DataError, IdentityError, Interrupted, MissingInputError
 from rcp_ndcg.judging.client import Usage
 from rcp_ndcg.judging.prompts import load_prompt, shipped_prompts_digest
 from rcp_ndcg.runs.config import (
@@ -528,6 +528,7 @@ class Pipeline:
                 **common,
                 "rerank": rerank,
                 "depth": config.candidates.depth,
+                "candidates": self._pool_selection_identity(),
                 "behaviour_version": RERANK_BEHAVIOUR_VERSION,
             }
         if step in JUDGE_STEPS:
@@ -548,6 +549,7 @@ class Pipeline:
             return {
                 **common,
                 "depth": config.candidates.depth,
+                "candidates": self._pool_selection_identity(),
                 "judge": {**judge.identity(), **judge.identity_extra()},
                 "schedule": schedule.model_dump(mode="json", exclude={"prompt"}) if schedule is not None else None,
                 "prompt_sha256": prompt_sha256,
@@ -560,9 +562,23 @@ class Pipeline:
             return {
                 **common,
                 "depth": config.candidates.depth,
+                "candidates": self._pool_selection_identity(),
                 "evaluation": redact_evaluation_payload(config.evaluation.model_dump(mode="json")),
             }
         raise ConfigError(f"unknown step {step!r}")
+
+    def _pool_selection_identity(self) -> dict[str, Any]:
+        """The candidates content that picks a judging, evaluate or rerank step's pools where its input file cannot.
+
+        Those steps consume the pools file, so its content hash already carries what the retriever, the fusion and
+        the reranker wrote into it (the reranker keys the rerank step, not the judging, once the rerank step
+        re-runs). What the hash cannot carry is *which* pool of the file the step read -- ``candidates.system``, of
+        a rankings file that holds several: the same file, the same hash, other pools -- or *where* the pools come
+        from (``source``), which names the file the step reads at all. ``depth`` is recorded beside this, and the
+        URI is redacted like every identity's.
+        """
+        payload = redact_candidates_payload(identity_payload(self.config.candidates))
+        return {key: payload[key] for key in ("source", "system", "rankings") if key in payload}
 
     def _inputs(self, step: str) -> list[ArtifactRef]:
         layout = self.layout
@@ -1046,7 +1062,13 @@ def _check_engines(config: RunConfig, engines: Mapping[EngineRole, EngineURLs]) 
 
 
 #: The error text :func:`_describe` records for a step interrupted by SIGINT or SIGTERM.
-INTERRUPT_ERROR = "Interrupted: interrupted (SIGINT or SIGTERM)"
+INTERRUPT_ERROR = f"{Interrupted.__name__}: interrupted (SIGINT or SIGTERM)"
+
+#: The prefix :func:`_describe` gives every record of an :class:`~rcp_ndcg.errors.Interrupted` exception: the
+#: exception's class name. A job's own SIGTERM handler raises ``Interrupted("terminated (SIGTERM)")``, so the
+#: class -- not the message -- is what says a failed step was the cancellation (a step stopped by its budget
+#: records ``StepBudgetExceededError``, a subclass, and is not one).
+INTERRUPT_ERROR_PREFIX = f"{Interrupted.__name__}: "
 
 
 def _describe(exc: BaseException) -> str:

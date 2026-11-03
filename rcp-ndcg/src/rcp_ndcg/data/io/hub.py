@@ -540,20 +540,24 @@ class HubReader(SourceReader):
                     qrels.setdefault(query_id, {})[doc_id] = label
                     # gain and theta are read independently per column: a gains-only table (the writer emits
                     # the gain column whenever gains is given, the theta column only when thetas is given)
-                    # reloads its gains, and a theta without its gain is refused rather than half-read. A row
-                    # whose theta is null is outside the calibrated pool, so its gain is not a calibrated one
-                    # (the released tables write both columns, null together outside the pool).
+                    # reloads its gains, and a theta whose gain cell is null is refused rather than half-read
+                    # (the released tables write both columns together). A null cell is absent, never a value
+                    # to validate: a judged pair outside the calibrated pool has a grade and no gain, so a
+                    # gains-only table's null gain cell leaves that pair with its grade and no gain instead
+                    # of failing the load. Where the table does have a theta column, a null theta is the
+                    # pool's own mark and the pair contributes neither value.
                     gain = row.get("gain")
                     theta = row.get("theta")
                     has_gain = "gain" in row
                     has_theta = "theta" in row
-                    if has_theta and not _is_null(theta) and has_gain and _is_null(gain):
+                    outside_pool = has_theta and _is_null(theta)
+                    if has_theta and not outside_pool and has_gain and _is_null(gain):
                         raise DataError(
                             f"{self.source}: gain {gain!r} of query {query_id!r}, document {doc_id!r} "
                             "is not a gain in [0, 1]",
                             hint="the theta column pairs with the gain column: write both, or neither",
                         )
-                    if has_gain and (not has_theta or not _is_null(theta)):
+                    if has_gain and not _is_null(gain) and not outside_pool:
                         if not _is_finite_number(gain) or not 0.0 <= float(gain) <= 1.0:
                             raise DataError(
                                 f"{self.source}: gain {gain!r} of query {query_id!r}, document {doc_id!r} "

@@ -180,12 +180,39 @@ class TestPaths:
             os.killpg(pid, 15)
 
 
+def _pod_sigterm_error() -> str:
+    """The error a pod's manifest records when its mirror's SIGTERM handler fires.
+
+    Runs the handler the mirror installs (``runs/mirror.py::_on_sigterm``) and describes what it raised the way
+    the pipeline records a step's error, so the text is the mirror's own and cannot drift from it.
+    """
+    import signal
+
+    from rcp_ndcg.errors import Interrupted
+    from rcp_ndcg.runs.mirror import _on_sigterm
+    from rcp_ndcg.runs.pipeline import _describe
+
+    previous = _on_sigterm()
+    assert previous is not None, "the mirror installs its SIGTERM handler in the main thread"
+    try:
+        with pytest.raises(Interrupted) as raised:
+            signal.raise_signal(signal.SIGTERM)
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    return _describe(raised.value)
+
+
 class TestStatus:
+    @pytest.mark.parametrize("interrupt", ["coordinator", "pod"])
     def test_a_cancelled_run_is_not_overridden_by_a_pod_mirror_that_recorded_it_failed(
-        self, data: Path, tmp_path: Path, scheduler
+        self, data: Path, tmp_path: Path, scheduler, interrupt: str
     ) -> None:
         """runs-7: a pod never sees the host's cancel mark; its newer failed manifest must not turn the user's
-        cancellation back into a failure in ``run status``."""
+        cancellation back into a failure in ``run status``.
+
+        runs-01: the pod's own SIGTERM handler records ``Interrupted: terminated (SIGTERM)``, not the
+        coordinator's KeyboardInterrupt text, and that is the record a cancelled pod actually mirrors.
+        """
         from datetime import UTC, datetime, timedelta
 
         from rcp_ndcg.runs.manifest import RunStatus, StepStatus
@@ -200,9 +227,13 @@ class TestStatus:
         manifest.status = RunStatus.CANCELLED
         manifest.save(run.layout)
 
-        pod = manifest.model_copy(
-            update={"status": RunStatus.FAILED, "updated_at": datetime.now(UTC) + timedelta(days=1)}
+        pod = manifest.model_copy(deep=True, update={"status": RunStatus.FAILED})
+        pod.finish_step(
+            "tournament",
+            status=StepStatus.FAILED,
+            error=INTERRUPT_ERROR if interrupt == "coordinator" else _pod_sigterm_error(),
         )
+        pod.updated_at = datetime.now(UTC) + timedelta(days=1)
         storage.write_bytes(f"{remote}/manifest.json", pod.model_dump_json().encode("utf-8"))
 
         state = _ok("run", "status", "--run", started["run_dir"])

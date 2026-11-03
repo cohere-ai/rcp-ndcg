@@ -28,7 +28,7 @@ from rcp_ndcg.inference import EmbeddingClient, PoolingClient, RerankClient
 from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
 from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp_ndcg.inference.types import EncodeRole, Reply, Usage
-from tests._tokenizers import framed_bpe_tokenizer, save, word_tokenizer
+from tests._tokenizers import byte_bpe_tokenizer, framed_bpe_tokenizer, save, word_tokenizer
 from tests.conftest import SESSION_TOKENIZER
 from tests.inference._pooling import PoolingServer
 from tests.inference.test_pool_client import _GatedSender
@@ -1214,6 +1214,27 @@ class TestEmptyQuery:
         client = self._client(tokenizer_json, empty_query="refuse")
         result = client.rerank("the query", ["the document"])
         assert len(result.scores) == 1
+
+    def test_the_vector_roles_empty_doc_policy_never_omits_a_query(self, tokenizer_json: str) -> None:
+        """``empty_doc`` is a DOCUMENT policy: an empty QUERY is not an empty document, so ``omit_zero``
+        never drops it -- the query goes out as given (an empty query scores 0 against every document) and
+        the caller gets its row, not a zero-width buffer. Mutation: deciding the policy on a query too
+        (``_prepare_rows`` gating on the side) omits the row and sends no request at all."""
+        client = EmbeddingClient(
+            EmbeddingEndpoint(
+                base_url="http://127.0.0.1:9000/v1",
+                model="m",
+                tokenizer=tokenizer_json,
+                max_tokens=8192,
+                empty_doc="omit_zero",
+            ),
+            sender=RecordingSender(),
+        )
+        result = client.encode([Content.from_text("")], EncodeRole.QUERY)
+
+        assert len(client._sender.bodies) == 1, "the empty query is a request: empty_doc never omits a query"
+        assert client._sender.bodies[0]["input"] == [""], "the query goes out as it was given"
+        assert result.as_matrix().shape == (1, 2), "the caller gets one real row, never a zero-width buffer"
 
 
 class TestMediaGates:
@@ -2497,19 +2518,23 @@ class TestResidualQueryRefit:
     """The pair fit's residual-divergence re-fit ships every pair at the shortest verified query span: when that
     shortens the shared query, the change is recorded under ``<query>`` like any settlement."""
 
-    def test_a_refit_that_shortens_the_query_is_recorded(self, tokenizer_json: str, monkeypatch: Any) -> None:
-        import dataclasses
-
-        client = RerankClient(
+    @staticmethod
+    def _client(tokenizer: str) -> RerankClient:
+        return RerankClient(
             RerankEndpoint(
                 base_url="http://127.0.0.1:9000/v1",
                 model="m",
-                tokenizer=tokenizer_json,
+                tokenizer=tokenizer,
                 max_tokens=64,
                 use_activation=False,
             ),
             sender=RecordingSender(),
         )
+
+    def test_a_refit_that_shortens_the_query_is_recorded(self, tokenizer_json: str, monkeypatch: Any) -> None:
+        import dataclasses
+
+        client = self._client(tokenizer_json)
         real_fit = client._fit
         diverged: list[bool] = []
 
@@ -2526,3 +2551,36 @@ class TestResidualQueryRefit:
         assert diverged
         records = {record.input_id: record.mechanisms for record in client.processing}
         assert records == {QUERY_DOC_ID: ("budget_cut",)}
+
+    def test_a_refit_picks_the_shortest_span_by_tokens_not_characters(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """The spans are measured in the declared tokenizer's TOKENS -- the unit the budget verifies them
+        in -- so the re-fit ships the token-shortest span even when it is the character-longest. Mutation:
+        ``min(spans, key=len)`` ships the character-shortest span, a longer prompt than the budget needs."""
+        import dataclasses
+
+        (tmp_path / "tokenizer").mkdir()
+        client = self._client(str(save(byte_bpe_tokenizer(), tmp_path / "tokenizer")))
+        query = "the query evidence"
+        fewer_chars, fewer_tokens = query[:14], query[:16]  # 'the query evid' / 'the query eviden'
+        real_fit = client._fit
+        diverged: list[bool] = []
+
+        def diverging_fit(inputs: Any, shape: Any, **kwargs: Any) -> Any:
+            result = real_fit(inputs, shape, **kwargs)
+            if len(inputs) > 1 and not diverged:  # the pair fit: the two pairs' query spans disagree
+                diverged.append(True)
+                spans = (fewer_chars, fewer_tokens)
+                result = dataclasses.replace(
+                    result,
+                    contents=tuple(
+                        (span, document) for span, (_, document) in zip(spans, result.contents, strict=True)
+                    ),
+                )
+            return result
+
+        monkeypatch.setattr(client, "_fit", diverging_fit)
+        client.rerank(query, ["a b c", "the document"])
+        assert diverged
+        assert len(fewer_chars) < len(fewer_tokens), "the fixture spans: the token-shortest is the character-longest"
+        assert client._tokenizer.count(fewer_chars) > client._tokenizer.count(fewer_tokens)
+        assert client._sender.bodies[-1]["query"] == fewer_tokens, "the re-fit ships the token-shortest span"

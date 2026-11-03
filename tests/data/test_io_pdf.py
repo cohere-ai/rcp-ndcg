@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from unittest import mock
+
 import pytest
 
-from rcp_ndcg.data.io import get_reader
+from rcp_ndcg.data.io import get_reader, pdf
 from rcp_ndcg.errors import ConfigError
 
 pypdfium2 = pytest.importorskip("pypdfium2")
@@ -52,14 +54,49 @@ class TestPdfReader:
         assert low.uri.endswith("_72dpi.png") and high.uri.endswith("_144dpi.png")
 
     def test_rerendering_reuses_what_is_on_disk(self, two_page_pdf, tmp_path):
-        """An interrupted ingest must not re-render 40k pages on restart."""
+        """An interrupted ingest must not re-render 40k pages on restart: the second pass encodes no page.
+
+        Equal hashes alone cannot see the difference -- a re-render produces the same bytes -- so the render
+        branch's encoder is counted: two calls for the first pass, none for the second.
+        """
         out = str(tmp_path / "pages")
+        encoded: list[str] = []
+        render = pdf._encode
+
+        def counting_encode(image, image_format: str) -> bytes:
+            encoded.append(image_format)
+            return render(image, image_format)
 
         def hashes() -> list[str | None]:
             reader = get_reader("pdf", uri=two_page_pdf, dpi=72, out_uri=out)
             return [ref.sha256 for doc in reader.documents() for ref in doc.media]
 
-        assert hashes() == hashes()
+        with mock.patch.object(pdf, "_encode", counting_encode):
+            first = hashes()
+            assert len(encoded) == 2, "the first pass renders both pages"
+            encoded.clear()
+            second = hashes()
+
+        assert encoded == [], "the second pass reuses the pages on disk instead of re-rendering them"
+        assert first == second
+
+    def test_a_pdf_replaced_in_place_is_rerendered(self, two_page_pdf, tmp_path):
+        """Replacing a PDF in place must re-render: a page cache keyed on the output path alone kept the old
+        pages, so the dataset's content digest moved (the source's bytes are hashed) while its images did
+        not, and a re-run was scored over a document that no longer exists."""
+        out = str(tmp_path / "pages")
+
+        def pages() -> list:
+            reader = get_reader("pdf", uri=two_page_pdf, dpi=72, out_uri=out)
+            return [ref for doc in reader.documents() for ref in doc.media]
+
+        before = pages()
+        PIL.new("RGB", (612, 792), color=(0, 0, 255)).save(two_page_pdf, resolution=72.0)
+        after = pages()
+
+        assert len(before) == 2
+        assert len(after) == 1, "the replaced source's one page, not the stale two"
+        assert after[0].sha256 != before[0].sha256
 
     def test_two_dpis_into_one_directory_do_not_share_pages(self, two_page_pdf, tmp_path):
         """A second conversion at another DPI into the same --out must render, not reuse the first one's pages."""

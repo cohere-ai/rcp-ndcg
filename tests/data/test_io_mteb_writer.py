@@ -83,15 +83,19 @@ def test_a_documents_title_is_written_verbatim(tmp_path: Path) -> None:
 def test_gains_without_thetas_round_trip(tmp_path: Path) -> None:
     """The writer emits the gain column whenever gains is given and the theta column only when thetas is
     given; the reader used to read a gain only when the same row's theta was non-null, so a gains-only
-    dataset reloaded ``gains=None`` with no warning."""
+    dataset reloaded ``gains=None`` with no warning. A judged pair outside the calibrated pool writes a null
+    gain cell with no theta column, and that cell is absent -- the pair keeps its grade and contributes no
+    gain -- not a gain outside ``[0, 1]`` the reader refuses."""
     dataset = a_dataset(
         qrels=[
             {"query_id": "q1", "doc_id": "d1", "grade": 2, "gain": 0.8},
             {"query_id": "q1", "doc_id": "d2", "grade": 0, "gain": 0.1},
+            {"query_id": "q2", "doc_id": "d1", "grade": 0},
         ],
     )
 
     reloaded = write_and_reload(dataset, tmp_path)
 
+    assert reloaded.qrels == dataset.qrels, "the uncalibrated pair keeps its grade"
     assert reloaded.gains == dataset.gains
     assert reloaded.thetas is None

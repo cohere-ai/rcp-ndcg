@@ -573,10 +573,21 @@ def status(run_dir: str | Path) -> RunState:
 
 
 def _was_interrupted(manifest: RunManifest) -> bool:
-    """Whether the manifest's failure is a step interrupted by SIGINT/SIGTERM (the signal ``run cancel`` sends)."""
-    from rcp_ndcg.runs.pipeline import INTERRUPT_ERROR
+    """Whether the manifest's failure is a step interrupted by SIGINT/SIGTERM (the signal ``run cancel`` sends).
 
-    return any(record.status is StepStatus.FAILED and record.error == INTERRUPT_ERROR for record in manifest.steps)
+    A record's error is its exception's class name (:func:`~rcp_ndcg.runs.pipeline._describe`): the coordinator
+    records a ``KeyboardInterrupt`` as :data:`~rcp_ndcg.runs.pipeline.INTERRUPT_ERROR`, and a job's own SIGTERM
+    handler records ``Interrupted: terminated (SIGTERM)``. Both are the cancellation -- the message is not what
+    the predicate asks (a step stopped by its budget records ``StepBudgetExceededError``, and is not one).
+    """
+    from rcp_ndcg.runs.pipeline import INTERRUPT_ERROR_PREFIX
+
+    return any(
+        record.status is StepStatus.FAILED
+        and record.error is not None
+        and record.error.startswith(INTERRUPT_ERROR_PREFIX)
+        for record in manifest.steps
+    )
 
 
 def _newer_from_mirror(run: Run, remote: str, manifest: RunManifest, notes: list[str]) -> RunManifest:

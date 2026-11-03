@@ -279,11 +279,21 @@ class TestDenseClient:
 
         assert client.processing == []
 
-    def test_the_identity_selection_applies_no_head_and_writes_no_record(self) -> None:
+    @pytest.mark.parametrize("reply", [[3.0, 4.0], [3.0, 4.0, 0.0, 0.0]])
+    def test_the_identity_selection_applies_no_head_and_writes_no_record(self, reply: list[float]) -> None:
         """``k ==`` the observed width is the identity selection: the reply is served as the client's
-        pipeline produced it (no slice, no renormalisation) and no ``mrl_cut`` record is written."""
-        sender = FakeSender(_vectors_handler({"a": [3.0, 4.0]}))
+        pipeline produced it (no slice, no renormalisation) and no ``mrl_cut`` record is written. A reply of
+        ANOTHER width is not the identity selection the declaration assumed -- the checkpoint's own width is
+        what the reply reports, not the card's largest listed size -- so the head, which renormalises, is
+        refused beside ``normalize: false`` rather than applied silently."""
+        sender = FakeSender(_vectors_handler({"a": reply}))
         client = EmbeddingClient(endpoint(**_SET, mrl_dim=2, normalize=False), sender=sender)
+
+        if len(reply) != 2:
+            with pytest.raises(ConfigError, match="normalize: false"):
+                client.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
+            assert client.processing == []
+            return
 
         vectors = client.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
 

@@ -143,6 +143,45 @@ def test_the_key_covers_a_media_query_s_parts_not_only_its_text(tmp_path: Any) -
     assert _checkpoint_key(_config(), one) != before, "the replaced image's bytes are content"
 
 
+def test_rerank_carries_a_media_query_to_the_wire_and_the_key(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A media query reaches the reranker as parts and its image is content of its checkpoint key: ``rerank()``
+    passes the query's content, not only its text. Mutation: ``query=query.text`` at ``_api.rerank`` sends the
+    empty text instead of the image, and a replaced image at the same URI resumes the old record."""
+    import httpx
+    from PIL import Image as PILImage
+    from rcp_ndcg_core.content import Content
+
+    from rcp_ndcg.data import Dataset, Rankings
+    from rcp_ndcg.inference import transport as transport_module
+
+    page = tmp_path / "query.png"
+    PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
+    corpus = [{"doc_id": "d1", "text": "a blue page"}]
+    query = {"query_id": "q1", "content": Content.from_image(page.as_uri())}
+    dataset = Dataset.from_records(name="media-queries", queries=[query], corpus=corpus)
+    rankings = Rankings.from_scores({"q1": {"d1": 1.0}}, system="bm25")
+    policy = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
+    config = _config(empty_query="send", max_images=1, image_policy=policy)
+    sent: list[dict] = []
+
+    def patched(endpoint: Any, **kwargs: Any) -> Any:
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent.append(json.loads(request.content))
+            return httpx.Response(200, json={"results": [{"index": 0, "relevance_score": 1.0}]})
+
+        return transport_module.Transport(endpoint, httpx_transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    rerank(dataset, rankings, config, depth=1, out=tmp_path / "rerank")
+    assert isinstance(sent[0]["query"], dict), "the query's image part, not its '' text"
+    assert [part["type"] for part in sent[0]["query"]["content"]] == ["image_url"]
+    # The query's image is content of the key: a replaced image at the same URI is scored again, not resumed.
+    PILImage.new("RGB", (320, 300), (200, 10, 10)).save(page, format="PNG")
+    media._OBJECT_INFO_CACHE.clear()  # the next run's view: the object-info memo lives for one process
+    rerank(dataset, rankings, config, depth=1, out=tmp_path / "rerank")
+    assert len(_records(tmp_path / "rerank" / "rank000.jsonl")) == 2, "the replaced image re-keys the query"
+
+
 def test_a_budget_change_re_keys_the_checkpoint(tmp_path: Any) -> None:
     """``max_tokens`` and ``query_max_tokens`` decide what text reaches the model, so they re-key; the
     tokenizer's digest does too (same bytes under another path never does)."""

@@ -101,6 +101,9 @@ class TestIngestPdf:
 
         assert result.exit_code == 2
         assert "KEY=VALUE" in json.loads(result.stdout)["error"]["message"]
+        hint = json.loads(result.stdout)["error"]["hint"]
+        assert "--set KEY=VALUE" in hint, hint
+        assert "--opt" not in hint, hint
 
 
 class TestIngestShapes:

@@ -572,7 +572,17 @@ class RerankClient(RoleClient):
         # no pair re-cuts the query. A residual divergence (a re-tokenization corner) is closed by re-fitting
         # every pair at the shortest verified span -- one query rides per request, so the spans must agree.
         if contents and len({left for left, _ in contents}) != 1:
-            shortest = min({left for left, _ in contents}, key=len)
+            # The shortest span is the one the BUDGET measures -- the declared tokenizer's token count, the
+            # unit every span is verified in -- never the character length (a span of fewer characters can
+            # carry more tokens). A tie is broken on the span text over a sorted list, never a set's
+            # iteration order, so two runs of the same config on the same data ship the same query.
+            spans = sorted({left for left, _ in contents})
+            tokenizer = self._tokenizer
+            if tokenizer is None:
+                # The vendor path measures nothing client-side; the character length is the only order left.
+                shortest = min(spans, key=lambda span: (len(span), span))
+            else:
+                shortest = min(spans, key=lambda span: (tokenizer.count(span), span))
             result = self._fit(
                 [(shortest, document.text) for document in kept_documents],
                 "pair",

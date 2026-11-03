@@ -137,6 +137,13 @@ def results_export(request: ResultsExportRequest) -> ResultsExport:
             "pass --run DIR or --report FILE",
             hint="export a run directory with --run, or a report from `eval score --out` with --report",
         )
+    if request.run is None and request.include_reference:
+        # The field says 'With --run', and the --report branch never read it: a flag that can have no effect is
+        # refused, never ignored (nothing is cut or defaulted silently).
+        raise UsageError(
+            "--include-reference applies to --run; a saved report has no reference systems",
+            hint="export the run directory with --run, or drop --include-reference",
+        )
     sink_class = result_sink_class(request.sink)
     if request.run is None:
         assert request.report is not None

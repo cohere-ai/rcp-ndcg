@@ -17,7 +17,7 @@ import click
 from pydantic import BaseModel, Field
 
 from rcp_ndcg.cli.command import command
-from rcp_ndcg.errors import EXTRA_FOR_MODULE
+from rcp_ndcg.errors import EXTRA_FOR_MODULE, UsageError
 from rcp_ndcg.support.paths import cache_dir, runs_dir
 from rcp_ndcg.support.urls import redact_urls, safe_url
 
@@ -99,6 +99,35 @@ def _models_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/") + "/models", parts.query, ""))
 
 
+def _checked_endpoint(url: str) -> str:
+    """*url* once both URL parsers accept it: a URL no HTTP client can parse is a bad argument, not a bug.
+
+    ``urlsplit`` refuses an unmatched IPv6 bracket with a bare ``ValueError``, and ``httpx.URL`` refuses an
+    invalid port with ``httpx.InvalidURL`` -- which is not an ``HTTPError``, so the probe's handler missed it.
+    Uncaught, either reached :func:`rcp_ndcg.errors.classify` as an unexpected failure (exit 1, 'this is a bug');
+    the caller's own typo is a usage error (exit 2) naming the flag and the expected form.
+
+    Args:
+        url: The ``--endpoint`` value, as typed (``safe_url`` strips any credentials from the message).
+
+    Returns:
+        ``url``, unchanged, once it parses.
+    """
+    from urllib.parse import urlsplit
+
+    import httpx
+
+    try:
+        urlsplit(url)
+        httpx.URL(url)
+    except (ValueError, httpx.InvalidURL) as exc:
+        raise UsageError(
+            f"--endpoint {safe_url(url)!r} is not a URL: {exc}",
+            hint="pass an OpenAI-compatible base URL, e.g. http://127.0.0.1:8000/v1",
+        ) from None
+    return url
+
+
 def _probe_auth(url: str) -> tuple[dict[str, str], tuple[str, ...]]:
     """The headers to probe ``url`` with, by the transport's own credential rule.
 
@@ -148,7 +177,9 @@ def _probe(url: str, timeout_s: float) -> Check:
     headers, variables = _probe_auth(url)
     try:
         response = httpx.get(target, timeout=timeout_s, headers=headers)
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
+        # InvalidURL and the ValueError a URL parse raises are not HTTPErrors: caught here so a probe that
+        # cannot be sent is a failed check, never an unexpected failure (exit 1).
         reason = redact_urls(f"{type(exc).__name__}: {exc}")
         return Check(name="endpoint", status="fail", detail=f"{shown}: {reason}")
     if response.status_code in (401, 403):
@@ -215,7 +246,7 @@ def doctor(request: DoctorRequest) -> DoctorReport:
             Check(name=f"${variable}", status="ok" if present else "missing", detail="set" if present else "")
         )
     if request.endpoint is not None:
-        checks.append(_probe(request.endpoint, request.timeout_s))
+        checks.append(_probe(_checked_endpoint(request.endpoint), request.timeout_s))
     return DoctorReport(
         ok=not any(check.status == "fail" for check in checks),
         python=platform.python_version(),

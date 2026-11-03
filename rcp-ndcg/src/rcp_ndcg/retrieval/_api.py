@@ -333,8 +333,10 @@ def search(index: Index, dataset: Dataset, *, depth: int = 150) -> Rankings:
     Raises:
         IdentityError: The dataset's corpus is not the indexed one.
         DataError: The payload is not the one the record describes (a killed or concurrent build, a replaced
-            or truncated file); nothing is scored from it. Also: the dataset holds no queries, or the encoder
-            answered zero-width query vectors (every query was empty and ``empty_doc: omit_zero`` sends none).
+            or truncated file); nothing is scored from it. Also: the dataset holds no queries, the encoder
+            answered zero-width query vectors (every query was empty and ``empty_doc: omit_zero`` sends none),
+            or, for a ``bm25`` retriever, a query with no indexable term or no matching document
+            (:func:`~rcp_ndcg.retrieval.sparse.search_bm25`), which refuses the run rather than score it 0.
         ConfigError: ``depth`` is not positive.
 
     The payload is verified and read under one shared lock (``index()`` takes the exclusive one), so the bytes
@@ -594,6 +596,9 @@ def rerank(
             RankingExample(
                 query_id=query_id,
                 query=query.text,
+                # The query's parts, not only its text: a media query (content set, no text) reaches the
+                # reranker as what search() sent and what _checkpoint_key hashes.
+                content=query.content,
                 instruction=query.instruction,
                 doc_ids=order,
                 contents=[corpus[d].model_content(title=title) for d in order],

@@ -232,6 +232,18 @@ class EmbeddingClient(RoleClient):
             if self.config.normalize:
                 matrix = l2_normalize(matrix)
             if self.config.mrl_dim != width:
+                if not self.config.normalize:
+                    # The identity selection is the checkpoint's OWN width, which is what the reply reports --
+                    # not the card's largest listed size the config keyed the refusal on. A reply of another
+                    # width means the head WOULD run (cut, then renormalise), which normalize: false declared
+                    # it would not: refused, never applied silently.
+                    raise ConfigError(
+                        f"the endpoint answered {width}-wide vectors, but mrl_dim ({self.config.mrl_dim}) is "
+                        "declared beside normalize: false: the Matryoshka head would cut and renormalise the "
+                        "reply, so the vectors would come back unit-length whatever the config says",
+                        hint="drop normalize: false (an MRL cut is meant to be compared by cosine), or drop "
+                        "mrl_dim and serve the full-width, un-normalised vectors",
+                    )
                 matrix = self._apply_mrl_cut(matrix, role, prepared.positions)
         elif self.config.normalize:
             matrix = l2_normalize(matrix)

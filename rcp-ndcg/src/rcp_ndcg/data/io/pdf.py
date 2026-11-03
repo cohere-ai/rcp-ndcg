@@ -9,6 +9,10 @@ page file is named with it (``page_0001_150dpi.png``) -- two ingests at differen
 DPIs into the same directory cannot collide, and a run cannot silently inherit
 pages rendered for a different purpose.
 
+The page directory is keyed on the source PDF's own bytes as well as its name: a
+PDF re-exported over the old one is a different document, and its predecessor's
+pages are not reused under the same name.
+
 Rendering needs ``pypdfium2``, which is not a core dependency: most users of this
 package never touch a PDF, and the import error names the extra.
 """
@@ -25,6 +29,8 @@ from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SourceReader, unique_document_ids
 from rcp_ndcg.data.media import default_resolver, sha256_of
 from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.storage.artifacts import artifact_ref
+from rcp_ndcg.support.identity import short
 from rcp_ndcg.support.logging import get_logger
 
 logger = get_logger(__name__)
@@ -90,10 +96,14 @@ class PdfReader(SourceReader):
         return sorted(entry for entry in storage.ls(self.uri, recursive=True) if entry.lower().endswith(".pdf"))
 
     def _render(self, pdf_uri: str, stem: str) -> list[MediaRef]:
-        """Render one PDF's pages, reusing any already on disk.
+        """Render one PDF's pages, reusing any already on disk for this source revision.
 
-        Cached by output path: a re-run of an interrupted ingest must not
-        re-render 40k pages, and the DPI is in the file name so the reuse is safe.
+        Cached by output path and a digest of the source's bytes: a re-run of an
+        interrupted ingest must not re-render 40k pages, and a source replaced in
+        place hashes differently, so its pages are rendered again instead of the
+        stale ones being reused. The DPI is in the file name, so two renders of one
+        source at different DPIs do not collide either. A superseded source's page
+        directory stays where it is, under its own digest.
         """
         if pdf_uri in self._rendered:
             return self._rendered[pdf_uri]
@@ -104,7 +114,10 @@ class PdfReader(SourceReader):
             raise ImportError("PDF rendering needs pypdfium2: pip install 'rcp-ndcg[data]'") from exc
 
         local_pdf = storage.cache(pdf_uri)
-        page_dir = storage.join(self.out_uri, stem)
+        # The source's bytes name the page directory: a PDF written over the old one at the same path is a
+        # different document, and inheriting its predecessor's pages would score pages that no longer exist.
+        revision = short(artifact_ref(local_pdf).sha256, 12)
+        page_dir = storage.join(self.out_uri, stem, revision)
         storage.makedirs(page_dir)
         refs: list[MediaRef] = []
         scale = self.dpi / PDF_BASE_DPI

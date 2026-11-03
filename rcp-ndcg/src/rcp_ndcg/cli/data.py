@@ -343,7 +343,7 @@ def _options(pairs: list[str], *, flag: str) -> dict[str, Any]:
         if not separator or not key.strip():
             raise UsageError(
                 f"{flag} expects KEY=VALUE, got {pair!r}",
-                hint="pass one pair per option: --opt KEY=VALUE",
+                hint=f"pass one pair per option: {flag} KEY=VALUE",
             )
         options[key.strip()] = _scalar(raw.strip())
     return options

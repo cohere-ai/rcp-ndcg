@@ -108,6 +108,21 @@ def test_doctor_joins_models_onto_the_path_and_keeps_the_query(monkeypatch) -> N
     assert seen == ["http://h/v1/models?sig=x"]
 
 
+def test_a_malformed_endpoint_is_a_usage_error() -> None:
+    """A URL no HTTP client can parse is a bad argument (USAGE, exit 2), never 'INTERNAL: this is a bug'.
+
+    ``urlsplit`` refuses an unmatched IPv6 bracket with a bare ``ValueError`` and ``httpx.URL`` an invalid port
+    with ``httpx.InvalidURL`` -- not an ``HTTPError``, so the probe's handler missed it; either escaped the probe
+    and the command exited 1. One form suffices: the other takes the same path.
+    """
+    result = CliRunner().invoke(doctor_cmd, ["--endpoint", "http://[::1", "--json"])
+
+    assert result.exit_code == 2, result.output
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "USAGE"
+    assert "--endpoint" in error["message"]
+
+
 def test_doctor_reports_a_keyless_401_as_reachable(monkeypatch) -> None:
     """A 401 with no key sent is 'reachable, needs a key', not a failed endpoint: the hint itself assumed a
     key had been sent."""

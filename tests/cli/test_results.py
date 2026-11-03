@@ -185,6 +185,27 @@ def test_export_from_a_run_can_include_the_reference_systems(
     assert {record.subject.name for record in records} == {"candidates", "judge", "mine"}
 
 
+def test_include_reference_with_a_report_is_refused(
+    report_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A saved report has no reference systems: --include-reference with --report is refused, never ignored.
+
+    The field says 'With --run', and the --report branch never read it, so the flag was accepted and had no
+    effect (AGENTS.md: nothing is cut or defaulted silently).
+    """
+    inject_sinks(monkeypatch)
+
+    document = _invoke(
+        "export", "--report", str(report_path), "--include-reference", "--out", str(tmp_path / "records.jsonl")
+    )
+
+    assert document["ok"] is False
+    assert document["exit_code"] == 2
+    assert document["error"]["code"] == "USAGE"
+    assert "--include-reference" in document["error"]["message"]
+    assert "--run" in (document["error"]["hint"] or "")
+
+
 def test_export_without_a_source_is_a_usage_error(monkeypatch: pytest.MonkeyPatch) -> None:
     inject_sinks(monkeypatch)
 

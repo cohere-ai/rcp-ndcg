@@ -1405,31 +1405,91 @@ def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
 ) -> None:
     """A `from: rankings` run without a retrieve step reads its pools straight from the rankings file: the
     file is the rerank and judging steps' input, so a resume after editing it re-runs the steps (a stale
-    candidates file would otherwise be kept silently -- the inputs were empty and the identity unchanged)."""
+    candidates file would otherwise be kept silently -- the inputs were empty and the identity unchanged).
+
+    The system the run picks from that file is content too (runs-02): its two systems rank disjoint documents,
+    so flipping ``candidates.system`` changes every pool while the file and its hash stay the same -- the
+    judging, evaluate and rerank steps must re-run instead of reusing the other system's judgements, report or
+    reranked candidates."""
     from rcp_ndcg.judging import JudgeClient
     from tests.judging.test_judging import _SchemaEndpoint
 
-    rankings = tmp_path / "rankings.jsonl"
     rows, _ = tiny_rows()
-    rankings.write_text(
-        "".join(json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": row.doc_ids[:6]}) + "\n" for row in rows),
-        encoding="utf-8",
-    )
+    rankings = tmp_path / "rankings.jsonl"
+
+    def write_rankings(reverse: bool = False) -> None:
+        """Two systems over disjoint document sets; ``reverse`` writes both orders reversed."""
+        rankings.write_text(
+            "".join(
+                json.dumps({"query_id": row.id, "system": system, "doc_ids": list(reversed(docs)) if reverse else docs})
+                + "\n"
+                for row in rows
+                for system, docs in (("bm25", row.doc_ids[:6]), ("dense", row.doc_ids[6:12]))
+            ),
+            encoding="utf-8",
+        )
+
+    write_rankings()
     monkeypatch.setattr(JudgeClient, "from_config", staticmethod(lambda config: _SchemaEndpoint("3.1").client()))
-    config = tiny_config(data, candidates={"from": "rankings", "rankings": str(rankings)}, steps=["tournament"])
+    config = tiny_config(
+        data,
+        candidates={"from": "rankings", "rankings": str(rankings), "system": "bm25"},
+        steps=["tournament"],
+    )
     pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
     pipeline.run()
     record = RunManifest.load(pipeline.layout.root).step("tournament")
     assert [ref.path for ref in record.inputs] == [str(rankings)], "the rankings file is pinned as the input"
 
-    rankings.write_text(
-        "".join(
-            json.dumps({"query_id": row.id, "system": "bm25", "doc_ids": list(reversed(row.doc_ids[:6]))}) + "\n"
-            for row in rows
-        ),
-        encoding="utf-8",
-    )
     plan = {row["step"]: row["status"] for row in Pipeline.resume(pipeline.layout.root).plan()}
+    assert plan["tournament"] == "would skip", "the file and the config are unchanged"
+
+    # The file's other system: same input, same hash, other pools. evaluate is not a step of this run, so its
+    # identity is compared directly -- the report must not be reused across a pool-selection change either.
+    resumed = Pipeline.resume(pipeline.layout.root)
+    flipped = Pipeline.resume(pipeline.layout.root, overrides=["candidates.system=dense"])
+    assert {row["step"]: row["status"] for row in flipped.plan()}["tournament"] == "would run", (
+        "the flipped candidates.system re-keys the judging step"
+    )
+    assert flipped._identity("evaluate") != resumed._identity("evaluate"), "nor the evaluate step's report"
+
+    # With a reranker the judging steps read the reranked candidates.parquet, so the rerank step is where the
+    # system is picked: it must re-run too, or the judges read the old system's pools from a file nobody rewrote.
+    def score_by_position(self, examples, *, checkpoint=None, **kwargs):
+        """The stub reranker scores each document by its pool position: no engine is needed."""
+        for example in examples:
+            checkpoint(str(example.id), tuple(float(i) for i in range(len(example.doc_ids))))
+        return []
+
+    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    reranked = Pipeline(
+        tiny_config(
+            data,
+            candidates={
+                "from": "rankings",
+                "rankings": str(rankings),
+                "system": "bm25",
+                "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub:8000", **_SERVED_RERANK_BUDGET},
+            },
+            steps=["rerank"],
+        ),
+        runs_dir=str(tmp_path / "rerank"),
+    )
+    reranked.run()
+    written = load_rankings(reranked.layout.candidates)
+    assert all(set(written.for_query(row.id)) == set(row.doc_ids[:6]) for row in rows), "the bm25 pools"
+    flipped_rerank = Pipeline.resume(reranked.layout.root, overrides=["candidates.system=dense"])
+    assert {row["step"]: row["status"] for row in flipped_rerank.plan()}["rerank"] == "would run", (
+        "the flipped candidates.system re-keys the rerank step"
+    )
+    flipped_rerank.run()
+    written = load_rankings(reranked.layout.candidates)
+    assert all(set(written.for_query(row.id)) == set(row.doc_ids[6:12]) for row in rows), (
+        "the reranker rescored the new system's pools, not the stale candidates.parquet"
+    )
+
+    write_rankings(reverse=True)
+    plan = {row["step"]: row["status"] for row in resumed.plan()}
     assert plan["tournament"] == "would run", "the edited rankings file makes the step stale"
 
 
