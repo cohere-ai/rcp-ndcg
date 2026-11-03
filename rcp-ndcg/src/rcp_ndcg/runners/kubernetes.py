@@ -228,7 +228,11 @@ def _resources(res: Resources) -> dict[str, Any]:
     if res.cpus:
         requests["cpu"] = limits["cpu"] = res.cpus
     if res.memory_gb:
-        requests["memory"] = limits["memory"] = f"{res.memory_gb:g}Gi"
+        # The declared value, rendered exactly: an integral value as an integer (`512Gi`, as `%g` rendered it), any
+        # other as its shortest round-tripping decimal (`1.234567Gi`). `%g` kept six significant digits, so a
+        # declared memory was silently rounded (1.234567 became 1.23457).
+        gib = res.memory_gb
+        requests["memory"] = limits["memory"] = f"{int(gib)}Gi" if gib.is_integer() else f"{gib}Gi"
     return {key: value for key, value in (("requests", requests), ("limits", limits)) if value}
 
 
@@ -902,9 +906,11 @@ class KubernetesRunner:
     def logs(self, handle: JobHandle, *, tail: int | None = None) -> str:
         """Logs of every container of the Job's pods, each line prefixed with its pod and container."""
         namespace, name = self._split(handle)
-        text = self._kubectl(
-            "logs", "-n", namespace, "-l", f"job-name={name}", "--all-containers", "--prefix", "--tail=-1"
-        )
+        # The Job's own pods carry `job-name`; the run-scoped engine pods carry the `rcp-ndcg/job` label the Job's
+        # manifest sets (the selector `_pods` lists them by), so selecting on `job-name` alone left every engine's
+        # log out.
+        selector = f"rcp-ndcg/job={_label_value(name)}"
+        text = self._kubectl("logs", "-n", namespace, "-l", selector, "--all-containers", "--prefix", "--tail=-1")
         return tail_lines(text, tail)
 
     def cancel(self, handle: JobHandle) -> None:

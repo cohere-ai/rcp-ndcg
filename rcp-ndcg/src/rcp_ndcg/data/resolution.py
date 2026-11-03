@@ -541,8 +541,8 @@ def gemma4_resize(height: int, width: int, *, max_soft_tokens: int) -> tuple[int
 
     Raises:
         DataError: a non-positive edge, or a resize that would round both edges to zero; both carry a hint
-            naming the fix. (The aspect ratio is checked by :func:`gemma4_fixed_point`, the preparation rule;
-            the processor's own resize has no ratio refusal.)
+            naming the fix. (The processor's own resize has no aspect-ratio refusal: unlike the Qwen
+            families' :func:`smart_resize`, a 3000x20 strip is resized, not refused.)
     """
     if min(height, width) <= 0:
         raise DataError(
@@ -577,21 +577,22 @@ def gemma4_resize(height: int, width: int, *, max_soft_tokens: int) -> tuple[int
 
 
 def gemma4_fixed_point(height: int, width: int, *, max_soft_tokens: int) -> tuple[int, int]:
-    """The size the Gemma 4 processor KEEPS: iterate :func:`gemma4_resize` until it settles.
+    """The size the Gemma 4 processor KEEPS when its own resize is iterated to convergence.
 
-    The engine runs the processor on whatever bytes the client sends, and the Gemma 4 resize is not
-    idempotent -- flooring each edge to 48 can move an edge on a second pass (a 4096x576 page resizes to
-    2112x288, then to 2160x288; a 3000x20 strip walks to 13344x48 over eight passes). A prepared image that
-    is not a fixed point is resized again by the engine, so its counted tokens would describe a size the
-    engine never keeps. The client prepares the fixed point (the model consumes it; the card's own single
-    pass over the raw image is the first iteration only).
+    A port of the processor's resize rule, iterated: the resize is not idempotent -- flooring each edge to 48
+    can move an edge on a second pass (a 4096x576 page resizes to 2112x288, then to 2160x288; a 3000x20 strip
+    walks to 13344x48 over eight passes) -- so this is the size a further pass leaves alone. It is NOT the
+    client's preparation rule: the client sends the RAW decoded image
+    (:meth:`ImagePolicy.target_size` returns it unchanged), the engine's processor resizes it ONCE, and
+    :meth:`ImagePolicy.image_tokens` counts that one-pass grid. A client that prepared this fixed point would
+    hand the engine a grid the card's pipeline never produces.
 
     Args:
         height, width: The image's size, in pixels.
         max_soft_tokens: The processor's soft-token budget.
 
     Returns:
-        ``(height, width)`` the processor keeps unchanged.
+        ``(height, width)`` the processor keeps unchanged on a further pass.
 
     Raises:
         DataError: a non-positive edge, or a resize that fails to settle within 16 passes (never observed;
@@ -670,8 +671,8 @@ class ImagePolicy(BaseModel):
         min_px: The fewest pixels an image is scaled up to (the pixel-budget shape).
         max_px: The most pixels an image is scaled down to (the pixel-budget shape).
         max_soft_tokens: The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor
-            resizes toward ``max_soft_tokens`` pooled patches, and the client prepares that resize's fixed
-            point. Mutually exclusive with ``min_px``/``max_px``.
+            resizes toward ``max_soft_tokens`` pooled patches, and the client sends the raw image, so the
+            engine's one-pass resize produces that grid. Mutually exclusive with ``min_px``/``max_px``.
         processor: The judge's image processor family (:data:`ImageProcessor`). Left unset in a declared policy:
             the judging pass takes it from the judge config's ``image_processor`` (:meth:`for_processor`), so the
             recorded policy names it. ``None`` in an effective policy means the family is unknown, and images are
@@ -1540,6 +1541,11 @@ def _clip_frame_size(
     shrinks as the frame count grows. A faithful port of transformers' Qwen3-VL video ``smart_resize``
     (models/qwen3_vl/video_processing_qwen3_vl.py:75-109 @ 2c8526d; Apache-2.0, see NOTICE): checked against
     the real ``Qwen3VLVideoProcessor`` with 0 mismatches over 65 frame-count and size combinations.
+
+    A frame with an edge below the factor is scaled UP first, by ``max(factor / height, factor / width)`` --
+    the ratio that brings its short edge to one factor block -- as the processor does (:86-89 there), so a
+    16x8 frame is sized as 32x64 rather than rounded to 0 and re-floored. The clip's pixel budget then
+    applies to that upscaled grid.
 
     Raises:
         DataError: an aspect ratio above 200, which the video processor refuses.

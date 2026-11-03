@@ -101,6 +101,24 @@ class TestReadWrite:
     def test_missing_remote_object_does_not_exist(self) -> None:
         assert storage.exists("memory://runs/nope.json") is False
 
+    def test_load_text_decodes_a_prompt_file_as_utf8(self, tmp_path: Path) -> None:
+        """A user prompt file is read as UTF-8 like a shipped one, whatever the host locale: ``load_text``
+        used to open it with the locale's encoding and refuse ``é`` under ``LC_ALL=C``."""
+        import locale
+
+        from rcp_ndcg.storage.io import load_text
+
+        prompt = tmp_path / "prompt.txt"
+        prompt.write_text("héllo\n", encoding="utf-8")
+        saved = locale.setlocale(locale.LC_ALL)
+        try:
+            locale.setlocale(locale.LC_ALL, "C")
+            if locale.getencoding() == "utf-8":
+                pytest.skip("UTF-8 mode: open() ignores the locale, so this case cannot tell the two apart")
+            assert load_text(prompt) == "héllo"
+        finally:
+            locale.setlocale(locale.LC_ALL, saved)
+
 
 class TestTransfer:
     def test_get_downloads_a_remote_object(self, tmp_path: Path) -> None:

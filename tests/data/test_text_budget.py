@@ -596,6 +596,8 @@ class TestDocumentCap:
         assert len(engine_ids(result.texts[0], pair_template(), "pair")) <= 64
         assert FRAMED.count(result.contents[0][1]) <= 8
         assert [cut.cause for cut in census.cuts()] == ["document_share", "budget_cut"]
+        # Neither row is a chunk's -- the pair was cut, never chunked -- so neither names an aggregation.
+        assert [cut.aggregation for cut in census.cuts()] == [None, None]
 
     def test_the_cap_is_validated_and_enters_the_identity(self) -> None:
         with pytest.raises(ValueError, match="document_max_tokens"):
@@ -1187,6 +1189,9 @@ class TestProcessingRecordIds:
         )
         records = processing_records("rerank", "pair", cuts=[row], chunk_mapping={"0": "0"})
         assert [record.input_id for record in records] == ["<query>"]
+        # A recorded cut is frozen (the class's own declared contract): the event cannot be rewritten.
+        with pytest.raises(AttributeError, match="frozen"):
+            row.kept_tokens = 0
 
 
 def test_claim_budget_row_is_the_census_own_dedup() -> None:

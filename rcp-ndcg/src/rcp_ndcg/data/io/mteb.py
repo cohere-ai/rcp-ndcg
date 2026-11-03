@@ -28,12 +28,14 @@ store works the same.  An interleaved document (several images, or a video of ex
 name: the ``jsonl`` format holds what this one cannot.
 
 **The extras ride only where mteb ignores them.**  mteb's loader keeps three columns of the qrels, so the
-calibrated ``gain``/``theta`` columns travel on the same table and drop there.  mteb reads no ``excluded``
-config, so it holds the exclusions verbatim -- and because ``top_ranked`` is the pool mteb *does* read, the
-exclusions are also folded out of it (out of the corpus, when the data has no pool): a model scored inside
-mteb never sees an excluded document.  A grade that is not a whole number is refused: the ``score`` column is
-written as int64 and mteb's loader casts it to int32 at load, where a fractional value fails; export integer
-grades and keep the continuous signal in ``gain``/``theta``.
+calibrated ``gain``/``theta`` columns travel on the same table and drop there.  They are written together: a
+pair carrying a theta and no gain would be a non-null theta beside a null gain cell, the one qrels row the Hub
+reader refuses, so the writer refuses it with the pair named (a thetas-only layout has no such cell and is
+written as given).  mteb reads no ``excluded`` config, so it holds the exclusions verbatim -- and because
+``top_ranked`` is the pool mteb *does* read, the exclusions are also folded out of it (out of the corpus, when
+the data has no pool): a model scored inside mteb never sees an excluded document.  A grade that is not a
+whole number is refused: the ``score`` column is written as int64 and mteb's loader casts it to int32 at load,
+where a fractional value fails; export integer grades and keep the continuous signal in ``gain``/``theta``.
 """
 
 from __future__ import annotations
@@ -218,7 +220,8 @@ class MtebWriter(SinkWriter):
 
         Raises:
             DataError: A grade is not a whole number, a qrel, pool, exclusion, gain or theta names an unknown
-                id, or no qrels or no queries were given.
+                id, a pair carries a theta and no gain (the Hub reader refuses that row), or no qrels or no
+                queries were given.
             ConfigError: A record carries more than one image or video, or a video of frames without a
                 container (mteb's columns hold one cell each).
         """
@@ -515,7 +518,12 @@ def _qrels_table(
     thetas: dict[ID, dict[ID, float]] | None,
 ) -> pa.Table:
     """``query-id, corpus-id, score`` (int64) -- the columns the loader keeps -- plus ``gain``/``theta`` when
-    the data carries them (rows without a value read as null; mteb's ``select_columns`` drops both)."""
+    the data carries them (rows without a value read as null; mteb's ``select_columns`` drops both).
+
+    The two extras go together: a pair whose theta has no gain would be written as a non-null theta beside a
+    null gain cell, the row :meth:`~rcp_ndcg.data.io.hub.HubReader._labels_table` refuses, so it is
+    refused here -- at write time, with the pair named.
+    """
     import pyarrow as pa
 
     pairs = [(query_id, doc_id) for query_id, judged in qrels.items() for doc_id in judged]
@@ -524,11 +532,32 @@ def _qrels_table(
         "corpus-id": pa.array([str(doc_id) for _, doc_id in pairs], pa.string()),
         "score": pa.array([_integer_grade(qrels[q][d], q, d) for q, d in pairs], pa.int64()),
     }
-    if gains is not None:
-        columns["gain"] = pa.array([_value_of(gains, q, d) for q, d in pairs], pa.float64())
-    if thetas is not None:
-        columns["theta"] = pa.array([_value_of(thetas, q, d) for q, d in pairs], pa.float64())
+    gain_cells = [_value_of(gains, q, d) for q, d in pairs] if gains is not None else None
+    theta_cells = [_value_of(thetas, q, d) for q, d in pairs] if thetas is not None else None
+    if gain_cells is not None and theta_cells is not None:
+        _check_thetas_have_gains(pairs, gain_cells, theta_cells)
+    if gain_cells is not None:
+        columns["gain"] = pa.array(gain_cells, pa.float64())
+    if theta_cells is not None:
+        columns["theta"] = pa.array(theta_cells, pa.float64())
     return pa.table(columns)
+
+
+def _check_thetas_have_gains(pairs: list[tuple[ID, ID]], gains: list[float | None], thetas: list[float | None]) -> None:
+    """Refuse a pair that carries a theta and no gain: the writer-side half of the reader's rule.
+
+    A null gain cell beside a non-null theta is the one qrels row the Hub reader refuses (``write both, or
+    neither``), so the writer refuses it too, before any config is written. A theta with no gain column at
+    all is not this case: the layout then has no null gain cell, and the reader reads it back as written.
+    """
+    for (query_id, doc_id), gain, theta in zip(pairs, gains, thetas, strict=True):
+        if theta is not None and gain is None:
+            raise DataError(
+                f"qrels: query {query_id!r}, document {doc_id!r}: the theta {theta!r} has no gain; the row "
+                "would pair a theta with a null gain, which the Hub reader refuses",
+                hint="the theta column pairs with the gain column: write both, or neither",
+                details={"query_id": str(query_id), "doc_id": str(doc_id), "theta": theta},
+            )
 
 
 def _integer_grade(value: float, query_id: ID, doc_id: ID) -> int:

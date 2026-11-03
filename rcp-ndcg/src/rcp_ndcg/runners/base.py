@@ -257,14 +257,17 @@ class JobOptions(BaseModel):
         return value
 
     def resolved(self) -> dict[str, Any]:
-        """The options set away from their defaults, every local path among them absolute (:data:`PATHS`).
+        """The options set away from their defaults, with every local path (:data:`PATHS`) pinned absolute.
 
-        A PATHS value that is a URL (it names its location with ``://``) is kept as it is. What a job record
-        keeps: the runner re-created from it finds the job's files from any working directory. The environment
-        is the runner's own (the job's env lives in the :class:`JobSpec`, and a credential is refused where the
-        options are read); :meth:`~rcp_ndcg.runs.config.RunConfig.recorded` is the recording form.
+        A PATHS value is recorded absolute even when it is still at its default (``SlurmOptions.log_dir`` defaults
+        to the relative ``logs/slurm``), so the runner re-created from the record finds the job's files from any
+        working directory; a PATHS value that is a URL (it names its location with ``://``) is kept as it is. The
+        environment is the runner's own (the job's env lives in the :class:`JobSpec`, and a credential is refused
+        where the options are read); :meth:`~rcp_ndcg.runs.config.RunConfig.recorded` is the recording form.
         """
         data = self.model_dump(mode="json", exclude_defaults=True)
+        # Every local PATHS value is pinned absolute, including one the dump dropped because it is still at its
+        # default: a relative default would otherwise resolve against the directory of whoever reads the record.
         for name in self.PATHS:
             value = getattr(self, name)
             if value is not None and "://" not in value:

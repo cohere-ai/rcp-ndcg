@@ -17,7 +17,7 @@ from rcp_ndcg.data import load_dataset
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.io import hub as hub_module
 from rcp_ndcg.data.io.mteb import MtebWriter
-from rcp_ndcg.errors import ConfigError
+from rcp_ndcg.errors import ConfigError, DataError
 from tests.data.hub_stubs import SHA, _fake_hub_file, _fake_listing
 
 
@@ -99,3 +99,23 @@ def test_gains_without_thetas_round_trip(tmp_path: Path) -> None:
     assert reloaded.qrels == dataset.qrels, "the uncalibrated pair keeps its grade"
     assert reloaded.gains == dataset.gains
     assert reloaded.thetas is None
+
+
+def test_a_theta_without_its_gain_is_refused_at_write_time(tmp_path: Path) -> None:
+    """A theta beside a null gain cell is the row the Hub reader refuses, and the writer used to emit it: a
+    partial gains table with a fuller thetas table wrote fine, then ``load_dataset`` raised ``DataError: ...
+    is not a gain in [0, 1]`` on the written layout. The pair is refused at write time, by name, before any
+    config is written (drop the pairing check and the write succeeds where the read-back fails)."""
+    dataset = a_dataset(
+        qrels=[
+            {"query_id": "q1", "doc_id": "d1", "grade": 2, "gain": 0.8, "theta": 1.0},
+            {"query_id": "q1", "doc_id": "d2", "grade": 0, "theta": 2.0},
+            {"query_id": "q2", "doc_id": "d2", "grade": 1},
+        ],
+    )
+
+    with pytest.raises(DataError, match=r"qrels: query 'q1', document 'd2'.*theta 2\.0") as refused:
+        MtebWriter().write_dataset(dataset, str(tmp_path / "layout"))
+
+    assert "write both, or neither" in (refused.value.hint or "")
+    assert not (tmp_path / "layout").exists(), "refused before any config was written"

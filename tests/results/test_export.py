@@ -172,6 +172,12 @@ def test_records_from_run_can_include_the_reference_systems(run_dir: Path) -> No
     records = records_from_run(run_dir, include_reference=True)
 
     assert {record.subject.name for record in records} == {"candidates", "judge", "mine"}
+    families = sorted(RunManifest.load(RunLayout.at(run_dir)).families)
+    judge = [record for record in records if record.subject.name == "judge"]
+    assert len(families) > 1 and judge, "the tiny run judges at two stages, so the label has two families to name"
+    assert all(family in judge[0].subject.labels["judge_family"] for family in families), (
+        "the judge record names every judgement family the run judged under, not just the first sorted one"
+    )
 
 
 def test_records_from_run_carries_the_run_provenance_and_artifacts(run_dir: Path) -> None:
@@ -208,12 +214,15 @@ def test_records_from_run_names_an_unknown_system(run_dir: Path) -> None:
 def test_a_systems_subject_identity_is_the_digest_the_run_scored(tmp_path: Path) -> None:
     """The export names a system by what the evaluate step read, not by the file at export time: a rankings
     file regenerated in place after the run must not relabel the run's numbers."""
+    import pyarrow.parquet as pq
+
     from rcp_ndcg.testing import tiny_rows
 
     root = tmp_path / "run"
     rankings = root / "mine.parquet"
     run_dir = build_run(root)
-    step = RunManifest.load(RunLayout.at(run_dir)).step("evaluate")
+    layout = RunLayout.at(run_dir)
+    step = RunManifest.load(layout).step("evaluate")
     assert step is not None
     recorded = {ref.path: ref.sha256 for ref in step.inputs}
 
@@ -221,11 +230,21 @@ def test_a_systems_subject_identity_is_the_digest_the_run_scored(tmp_path: Path)
     assert mine and all(record.subject.identity in recorded.values() for record in mine), (
         "the subject names the digest the step recorded"
     )
+    reference = [r for r in records_from_run(run_dir, include_reference=True) if r.subject.name == "candidates"]
+    assert reference and all(record.subject.identity in recorded.values() for record in reference), (
+        "the reference system names the digest the step recorded too"
+    )
 
     rows, _ = tiny_rows()
     Rankings.from_orders({row.id: list(reversed(row.doc_ids)) for row in rows}, system="mine").save(rankings)
+    table = pq.read_table(layout.candidates)
+    pq.write_table(table.take(list(range(table.num_rows - 1, -1, -1))), layout.candidates)
     again = [record for record in records_from_run(run_dir) if record.subject.name == "mine"]
     assert [record.subject.identity for record in again] == [record.subject.identity for record in mine]
+    rewritten = [r for r in records_from_run(run_dir, include_reference=True) if r.subject.name == "candidates"]
+    assert [record.subject.identity for record in rewritten] == [record.subject.identity for record in reference], (
+        "regenerating candidates.parquet in place must not relabel the run's reference numbers"
+    )
 
 
 def test_records_from_run_reads_an_explicit_report_file(run_dir: Path, tmp_path: Path) -> None:

@@ -389,8 +389,8 @@ def _parquet_schema():
 def _parquet_rows(records: Iterable[ResultRecord]) -> list[dict[str, Any]]:
     """One row per metric row, the record's other columns repeated (a metric-less record keeps one null row).
 
-    The nested fields are read from ``model_dump(mode="json")``, so a provenance value pydantic can serialise
-    (a ``datetime``, an enum) is serialised here the same way the JSONL sink serialises it.
+    ``created_at`` and the nested fields are read from ``model_dump(mode="json")``, so a value pydantic can
+    serialise (a ``datetime``, an enum) is serialised here the same way the JSONL sink serialises it.
     """
     rows: list[dict[str, Any]] = []
     for record in records:
@@ -398,7 +398,7 @@ def _parquet_rows(records: Iterable[ResultRecord]) -> list[dict[str, Any]]:
         payload = record.model_dump(mode="json")
         common: dict[str, Any] = {
             "record_id": record.record_id,
-            "created_at": record.created_at.isoformat(),
+            "created_at": payload["created_at"],
             "subject_kind": subject.kind,
             "subject_name": subject.name,
             "subject_system": subject.system,
@@ -806,13 +806,19 @@ def _system_identity(layout: Any, manifest: Any, system: str) -> str | None:
 
     A named system takes the digest the evaluate step recorded among its inputs, never a fresh hash of the
     file at export time: a rankings file regenerated in place after the run must not relabel the numbers it
-    did not produce. A run whose evaluate step did not hash the location (a remote one, or a manifest written
-    without it) has no identity to report.
+    did not produce. The reference system ``candidates`` reads the recorded digest the same way, and falls back
+    to the file's hash only when the run recorded none (a manifest written without that input). A run whose
+    evaluate step did not hash the location (a remote one, or a manifest written without it) has no identity
+    to report.
     """
     from rcp_ndcg.storage.artifacts import artifact_ref
 
-    if system == CANDIDATES and Path(layout.candidates).is_file():
-        return artifact_ref(layout.candidates).sha256
+    if system == CANDIDATES:
+        recorded = _recorded_input_digest(layout, manifest, str(layout.candidates))
+        if recorded is not None:
+            return recorded
+        if Path(layout.candidates).is_file():
+            return artifact_ref(layout.candidates).sha256
     if system == JUDGE:
         return hash_payload(sorted(manifest.families)) if manifest.families else None
     evaluation = manifest.config.get("evaluation")
@@ -840,7 +846,12 @@ def _recorded_input_digest(layout: Any, manifest: Any, path: str) -> str | None:
 
 
 def _system_labels(manifest: Any, system: str) -> dict[str, str]:
-    """The subject's provenance labels: the model or recipe the config names, when it names one."""
+    """The subject's provenance labels: the model or recipe the config names, and the judgement families.
+
+    A run judges at several stages (``JudgementFamily.key`` carries the stage), so ``judge_family`` names
+    every family the run judged under, sorted and comma-joined, rather than letting the first one stand for
+    the rest.
+    """
     config = manifest.config
     labels: dict[str, str] = {}
     if system == JUDGE:
@@ -849,8 +860,8 @@ def _system_labels(manifest: Any, system: str) -> dict[str, str]:
             labels["model"] = judge
         elif isinstance(judge, dict):
             _model_label(labels, judge)
-        for key in sorted(manifest.families):
-            labels.setdefault("judge_family", key)
+        if manifest.families:
+            labels["judge_family"] = ",".join(sorted(manifest.families))
     elif system == CANDIDATES:
         candidates = config.get("candidates")
         if isinstance(candidates, dict):

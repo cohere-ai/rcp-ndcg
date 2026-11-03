@@ -369,6 +369,13 @@ def eval_compare(request: EvalCompareRequest) -> Comparison:
             "pass exactly one of --report and --run",
             hint="compare a report written by `eval score --out` with --report, or a run directory with --run",
         )
+    if request.run is None and request.include_reference:
+        # The field says 'With --run', and the --report branch never read it: a flag that can have no effect is
+        # refused, never ignored (nothing is cut or defaulted silently).
+        raise UsageError(
+            "--include-reference applies to --run; a saved report has no reference systems",
+            hint="export the run directory with --run, or drop --include-reference",
+        )
     systems = None
     if request.run is not None:
         from rcp_ndcg.runs.inspect import evaluation_report

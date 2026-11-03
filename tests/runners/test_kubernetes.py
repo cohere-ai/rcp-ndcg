@@ -410,13 +410,25 @@ def test_submit_refuses_an_existing_job(monkeypatch) -> None:
 
 
 def test_logs_and_cancel(monkeypatch) -> None:
+    """The run-scoped engine pods carry the Job's ``rcp-ndcg/job`` label, not ``job-name``: selecting on
+    ``job-name`` left every engine's log out, though the docstring promises every container of the Job's pods."""
     fake = _FakeKubectl()
     monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
     runner = KubernetesRunner(image="i")
     assert runner.logs("eval/j", tail=1) == "pod-1 b\n"
     runner.cancel("eval/j")
     assert fake.calls[-1][0] == ["kubectl", "delete", "job", "j", "-n", "eval", "--ignore-not-found", "--wait=false"]
-    assert fake.calls[0][0][:6] == ["kubectl", "logs", "-n", "eval", "-l", "job-name=j"]
+    assert fake.calls[0][0] == [
+        "kubectl",
+        "logs",
+        "-n",
+        "eval",
+        "-l",
+        "rcp-ndcg/job=j",
+        "--all-containers",
+        "--prefix",
+        "--tail=-1",
+    ]
 
 
 def test_it_is_registered_by_name() -> None:
@@ -680,9 +692,11 @@ class TestPhases:
 
 
 def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:
-    runner = get_runner("kubernetes", resources={"gpus": 2}, env={"A": "1"})
+    """A declared memory is rendered exactly: ``%g`` kept six significant digits, so 1.234567 became 1.23457."""
+    runner = get_runner("kubernetes", resources={"gpus": 2, "memory_gb": 1.234567}, env={"A": "1"})
     (container,) = runner.manifest(JobSpec(name="j", argv=("true",)))["spec"]["template"]["spec"]["containers"]
-    assert container["resources"]["limits"] == {"nvidia.com/gpu": 2}
+    assert container["resources"]["limits"] == {"nvidia.com/gpu": 2, "memory": "1.234567Gi"}
+    assert container["resources"]["requests"] == {"memory": "1.234567Gi"}
     assert "export A=1" in container["command"][2]
 
 

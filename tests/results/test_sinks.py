@@ -142,16 +142,24 @@ def test_the_jsonl_sink_appends_with_the_option(tmp_path: Path) -> None:
 
 
 def test_the_parquet_sink_serialises_a_datetime_provenance(tmp_path: Path) -> None:
-    """The JSONL sink serialises a datetime in provenance; the parquet sink must not crash on it."""
+    """The JSONL sink serialises a datetime in provenance; the parquet sink must not crash on it, and both
+    sinks spell the record's ``created_at`` the same way (one record, one serialisation)."""
     import pyarrow.parquet as pq
 
+    record = _record().model_copy(update={"provenance": {"when": _record().created_at}})
     out = tmp_path / "records.parquet"
     sink = ParquetResultSink(uri=str(out))
-    sink.emit(_record().model_copy(update={"provenance": {"when": _record().created_at}}))
+    sink.emit(record)
     sink.flush()
 
     row = pq.read_table(out).to_pylist()[0]
     assert json.loads(row["provenance"])["when"].startswith("2026-01-02")
+
+    lines = tmp_path / "records.jsonl"
+    jsonl = JsonlResultSink(uri=str(lines))
+    jsonl.emit(record)
+    jsonl.flush()
+    assert row["created_at"] == json.loads(lines.read_text(encoding="utf-8"))["created_at"]
 
 
 def test_the_parquet_sink_writes_one_row_per_metric(tmp_path: Path) -> None:

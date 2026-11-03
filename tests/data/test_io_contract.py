@@ -504,7 +504,7 @@ def test_a_fractional_qrels_label_is_kept_by_the_reader_and_refused_by_the_write
 
 def test_a_non_numeric_qrels_label_is_a_data_error(beir_dir) -> None:
     (Path(beir_dir) / "qrels" / "test.tsv").write_text("query-id\tcorpus-id\tscore\nq1\td1\tnan\n")
-    with pytest.raises(DataError, match="not a finite number"):
+    with pytest.raises(DataError, match="test.tsv:2.*not a finite number"):
         get_reader("beir", uri=beir_dir).qrels()
 
 
@@ -559,6 +559,21 @@ def test_an_idless_sidecar_row_is_refused_not_dropped(image_dir) -> None:
     with pytest.raises(DataError, match="qrels.jsonl:1.*no id"):
         reader.qrels()
 
+    # The other half of the same row contract: a row that names no content is refused too, not read as an
+    # empty query (which is encoded as an empty prompt and scored as a real one).
+    queries = Path(image_dir.replace("/images", "/queries.jsonl"))
+    queries.write_text('{"query_id": "q1"}\n')
+    reader = get_reader("images", uri=image_dir, queries_uri=str(queries))
+    with pytest.raises(DataError, match="queries.jsonl:1.*no text"):
+        list(reader.queries())
+
+    # A text that is not a string is refused, never coerced: ``str(["a", "b"])`` scored a list as a real
+    # query where the record's own validation refused it.
+    queries.write_text(json.dumps({"query_id": "q1", "text": ["a", "b"]}) + "\n")
+    reader = get_reader("images", uri=image_dir, queries_uri=str(queries))
+    with pytest.raises(DataError, match="queries.jsonl:1.*list"):
+        list(reader.queries())
+
 
 def test_a_missing_beir_file_is_a_missing_input(tmp_path) -> None:
     """A bare FileNotFoundError slipped past the typed hierarchy (and load_dataset's promised
@@ -579,6 +594,27 @@ def test_a_labelled_pair_twice_is_refused_not_last_wins(beir_dir) -> None:
     qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t2\nq1\td1\t5\n")
     with pytest.raises(DataError, match="twice"):
         get_reader("beir", uri=beir_dir).qrels()
+
+
+def test_a_qrels_row_naming_an_unknown_document_is_not_dropped(beir_dir, tmp_path) -> None:
+    """A judged document the corpus lacks vanished from the derived ranking shape -- the query kept its
+    surviving documents, with no message -- while ``Dataset.from_records`` refuses the same dataset. The drop
+    is a typed refusal naming the query, the document and the source, in both file readers that derive it."""
+    from rcp_ndcg.data.io.hub import HubReader
+
+    qrels = Path(beir_dir) / "qrels" / "test.tsv"
+    qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t2\nq1\td_missing\t1\n")
+    with pytest.raises(DataError, match="d_missing") as caught:
+        list(get_reader("beir", uri=beir_dir).examples())
+    assert "q1" in str(caught.value) and beir_dir in str(caught.value), "the query and the source are named"
+
+    with hub_fixture("mteb-nfcorpus", tmp_path) as root:
+        (root / "qrels/test.jsonl").write_text(
+            '{"query-id": "PLAIN-2", "corpus-id": "MED-10", "score": "2"}\n'
+            '{"query-id": "PLAIN-2", "corpus-id": "d_missing", "score": "1"}\n'
+        )
+        with pytest.raises(DataError, match="d_missing"):
+            list(HubReader("mteb/nfcorpus", revision="c" * 40).examples())
 
 
 def test_a_ranking_row_labelling_a_pair_twice_is_refused_not_last_wins(ranking_jsonl, tmp_path) -> None:

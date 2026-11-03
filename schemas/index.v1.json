@@ -1116,7 +1116,7 @@
             }
           ],
           "default": null,
-          "description": "The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor resizes toward ``max_soft_tokens`` pooled patches, and the client prepares that resize's fixed point. Mutually exclusive with ``min_px``/``max_px``.",
+          "description": "The Gemma 4 soft-token budget (one of 70, 140, 280, 560, 1120): the processor resizes toward ``max_soft_tokens`` pooled patches, and the client sends the raw image, so the engine's one-pass resize produces that grid. Mutually exclusive with ``min_px``/``max_px``.",
           "title": "Max Soft Tokens"
         },
         "min_px": {

@@ -25,6 +25,7 @@ from rcp_ndcg_core.records import ID, Document, Query
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SourceReader, required_id, sidecar_qrels, unique_document_ids
 from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, default_resolver
+from rcp_ndcg.errors import DataError
 from rcp_ndcg.storage.io import numbered_json_lines
 from rcp_ndcg.support.logging import get_logger
 
@@ -88,6 +89,12 @@ class ImageDirReader(SourceReader):
         return ImagePart(ref=ref)
 
     def queries(self) -> Iterator[Query]:
+        """The sidecar's queries.
+
+        Raises:
+            DataError: a row names no query id, no text, or a text that is not a string (an empty query is
+                encoded as an empty prompt and scored as a real one, and a coerced list is scored as text).
+        """
         if self.queries_uri is None:
             return
         for line_number, row in numbered_json_lines(self.queries_uri):
@@ -97,9 +104,26 @@ class ImageDirReader(SourceReader):
                 source=f"{self.queries_uri}:{line_number}",
                 what="a query row",
             )
+            text = row.get("text") or row.get("query")
+            if not text:
+                raise DataError(
+                    f"{self.queries_uri}:{line_number}: a query row carries no text (looked for text, query); "
+                    "a text-less row is not droppable",
+                    hint="give the row its text: an empty query is encoded as an empty prompt and scored as a "
+                    "real query, so it changes the numbers instead of failing",
+                    details={"query_id": str(query_id)},
+                )
+            if not isinstance(text, str):
+                raise DataError(
+                    f"{self.queries_uri}:{line_number}: a query row's text is {type(text).__name__}, not a "
+                    f"string: {text!r}",
+                    hint="give the row its text as one string: a coerced value (a list, a number) is scored as "
+                    "text nobody wrote",
+                    details={"query_id": str(query_id), "type": type(text).__name__},
+                )
             yield Query(
                 query_id=str(query_id),
-                query=row.get("text") or row.get("query") or "",
+                query=text,
                 instruction=row.get("instruction"),
             )
 

@@ -267,7 +267,10 @@ class TestContentMediaTokens:
         real video processor: 8 frames of 720x1280 -> 3,520 patch tokens; 128 -> 11,520; the rendered
         prompt adds the outer vision pair plus the per-group wrapper pair and the timestamp line (a
         declared bound of 10 tokens each). The frame counts come from the engine's fps rule (32 frames at
-        8 fps sampled at 2 fps -> 8; 512 -> 128)."""
+        8 fps sampled at 2 fps -> 8; 512 -> 128). A frame below the family's 32-pixel factor is scaled up
+        to one factor block first (the processor's own sub-factor rule): dropping that step rounds the
+        edges to 0, and the clip floor's own upscale lands on 32x32 -- 54 tokens where the processor's
+        grid of 32x64 costs 58."""
         tight = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32, processor="qwen3_vl")
         wide = ImagePolicy(min_px=65536, max_px=4096 * 32 * 32, processor="qwen3_vl")
         eight = MediaRef(uri="gs://v/a.mp4", width=1280, height=720, num_frames=32, fps=8.0)
@@ -281,6 +284,13 @@ class TestContentMediaTokens:
             assert content_media_tokens(
                 Content.from_parts([VideoPart(ref=many)]), policy, video
             ).tokens == VISION_WRAPPER_TOKENS + 64 * (180 + 2 + 10)
+
+        # 16x8 scales up by 4 to 32x64 -- one factor block on the short edge -- and 8 frames of it cost
+        # 8 * 32 * 64 = 16,384 px, over the clip's 4,096 px floor, so the floor does not scale it again.
+        tiny = MediaRef(uri="gs://v/a.mp4", width=16, height=8, num_frames=32, fps=8.0)
+        assert content_media_tokens(
+            Content.from_parts([VideoPart(ref=tiny)]), tight, video
+        ).tokens == VISION_WRAPPER_TOKENS + 4 * (2 + 2 + 10)
 
     def test_a_pinned_clip_budget_counts_under_the_engine_pin(self):
         """The card's per-clip total_pixels pin (serve.mm_processor_kwargs.videos_kwargs.max_pixels) is

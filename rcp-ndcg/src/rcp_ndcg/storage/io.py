@@ -26,8 +26,8 @@ def _resolve(path: str | Path) -> str | Path:
 
 
 def load_text(path: str | Path) -> str:
-    """Load prompts written as plain text files."""
-    with open(_resolve(path)) as file:
+    """Load prompts written as plain text files, decoded as UTF-8 like every other text file the package reads."""
+    with open(_resolve(path), encoding="utf-8") as file:
         return file.read().strip()
 
 

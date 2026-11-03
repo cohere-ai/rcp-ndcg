@@ -333,12 +333,23 @@ class TestTheLocalDatasetContentDigest:
 
         for committed in ("hf://org/repo", "suite:bright", "mteb:NanoNFCorpus"):
             assert dataset_content_digest(committed) == {}, committed
+            # A committed source is no local input either: its location is a repository name, not a path.
+            assert dataset_local_locations(committed) == {}, committed
 
         qrels = tmp_path / "qrels.jsonl"
         qrels.write_text("{}\n", encoding="utf-8")
         assert dataset_content_digest("images:/no-such-dir", {"qrels_uri": str(qrels)}) == {
             "dataset.options.qrels_uri": dataset_content_digest(f"jsonl:{qrels}")["dataset"]
         }
+        # A third-party reader scheme's local source is named by its content too: a scheme the digest does not
+        # know is not a source it may leave out, or the identity is keyed on the URI alone.
+        assert set(dataset_content_digest(f"acme:{qrels}")) == {"dataset"}
+        assert dataset_local_locations(f"acme:{qrels}") == {"dataset": str(qrels)}
+        # ... and its remote location is fingerprinted, or refused, like a known scheme's -- never left out.
+        from rcp_ndcg.errors import DataError
+
+        with pytest.raises(DataError, match="fingerprint"):
+            dataset_content_digest(f"acme:memory://rev-{uuid4().hex}/missing.jsonl")
         # The locations are listed without being read (a mirror refusal needs them before they exist).
         assert dataset_local_locations("images:/no-such-dir", {"qrels_uri": str(qrels), "other_uri": "s3://b/x"}) == {
             "dataset": "/no-such-dir",

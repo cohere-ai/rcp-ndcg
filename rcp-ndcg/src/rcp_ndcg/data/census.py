@@ -46,6 +46,7 @@ class TextCutRecord:
     """
 
     __slots__ = (
+        "_frozen",
         "aggregation",
         "budget_source",
         "budget_tokens",
@@ -101,6 +102,21 @@ class TextCutRecord:
         self.cause = cause
         self.original_request_tokens = original_request_tokens
         self.kept_request_tokens = kept_request_tokens
+        self._frozen = True
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Refuse every write once the record is built: a recorded cut is frozen (the docstring's contract).
+
+        ``__init__`` assigns the fields, then sets the guard's own flag, so the only writes that reach an
+        instance are the construction's. A row a later pass rewrote would be a cut that was never made, and a
+        resumed run reads these rows back to decide which cuts are already on record.
+
+        Raises:
+            AttributeError: any assignment after construction.
+        """
+        if getattr(self, "_frozen", False):
+            raise AttributeError(f"TextCutRecord is frozen: {name!r} cannot be rewritten after the cut was recorded")
+        object.__setattr__(self, name, value)
 
     def as_row(self) -> dict[str, Any]:
         row: dict[str, Any] = {
@@ -157,8 +173,10 @@ class TextTruncationCensus:
       budget (mechanism of :func:`fit`): content cut, chunked or refused under
       a declared :class:`TextBudget`.  Referent: requests (a chunked input is
       one row per chunk, and every row names the aggregation its scores pool
-      by; each row's ``original_tokens`` is the whole input's, so a chunked
-      document's rows repeat it -- summing the column overcounts the input).
+      by; a chunked input's rows repeat the input's totals in
+      ``original_tokens``, so summing the column overcounts the input, while a
+      multi-part input's rows carry each part's own counts and repeat only the
+      request's totals).
       A hosted vendor profile without a tokenizer records one row per
       (corpus, budget) per census (``doc_id`` ``<budget>``) naming its
       documented limit as the effective budget, and cuts nothing.

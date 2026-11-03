@@ -382,6 +382,21 @@ def test_an_unknown_baseline_is_a_usage_error(scored: dict) -> None:
     assert "nobody" in document["error"]["message"] and "forward" in document["error"]["message"]
 
 
+def test_include_reference_with_a_report_is_refused(scored: dict) -> None:
+    """A saved report has no reference systems: --include-reference with --report is refused, never ignored.
+
+    The field says 'With --run', and the --report branch never read it, so the flag was accepted and had no
+    effect (AGENTS.md: nothing is cut or defaulted silently).
+    """
+    document = _invoke("compare", "--report", str(scored["report"]), "--include-reference")
+
+    assert document["ok"] is False
+    assert document["exit_code"] == 2
+    assert document["error"]["code"] == "USAGE"
+    assert "--include-reference" in document["error"]["message"]
+    assert "--run" in (document["error"]["hint"] or "")
+
+
 def test_explain_report_re_scores_the_systems_the_report_scored(scored: dict) -> None:
     """`eval explain --report` defaults to the systems the report scored: a system added to the rankings file
     after scoring does not kill the explanation, and `--system` narrows the re-score."""

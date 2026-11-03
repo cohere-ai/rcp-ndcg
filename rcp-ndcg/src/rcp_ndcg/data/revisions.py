@@ -18,16 +18,17 @@ was judged record the commit it resolved to instead (a judge's ``revision`` is r
 The result is cached per ``(repo_id, revision)`` for the life of the process, so an identity that is computed many
 times (a pipeline's resume checks) costs one metadata call per repository, not one per check.
 
-A **local** source (``jsonl:rows.jsonl``, a ``beir:`` directory, ...) has no revision to pin it. It is named by
-its content instead: :func:`dataset_content_digest` digests the files the reader reads -- a file's bytes, a
-directory's sorted listing -- so editing the file in place makes every step that read it stale and refuses the
-judgement store that holds the old bytes. :func:`dataset_local_locations` lists the locations a source's reader
-reads without reading them. A **remote** non-Hub source (``jsonl:gs://bucket/rows.jsonl``, ``beir:s3://bucket/corpus``,
-``images:https://...``) has no commit either, so the same function fingerprints the objects its reader reads from
-the backend's own metadata: an object's size and change stamp (its etag/generation, else its mtime), or a streamed
-SHA-256 when the backend reports neither; a prefix is its sorted listing. A remote location the backend cannot
-answer for is refused -- an identity keyed on the URI alone would reuse work over bytes nobody checked. A Hub,
-``suite:`` or ``mteb:`` source carries its resolved commit and pays no content digest.
+A **local** source (``jsonl:rows.jsonl``, a ``beir:`` directory, a third party reader's ``acme:rows.jsonl``) has
+no revision to pin it. It is named by its content instead: :func:`dataset_content_digest` digests the files the
+reader reads -- a file's bytes, a directory's sorted listing -- so editing the file in place makes every step
+that read it stale and refuses the judgement store that holds the old bytes. :func:`dataset_local_locations`
+lists the locations a source's reader reads without reading them. A **remote** non-Hub source
+(``jsonl:gs://bucket/rows.jsonl``, ``beir:s3://bucket/corpus``, ``images:https://...``) has no commit either, so
+the same function fingerprints the objects its reader reads from the backend's own metadata: an object's size
+and change stamp (its etag/generation, else its mtime), or a streamed SHA-256 when the backend reports neither;
+a prefix is its sorted listing. A remote location the backend cannot answer for is refused -- an identity keyed
+on the URI alone would reuse work over bytes nobody checked. A Hub, ``suite:`` or ``mteb:`` source carries its
+resolved commit and pays no content digest.
 """
 
 from __future__ import annotations
@@ -55,8 +56,10 @@ logger = get_logger(__name__)
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _TRUE = {"1", "true", "yes", "on"}
 
-#: Reader schemes whose location is a local path (``hf://``, ``suite:`` and ``mteb:`` name remote data).
-_LOCAL_SCHEMES = ("beir", "jsonl", "images", "videos", "frames", "pdf")
+#: Reader schemes whose location is remote or carries a commit: ``hf://``, ``suite:`` and ``mteb:`` name remote
+#: data (a Hub source is pinned by its resolved commit). Every other scheme names a location on this host -- a
+#: reader the digest does not know is not a source it may leave out of an identity.
+_COMMITTED_SCHEMES = ("hf", "suite", "mteb")
 
 #: The per-process digest cache for local dataset files: ``(resolved path, size, mtime_ns) -> digest``.
 #: The files of a local dataset do not change under a run, and a resume check computes the identity many times;
@@ -299,10 +302,10 @@ def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[s
 def dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]:
     """``{name: location}`` of the local locations a dataset URI's reader reads, without reading them.
 
-    The dataset location of a local reader scheme (``jsonl:``, ``beir:``, ``images:``, ``videos:``, ``frames:``,
-    ``pdf:``) is ``dataset``; every reader option whose name ends in ``_uri`` and whose value is a local path is
-    ``dataset.options.<key>``. A remote source (``hf://``, ``suite:``, ``mteb:``) and a remote option value are
-    absent: nothing local is named there.
+    The dataset location of a reader scheme whose location is not remote (``jsonl:``, ``beir:``, ``images:``,
+    ``videos:``, ``frames:``, ``pdf:`` and a third party's own scheme alike) is ``dataset``; every reader option
+    whose name ends in ``_uri`` and whose value is a local path is ``dataset.options.<key>``. A committed source
+    (``hf://``, ``suite:``, ``mteb:``) and a remote option value are absent: nothing local is named there.
 
     Args:
         uri: The dataset URI a :class:`~rcp_ndcg.data.Dataset` was loaded from.
@@ -310,7 +313,7 @@ def dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) 
     """
     locations: dict[str, str] = {}
     scheme, sep, rest = uri.partition(":")
-    if sep and scheme in _LOCAL_SCHEMES and rest and not is_remote(rest):
+    if sep and rest and scheme not in _COMMITTED_SCHEMES and not is_remote(rest):
         locations["dataset"] = rest
     for key, value in (options or {}).items():
         if key.endswith("_uri") and isinstance(value, str) and not is_remote(value):
@@ -353,7 +356,7 @@ def _dataset_locations(uri: str, options: Mapping[str, Any] | None) -> dict[str,
     """``{name: location}`` of every location a dataset URI's reader reads: local paths and remote objects alike."""
     locations = dataset_local_locations(uri, options)
     scheme, sep, rest = uri.partition(":")
-    if sep and scheme in _LOCAL_SCHEMES and rest and is_remote(rest):
+    if sep and rest and scheme not in _COMMITTED_SCHEMES and is_remote(rest):
         locations["dataset"] = rest
     for key, value in (options or {}).items():
         if key.endswith("_uri") and isinstance(value, str) and is_remote(value):

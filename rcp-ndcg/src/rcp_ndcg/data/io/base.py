@@ -378,6 +378,10 @@ class SourceReader(abc.ABC):
         Derived from the corpus shape by treating the judged documents as the
         candidate list, which is what makes a BEIR corpus judgeable without an
         intervening retrieval run.
+
+        Raises:
+            DataError: a qrels row names a document the corpus lacks. Nothing is dropped silently: the derived
+                candidate list would otherwise lose the document and score the query against a shorter ideal.
         """
         if DataShape.CORPUS not in self.shapes:
             raise NotImplementedError(
@@ -394,9 +398,20 @@ class SourceReader(abc.ABC):
         corpus = {doc.id: doc for doc in self.documents()}
         for query in self.queries():
             judged = qrels.get(query.id, {})
-            doc_ids = [doc_id for doc_id in judged if doc_id in corpus]
-            if not doc_ids:
+            if not judged:
                 continue
+            unknown = [doc_id for doc_id in judged if doc_id not in corpus]
+            if unknown:
+                # A label for a document the corpus lacks cannot be scored, and dropping it silently changed
+                # the query's ideal ranking (the in-memory path refuses the same dataset).
+                source = self.provenance.source_uri or type(self).__name__
+                raise DataError(
+                    f"{source}: qrels of query {query.id!r} name documents that are not in the corpus: {unknown[:5]}",
+                    hint="fix the labels, or the corpus the reader reads: a judged document the corpus lacks "
+                    "cannot be scored, and dropping it silently changes the query's ideal ranking",
+                    details={"query_id": str(query.id), "unknown_documents": [str(doc_id) for doc_id in unknown[:20]]},
+                )
+            doc_ids = list(judged)
             documents = [corpus[doc_id] for doc_id in doc_ids]
             # ``contents`` only when some document carries media, so a text-only
             # dataset serialises as plain ``docs``. Each document is materialised as

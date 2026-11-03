@@ -1067,11 +1067,13 @@ def fit(
                 continue
             # The cap bound and the pair still overflows: the budget decides the rest. Record the cap's own
             # cut beside the budget row (the same doc_id), so the processing record names both mechanisms.
+            # No aggregation: the cap's row is not a chunk's, and `document_max_tokens` is refused beside
+            # `on_overflow: chunk`, so this input is never chunked -- the sibling cap row passes None too.
             _record(
                 doc_id=input_id,
                 original=original,
                 kept=(query, document),
-                aggregation=budget.aggregation,
+                aggregation=None,
                 request_tokens=request_tokens,
                 raw=raw,
                 cause="document_share",

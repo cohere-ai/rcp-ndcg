@@ -155,8 +155,10 @@ class BeirReader(SourceReader):
         with storage.open_path(path, "rb", **compression) as raw:
             lines = iter(io.TextIOWrapper(raw, encoding="utf-8", newline=""))
             first = next(lines, None)
-            rows = lines if first is None or _looks_like_header(first.split("\t")) else itertools.chain([first], lines)
-            for line_number, row in enumerate(csv.reader(rows, delimiter="\t"), start=1):
+            header = first is not None and _looks_like_header(first.split("\t"))
+            rows = lines if first is None or header else itertools.chain([first], lines)
+            # The line number is the file's own: a consumed header line is line 1, so the first data row is 2.
+            for line_number, row in enumerate(csv.reader(rows, delimiter="\t"), start=2 if header else 1):
                 if not row:
                     continue
                 if len(row) < 3:
