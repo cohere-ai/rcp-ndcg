@@ -12,7 +12,9 @@ A run config names the dataset, the candidates, the judge and the steps (`retrie
 `rubric`, `calibrate`, `evaluate`). `rcp-ndcg run start my_run.yaml` runs them into `runs/<run_id>/`, whose
 `manifest.json` records every step's identity, inputs, outputs and usage (judge calls and tokens). Resuming (`rcp-ndcg run resume --run
 runs/<run_id>`) reuses every step whose identity is unchanged (a judging step's identity includes the prompt's
-text hash and the tokenizer's SHA-256; the steps that read the dataset carry its resolved commit, the title
+text hash, the tokenizer's SHA-256 and the pool selection (`candidates.source`, `.system` and `.rankings`, so a
+resume that flips the system re-judges that system's pools); the steps that read the dataset carry its resolved
+commit, the title
 join mode and the instruction policy -- content fields of the role configs -- and the text-formatting rule's
 version, so a resume after the formatting changed re-runs them instead of reusing the old strings; a local
 dataset has no commit, so it carries the digest of the files its reader reads -- a `jsonl:` file's bytes, a

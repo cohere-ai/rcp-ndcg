@@ -45,7 +45,7 @@ incompatibly, independently of the package version. All four distributions carry
 - **The mteb writer and reader round-trip**: a null `gain` cell reads as absent (a partial calibrated pool
   round-trips), and the writer refuses a theta with no gain instead of emitting a table its own reader rejects.
 - **A PDF's page cache follows its content**: the page directory is keyed on the source's digest, so a PDF
-  replaced in place re-renders instead of reusing the old pages.
+  replaced in place re-renders instead of reusing the old pages; an existing page directory re-renders once.
 - **A third-party reader's local source is fingerprinted**; `examples()` refuses a qrels row for a document the
   corpus lacks; the image-directory reader refuses a text-less or non-string query; BEIR qrels line numbers
   count the header.
@@ -63,6 +63,9 @@ incompatibly, independently of the package version. All four distributions carry
   rule is document-only); the committed `rcp-ndcg-test/pairs/` corpus was regenerated.
 - **A fake judge refuses a custom prompt it cannot place** (a typed `ConfigError`) instead of guessing a shape
   from the query.
+- **Docs**: the duplicate `docs/api/` pages are retired and their narrative moved into
+  `docs/concepts/inference.md` and `docs/reference/results-record.md`; the fixed-point grid claim names the Qwen
+  families it covers.
 - **Schemas**: new `calibration-diagnostics.v1`; `calibration-summary.v1` gains the diagnostics' `schema` field.
 - **A committed corpus never names the private stage** (the repository subset): `subset_for_repository` wrote
   the full corpus's real `gs://` host into the subset's `index.json`, so two freshly recorded corpora failed
