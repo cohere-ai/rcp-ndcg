@@ -7,7 +7,8 @@
 * :func:`score_document` -- one document's ability from its own rubric answers,
   item parameters frozen (EAP, posterior standard deviation);
 * :func:`insert_document` -- one new document's Bradley-Terry ability from its
-  comparisons with documents of a frozen tournament fit (conditional MLE).
+  comparisons with documents of a frozen tournament fit (conditional MAP: the
+  frozen fit's ridge, ``l2_reg`` defaulting to ``Priors().bt_l2``, is part of the objective).
 
 The estimator classes behind them are available from this package, lazily: :class:`BradleyTerryEstimator`
 and :class:`RaschEstimator` (the live tournament refits its Bradley-Terry estimator warm after every batch of

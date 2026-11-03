@@ -14,6 +14,7 @@ RCP-, qrel- and Count-nDCG differ only in these gains. The item parameters ``ite
 from __future__ import annotations
 
 import math
+import numbers
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, overload
 
@@ -196,8 +197,9 @@ def count_gain(passes: Sequence[int], placements: int) -> float:
         The gain, in ``[0, 1]``.
 
     Raises:
-        ValueError: a pass count is not a whole number in ``[0, placements]``, or ``placements`` is not a
-            positive whole number.
+        ValueError: a pass count is not a whole number in ``[0, placements]`` (a non-number -- a ``str``, say --
+            is refused here rather than failing later in the sum), or ``placements`` is not a positive whole
+            number.
     """
     if not passes:
         raise ValueError("count_gain needs one pass count per criterion")
@@ -207,7 +209,12 @@ def count_gain(passes: Sequence[int], placements: int) -> float:
     if n < 1:
         raise ValueError(f"placements must be positive, got {placements}")
     bad = [
-        s for s in passes if not math.isfinite(float(s)) or float(s) != math.floor(float(s)) or not 0 <= float(s) <= n
+        s
+        for s in passes
+        if not isinstance(s, numbers.Real)
+        or not math.isfinite(float(s))
+        or float(s) != math.floor(float(s))
+        or not 0 <= float(s) <= n
     ]
     if bad:
         raise ValueError(

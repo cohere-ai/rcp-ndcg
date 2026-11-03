@@ -10,8 +10,11 @@
 from __future__ import annotations
 
 import math
+import numbers
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Literal, get_args
+
+from rcp_ndcg_core._util import descending_score_order
 
 TieRule = Literal["doc_id_desc", "group_mean", "input_order"]
 """How documents with equal scores are ordered when a score mapping is scored.
@@ -51,10 +54,37 @@ def _validate_scores(scores: Mapping[str, float]) -> None:
         raise ValueError(f"scores must be finite; got non-finite scores for {bad[:5]}")
 
 
-def _validate_gains(values: Iterable[float]) -> None:
-    bad = [value for value in values if not math.isfinite(value)]
+def _validate_gains(values: Iterable[float], *, non_negative: bool = False) -> None:
+    """Refuse a gain that is not a finite number, and -- with ``non_negative`` -- one below 0.
+
+    The default is the finite-only contract of a caller that validates raw labels: :func:`protocol.score_query`
+    checks the qrels grades themselves, and a negative label is not a positive (it leaves the ranking and the
+    ideal exactly as grade 0 does), so refusing it here would abort an evaluation on a dataset that carries
+    one.
+
+    :func:`ndcg`, :func:`dcg` and :func:`ideal_dcg` pass ``non_negative=True``: a gain below 0 leaves their
+    documented ``[0, 1]``, because the ideal DCG is built from the same values and can be smaller in
+    magnitude than the DCG it normalises (``ndcg(["a", "b"], {"a": -1.0, "b": 1.0}, k=2)`` was -1.0).
+
+    A non-finite gain is refused either way: it flows through the sums as a NaN. A non-numeric value is
+    refused either way too: the contract is the error, never a silent 0.
+    """
+    materialised = list(values)
+    non_numeric = [value for value in materialised if not isinstance(value, numbers.Real)]
+    if non_numeric:
+        raise ValueError(
+            f"gains must be finite numbers; got {len(non_numeric)} non-numeric gain(s), first {non_numeric[:5]}"
+        )
+    bad = [value for value in materialised if not math.isfinite(value)]
     if bad:
         raise ValueError(f"gains must be finite; got {len(bad)} non-finite gain(s), first {bad[:5]}")
+    negative = [value for value in materialised if value < 0.0] if non_negative else []
+    if negative:
+        raise ValueError(
+            f"gains must be non-negative (the gain is in [0, 1], and a negative one makes the ideal DCG "
+            f"smaller in magnitude than the DCG it normalises); got {len(negative)} negative gain(s), "
+            f"first {negative[:5]}"
+        )
 
 
 def discount(rank: int) -> float:
@@ -74,11 +104,11 @@ def dcg(gains_in_rank_order: Sequence[float], k: int) -> float:
     """``DCG@k = sum_{r=1..k} gain(r) / log2(r + 1)`` of gains already in rank order (best first).
 
     Raises:
-        ValueError: ``k`` is not positive, or a gain entering the sum is not finite.
+        ValueError: ``k`` is not positive, or a gain entering the sum is not a finite number of at least 0.
     """
     _validate_k(k)
     entering = list(gains_in_rank_order[:k])
-    _validate_gains(entering)
+    _validate_gains(entering, non_negative=True)
     return sum(gain / math.log2(rank + 1) for rank, gain in enumerate(entering, start=1))
 
 
@@ -86,11 +116,11 @@ def ideal_dcg(gains: Iterable[float], k: int) -> float:
     """The DCG@k of ``gains`` sorted best first: the normaliser of :func:`ndcg`.
 
     Raises:
-        ValueError: ``k`` is not positive, or a gain is not finite (checked before the sort:
-            a NaN has no sort position).
+        ValueError: ``k`` is not positive, or a gain is not a finite number of at least 0 (checked before the
+            sort: a NaN has no sort position).
     """
     values = list(gains)
-    _validate_gains(values)
+    _validate_gains(values, non_negative=True)
     return dcg(sorted(values, reverse=True)[:k], k)
 
 
@@ -113,7 +143,10 @@ def rank_by_score(
     if ties == "doc_id_desc":
         return sorted(scores, key=lambda doc_id: (scores[doc_id], doc_id), reverse=True)
     if ties == "input_order":
-        return sorted(scores, key=lambda doc_id: -scores[doc_id])  # sorted() is stable
+        # The rule has one home: ``descending_score_order``, which ``RankingExample``'s auto-sort calls too.
+        # Two implementations of "descending score, ties keep input order" can disagree on a tie.
+        doc_ids = list(scores)
+        return [doc_ids[index] for index in descending_score_order(list(scores.values()))]
     raise ValueError(f"rank_by_score orders by 'doc_id_desc' or 'input_order', got ties={ties!r}")
 
 
@@ -133,8 +166,10 @@ def tie_groups(scores: Mapping[str, float]) -> list[list[str]]:
         ValueError: a score is not a finite number.
     """
     _validate_scores(scores)
+    doc_ids = list(scores)
     groups: list[list[str]] = []
-    for doc_id in sorted(scores, key=lambda doc_id: -scores[doc_id]):  # sorted() is stable
+    for index in descending_score_order(list(scores.values())):  # the input_order rule, one home
+        doc_id = doc_ids[index]
         if groups and scores[groups[-1][0]] == scores[doc_id]:
             groups[-1].append(doc_id)
         else:
@@ -167,8 +202,8 @@ def ndcg(
     Args:
         scores: The system's output for one query: a mapping ``{doc_id: score}`` (higher is better, finite), ranked
             under ``ties``; or a ranking ``[doc_id, ...]`` (best first, no duplicates), taken as ordered.
-        gains: ``{doc_id: gain}``, gains in ``[0, 1]`` (RCP, Count) or grades (qrels). Ranked documents missing from
-            ``gains`` count 0.
+        gains: ``{doc_id: gain}``, gains in ``[0, 1]`` (RCP, Count) or non-negative grades (qrels). Ranked documents
+            missing from ``gains`` count 0.
         k: Cutoff.
         ties: The :data:`TieRule` for a score mapping (ignored for a ranking).
         ideal: The gains the ideal DCG is built from; defaults to ``gains.values()``. Pass the query's whole labelled
@@ -178,8 +213,9 @@ def ndcg(
         nDCG@k in ``[0, 1]``; 0.0 when nothing is ranked or the ideal DCG is 0.
 
     Raises:
-        ValueError: a score, a gain or an ``ideal`` gain is not a finite number (a non-finite gain would flow
-            through the sums and return a NaN with no error).
+        ValueError: a score, a gain or an ``ideal`` gain is not a finite number, or a gain is negative (a
+            non-finite gain would flow through the sums and return a NaN with no error; a negative one returns a
+            value outside ``[0, 1]``).
     """
     _validate_k(k)
     if isinstance(scores, Mapping):
@@ -193,9 +229,9 @@ def ndcg(
     else:
         _validate_ranking(scores)
         ranked_gains = [gains.get(doc_id, 0.0) for doc_id in scores[:k]]
-    _validate_gains(gains.values())
+    _validate_gains(gains.values(), non_negative=True)
     ideal_values = list(ideal) if ideal is not None else list(gains.values())
-    _validate_gains(ideal_values)
+    _validate_gains(ideal_values, non_negative=True)
     normaliser = ideal_dcg(ideal_values, k)
     if not ranked_gains or normaliser == 0.0:
         return 0.0

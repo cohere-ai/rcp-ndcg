@@ -8,7 +8,8 @@ torch, no pandas, no LLM client, no cloud storage.
 - `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`: the one nDCG@k, with linear gains. `scores` is
   a mapping `{doc_id: score}` (ranked under the tie rule) or an ordered list of doc ids. `ideal` gives the gains of
   the ideal ranking (default: all values of `gains`). RCP-, qrel- and Count-nDCG differ only in the gains. Scores,
-  gains and ideal gains must be finite numbers: a non-finite one is refused, not NaN'd through the sums.
+  gains and ideal gains must be finite numbers, and a gain must not be negative: a non-finite one is refused, not
+  NaN'd through the sums, and a negative one is refused rather than returned as an nDCG outside `[0, 1]`.
 - Tie rules (`TieRule`): `"group_mean"` (every tied document gets its tie group's mean gain: the expected nDCG over
   tie orders, as mteb's `ndcg_float_at_k`; the default and every preset's rule), `"doc_id_desc"` (trec_eval;
   arXiv v1's NanoBEIR and BRIGHT tables), `"input_order"` (the order the scores come in; arXiv v1's TREC-DL tables).
@@ -30,8 +31,9 @@ $$
 g(\tilde\theta) = \frac{\sum_c \gamma_c \, \sigma\big(\gamma_c(\tilde\theta - \beta_c)\big)}{\sum_c \gamma_c},
 $$
 
-which is monotone in $\tilde\theta$ and lies in $(0, 1)$. The alternatives compared in the
-paper's gain-function ablation live in `experiments/gain_variants.py`, outside the library.
+which is monotone in $\tilde\theta$ and lies in $[0, 1]$: the sigmoid saturates in float, so the gain is exactly
+0.0 or 1.0 where a criterion is certainly failed or certainly passed, never an open interval. The alternatives
+compared in the paper's gain-function ablation live in `experiments/gain_variants.py`, outside the library.
 
 ## Protocol (`rcp_ndcg_core.protocol`)
 

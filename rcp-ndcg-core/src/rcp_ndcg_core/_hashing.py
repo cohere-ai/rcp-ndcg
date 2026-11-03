@@ -140,11 +140,22 @@ def hash_strings(items: Iterable[str]) -> str:
     return digest.hexdigest()
 
 
+def _full_digest(digest: str, *, caller: str) -> str:
+    """Refuse anything that is not a full lowercase sha256 hex digest."""
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise ValueError(f"{caller} takes a full sha256 hex digest, got {digest!r}")
+    return digest
+
+
 def combine_digests(*digests: str) -> str:
-    """Full SHA-256 hex digest of several full hex digests, in order: one identity from its parts."""
+    """Full SHA-256 hex digest of several full hex digests, in order: one identity from its parts.
+
+    Refuses a part that is not a full hex digest: ``combine_digests("ab", "cd")`` and
+    ``combine_digests("abcd")`` would hash the same bytes, so two different part-lists would share one identity.
+    """
     combined = hashlib.sha256()
     for digest in digests:
-        combined.update(bytes.fromhex(digest))
+        combined.update(bytes.fromhex(_full_digest(digest, caller="combine_digests()")))
     return combined.hexdigest()
 
 
@@ -154,8 +165,7 @@ def short(digest: str, length: int) -> str:
     Refuses anything that is not a full hex digest, so a short value can never
     be shortened twice and quietly become a shorter identity than it claims.
     """
-    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
-        raise ValueError(f"short() takes a full sha256 hex digest, got {digest!r}")
+    _full_digest(digest, caller="short()")
     if not 1 <= length <= 64:
         raise ValueError(f"short() length must be in [1, 64], got {length}")
     return digest[:length]

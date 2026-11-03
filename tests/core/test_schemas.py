@@ -9,6 +9,7 @@ import json
 import pytest
 from pydantic import ValidationError
 from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_ndcg_core.metric import rank_by_score
 from rcp_ndcg_core.records import Document, Query, RankingExample
 
 
@@ -168,6 +169,13 @@ class TestRankingExample:
         assert ex.scores == [3.0, 2.0, 1.0]
         assert ex.doc_ids == ["b", "c", "a"]
         assert ex.docs == ["B", "C", "A"]
+        # "Descending score, ties keep input order" has one home: the record's order must equal the
+        # metric's, on a tie too (two implementations of the rule can disagree on exactly that case).
+        tied = RankingExample(
+            query="q", query_id="q1", doc_ids=["c", "b", "a"], docs=["C", "B", "A"], scores=[1.0, 2.0, 2.0]
+        )
+        assert tied.doc_ids == ["b", "a", "c"]
+        assert tied.doc_ids == rank_by_score({"c": 1.0, "b": 2.0, "a": 2.0}, ties="input_order")
 
     def test_ranking_example_no_scores_preserves_order(self):
         ex = RankingExample(

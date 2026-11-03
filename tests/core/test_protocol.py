@@ -168,8 +168,13 @@ def test_qrel_ndcg_is_nan_without_positives_and_rounds_like_beir() -> None:
     no_positives = score_query({"a": 1.0}, {"a": 0}, protocol="plain", metric="qrel_ndcg", k=1)
     rounded = score_query({"a": 2.0, "b": 1.0}, {"b": 1}, protocol="bright", metric="qrel_ndcg", k=2)
     unrounded_rcp = score_query({"a": 2.0, "b": 1.0}, {"b": 1.0}, protocol="bright", k=2)
+    # A negative label is not a positive either, and it is not an error: it leaves the ranking and the
+    # ideal exactly as grade 0 does. The raw grade only has to be finite (demanding non-negative here
+    # aborted an evaluation on any dataset carrying a -1 label).
+    negative = score_query({"a": 2.0, "b": 1.0}, {"a": -1, "b": 1.0}, protocol="plain", metric="qrel_ndcg", k=2)
 
     assert math.isnan(no_positives)
+    assert negative == pytest.approx(0.6309297535714575)
     assert rounded == round(1 / LOG2_3, 5)
     assert unrounded_rcp == 1 / LOG2_3
 

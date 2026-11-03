@@ -2,9 +2,10 @@
 
 When a query gains a candidate, refitting the tournament would move every
 published score. Insertion instead estimates the new document's ability by
-**conditional MLE**: the existing thetas and comparisons are frozen inputs, so
-the estimate lands in the existing fit's frame and the existing thetas are
-bit-identical afterwards (checked, not assumed).
+**conditional MAP**: the existing thetas and comparisons are frozen inputs and
+the frozen fit's ridge (``l2_reg``, defaulting to ``Priors().bt_l2``) is part of
+the objective, so the estimate lands in the existing fit's frame and the existing
+thetas are bit-identical afterwards (checked, not assumed).
 
 Identifiability is checked, not assumed:
 

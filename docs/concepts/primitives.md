@@ -15,7 +15,7 @@ published calibration without re-estimating anything already in it.
 | Situation | Judge again | Then | Estimator |
 |---|---|---|---|
 | documents without a theta | Stage B on those documents | `score_documents` | fixed-item EAP (items frozen) |
-| a new document in a tournament calibration | Stage A windows pairing it with existing documents (`select_opponents`) | `insert_documents` | conditional MLE (every existing theta frozen) |
+| a new document in a tournament calibration | Stage A windows pairing it with existing documents (`select_opponents`) | `insert_documents` | conditional MAP (every existing theta frozen, the fit's ridge in the objective) |
 | a second judge, same rubric | Stage B with the second judge | `calibrate(..., judges="pooled")` | one 2PL with a severity offset per judge |
 
 All three live in `rcp_ndcg.calibration` (`score_documents` and `insert_documents`

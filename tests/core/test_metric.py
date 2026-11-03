@@ -55,6 +55,12 @@ def test_ndcg_refuses_bad_input() -> None:
         ndcg({"a": math.nan}, {"a": 1.0})
     with pytest.raises(ValueError, match="Unknown tie rule"):
         ndcg({"a": 1.0}, {"a": 1.0}, ties="stable")  # type: ignore[arg-type]
+    # A negative gain left the documented [0, 1]: this returned -1.0, because the ideal DCG was built
+    # from the same negative value, so the normaliser was smaller in magnitude than the DCG.
+    with pytest.raises(ValueError, match="negative"):
+        ndcg(["a", "b"], {"a": -1.0, "b": 1.0}, k=2)
+    with pytest.raises(ValueError, match="negative"):
+        ndcg(["a"], {"a": 1.0}, k=1, ideal=[1.0, -1.0])
 
 
 def test_ndcg_refuses_non_finite_gains() -> None:
@@ -286,6 +292,9 @@ def test_count_gain_refuses_counts_that_are_not_counts() -> None:
             count_gain(passes, placements=2)
     with pytest.raises(ValueError, match="whole number"):
         count_gain([1, 0], placements=2.5)
+    # A str count passed the float()/isfinite/floor checks and then died in sum() with a bare TypeError.
+    with pytest.raises(ValueError, match="0 <="):
+        count_gain(["1", "0"], placements=2)  # type: ignore[arg-type]
 
 
 def test_qrel_gain_is_linear_unless_exponential_is_asked_for() -> None:

@@ -1,8 +1,10 @@
-"""Tournament insertion by conditional MLE (:func:`rcp_ndcg_core.irt.insert_document`).
+"""Tournament insertion by conditional MAP (:func:`rcp_ndcg_core.irt.insert_document`).
 
 The flagship property -- existing thetas are bit-identical after a conditional
 insertion -- is pinned here: re-injecting a refit-all into ``insert_document``
-fails these tests. Identifiability refusals (disconnected graph, leaf evidence,
+fails these tests. The estimator is a conditional MAP, not an MLE: the frozen fit's ridge is part of the
+objective (``TestConditionalRidge``), so the estimate matches the joint fit's, not the unpenalised optimum.
+Identifiability refusals (disconnected graph, leaf evidence,
 an optimum at the search bound) are exercised against the shipped refusal paths,
 including a leaf fixture whose would-be SE is about 1.86.
 """
