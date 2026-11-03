@@ -76,7 +76,10 @@ silent cut. The `jsonl` format holds what this one cannot.
 A grade that is not a whole number is refused: the `score` column is written as int64 and mteb's loader casts
 it to int32 at load, where a fractional value fails -- refusing here is what loading one does, at write time
 and with the pair named. Export integer grades
-and keep the continuous signal in `gain`/`theta`, which mteb ignores. Exclusions travel in the `-excluded`
+and keep the continuous signal in `gain`/`theta`, which mteb ignores. A `theta` is written with its `gain`,
+never alone: a pair carrying a theta and no gain would be a non-null theta beside a null gain cell -- the one
+qrels row the Hub reader refuses -- so the writer refuses it, naming the pair (a thetas-only layout has no such
+cell and is written as given). Exclusions travel in the `-excluded`
 config and are also folded out of `top_ranked` (out of the corpus, when the data has no pool), because
 `top_ranked` is the pool mteb does read: a model scored inside mteb never sees an excluded document.
 

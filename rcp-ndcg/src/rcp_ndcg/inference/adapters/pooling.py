@@ -86,8 +86,9 @@ _MAX_MESSAGE_CHARS: Final = 300
 
 _ABSENT: Final = object()
 """A reply that carries no ``usage`` field at all, which a JSON ``null`` must not be mistaken for: both
-decode paths hand :meth:`VllmPooling._check_usage` ``body.get("usage", _ABSENT)``, so an absent key is
-skippable (the bytes framing may report none) and a null is a malformed reply."""
+decode paths hand :meth:`VllmPooling._check_usage` the reply's own mapping read with
+``.get("usage", _ABSENT)`` -- ``body`` on the JSON path, the bytes framing's ``metadata`` header map -- so an
+absent key is skippable (the bytes framing may report none) and a null is a malformed reply."""
 
 
 def _error_message(reply: Reply) -> str:
@@ -551,7 +552,8 @@ class VllmPooling(AdapterBase):
         A ``token_embed`` answer has one vector per prompt token, so this catches a mistyped ``dim`` (every
         vector would be silently mis-shaped) and a server that answered a pooled task after all. A usage the
         reply cannot honestly report (a string, a dict, a null) is a malformed reply, never a reason to skip
-        the check -- a JSON ``null`` included: the decode paths hand in ``body.get("usage", _ABSENT)``, so
+        the check -- a JSON ``null`` included: the decode paths hand in the reply's own mapping read with
+        ``.get("usage", _ABSENT)`` (``body`` on the JSON path, ``metadata`` on the bytes framing), so
         only a field the reply omits altogether (``_ABSENT``, which the bytes framing may honestly do) skips
         it. A recipe that declares ``outputs: per_chunk`` (2g) opts out: several outputs per input
         (one vector per chunk), so the token count cross-check cannot apply -- and the engine-side rule is

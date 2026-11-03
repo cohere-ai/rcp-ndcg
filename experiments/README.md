@@ -59,8 +59,10 @@ The scripts accept one documented difference, with its own bound and its exact p
 - **BRIGHT, qrel-nDCG@10 on TheoremQA Theorems.** The reranker runs on the two TheoremQA tasks were made on a later
   upstream BRIGHT revision. The paper's qrel column for TheoremQA Theorems used that revision's gold ids, which
   differ on 27 of 58 queries. The hub keeps the `xlangai/BRIGHT@a75a0eb4` qrels that mteb's `BrightRetrieval`
-  uses. Under arXiv v2's group-mean ties, all 14 cells differ by up to 2.52 points, and 11 of the 14 qrel means by
-  up to 0.22 points. RCP-nDCG is unaffected: all its BRIGHT cells, TheoremQA included, reproduce per query.
+  uses. Under arXiv v2's group-mean ties, all 14 cells differ by up to 2.6 points, and 11 of the 14 qrel means by
+  up to 0.25 points (arXiv v2's own maxima are 2.52 and 0.22: the bound the checks enforce is the one this page
+  documents, and it leaves room above them). RCP-nDCG is unaffected: all its BRIGHT cells, TheoremQA included,
+  reproduce per query.
 Its two populations (the 14 cells and the 11 means) are enforced, not just described: the checks fail a run in
 which more cells deviate than documented -- or fewer, which would mean this page is stale. No other value of any
 table or study may deviate at all.

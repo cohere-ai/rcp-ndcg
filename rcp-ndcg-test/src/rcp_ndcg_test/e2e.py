@@ -1645,7 +1645,8 @@ def _run_text(
         builder.add(_check_phase_engines(run_dir, phases))
         builder.add(_boundary_check(run_out, install, name))
         roles = ", ".join("/".join(sorted(phase["engines"])) or "none" for phase in phases)
-        builder.add(_check(f"{name}: phases recorded", True, f"{roles} ({len(phases)} phases)"))
+        recorded = bool(phases) and all(phase.get("steps") for phase in phases)
+        builder.add(_check(f"{name}: phases recorded", recorded, f"{roles} ({len(phases)} phases)"))
         facts.append(run_facts(run_dir))
     if scenario.pair == 2:
         builder.add(compare_runs(facts[0], facts[1]))

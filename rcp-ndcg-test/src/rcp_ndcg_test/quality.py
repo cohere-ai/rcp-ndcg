@@ -428,14 +428,26 @@ def comparison_rows(
 
 
 def quality_md(model: str, comparisons: dict[str, dict[str, Any]]) -> str:
-    """``QUALITY.md``: per metric, one table row per subset with its deltas, deviation note and the verdict."""
+    """``QUALITY.md``: per metric, one table row per subset with its deltas, deviation note and the verdict.
+
+    A metric that was listed, not gated (``gated`` false: no reference column exists to compare against) says
+    so on its tolerance line and in its verdict, with the recorded reason -- a reader of the release artifact
+    cannot read an ungated metric as a passing gate.
+    """
     lines = [f"# Quality report: {model}", ""]
     for metric, comparison in comparisons.items():
+        reason = str(comparison.get("reason", ""))
+        ungated = not comparison.get("gated", True)
+        tolerance = (
+            f"- not gated: {reason}"
+            if ungated
+            else f"- tolerance: served vs reference (and vs the paper, where stored) within "
+            f"{comparison['tolerance'] * 100:.1f} points per subset"
+        )
         lines += [
             f"## {metric}@10",
             "",
-            f"- tolerance: served vs reference (and vs the paper, where stored) within "
-            f"{comparison['tolerance'] * 100:.1f} points per subset",
+            tolerance,
             "",
             "| subset | served | reference | delta | paper | delta | published | note |",
             "|---|---|---|---|---|---|---|---|",
@@ -446,7 +458,8 @@ def quality_md(model: str, comparisons: dict[str, dict[str, Any]]) -> str:
                 f"{_fmt(row['delta_vs_reference'])} | {_fmt(row['paper_ndcg10'])} | {_fmt(row['delta_vs_paper'])} | "
                 f"{_fmt(row['published_ndcg10'])} | {str(row['deviation_note']).replace('|', chr(92) + '|')} |"
             )
-        lines += ["", f"Verdict: **{'PASS' if comparison['passed'] else 'FAIL'}**", ""]
+        verdict = "PASS" if comparison["passed"] else "FAIL"
+        lines += ["", f"Verdict: **{verdict}**" + (f" (not gated: {reason})" if ungated else ""), ""]
     return "\n".join(lines)
 
 

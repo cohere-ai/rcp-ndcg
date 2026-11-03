@@ -18,6 +18,10 @@ FORBIDDEN = [
     # The pattern is split in two so that the repository's own name scanners do not match this line.
     (re.compile(r"import rcp_ndcg as t" r"n\b"), "the package alias is rcp"),
     (re.compile(r"\b(RFC|JC)[- ]?\d{3,4}\b"), "no internal design or lane ids"),
+    # The open interval, in the maths spelling the pages use: the gain is in $[0, 1]$ and the sigmoid
+    # saturates to exactly 0.0 and 1.0. (A bare ``\(0, 1\)`` would also match the normal prior
+    # ``\mathcal{N}(0, 1)``, which is not an interval claim.)
+    (re.compile(r"\$\(0, 1\)\$"), "the gain is in $[0, 1]$: the sigmoid saturates to exactly 0.0 and 1.0"),
 ]
 
 # The user-facing pages (everything the release publishes except the CHANGELOG's historical record)

@@ -7,9 +7,10 @@ table must name the shipped judges under their family.
 
 from __future__ import annotations
 
+import re
 from typing import get_args
 
-from rcp_ndcg.data.resolution import ImageProcessor
+from rcp_ndcg.data.resolution import PROCESSORS, ImageProcessor
 from rcp_ndcg.judging.client import JudgeConfig
 from tests.docs._markdown import ROOT
 
@@ -30,7 +31,9 @@ def test_the_judges_field_row_lists_every_family() -> None:
 
 
 def test_the_processor_family_table_lists_every_family_and_its_judges() -> None:
-    """The table has a row per family, and the shipped judges are named under theirs."""
+    """The table has a row per family, and the shipped judges are named under theirs. The sentence that names
+    the fixed-point grid names the families its oracle covers -- the ``smart_resize`` ones -- and does not claim
+    "every family" while a family in the table has no oracle (``gemma4``'s resize is the soft-token rule)."""
     text = PREPROCESSING.read_text(encoding="utf-8")
     rows = {
         family: next((line for line in text.splitlines() if line.startswith(f"| `{family}` |")), None)
@@ -41,6 +44,14 @@ def test_the_processor_family_table_lists_every_family_and_its_judges() -> None:
     for model in ("Qwen3.5-397B", "Qwen3.6-27B", "Qwen3.8-27B", "Qwen3.8-Flash-Next"):
         assert model in rows["qwen3_vl"], f"the qwen3_vl row does not name {model}"
     assert "Gemma 4" in rows["gemma4"], "the gemma4 row does not name its judges"
+    grid = re.search(r"The test suite checks this over a grid[^.]*\.", " ".join(text.split()))
+    assert grid is not None, "the page no longer states the fixed-point check its tests make"
+    named = [family for family in FAMILIES if f"`{family}`" in grid.group()]
+    resized = [family for family in FAMILIES if PROCESSORS[family].resize == "qwen"]
+    assert "every family" not in grid.group() or resized == list(FAMILIES), (
+        "no vendored oracle covers every family in the table"
+    )
+    assert named == resized, f"the fixed-point sentence names {named}, not the families its oracle covers"
 
 
 def test_the_judge_config_docstring_lists_every_family() -> None:

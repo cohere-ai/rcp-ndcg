@@ -44,8 +44,12 @@ __all__ = [
     "video_plan",
 ]
 
-MEDIA_SET_VERSION = 3
-"""The media set's version: any change to its images, clips or rows bumps it."""
+MEDIA_SET_VERSION = 4
+"""The media set's version: any change to its images, clips or rows bumps it.  Version 4 repeats
+:data:`MEDIA_BUCKETS` cyclically in the several-images row, so a document carries the recipe's declared
+``max_images`` (10 on four shipped recipes, while the tuple holds eight) instead of silently shrinking to the
+bucket count; without the bump a corpus recorded at version 3 and one recorded after the fix are
+indistinguishable."""
 
 MEDIA_BUCKETS: tuple[tuple[str, int, int], ...] = (
     ("tiny", 16, 16),
@@ -309,8 +313,13 @@ def _declares_query_shape(recipe: Any) -> bool:
 
 
 def _several_images_row(limit: int) -> dict[str, Any]:
-    """One document carrying ``limit`` images (several images up to the recipe's per-request capacity)."""
-    entries = [image_entry(name, width, height) for name, width, height in MEDIA_BUCKETS[:limit]]
+    """One document carrying ``limit`` images (several images up to the recipe's per-request capacity).
+
+    The buckets repeat cyclically when the capacity exceeds their count (four shipped recipes declare
+    ``max_images: 10`` and :data:`MEDIA_BUCKETS` holds eight), so the document carries the capacity its
+    stratum records instead of silently shrinking to the bucket count.
+    """
+    entries = [image_entry(*MEDIA_BUCKETS[index % len(MEDIA_BUCKETS)]) for index in range(limit)]
     return {
         "query": _QUERY,
         "documents": [""],

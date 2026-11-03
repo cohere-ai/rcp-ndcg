@@ -201,8 +201,9 @@ def count_gains(
 
     Raises:
         DataError: A rubric family whose criteria are not ``C1..CK`` or a placement that does not answer its
-            family's criteria (:func:`check_criteria`), a document judged under rubrics of different sizes, or a
-            ``dataset`` the judgements hold no rubric verdicts for.
+            family's criteria (:func:`check_criteria`), a document judged under rubrics of different sizes or of
+            different families (another prompt, parser or preprocessing), or a ``dataset`` the judgements hold no
+            rubric verdicts for.
     """
     from rcp_ndcg_core.gain import count_gain
 
@@ -216,6 +217,18 @@ def count_gains(
             hint="pass the rubric store of the dataset being scored",
         )
     bare = dataset is not None or len(names) == 1
+    # The rubric each document's windows were judged under: the family without its judge (`rubric_key`), which
+    # is the poolability token `calibrate()` refuses to pool across. Two prompts can declare the same criteria
+    # labels and still measure different things, so the label set alone is not enough.
+    families = judgement_set.families
+    rubrics: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for judgement in judgement_set.judgements:
+        if judgement.stage != "rubric" or not judgement.valid:
+            continue
+        key = namespace(judgement.dataset, judgement.query_id)
+        rubric_key = families[judgement.family_key].rubric_key
+        for placement in judgement.placements:
+            rubrics[(key, placement.doc_id)].add(rubric_key)
     passes: dict[tuple[str, str], dict[str, int]] = {}
     placements: dict[tuple[str, str], int] = {}
     for key, rows in observations.items():
@@ -232,6 +245,14 @@ def count_gains(
                     f"document {doc_id!r} of query {key!r} was judged under rubrics of different criteria: "
                     f"{sorted(counts)} and {sorted(criteria)}",
                     hint="a Count gain is the share of passed criteria of one rubric; score one rubric at a time",
+                )
+            elif len(rubrics[slot]) > 1:
+                raise DataError(
+                    f"document {doc_id!r} of query {key!r} was judged under {len(rubrics[slot])} rubrics "
+                    f"({', '.join(sorted(rubrics[slot]))})",
+                    hint="a Count gain is the share of passed criteria of one rubric; score one rubric at a time "
+                    "(judgements of another prompt, parser or preprocessing never pool)",
+                    details={"query": key, "doc_id": doc_id, "rubric_keys": sorted(rubrics[slot])},
                 )
             for criterion, value in criteria.items():
                 counts[criterion] += int(value)

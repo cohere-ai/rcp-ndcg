@@ -18,13 +18,22 @@ from rcp_ndcg.testing import TinyWorld
 from tests._jsonschema import problems
 
 
-def test_a_saved_calibration_items_file_matches_the_calibration_schema(world: TinyWorld) -> None:
+def test_a_saved_calibration_files_match_their_schemas(world: TinyWorld) -> None:
     schema = schemas.show("calibration")
     items = json.loads((world.calibration / "items.json").read_text(encoding="utf-8"))
 
     assert schema["x-rcp-ndcg-schema"] == items["schema"] == "rcp-ndcg.calibration.v1"
     assert problems(schema, items) == []
     assert problems(schema, {**items, "gamma": "1.0"}) != []  # the check is not vacuous
+
+    # diagnostics.json names its version too: the layout's other JSON artifacts all do.
+    diagnostics_schema = schemas.show("calibration-diagnostics")
+    diagnostics = json.loads((world.calibration / "diagnostics.json").read_text(encoding="utf-8"))
+
+    assert diagnostics_schema["x-rcp-ndcg-schema"] == diagnostics["schema"]
+    assert diagnostics["schema"] == "rcp-ndcg.calibration-diagnostics.v1"
+    assert problems(diagnostics_schema, diagnostics) == []
+    assert problems(diagnostics_schema, {**diagnostics, "warnings": "none"}) != []
 
 
 def test_a_judgement_store_identity_matches_the_judgement_store_schema(world: TinyWorld, tmp_path: Path) -> None:

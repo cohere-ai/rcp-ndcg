@@ -145,7 +145,8 @@ def test_the_known_deviation_populations_are_the_documented_ones(experiment):
     """The code table is ``experiments/README.md``'s \"Known deviations\": all 14 BRIGHT TheoremQA Theorems cells
     within 2.6 and 11 of the 14 qrel means within 0.25 (arXiv v2, group-mean ties) -- 25 rows in total, and no
     wildcard entry that would cover anything else (the NanoBEIR fit populations of the v1 data are gone: the v2 hub
-    gains are the paper's fit)."""
+    gains are the paper's fit). The page states the bound the checks enforce, so page and gate carry one number per
+    population: a page bound tighter than ``KNOWN``'s fails here."""
     lb = experiment("leaderboards")
     populations = {(s, m, col): (dev.bound, dev.cells, dev.reason) for (s, m, col), dev in lb.KNOWN.items()}
     assert populations == {
@@ -154,6 +155,19 @@ def test_the_known_deviation_populations_are_the_documented_ones(experiment):
     }
     for key, dev in lb.KNOWN.items():
         assert dev.label == " ".join(key), f"{key}: a population's label names its table position (a swap lies)"
+    page = (ROOT / "experiments" / "README.md").read_text(encoding="utf-8").split("### Known deviations", 1)[1]
+    page = " ".join(page.split("\n## ", 1)[0].split())  # the section, unwrapped
+    cells = re.search(r"all (\d+) cells differ by up to ([\d.]+) points", page)
+    means = re.search(r"(\d+) of the (\d+) qrel means by up to ([\d.]+) points", page)
+    assert cells and means, "the Known deviations section no longer states its two populations and bounds"
+    theoremqa = lb.KNOWN[("bright", "qrel_ndcg10", "theoremqa_theorems")]
+    mean = lb.KNOWN[("bright", "qrel_ndcg10", "mean")]
+    assert (int(cells[1]), float(cells[2])) == (theoremqa.cells, theoremqa.bound), (
+        "the page's cell bound is not the one the checks enforce"
+    )
+    assert (int(means[1]), int(means[2]), float(means[3])) == (mean.cells, theoremqa.cells, mean.bound), (
+        "the page's mean bound is not the one the checks enforce"
+    )
 
 
 def test_a_single_suite_run_accounts_for_its_own_populations_only(experiment):

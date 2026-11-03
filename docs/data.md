@@ -157,7 +157,10 @@ layout (`--to mteb`: what mteb's `push_dataset_to_hub` writes, plus the `gain`/`
 [MTEB integration](how-to/mteb-integration.md)).
 A reader refuses what it would otherwise drop silently: a row without an id, a `(query, doc)` pair labelled twice
 with different grades, a qrels grade that is not a finite number, a qrels split with no recognisable grade column, a
-corpus row whose keys the record does not declare. The frames reader records each frame's number in its file name in
+corpus row whose keys the record does not declare. A null `gain` or `theta` cell is *absent*, never a value to
+validate: a judged pair outside the calibrated pool has a grade and no gain, so the Hub reader keeps that pair's
+grade with no gain, and a pair whose `theta` cell is set and whose `gain` cell is null is refused (write both, or
+neither). The frames reader records each frame's number in its file name in
 `frame_indices`, so a clip sampled at real frame numbers says which frames of the source it showed. How page
 images and video are sized for a judge is a judging setting (`preprocessing` in a run config), not part of the data.
 `rcp-ndcg data inspect` summarises a dataset.

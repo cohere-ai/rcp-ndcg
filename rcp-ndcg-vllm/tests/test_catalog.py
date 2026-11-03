@@ -127,3 +127,16 @@ def test_no_reference_environment_pins_a_workspace_distribution() -> None:
             if requirement and requirement.split("==", 1)[0].strip().lower() in _WORKSPACE_DISTRIBUTIONS:
                 offenders.append(f"{family.id}/reference.in:{number}: {requirement}")
     assert not offenders, "reference.in files must not pin a workspace distribution:\n" + "\n".join(offenders)
+
+
+#: The owner's explicit disposition list for 0.0.1 (AGENTS.md): a ``failed`` variant ships only when named.
+_OWNER_DISPOSED = frozenset({"topk-embed-v1-small", "topk-embed-v1-xsmall"})
+
+
+def test_every_shipped_recipe_is_verified_or_owner_disposed() -> None:
+    """AGENTS.md: "status: unverified does not ship in a tag, and a failed variant ships only when the owner's
+    explicit disposition list names it".  The shipped states are exactly ``verified`` plus that one list, so
+    flipping a verified recipe to ``failed`` (or a variant to ``unverified``) reds here -- the README row and
+    the recipe move together, so the catalog test above cannot see it."""
+    not_verified = {recipe.id for recipe in iter_recipes() if recipe.status.state != "verified"}
+    assert not_verified == set(_OWNER_DISPOSED)

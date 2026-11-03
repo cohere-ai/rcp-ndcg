@@ -1,18 +1,18 @@
-"""The public surface is documented: every pinned name has a page, and the generated pages are current.
+"""The public surface is documented: every pinned module has a page, and the generated pages are current.
 
 The snapshot (``snapshots/python_api.json``, the ``__all__`` of ``surface.PUBLIC_MODULES``) is the definition of
 what is public. ``rcp-ndcg docs api --out docs/reference/api`` generates one page per public module from that
 snapshot and the modules' docstrings (each name with its kind, signature and one-line role), so the long tail of
 the surface is documented mechanically; the curated pages under ``docs/`` carry the narrative. This module fails
-when a pinned name is on no page under ``docs/``, when a pinned module has no page, or when the committed pages
-differ from a fresh generation (so docs cannot drift from the surface).
+when a pinned module has no page, or when the committed pages differ from a fresh generation (so docs cannot
+drift from the surface).  A name-by-name search over ``docs/`` is not a check here: the pages are generated from
+the snapshot, so every pinned name is on a page by construction.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 
 import pytest
@@ -39,20 +39,6 @@ def update_snapshots(request: pytest.FixtureRequest) -> bool:
 
 def _snapshot() -> dict:
     return json.loads(SNAPSHOT.read_text(encoding="utf-8"))
-
-
-def public_names() -> list[str]:
-    """Every name the pinned Python surface exports, across the public modules."""
-    return sorted({name for entry in _snapshot().values() for name in entry.get("all", {})})
-
-
-def test_every_public_name_is_documented() -> None:
-    """Every pinned name is mentioned on a page under ``docs/`` (the generated pages cover the long tail)."""
-    names = public_names()
-    assert names, "the python_api snapshot pins no names; the check would be vacuous"
-    text = "\n".join(path.read_text(encoding="utf-8") for path in sorted((REPO / "docs").rglob("*.md")))
-    missing = [name for name in names if not re.search(rf"\b{re.escape(name)}\b", text)]
-    assert not missing, f"public names on no docs page: {missing}. {REGENERATE}"
 
 
 def test_the_generated_pages_cover_the_pinned_modules() -> None:

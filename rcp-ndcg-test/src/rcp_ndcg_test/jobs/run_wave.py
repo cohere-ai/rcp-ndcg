@@ -1285,6 +1285,11 @@ def _log_tail(log_path: Path, lines: int = _LOG_TAIL_LINES, width: int = _LOG_TA
     return [line[-width:] for line in text.splitlines()[-lines:]]
 
 
+_SMOKE_PAYLOAD_KEY = {"rerank": "results", "embed": "data", "multi_vector": "data", "judge": "choices"}
+"""The reply field each role's route must carry: the smoke reads the body, so a 200 that carries none of the
+role's payload (an empty object, or a body that does not parse) is a failed smoke, never a served one."""
+
+
 def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
     """One minimal request per role: the engine serves, the route answers, the body parses.
 
@@ -1294,6 +1299,10 @@ def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
     a bare-text body is a request the recipe's client never sends, and such an engine's pooler refuses it
     by name -- the refusal kills the EngineCore and the recipe's serve step fails (the r2 wave's
     pplx-embed-v2-context failure).
+
+    The reply is read, not only its status: it must parse and carry the role's payload
+    (:data:`_SMOKE_PAYLOAD_KEY`), or the smoke failed and says what is missing -- an engine answering 200
+    with an empty body is not an engine that served the request.
 
     The harness's own request runs under the declared per-request timeout :data:`_REQUEST_TIMEOUT_S`
     (shorter than every step budget, GPU-E1 finding 7), which the step document reports.
@@ -1330,10 +1339,26 @@ def _smoke(recipe: Recipe, base_url: str) -> dict[str, Any]:
             finally:
                 if watch is not None:
                     watch.end()
-        ok = reply.status_code == 200
+        if reply.status_code != 200:
+            return {"state": "failed", "request_timeout_s": _REQUEST_TIMEOUT_S}
+        try:
+            payload = reply.json()
+        except ValueError as error:
+            return {
+                "state": "failed",
+                "error": f"{route} answered 200 with a body that does not parse: {error}",
+                "request_timeout_s": _REQUEST_TIMEOUT_S,
+            }
+        key = _SMOKE_PAYLOAD_KEY[recipe.role]
+        if not isinstance(payload, dict) or not payload.get(key):
+            return {
+                "state": "failed",
+                "error": f"{route} answered 200 without the role's payload ({key}): the body carries no {key}",
+                "request_timeout_s": _REQUEST_TIMEOUT_S,
+            }
     except httpx.HTTPError as error:
         return {"state": "failed", "error": str(error), "request_timeout_s": _REQUEST_TIMEOUT_S}
-    return {"state": "passed" if ok else "failed", "request_timeout_s": _REQUEST_TIMEOUT_S}
+    return {"state": "passed", "request_timeout_s": _REQUEST_TIMEOUT_S}
 
 
 def _equivalence(

@@ -35,7 +35,20 @@ transport routes the calls to one replica, retries what the status map calls una
 replica is down, and counts the calls. The shipped adapters register per role at import of
 `rcp_ndcg.inference.adapters`: the judge's `openai_chat` (the `JudgeConfig.api` default), the embed role's
 `openai_embeddings`, `cohere`, `voyage` and `gemini`, the rerank role's `rerank`, `cohere` and `voyage`, and the
-multi-vector role's `vllm_pooling`. A role client sends one request like this:
+multi-vector role's `vllm_pooling`. The rerank role's adapters speak one Cohere-shaped wire: `POST
+{base_url}/rerank` with `model`, `query` and `documents`, and `top_n` set to the number of documents sent by the
+served-engine and Cohere wires, so every document sent is scored (Voyage's return-limit field is `top_k` and it
+returns every document by default, so no such field is sent there). vLLM, Infinity and Cohere answer
+`{"results": [{"index", "relevance_score"}]}` and
+Voyage answers `{"data": [...]}`; one adapter family builds the request and parses both answer shapes,
+realigning every score to its document by `index`, because the answers come back ranked and reading them
+positionally would silently permute scores and documents. An answer that is a bare list of `{"index", "score"}`
+rows -- the shape SGLang and TEI answer -- is refused by name with a hint to serve the model on vLLM, and a
+missing, duplicated or out-of-range index is a non-retryable error naming the server. A candidate set larger than
+the wire's declared cap -- or than a set `batch_size`, whichever is smaller -- is split into requests and the
+chunks' scores merged back into one aligned result; a `listwise` config refuses the split, because it scores the
+whole candidate set in one prompt and a split would change the scores. A
+role client sends one request like this:
 
 ```python
 from pathlib import Path
@@ -119,8 +132,10 @@ step over budget stops with `StepBudgetExceededError` instead of working through
 ([runs](runs.md)). A request that keeps failing on a replica
 that answers other requests is that request's failure: it is refused (`RequestRejectedError`). A 408 or 429 is
 never that: it is the endpoint's load, and stays on the outage path -- the replica is set aside for the
-server's `Retry-After` when it gives one (otherwise the backoff, jittered so parked requests do not all return
-at once), and the request parks and retries instead of a rate-limited window aborting a whole encode.
+server's `Retry-After` when it gives a usable one (a finite, positive number of seconds; a zero, a negative or
+an unparseable header is no wait at all, so the doubling backoff applies instead, jittered so parked requests
+do not all return at once), and the request parks and retries instead of a rate-limited window aborting a whole
+encode.
 
 ## Third-party adapters (C2)
 

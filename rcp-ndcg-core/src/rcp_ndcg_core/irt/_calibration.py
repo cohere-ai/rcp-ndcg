@@ -199,8 +199,9 @@ def fit_calibration(
 
     Raises:
         ValueError: An unknown switch value, a tournament fit without scores, rows
-            whose judge tags do not match ``judges``, a pooled rubric-only fit, or
-            no usable observation.
+            whose judge tags do not match ``judges``, a pooled fit whose rows leave
+            fewer than two judges to fit, a pooled rubric-only fit, or no usable
+            observation.
     """
     if mode not in ("tournament", "rubric_only"):
         raise ValueError(f'mode must be "tournament" or "rubric_only", got {mode!r}')
@@ -210,7 +211,7 @@ def fit_calibration(
     priors = priors or Priors()
     if mode == "tournament":
         assert bt_scores is not None  # narrowed: refused above when None
-        return _fit_tournament(observations, bt_scores, num_criteria=num_criteria, priors=priors)
+        return _fit_tournament(observations, bt_scores, judges=judges, num_criteria=num_criteria, priors=priors)
     if judges == "pooled":
         raise ValueError(
             "pooled judges need the tournament fit: the rubric-only model has no judge-severity term, "
@@ -244,6 +245,7 @@ def _fit_tournament(
     observations: Mapping[str, Sequence[Observation]],
     bt_scores: Mapping[str, Mapping[str, float]],
     *,
+    judges: Judges,
     num_criteria: int,
     priors: Priors,
 ) -> CalibrationFit:
@@ -258,6 +260,24 @@ def _fit_tournament(
         l2_gamma=priors.l2_gamma,
         l2_beta=priors.l2_beta,
     )
+    severity = engine.get_judge_severity()
+    if judges == "pooled" and len(severity) < 2:
+        # `_check_judges` counted the tags before any row was skipped: a judge whose rows all lack a
+        # Bradley-Terry ability leaves the fit with one judge, which is the no-severity model. Pooling is
+        # not silently a single judge.
+        tagged = {row[2] for rows in observations.values() for row in rows if len(row) == 3}
+        surviving = {
+            row[2]
+            for query_id, rows in observations.items()
+            for row in rows
+            if len(row) == 3 and query_id in bt_scores and row[0] in bt_scores[query_id]
+        }
+        dropped = sorted(tagged - surviving)
+        named = ", ".join(dropped)
+        raise ValueError(
+            f'judges="pooled" needs two or more judges whose rows the fit reads; {named} has no row on a '
+            "document with a Bradley-Terry ability (its rubric verdicts were skipped)"
+        )
     items = items_from_mapping(engine.get_item_params())
     queries = {key: QueryParams(tau=p["tau"], alpha=p["alpha"]) for key, p in engine.get_query_params().items()}
     thetas = {
@@ -282,7 +302,7 @@ def _fit_tournament(
         tournament_max_grad=engine.max_grad_sum,
         tournament_converged=engine.converged,
     )
-    return CalibrationFit("tournament", items, queries, thetas, diagnostics, judge_severity=engine.get_judge_severity())
+    return CalibrationFit("tournament", items, queries, thetas, diagnostics, judge_severity=severity)
 
 
 def verdicts(criteria: Mapping[str, int], num_criteria: int) -> list[int]:

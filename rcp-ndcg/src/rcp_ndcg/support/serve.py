@@ -32,7 +32,14 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.support.resources import Environment, Resources, no_control_characters, no_nul_byte, refuse_secret_value
+from rcp_ndcg.support.resources import (
+    Environment,
+    Resources,
+    looks_like_secret,
+    no_control_characters,
+    no_nul_byte,
+    refuse_secret_value,
+)
 from rcp_ndcg.support.urls import safe_url
 
 #: The environment variable a phase's runner sets to the engines of the current phase, as JSON
@@ -70,20 +77,23 @@ def _command_flag(command: Sequence[str], name: str, *aliases: str) -> int | Non
 
 
 def _credential_flag(word: str) -> bool:
-    """Whether an argv word is a credential-bearing flag: ``--api-key``, ``--hf-token``, ``--flag=value`` too.
+    """Whether an argv word is a credential-bearing flag: ``--api-key``, ``--password``, ``--flag=value`` too.
 
-    The markers are matched as whole words, never as substrings: ``--max-num-batched-tokens`` is the
-    token-budget flag this package itself maps ``serve.max_num_batched_tokens`` to, and a substring rule
-    refused it as a credential. ``--tokenizer`` and ``--tokenizer-mode`` name a model, not a credential, so
-    the engine's tokenizer flags are not refused.
+    The flag's own name, with ``-`` read as ``_``, is judged by
+    :func:`~rcp_ndcg.support.resources.looks_like_secret` -- the package's one credential predicate, the call
+    ``support.config``'s argv redaction makes. Its markers are whole words, never substrings:
+    ``--max-num-batched-tokens`` is the token-budget flag this package itself maps
+    ``serve.max_num_batched_tokens`` to, and a substring rule refused it as a credential. ``--tokenizer`` and
+    ``--tokenizer-mode`` name a model, not a credential, so those two spellings are excluded by name -- and only
+    those: ``--tokenizer-api-key`` and ``--tokenizer-secret`` are credentials by the same rule as ``--api-key``.
     """
     flag = word.partition("=")[0].lower()
     if not flag.startswith("--"):
         return False
-    words = flag.lstrip("-").replace("_", "-").split("-")
-    if words[0].startswith("tokenizer"):
+    name = flag.removeprefix("--")
+    if name in ("tokenizer", "tokenizer-mode"):
         return False
-    return any(word in ("token", "key", "secret") for word in words)
+    return looks_like_secret(name.replace("-", "_"))
 
 
 class ServeConfig(BaseModel):

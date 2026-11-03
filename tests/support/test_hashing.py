@@ -29,6 +29,7 @@ from rcp_ndcg_core._hashing import (
     UnhashableValueError,
     canonical,
     canonical_json,
+    combine_digests,
     hash_payload,
     hash_text,
     short,
@@ -204,6 +205,14 @@ class TestDigestFunctions:
 
         assert hash_text("hello") == hashlib.sha256(b"hello").hexdigest()
         assert hash_text("hello") != hash_payload("hello")
+
+    def test_combine_digests_refuses_a_part_that_is_not_a_full_digest(self) -> None:
+        # ``combine_digests("ab", "cd")`` hashed the same bytes as ``combine_digests("abcd")`` (both
+        # ``b"\xab\xcd"``), so two different part-lists shared one identity.
+        with pytest.raises(ValueError, match="full sha256"):
+            combine_digests("ab", "cd")
+        with pytest.raises(ValueError, match="full sha256"):
+            combine_digests("abcd")
 
     def test_short_refuses_a_short_input(self) -> None:
         # Otherwise a value already shortened to 16 could be shortened again and

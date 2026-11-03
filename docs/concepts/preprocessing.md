@@ -256,11 +256,12 @@ it: `engine_pixel_pinning: true` admits the budget and makes it the one the engi
 fixed point of the pinned resize. A serving recipe pins vLLM with `serve.mm_processor_kwargs: {images_kwargs:
 {min_pixels: ..., max_pixels: ...}}` and refuses to load unless both sides carry the same numbers.
 
-The test suite checks this over a grid of image sizes and budgets for every family, against a copy of the
-transformers resize function under the engine's default settings. An image whose prepared size a stock
-engine would still change or refuse is refused by name (`DataError`) rather than sent. This happens only to an
-extreme strip under a budget at the edge of the range, where flooring to the factor leaves the engine's range or an
-aspect ratio above 200.
+The test suite checks this over a grid of image sizes and budgets for every Qwen family (`qwen2_vl`, `qwen2_5_vl`
+and `qwen3_vl`), against a copy of the transformers resize function under the engine's default settings. `gemma4`
+is not on that grid: its processor resizes the raw image once, the client sending it unchanged, so its sizes are
+pinned by golden sizes instead. An image whose prepared size a stock engine would still change or refuse is
+refused by name (`DataError`) rather than sent. This happens only to an extreme strip under a budget at the edge
+of the range, where flooring to the factor leaves the engine's range or an aspect ratio above 200.
 
 ### Video
 

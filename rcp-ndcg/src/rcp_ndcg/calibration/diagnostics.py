@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from typing import Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
@@ -81,7 +82,8 @@ class FitWarning(BaseModel):
 
 
 class Diagnostics(BaseModel):
-    """What a calibration's fit reports about itself.
+    """``diagnostics.json``: what a calibration's fit reports about itself
+    (``rcp-ndcg.calibration-diagnostics.v1``).
 
     Attributes:
         fit: The estimator's own summary.
@@ -89,8 +91,11 @@ class Diagnostics(BaseModel):
         warnings: The fit's typed warnings (e.g. ``INVALID_WINDOWS``).
     """
 
-    model_config = _FROZEN
+    model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
+    schema_name: Literal["rcp-ndcg.calibration-diagnostics.v1"] = Field(
+        default="rcp-ndcg.calibration-diagnostics.v1", alias="schema"
+    )
     fit: FitDiagnostics
     reliability: FitReliability
     warnings: list[FitWarning] = Field(default_factory=list)

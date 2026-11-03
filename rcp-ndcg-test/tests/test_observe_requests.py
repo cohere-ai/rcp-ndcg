@@ -191,11 +191,10 @@ def test_the_planner_reads_the_client_block_as_the_mapping_it_is() -> None:
 
 
 def test_the_empty_policy_follows_the_role_s_own_field() -> None:
-    """``empty_query`` exists on the rerank config only; the embed and pooling roles' ``empty_doc`` governs
-    BOTH sides (``rcp_ndcg.inference.clients._base`` applies it to whatever the client encodes).  The
-    planner's query-side policy follows the role: rerank reads ``empty_query``, embed/multi_vector read
-    ``empty_doc`` -- a send-empty embed recipe's empty kind rides its query side too, and the absent
-    reason names the field it actually read."""
+    """``empty_query`` exists on the rerank config only, and ``empty_doc`` governs the DOCUMENT side only
+    (``rcp_ndcg.inference.clients._base``'s per-side policy, L03): the embed and pooling roles send an empty
+    query as given, so a recipe declaring a query shape plans the query-empty row under ANY ``empty_doc``
+    policy, and the document side carries the anchor.  The absent reason names the field it actually read."""
     template = {
         "query": [{"fixed": "q: "}, {"content": "query"}],
         "document": [{"fixed": "d: "}, {"content": "document"}],
@@ -205,8 +204,16 @@ def test_the_empty_policy_follows_the_role_s_own_field() -> None:
     empty_rows = [row for row in sending.rows if row.source and row.source.get("content_kind") == "empty"]
     assert empty_rows, sending.strata["content:empty"]
     assert any("content:empty@query" in row.strata for row in empty_rows), [row.strata for row in empty_rows]
+    # A refusing empty_doc rewrites an empty DOCUMENT; the query side is still sent as given, so the kind is
+    # planned and the document side keeps the anchor (it used to be recorded absent, claiming empty_doc
+    # governed both sides).
     _, refusing = _plan(client_updates={"empty_doc": "refuse", "template": template})
-    record = refusing.strata["content:empty"]
+    assert refusing.strata["content:empty"]["present"] is True, refusing.strata["content:empty"]
+    row = next(row for row in refusing.rows if row.source and row.source.get("content_kind") == "empty")
+    assert row.query == "" and row.documents[0] != "", "the empty query is sent; the document is the anchor"
+    # A document-only recipe has no query side to carry it: absent, and the reason names the field it read.
+    _, absent = _plan(client_updates={"empty_doc": "refuse"})
+    record = absent.strata["content:empty"]
     assert record["present"] is False
     assert "empty_doc: refuse" in record["reason"], record
     assert "empty_query" not in record["reason"], record  # the embed role has no such field
@@ -326,6 +333,12 @@ def test_every_stratum_is_present_or_absent_with_a_reason() -> None:
     # absent with the reason (the corpus request set sends them uncut).  Every small kind is present.
     for kind in ("whitespace_only", "combining_marks", "emoji_zwj"):
         assert plan.strata[f"content:{kind}"]["present"] is True, kind
+    # A kind that fits neither side is planned ABSENT, never as an anchor-only row the record would call
+    # present: the row carried only the anchor while the manifest claimed the kind.
+    for kind in ("long_token_url", "long_token_base64"):
+        entry = plan.strata[f"content:{kind}"]
+        assert entry["present"] is False and "budget" in entry["reason"], entry
+        assert not any(row.source.get("content_kind") == kind for row in plan.rows), kind
     # The fixture's empty policy (``empty_doc: omit_zero``) rewrites an empty document: the empty kind
     # is recorded absent with the policy's reason, never planned into a row the client would rewrite.
     empty = plan.strata["content:empty"]
@@ -358,6 +371,16 @@ def test_a_declared_empty_send_policy_plans_the_empty_row(tmp_path: Path) -> Non
     empty = plan.strata["content:empty"]
     assert empty is not None and empty["present"] is True, empty
     assert any(row.source.get("content_kind") == "empty" for row in plan.rows)
+    # ``empty_doc`` governs the DOCUMENT side only: the embed and pooling roles send an empty query as
+    # given (the ``empty_query`` policy exists on the rerank config alone), so a recipe declaring a query
+    # shape still plans the query-empty row under ``omit_zero``, and the document side keeps the anchor.
+    pooling = load_recipe(RECIPES / "fake-pool")
+    assert pooling.client.get("empty_doc") == "omit_zero"
+    planned = plan_recipe(pooling, tokenizer_of(pooling), {})
+    assert planned.strata["content:empty"]["present"] is True, planned.strata["content:empty"]
+    row = next(row for row in planned.rows if row.source.get("content_kind") == "empty")
+    assert row.query == "" and "content:empty@query" in row.strata, row.strata
+    assert row.documents[0] != "", "the document side carries the anchor, never a document omit_zero rewrites"
 
 
 def test_media_rows_for_a_media_recipe_carry_the_page_refs() -> None:
@@ -486,7 +509,11 @@ def test_manifest_records_hashes_provenance_and_pruned_rows(tmp_path: Path) -> N
     path = write_manifest([plan], tmp_path, pruned=[{"recipe": plan.recipe_id, "reason": "stage 1 red"}])
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["schema_version"] == 1
-    assert document["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
+    assert document["generator"]["GENERATOR_VERSION"] == 3, (
+        "the pairs manifest names the generator that produced it: version 3 is the content-presence fix "
+        "(18-05 plans a content kind that fits neither side absent, never as an anchor-only row), so a "
+        "pairs file recorded at version 2 and one recorded after the fix are distinguishable"
+    )
     assert document["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
     entry = document["files"][0]
     assert entry["recipe"] == plan.recipe_id and entry["rows"] == len(plan.rows)
@@ -560,19 +587,30 @@ def _corpus_plan(recipe_id: str):
 def test_the_corpus_plan_sends_the_over_length_ladder_through_the_client_and_uncut() -> None:
     """One token over, 2x and 10x the budget in the recipe's own tokens -- each through the client (its cut)
     and bare (uncut: the engine's own refusal)."""
-    _, tokenizer, plan = _corpus_plan("fixture-embed")
+    from rcp_ndcg_test.observe.requests import _GUARD_TOKENS, _overhead
+
+    recipe, tokenizer, plan = _corpus_plan("fixture-embed")
     rows = {row["request_id"]: row for row in plan.rows}
     bare = {row["request_id"]: row for row in plan.bare}
+    budget = recipe.client.get("max_tokens")
+    overhead = _overhead(recipe, tokenizer, "document")
     targets = {name: plan.strata[f"length:{name}"]["content_tokens"] for name in ("over_by_1", "over_2x", "over_10x")}
-    assert targets["over_2x"] == 2 * (targets["over_by_1"] - 1) and targets["over_10x"] == 10 * (
-        targets["over_by_1"] - 1
-    )
     for name, target in targets.items():
         text = rows[f"ladder:{name}"]["documents"][0]
         assert abs(tokenizer.count(text) - target) <= 2, name
         assert bare[f"ladder:{name}:uncut"]["body"]["input"] == [text], "the uncut request carries the full text"
-    # The rung one token over the budget is over the client's budget once the template's frame is added.
-    assert targets["over_by_1"] > 0
+    # The over-length rungs are past the client's budget once the template's frame is added, so the corpus
+    # observes the client's cut and the engine's refusal; over_by_1 used to land three tokens UNDER
+    # client.max_tokens and recorded neither.  The at_budget pairs rung still fits.
+    for name in ("over_by_1", "over_2x", "over_10x"):
+        assert overhead + tokenizer.count(rows[f"ladder:{name}"]["documents"][0]) > budget, name
+    at_budget = next(row for row in plan.rows if "length:at_budget" in row["_strata"])
+    assert overhead + tokenizer.count(at_budget["documents"][0]) <= budget
+    # The ladder is in the recipe's own tokens: 2x and 10x the usable budget, and one token over it once
+    # the template's frame is added -- the guard is the at_90/at_budget rungs' reserve, never the ladder's.
+    usable = budget - overhead - _GUARD_TOKENS
+    assert targets["over_by_1"] == usable + _GUARD_TOKENS + 1
+    assert targets["over_2x"] == 2 * usable and targets["over_10x"] == 10 * usable
 
 
 def test_the_content_kinds_too_long_for_a_pairs_row_are_sent_both_ways() -> None:
@@ -660,9 +698,12 @@ def test_the_mrl_stratum_probes_every_declared_dimension() -> None:
     read from the declaration -- never a hard-coded 32 -- and the old wire probe is replaced by it."""
     from rcp_ndcg_test.observe.requests import CORPUS_PLAN_VERSION
 
-    assert CORPUS_PLAN_VERSION == 4, (
+    assert CORPUS_PLAN_VERSION == 5, (
         "the MRL stratum is the corpus request plan's version-2 addition, the media set's video edges are "
-        "version 3's and the per-side cap rungs are version 4's (g-observe-6); the merged plan is 4"
+        "version 3's, the per-side cap rungs are version 4's (g-observe-6) and version 5 is the "
+        "one-token-over ladder rung (18-01): no two different plans share a version. The content kinds' "
+        "presence is the pairs rows' business, recorded under GENERATOR_VERSION (18-05, observe-empty-01), "
+        "never this plan's"
     )
     _, _, plan = _corpus_plan("fixture-embed-mrl")
     assert plan.strata["mrl"]["present"] is True
@@ -1090,6 +1131,13 @@ def test_the_interleaved_and_mixed_rows_are_planned_per_capacity() -> None:
     assert [entry["kind"] for entry in several["media"]["documents"][0]] == ["image", "image"]
     assert strata["media:interleaved"] == {"present": True, "images": 2}
     assert strata["media:several_images"] == {"present": True, "images": 2}
+    # The row carries the capacity the stratum records, not the bucket count: four shipped recipes declare
+    # max_images: 10 while MEDIA_BUCKETS holds eight, so the buckets repeat cyclically.
+    wide = recipe.model_copy(update={"client": {**recipe.client, "max_images": 10}})
+    rows, strata = planned_media_rows(wide)
+    several = next(row for row in rows if "media:several_images" in row["strata"])
+    assert strata["media:several_images"] == {"present": True, "images": 10}
+    assert len(several["media"]["documents"][0]) == strata["media:several_images"]["images"]
     assert strata["media:query_image"] == {"present": True, "side": "query"}
     assert strata["media:mixed_batch"] == {"present": True}
     # A recipe whose max_images is 1 (fixture-vl-embed) plans the mixed batch but neither of the

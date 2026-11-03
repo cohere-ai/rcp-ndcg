@@ -439,13 +439,23 @@ class ServeConfig(BaseModel):
         rendered = {spec.flag: path for path, spec in FIELD_ROLES.items() if spec.flag is not None}
         rendered.update(_SERVE_ARGV_FLAG_FIELDS)
         for element in self.extra_args:
-            flag = element.split("=", 1)[0].strip()
+            written = element.split("=", 1)[0].strip()
+            # The engine's argparse resolves a flag's other spelling (--max_model_len) and any unique prefix
+            # of it (--max-model), so both are a second copy of the rendered flag: compare normalised, then
+            # by prefix.
+            flag = written.lower().replace("_", "-")
             field = rendered.get(flag)
-            if field is not None:
-                raise ValueError(
-                    f"serve.extra_args carries {flag}, which serve_argv renders itself: use {field} instead "
-                    "(a deployment field takes --set, a content field is a variant row)"
-                )
+            if field is None:
+                prefix = [name for name in rendered if name.startswith(flag)]
+                if len(prefix) == 1:
+                    flag, field = prefix[0], rendered[prefix[0]]
+            if field is None:
+                continue
+            spelling = "" if written == flag else f" (the engine reads it as {flag})"
+            raise ValueError(
+                f"serve.extra_args carries {written}{spelling}, which serve_argv renders itself: use {field} "
+                "instead (a deployment field takes --set, a content field is a variant row)"
+            )
         return self
 
 
@@ -505,6 +515,16 @@ class ReferenceSpec(BaseModel):
         "torch.cuda.is_available(): the stock reference environment has no compiled extras); None leaves it "
         "to the reference's own code",
     )
+
+    @field_validator("entry")
+    @classmethod
+    def _entry_is_a_bare_file(cls, value: str) -> str:
+        """The reference module is a file in the recipe directory, as the field's contract says: the harness
+        runs ``<recipe-dir>/<entry>``, so an absolute path or a ``..`` part would run code from outside it.
+        The sibling directory-relative file, ``serve.chat_template``, is checked for exactly this reason."""
+        if Path(value).name != value or value in (".", ".."):
+            raise ValueError("reference.entry must be a bare file name inside the recipe directory, e.g. reference.py")
+        return value
 
     @property
     def over_cap_deviation(self) -> str | None:
@@ -829,13 +849,13 @@ class Recipe(BaseModel):
         max_tokens = client.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > self.serve.max_model_len:
             raise ValueError(
-                f"client.max_tokens ({max_tokens}) must not exceed engine.max_model_len "
+                f"client.max_tokens ({max_tokens}) must not exceed serve.max_model_len "
                 f"({self.serve.max_model_len}): the engine would 400 the rendered prompt"
             )
         context_tokens = client.get("context_tokens")
         if isinstance(context_tokens, int) and context_tokens > self.serve.max_model_len:
             raise ValueError(
-                f"client.context_tokens ({context_tokens}) must not exceed engine.max_model_len "
+                f"client.context_tokens ({context_tokens}) must not exceed serve.max_model_len "
                 f"({self.serve.max_model_len}): the engine would 400 a window the client sized as admissible"
             )
         output_cap = _output_cap(self)

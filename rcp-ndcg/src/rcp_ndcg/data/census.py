@@ -45,8 +45,10 @@ class TextCutRecord:
     ``document_max_tokens`` and was cut to it while the pair fitted the budget).
     """
 
+    # ``_frozen`` is declared LAST: ``copy``, ``deepcopy`` and ``pickle`` restore the slots with ``setattr`` in
+    # ``__slots__`` order, so the guard has to be the write that comes after every field's -- set first, it would
+    # refuse the restore of its own record.
     __slots__ = (
-        "_frozen",
         "aggregation",
         "budget_source",
         "budget_tokens",
@@ -62,6 +64,7 @@ class TextCutRecord:
         "original_tokens",
         "query_id",
         "shape",
+        "_frozen",
     )
 
     cause: CutCause | None

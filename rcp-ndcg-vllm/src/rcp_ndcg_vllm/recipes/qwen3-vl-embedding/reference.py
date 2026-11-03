@@ -55,6 +55,16 @@ read from the vendored script's source, never restated.
   there is refused loudly, :func:`_refuse_media_rows`). The recipe's ONE video sampling policy is the engine's
   fps rule (fps 2, the checkpoint video processor's rate), applied by the processor itself.
 
+The empty-side parity is the DOCUMENT side's: the recipe declares ``client.empty_doc: send_text`` and
+``empty_doc_text: "NULL"``, and ``empty_doc`` is the product's empty-DOCUMENT policy -- the product sends an
+empty QUERY as it was given (pinned by
+``tests/inference/test_client_budget.py::test_the_vector_roles_empty_doc_policy_never_omits_a_query``). An
+empty document therefore renders the card's "NULL" on both sides and matches. An empty query does not: the
+card's ``format_model_input`` substitutes "NULL" for any empty input, on both shapes, and this file mirrors
+the vendored card script rather than forking it to un-substitute one shape -- so an empty query's prompt is
+the card's "NULL" against the client's empty user turn, a divergence the declared ``empty_doc`` parity does
+not cover.
+
 Which over-cap rows the harness reports rather than gates is the recipe's notes' ("Budgets").
 
 Reference environment (``reference.in``/``reference.lock`` in this directory, installed into the reference
@@ -168,7 +178,9 @@ def card_prompt(text: str, instruction: str) -> str:
     the literal "NULL" when the input is empty), and ``_preprocess_inputs`` renders it through the
     checkpoint's chat template with ``add_generation_prompt=True``. For a text-only conversation that
     template (chat_template.jinja at the pinned revision) renders exactly this string; the recipe's test
-    pins it against the checkpoint's file.
+    pins it against the checkpoint's file. The "NULL" rule is the card's and covers every empty input, both
+    shapes: the recipe's declared empty-side parity is the DOCUMENT side's (the module docstring), so this
+    is the card's prompt for an empty query too, not the client's.
     """
     content = text if text else "NULL"
     return (
@@ -519,7 +531,8 @@ def card_inputs(
     it (:func:`video_processor_kwargs`, applied by the reference's embedder), never the card script's
     ``qwen_vl_utils`` route. The card renders video, then image, then text (:func:`side_parts` refuses the
     forms it cannot express); an empty side is the card's own "NULL" rule (no key at all, which the card
-    renders as NULL only when the side carries nothing).
+    renders as NULL only when the side carries nothing) -- on the document side the declared parity's own
+    rule, on the query side the card's (the module docstring).
     """
     _media, body = side_parts(text, entries)
     payload: dict[str, Any] = {}

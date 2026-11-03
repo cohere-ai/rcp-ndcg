@@ -529,3 +529,29 @@ def test_a_content_override_in_the_scenario_judge_config_is_refused() -> None:
     scenario = Scenario.model_validate(data)
     with pytest.raises(HarnessError, match="CONTENT field"):
         build_run_config(scenario, recipes_root=[RECIPES])
+
+
+def test_the_run_report_fails_when_no_phase_is_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The ``phases recorded`` row derives its ok from the phase plan, like every other row of the T4 report
+    (the builder's status is ``all(check["ok"])``): a run whose plan came out empty fails, never a green row.
+
+    The mutation: put the literal ``True`` back into ``_run_text``'s ``_check(f"{name}: phases recorded", ...)``
+    and the row is green whatever ``_phase_facts`` returned, so this assertion fails.
+    """
+    from rcp_ndcg_test import e2e
+
+    scenario = load_scenario(SCENARIOS / "text-four-phases.yaml").model_copy(update={"pair": 1})
+    monkeypatch.setattr(e2e, "_phase_facts", lambda pipeline: [])
+    monkeypatch.setattr(e2e, "run_job_script", lambda script, *, out: (0, out / "job.log"))
+    builder = e2e.ScenarioResultBuilder(scenario)
+    e2e._run_text(
+        scenario,
+        builder,
+        out=tmp_path / "out",
+        roots=[RECIPES],
+        runs_dir=tmp_path / "runs",
+        install=INSTALL,
+        judge_choice=None,
+    )
+    recorded = [check for check in builder.checks if check["name"].endswith("phases recorded")]
+    assert recorded and recorded[0]["ok"] is False, recorded

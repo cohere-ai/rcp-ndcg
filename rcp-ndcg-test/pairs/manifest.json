@@ -3,7 +3,7 @@
   "schema_version": 1,
   "generator": {
     "module": "rcp_ndcg_test.observe.requests",
-    "GENERATOR_VERSION": 2,
+    "GENERATOR_VERSION": 3,
     "GENERATOR_SEED": "1/rcp-observe-v1",
     "SEED": "rcp-observe-v1"
   },
@@ -510,10 +510,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -1012,10 +1009,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -1514,17 +1508,14 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "embeddinggemma-2",
       "path": "embeddinggemma-2.jsonl",
-      "sha256": "f60dbdf92cde5fd0002279cc9e762505d965429dfffe953c45906986bca1faf3",
-      "bytes": 360768,
+      "sha256": "a36ea381c6ebb0d698d6a2a65f4a9b691db65b4745d0c2d910a7f1f5dcfc722e",
+      "bytes": 370484,
       "rows": 38,
       "strata": {
         "media:image:tiny": {
@@ -2036,7 +2027,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -2047,7 +2038,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -2058,7 +2049,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -2069,7 +2060,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -2080,7 +2071,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -2091,7 +2082,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -2102,7 +2093,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -2113,7 +2104,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -2124,7 +2115,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
@@ -2135,7 +2126,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -2146,7 +2137,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "query_image"
           },
           "strata": [
@@ -2157,7 +2148,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -2168,7 +2159,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "page"
           },
           "strata": [
@@ -2180,11 +2171,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -2689,10 +2676,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -3204,10 +3188,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -3712,18 +3693,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "jina-embeddings-v5-text-nano",
       "path": "jina-embeddings-v5-text-nano.jsonl",
-      "sha256": "607b003dadb14486fb8bbc63fe2db35e3ba5038141db840f75861db504373a3b",
-      "bytes": 138318,
-      "rows": 24,
+      "sha256": "6cde5138be27e8a0b3cc34628f101a69ee7db32dff3e4a078c897419a92cab12",
+      "bytes": 138515,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -3823,8 +3801,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"actual_ids_head\": [2929, 25, 220, 128001], \"actual_ids_tail\": [2929, 25, 220, 128001], \"check\": \"no_content_token\", \"expected_head_ids\": [2929, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [128001], \"row\": 15, \"shape\": \"query\"}"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -4113,6 +4090,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -4209,18 +4198,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 1,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "jina-embeddings-v5-text-small",
       "path": "jina-embeddings-v5-text-small.jsonl",
-      "sha256": "4ceb4622978da65ee8932c353394595b892f64ff135114ef43b69956cf21667e",
-      "bytes": 239881,
-      "rows": 24,
+      "sha256": "19a29f417fb6ca810791622be5849c7d41ddf56c9f29b2eeac94e885513e34e6",
+      "bytes": 240078,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4320,8 +4306,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -4610,6 +4595,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -4706,18 +4703,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 1,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "jina-reranker-v3",
       "path": "jina-reranker-v3.jsonl",
-      "sha256": "5112afa2e51d448799c73d6367ab9c018565e20554077ee4943f940a3d40367b",
-      "bytes": 53877,
-      "rows": 24,
+      "sha256": "74c0cbe9bfb553ce523cac42484539afdbd675ed0f96e19491f2a47d05b52a06",
+      "bytes": 54134,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -4808,8 +4802,7 @@
           "present": true
         },
         "content:whitespace_only": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"index\": 14, \"reference_text_head\": \"   \\t\\t\\n     \", \"served_text_head\": \"\", \"shape\": \"pair\", \"span\": \"query\"}"
+          "present": true
         },
         "content:empty": {
           "present": true
@@ -5089,6 +5082,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:pair"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "empty"
           },
           "strata": [
@@ -5194,10 +5199,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 1,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -5702,10 +5704,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -6210,10 +6209,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -6718,18 +6714,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "pplx-embed-v1-0.6b",
       "path": "pplx-embed-v1-0.6b.jsonl",
-      "sha256": "2dd1c85a0907dbd1b0c6c1bccf3c92d7f3a2fbaa290eb34906dfc5c56f568344",
-      "bytes": 223682,
-      "rows": 24,
+      "sha256": "a7a7a66908a40b6c806eb47141ba83fdd339d9169796a90f4eef1be62b493b5d",
+      "bytes": 223902,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -6829,8 +6822,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the embed role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -7119,6 +7111,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -7215,18 +7218,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "pplx-embed-v1-4b",
       "path": "pplx-embed-v1-4b.jsonl",
-      "sha256": "3ac998bc12136d367fbe829f1eb7cf9598c1d2a927e9d0ede970d1c5b2487c5b",
-      "bytes": 249752,
-      "rows": 24,
+      "sha256": "1ee79d85a8126cd20ef5144c01c7df7dd7ec6fcd59e5000f28f14cd9d483e51b",
+      "bytes": 249972,
+      "rows": 25,
       "strata": {
         "media:image:tiny": {
           "present": false,
@@ -7326,8 +7326,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the embed role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -7616,6 +7615,17 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -7712,10 +7722,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -8198,16 +8205,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "blocked: stage 1's over-length samples (262140 tokens, twice the 131070-token budget) are infeasible on the offline fake's per-token /pooling replies (one draw per token, seeded by the whole body; the CPU bound is 32768 tokens); the rows are unpruned and the full-budget stage 1 runs against the engine on the GPU wave",
-        "pruned_rows": 0
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "pplx-embed-v2-late-0.6b",
       "path": "pplx-embed-v2-late-0.6b.jsonl",
-      "sha256": "35426e2ac4b7926959a4335f790241d516fe0f36589413384f4ed91e8e0af0cd",
-      "bytes": 172476,
-      "rows": 33,
+      "sha256": "9c09f2413400f0e86301a5c39f0a32b97062171008775b475428995dbc3c2dad",
+      "bytes": 177544,
+      "rows": 35,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -8250,8 +8256,7 @@
           "height": 20
         },
         "media:image+text": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
+          "present": true
         },
         "media:mixed_batch": {
           "present": true
@@ -8314,8 +8319,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -8603,6 +8607,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -8699,7 +8715,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -8710,7 +8726,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -8721,7 +8737,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -8732,7 +8748,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -8743,7 +8759,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -8754,7 +8770,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -8765,7 +8781,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -8776,7 +8792,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -8787,7 +8803,18 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -8798,19 +8825,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 2,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "pplx-embed-v2-late-9b",
       "path": "pplx-embed-v2-late-9b.jsonl",
-      "sha256": "f3d3bd06b7e62b3162e0f699e5bed0175005f1c5760a99f4268b0543d97a153c",
-      "bytes": 168345,
-      "rows": 33,
+      "sha256": "4fdf5614e7c82b3109b1842be75f8d65c77b58542ea0653c788a92d1d00361b3",
+      "bytes": 173413,
+      "rows": 35,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -8853,8 +8876,7 @@
           "height": 20
         },
         "media:image+text": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
+          "present": true
         },
         "media:mixed_batch": {
           "present": true
@@ -8917,8 +8939,7 @@
           "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -9206,6 +9227,18 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@document",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -9302,7 +9335,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -9313,7 +9346,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -9324,7 +9357,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -9335,7 +9368,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -9346,7 +9379,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -9357,7 +9390,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -9368,7 +9401,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -9379,7 +9412,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -9390,7 +9423,18 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -9401,11 +9445,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 2,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -9910,10 +9950,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -10418,10 +10455,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -10926,10 +10960,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -11428,10 +11459,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -11930,10 +11958,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -12432,17 +12457,14 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "qwen3-vl-embedding-2b",
       "path": "qwen3-vl-embedding-2b.jsonl",
-      "sha256": "931391787cfed45490448eda8c02d8685fae6b8d6a15dbfc4f297dfbe1f57120",
-      "bytes": 531102,
+      "sha256": "9b79576eb5cc571eb903237a009d63ebe2cc0569995e41bc18d7d4ca0e1de6bc",
+      "bytes": 549458,
       "rows": 38,
       "strata": {
         "media:image:tiny": {
@@ -12954,7 +12976,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -12965,7 +12987,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -12976,7 +12998,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -12987,7 +13009,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -12998,7 +13020,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -13009,7 +13031,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -13020,7 +13042,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -13031,7 +13053,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -13042,7 +13064,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
@@ -13053,7 +13075,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -13064,7 +13086,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "query_image"
           },
           "strata": [
@@ -13075,7 +13097,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -13086,7 +13108,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "page"
           },
           "strata": [
@@ -13098,18 +13120,14 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "qwen3-vl-embedding-8b",
       "path": "qwen3-vl-embedding-8b.jsonl",
-      "sha256": "72bdbb9286de5a3bacabf94b6cab3e99359dd776f94004d1ace0b60fa70a0815",
-      "bytes": 552183,
+      "sha256": "ee6acde38f68787f544af02da3a3e84df78499578aa22ff99b1f68f820747d55",
+      "bytes": 570539,
       "rows": 38,
       "strata": {
         "media:image:tiny": {
@@ -13621,7 +13639,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -13632,7 +13650,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -13643,7 +13661,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -13654,7 +13672,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -13665,7 +13683,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -13676,7 +13694,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -13687,7 +13705,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -13698,7 +13716,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -13709,7 +13727,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
@@ -13720,7 +13738,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -13731,7 +13749,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "query_image"
           },
           "strata": [
@@ -13742,7 +13760,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -13753,7 +13771,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "page"
           },
           "strata": [
@@ -13765,18 +13783,14 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "qwen3-vl-reranker-2b",
       "path": "qwen3-vl-reranker-2b.jsonl",
-      "sha256": "9c7a3046dfadb64e12fb912e7b87c0ac5a9e5097961d201ee2e0caf167694cac",
-      "bytes": 212362,
+      "sha256": "3c8a17b92431e9849e55adb1ccc6c6c6c9233bf863ded90eb51f577e61cb37c5",
+      "bytes": 212366,
       "rows": 36,
       "strata": {
         "media:image:tiny": {
@@ -14272,7 +14286,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -14283,7 +14297,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -14294,7 +14308,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -14305,7 +14319,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -14316,7 +14330,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -14327,7 +14341,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -14338,7 +14352,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -14349,7 +14363,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -14360,7 +14374,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
@@ -14371,7 +14385,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -14382,7 +14396,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "query_image"
           },
           "strata": [
@@ -14393,18 +14407,14 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "qwen3-vl-reranker-8b",
       "path": "qwen3-vl-reranker-8b.jsonl",
-      "sha256": "9bc38e48eec13cf13c50b827f55fc3b0e86d91901ebced3b4e20389c7e23d67b",
-      "bytes": 192104,
+      "sha256": "d78c5d17f54c6026be4673417ca44702bbe5fbdd88bb73d00599e7893ee80ef6",
+      "bytes": 192108,
       "rows": 36,
       "strata": {
         "media:image:tiny": {
@@ -14900,7 +14910,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -14911,7 +14921,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -14922,7 +14932,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -14933,7 +14943,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -14944,7 +14954,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -14955,7 +14965,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -14966,7 +14976,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -14977,7 +14987,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -14988,7 +14998,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi+caption"
           },
           "strata": [
@@ -14999,7 +15009,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -15010,7 +15020,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "query_image"
           },
           "strata": [
@@ -15021,19 +15031,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "topk-embed-v1-small",
       "path": "topk-embed-v1-small.jsonl",
-      "sha256": "88e80a497e71840e6a3d4c3e440bd34350045fec9e405904f8df848ec2832d92",
-      "bytes": 189564,
-      "rows": 29,
+      "sha256": "865bc06cd9e8d8b5f229bd17153c2345cabf6f07a6707c028cf61833821c5321",
+      "bytes": 198696,
+      "rows": 35,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -15076,8 +15082,7 @@
           "height": 20
         },
         "media:image+text": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Encode text or images in separate batches."
+          "present": true
         },
         "media:mixed_batch": {
           "present": true
@@ -15137,12 +15142,10 @@
           "present": true
         },
         "content:whitespace_only": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
+          "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the multi_vector role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -15151,15 +15154,13 @@
           "present": true
         },
         "content:special_token_spellings": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
+          "present": true
         },
         "source:nanobeir": {
           "present": true
         },
         "source:bright": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"document\": 1, \"index\": 6, \"reference_text_head\": \"Document: \\n\\n\\n\\n\\n\\n\\nhashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"served_text_head\": \"Document: hashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"shape\": \"document\"}"
+          "present": true
         },
         "source:vidore": {
           "present": false,
@@ -15313,6 +15314,40 @@
         },
         {
           "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "17",
+            "doc_ids": [
+              "Pony/src-collections-persistent-map-_15.txt",
+              "Pony/src-collections-hashable-_0.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "bright",
+            "subset": "pony",
+            "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+            "query_id": "38",
+            "doc_ids": [
+              "Pony/0_literals_7.txt",
+              "Pony/4_control-structures_3.txt"
+            ]
+          },
+          "strata": [
+            "source:bright",
+            "source:bright/pony",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
             "suite": "synthetic",
             "content_kind": "ascii_prose"
           },
@@ -15386,6 +15421,29 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -15404,6 +15462,18 @@
             "content:long_token_base64",
             "content:long_token_base64@document",
             "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
             "shapes:document+query"
           ]
         },
@@ -15470,7 +15540,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -15481,7 +15551,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -15492,7 +15562,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -15503,7 +15573,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -15514,7 +15584,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -15525,7 +15595,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -15536,7 +15606,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -15547,7 +15617,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -15558,7 +15628,18 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -15569,19 +15650,15 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 5,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
       "recipe": "topk-embed-v1-xsmall",
       "path": "topk-embed-v1-xsmall.jsonl",
-      "sha256": "b83eae7c66c53f7ecf14663bf4807a0c784a59959ffe48dd13b0152ce6500a2f",
-      "bytes": 179607,
-      "rows": 31,
+      "sha256": "ef1a5d78ef5e96148e907741254a1c3a0c5bc3f1db32bddffc898d6f0722007d",
+      "bytes": 186240,
+      "rows": 35,
       "strata": {
         "media:image:tiny": {
           "present": true,
@@ -15624,8 +15701,7 @@
           "height": 20
         },
         "media:image+text": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: media_check: the reference refuses the document 0: Encode text or images in separate batches."
+          "present": true
         },
         "media:mixed_batch": {
           "present": true
@@ -15685,12 +15761,10 @@
           "present": true
         },
         "content:whitespace_only": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: {\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
+          "present": true
         },
         "content:empty": {
-          "present": false,
-          "reason": "the client's empty policy does not send the empty string on every side (empty_doc: omit_zero (the multi_vector role's empty_doc governs both sides)); the corpus request set probes the refusal itself"
+          "present": true
         },
         "content:long_token_url": {
           "present": true
@@ -15699,8 +15773,7 @@
           "present": true
         },
         "content:special_token_spellings": {
-          "present": false,
-          "reason": "pruned by stage-1 validation: CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
+          "present": true
         },
         "source:nanobeir": {
           "present": true
@@ -15967,6 +16040,29 @@
         {
           "source": {
             "suite": "synthetic",
+            "content_kind": "whitespace_only"
+          },
+          "strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@document",
+            "content:whitespace_only@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "empty"
+          },
+          "strata": [
+            "content:empty",
+            "content:empty@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
             "content_kind": "long_token_url"
           },
           "strata": [
@@ -15985,6 +16081,18 @@
             "content:long_token_base64",
             "content:long_token_base64@document",
             "content:long_token_base64@query",
+            "shapes:document+query"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "content_kind": "special_token_spellings"
+          },
+          "strata": [
+            "content:special_token_spellings",
+            "content:special_token_spellings@document",
+            "content:special_token_spellings@query",
             "shapes:document+query"
           ]
         },
@@ -16051,7 +16159,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tiny"
           },
           "strata": [
@@ -16062,7 +16170,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "icon"
           },
           "strata": [
@@ -16073,7 +16181,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_72dpi"
           },
           "strata": [
@@ -16084,7 +16192,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_150dpi"
           },
           "strata": [
@@ -16095,7 +16203,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "a4_300dpi"
           },
           "strata": [
@@ -16106,7 +16214,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "slide_16_9"
           },
           "strata": [
@@ -16117,7 +16225,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "tall_receipt"
           },
           "strata": [
@@ -16128,7 +16236,7 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
             "bucket": "extreme_aspect"
           },
           "strata": [
@@ -16139,7 +16247,18 @@
         {
           "source": {
             "suite": "synthetic",
-            "media_set": 3,
+            "media_set": 4,
+            "bucket": "a4_72dpi+caption"
+          },
+          "strata": [
+            "media:image",
+            "media:image+text"
+          ]
+        },
+        {
+          "source": {
+            "suite": "synthetic",
+            "media_set": 4,
             "bucket": "mixed_batch"
           },
           "strata": [
@@ -16150,11 +16269,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "media_check": "passed",
-        "pruned_rows": 3,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -16659,10 +16774,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -17161,10 +17273,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -17663,10 +17772,7 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     },
     {
@@ -18165,230 +18271,51 @@
       ],
       "skipped_sources": [],
       "validation": {
-        "render_check": "passed",
-        "pruned_rows": 0,
-        "over_length_per_shape": 2,
-        "over_length_note": "the pairs-file validation samples 2 over-length inputs per shape; the wave's stage-1 gate on the node runs >= 20 per shape (docs/how-to/validate-a-recipe.md, T2)"
+        "render_check": "not_run: generation ran without --reference-python"
       }
     }
   ],
-  "skipped_recipes": [],
-  "pruned": [
+  "skipped_recipes": [
     {
-      "recipe": "jina-embeddings-v5-text-nano",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "empty"
-      },
-      "strata": [
-        "content:empty",
-        "content:empty@document",
-        "content:empty@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"actual_ids_head\": [2929, 25, 220, 128001], \"actual_ids_tail\": [2929, 25, 220, 128001], \"check\": \"no_content_token\", \"expected_head_ids\": [2929, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [128001], \"row\": 15, \"shape\": \"query\"}"
+      "recipe": "gemma-4-12b-it",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "jina-embeddings-v5-text-small",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "empty"
-      },
-      "strata": [
-        "content:empty",
-        "content:empty@document",
-        "content:empty@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"actual_ids_head\": [2859, 25, 220], \"actual_ids_tail\": [2859, 25, 220], \"check\": \"no_content_token\", \"expected_head_ids\": [2859, 25, 220], \"expected_head_text\": \"Query: \", \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+      "recipe": "gemma-4-26b-a4b-it",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "jina-reranker-v3",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "whitespace_only"
-      },
-      "strata": [
-        "content:whitespace_only",
-        "content:whitespace_only@document",
-        "content:whitespace_only@query",
-        "shapes:pair"
-      ],
-      "reason": "{\"index\": 14, \"reference_text_head\": \"   \\t\\t\\n     \", \"served_text_head\": \"\", \"shape\": \"pair\", \"span\": \"query\"}"
+      "recipe": "gemma-4-26b-a4b-nvfp4",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "pplx-embed-v2-late-0.6b",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "empty"
-      },
-      "strata": [
-        "content:empty",
-        "content:empty@document",
-        "content:empty@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+      "recipe": "gemma-4-31b-it-nvfp4",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "pplx-embed-v2-late-0.6b",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
+      "recipe": "gpt-oss-120b",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "pplx-embed-v2-late-9b",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "empty"
-      },
-      "strata": [
-        "content:empty",
-        "content:empty@document",
-        "content:empty@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"actual_ids\": [248077], \"check\": \"mean_content\", \"expected_head_ids\": [248077], \"expected_tail_ids\": [], \"row\": 15, \"shape\": \"query\"}"
+      "recipe": "qwen3.5-397b-a17b-nvfp4",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "pplx-embed-v2-late-9b",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Mixed text+image inputs are not supported; one image per document."
+      "recipe": "qwen3.6-27b-fp8",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "topk-embed-v1-small",
-      "source": {
-        "suite": "bright",
-        "subset": "pony",
-        "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
-        "query_id": "17",
-        "doc_ids": [
-          "Pony/src-collections-persistent-map-_15.txt",
-          "Pony/src-collections-hashable-_0.txt"
-        ]
-      },
-      "strata": [
-        "source:bright",
-        "source:bright/pony",
-        "shapes:document+query"
-      ],
-      "reason": "{\"document\": 1, \"index\": 6, \"reference_text_head\": \"Document: \\n\\n\\n\\n\\n\\n\\nhashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"served_text_head\": \"Document: hashable.pony\\n\\n1\\n2\\n3\\n4\\n5\\n6\\n7\\n8\\n9\\n10\\n11\", \"shape\": \"document\"}"
+      "recipe": "qwen3.8-27b-fp8",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "topk-embed-v1-small",
-      "source": {
-        "suite": "bright",
-        "subset": "pony",
-        "commit": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
-        "query_id": "38",
-        "doc_ids": [
-          "Pony/0_literals_7.txt",
-          "Pony/4_control-structures_3.txt"
-        ]
-      },
-      "strata": [
-        "source:bright",
-        "source:bright/pony",
-        "shapes:document+query"
-      ],
-      "reason": "{\"document\": 0, \"index\": 7, \"reference_text_head\": \"Document: \\nenv.out.print(pony + \\\" \\\" + pony_hex_escaped + \\\" \\\" + pony_unicode_escape)\\nfor b in pony.values() do\\nenv.out.print(Format.int[U8](b, FormatHex))\\nend\\n\\n```\\n\\nAll string literals support multi-line strings:\\n\\n```pony\\n\\nlet stacked_ponies\", \"served_text_head\": \"Document: env.out.print(pony + \\\" \\\" + pony_hex_escaped + \\\" \\\" + po"
+      "recipe": "qwen3.8-flash-next-fp8",
+      "error": "generation failed: KeyError: 'judge'"
     },
     {
-      "recipe": "topk-embed-v1-small",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "whitespace_only"
-      },
-      "strata": [
-        "content:whitespace_only",
-        "content:whitespace_only@document",
-        "content:whitespace_only@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
-    },
-    {
-      "recipe": "topk-embed-v1-small",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "special_token_spellings"
-      },
-      "strata": [
-        "content:special_token_spellings",
-        "content:special_token_spellings@document",
-        "content:special_token_spellings@query",
-        "shapes:document+query"
-      ],
-      "reason": "CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
-    },
-    {
-      "recipe": "topk-embed-v1-small",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
-    },
-    {
-      "recipe": "topk-embed-v1-xsmall",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "whitespace_only"
-      },
-      "strata": [
-        "content:whitespace_only",
-        "content:whitespace_only@document",
-        "content:whitespace_only@query",
-        "shapes:document+query"
-      ],
-      "reason": "{\"actual_ids\": [2766, 25, 220], \"check\": \"mean_content\", \"expected_head_ids\": [2766, 25, 220], \"expected_tail_ids\": [], \"row\": 14, \"shape\": \"query\"}"
-    },
-    {
-      "recipe": "topk-embed-v1-xsmall",
-      "source": {
-        "suite": "synthetic",
-        "content_kind": "special_token_spellings"
-      },
-      "strata": [
-        "content:special_token_spellings",
-        "content:special_token_spellings@document",
-        "content:special_token_spellings@query",
-        "shapes:document+query"
-      ],
-      "reason": "CapabilityError: item 0's sent text tokenises to the media allowlist's id(s) [248056] (media_keep_token_ids): the served plugin treats a row carrying one of them as a media document and would keep only those positions, not the text's vectors"
-    },
-    {
-      "recipe": "topk-embed-v1-xsmall",
-      "source": {
-        "suite": "synthetic",
-        "media_set": 3,
-        "bucket": "a4_72dpi+caption"
-      },
-      "strata": [
-        "media:image",
-        "media:image+text"
-      ],
-      "reason": "media_check: the reference refuses the document 0: Encode text or images in separate batches."
+      "recipe": "qwen3.8-flash-next-nvfp4",
+      "error": "generation failed: KeyError: 'judge'"
     }
-  ]
+  ],
+  "pruned": []
 }

@@ -82,22 +82,55 @@ def _no_dns(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """No network in tests: every hostname resolution is recorded and refused (an attempt swallowed
     by an ``except Exception`` still fails the test here), then the run fails if any name was tried.
     IP literals keep resolving (the stub engines are on 127.0.0.1); the explicitly marked network
-    tests run without the watchdog when ``RCP_NDCG_NETWORK_TESTS=1`` enables them."""
+    tests run without the watchdog when ``RCP_NDCG_NETWORK_TESTS=1`` enables them.
+
+    The same guard as the root suite's (``tests/conftest.py``), including the socket's own
+    ``connect``/``connect_ex``: CPython resolves a string host inside that C call, never through
+    ``getaddrinfo``, so a bare socket would otherwise reach the network with the suite green.
+    """
     if os.environ.get("RCP_NDCG_NETWORK_TESTS"):
         yield
         return
     original = socket.getaddrinfo
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
     tried: list[str] = []
 
-    def _watched(host: object, *args: object, **kwargs: object) -> object:
+    def _refuse(host: object) -> None:
+        """Record and refuse one non-literal host: the one message every path of the guard raises."""
+        tried.append(str(host))
+        raise OSError(f"the test tried to resolve {host!r}: tests use no network")
+
+    def _literal(host: object) -> bool:
+        """Whether ``host`` is an IP literal (the stub engines' 127.0.0.1), which keeps resolving."""
         try:
             ipaddress.ip_address(str(host))
         except ValueError:
-            tried.append(str(host))
-            raise OSError(f"the test tried to resolve {host!r}: tests use no network") from None
+            return False
+        return True
+
+    def _watched(host: object, *args: object, **kwargs: object) -> object:
+        if not _literal(host):
+            _refuse(host)
         return original(host, *args, **kwargs)  # type: ignore[arg-type]
 
+    def _connect(self: socket.socket, address: Any, *args: object, **kwargs: object) -> Any:
+        """``socket.socket.connect``: the address is checked here (a unix path has no host and stays local)."""
+        host = address[0] if isinstance(address, tuple) and address else None
+        if host is not None and not _literal(host):
+            _refuse(host)
+        return original_connect(self, address, *args, **kwargs)  # type: ignore[arg-type]
+
+    def _connect_ex(self: socket.socket, address: Any, *args: object, **kwargs: object) -> Any:
+        """``socket.socket.connect_ex``: the same resolution, and the same refusal."""
+        host = address[0] if isinstance(address, tuple) and address else None
+        if host is not None and not _literal(host):
+            _refuse(host)
+        return original_connect_ex(self, address, *args, **kwargs)  # type: ignore[arg-type]
+
     monkeypatch.setattr(socket, "getaddrinfo", _watched)
+    monkeypatch.setattr(socket.socket, "connect", _connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", _connect_ex)
     yield
     assert not tried, f"tests use no network (tried to resolve: {sorted(set(tried))})"
 

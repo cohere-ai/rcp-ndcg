@@ -17,7 +17,7 @@ from rcp_ndcg_test.jobs.run_wave import _ZMQ_IPC_SUFFIX_CHARS, _slot_tmp_dir, ru
 from rcp_ndcg_test.record import record
 from rcp_ndcg_vllm import load_recipe
 
-from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub, token_ids_recipe
+from tests.conftest import RECIPES, ROOT, TOKENIZER, sample_pairs, start_stub, token_ids_recipe
 
 REFERENCE_PYTHON = sys.executable
 VLLM_CMD = f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py'}"
@@ -109,6 +109,26 @@ def test_record_exchanges_carry_the_product_shape(tmp_path: Path) -> None:
     assert request["model"] == "fixture-embed"
     assert request["encoding_format"] == "float"
 
+    # A rerank recipe whose instruction mode is the engine's own field: the recorded body carries it (the
+    # recorder's snippet supplies the run's instruction; no endpoint model defines a `default_instruction`).
+    import yaml
+
+    directory = tmp_path / "recipes" / "fixture-rerank-pointwise-field"
+    shutil.copytree(RECIPES / "fixture-rerank-pointwise", directory)
+    data = yaml.safe_load((directory / "family.yaml").read_text(encoding="utf-8"))
+    data["id"] = data["variants"][0]["id"] = directory.name
+    data["client"]["tokenizer"] = str(TOKENIZER)
+    data["client"]["instruction"] = "field"
+    (directory / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        rerank_written = record(load_recipe(directory), engine.base_url, tmp_path / "field")
+    finally:
+        engine.stop()
+    rerank = [json.loads(path.read_text(encoding="utf-8")) for path in rerank_written]
+    served = next(row for row in rerank if row["route"] == "http://engine/rerank" and row["status"] == 200)
+    assert served["request"]["body"]["instruction"], served["request"]["body"]
+
 
 def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
     """One recipe on one slot with the stub engine: serve, smoke, equivalence; the wave document carries
@@ -145,6 +165,31 @@ def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
     }, document["rc"]
     markdown = (out / "WAVE.md").read_text(encoding="utf-8")
     assert "rc0-20261015" in markdown and "abc123" in markdown and manifest_sha256 in markdown
+    # The documented tag-time command must pass on the wave document run_wave wrote
+    # (docs/how-to/release-candidates.md): the checker compares the recorded rc.commit with the tag's
+    # commit, and required an rc.version no wave document records -- so the documented command could
+    # never pass on a real wave.
+    import subprocess
+    import tomllib
+
+    version = tomllib.loads((ROOT / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    checked = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / ".github" / "scripts" / "check_release.py"),
+            version,
+            "--root",
+            str(ROOT),
+            "--wave",
+            str(out / "wave.json"),
+            "--commit",
+            "abc123",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert checked.returncode == 0, checked.stderr
     equivalence = json.loads((out / "fixture-embed" / "equivalence.json").read_text(encoding="utf-8"))
     assert equivalence["reference_outputs"]["state"] == "computed"  # the store is under <out>/references
     assert equivalence["reference_environment"]["family"] == "fixture-embed"
@@ -254,15 +299,24 @@ def test_wave_records_disk_and_evicts_after_the_last_recipe(tmp_path: Path, monk
 
 def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every recipe role has a smoke route: a judge (role 'judge') POSTs /v1/chat/completions. The rc0
-    judges wave failed all ten judges with ``KeyError: 'judge'`` because the route table had no entry."""
+    judges wave failed all ten judges with ``KeyError: 'judge'`` because the route table had no entry.
+    The smoke reads the reply too: its docstring promises the body parses and carries the role's payload,
+    while the check was the status code alone -- an engine answering 200 with an empty body read as served."""
     import httpx
     from rcp_ndcg_vllm.recipe import resolve_recipe
 
     recipe = resolve_recipe("gemma-4-12b-it")
     seen: dict[str, object] = {}
+    replies: list[dict[str, object]] = [{"choices": [{"message": {"content": "ok"}}]}, {}]
 
     class Reply:
         status_code = 200
+
+        def __init__(self, body: dict[str, object]) -> None:
+            self._body = body
+
+        def json(self) -> dict[str, object]:
+            return self._body
 
     class FakeClient:
         def __init__(self, **kwargs: object) -> None:
@@ -277,7 +331,7 @@ def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.Monkey
         def post(self, route: str, json: dict | None = None) -> Reply:
             seen["route"] = route
             seen["json"] = json
-            return Reply()
+            return Reply(replies.pop(0) if replies else {})
 
     monkeypatch.setattr(httpx, "Client", FakeClient)
     report = run_wave_module._smoke(recipe, "http://127.0.0.1:8100/v1")
@@ -285,6 +339,10 @@ def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.Monkey
     assert seen["route"] == "/v1/chat/completions", seen
     body = seen["json"]
     assert isinstance(body, dict) and body.get("messages"), body
+    # A 200 whose body carries none of the role's payload is a failed smoke naming what is missing.
+    empty = run_wave_module._smoke(recipe, "http://127.0.0.1:8100/v1")
+    assert empty["state"] == "failed", empty
+    assert "choices" in (empty.get("error") or ""), empty
 
 
 def test_equivalence_skips_a_judge_with_the_decision_15_reason() -> None:
@@ -550,6 +608,9 @@ def test_smoke_sends_a_token_ids_recipe_its_own_query_render(tmp_path: Path, mon
 
     class Reply:
         status_code = 200
+
+        def json(self) -> dict[str, object]:
+            return {"data": [{"index": 0, "data": [0.1, 0.2]}]}
 
     class FakeClient:
         def __init__(self, **kwargs: object) -> None:

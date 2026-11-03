@@ -52,6 +52,6 @@ Start with the [quickstart](quickstart.md).
   `schema_version`, the behaviour fingerprint and the artifact tags.
 - [The `rcp-ndcg-test` package](reference/rcp-ndcg-test.md): reference cases, conformance and the GPU job
   tooling for contributors.
-- [`rcp_ndcg_core`: metric, gains and protocols](api/metric.md).
-- [`rcp_ndcg.eval`: evaluation](api/evaluate.md).
-- [`rcp_ndcg.inference`: the rerank wire and client](api/inference.md).
+- [`rcp_ndcg_core`: metric, gains and protocols](reference/api/rcp_ndcg_core.md).
+- [`rcp_ndcg.eval`: evaluation](reference/api/rcp_ndcg.eval.md).
+- [`rcp_ndcg.inference`: the rerank wire and client](reference/api/rcp_ndcg.inference.md).

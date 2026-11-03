@@ -1118,6 +1118,33 @@ class TestThePrompt:
         assert judge_client.usage.requests == 0
         assert not (tmp_path / "store").exists()
 
+    def test_a_custom_prompt_the_fake_cannot_place_is_refused_not_guessed(self, tmp_path: Path) -> None:
+        """A custom prompt is no shipped render, so the fake cannot tell its criteria from the query's: a
+        query naming a criterion label (``C7``, which breaks the ``C1..C2`` ladder) is refused with the
+        limitation named, never answered in the other stage's shape -- which the rubric parser refuses, and
+        the pass then records an invalid window and goes on, silently dropping the query."""
+        prompt = tmp_path / "my_rubric.txt"
+        prompt.write_text(
+            "Judge C1 and C2.\n\n## Query\n{query_placeholder}\n\n## Documents\n{passages_placeholder}\n",
+            encoding="utf-8",
+        )
+        named = ROWS[0].model_copy(update={"text": "what is the C7 vertebra?"})
+        schedule = TINY_RUBRIC.model_copy(update={"prompt": str(prompt)})
+        with pytest.raises(ConfigError, match="cannot infer a custom prompt's stage"):
+            judge((named,), None, _fake(), stage="rubric", out=tmp_path / "store", schedule=schedule)
+        # The trigger is the QUERY, not the prompt: a custom tournament prompt whose own text names no criterion
+        # is refused all the same when the query does. Scanning the render for labels instead answers a ranking
+        # as a rubric, and every window of that query is dropped.
+        ranking = tmp_path / "my_tournament.txt"
+        ranking.write_text(
+            "Rank the documents.\n\n## Query\n{query_placeholder}\n\n## Documents\n{passages_placeholder}\n",
+            encoding="utf-8",
+        )
+        named = ROWS[0].model_copy(update={"text": "what is the C1 vertebra?"})
+        schedule = TINY_TOURNAMENT.model_copy(update={"prompt": str(ranking)})
+        with pytest.raises(ConfigError, match="cannot infer a custom prompt's stage"):
+            judge((named,), None, _fake(), stage="tournament", out=tmp_path / "ranked", schedule=schedule)
+
     def test_the_store_keeps_each_prompts_text_by_its_hash(self, tmp_path: Path) -> None:
         from rcp_ndcg.judging.prompts import load_prompt
 

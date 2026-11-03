@@ -73,15 +73,18 @@ __all__ = [
     "write_pairs_file",
 ]
 
-GENERATOR_VERSION = 2
+GENERATOR_VERSION = 3
 """The generator's semantic version: what the generator INTENDS to select and record (strata, selection,
 pads).  Bump it for every change to the generator's OUTPUT -- the fix that makes the implementation match
 the intent the version already declared, and every later change alike -- so a committed pairs file always
-names the generator that produced it.  The version is NOT part of the sampling stream
-(:data:`GENERATOR_SEED` is), so a bump never re-draws a row; the manifest records both, and the per-file
-SHA-256 pins the artifact."""
+names the generator that produced it.  Version 3 is the content-presence fix: a content kind that fits
+neither side is planned absent instead of as an anchor-only row (18-05), and the embed and pooling roles' empty
+query is planned as sent, ``empty_doc`` governing the document side alone (observe-empty-01), so the rows a
+pairs file carries change.  The version is NOT part of the sampling stream (:data:`GENERATOR_SEED` is), so a
+bump never
+re-draws a row; the manifest records both, and the per-file SHA-256 pins the artifact."""
 
-CORPUS_PLAN_VERSION = 4
+CORPUS_PLAN_VERSION = 5
 """The version of the corpus request plan beyond the pairs rows (:func:`corpus_plan`: the over-length ladder,
 the uncut content kinds, the wire variants, the MRL stratum and the protocol edges).  Versioned apart from
 :data:`GENERATOR_VERSION` so the pairs files (and their seeded sampling) stay as generated.  Version 2 adds
@@ -89,8 +92,12 @@ the MRL stratum: a declared head records one bare ``dimensions=k`` probe per dec
 set, or a range's endpoints and the run's selection) instead of the hard-coded ``dimensions=32`` probe;
 version 3 adds the media set's video protocol edges (``edge:too_many_videos``, ``edge:corrupt_video``);
 version 4 adds one rung over each declared per-side cap (``length:over_document_cap``,
-``length:over_query_cap``) for a recipe whose cap sits under its whole budget (g-observe-6).  Two
-lanes bumped 2 for different plans; the merged plan is 3, so no two different plans share a version.
+``length:over_query_cap``) for a recipe whose cap sits under its whole budget (g-observe-6); version 5 makes
+the over-length ladder's one-token-over rung land past ``client.max_tokens`` once the template's frame is
+added, so the corpus observes the client's cut and the engine's refusal.  Two lanes bumped 2 for different
+plans; the merged plan is 3, so no two different plans share a version -- version 4 named two plans (the cap
+rungs and version 5's rung length) until version 5 separated them.  The content kinds' presence is the pairs
+rows' business, recorded under :data:`GENERATOR_VERSION`, never this plan's.
 
 The version is provenance, not a staleness key: it is recorded in the manifest and the record plan but
 never compared by a re-record selector, because the selectors key a corpus by the behaviour fingerprint,
@@ -397,13 +404,12 @@ def _synthetic_rows(recipe: Any, tokenizer: Any, *, embeddable_vocab_size: int |
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
     # The client block is a plain dict (rcp_ndcg_vllm.recipe.Recipe.client): read it as one.  The
-    # defaults are the product endpoint's (empty_query: refuse, empty_doc: send).  The query-side policy
-    # follows the ROLE: empty_query exists on the rerank config only, while the embed and pooling roles'
-    # empty_doc governs both sides (clients._base applies it to whatever the client encodes).
+    # defaults are the product endpoint's (empty_query: refuse, empty_doc: send).  The sides are separate:
+    # empty_doc governs the DOCUMENT side only, and the embed and pooling roles send an empty query as given
+    # (clients._base's per-side policy, L03), so their query side is always planned as sent; the empty_query
+    # policy exists on the rerank config alone, where its default is ``refuse``.
     empty_doc_ok = (recipe.client.get("empty_doc") or "send") in ("send", "send_text")
-    empty_query_ok = (
-        (recipe.client.get("empty_query") or "refuse") == "send" if recipe.role == "rerank" else empty_doc_ok
-    )
+    empty_query_ok = (recipe.client.get("empty_query") or "refuse") == "send" if recipe.role == "rerank" else True
     rows: list[PlannedRow] = []
     for kind in CONTENT_KINDS:
         text = synthetic_text(kind, tokenizer, vocab_size=embeddable_vocab_size)
@@ -415,8 +421,11 @@ def _synthetic_rows(recipe: Any, tokenizer: Any, *, embeddable_vocab_size: int |
             # ``empty_query: refuse`` refuses an empty query before the engine would see one).
             on_query = on_query and empty_query_ok
             on_document = on_document and empty_doc_ok
-            if not (on_query or on_document):
-                continue
+        if not (on_query or on_document):
+            # A kind that fits neither side is planned absent (recorded, with the reason, by
+            # :func:`plan_recipe`): an anchor-only row would record the kind present while carrying none
+            # of its text.  The corpus request set sends the full text uncut on purpose.
+            continue
         strata = [f"content:{kind}"]
         if on_document:
             strata.append(f"content:{kind}@document")
@@ -687,10 +696,17 @@ def plan_recipe(
     return plan
 
 
-_LADDER_OVER: tuple[tuple[str, int, int], ...] = (("over_by_1", 1, 1), ("over_2x", 2, 0), ("over_10x", 10, 0))
+_LADDER_OVER: tuple[tuple[str, int, int], ...] = (
+    ("over_by_1", 1, _GUARD_TOKENS + 1),
+    ("over_2x", 2, 0),
+    ("over_10x", 10, 0),
+)
 """The over-length rungs of OBSERVATIONS-SPEC section 1, as ``(name, factor, plus)``: the content span grows to
 ``factor * usable + plus`` of the recipe's own tokens, where ``usable`` is the budget left once the template's
-fixed overhead and the guard are reserved -- one token over, twice and ten times the budget."""
+fixed overhead and the guard are reserved -- one token over, twice and ten times the budget.  ``over_by_1``'s
+``plus`` gives the guard back and adds one, so ``overhead + content`` is ``budget + 1``: the guard is the
+at_90/at_budget rungs' reserve (a row that must fit without a cut), never the over-length ladder's, or the
+rung lands under the budget and the corpus observes neither the client's cut nor the engine's refusal."""
 
 
 def _cap_rungs(recipe: Any, budget: int) -> list[tuple[str, str, int]]:
@@ -1001,7 +1017,15 @@ def _kind_absent_reason(kind: str, recipe: Any) -> str:
         if recipe.role == "rerank":
             policies = f"empty_query: {recipe.client.get('empty_query') or 'refuse'}, empty_doc: {empty_doc}"
         else:
-            policies = f"empty_doc: {empty_doc} (the {recipe.role} role's empty_doc governs both sides)"
+            # empty_doc governs the document side only; the role sends an empty query as given (the
+            # empty_query policy exists on the rerank config alone), so the kind is absent only when no
+            # query side can carry the empty string and empty_doc rewrites an empty document.
+            declares_query, _ = _declared_sides(recipe)
+            where = "the query side has no room for it" if declares_query else "the recipe declares no query side"
+            policies = (
+                f"empty_doc: {empty_doc} (documents only: the {recipe.role} role sends an empty query as "
+                f"given) and {where}"
+            )
         return (
             f"the client's empty policy does not send the empty string on every side ({policies}); "
             "the corpus request set probes the refusal itself"
@@ -1281,7 +1305,6 @@ def _validate_and_prune(
                 carried={label for row in plan.rows for label in row.strata},
                 kept_labels={label for row in kept for label in row.strata},
                 pruned=pruned,
-                recipe=recipe,
             ),
             skipped_sources=plan.skipped_sources,
             validation=blocked,
@@ -1304,7 +1327,6 @@ def _validate_and_prune(
                 carried={label for row in plan.rows for label in row.strata},
                 kept_labels={label for row in kept for label in row.strata},
                 pruned=pruned,
-                recipe=recipe,
             ),
             skipped_sources=plan.skipped_sources,
             validation=plan.validation,
@@ -1338,17 +1360,16 @@ def _presence_after_pruning(
     carried: set[str],
     kept_labels: set[str],
     pruned: list[dict[str, Any]],
-    recipe: Any,
 ) -> dict[str, dict[str, Any]]:
     """The plan's strata after pruning: presence is recomputed from the KEPT rows' labels.
 
     A stratum every row of which was pruned is absent, with the pruning reason that named it; a content
-    kind is present only when a kept row carries it ON A SIDE (``content:<kind>@document``/``@query``),
-    never when its text rode only as an anchor in a row that fits neither side.  Strata no row ever carried
-    (the wire variants, the edges, the MRL and instruction records) keep their computed presence -- they
-    are not row-derived.  g-observe-2: carrying the pre-pruning ``plan.strata`` into every rebuilt plan
-    recorded pruned strata present and an anchor-only kind present, so the coverage map showed strata the
-    waves never send.
+    kind is present only when a kept row carries it ON A SIDE (``content:<kind>@document``/``@query``) --
+    every planned row carries its kind's text on a side (:func:`_synthetic_rows` plans no anchor-only row),
+    so a present kind no kept row carries on a side is one whose rows were pruned.  Strata no row ever
+    carried (the wire variants, the edges, the MRL and instruction records) keep their computed presence --
+    they are not row-derived.  g-observe-2: carrying the pre-pruning ``plan.strata`` into every rebuilt plan
+    recorded pruned strata present, so the coverage map showed strata the waves never send.
     """
     kinds_on_side = {
         label.split(":", 1)[1].split("@", 1)[0]
@@ -1365,11 +1386,9 @@ def _presence_after_pruning(
             kind = key.split(":", 1)[1]
             if kind in kinds_on_side:
                 continue
-            if key in kept_labels:
-                # an anchor-only row (the kind fits neither side): the budget reason, not a pruning
-                out[key] = {"present": False, "reason": _kind_absent_reason(kind, recipe)}
-            else:
-                out[key] = {"present": False, "reason": f"pruned by stage-1 validation: {pruning_reason}"}
+            # No planned row is anchor-only (a kind that fits neither side is not planned), so a present
+            # kind with no kept row carrying it on a side had every one of its rows pruned.
+            out[key] = {"present": False, "reason": f"pruned by stage-1 validation: {pruning_reason}"}
         elif key in carried and key not in kept_labels:
             out[key] = {"present": False, "reason": f"pruned by stage-1 validation: {pruning_reason}"}
     return out

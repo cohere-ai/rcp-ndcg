@@ -72,6 +72,21 @@ The gains source is part of comparability too: `"dataset"` (the released gains),
 calibration), `"gains"` (passed in) or `"none"`. The same metric under a different gains table is not the same
 number, and the record states which table it came from.
 
+The report a record is built from carries the same conventions. `EvalReport` holds the per-query, per-dataset and
+summary tables for every system, metric and cutoff it scored, the protocol it was scored under
+(`report.protocol`), the gains table it read (`report.gains_source`, the four values above) and, for a report
+written by `rcp-ndcg eval score --out`, its input files (`report.inputs`). `value(system, metric, k)` reads one
+summary value and `leaderboard(metric, k)` the wide table: a row per system, a column per dataset, the summary as
+`mean`, best first. A `(metric, k)` the report never computed is refused by all four: `value` with a `DataError`
+naming the system, metric and cutoff it asked for, and `leaderboard`, `compare` and `sensitivity` with one naming
+the cutoffs the report has, so a wrong cutoff never reads as an empty table or as a message about shared queries.
+
+Comparisons are made over the queries two systems share: `compare` gives, per pair of systems, the difference
+(B minus A), a paired t-test, a query-clustered bootstrap interval and the queries where RCP-nDCG and qrel-nDCG
+disagree in sign, and the paper's `sensitivity` is the per-dataset share of all system pairs whose paired t-test
+over their shared queries is significant at `alpha`, averaged over the datasets. Both read a report, so a
+comparison cannot mix scoring conventions: the protocol is the report's.
+
 ## The sink contract
 
 A sink consumes records; it never reads a run. It is registered under the `rcp_ndcg.results` entry-point group,

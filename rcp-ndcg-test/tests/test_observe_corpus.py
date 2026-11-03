@@ -392,6 +392,21 @@ def test_a_near_tie_flip_does_not_inflate_the_measured_tolerance() -> None:
     assert summary["derived"]["measured"] is True
 
 
+def test_a_rerank_replys_usage_leaves_stay_in_the_measurement() -> None:
+    """A /rerank reply's remap keys its result leaves by the document's index; it must replace ONLY those
+    leaves.  The whole leaf dict used to be replaced, so every numeric leaf outside ``results`` (the
+    reply's ``usage.prompt_tokens``) left the measured non-determinism and the equivalence consistency
+    check: two sendings that differ only there measured 0.0 and read as identical."""
+    request = {"query": "q", "documents": ["d"]}
+
+    def record(tokens: int, rep: str) -> dict[str, Any]:
+        reply = {"results": [{"index": 0, "relevance_score": 0.5}], "usage": {"prompt_tokens": tokens}}
+        return _exchange("/rerank", request, reply, rep=rep)
+
+    summary = summarise_nondeterminism([record(3, "same_process_1"), record(4, "same_process_2")])
+    assert summary["summary"]["max_abs_diff"] == 1.0, summary["summary"]
+
+
 def test_the_committed_nondeterminism_is_the_one_the_current_measurement_derives() -> None:
     """g-observe-1: the shipped reports must be the measurement this code derives, never left at a
     tolerance a near-tie flip inflated.  The committed qwen3-reranker-8b report derived abs 3.0 / rel 1.5

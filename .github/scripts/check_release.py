@@ -142,8 +142,12 @@ def check_wave_commits(root: Path, version: str, waves: Sequence[str], commit: s
 
     ``commit`` defaults to the tree's own HEAD (``git rev-parse HEAD`` in ``--root``): the tag pipeline
     checks out the tag, so the recorded RC commit must equal it.  Each ``--wave`` document must carry the
-    ``rc`` record the bootstrap writes (name, commit, version, manifest sha256); a document without it
-    predates the recording and cannot tie the tag to the tested RC.
+    ``rc`` record the bootstrap writes (name, commit, manifest sha256 -- the three fields the wave document
+    records, docs/how-to/release-candidates.md); a document without it predates the recording and cannot tie
+    the tag to the tested RC.  A document that also records ``rc.version`` (the bootstrap report's
+    four-field record) must carry the release's version: every RC of a release carries the same version, so
+    the field is a consistency check, never a fourth field the wave document is required to carry -- requiring
+    it refused every wave ``run_wave`` wrote and the documented tag-time command could never pass.
     """
     if not waves:
         return
@@ -155,13 +159,13 @@ def check_wave_commits(root: Path, version: str, waves: Sequence[str], commit: s
     for path in waves:
         document = json.loads(Path(path).read_text(encoding="utf-8"))
         rc = document.get("rc")
-        required = ("name", "commit", "version", "manifest_sha256")
+        required = ("name", "commit", "manifest_sha256")
         if not isinstance(rc, dict) or not all(rc.get(field) for field in required):
             raise SystemExit(
                 f"{path}: no rc record ({', '.join(required)}): the wave document cannot identify the tested "
                 "RC, so the tag cannot be tied to it (decision 16)"
             )
-        if rc["version"] != version:
+        if rc.get("version") not in (None, version):
             raise SystemExit(f"{path}: rc.version is {rc['version']!r}, and the release version is {version!r}")
         if rc["commit"] != commit:
             raise SystemExit(

@@ -112,7 +112,7 @@ def test_a_job_runner_runs_the_same_pipeline_started_over_mcp(
     data = started["structuredContent"]
     assert data["mode"] == "submitted" and data["state"]["status"] in ("submitted", "running")
 
-    deadline = time.monotonic() + 120
+    deadline = time.monotonic() + 45  # below conftest.TEST_TIMEOUT_S (60 s), so the status dump prints
     while True:
         status = mcp.call_tool("run_status", {"run": data["run_dir"]})["structuredContent"]
         if status["jobs"][0]["status"] in ("completed", "failed", "cancelled"):

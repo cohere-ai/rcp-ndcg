@@ -17,7 +17,7 @@ from click.testing import CliRunner
 from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
 from rcp_ndcg.calibration import Calibration, calibrate
-from rcp_ndcg.calibration.coverage import coverage_flags, window_coverage
+from rcp_ndcg.calibration.coverage import DegenerateCounts, coverage_flags, window_coverage
 from rcp_ndcg.cli.calibration import calibration_group
 from rcp_ndcg.errors import DataError, RcpNdcgWarning
 from rcp_ndcg.eval import evaluate
@@ -187,6 +187,38 @@ def test_a_strict_fit_refuses_a_document_without_valid_tournament_evidence() -> 
     with pytest.raises(DataError, match="no comparison in a valid tournament window") as caught:
         calibrate(_only_invalid_evidence(), strict=True)
     assert caught.value.details["documents"] == ["d||q/x"]
+
+
+def test_coverage_counts_documents_and_degenerate_verdicts() -> None:
+    """``documents`` counts the rubric documents, ``degenerate_documents`` the ones that failed or passed every
+    criterion in every window, and ``per_dataset`` the calibrated queries of a dataset.
+
+    Mutations: ``documents=len(thetas)`` (one query) and ``all_pass``'s ``passed == asked`` read as ``!=`` (two)
+    both pass today, and no other test of this file reads any of the three fields.
+    """
+    rows = rubric_set(
+        {
+            ("d", "q"): [
+                [
+                    ("all-pass", None, [1, 1, 1, 1, 1]),
+                    ("all-fail", None, [0, 0, 0, 0, 0]),
+                    ("mixed", None, [1, 1, 0, 0, 0]),
+                ],
+                [
+                    ("all-pass", None, [1, 1, 1, 1, 1]),
+                    ("all-fail", None, [0, 0, 0, 0, 0]),
+                    ("mixed", None, [0, 0, 1, 1, 0]),
+                ],
+            ]
+        }
+    )
+
+    fitted = calibrate(rows, mode="rubric_only")
+
+    assert fitted.coverage.documents == 3
+    assert fitted.coverage.degenerate_documents == DegenerateCounts(all_fail=1, all_pass=1)
+    # One calibrated query of the dataset, not its three documents: the count is per dataset and per query.
+    assert fitted.coverage.per_dataset == {"d": 1}
 
 
 def test_a_query_whose_windows_are_all_invalid_is_uncalibrated_not_no_evidence() -> None:

@@ -97,7 +97,7 @@ run's `calibrate` step writes to `runs/<run_id>/calibration/`:
 calibration/
 ├── items.json          # mode, criteria, gamma, beta, judge severity, the families fitted
 ├── queries.parquet     # dataset, query_id, tau, alpha (tournament mode)
-├── thetas.parquet      # dataset, query_id, doc_id, theta, theta_se, source (fit | scored | inserted)
+├── thetas.parquet      # dataset, query_id, doc_id, theta, theta_se, gain, source (fit | scored | inserted)
 ├── coverage.json       # queries per stage, uncalibrated, no-evidence and flagged queries, invalid windows, degenerate documents
 ├── diagnostics.json    # fit summary, reliability (ECE, Brier score) per family, warnings
 ├── extensions.jsonl    # every document added later by scoring or insertion, with its provenance
@@ -107,7 +107,8 @@ calibration/
 `theta_se` is a standard error in logits, when one is known (a row with none leaves the column empty). A
 rubric-only document's is the posterior standard deviation of its ability; a tournament document's is its
 Bradley-Terry standard error mapped onto the calibrated scale by the query's `tau`. The Bradley-Terry one is the
-**diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2)`:
+**diagonal approximation** `1 / sqrt(sum of weight * p * (1 - p) over the document's own comparisons + bt_l2 * W)`,
+with `W` the fit's total comparison weight:
 it is a per-document information referent that ignores the covariance between documents, so it is comparable
 across documents of one fit but is not a full-information standard error. A document a fitted query never
 compared carries no information of its own, so it has no ability and no SE (`coverage.json` lists those documents

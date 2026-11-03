@@ -530,7 +530,9 @@ def test_an_unknown_variant_of_a_family_directory_is_refused(
 
 def test_a_missing_template_file_is_refused_by_name(tmp_path: Path) -> None:
     """The referenced-file check speaks first: a family naming a template it does not ship is refused with the
-    field's name (the identity's own read would only name the path)."""
+    field's name (the identity's own read would only name the path).  ``reference.entry`` is the sibling
+    directory-relative file and is refused the same way: joined unvalidated, ``../escape.py`` (or an absolute
+    path) reads a file outside the recipe directory."""
     directory = _write_family(tmp_path, family="templated")
     yaml_path = directory / "family.yaml"
     yaml_path.write_text(
@@ -541,6 +543,19 @@ def test_a_missing_template_file_is_refused_by_name(tmp_path: Path) -> None:
     )
     with pytest.raises(RecipeError, match="serve.chat_template .* does not exist in"):
         load_recipe(directory)
+
+    escaping = _write_family(tmp_path, family="escaping", directory_name="escaping")
+    (tmp_path / "escape.py").write_text("# outside the recipe directory\n", encoding="utf-8")
+    yaml_path = escaping / "family.yaml"
+    yaml_path.write_text(
+        yaml_path.read_text(encoding="utf-8").replace(
+            "reference: {kind: stored_scores, score_scale: probability}",
+            "reference: {kind: transformers, score_scale: probability, entry: ../escape.py}",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RecipeError, match="reference.entry must be a bare file name"):
+        load_recipe(escaping)
 
 
 def test_a_user_recipes_identity_is_the_content_hash_of_its_resolved_form(tmp_path: Path) -> None:
@@ -790,19 +805,24 @@ def test_the_missing_plugin_hint_quotes_the_spec(tmp_path: Path, monkeypatch: py
     assert "pip install --no-deps 'some-other-plugin>=1.0'" in str(excinfo.value)
 
 
-def test_extra_args_may_not_repeat_a_flag_serve_argv_renders(tmp_path: Path) -> None:
+@pytest.mark.parametrize("spelling", ["--max-model-len", "--max_model_len", "--max-model"])
+def test_extra_args_may_not_repeat_a_flag_serve_argv_renders(tmp_path: Path, spelling: str) -> None:
     """``extra_args`` is for flags the schema has no field for: a duplicate lands after the rendered value and
     the engine's last-wins parsing silently overrides ``--set``, the budget check or ``--revision``.  The
-    refusal names the flag and the schema field to use instead."""
+    refusal names the flag and the schema field to use instead.
+
+    The engine's argparse resolves the underscore spelling (``--max_model_len``) and a unique prefix
+    (``--max-model``) to the rendered flag, so both are a second copy too; a literal comparison let them
+    through to the engine."""
     directory = _write_family(
         tmp_path,
         family="colliding",
-        serve_extra='  extra_args: ["--max-model-len", "1024", "--revision", "main"]',
+        serve_extra=f'  extra_args: ["{spelling}", "1024"]',
     )
     with pytest.raises(RecipeError) as excinfo:
         load_recipe(directory)
     message = str(excinfo.value)
-    assert "--max-model-len" in message and "serve.max_model_len" in message
+    assert spelling in message and "serve.max_model_len" in message
     assert "extra_args" in message
 
 

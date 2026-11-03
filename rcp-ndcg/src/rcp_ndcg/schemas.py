@@ -72,6 +72,7 @@ SCHEMAS: tuple[SchemaEntry, ...] = (
     SchemaEntry("judgement-store", "artifact", "rcp_ndcg.judging.store:StoreIdentity"),
     SchemaEntry("calibration", "artifact", "rcp_ndcg.calibration.fit:CalibrationItems"),
     SchemaEntry("calibration-coverage", "artifact", "rcp_ndcg.calibration.coverage:CalibrationCoverage"),
+    SchemaEntry("calibration-diagnostics", "artifact", "rcp_ndcg.calibration.diagnostics:Diagnostics"),
     SchemaEntry("calibration-identity", "artifact", "rcp_ndcg.calibration.fit:CalibrationIdentity"),
     SchemaEntry("extension-record", "artifact", "rcp_ndcg.calibration.extend:ExtensionRecord"),
     SchemaEntry("index", "artifact", "rcp_ndcg.retrieval._api:Index"),

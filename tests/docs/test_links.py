@@ -51,7 +51,12 @@ def _nav_pages(entries: list) -> list[str]:
 
 
 def test_the_navigation_lists_every_page_and_only_existing_ones() -> None:
+    """The nav is the page list, and the generated ``reference/api`` is the one API home: a second, unpinned
+    page set under ``docs/api/`` (the retired ``metric``/``evaluate``/``inference`` pages) is refused, so a
+    duplicate home for a public module cannot be re-added without failing here."""
     config = yaml.safe_load((ROOT / "mkdocs.yml").read_text(encoding="utf-8"))
     nav = _nav_pages(config["nav"])
     pages = sorted(str(p.relative_to(ROOT / "docs")) for p in (ROOT / "docs").rglob("*.md"))
     assert sorted(nav) == pages
+    legacy = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "docs" / "api").glob("*.md"))
+    assert legacy == [], f"reference/api is the one API home; retire {legacy}"

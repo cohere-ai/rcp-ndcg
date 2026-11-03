@@ -89,19 +89,21 @@ def test_a_custom_prompt_loads_from_a_path_and_an_unknown_name_is_refused(tmp_pa
 
 
 def test_the_criterion_label_rule_has_one_home() -> None:
-    """`criterion_labels_in` is the one derivation (the fake judge's rubric answers read it too): a
-    non-ladder rubric derives no criteria and the fake answers tournament scores, consistently."""
+    """`criterion_labels_in` is the one derivation (the fake judge's rubric answers read it too), and the
+    fake's answer shape is the stage's template, never the query's words: a rubric render whose query says
+    C7 still answers criteria, and a tournament render whose query says C1 still answers a ranking."""
     from rcp_ndcg.judging._fake import _answer_text
     from rcp_ndcg.judging.prompts import criterion_labels_in, load_prompt
 
+    def answer(stage: str, query: str) -> str:
+        from rcp_ndcg_core.content import Content
+
+        template = load_prompt(stage).template(with_num_documents=stage == "tournament")
+        rendered = template.resolve(query=query, documents=[Content.from_text("text")])
+        return _answer_text(0, lambda body: 0.5, 0.0, rendered)
+
     assert criterion_labels_in(load_prompt("rubric").text) == ("C1", "C2", "C3", "C4", "C5")
     assert criterion_labels_in("C1, C2, C4 are graded.") == ()  # a gap is no ladder
-    rubric = _answer_text(
-        0,
-        lambda text: 0.5,
-        0.0,
-        load_prompt("rubric")
-        .text.replace("{query_placeholder}", "q")
-        .replace("{passages_placeholder}", '<doc id="doc_1">\ntext\n</doc>'),
-    )
-    assert "criteria" in rubric
+    assert "criteria" in answer("rubric", "q")
+    assert "criteria" in answer("rubric", "what is the C7 vertebra?")  # the query's C7 is no criterion
+    assert "ranking" in answer("tournament", "what is the C1 vertebra?")  # nor is its C1

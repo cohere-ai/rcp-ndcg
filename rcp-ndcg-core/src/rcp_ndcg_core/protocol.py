@@ -191,8 +191,10 @@ def score_query(
         of :func:`aggregate`.
 
     Raises:
-        ValueError: ``k`` is not positive, a score or a gain is not finite, or the protocol cannot score the
-            query (an unknown preset, a missing judged pool for a pool-order tie rule).
+        ValueError: ``k`` is not positive, a score or a gain is not finite, a gain is negative on the
+            ``rcp_ndcg``/``count_ndcg`` path (the gain is in ``[0, 1]``; a negative one makes the ideal DCG
+            smaller in magnitude than the DCG it normalises), or the protocol cannot score the query (an unknown
+            preset, a missing judged pool for a pool-order tie rule).
     """
     rules = resolve_protocol(protocol)
     _validate_k(k)

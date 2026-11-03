@@ -10,6 +10,17 @@ __all__ = ["write_report"]
 
 _SECTIONS = {"stage1": "Stage 1 - prompts", "stage2": "Stage 2 - scores and vectors", "stage3": "Stage 3 - metrics"}
 
+_STAGE1_CHECKS = (
+    "anchor_check",
+    "render_check",
+    "template_render_check",
+    "engine_tokenize_check",
+    "engine_prompt_tokens_check",
+)
+"""The stage-1 checks, in the order the report prints them: every check's STATUS is printed, ``not_run``
+with its reason included, so a release reviewer never reads ``passed: True`` as "compared against the
+reference" when the render or engine check never ran."""
+
 
 def write_report(out_dir: str | Path, document: dict[str, Any]) -> tuple[Path, Path]:
     """Write ``equivalence.json`` and ``EQUIVALENCE.md`` under ``out_dir``; return both paths."""
@@ -42,6 +53,13 @@ def _markdown(document: dict[str, Any]) -> str:
         if stage == "stage1":
             lines.append(f"- checked pairs: {body.get('checked')}/{body.get('pairs')}")
             lines.append(f"- passed: **{body.get('passed')}**")
+            for check in _STAGE1_CHECKS:
+                row = body.get(check)
+                if not isinstance(row, dict):
+                    continue
+                status = row.get("status") or ("passed" if row.get("passed") else "failed")
+                reason = row.get("reason")
+                lines.append(f"- `{check}`: {status}" + (f" ({reason})" if reason else ""))
             mismatch = body.get("mismatch")
             if mismatch:
                 lines.append(f"- first mismatch at query {mismatch['query_index']} document "

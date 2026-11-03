@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -202,6 +203,9 @@ def test_a_local_wheelhouse_path_is_recorded_absolute_and_a_url_is_left_alone() 
     assert resolved["constraints"].endswith("/wheels/c.txt")
     remote = SlurmRunner(wheelhouse="https://storage.example/wheels", container_runtime="pyxis").options.resolved()
     assert remote["wheelhouse"] == "https://storage.example/wheels"
+    # support-04: a PATHS value still at its default is recorded absolute too (``log_dir`` defaults to the
+    # relative ``logs/slurm``), so the runner re-created from the record finds the job's output from any cwd.
+    assert Path(SlurmOptions().resolved()["log_dir"]).is_absolute()
 
 
 @pytest.mark.parametrize("name", ["HF HOME", "A;echo INJECTED;B", "1X", "", "X-Y"])

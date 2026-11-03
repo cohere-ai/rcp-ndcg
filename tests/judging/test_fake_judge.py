@@ -16,9 +16,9 @@ from rcp_ndcg.testing import FakeJudge
 ABILITY = {"low": -2.0, "mid": 0.0, "high": 2.0}
 
 
-def _ask(judge: FakeJudge, stage: str, texts: list[str]) -> Completion:
+def _ask(judge: FakeJudge, stage: str, texts: list[str], query: str = "q") -> Completion:
     template = load_prompt(stage).template(with_num_documents=stage == "tournament")
-    prompt = template.resolve(query="q", documents=[Content.from_text(text) for text in texts])
+    prompt = template.resolve(query=query, documents=[Content.from_text(text) for text in texts])
     return asyncio.run(judge.complete(CompletionInput(user_prompt=prompt)))
 
 
@@ -33,8 +33,13 @@ def test_the_same_window_gets_the_same_answer_and_the_seed_changes_it() -> None:
 
 
 def test_tournament_answers_parse_and_rank_by_ability() -> None:
+    """A tournament window parses and ranks by ability whatever the query says: the answer shape is the
+    stage's, so a query naming a rubric criterion label (C1) still gets a ranking, not rubric verdicts."""
     completion = _ask(_judge(), "tournament", ["low", "high", "mid"])
     ranking, _ = parse_calibrated_listwise("q", completion, ["low", "high", "mid"])
+    assert ranking == ["high", "mid", "low"]
+    named = _ask(_judge(), "tournament", ["low", "high", "mid"], query="what is the C1 vertebra?")
+    ranking, _ = parse_calibrated_listwise("what is the C1 vertebra?", named, ["low", "high", "mid"])
     assert ranking == ["high", "mid", "low"]
 
 

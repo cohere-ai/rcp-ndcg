@@ -343,7 +343,12 @@ def _reference_stack():
 
 
 def main() -> int:
-    """The reference CLI: ``--mode render|score`` over the pairs file, the mode's JSON to ``--out``."""
+    """The reference CLI: ``--mode render|score|embed`` over the pairs file, the mode's JSON to ``--out``.
+
+    ``embed`` is a parser choice only so that the refusal is the reference's own sentence ("zerank is a
+    reranker ...", the branch below) rather than a missing-method traceback: the two modes this file
+    speaks are ``render`` and ``score`` (the module docstring's contract).
+    """
     parser = argparse.ArgumentParser(description="the zerank family reference (the paper's ZerankRerank)")
     parser.add_argument("--mode", required=True, choices=["render", "score", "embed"])
     parser.add_argument("--pairs", required=True)

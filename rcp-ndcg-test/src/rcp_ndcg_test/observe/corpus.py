@@ -412,7 +412,10 @@ def _comparable(
                 if key.startswith(prefix + "."):
                     remapped[f".results[index={result['index']}]" + key[len(prefix) :]] = value
         else:
-            leaves = remapped
+            # ONLY the result leaves are re-keyed: every other numeric leaf of the reply (``usage`` and any
+            # other top-level number) stays in the measurement -- replacing the whole dict dropped them from
+            # both the non-determinism summary and the equivalence consistency check.
+            leaves = {key: value for key, value in leaves.items() if not key.startswith(".results[")} | remapped
     try:
         vectors = derived_vectors(
             record, dim=dim, kept=kept_of(record) if kept_of is not None else None, outputs=outputs

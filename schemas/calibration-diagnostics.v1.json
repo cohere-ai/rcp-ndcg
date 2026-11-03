@@ -1,0 +1,415 @@
+{
+  "$defs": {
+    "AbilityPrior": {
+      "additionalProperties": false,
+      "description": "The ability prior of a rubric-only fit, on the reported scale (logits).",
+      "properties": {
+        "mean": {
+          "title": "Mean",
+          "type": "number"
+        },
+        "sd": {
+          "title": "Sd",
+          "type": "number"
+        }
+      },
+      "required": [
+        "mean",
+        "sd"
+      ],
+      "title": "AbilityPrior",
+      "type": "object"
+    },
+    "FamilyReliability": {
+      "additionalProperties": false,
+      "description": "One judgement family's reliability, overall and per criterion.",
+      "properties": {
+        "judge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Judge"
+        },
+        "overall": {
+          "$ref": "#/$defs/Reliability"
+        },
+        "per_criterion": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Reliability"
+          },
+          "title": "Per Criterion",
+          "type": "object"
+        }
+      },
+      "required": [
+        "judge",
+        "overall",
+        "per_criterion"
+      ],
+      "title": "FamilyReliability",
+      "type": "object"
+    },
+    "FitDiagnostics": {
+      "additionalProperties": false,
+      "description": "The fit's own summary.",
+      "properties": {
+        "ability_prior": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AbilityPrior"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ability prior on the reported scale (rubric-only mode); a document scored from its rubric answers against the calibration uses it, so the fit's own evidence scores to the fit's ability."
+        },
+        "frac_passing_any": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Share of documents that passed any criterion (rubric-only mode).",
+          "title": "Frac Passing Any"
+        },
+        "gamma_saturated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Every discrimination sits at its bound (rubric-only mode).",
+          "title": "Gamma Saturated"
+        },
+        "max_item_weight": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The largest criterion's share of the gain weight (rubric-only mode).",
+          "title": "Max Item Weight"
+        },
+        "mean_placements": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Placements per document (rubric-only mode).",
+          "title": "Mean Placements"
+        },
+        "n_documents": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Documents fitted (rubric-only mode).",
+          "title": "N Documents"
+        },
+        "n_observations": {
+          "description": "Rubric placements fitted.",
+          "title": "N Observations",
+          "type": "integer"
+        },
+        "n_queries": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Queries with a fitted scale map (tournament mode).",
+          "title": "N Queries"
+        },
+        "ordinal_only": {
+          "default": false,
+          "description": "The gains order documents but are not calibrated probabilities (rubric-only mode).",
+          "title": "Ordinal Only",
+          "type": "boolean"
+        },
+        "ordinal_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why, when ``ordinal_only``.",
+          "title": "Ordinal Reason"
+        },
+        "skipped_observations": {
+          "default": 0,
+          "description": "Rubric placements the fit skipped: rows whose document has no Bradley-Terry theta (tournament mode). Nothing is dropped silently: the skipped input is counted here.",
+          "title": "Skipped Observations",
+          "type": "integer"
+        },
+        "skipped_queries": {
+          "default": 0,
+          "description": "Queries whose observations the fit skipped: a query absent from ``bt_scores`` (tournament mode). Its rows count in ``skipped_observations`` too.",
+          "title": "Skipped Queries",
+          "type": "integer"
+        },
+        "tournament_converged": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the tournament fit stopped before the iteration cap with that gradient at or below the convergence threshold (tournament mode).",
+          "title": "Tournament Converged"
+        },
+        "tournament_iterations": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The optimiser's iteration count (tournament mode).",
+          "title": "Tournament Iterations"
+        },
+        "tournament_max_grad": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The largest absolute gradient over the per-query scale and offset parameters, in sum units (tournament mode): the float32 optimiser stops at its own resolution, not at the optimiser's ``1e-13`` tolerance.",
+          "title": "Tournament Max Grad"
+        }
+      },
+      "required": [
+        "n_observations"
+      ],
+      "title": "FitDiagnostics",
+      "type": "object"
+    },
+    "FitReliability": {
+      "additionalProperties": false,
+      "description": "A fit's reliability: overall and per criterion (every family pooled), and per family.",
+      "properties": {
+        "overall": {
+          "$ref": "#/$defs/Reliability"
+        },
+        "per_criterion": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Reliability"
+          },
+          "title": "Per Criterion",
+          "type": "object"
+        },
+        "per_family": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FamilyReliability"
+          },
+          "title": "Per Family",
+          "type": "object"
+        }
+      },
+      "required": [
+        "overall",
+        "per_criterion",
+        "per_family"
+      ],
+      "title": "FitReliability",
+      "type": "object"
+    },
+    "FitWarning": {
+      "additionalProperties": false,
+      "description": "A typed warning of the fit (a RcpNdcgWarning's code and message).",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "FitWarning",
+      "type": "object"
+    },
+    "Reliability": {
+      "additionalProperties": false,
+      "description": "Predicted against observed pass rates: the binned curve, the ECE and the Brier score (``None`` when empty).",
+      "properties": {
+        "bins": {
+          "items": {
+            "$ref": "#/$defs/ReliabilityBin"
+          },
+          "title": "Bins",
+          "type": "array"
+        },
+        "brier": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Brier"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "ece": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ece"
+        }
+      },
+      "required": [
+        "count",
+        "ece",
+        "brier",
+        "bins"
+      ],
+      "title": "Reliability",
+      "type": "object"
+    },
+    "ReliabilityBin": {
+      "additionalProperties": false,
+      "description": "One bin of a reliability curve: predictions in ``[lower, upper)``; the rates are ``None`` for an empty bin.",
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "lower": {
+          "title": "Lower",
+          "type": "number"
+        },
+        "mean_predicted": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Predicted"
+        },
+        "observed_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Observed Rate"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lower",
+        "upper",
+        "count",
+        "mean_predicted",
+        "observed_rate"
+      ],
+      "title": "ReliabilityBin",
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-diagnostics.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``diagnostics.json``: what a calibration's fit reports about itself\n(``rcp-ndcg.calibration-diagnostics.v1``).",
+  "properties": {
+    "fit": {
+      "$ref": "#/$defs/FitDiagnostics",
+      "description": "The estimator's own summary."
+    },
+    "reliability": {
+      "$ref": "#/$defs/FitReliability",
+      "description": "Predicted against observed verdicts."
+    },
+    "schema": {
+      "const": "rcp-ndcg.calibration-diagnostics.v1",
+      "default": "rcp-ndcg.calibration-diagnostics.v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "warnings": {
+      "description": "The fit's typed warnings (e.g. ``INVALID_WINDOWS``).",
+      "items": {
+        "$ref": "#/$defs/FitWarning"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "fit",
+    "reliability"
+  ],
+  "title": "Diagnostics",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-diagnostics.v1"
+}

@@ -191,6 +191,26 @@ class TestInsertDocuments:
     def test_the_fitted_windows_are_required(self, fitted: Calibration, world: TinyWorld) -> None:
         with pytest.raises(DataError, match="windows the calibration was fitted on are missing"):
             insert_documents(fitted, read_judgements(world.insertion))
+        # A strict subset of them: one fitted document's windows are left out, so the refit of what was handed
+        # back keeps no ability for it. The anchor check must refuse and name the document, never shrink to the
+        # documents the refit kept and report ok over those.
+        fitted_docs = set(fitted.theta_map()["q1"])
+        (window,) = select_opponents(fitted, "q1", world.inserted_doc, n=9)
+        dropped = window[1]  # an opponent of the new document: the insertion itself stays identified without it
+        everything = read_judgements(world.judgements, world.insertion).of_stage("tournament")
+        subset = everything.select(
+            lambda j: (
+                not (
+                    j.query_id == "q1"
+                    and any(p.doc_id == dropped for p in j.placements)
+                    and all(p.doc_id in fitted_docs for p in j.placements)
+                )
+            )
+        )
+        with pytest.raises(IdentityError, match="keeps no ability for") as caught:
+            insert_documents(fitted, subset)
+        assert dropped in caught.value.details["missing"]
+        assert set(caught.value.details["missing"]) <= fitted_docs
 
     def test_a_rubric_only_calibration_takes_scoring(self, judgements, world: TinyWorld) -> None:
         rubric_only = calibrate(judgements, mode="rubric_only")

@@ -27,6 +27,43 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **A resume cannot reuse another candidate system's judgements or report** (the run identity): the pool
+  selection (`candidates.source`, `.system`, `.rankings`) is part of the judging, evaluate and rerank step
+  identities, so flipping `candidates.system` on a `from: rankings` run re-runs those steps instead of reporting
+  the old system's numbers under the new name. Every archived run re-keys those steps once on its next resume.
+- **A pod's SIGTERM keeps a cancellation**: `_was_interrupted` classifies a failed step by the recorded exception
+  class, so a run cancelled from the submitting host is reported cancelled, not failed.
+- **An empty query is sent as given**: `empty_doc` governs documents only; the query side has no empty policy,
+  and the observation-corpus planner plans the empty-query row for every non-rerank recipe.
+- **A rerank request carries a media query's parts**: `rerank()` builds the example from `query.content`, so an
+  image query reaches the reranker and its checkpoint key as the parts `search()` sends.
+- **`Retry-After: 0` is treated as absent**: a 503/429 answering zero no longer sets a replica aside for zero
+  seconds and retries forever; the outage bound fires.
+- **`ndcg`/`dcg`/`ideal_dcg` refuse a negative gain**, while `score_query`'s qrel grades keep their documented
+  finite-only contract; `combine_digests` requires full digests; `count_gain` refuses a non-number with the
+  documented `ValueError`.
+- **The mteb writer and reader round-trip**: a null `gain` cell reads as absent (a partial calibrated pool
+  round-trips), and the writer refuses a theta with no gain instead of emitting a table its own reader rejects.
+- **A PDF's page cache follows its content**: the page directory is keyed on the source's digest, so a PDF
+  replaced in place re-renders instead of reusing the old pages.
+- **A third-party reader's local source is fingerprinted**; `examples()` refuses a qrels row for a document the
+  corpus lacks; the image-directory reader refuses a text-less or non-string query; BEIR qrels line numbers
+  count the header.
+- **The CLI refuses rather than ignores**: `doctor --endpoint` parses the URL up front and reports a usage error
+  (exit 2) instead of "this is a bug"; `--include-reference` with `--report` is refused in both `eval compare`
+  and `results export`; `data convert`'s hint names `--set`.
+- **The serve-command credential check uses the package's one redactor** (`looks_like_secret`), so `--password`,
+  `--basic-auth` and `--dsn` are refused and never recorded; `reference.entry` must be a bare file name;
+  `extra_args` may not repeat a flag the serve argv renders; a recipe with `status: unverified` cannot ship.
+- **Results export**: `judge_family` joins every judgement family, `load_text` reads UTF-8, the parquet sink
+  writes `created_at` in the same ISO form as JSONL, and the `candidates` subject identity is the evaluate
+  step's recorded digest.
+- **Observation tooling**: `GENERATOR_VERSION` 3, `CORPUS_PLAN_VERSION` 5 and `MEDIA_SET_VERSION` 4 (the
+  over-length ladder is one token over, the several-images row honours `max_images`, and the query-side empty
+  rule is document-only); the committed `rcp-ndcg-test/pairs/` corpus was regenerated.
+- **A fake judge refuses a custom prompt it cannot place** (a typed `ConfigError`) instead of guessing a shape
+  from the query.
+- **Schemas**: new `calibration-diagnostics.v1`; `calibration-summary.v1` gains the diagnostics' `schema` field.
 - **A committed corpus never names the private stage** (the repository subset): `subset_for_repository` wrote
   the full corpus's real `gs://` host into the subset's `index.json`, so two freshly recorded corpora failed
   `test_no_committed_corpus_names_private_infrastructure`. The host is now replaced by the

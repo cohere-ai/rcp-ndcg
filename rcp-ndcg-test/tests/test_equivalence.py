@@ -512,6 +512,13 @@ def test_a_non_finite_rerank_delta_fails_every_gate_row() -> None:
         assert summary["passed"] is False, scale
         assert all(row["passed"] is False for row in summary["gates"]), (scale, summary["gates"])
         assert math.isnan(summary["abs_delta_max"]), scale
+        # The p99 fraction is measured against the probability bound, which is a gate on the probability
+        # scale only: a cosine- or logit-scale reranker's report carries no fraction (it used to carry one
+        # measured against another scale's bound, with no gate and no referent).
+        if scale == "probability":
+            assert summary["within_p99_fraction"] is not None, scale
+        else:
+            assert summary["within_p99_fraction"] is None, scale
 
 
 def test_stage2_vector_over_cap_carve_out_when_declared(tmp_path: Path) -> None:
@@ -659,7 +666,14 @@ def test_the_public_run_orchestrator_writes_the_report(tmp_path: Path) -> None:
     report = out / "equivalence.json"
     markdown = out / "EQUIVALENCE.md"
     assert report.is_file() and markdown.is_file()
-    assert "Stage 1" in markdown.read_text(encoding="utf-8")
+    text = markdown.read_text(encoding="utf-8")
+    assert "Stage 1" in text
+    # The human-facing report names each stage-1 check with its status: this run has no reference python
+    # and no engine, so the checks it did not run are printed not_run -- a release reviewer must not read
+    # "passed: True" as "compared against the reference".
+    for check in ("render_check", "engine_tokenize_check"):
+        assert document["stage1"][check]["status"] == "not_run", document["stage1"][check]
+        assert f"`{check}`: not_run" in text, text
 
 
 def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> None:

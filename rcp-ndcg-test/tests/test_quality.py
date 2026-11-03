@@ -235,7 +235,11 @@ def test_the_stage_runs_every_task_gates_it_and_captures_the_golden_replay(tmp_p
     assert integrity_mismatches(golden) == [] and len(golden.records) == 1
     assert golden.records[0]["request"]["path"] == "/v1/embeddings"
     assert golden.records[0]["response"]["status"] == 200
-    assert (tmp_path / "q" / "QUALITY.md").read_text(encoding="utf-8").count("Verdict:") == 2
+    report = (tmp_path / "q" / "QUALITY.md").read_text(encoding="utf-8")
+    assert report.count("Verdict:") == 2
+    # The ungated metric's PASS says why: its reference column is absent by construction, never a silent gate.
+    ungated = report.split("## rcp_ndcg@10", 1)[1].split("## qrel_ndcg@10", 1)[0]
+    assert "not gated" in ungated and "mteb's retrieval view" in ungated, ungated
 
 
 def test_the_stage_fails_a_deviation_and_a_failing_command(tmp_path: Path) -> None:

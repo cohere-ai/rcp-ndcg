@@ -2384,6 +2384,9 @@ def _rerank_summary(
     worst = _worst(deltas)
     taus = [entry["kendall_tau"] for entry in per_query if entry["kendall_tau"] is not None]
     median_tau = float(np.median(taus)) if taus else None
+    # The p99 fraction is measured against the probability bound, which gates the probability scale only:
+    # on a cosine or logit scale it has no referent (and no gate), so it is REPORTED as None there rather
+    # than as a number measured against another scale's bound (the gate row exists on the probability scale).
     within_p99 = sum(1 for entry in per_document if entry["abs_delta"] <= gates.prob_p99_abs) / max(
         len(per_document), 1
     )
@@ -2443,7 +2446,7 @@ def _rerank_summary(
         "per_document": per_document,
         "per_query": per_query,
         "abs_delta_max": worst,
-        "within_p99_fraction": within_p99,
+        "within_p99_fraction": within_p99 if scale == "probability" else None,
         "kendall_tau_median": median_tau,
         "gates": gate_rows,
         "passed": bool(all(row["passed"] for row in gate_rows)),

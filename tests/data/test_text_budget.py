@@ -13,7 +13,9 @@ vendor`` and cuts nothing.
 
 from __future__ import annotations
 
+import copy
 import logging
+import pickle
 
 import pytest
 
@@ -1192,6 +1194,10 @@ class TestProcessingRecordIds:
         # A recorded cut is frozen (the class's own declared contract): the event cannot be rewritten.
         with pytest.raises(AttributeError, match="frozen"):
             row.kept_tokens = 0
+        # Frozen, and still copyable: the guard is the LAST slot, so a copy, a deepcopy and a pickle round trip
+        # restore every field before it is set (declared first, it refused the restore of its own record).
+        assert copy.copy(row) == row and copy.deepcopy(row) == row
+        assert pickle.loads(pickle.dumps(row)) == row
 
 
 def test_claim_budget_row_is_the_census_own_dedup() -> None:

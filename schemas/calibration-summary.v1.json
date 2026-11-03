@@ -217,7 +217,7 @@
     },
     "Diagnostics": {
       "additionalProperties": false,
-      "description": "What a calibration's fit reports about itself.",
+      "description": "``diagnostics.json``: what a calibration's fit reports about itself\n(``rcp-ndcg.calibration-diagnostics.v1``).",
       "properties": {
         "fit": {
           "$ref": "#/$defs/FitDiagnostics",
@@ -226,6 +226,12 @@
         "reliability": {
           "$ref": "#/$defs/FitReliability",
           "description": "Predicted against observed verdicts."
+        },
+        "schema": {
+          "const": "rcp-ndcg.calibration-diagnostics.v1",
+          "default": "rcp-ndcg.calibration-diagnostics.v1",
+          "title": "Schema",
+          "type": "string"
         },
         "warnings": {
           "description": "The fit's typed warnings (e.g. ``INVALID_WINDOWS``).",

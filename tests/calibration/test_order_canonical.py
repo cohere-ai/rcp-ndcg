@@ -3,7 +3,8 @@
 A planned window (``window_seq=None``: an insertion plan or a re-judge) carries no schedule position, so the
 refit's own order must not inherit the order the stores happened to hand the windows in. Two stores holding the
 same planned windows, read in either order, must give bit-identical Bradley-Terry abilities and standard errors,
-item parameters, calibrated abilities and fingerprint.
+item parameters, calibrated abilities and fingerprint. The rubric windows are the other half of the same claim:
+two stores holding them in opposite order must give one calibration, its reliability diagnostics included.
 """
 
 from __future__ import annotations
@@ -74,7 +75,9 @@ def _rubric_windows() -> JudgementSet:
     )
 
 
-def test_two_planned_windows_in_either_store_order_give_bit_identical_numbers(tmp_path: Path) -> None:
+def test_two_planned_windows_in_either_store_order_give_bit_identical_numbers(
+    tmp_path: Path, judgements: JudgementSet
+) -> None:
     scheduled, planned_a, planned_b = _windows()
     first = _store(tmp_path, "first", TOURNAMENT_FAMILY, [scheduled, planned_a])
     second = _store(tmp_path, "second", TOURNAMENT_FAMILY, [planned_b])
@@ -90,6 +93,23 @@ def test_two_planned_windows_in_either_store_order_give_bit_identical_numbers(tm
     assert forward.fingerprint == backward.fingerprint
     assert forward.theta_map() == backward.theta_map()
     assert forward.identity.judgements == backward.identity.judgements
+
+    # The rubric side of the same claim: the same rubric windows appended to two stores in opposite order give one
+    # rubric-only calibration. Without the projection's canonical order the observations reach the fit in store
+    # order and the reliability sums move in the last bits, which whole-calibration equality catches.
+    rubric_only = judgements.of_stage("rubric")
+    (family,) = rubric_only.families.values()
+    forward_store = _store(tmp_path, "rubric-forward", family, rubric_only.judgements)
+    backward_store = _store(tmp_path, "rubric-backward", family, list(reversed(rubric_only.judgements)))
+
+    forward_rubric = calibrate(read_judgements(forward_store))
+    backward_rubric = calibrate(read_judgements(backward_store))
+
+    assert forward_rubric.mode == "rubric_only"
+    assert forward_rubric.items == backward_rubric.items
+    assert forward_rubric.thetas == backward_rubric.thetas
+    assert forward_rubric.fingerprint == backward_rubric.fingerprint
+    assert forward_rubric == backward_rubric  # the diagnostics too: its ECE and Brier are sums of those rows
 
 
 def test_the_projection_alone_is_order_canonical() -> None:

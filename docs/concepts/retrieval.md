@@ -56,7 +56,7 @@ pooling wire (`api: vllm_pooling`) takes the engine's root -- vLLM registers `/p
 
 Its second stage, `rcp-ndcg retrieval rerank` and a run's `rerank` step, takes a reranker config instead: a
 cross-encoder's scores over `POST {base_url}/rerank`, a served engine or a hosted API. The wire and the client
-are documented as [`rcp_ndcg.inference`](../api/inference.md).
+are documented as [`rcp_ndcg.inference`](../reference/api/rcp_ndcg.inference.md).
 
 ## Indexes, checkpoints and identity
 
@@ -82,7 +82,9 @@ config field moving:
   model files). `search` recomputes that digest and refuses a payload the record does not describe, so a
   killed or concurrent build is never scored; a missing payload is a typed error, and `retrieve` treats it as
   a cache miss and rebuilds. A rebuild clears the payload of another build (a dense rebuild never leaves a
-  late-interaction build's `offsets.npy` beside its vectors).
+  late-interaction build's `offsets.npy` beside its vectors). A `search` refuses a query it cannot score
+  rather than score it 0: a dataset with no queries, an encoder that answered zero-width query vectors, or --
+  over a `bm25` index -- a query with no indexable term or no matching document.
 - **A local dataset's content, and an unhashed media item's bytes.** A local dataset source has no commit, so
   its files' content names it: a file hashes as its bytes (streamed, and cached for the process by size and
   ``mtime_ns``), a directory as its sorted listing of names, sizes and mtimes. An edited `rows.jsonl`
@@ -124,7 +126,8 @@ one prompt, so the summed per-document render (the frame repeats per passage) is
 ## On the wire
 
 All three roles send through one inference layer ([the inference layer](inference.md), with its role clients for
-the [embed](embeddings.md), [pooling](late-interaction.md) and [rerank](../api/inference.md) wires). Every request
+the [embed](embeddings.md), [pooling](late-interaction.md) and
+[rerank](../reference/api/rcp_ndcg.inference.md) wires). Every request
 is fitted through one text-budget mechanism ([text budgets for served roles](text-budgets.md)): over-budget
 content is cut client-side at token boundaries, the template's anchors are reserved and re-attached around the
 cut, and every cut is recorded -- never an engine-side truncation.

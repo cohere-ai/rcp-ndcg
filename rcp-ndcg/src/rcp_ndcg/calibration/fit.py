@@ -17,7 +17,7 @@ A :class:`Calibration` is immutable. It saves to, and loads from, one layout::
       items.json          item parameters, mode, judge severity, the families fitted (plus the criterion
                           labels and the fingerprint, for a person reading the file)
       queries.parquet     dataset, query_id, tau, alpha      (tournament mode)
-      thetas.parquet      dataset, query_id, doc_id, theta, theta_se, source (fit | scored | inserted)
+      thetas.parquet      dataset, query_id, doc_id, theta, theta_se, gain, source (fit | scored | inserted)
       coverage.json       queries per stage, uncalibrated queries, invalid windows per query (by stage, phase
                           and category), the flagged queries, degenerate documents
       diagnostics.json    the fit summary, its reliability (ECE, Brier) per family, and the warnings

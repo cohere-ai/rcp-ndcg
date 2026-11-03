@@ -91,9 +91,11 @@ family: 8192 against 10000) never sends such a prompt, and a recipe that carries
 may chunk freely and render no derived value. An explicit `--set serve.max_num_batched_tokens` below the
 floor is **warned about and replaced by** `serve.max_model_len`, naming the value asked for, the value
 rendered and the patch: the rule warns rather than refuses, but rendering the smaller value would
-reproduce the hang the rule exists to prevent. Carrying the patch on the seven affected recipes is deferred:
-v0.31.0 is the latest release and the five pooling bugfix PRs upstream (60978, 55226, 55192, 60035, 61062)
-are open, none merged, so no release carries the fix yet.
+reproduce the hang the rule exists to prevent. Carrying the patch on the nine affected recipes
+(`ctxl-rerank-v2-instruct-multilingual-2b`, the three `octen-embedding` sizes, the two
+`qwen3-vl-embedding` sizes, `zerank-2-reranker`, and the later `embeddinggemma-2` and
+`jina-embeddings-v5-text-nano` rows) is deferred: v0.31.0 is the latest release and the five pooling bugfix
+PRs upstream (60978, 55226, 55192, 60035, 61062) are open, none merged, so no release carries the fix yet.
 
 ## 3. Your own recipe file: a path instead of an id
 

@@ -70,3 +70,9 @@ def test_a_document_judged_under_two_rubric_sizes_is_refused() -> None:
     short = rubric_set({("ds", "q"): [[("a", None, [1, 1, 1])]]}, family=three)
     with pytest.raises(DataError, match="rubrics of different criteria"):
         count_gains([five, short])
+    # The same five criteria under another prompt: the sizes match, the rubrics do not. A Count gain is the share
+    # of passed criteria of one rubric, so the two families' windows are not one denominator -- today they pool.
+    other = family.model_copy(update={"prompt_hash": "f" * 64})
+    same_size = rubric_set({("ds", "q"): [[("a", None, [0, 0, 0, 0, 1])]]}, family=other)
+    with pytest.raises(DataError, match="judged under 2 rubrics"):
+        count_gains([five, same_size])

@@ -146,7 +146,8 @@ def _anchor(pairs: list[tuple[float, float]], items: ItemParams, max_gain_shift:
         max_abs_theta_shift=theta_shift,
         max_abs_gain_shift=gain_shift,
         max_gain_shift=max_gain_shift,
-        ok=gain_shift <= max_gain_shift,
+        # A check that compared no document reproduces nothing: it is not a pass.
+        ok=bool(pairs) and gain_shift <= max_gain_shift,
     )
 
 
@@ -305,9 +306,12 @@ def insert_documents(
         The :class:`Extension`, with the anchor report.
 
     Raises:
-        IdentityError: the judgements come from another tournament family, or the anchor check fails.
-        DataError: a rubric-only calibration, a query without its fitted windows, or a document
-            whose windows cannot identify it (too few opponents, disconnected, too little information).
+        IdentityError: the judgements come from another tournament family, the anchor check fails, or the refit
+            of the fitted windows keeps no ability for a document the calibration fitted (a subset of the
+            windows it was fitted on).
+        DataError: a rubric-only calibration, a query without its fitted windows, a document
+            whose windows cannot identify it (too few opponents, disconnected, too little information), or no
+            new document in the judgements at all.
     """
     from rcp_ndcg.calibration._projection import bradley_terry
 
@@ -350,8 +354,22 @@ def insert_documents(
                 hint="pass the judgements of the calibration's tournament store together with the new windows",
             )
         refit, _ = bradley_terry(old_windows, l2=l2)
+        refitted = refit.get(query, {})
+        # Every document the calibration fitted for this query must come back: the anchor check compares the
+        # calibration's abilities against the refit, and a document the refit dropped would silently leave the
+        # comparison, shrinking it to the survivors (a subset that happens to reproduce the calibration would
+        # pass). IdentityError, like the pre-fix anchor check that caught this input: exit 11 does not move.
+        missing = sorted(set(fitted[query]) - set(refitted))
+        if missing:
+            raise IdentityError(
+                f"query {query!r}: the refit of the windows the calibration was fitted on keeps no ability for "
+                f"{', '.join(missing)}",
+                hint="pass every window the calibration was fitted on for those documents (its tournament store), "
+                "not a subset of them",
+                details={"query": query, "missing": missing},
+            )
         params = calibration.queries[query]
-        pairs.extend((fitted[query][d], params.calibrated(refit[query][d])) for d in fitted[query] if d in refit[query])
+        pairs.extend((fitted[query][d], params.calibrated(refitted[d])) for d in fitted[query])
         existing = [c for c in comparisons if c[0] in fitted_docs and c[1] in fitted_docs]
         for doc_id in new:
             incident = [c for c in comparisons if doc_id in c[:2] and (c[1] if c[0] == doc_id else c[0]) in published]
@@ -402,16 +420,23 @@ def insert_documents(
                     )
                 )
             )
+    if not records:
+        # Nothing was added, so there is nothing to anchor: the pre-fix DataError (exit 12), raised before the
+        # check so an empty comparison is never reported as a failed one (an IdentityError, exit 11).
+        raise DataError("no new document in the tournament judgements", details={"skipped": sorted(skipped)})
     report = _anchor(pairs, calibration.items, max_gain_shift)
     if not report.ok:
+        shift = (
+            "the anchor check compared no document"
+            if not report.documents_checked
+            else f"max gain shift {report.max_abs_gain_shift:.3g} > {max_gain_shift} "
+            f"(max ability shift {report.max_abs_theta_shift:.3g})"
+        )
         raise IdentityError(
-            f"the fitted windows no longer reproduce the calibration: max gain shift {report.max_abs_gain_shift:.3g} "
-            f"> {max_gain_shift} (max ability shift {report.max_abs_theta_shift:.3g})",
+            f"the fitted windows no longer reproduce the calibration: {shift}",
             hint="insert against the calibration fitted on these windows",
             details={"anchor_report": report.model_dump()},
         )
-    if not records:
-        raise DataError("no new document in the tournament judgements", details={"skipped": sorted(skipped)})
     return Extension(
         calibration=calibration.fingerprint,
         records=tuple(records),

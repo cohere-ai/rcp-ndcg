@@ -39,6 +39,9 @@ _PLACEHOLDER = "http://engine"
 _TIMEOUT_S = 120.0
 _SNIPPET_TEXT = "What is the capital of France?"
 _SNIPPET_DOCUMENTS = ["Paris is the capital of France.", "Berlin is the capital of Germany."]
+#: The recorder's own task instruction: the body shape an ``instruction: field`` recipe's fixture must carry
+#: (the run's instruction text is the dataset's, which the recorder has none of).
+_SNIPPET_INSTRUCTION = "Given a query, rank the documents by how well each one answers it."
 
 _ROLE_ROUTES = {"embed": "/v1/embeddings", "multi_vector": "/pooling", "rerank": "/rerank"}
 
@@ -106,7 +109,7 @@ def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str
     """The role route through the product's role client: the captured exchange is the product's request."""
     client, capture = role_client(recipe, base_url)
     if recipe.role == "rerank":
-        client.rerank(_SNIPPET_TEXT, _SNIPPET_DOCUMENTS, instruction=_default_instruction(recipe))
+        client.rerank(_SNIPPET_TEXT, _SNIPPET_DOCUMENTS, instruction=_snippet_instruction(recipe))
     else:
         from rcp_ndcg_core.content import Content
 
@@ -120,11 +123,15 @@ def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str
         exchanges.append(exchange)
 
 
-def _default_instruction(recipe: Recipe) -> str | None:
-    """The recipe's default instruction, sent as the request field when the mode sends one."""
-    instruction = recipe.client.get("default_instruction")
-    mode = recipe.client.get("instruction")
-    return instruction if (mode == "field" and instruction) else None
+def _snippet_instruction(recipe: Recipe) -> str | None:
+    """The instruction the recorded snippet sends: the recorder's own text, when the recipe's mode is the
+    engine's ``instruction`` request field.
+
+    The instruction's text is the run's (a dataset's ``task_instruction``), never a recipe client field: no
+    endpoint model defines a ``default_instruction``, so the recorder supplies its own snippet's text and the
+    recorded fixture covers the field's body shape the ``instruction: field`` mode exists to send.
+    """
+    return _SNIPPET_INSTRUCTION if recipe.client.get("instruction") == "field" else None
 
 
 def _declared(recipe: Recipe) -> list[str]:

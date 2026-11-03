@@ -43,8 +43,10 @@ $$
 g(\tilde\theta_{ij}) = \frac{\sum_c \gamma_c\, \sigma\bigl(\gamma_c\,(\tilde\theta_{ij} - \beta_c)\bigr)}{\sum_c \gamma_c}.
 $$
 
-The gain rises smoothly from 0 to 1 as the ability grows. Weighting by $\gamma_c$ makes it rise fastest where
-the criteria measure most precisely. RCP-nDCG@k is nDCG@k with $G(d_i) = g(\tilde\theta_{ij})$.
+The gain is monotone in $\tilde\theta_{ij}$ and lies in $[0, 1]$: the sigmoid saturates in float, so the gain is
+exactly 0.0 or 1.0 where a criterion is certainly failed or certainly passed, never an open interval. It rises
+smoothly from 0 to 1 as the ability grows. Weighting by $\gamma_c$ makes it rise fastest where the criteria
+measure most precisely. RCP-nDCG@k is nDCG@k with $G(d_i) = g(\tilde\theta_{ij})$.
 
 The calibrated ability is a positive affine map of the query's tournament score,
 $\tilde\theta_{ij} = \tau_j \hat\theta^{\mathrm{BT}}_i + \alpha_j$ with $\tau_j > 0$ ([the calibration](calibration.md)).
@@ -92,10 +94,14 @@ print(count_gain([3, 3, 2, 1, 0], placements=3))  # Count-nDCG gain of a documen
 
 - `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)` takes either a score mapping, which it ranks under
   a [tie rule](protocols.md), or an ordered list of document ids. `ideal` gives the gains the ideal ranking is
-  built from; it defaults to all values of `gains`.
+  built from; it defaults to all values of `gains`. Scores, gains and ideal gains must be finite numbers, and a
+  gain must not be negative: a non-finite one is refused, not NaN'd through the sums, and a negative one is
+  refused rather than returned as an nDCG outside `[0, 1]`.
 - `gain(theta, items)` and `pass_probabilities(theta, items)` accept a scalar or an array of abilities. `items` is
   an `ItemParams`, a `Calibration`'s `items`, or any mapping with `gamma` and `beta`.
-- `count_gain(passes, placements)` and `qrel_gain(grade, scheme="linear")` give the other two gains.
+- `count_gain(passes, placements)` gives the Count-nDCG gain, and its pass counts are counts: a fractional or
+  out-of-range one is refused, not read as a share. `qrel_gain(grade, scheme="linear")` gives the qrel gain;
+  `scheme="exponential"` (`2**grade - 1`) refuses a grade whose `2**grade` would overflow, i.e. grades >= 1024.
 
 To score whole runs on a benchmark, with the paper's per-suite rules, use `rcp_ndcg.eval.evaluate`
-([scoring protocols](protocols.md) and [the API page](../api/evaluate.md)).
+([scoring protocols](protocols.md) and [the evaluation API](../reference/api/rcp_ndcg.eval.md)).

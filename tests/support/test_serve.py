@@ -196,19 +196,29 @@ class TestTheEngineCommand:
             ("vllm", "serve", "m", "--hf-token", "hf_x"),
             ("vllm", "serve", "m", "--token=abc"),
             ("vllm", "serve", "m", "--secret", "s"),
+            ("vllm", "serve", "m", "--password", "hunter2"),
+            ("vllm", "serve", "m", "--basic-auth", "user:pass"),
+            ("vllm", "serve", "m", "--dsn", "postgres://u:p@h/db"),
         ],
     )
     def test_a_credential_in_an_engine_command_is_refused(self, command: tuple[str, ...]) -> None:
         """security-6: the command is written verbatim into run.yaml, the manifest, every job script and every
-        mirror copy, so a key passed as a flag was recorded in clear, against ``recorded()``'s promise."""
+        mirror copy, so a key passed as a flag was recorded in clear, against ``recorded()``'s promise.
+
+        The refusal is the package's one credential predicate (``looks_like_secret``): ``--password``,
+        ``--basic-auth`` and ``--dsn`` are credentials by the same word-bounded rule as ``--api-key``, so a
+        narrower word list here recorded them in clear."""
         with pytest.raises(ValueError, match="credential"):
             ServeConfig(command=command)
 
     def test_a_tokenizer_flag_is_not_a_credential(self) -> None:
         """``--tokenizer`` and ``--tokenizer-mode`` name a model, not a key; refusing them would refuse valid
-        serving commands."""
+        serving commands. The carve-out is those two spellings, never every flag that starts with
+        ``tokenizer``: ``--tokenizer-api-key`` is a credential and is refused like ``--api-key``."""
         engine = ServeConfig(command=("vllm", "serve", "m", "--tokenizer", "org/tok", "--tokenizer-mode", "auto"))
         assert engine.command[-2:] == ("--tokenizer-mode", "auto")
+        with pytest.raises(ValueError, match="credential"):
+            ServeConfig(command=("vllm", "serve", "m", "--tokenizer-api-key", "sk-x"))
 
     def test_a_token_budget_flag_is_not_a_credential(self) -> None:
         """``--max-num-batched-tokens`` is the flag the repository itself maps ``serve.max_num_batched_tokens``

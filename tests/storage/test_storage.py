@@ -103,7 +103,10 @@ class TestReadWrite:
 
     def test_load_text_decodes_a_prompt_file_as_utf8(self, tmp_path: Path) -> None:
         """A user prompt file is read as UTF-8 like a shipped one, whatever the host locale: ``load_text``
-        used to open it with the locale's encoding and refuse ``é`` under ``LC_ALL=C``."""
+        used to open it with the locale's encoding and refuse ``é`` under ``LC_ALL=C``.
+
+        Under ``PYTHONUTF8=1`` (UTF-8 mode, which also sets ``LC_ALL=C`` aside) ``open()`` ignores the locale
+        anyway, so no locale-based case can tell the two behaviours apart: the test skips itself there."""
         import locale
 
         from rcp_ndcg.storage.io import load_text

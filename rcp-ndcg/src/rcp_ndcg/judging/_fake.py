@@ -19,6 +19,12 @@ Both the route and :class:`FakeJudge` answer from one hidden ability per documen
 * a **tournament** prompt: each document scores ``ability + 0.5 * (2u - 1)``,
   clipped to [-5, 5], and the ranking follows the scores.
 
+The shape is the *stage's*, read from the prompt's template: the query is rendered into the prompt, so a
+query naming a criterion label (``C1``, ``C7``) is no criterion and changes no answer's shape
+(:func:`_template_labels`). A custom prompt (a path or URI, not one of the shipped ones) has no template the
+fake can read, so a prompt whose text names criterion labels is refused rather than answered in a guessed
+shape: use a shipped prompt with the fake judge, or a real judge for a custom prompt.
+
 Every draw is a hash of ``(seed, window, document, criterion)``: the same
 window gets the same answer on every machine, and a document in two windows
 gets independent draws, like two placements of a real judge.
@@ -29,11 +35,13 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
+from functools import lru_cache
 from typing import Any
 
 import httpx
 from rcp_ndcg_core.gain import sigmoid
 
+from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.fake import (
     fake_uniform as _uniform,
 )
@@ -44,7 +52,7 @@ from rcp_ndcg.inference.fake import (
     register_fake_route,
 )
 from rcp_ndcg.judging.client import FAKE_URL_SCHEME, JudgeClient, JudgeConfig
-from rcp_ndcg.judging.prompts import criterion_labels_in
+from rcp_ndcg.judging.prompts import _CRITERION, PROMPT_FILES, criterion_labels_in, load_prompt
 from rcp_ndcg.judging.tokens import approx_tokens
 
 #: Criterion difficulties (logits) of the fake rubric, C1 easiest to C5 hardest.
@@ -59,6 +67,9 @@ TOURNAMENT_NOISE = 0.5
 _DOC_BLOCK = re.compile(r'<doc id="doc_(\d+)">\n(.*?)\n</doc>', re.S)
 _DOCUMENTS = re.compile(r"<documents>.*?</documents>", re.S)
 
+#: The template's slots, which a rendered prompt no longer names (the fake recovers the template from the render).
+_SLOTS = ("{query_placeholder}", "{passages_placeholder}", "{num_documents_placeholder}")
+
 
 def _difficulties(num_criteria: int) -> tuple[float, ...]:
     """The rubric's criterion difficulties, spread evenly for a prompt asking for another number."""
@@ -69,17 +80,74 @@ def _difficulties(num_criteria: int) -> tuple[float, ...]:
     return tuple(low + step * k for k in range(num_criteria))
 
 
+@lru_cache(maxsize=1)
+def _shipped_templates() -> tuple[tuple[re.Pattern[str], tuple[str, ...]], ...]:
+    """Every shipped prompt as ``(the pattern its render matches, the criteria it asks for)``.
+
+    Each slot is a wildcard, so the pattern is the template's own text with the query, the documents and the
+    window size rendered in -- whatever the query says.
+    """
+    templates: list[tuple[re.Pattern[str], tuple[str, ...]]] = []
+    for name in PROMPT_FILES:
+        text = load_prompt(name).text
+        pattern = re.escape(text)
+        for slot in _SLOTS:
+            pattern = pattern.replace(re.escape(slot), "(?s:.*)")
+        templates.append((re.compile(pattern), criterion_labels_in(text)))
+    return tuple(templates)
+
+
+def _template_labels(prompt: str) -> tuple[str, ...]:
+    """The criteria the prompt's *template* asks for: the rendered prompt with the query's span left out.
+
+    The answer shape is the stage's, never the query's. A shipped prompt puts the query in one slot, so a
+    render of it matches the template's own text with the query -- and the documents -- rendered in, and the
+    query's span is the slot's, not the text's: a query naming ``C1`` (a tournament's) or ``C7`` (a
+    rubric's) is no criterion.
+
+    A prompt that is not a shipped render (a custom prompt) has no template the fake can read, so its own
+    criteria cannot be told from the query's: it is **refused** when its text names any criterion label,
+    rather than answered in a guessed shape -- the other stage's shape is an answer the parser refuses, and
+    the pass then records the window invalid and goes on, dropping the query silently. A prompt naming no
+    criterion label asks for a ranking, which no query can change (a query naming a label is refused here).
+    The labels are read with the one label rule's own pattern (:data:`_CRITERION`): the ladder derivation
+    returns ``()`` for a broken ladder, which is exactly the case that must not be guessed.
+
+    Raises:
+        ConfigError: the prompt is no shipped render and names criterion labels, so the fake cannot infer its
+            stage (use a shipped prompt with the fake judge, or a real judge for a custom prompt).
+    """
+    for pattern, labels in _shipped_templates():
+        if pattern.fullmatch(prompt):
+            return labels
+    named = sorted(
+        {f"C{index}" for index in _CRITERION.findall(_DOCUMENTS.sub("", prompt))}, key=lambda label: int(label[1:])
+    )
+    if named:
+        raise ConfigError(
+            "the fake judge cannot infer a custom prompt's stage: the prompt's text names criterion labels "
+            f"({', '.join(named)}), and without a shipped template the fake cannot tell the prompt's criteria "
+            "from the query's. A guessed shape would drop every window of the query.",
+            hint="use a shipped prompt (tournament/rubric) with the fake judge, or a real judge for a custom prompt",
+            details={"criteria": named},
+        )
+    return ()
+
+
 def _answer_text(seed: int, ability: Callable[[str], float], severity: float, prompt: str) -> str:
     """The fake judge's answer for one rendered prompt: rubric verdicts or a tournament ranking, as JSON.
 
+    The shape is the stage's (:func:`_template_labels`), not the query's words.
+
     Raises:
         ValueError: the prompt carries no ``<doc id="doc_N">`` blocks, so there is nothing to judge.
+        ConfigError: the prompt is a custom one that names criterion labels: the fake cannot infer its stage.
     """
     docs = {int(index): body for index, body in _DOC_BLOCK.findall(prompt)}
     if not docs:
         raise ValueError("FakeJudge found no <doc id=...> blocks in the prompt")
     window = "|".join(docs[index] for index in sorted(docs))
-    labels = criterion_labels_in(_DOCUMENTS.sub("", prompt))
+    labels = _template_labels(prompt)
     if labels:
         payload: dict[str, Any] = {
             f"doc_{index}": {

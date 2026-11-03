@@ -197,6 +197,11 @@ class TestFitCalibrationJudges:
             )
         with pytest.raises(ValueError, match="at least two judges"):
             fit_calibration({"q1": self.ROWS[::2]}, mode="tournament", bt_scores=self.BT, judges="pooled")
+        # Two tagged judges, but judge_b's only row is on a document the tournament never scored: it is skipped,
+        # so the fit would carry one judge and an empty severity map. Pooling is not silently a single judge.
+        orphaned = [*self.ROWS[::2], ("d2", {"C1": 1, "C2": 1, "C3": 1, "C4": 1, "C5": 1}, "judge_b")]
+        with pytest.raises(ValueError, match="judge_b has no row"):
+            fit_calibration({"q1": orphaned}, mode="tournament", bt_scores=self.BT, judges="pooled")
 
     def test_pooled_judges_need_the_tournament(self) -> None:
         with pytest.raises(ValueError, match="pooled judges need the tournament fit"):

@@ -163,7 +163,9 @@ def test_a_variant_id_declared_by_two_families_is_refused_by_resolve_recipe(tmp_
 
 
 def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) -> None:
-    """client.max_tokens must fit the engine's max_model_len: the engine would 400 the rendered prompt."""
+    """client.max_tokens (and the judge's context_tokens) must fit the engine's max_model_len: the engine
+    would 400 the rendered prompt.  The refusal names ``serve.max_model_len``, the path the operator can find
+    (``engine.max_model_len`` is a field no recipe has)."""
     import shutil
 
     import yaml
@@ -176,8 +178,17 @@ def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) 
     data["client"]["max_tokens"] = 4096
     data["serve"]["max_model_len"] = 512
     (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    with pytest.raises(RecipeError, match="max_model_len"):
+    with pytest.raises(RecipeError, match=r"serve\.max_model_len"):
         load_recipe(copied)
+
+    judge = tmp_path / "fixture-judge"
+    judge.mkdir()
+    shutil.copy(recipe_dirs_path() / "fixture-judge" / "family.yaml", judge / "family.yaml")
+    data = yaml.safe_load((judge / "family.yaml").read_text(encoding="utf-8"))
+    data["serve"]["max_model_len"] = 2048  # below the judge's client.context_tokens (4096), above its cap
+    (judge / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match=r"serve\.max_model_len"):
+        load_recipe(judge)
 
 
 def test_reference_block_declares_a_required_device(tmp_path: Path) -> None:

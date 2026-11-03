@@ -207,8 +207,9 @@ the judge is one of its roles.
   its own.
 - **A request that keeps failing on a replica that answers other requests** is that request's failure: it is
   refused and recorded like any refused window. A 408 or 429 never is: it is the endpoint's load, so it stays on
-  the outage path (the replica is set aside for the server's `Retry-After` when it gives one, and the request
-  parks and retries).
+  the outage path (the replica is set aside for the server's `Retry-After` when it gives a usable one -- a
+  finite, positive number of seconds; a zero or unparseable header is no wait, so the backoff applies -- and the
+  request parks and retries).
 
 ## How the client behaves
 
