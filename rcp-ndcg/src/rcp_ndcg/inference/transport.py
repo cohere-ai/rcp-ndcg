@@ -196,9 +196,11 @@ def _retry_after(headers: Mapping[str, str]) -> float | None:
     """The server's ``Retry-After`` in seconds, when it gives one as a usable number (the retrieval
     clients' policy).
 
-    Only a finite, non-negative number is honoured: a garbage header (or one a proxy echoes wrongly) is
+    Only a finite, positive number is honoured: a garbage header (or one a proxy echoes wrongly) is
     never a sleep -- ``nan`` would never return and wedge the request inside the retry loop beyond every
-    timeout, and a negative one would hammer a rate-limited server with instant retries. Anything else
+    timeout, and a negative or zero one would hammer a rate-limited server with instant retries: a zero is
+    no wait at all, so the set-aside window it becomes is zero too, the replica is live again on the very
+    next pick, and the request loops without ever parking -- ``wait_on_outage_s`` never fires. Anything else
     falls through to the doubling backoff, and the value is clamped to the retry cap.
     """
     raw = headers.get("retry-after")
@@ -208,7 +210,7 @@ def _retry_after(headers: Mapping[str, str]) -> float | None:
         value = float(raw)
     except (TypeError, ValueError):
         return None
-    if not math.isfinite(value) or value < 0:
+    if not math.isfinite(value) or value <= 0:
         return None
     return min(value, Transport.RETRY_MAX_BACKOFF_S)
 

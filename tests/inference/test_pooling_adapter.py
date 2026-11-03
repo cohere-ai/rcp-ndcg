@@ -263,10 +263,18 @@ class TestDecoding:
                 request([Content.from_text("a"), Content.from_text("b")], dim=2, outputs="per_chunk"), [reply]
             )
 
-    def test_an_inhomogeneous_float_list_is_a_typed_error(self) -> None:
-        """A jagged float list cannot be an array: a typed refusal, never a raw ValueError."""
+    @pytest.mark.parametrize(
+        "data",
+        [
+            pytest.param([[1.0, 0.0], [1.0]], id="a_jagged_float_list"),
+            pytest.param([1.0, {"x": 1}], id="a_json_object_in_a_float_frame"),
+        ],
+    )
+    def test_an_inhomogeneous_float_list_is_a_typed_error(self, data: list[Any]) -> None:
+        """A frame numpy cannot read as floats cannot be an array: a typed refusal, never a raw ValueError
+        -- or a raw TypeError, which is what a JSON object in the frame raises instead."""
         adapter = VllmPooling()
-        reply = Reply(200, {"data": [{"index": 0, "data": [[1.0, 0.0], [1.0]]}]}, {})
+        reply = Reply(200, {"data": [{"index": 0, "data": data}]}, {})
         with pytest.raises(ProviderError, match="does not decode"):
             adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
 
@@ -282,13 +290,21 @@ class TestDecoding:
                 [Reply(200, b"\x00" * 8, {"metadata": metadata})],
             )
 
-    @pytest.mark.parametrize("bad", ["7", {"a": 1}, None])
-    def test_a_malformed_usage_is_refused_not_coerced(self, bad: object) -> None:
+    @pytest.mark.parametrize(
+        "usage",
+        [
+            pytest.param({"prompt_tokens": "7"}, id="a_string_count"),
+            pytest.param({"prompt_tokens": {"a": 1}}, id="a_dict_count"),
+            pytest.param({"prompt_tokens": None}, id="a_null_count"),
+            pytest.param(None, id="a_json_null_usage"),
+        ],
+    )
+    def test_a_malformed_usage_is_refused_not_coerced(self, usage: object) -> None:
         """The usage cross-check is load-bearing for the declared dim: a usage the reply cannot honestly
-        report is a malformed reply, never a default that skips the check."""
+        report (a string, a dict, a null) is a malformed reply, never a default that skips the check."""
         adapter = VllmPooling()
         frame = b64(np.ones((2, 2), dtype=np.float16))
-        reply = Reply(200, {"data": [{"index": 0, "data": frame}], "usage": {"prompt_tokens": bad}}, {})
+        reply = Reply(200, {"data": [{"index": 0, "data": frame}], "usage": usage}, {})
         with pytest.raises(ProviderError, match="usage"):
             adapter.interpret(request([Content.from_text("a")], dim=2), [reply])
 

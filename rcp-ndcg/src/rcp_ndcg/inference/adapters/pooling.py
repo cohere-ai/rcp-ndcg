@@ -84,6 +84,11 @@ _OVERLENGTH_PHRASES: Final = (
 
 _MAX_MESSAGE_CHARS: Final = 300
 
+_ABSENT: Final = object()
+"""A reply that carries no ``usage`` field at all, which a JSON ``null`` must not be mistaken for: both
+decode paths hand :meth:`VllmPooling._check_usage` ``body.get("usage", _ABSENT)``, so an absent key is
+skippable (the bytes framing may report none) and a null is a malformed reply."""
+
 
 def _error_message(reply: Reply) -> str:
     """The server's own words for a refused request, shortened for an exception message."""
@@ -387,7 +392,7 @@ class VllmPooling(AdapterBase):
                 "refusing to return misaligned vectors"
             )
         arrays = [self._decode_item(item.get("data"), embed_dtype=embed_dtype, dim=dim) for item in items]
-        self._check_usage(body.get("usage"), arrays, outputs=outputs, kept=kept)
+        self._check_usage(body.get("usage", _ABSENT), arrays, outputs=outputs, kept=kept)
         return arrays
 
     def _decode_item(self, data: Any, *, embed_dtype: str, dim: int | None) -> np.ndarray:
@@ -435,7 +440,9 @@ class VllmPooling(AdapterBase):
                 return np.zeros((0, dim), dtype=np.float32)
             try:
                 array = np.asarray(data, dtype=np.float32)
-            except ValueError as exc:
+            except (TypeError, ValueError) as exc:
+                # ValueError: a jagged list. TypeError: a value that is not a number at all (a JSON object in
+                # the frame), which numpy refuses with TypeError -- as ``embeddings._one_vector`` catches too.
                 raise ProviderError(f"the /pooling float frame does not decode as an array: {exc}") from exc
             return array
         if isinstance(data, str):
@@ -532,7 +539,7 @@ class VllmPooling(AdapterBase):
                 )
             frame = np.frombuffer(reply.body[start:end], dtype=frame_dtype).reshape(shape)
             arrays.append(self._checked_item(frame, dim=dim))
-        self._check_usage(metadata.get("usage"), arrays, outputs=outputs, kept=kept)
+        self._check_usage(metadata.get("usage", _ABSENT), arrays, outputs=outputs, kept=kept)
         return arrays
 
     def _check_usage(
@@ -544,7 +551,9 @@ class VllmPooling(AdapterBase):
         A ``token_embed`` answer has one vector per prompt token, so this catches a mistyped ``dim`` (every
         vector would be silently mis-shaped) and a server that answered a pooled task after all. A usage the
         reply cannot honestly report (a string, a dict, a null) is a malformed reply, never a reason to skip
-        the check. A recipe that declares ``outputs: per_chunk`` (2g) opts out: several outputs per input
+        the check -- a JSON ``null`` included: the decode paths hand in ``body.get("usage", _ABSENT)``, so
+        only a field the reply omits altogether (``_ABSENT``, which the bytes framing may honestly do) skips
+        it. A recipe that declares ``outputs: per_chunk`` (2g) opts out: several outputs per input
         (one vector per chunk), so the token count cross-check cannot apply -- and the engine-side rule is
         refused beside it at the config (a per-chunk layout has no per-token kept count).
 
@@ -556,7 +565,7 @@ class VllmPooling(AdapterBase):
         """
         if outputs == "per_chunk":
             return
-        if usage is not None:
+        if usage is not _ABSENT:
             if not isinstance(usage, dict):
                 raise ProviderError(
                     f"the /pooling reply reports a malformed usage ({usage!r}); the token counts cannot be "
@@ -595,8 +604,8 @@ class VllmPooling(AdapterBase):
                         "the rule itself",
                     )
             return
-        if usage is None:
-            return  # the bytes framing may report none at all: there is nothing to check against
+        if usage is _ABSENT:
+            return  # the reply omits the field altogether (the bytes framing may): nothing to check against
         reported = usage["prompt_tokens"]
         decoded = _decoded_tokens(arrays)
         if decoded != reported:

@@ -832,10 +832,11 @@ class TestCloseInsideTheBridgeCall:
 
 class TestRetryAfterGarbage:
     """A server ``Retry-After`` the transport cannot honestly sleep on falls back to the doubling backoff:
-    ``nan`` would never return and wedge the request inside the retry loop, and a negative one would hammer
-    a rate-limited server with instant retries."""
+    ``nan`` would never return and wedge the request inside the retry loop, a negative one would hammer a
+    rate-limited server with instant retries, and a zero one is no wait at all -- it would set the replica
+    aside for zero seconds, so the request retries forever and ``wait_on_outage_s`` never fires."""
 
-    @pytest.mark.parametrize("header", ["nan", "-5", "1e999", "soon", ""])
+    @pytest.mark.parametrize("header", ["nan", "-5", "1e999", "soon", "", "0"])
     def test_garbage_never_becomes_a_sleep(self, monkeypatch: pytest.MonkeyPatch, header: str) -> None:
         sleeps: list[float] = []
 
