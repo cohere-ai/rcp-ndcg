@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_test.engines import Exchange, behaviour_diff, exchanges_of
-from tests._engines import corpus_of, emulator_for, load_recipe
+from tests._engines import corpus_of, emulator_for, load_recipe, observation_corpus
 
 from rcp_ndcg.errors import ConfigError
 
@@ -94,6 +94,32 @@ def test_the_registry_names_only_the_requested_engine_versions_fingerprints() ->
         with pytest.raises(ConfigError) as error:
             registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
         assert "9999" not in str(error.value), error.value
+    finally:
+        registry.clear()
+
+
+def test_a_corpus_recorded_on_another_engine_version_is_refused_by_its_host(tmp_path: Path) -> None:
+    """The emulator gate (W3a): a corpus recorded at vllm 0.31.0 is refused under a
+    ``fake://vllm-0.33.0/<recipe>`` host -- never replayed -- and the refusal names the version the
+    recipe is registered for, so a host flip without a re-record says what to re-record."""
+    import httpx
+    from rcp_ndcg_test.engines import EngineFacts, StringsPrompts, VllmEmulator, registry, transport_for
+
+    fingerprint = "a" * 64
+    corpus = observation_corpus(tmp_path / "corpus", [], recipe_id="a-recipe", fingerprint=fingerprint)
+    emulator = VllmEmulator.from_corpus(
+        corpus, StringsPrompts(), None, EngineFacts("vllm", "0.31.0", "a-recipe", "fixtures/Tiny", 512)
+    )
+    registry.clear()
+    registry.register(emulator)
+    try:
+        with pytest.raises(ConfigError) as error:
+            registry.resolve("vllm", "0.33.0", fingerprint, "a-recipe")
+        assert "0.31.0" in str(error.value) and "0.33.0" in str(error.value), error.value
+        with pytest.raises(ConfigError):
+            transport_for(f"fake://vllm-0.33.0/a-recipe?fingerprint={fingerprint}")
+        matching = transport_for(f"fake://vllm-0.31.0/a-recipe?fingerprint={fingerprint}")
+        assert matching.handle_request(httpx.Request("GET", "http://engine/health")).status_code == 200
     finally:
         registry.clear()
 

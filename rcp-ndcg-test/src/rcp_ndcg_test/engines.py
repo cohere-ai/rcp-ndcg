@@ -1928,8 +1928,10 @@ class EmulatorRegistry:
         """The emulator keyed (engine, version, fingerprint, recipe).
 
         Raises:
-            ConfigError: nothing registered (the message names what was looked up), or the only
-                candidates were verified against another fingerprint (named).
+            ConfigError: nothing registered (the message names what was looked up and, when the recipe is
+                registered under another engine version, that version: a corpus recorded on another
+                engine version is refused, never replayed), or the only candidates were verified against
+                another fingerprint (named).
         """
         self.load_entry_points()
         key = (engine_name, engine_version, recipe_id, fingerprint)
@@ -1937,9 +1939,24 @@ class EmulatorRegistry:
         if emulator is not None:
             return emulator
         registered = self.fingerprints(engine_name, engine_version, recipe_id)
+        elsewhere = sorted(
+            {
+                registered_key[1]
+                for registered_key in self._by_key
+                if registered_key[0] == engine_name
+                and registered_key[2] == recipe_id
+                and registered_key[1] != engine_version
+            }
+        )
         raise ConfigError(
             f"no emulator registered for ({engine_name}, {engine_version}, {recipe_id}, {fingerprint[:12]}...)"
             + (f"; registered fingerprints for that engine version and recipe: {registered}" if registered else "")
+            + (
+                f"; the recipe is registered for {engine_name} {', '.join(elsewhere)}, not {engine_version}: "
+                "a corpus recorded on another engine version is refused, never replayed"
+                if elsewhere and not registered
+                else ""
+            )
         )
 
     def fingerprints(self, engine_name: str, engine_version: str, recipe_id: str) -> list[str]:
