@@ -47,9 +47,9 @@ torch index and PyPI only.
 ## The three environments on the node
 
 A GPU job runs one container image: `submit.sh` groups a bootstrap wave's recipe list by each variant's
-`engine.image` and submits one job per image — the stock `vllm/vllm-openai:v0.33.0`
-for most recipes, the digest-pinned nightly for `embeddinggemma-2` — with three environments that are never
-mixed. `bootstrap.sh` builds them from a staged RC:
+`engine.image` and submits one job per image — the stock `vllm/vllm-openai:v0.33.0` for every recipe, the
+checkpoint `embeddinggemma-2` included (it carries its model plugin, not another image) — with three
+environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
 
 - **engine** — the image's own Python, which runs `vllm serve`. Untouched, except recipe plugin wheels
   installed with `--no-deps`: a spec that names a staged file installs from the staged tree; a name installs

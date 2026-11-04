@@ -1,9 +1,13 @@
 # Serve a retrieval model
 
 The shipped retrieval models -- 34 of them (one served recipe id per checkpoint; a family's sizes share a
-directory) -- run on the stock `vllm/vllm-openai`
-image, except `embeddinggemma-2`, which pins a vLLM nightly by digest (the released image
-lacks the architecture). This walk-through serves one, points `rcp-ndcg` at it and scores what it retrieves. The rules of the
+directory) -- run on the stock `vllm/vllm-openai` image their recipe pins
+(`vllm/vllm-openai:v0.33.0` for every one of them), and a checkpoint the image cannot serve as shipped
+carries its model plugin instead (`embeddinggemma-2`). None of them is `verified` on that image yet: the
+pin moved every recipe to `status: unverified`, and a recipe returns to `verified` only from a wave that
+re-recorded its corpus on the pinned image (0 verified today; the [GPU validation
+ledger](../reference/gpu-validation.md) states the obligation and records every row). This walk-through
+serves one, points `rcp-ndcg` at it and scores what it retrieves. The rules of the
 recipes are in [recipes and serving models](../reference/recipes.md); hosted APIs (Cohere, Voyage, Gemini)
 need none of this -- [embedding endpoints](../concepts/embeddings.md) covers them.
 
@@ -84,15 +88,19 @@ the GPU waves serve the recipes as shipped, with no overrides. `--port` (the run
 reaches `serve.max_model_len` exactly: the engine's own default chunk depends on the GPU class (2048 on A100
 and GPUs under 70 GiB, below these recipes' budgets), so an exactly-full prompt would be split into more than
 one prefill step. The recipe renders the safe value instead of relying on that default -- nothing is left to
-the engine, and the at-budget prompt is one prefill step. A recipe whose client budget stays below
-`serve.max_model_len` (the `qwen3-reranker` family: 8192 against 10000) never sends such a prompt and renders
-no derived value. An explicit `--set serve.max_num_batched_tokens` below the floor is **warned about and
-replaced by** `serve.max_model_len`, naming the value asked for and the value rendered: the rule warns rather
-than refuses, but rendering the smaller value would split the prompt the floor exists to keep whole. The floor
-fires for the sixteen affected recipes: every pooling recipe whose largest client budget reaches
-`serve.max_model_len` (`ctxl-rerank-v2-instruct-multilingual-2b`, `embeddinggemma-2`, the three
-`harrier-oss-v1` sizes, the two `jina-embeddings-v5-text` sizes, the three `octen-embedding` sizes, the two
-`pplx-embed-v1` sizes, the two `qwen3-vl-embedding` sizes, `zembed-1-embedding` and `zerank-2-reranker`).
+the engine, and the at-budget prompt is one prefill step. No recipe opts out of the floor: the one patch that
+declared a recipe safe without it (`pooling-full-context`, a backport of the scheduler fix a vLLM 0.31 engine
+needed) is deleted, because the pinned engine's own scheduler keeps the whole context of a pooling prefill
+(vllm-project/vllm#48039, vLLM v0.32.0), so the floor is the declared shape of the deployment and no longer a
+workaround. A recipe whose client budget stays below `serve.max_model_len` (the `qwen3-reranker` family:
+8192 against 10000) never sends such a prompt and renders no derived value. An explicit `--set
+serve.max_num_batched_tokens` below the floor is **warned about and replaced by** `serve.max_model_len`,
+naming the value asked for and the value rendered: the rule warns rather than refuses, but rendering the
+smaller value would split the prompt the floor exists to keep whole. The floor fires for the sixteen affected recipes:
+every pooling recipe whose largest client budget reaches `serve.max_model_len`
+(`ctxl-rerank-v2-instruct-multilingual-2b`, `embeddinggemma-2`, the three `harrier-oss-v1` sizes, the two
+`jina-embeddings-v5-text` sizes, the three `octen-embedding` sizes, the two `pplx-embed-v1` sizes, the two
+`qwen3-vl-embedding` sizes, `zembed-1-embedding` and `zerank-2-reranker`).
 
 ## 3. Your own recipe file: a path instead of an id
 

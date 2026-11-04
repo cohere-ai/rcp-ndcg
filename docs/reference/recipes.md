@@ -29,6 +29,15 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 24 families: 16 retrieval families (embed, multi_vector and rerank) and 8 judge families. The README's table
 names every family's variants with their model, role, input, Matryoshka head, plugin, reference and status.
 
+Every family pins the stock engine image in its `engine` block (`vllm/vllm-openai:v0.33.0`, `min_version`
+`0.33.0`), and every variant's `status` reads `unverified` today: the engine image is one of the behaviour
+fingerprint's inputs, so no recipe's recorded evidence counts for the pinned image until a wave re-records
+its corpus there (the [GPU validation ledger](../reference/gpu-validation.md) states the obligation). A
+`status` block keeps the `image`, `date` and `report` of the wave it names, and `verified` is only ever
+written beside the image the recipe pins. The two `topk-embed-v1` variants are the catalog's recorded gate
+failure (the stage-2 per-token cosine floor): their state returns to `failed` only from a wave that re-runs
+that gate, and they ship only when the owner's explicit disposition list names them.
+
 A judge family's `client` block is `rcp_ndcg.judging.JudgeConfig` (the same config the judging commands take,
 validated by the product, never a second model), its `serve` block is the engine argv, and it carries no
 equivalence reference: `--judge <id>` and `rcp-ndcg-vllm serve <id>` take the same id
@@ -63,14 +72,17 @@ run's resume, an index reload).
 
 ## Engine-side patches
 
-A recipe whose admissible prompts can reach its declared `max_model_len` under chunked prefill may need an
-engine-side fix the stock image predates. A recipe opts into such a fix with `serve.patches`, naming the patch
-(`rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared names into the engine
-process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver -- a
-comma-separated list read by the one `vllm.general_plugins` entry point), overriding any inherited value so
+A checkpoint the stock image cannot serve as shipped may need an engine-side fix: an architecture the
+image's registry lacks, or an attention backend its kernels cannot run. A recipe opts into such a fix with
+`serve.patches`, naming the patch (`rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the
+declared names into the engine process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave
+runner and the e2e driver -- a comma-separated list read by the one `vllm.general_plugins` entry point),
+overriding any inherited value so
 the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
 with, and the behaviour fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's
-key. Two patches ship:
+key. Two patches ship, and one recipe opts in: `embeddinggemma-2` declares both, and every other family's
+`serve.patches` is empty (the chunked-prefill patch a few families used to carry is deleted -- the pinned
+engine's own scheduler keeps the whole context of a pooling prefill, vllm-project/vllm#48039).
 
 - `embeddinggemma2-transformers-fold` -- the embeddinggemma-2 backport. The **0.31 image the waves served**
   carried no `EmbeddingGemma2Model` and its transformers (5.17.0) no `embedding_gemma2` classes, so the
@@ -82,16 +94,16 @@ key. Two patches ship:
   when the running registry lacks the architecture. The **v0.33.0 tag** is further along: its registry
   carries `EmbeddingGemma2Model` (`vllm/model_executor/models/registry.py:259`) and the backend
   (`vllm/multimodal/video.py:428`), and PR #60254's commit is an ancestor of the tag, so on 0.33 the
-  architecture registration's probe returns early. What the **0.33 image** carries is W4's measurement
-  (the tag's Dockerfile resolves `transformers >=5.16.1,<5.21.0` at build time): until
-  `reference-image-v0.33.0.versions.txt` records the image's transformers version, whether the fold's class
-  install is load-bearing or inert on 0.33 is undecided (D2 re-opened). Importing the fold
+  architecture registration's probe returns early. What the **0.33 image** carries is measured, not assumed:
+  the tag's Dockerfile resolves `transformers >=5.16.1,<5.21.0` at build time, and the version the image
+  actually ships is read from the image itself and recorded with its freeze. Until it is, whether the
+  fold's class install is load-bearing or inert on 0.33 is undecided, so the fold stays. Importing the fold
   package (which every import of the folded model module does first) installs the same modules under their
   upstream names before any folded module body runs, so the model's own
   `transformers.models.embedding_gemma2...` imports resolve in every process that imports it, whatever
-  loaded the plugin and whether or not the patch applied there. The fold is not removed while its status on
-  the 0.33 image is undecided (D2 re-opened); W4's recorded transformers version decides whether its class
-  install is still load-bearing, and the registry half alone never does.
+  loaded the plugin and whether or not the patch applied there. The registry half is settled at the tag
+  (its probe returns early); the class half alone decides the fold's removal, and an image whose
+  transformers ships `embedding_gemma2` (5.19.0 or later) makes it inert.
 - `torch-sdpa-attention` -- the embeddinggemma-2 backend: the model's heterogeneous head dimensions
   (sliding 256, full 512) leave no backend the engine image can run -- TRITON_ATTN's prefill kernel
   cannot compile for head_dim 512, FA4's kernel caps head_dim at 256, `TORCH_SDPA`'s enum value is the

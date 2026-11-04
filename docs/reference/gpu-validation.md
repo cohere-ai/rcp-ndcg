@@ -17,6 +17,24 @@ the engine image and its version floor, the `serve` block, the engine-side plugi
 template and the request-shaping client fields. A wave's evidence counts for a recipe only when the wave
 ran against the fingerprint the tree computes today.
 
+## The v0.33.0 pin: every row is superseded until it is re-recorded
+
+The pin moved every recipe's `engine.image` to `vllm/vllm-openai:v0.33.0`. The engine image is one of the
+fingerprint's inputs, so every key below moved: the rows are the **0.0.1 tag's record** — the waves that ran
+on the 0.31 image, with the keys, dates and states the ledger records (a cell is the key the tree computed at the
+row's recording commit — the `fcb87a51` re-keying moved 15 of them — not necessarily the key the wave itself
+produced; the `embeddinggemma-2` bullet below names its case) — and no row is the tree's current key until a
+wave re-records it. That re-record is the obligation the pin creates: **every corpus is recorded
+again on the 0.33 image (and every judge recipe probed again) before any recipe returns to `verified`**. Until
+then every recipe reads `status: unverified`, no row may claim a wave that did not run, and a row is
+regenerated from the wave that ran — never relabelled with a key the wave did not record. A recipe is
+`verified` only beside the image it pins.
+
+The two `topk-embed-v1` variants are the exception the owner holds: their gate failure below is recorded
+evidence, not a pending row, and their state returns to `failed` only from a wave that re-runs that gate.
+They ship only when the owner's explicit disposition list names them, and nothing about the pin changes that
+disposition.
+
 ## The ledger
 
 | recipe | role | engine image | verified at | date | fingerprint | state |
@@ -68,10 +86,11 @@ ran against the fingerprint the tree computes today.
 
 ## Dispositions
 
-- **`topk-embed-v1-small` and `topk-embed-v1-xsmall` are `failed`.** Their end-to-end validation does not
-  meet the stage-2 per-token cosine floor on the available engine configurations: bf16 and fp16 both fail
-  (and the failure is dtype-independent at the text model's first layer), and fp32 — which clears the
-  vision tower — cannot be served, because the engine's GatedDeltaNet kernels refuse fp32. The engine was
+- **`topk-embed-v1-small` and `topk-embed-v1-xsmall` are the owner-disposed gate failure.** Their end-to-end
+  validation does not meet the stage-2 per-token cosine floor on the available engine configurations: bf16
+  and fp16 both fail (and the failure is dtype-independent at the text model's first layer), and fp32 —
+  which clears the vision tower — cannot be served, because the engine's GatedDeltaNet kernels refuse fp32.
+  The engine was
   also run on its own vendored flash-linear-attention prefill path (`--gdn-prefill-backend triton`), which
   diverges identically, so the residual is not a selectable kernel. The full measurements — the per-row
   per-token minima, the per-layer cosines, the three backends, and the text/image split — are in the
@@ -80,15 +99,20 @@ ran against the fingerprint the tree computes today.
   plugin-module keying moved it), so the gate was re-run at the current key on 2026-10-14 in the
   `rc0-202610140620` wave's `plugin-carriers-vllm` sub-wave and failed again with the same signature —
   stage 1 passes, stage 2's per-token cosine floor fails. The two rows above carry that 2026-10-14 wave.
-  Nothing is deferred past the tag: the state stays `failed`, and the gate's disposition stays the owner's
-  explicit decision, recorded in the release notes; a recipe in this state ships only under that decision,
-  never silently.
-- **The `embeddinggemma-2` row's engine image is stock `vllm/vllm-openai:v0.31.0`** (vllm-7): the verifying
-  waves ran that image with the recipe's plugin backport, not the nightly
-  digest the row used to name. The correction moves the recipe's behaviour fingerprint (the engine image
-  is a key), so the row's fingerprint cell names the value the tree computes today (`2acf146eaf4d…`);
-  the `rc0-202610140620` wave ran at the superseded nightly-keyed `d0e1e968…`, and the release's
-  re-recording waves re-run this row at the current key before the tag.
+  Nothing is deferred past the tag: the gate's disposition stays the owner's explicit decision, recorded in
+  the release notes, and a recipe in this state ships only under that decision, never silently. On the
+  v0.33.0 pin both read `unverified` like every other recipe, and their state returns to `failed` only from a
+  wave that re-runs the gate.
+- **The `embeddinggemma-2` row's engine image is stock `vllm/vllm-openai:v0.31.0`**: the verifying waves ran
+  that image with the recipe's plugin backport, not the nightly digest the row used to name. The record is
+  the recipe's own (`family.yaml`'s `gates` block): the `rc0-202610140620` wave ran the gate at
+  `d0e1e968…`, the superseded nightly-keyed fingerprint (the plugin-module keying had moved the key after
+  the earlier wave), and it passed there. The cell `2acf146eaf4d…` is the key the tree computed at
+  `fcb87a51`, after the engine-image correction to the stock release; it is not the key that wave recorded,
+  and this page does not relabel it as one. Both keys are superseded by the v0.33.0 pin (the image is a key),
+  and the re-recorded waves regenerate this row (the recipe's plugin and its two patches stay until the
+  image's own transformers version decides the fold's class install; see
+  [recipes and serving models](recipes.md#engine-side-patches)).
 - **One reference case remains `pending_gpu`**: `rcp-ndcg-test/cases/topk-embed-v1-small/query-cap-1024.yaml`,
   in the family whose gate the owner dispositioned. Its query renders past the recipe's declared
   `client.query_max_tokens: 1024`, so the client's fit cuts it, and the case's `expected.kind` is `none`,

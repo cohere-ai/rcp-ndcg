@@ -174,7 +174,7 @@ incompatibly, independently of the package version. All four distributions carry
   `record.placeholder_url`, which also handles a URL with no path), and `pairs` names the pairs file.
 - **Harness: the fake-engine docs name the emulator route** (testpkg-8): the docs said no model-level fake
   ships while 12 verified emulators ship; they now say `target='fake'` covers the registered fakes and name
-  the `fake://vllm-0.31.0/<recipe>` engine-target route the committed corpora's emulators reach a run
+  the `fake://vllm-0.33.0/<recipe>` engine-target route the committed corpora's emulators reach a run
   through once registered, and `fake_engine_for`'s hint names it too.
 - **Harness: the submit.sh dry run removes its scratch directory** (testpkg-10): the plan writes the token
   wrapper (and a grouped wave's fetched recipes) into the mktemp dir, so the `rmdir` always failed and
@@ -233,18 +233,19 @@ incompatibly, independently of the package version. All four distributions carry
 
 - **`rcp-ndcg-vllm serve` declares a chunk that cannot hang an at-budget pooling prompt** (vllm-1,
   owner decision 6(b)): a pooling recipe whose client's largest token budget reaches
-  `serve.max_model_len` and that does not carry the `pooling-full-context` patch now renders
-  `--max-num-batched-tokens` at `serve.max_model_len` when nothing sets one, so the engine's own
-  GPU-dependent default (2048 on A100 and GPUs under 70 GiB) can never chunk an exactly-full prompt. On the
-  pinned vLLM v0.31.0 the scheduler never schedules a chunked prompt's last token, so the request hangs and
-  holds the engine slot. The render-time declaration covers the seven recipes that reach this state
-  (ctxl-2b, octen x3, qwen3-vl-embedding x2, zerank-2); a recipe that carries the patch, a recipe whose
-  budget stays below `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk equal to
-  `serve.max_model_len` are unaffected. An explicit smaller `--set serve.max_num_batched_tokens` is warned
-  about and replaced by the safe value (decision 6(b) chose a warning over a refusal), naming the value
-  asked for, the value rendered and the patch. Carrying the patch on the seven recipes (option (a)) is
-  deferred: v0.31.0 is the latest release and the five pooling bugfix PRs upstream (60978, 55226, 55192,
-  60035, 61062) are open, none merged, so no release carries the fix yet.
+  `serve.max_model_len` now renders `--max-num-batched-tokens` at `serve.max_model_len` when nothing sets
+  one, so the engine's own GPU-dependent default (2048 on A100 and GPUs under 70 GiB) can never chunk an
+  exactly-full prompt. On vLLM v0.31.0, the image the first waves served, the scheduler never scheduled a
+  chunked prompt's last token, so the request hung and held the engine slot. The render-time declaration
+  covers the sixteen recipes that reach this state (ctxl-2b, embeddinggemma-2, harrier-oss-v1 x3,
+  jina-embeddings-v5-text x2, octen x3, pplx-embed-v1 x2, qwen3-vl-embedding x2, zembed-1, zerank-2); a
+  recipe whose budget stays below `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk
+  equal to `serve.max_model_len` are unaffected. An explicit smaller `--set serve.max_num_batched_tokens`
+  is warned about and replaced by the safe value (decision 6(b) chose a warning over a refusal), naming the
+  value asked for and the value rendered. The v0.33.0 pin makes the floor the declared deployment shape
+  rather than a workaround: the engine's own scheduler keeps the whole context of a pooling prefill
+  (vllm-project/vllm#48039), so the `pooling-full-context` patch and every family's opt-in are deleted and
+  no recipe is exempt (see the engine-pin entry under Changed).
 - **The jina-reranker-v3 reference loads the checkpoint's own tokenizer** (vllm-6, owner decision 7(a)):
   `reference.py` no longer imports `rcp_ndcg.data.tokenizer.load_tokenizer`; it loads the checkpoint's
   `tokenizer.json` (the file the remote code's `AutoTokenizer.from_pretrained` resolves to; every
@@ -363,6 +364,25 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Changed
 
+- **The engine pin moves to vLLM v0.33.0, and no recipe claims a wave on it**: every one of the 24 families
+  pins `vllm/vllm-openai:v0.33.0` with `min_version: "0.33.0"`, the version guard accepts the 0.33 line, the
+  pooler config the serve argv renders gains `enable_flash_late_interaction` (the engine's own default, inert
+  for every recipe: the late-interaction scores are computed client-side), and every recipe's `sources`
+  citations the pin rewrote were checked against the tag (a sweep for the cited identifiers, not a re-read:
+  two defects are recorded for the release's citation check — `gemma-4-12b`'s `gemma4_mm.py` line range
+  carries the old ranges appended after the re-read ones, and a 0.31-era checkout sha `d0d6e5f3a` is
+  labelled `v0.33.0` in `zerank` — the other two families cite it as the checkout it is). The engine image is part of the
+  behaviour fingerprint, so every recipe's key moved: the pin sets every variant to `status: unverified`, a
+  recipe returns to `verified` only from a wave that re-recorded its corpus on the 0.33 image, and the 44 recipe goldens (and their redactions file)
+  were regenerated with no client budget, template or role changed. The `pooling-full-context` patch is
+  deleted with its opt-ins, because the engine's own scheduler keeps the whole context of a pooling prefill
+  (vllm-project/vllm#48039, vLLM v0.32.0), so the derived `--max-num-batched-tokens` now covers sixteen
+  recipes instead of nine. The verified fake engines gate on the engine version: a corpus recorded on another
+  engine version is refused by name, never replayed, and the public `fake://` engine host moves to
+  `fake://vllm-0.33.0/<recipe>` (the committed corpora are re-recorded and renamed with the waves; until
+  then a 0.31 corpus under the 0.33 host is the refusal). The two `topk-embed-v1` variants keep their
+  recorded gate failure and the owner's disposition: their state returns to `failed` only from a wave that
+  re-runs that gate, and they read `unverified` until then like every other recipe.
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data

@@ -25,8 +25,10 @@ fingerprint = emulator.verified.behaviour_fingerprint
 assert registry.resolve("vllm", "0.33.0", fingerprint, "qwen3-reranker-0.6b") is emulator
 ```
 
-An emulator records the engine version and recipe revision it was verified against (`Verified`) and
-**refuses another** (`require_verified_for` names the fields that moved). Out-of-tree models (a
+An emulator records the engine version and recipe revision it was verified against (`Verified`), and the
+registry keys all four of them: `registry.resolve` refuses a lookup for an engine version the corpus was not
+recorded on, naming the version the recipe is registered for, and the routing seam (`transport_for`) refuses
+the same way -- a corpus recorded on another engine version is refused, never replayed. Out-of-tree models (a
 private repository's plugins) register their emulators through the `rcp_ndcg.emulators` entry-point
 group: each entry point resolves to a callable returning emulators, kept in the same registry.
 

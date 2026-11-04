@@ -74,8 +74,9 @@ def test_every_recipe_snippet_loads(block: Any, tmp_path: Path) -> None:  # noqa
 
 
 def test_the_reproducibility_page_counts_the_recipe_statuses() -> None:
-    """Two recipes ship with status ``failed`` (the topk-embed-v1 variants), so the page may not call all
-    44 recipes validated end to end on GPU.
+    """The pages state the statuses the catalog records: no recipe is ``verified`` on the pinned engine
+    image until a wave re-records its corpus there, so neither page may call the 44 recipes validated end
+    to end on GPU.
 
     The serve page's count of the recipes that render the derived ``--max-num-batched-tokens`` is the
     catalog's count too: a recipe added, or its budget moved to ``serve.max_model_len``, changes it."""
@@ -97,6 +98,12 @@ def test_the_reproducibility_page_counts_the_recipe_statuses() -> None:
         if "--max-num-batched-tokens" in serve_argv(recipe, port=8000, served_model_name=recipe.id)
     )
     serve_page = (ROOT / "docs" / "how-to" / "serve-a-model.md").read_text(encoding="utf-8")
+    # A whole number: a substring test passes on ``10 verified`` when the count is 0.
+    verified_count = re.search(rf"\b{states['verified']} verified\b", serve_page)
+    assert verified_count is not None, (
+        f"the serve page states how many recipes the pinned image has verified ({states['verified']}): a "
+        "reader serving one must not believe it was validated on that image"
+    )
     stated = re.search(r"the (\w+) affected recipes", serve_page)
     assert stated is not None, "the serve page states how many recipes render the derived chunk"
     assert _NUMBER_WORDS.index(stated.group(1)) == derived, (
