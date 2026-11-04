@@ -4,10 +4,11 @@
 
 Folded from vLLM commit ``8cbd5d03006c33185f402249ff2b448efd594986``
 (``vllm/model_executor/models/config.py``, ``class EmbeddingGemma2ModelConfig``, its ``MODELS_CONFIG_MAP``
-entry): the stock v0.31.0 image the recipe serves carries no
-``EmbeddingGemma2Model`` entry, so ``register_embedding_gemma2`` adds this one when the running vLLM
-lacks it. The body is upstream's, unchanged: the Gemma4 hook first (heterogeneous head dimensions --
-the full-attention layers' head is larger than the sliding ones), then TRITON_ATTN as the declared
+entry): the stock 0.31 image the waves served carried no ``EmbeddingGemma2Model`` entry (the
+v0.33.0 tag's registry carries it, ``registry.py:259``), so ``register_embedding_gemma2`` adds this
+one when the running vLLM lacks it. The body is upstream's, unchanged: the Gemma4 hook first
+(heterogeneous head dimensions -- the full-attention layers' head is larger than the sliding ones), then
+TRITON_ATTN as the declared
 default backend when none was requested (upstream's "validated backend for heterogeneous head
 dimensions"), then the 8192 context cap for a checkpoint that declares none. This module imports vLLM
 by design and is only imported by :func:`rcp_ndcg_vllm.models.register` inside the engine process

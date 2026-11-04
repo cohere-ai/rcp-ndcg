@@ -77,7 +77,7 @@ CONTROL_ROW = 26
 """The row whose wave-recorded vectors the control compares against (the worst image row)."""
 
 GDN_BACKENDS = ("flashinfer", "triton", "cutedsl")
-"""The tag's ``--gdn-prefill-backend`` choices (``engine/arg_utils.py`` at v0.31.0)."""
+"""The tag's ``--gdn-prefill-backend`` choices (``engine/arg_utils.py`` at v0.33.0)."""
 
 GDN_BACKEND_LOGGER = "vllm.model_executor.layers.mamba.gdn.qwen_gdn_linear_attn"
 """The module logger that emits the resolver's own ``Using ... GDN prefill kernel`` decision line."""
@@ -172,7 +172,7 @@ def _record(module: Any, key: str, sink: dict[str, Any]) -> Any:
 
     Deliberately not ``register_forward_hook``: vLLM's ``@support_torch_compile`` decorator replaces a
     decorated class's ``__call__`` with one that calls ``self.forward(...)`` directly
-    (``vllm/compilation/decorators.py`` at v0.31.0), so ``nn.Module``'s forward hooks never fire on
+    (``vllm/compilation/decorators.py`` at v0.33.0), so ``nn.Module``'s forward hooks never fire on
     ``Qwen3_VisionPatchEmbed`` and ``Qwen3_VisionBlock`` -- the first node run's E2/E3 tables held the
     undecorated ``merger`` alone, which reads as "the merger is the first divergent layer" when the
     earlier tensors were simply never seen.  Wrapping the bound ``forward`` sees the call either way.
@@ -401,12 +401,12 @@ def _affine(module: Any, image: Any, *, dtype: Any) -> Any:
 # the engine side
 # ---------------------------------------------------------------------------
 
-#: The in-process route to the loaded model, in the order v0.31.0 exposes it.  ``llm.llm_engine`` is an
+#: The in-process route to the loaded model, in the order v0.33.0 exposes it.  ``llm.llm_engine`` is an
 #: ``LLMEngine``; its ``model_executor`` exists only when the EngineCore runs in this process, which
-#: ``force_single_process_engine`` forces (v0.31.0's ``LLMEngine.__init__`` sets it in its
+#: ``force_single_process_engine`` forces (v0.33.0's ``LLMEngine.__init__`` sets it in its
 #: ``not multiprocess_mode`` branch, and its own ``_get_driver_model_for_cleanup`` reads
 #: ``driver_worker.model_runner.model``).  The second path is the worker-wrapped executor shape, the
-#: third the same route without v0.31.0's v0-compatibility alias.
+#: third the same route without v0.33.0's v0-compatibility alias.
 ENGINE_MODEL_PATHS: tuple[tuple[str, ...], ...] = (
     ("llm_engine", "model_executor", "driver_worker", "model_runner", "model"),
     ("llm_engine", "model_executor", "driver_worker", "worker", "model_runner", "model"),
@@ -419,7 +419,7 @@ def force_single_process_engine() -> None:
 
     The probe installs forward hooks on the towers and calls the vision tower on tensors it built
     itself; in vLLM's default multiprocess mode the model lives in the EngineCore process and neither
-    is reachable here (v0.31.0's ``uniproc_executor.py`` names this switch as the way to run the
+    is reachable here (v0.33.0's ``uniproc_executor.py`` names this switch as the way to run the
     engine in one process).  Must run before vLLM is imported: vLLM reads the switch when it builds
     the engine.
     """
@@ -478,7 +478,7 @@ def engine_llm_kwargs(args: argparse.Namespace) -> dict[str, Any]:
 
     ``--gdn-backend`` rides the tag's own switch: ``EngineArgs`` writes ``--gdn-prefill-backend`` into
     ``additional_config["gdn_prefill_backend"]`` and ``_resolve_gdn_prefill_backend`` reads it
-    (``engine/arg_utils.py``, ``model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py`` at v0.31.0).
+    (``engine/arg_utils.py``, ``model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py`` at v0.33.0).
     Unset leaves ``additional_config`` out entirely, so vLLM's resolver default (``auto``) applies --
     the configuration every earlier measurement ran.
     """
@@ -513,7 +513,7 @@ def engaged_gdn_backends(model: Any) -> dict[str, Any]:
     if not layers:
         raise RuntimeError(
             "cannot read the engaged GDN prefill backend: no module under the loaded model carries "
-            "gdn_prefill_backend (v0.31.0's QwenGatedDeltaNetAttention.__init__ assigns it from "
+            "gdn_prefill_backend (v0.33.0's QwenGatedDeltaNetAttention.__init__ assigns it from "
             "ChunkGatedDeltaRule.gdn_prefill_backend).  Re-read "
             "vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py against the engine image."
         )

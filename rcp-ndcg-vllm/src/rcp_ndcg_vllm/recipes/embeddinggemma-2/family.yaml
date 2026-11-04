@@ -1,11 +1,14 @@
-# google/embeddinggemma-2 served with stock vllm/vllm-openai:v0.31.0: the released image lacks the
-# architecture (EmbeddingGemma2Model) and its transformers (5.17.0) lacks the checkpoint's config and
-# processor, so the plugin's backport -- the embeddinggemma2-transformers-fold patch and the
-# register_embedding_gemma2 registration below -- supplies the classes and the model from vLLM commit
-# 02b83919aa2e (PR #60254) and transformers 5.19.0. The verifying waves ran this stock image with that
-# backport (the pod's own engine, recorded in the media notes); an engine image that already carries
-# the classes (e.g. the nightly the fold's source was read on) is left alone, both probes returning
-# early. See notes, "Engine".
+# google/embeddinggemma-2 served with stock vllm/vllm-openai:v0.33.0. The waves that verified this recipe
+# ran the stock 0.31 image (the status block's `image`): its registry had no EmbeddingGemma2Model and its
+# transformers (5.17.0) no embedding_gemma2 classes, so the plugin's fold -- the
+# embeddinggemma2-transformers-fold patch below -- supplies the classes (transformers 5.19.0) and the
+# model (vLLM commit 02b83919aa2e, PR #60254). The v0.33.0 tag's registry DOES carry the architecture
+# (vllm/model_executor/models/registry.py:259) and the backend (vllm/multimodal/video.py:428), and that
+# commit is an ancestor of the tag. What the 0.33 IMAGE carries is W4's measurement to record: the tag's
+# Dockerfile resolves `transformers >=5.16.1,<5.21.0` at build time, so whether the image's transformers
+# ships the embedding_gemma2 classes -- and therefore whether the fold's class install is load-bearing or
+# inert on 0.33 -- is undecided until W4 records it (D2 re-opened; no 0.33 wave has run, W13).
+# See notes, "Engine".
 id: embeddinggemma-2
 schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
@@ -15,8 +18,8 @@ engine:
   name: vllm
   # The stock release the verifying waves ran; the plugin's backport supplies what the image lacks. The
   # switch-to-release / removal note is in notes, "Engine".
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources: {gpus: 1}            # 740M parameters bf16 (~1.5 GiB of weights) fits one GPU
 serve:
   runner: pooling               # EmbeddingGemma2Model is a VllmModelForPooling (embedding_gemma2.py:982-1103)
@@ -45,16 +48,16 @@ serve:
                              # the classes and whose registry carries the model; delete the SDPA patch
                              # and its pin when the image's own backends clear the model's head
                              # dimensions.
-  mm_processor_kwargs: {fps: 60, max_frames: 32}   # THE video pin's second home, beside --media-io-kwargs: the pod's engine is vLLM v0.31.0, which has no EmbeddingGemma2VideoBackend, so --media-io-kwargs pins only the decoder and the generic loader reports do_sample_frames=True; the checkpoint's processor then samples with its own defaults (fps 1: the shipped 4.0 s clip becomes 4 frames, the wave's 492 = 4 x 123). The engine's model hands these numbers to the processor's call, which samples the same clip at 60 fps capped at 32 frames -- the client's 3936 = 32 x 123; see notes, "Media"
+  mm_processor_kwargs: {fps: 60, max_frames: 32}   # THE video pin's second home, beside --media-io-kwargs: the pod's engine was vLLM 0.31, which has no EmbeddingGemma2VideoBackend (the v0.33.0 tag has one, video.py:428), so --media-io-kwargs pins only the decoder and the generic loader reports do_sample_frames=True; the checkpoint's processor then samples with its own defaults (fps 1: the shipped 4.0 s clip becomes 4 frames, the wave's 492 = 4 x 123). The engine's model hands these numbers to the processor's call, which samples the same clip at 60 fps capped at 32 frames -- the client's 3936 = 32 x 123; see notes, "Media"
   limit_mm_per_prompt: {image: 1, video: 1}   # one media item per request (the client's max_images/max_videos carry the same numbers)
   extra_args:
     - "--media-io-kwargs"
     - '{"video": {"fps": 60, "max_frames": 32}}'   # THE video pin: 60 fps capped at 32 frames realizes the declared 32 uniformly spaced frames for any clip of at least 0.53 s (the client refuses a clip under 32 frames, so a normal clip is admitted only above it); see notes, "Media"
     - "--attention-backend"
     - TORCH_SDPA   # E2 round 10: the plugin's torch-sdpa-attention patch registers the encoder-only SDPA backend under this enum member (the engine's own error names register_backend(Backend.TORCH_SDPA, ...)); the model's heterogeneous head dims (sliding 256, full 512) leave no image backend -- the TRITON_ATTN prefill kernel needs 266240 B of shared memory against the 232448 B limit, FA4's kernel caps head_dim at 256, TORCH_SDPA's enum value is empty (ViT-only), and FLEX_ATTENTION dies in its own torch.compile/CUDAGraph interaction (rounds 9-10, still under --enforce-eager); see notes, "Engine flags"
-    - "--enforce-eager"   # E2 round 9: FLEX_ATTENTION reached engine init and died there in a dynamo/CUDAGraph interaction -- the backend's compiled create_block_mask (mode "reduce-overhead", flex_attention.py:54-58 at vLLM v0.31.0) hands a block mask to the compiled flex attention after a later run of the block-mask graph overwrote its tensors (torch._dynamo InternalTorchDynamoError at torch/nn/attention/flex_attention.py:2369, `block_mask_q_len = block_mask.shape[-2]`), which --enforce-eager does not stop because the flex backend compiles independently of the engine's cudagraph mode (the round-10 wave still failed with it). The SDPA backend compiles nothing, so the flag is kept as the engine-eager safety pin: the engine's compilation and cudagraph modes stay NONE (vllm/config/vllm.py:1733-1745 at vLLM v0.31.0), and the wave's T0 model load is the confirmation.
+    - "--enforce-eager"   # E2 round 9: FLEX_ATTENTION reached engine init and died there in a dynamo/CUDAGraph interaction -- the backend's compiled create_block_mask (mode "reduce-overhead", flex_attention.py:54-58 at vLLM v0.33.0) hands a block mask to the compiled flex attention after a later run of the block-mask graph overwrote its tensors (torch._dynamo InternalTorchDynamoError at torch/nn/attention/flex_attention.py:2369, `block_mask_q_len = block_mask.shape[-2]`), which --enforce-eager does not stop because the flex backend compiles independently of the engine's cudagraph mode (the round-10 wave still failed with it). The SDPA backend compiles nothing, so the flag is kept as the engine-eager safety pin: the engine's compilation and cudagraph modes stay NONE (vllm/config/vllm.py:2002-2007 at vLLM v0.33.0), and the wave's T0 model load is the confirmation.
 client:
-#   recipe: "stock vLLM v0.31.0 with the plugin backport: --runner pooling; EmbeddingGemma2Model (MEAN+ALL, PoolerNormalize); no served chat template (the checkpoint's own frames the messages route); the checkpoint's media budgets (image 280 soft tokens, video 140 per frame); one media item per request; video pinned to 60 fps capped at 32 frames by --media-io-kwargs and by --mm-processor-kwargs (the pod's vLLM v0.31.0 has no EmbeddingGemma2VideoBackend, so the decoder pin alone leaves the processor resampling at its own 1 fps); the plugin's registered TORCH_SDPA backend pinned by --attention-backend TORCH_SDPA (the plugin's torch-sdpa-attention patch registers an encoder-only SDPA backend under the enum member, the one path the image leaves) with --enforce-eager beside it (the round-9/10 FLEX_ATTENTION dynamo/CUDAGraph interaction at engine init); request_shape messages with add_special_tokens true; the card's SearchQuery/Document prompts ride the client's query_prompt/doc_prompt (a content-only template)"
+#   recipe: "stock vLLM v0.33.0 with the plugin backport: --runner pooling; EmbeddingGemma2Model (MEAN+ALL, PoolerNormalize); no served chat template (the checkpoint's own frames the messages route); the checkpoint's media budgets (image 280 soft tokens, video 140 per frame); one media item per request; video pinned to 60 fps capped at 32 frames by --media-io-kwargs and by --mm-processor-kwargs (the pod's vLLM 0.31 image has no EmbeddingGemma2VideoBackend, so the decoder pin alone leaves the processor resampling at its own 1 fps); the plugin's registered TORCH_SDPA backend pinned by --attention-backend TORCH_SDPA (the plugin's torch-sdpa-attention patch registers an encoder-only SDPA backend under the enum member, the one path the image leaves) with --enforce-eager beside it (the round-9/10 FLEX_ATTENTION dynamo/CUDAGraph interaction at engine init); request_shape messages with add_special_tokens true; the card's SearchQuery/Document prompts ride the client's query_prompt/doc_prompt (a content-only template)"
   api: openai_embeddings
   request_shape: messages       # the chat-style /v1/embeddings input: each item one conversation carrying its content (the cut text, its image or video parts), framed once by the engine's chat template -- the only route that carries media
   max_tokens: 8192              # the card's 8K context: the frame's fixed tokens (the BOS/EOS post-processor pair) are reserved, only the content span is cut (on_overflow: cut); no query_max_tokens -- the card caps the WHOLE prompt
@@ -74,7 +77,7 @@ client:
   image_policy: {max_soft_tokens: 280}   # the checkpoint's own image budget (processor_config.json image_processor.max_soft_tokens 280); the client resizes and counts every image exactly as the processor does
   max_images: 1                 # the same number as serve.limit_mm_per_prompt
   max_videos: 1                 # ditto (the media capacity on both sides)
-  video_policy: {num_frames: 32, wire: video_url, engine_video_pinning: true}   # THE video policy: 32 frames per clip, the container sent as video_url and the engine pinned to sample them (serve.extra_args --media-io-kwargs for the decoder and serve.mm_processor_kwargs for the processor that resamples on the pod's vLLM v0.31.0); see notes, "Media"
+  video_policy: {num_frames: 32, wire: video_url, engine_video_pinning: true}   # THE video policy: 32 frames per clip, the container sent as video_url and the engine pinned to sample them (serve.extra_args --media-io-kwargs for the decoder and serve.mm_processor_kwargs for the processor that resamples on the pod's vLLM 0.31); see notes, "Media"
   on_overflow: cut
   empty_doc: send               # the card embeds an empty document as its bare "title: none | text: " prompt, which the empty string under the prompt is
   instruction: none             # the card's own instruction is part of the fixed frame; a dataset
@@ -93,8 +96,8 @@ reference:
   entry: reference.py
   known_deviations: [over_cap_cut_differs]   # the card's ST encode truncates the assembled prompt right at max_seq_length; the client cuts the content at the 8192 budget. The reference keeps the anchors (there is no anchor token; the frame is a prefix) but cuts differently over-cap, so those rows ride the non-gating table
 gates: {}
-# The rc0-202610131335 wave (r1, the stock vllm/vllm-openai:v0.31.0 image above with the plugin
-# backport) passed every gate after the fix14gemma fix, and the wave's serve argv equals this recipe's
+# The rc0-202610131335 wave (r1, the stock vllm/vllm-openai:v0.31.0 image with the plugin backport)
+# passed every gate after the fix14gemma fix, and the wave's serve argv equals this recipe's
 # golden. NOTE: the harness's
 # plugin-module keying (b2621274, 2026-10-13) moved this recipe's behaviour fingerprint after that wave
 # (7b81c893 -> d0e1e968), so that wave's evidence is at a superseded fingerprint. The re-verification
@@ -105,7 +108,7 @@ gates: {}
 # this recipe at the current key before the tag; the rc0-202610140620 evidence above stays the
 # superseded-key record it is.
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-14"
   report: "docs/reference/gpu-validation.md"
@@ -121,21 +124,24 @@ sources:
   - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/README.md (the Quick Start: encode with prompt_name SearchQuery/Document, lines 101-119; the context window 8,192 tokens, lines 68 and 229-235; 280 tokens per image and 140 per video frame, lines 234-235; video at 1 frame per second by default, line 252; bfloat16 or float32, never float16, lines 189-193; the interleaving placeholder rule, lines 205-215; the MRL bullet line 44 and section 3 lines 168-180: truncated embeddings across 128d, 256d, 512d, 768d, re-normalised)"
   - "vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986 (the fold's source; read on the nightly): vllm/model_executor/models/registry.py:249 (EmbeddingGemma2Model -> embedding_gemma2); vllm/model_executor/models/embedding_gemma2.py:982 (@default_pooling_type MEAN + ALL), :1103 (DispatchPooler.for_embedding), :160 (AttentionType.ENCODER_ONLY: bidirectional), :423-425 (add_special_tokens True), :488 (video tokens = max_frames x (soft + 2)), :491-521 (image repl boi + n soft + eoi), :541-577 (video repl one boi/eoi block per frame); vllm/model_executor/models/config.py:293 (EmbeddingGemma2ModelConfig; an unset max_model_len caps at 8192); vllm/multimodal/video.py:422-523 (EmbeddingGemma2VideoBackend: fps/max_frames kwargs, num_sampled = max(1, int(duration x fps)) then uniform to max_frames; num_frames ignored); vllm/model_executor/models/gemma4_mm.py:285-330 (_compute_num_soft_tokens: the aspect-ratio-preserving resize to max_soft_tokens pooled patches)"
   - "transformers 5.19.0 (the first release with the checkpoint's classes; the image's 5.17.0 and 5.18.0 lack them): models/embedding_gemma2/{configuration,modeling,processing,video_processing}_embedding_gemma2.py; models/gemma4/image_processing_gemma4.py (get_aspect_ratio_preserving_size: sqrt(max_patches x patch^2 / area) then floor to patch x pooling = 48)"
-  - "vllm v0.31.0 (the generic pooling head the stock image carries unchanged) vllm/pooling_params.py:175,188 (a per-request dimensions needs is_matryoshka + membership in matryoshka_dimensions) and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (the Matryoshka slice before the pooler's L2); serve.hf_overrides declares the card's set because the checkpoint's config.json declares neither key"
+  - "vllm v0.33.0 (the generic pooling head the stock image carries unchanged) vllm/pooling_params.py:246,259 (a per-request dimensions needs is_matryoshka + membership in matryoshka_dimensions) and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (the Matryoshka slice before the pooler's L2); serve.hf_overrides declares the card's set because the checkpoint's config.json declares neither key"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy max_soft_tokens and the gemma4 processor geometry; VideoPolicy; content_media_tokens: one wrapper per frame for gemma4), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: query_prompt/doc_prompt beside a content-only template)"
 notes: >-
-  Engine. The verifying waves ran stock vllm/vllm-openai:v0.31.0 with this recipe's plugin backport
-  (the owner's 2026-10-10 decision): the released image cannot serve this checkpoint on its own -- vLLM
-  v0.31.0 has no EmbeddingGemma2Model in its registry, its requirements pin transformers <5.18.0 and
-  the image carries 5.17.0, which has no embedding_gemma2 config or processor; and vLLM v0.31.0 has no
-  Gemma video backend. The architecture landed in vLLM commit 02b83919aa2e (PR #60254, 2026-10-06) and
-  the checkpoint's classes in transformers 5.19.0 (released 2026-10-06); the plugin backports them into
-  the stock image. The E2 rounds that developed the fold ran on a digest-pinned nightly whose own
+  Engine. The waves that verified this recipe ran the stock 0.31 image (the status block's `image`)
+  with this recipe's plugin backport (the owner's 2026-10-10 decision): that image could not serve this
+  checkpoint on its own -- its registry had no EmbeddingGemma2Model, its requirements pinned transformers
+  <5.18.0 and the image carried 5.17.0, which has no embedding_gemma2 config or processor, and it had
+  no Gemma video backend. Both are present at the v0.33.0 tag (registry.py:259's EmbeddingGemma2Model,
+  video.py:428's EmbeddingGemma2VideoBackend), and the architecture's commit 02b83919aa2e (PR #60254)
+  is an ancestor of that tag; the checkpoint's classes still land in transformers 5.19.0, and the
+  plugin backports them into the image, whose transformers is 5.17.0. The E2 rounds that developed the fold ran on a digest-pinned nightly whose own
   environment already carried the classes (E2 round 10's direct read: transformers 5.19.0 with
   `transformers/models/embedding_gemma2/`, the registry carrying EmbeddingGemma2Model), which is why
-  the fold's source provenance names that nightly and why both probes returned early there; the
-  recipe's declared image is the stock release the verifying waves ran, where the fold and the
-  registration are load-bearing. E2 r1 (the first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
+  the fold's source provenance names that nightly and why both probes returned early there; on the
+  0.33 image the fold's status is undecided: the tag's registry carries EmbeddingGemma2Model (so the
+  registration's probe returns early), and whether the image's transformers ships the embedding_gemma2
+  classes -- which decides whether the fold's class install is load-bearing or inert -- is W4's
+  measurement (D2 re-opened). E2 r1 (the first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
   does not carry the embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's
   embedding_gemma2 model module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`
   installs the plugin wheel and `serve.patches: [embeddinggemma2-transformers-fold]` opts into the patch
@@ -144,11 +150,12 @@ notes: >-
   class with AutoConfig, the processor and video-processor classes with AutoProcessor/AutoVideoProcessor and
   the two model classes (EmbeddingGemma2Model, EmbeddingGemma2TextModel) with AutoModel. E2 round 4 (the
   re-run on this image): serve failed again -- `Model architectures ['EmbeddingGemma2Model'] are not
-  supported for now`, and the wave's serve log's supported-architecture list is exactly the vLLM v0.31.0
-  tag's (plus the plugin's own registrations), while vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986
+  supported for now`, and that wave's serve log's supported-architecture list was exactly the 0.31
+  image's (plus the plugin's own registrations), while vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986
   (the fold's source, read on the nightly) carries both `vllm/model_executor/models/embedding_gemma2.py`
-  and its registry entry: the stock v0.31.0 image's registry does NOT carry the
-  model class (the r1 log's claim that it did was inferred from the PR, not from the image). The plugin
+  and its registry entry: the 0.31 image's registry did NOT carry the model class (the r1 log's claim
+  that it did was inferred from the PR, not from the image; the v0.33.0 tag's registry does carry it,
+  registry.py:259). The plugin
   therefore also ships vLLM's own `embedding_gemma2.py` from that commit (1142 lines, byte-identical plus
   a header; `rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2`) and transformers 5.19.0's
   `modeling_embedding_gemma2.py` (933 lines, the model's `AutoModel.from_config` calls resolve through
@@ -161,8 +168,8 @@ notes: >-
   config.json parses, the processor loads, text, image and video calls all return tensors, and
   `AutoModel.from_config` builds the text backbone (271,002,624 params) and the full model (744,371,488
   params, the card's 740M class) -- the vendored model's vLLM-internal imports were checked symbol by symbol
-  against the v0.31.0 tag (its gemma4.py and gemma4_mm.py are byte-identical between the tag and the
-  fold's source commit). E2 round 5 (the final re-run): serve failed at engine init with
+  against the 0.31 tag (its gemma4.py and gemma4_mm.py are byte-identical between that tag and the
+  fold's source commit; at v0.33.0 they are not -- 104 insertions / 70 deletions). E2 round 5 (the final re-run): serve failed at engine init with
   `ModuleNotFoundError: No module named 'transformers.models.embedding_gemma2'` -- the vendored model
   module was imported in a process where the fold's patch had not applied, and its own first imports are
   that upstream path. The fold now installs itself: importing the fold package (which every import of the
@@ -180,12 +187,15 @@ notes: >-
   `MODELS_CONFIG_MAP` carries its hook -- so on that digest both the fold patch's `install_fold` (its
   import probe) and `register_embedding_gemma2` (the registry check) return without installing
   anything, and the fold stays as the carrier for an engine image that lacks the classes. On the
-  recipe's declared stock v0.31.0 image the two probes do NOT return early: the fold and the
-  registration are what makes that image serve the checkpoint.
-  SWITCH TO RELEASE / REMOVAL: needs vLLM commit 02b83919aa2e (PR #60254) -- or any release
-  whose registry carries EmbeddingGemma2Model -- and transformers >= 5.19.0; switch engine.image to the first
-  vLLM release that carries both, delete `serve.plugin`, `plugin_architectures` and `patches`, and
-  re-validate. The wave records the image's actual transformers version in its provenance.
+  0.31 image the two probes did NOT return early: the fold and the registration are what made that image
+  serve the checkpoint. On the v0.33.0 pin the registration is inert (the tag's registry carries
+  EmbeddingGemma2Model, so its probe returns early) and the fold's class install is undecided until W4
+  records the image's transformers version.
+  SWITCH TO RELEASE / REMOVAL: undecided (D2 re-opened). The registry half is already satisfied at the
+  v0.33.0 tag (registry.py:259); the class half needs the image's transformers to ship
+  `embedding_gemma2` (>= 5.19.0). W4 records the image's actual transformers version in
+  `reference-image-v0.33.0.versions.txt`; until then neither the fold's removal nor its load-bearing
+  status is claimed here.
 
   Engine flags (E2 rounds 8-10). The model's heterogeneous head dimensions (sliding 256, full 512)
   leave no default backend on this image, and the backend is the only lever: TRITON_ATTN cannot
@@ -207,7 +217,7 @@ notes: >-
   output of CUDAGraphs that has been overwritten by a subsequent run` at
   `torch/nn/attention/flex_attention.py:2369` (`block_mask_q_len = block_mask.shape[-2]`). The
   backend compiles `create_block_mask` with `mode="reduce-overhead"` and `flex_attention` with
-  `fullgraph=True` (`vllm/v1/attention/backends/flex_attention.py:54-58` at vLLM v0.31.0), so the
+  `fullgraph=True` (`vllm/v1/attention/backends/flex_attention.py:54-58` at vLLM v0.33.0), so the
   block mask handed to the compiled flex attention is a CUDA-graph output that a later run of the
   block-mask graph has overwritten -- and `--enforce-eager` does not stop it: that compile is the
   backend's own, independent of the engine's compilation and cudagraph modes (`vllm/config/vllm.py`
@@ -217,7 +227,7 @@ notes: >-
   `AttentionBackendEnum.get_class()` raises `ValueError: Backend TORCH_SDPA must be registered before
   use. Use register_backend(Backend.TORCH_SDPA, 'your.module.YourClass')`
   (`vllm/v1/attention/backends/registry.py`; `CudaPlatform.get_attn_backend_cls` wraps only
-  ImportError/OSError) -- and vLLM v0.31.0 ships no decoder SDPA backend class to hand that
+  ImportError/OSError) -- and vLLM v0.33.0 ships no decoder SDPA backend class to hand that
   registration (its backends directory carries no `torch_sdpa.py`; the only SDPA users are the
   quantized attention backends and the CPU encoder path, `zentorch_sdpa.py`/`cpu_attn.py`). The
   recipe therefore opts into the plugin's `torch-sdpa-attention` patch, which registers
@@ -246,7 +256,7 @@ notes: >-
   scales a 16x16 icon up to 768x768 and a 2480x3508 page down to 672x912 -- and the prompt gets
   boi + 280-or-fewer soft tokens + eoi. The client reproduces the resize (the gemma4 processor geometry in
   rcp_ndcg.data.resolution) and counts the pooled patches plus the two markers. No engine pin is needed: the
-  checkpoint's processor_config.json carries the 280 budget, which is what the stock v0.31.0 engine loads; the
+  checkpoint's processor_config.json carries the 280 budget, which is what the stock v0.33.0 engine loads; the
   client declares the same number. Videos: the engine samples by fps, capped at max_frames (it ignores
   num_frames: video.py:422-523), so the recipe pins 60 fps and 32 frames with --media-io-kwargs
   '{"video": {"fps": 60, "max_frames": 32}}', which realizes the declared 32 uniformly spaced frames for any
@@ -257,8 +267,9 @@ notes: >-
   frames x (per-frame patches + 2).
 
   The pin's second home, and why it is needed (E2 round 13, the media stage's rows 36/37). The pod's engine
-  is vLLM v0.31.0 (the job config's image; the wave records the pod's own version in its provenance, B5), and
-  v0.31.0 has no EmbeddingGemma2VideoBackend (PR #60254 landed after the tag): the --media-io-kwargs pin
+  was vLLM 0.31 (the job config's image; the wave records the pod's own version in its provenance, B5), and
+  that image has no EmbeddingGemma2VideoBackend (the backend is at the v0.33.0 tag, video.py:428 -- its
+  commit 02b83919aa2e is an ancestor of the tag): the --media-io-kwargs pin
   reaches only the generic VideoBackend, which samples the 4.0 s / 8 fps / 32-frame clip whole and reports
   do_sample_frames=True, and the checkpoint's processor then resamples those 32 decoded frames with its own
   defaults (fps 1, max_frames 32) -- 4 frames, the engine's 492 = 4 x 123 against the client's 3936 = 32 x 123.

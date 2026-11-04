@@ -47,7 +47,7 @@ torch index and PyPI only.
 ## The three environments on the node
 
 A GPU job runs one container image: `submit.sh` groups a bootstrap wave's recipe list by each variant's
-`engine.image` and submits one job per image — the stock `vllm/vllm-openai:v0.31.0`
+`engine.image` and submits one job per image — the stock `vllm/vllm-openai:v0.33.0`
 for most recipes, the digest-pinned nightly for `embeddinggemma-2` — with three environments that are never
 mixed. `bootstrap.sh` builds them from a staged RC:
 
@@ -270,7 +270,7 @@ there by the wrapper; its value never reaches a process argv, an echo or a log):
 # the from_file paths are absolute where submit.sh runs (its own checkout); shown shortened here
 jobs submit -f "$RCP_JOBS_CONFIG" \
   app=rcp-wave0 priority_class=high worker.shared_memory=128Gi \
-  env.RCP_IMAGE=vllm/vllm-openai:v0.31.0 \
+  env.RCP_IMAGE=vllm/vllm-openai:v0.33.0 \
   env.RCP_IMAGE_DIGEST=sha256:0123...abcd \
   worker.command='/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
   files.wave0.from_file=rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave0.sh \

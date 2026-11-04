@@ -6,7 +6,7 @@ positions (``document_skip_token_ids`` on the client: pplx-embed-v2-late's 32 AS
 from the checkpoint's ``MultiVectorMask``; ``media_keep_token_ids``: topk-embed-v1's image-patch token, the
 only positions its reference keeps for an image document); the recipe declares each rule once and renders it
 for the engine in ``serve.hf_overrides.document_skip_token_ids`` / ``document_keep_token_ids`` (the loader
-cross-checks the two halves). vLLM v0.31.0's pooling route cannot return the engine's per-position token ids,
+cross-checks the two halves). vLLM v0.33.0's pooling route cannot return the engine's per-position token ids,
 so the rules are applied HERE, engine-side, by the plugin's own pooler
 (:mod:`rcp_ndcg_vllm.models.keep_pooler`): the per-token vectors at the excluded positions are dropped before
 the reply, and the wire carries only kept vectors -- for a text document and for a media document's

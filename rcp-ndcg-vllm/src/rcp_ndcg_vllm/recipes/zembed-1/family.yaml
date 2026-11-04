@@ -9,8 +9,8 @@ input: [text]
 licence: apache-2.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources:
   gpus: 1
 serve:
@@ -25,14 +25,14 @@ serve:
   plugin: rcp-ndcg-vllm  # the wheel that carries the engine-side patches; this recipe declares none (below)
   extra_args: []
   # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hangs, 32767 returns at
-  # v0.31.0) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
+  # measured on the pre-0.32 image) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
   # vLLM v0.32.0, which stores num_sampled_tokens_per_step = 0 for the pooling runner; the backport
   # patch this recipe used to declare is deleted. The at-budget prompt stays one prefill step:
   # serve.max_num_batched_tokens renders at serve.max_model_len when nothing sets it, so an exactly-full
   # prompt is one prefill step.
   patches: []
 client:
-#   recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
+#   recipe: "vllm v0.33.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   api: openai_embeddings
   # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
   # product's serving settings the client cannot read.
@@ -76,7 +76,7 @@ reference:
   known_deviations: ["anchor_drop_over_cap"]
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-14"
   report: "docs/reference/gpu-validation.md"
@@ -90,9 +90,9 @@ sources:
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/modeling_zembed.py"
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/README.md (the card's projection sentence at line 33: 'The model supports flexible dimension projections (2560, 1280, 640, 320, 160, 80, 40)')"
   - "projections.safetensors at the pinned revision (the safetensors header read at cf13c81f...): six F32 tensors named by their target widths, 1280 [2560,1280], 640 [1280,640], 320 [640,320], 160 [320,160], 80 [160,80], 40 [80,40] -- the chain the client's mrl_projection applies, widest first, to reach k"
-  - "vllm/config/model.py:1242-1244 at the v0.31.0 tag (db9527a) - the checkpoint's sentence-transformers modules.json resolves the pooling runner before the architecture registry"
-  - "vllm/config/model.py:1307-1311 at the v0.31.0 tag (db9527a) - convert falls through to embed for a pooling runner on a CausalLM arch"
-  - "vllm/transformers_utils/config.py:991-1068 - the pooler settings (last-token, normalize) are read from modules.json + 1_Pooling/config.json, so pooler_config stays empty; verified at both revisions (v0.31.0 tag: get_pooling_config at :982)"
+  - "vllm/config/model.py:1242-1244 at the v0.33.0 tag (db9527a) - the checkpoint's sentence-transformers modules.json resolves the pooling runner before the architecture registry"
+  - "vllm/config/model.py:1331-1358 at the v0.33.0 tag (db9527a) - convert falls through to embed for a pooling runner on a CausalLM arch"
+  - "vllm/transformers_utils/config.py:1012-1095 - the pooler settings (last-token, normalize) are read from modules.json + 1_Pooling/config.json, so pooler_config stays empty; verified at both revisions (v0.33.0 tag: get_pooling_config at :1012)"
   - "vllm/model_executor/layers/pooler/seqwise/poolers.py:97-108 - last-token pooling with server-side normalize for the embed conversion (verified at both revisions)"
   - "vllm/renderers/params.py:469-476 - the engine's right-truncation slice; :485-509 - the no-truncation default 400s over-length inputs, so the client cut is the only truncation (verified at both revisions)"
   - "vllm/pooling_params.py:175 - a checkpoint without matryoshka_dimensions refuses a dimensions parameter (verified at both revisions)"
@@ -100,9 +100,9 @@ sources:
   - "vllm/entrypoints/pooling/embed/io_processor.py:530-536 - /v2/embed with input_type renders chat messages through the checkpoint's chat template; this recipe never routes there (verified at both revisions)"
 notes: |
   Serving: vllm serve zeroentropy/zembed-1-embedding --runner pooling --convert embed
-  --max-model-len 32768, on the stock vllm/vllm-openai:v0.31.0 image with the rcp-ndcg-vllm plugin
+  --max-model-len 32768, on the stock vllm/vllm-openai:v0.33.0 image with the rcp-ndcg-vllm plugin
   wheel (no engine patch: vllm-project/vllm#48039 is upstream from vLLM v0.32.0; no custom image).
-  1. Runner/convert are explicit for robustness: at v0.31.0 a bare serve already resolves this
+  1. Runner/convert are explicit for robustness: at v0.33.0 a bare serve already resolves this
      checkpoint to pooling + embed, because the sentence-transformers modules.json wins over the
      generative Qwen3ForCausalLM architecture and convert falls through to embed for a pooling
      runner on a CausalLM arch. The flags equal what auto resolves; they pin the intent.
@@ -149,7 +149,7 @@ notes: |
      and sentence-transformers>=5.3,<5.4 -- the last line whose encode calls the remote
      tokenize; from 5.4.0 the preprocess-first pipeline bypasses the tokenize-only remote module
      and silently drops the suffix. 5.1.x would require transformers<5 and could not reuse the
-     image's transformers (>=5.10.4,<5.18.0 at v0.31.0); 5.3.x accepts it, so the reference venv
+     image's transformers (>=5.16.1,<5.21.0 at v0.33.0); 5.3.x accepts it, so the reference venv
      (--system-site-packages over the image) installs only sentence-transformers. The reference loads the checkpoint with trust_remote_code=True (the model card's
      usage); the served engine never imports that code.
   8. Status verified. The render was proved token-exact on CPU (8/8 cases measured when the

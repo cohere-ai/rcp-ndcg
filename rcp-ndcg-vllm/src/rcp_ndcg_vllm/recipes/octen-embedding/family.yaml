@@ -1,4 +1,4 @@
-# Octen/Octen-Embedding-8B: the paper's first-stage retriever, served on stock vLLM v0.31.0.
+# Octen/Octen-Embedding-8B: the paper's first-stage retriever, served on stock vLLM v0.33.0.
 # Last-token pooling + L2 normalisation from the checkpoint's own sentence-transformers configs;
 # the paper's document prefix "- " and the 8192-token budget are the client's, declared below as
 # the product's endpoint config. Every load-bearing line is in sources; the full story is in notes.
@@ -7,7 +7,7 @@ schema_version: "1"   # the recipe file format version (the contract between rcp
 role: embed
 input: [text]
 licence: apache-2.0
-engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+engine: {name: vllm, image: "vllm/vllm-openai:v0.33.0", min_version: "0.33.0"}
 resources: {gpus: 1}
 serve:
   runner: pooling            # architectures ["Qwen3Model"] -> ("pooling", "embed") suffix rule
@@ -21,7 +21,7 @@ serve:
   plugin: null
   extra_args: []
 client:
-#   recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
+#   recipe: "vllm v0.33.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoint's modules.json (last-token + normalize); bare strings on /v1/embeddings with the post-processor anchor appended"
   api: openai_embeddings     # plain /v1/embeddings; NOT the Cohere-shaped /v2/embed (see notes: route trap)
   # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
   # product's serving settings the client cannot read.
@@ -67,7 +67,7 @@ reference:
 # differs from the family's).
 gates: {vec_min_cosine: 0.993}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-13"
   report: "docs/reference/gpu-validation.md"
@@ -82,15 +82,15 @@ sources:
   - "experiments/paper/rerankers/reference/octen.py (the paper's exact in-process encoder, moved unchanged out of the removed rcp-ndcg/src/rcp_ndcg/retrieval/hf_dense.py and encoders/torch_dense.py when retrieval unified -- the old line cites name that pre-unification tree): :33 (MAX_LENGTH 8192, right side), :54 (padding side left), :55 (dtype bfloat16), :64 (truncation=True, max_length=8192), :67 (last_hidden_state[:, -1, :] then L2 in float32; the 1e-12 clamp at :22-30)"
   - "experiments/paper/rerankers/reference/octen.py:112,122-126,151-152 (the document prefix '- ' is prepended to documents only; queries unchanged)"
   - "experiments/paper/retrieval/octen.yaml:22 (batch_size: 32, the paper's request packing; the '- ' document frame is the recipe's template and reference.py's DOCUMENT_PREFIX)"
-  - "vLLM v0.31.0 (line numbers at the tag): vllm/config/model.py:2288 (the ('Model', ('pooling', 'embed')) suffix rule; Qwen3Model is not registered, so registry.py:1287-1311 _normalize_arch serves it as Qwen3ForCausalLM under the embed adapter), vllm/model_executor/models/adapters.py:250-255 (as_embedding_model: last token, normalised), vllm/transformers_utils/config.py:1023-1055 (ST modules.json -> LAST + use_activation), vllm/renderers/params.py:183 (add_special_tokens defaults true), :485-510 (over-length input is HTTP 400, never a silent cut), vllm/entrypoints/pooling/embed/io_processor.py:77-82,84-100,373-392 (only Cohere/chat requests get the ST prompts; /v1/embeddings renders the string as-is)"
+  - "vLLM v0.33.0 (line numbers at the tag): vllm/config/model.py:2356 (the ('Model', ('pooling', 'embed')) suffix rule; Qwen3Model is not registered, so registry.py:1341 _normalize_arch serves it as Qwen3ForCausalLM under the embed adapter), vllm/model_executor/models/adapters.py:250-255 (as_embedding_model: last token, normalised), vllm/transformers_utils/config.py:1012-1095 (ST modules.json -> LAST + use_activation), vllm/renderers/params.py:199 (add_special_tokens defaults true), :405,544-548 (over-length input is HTTP 400, never a silent cut), vllm/entrypoints/pooling/embed/io_processor.py:77-82,84-100,373-392 (only Cohere/chat requests get the ST prompts; /v1/embeddings renders the string as-is)"
   - "the checkpoint's tokenizer at the pinned revision: pad is the endoftext token 151643, eos is the chat end-of-turn marker 151645; the card's 40,960-token context claim is README.md:99"
 notes: >-
   Last-token-pooling embedder (the paper's first-stage retriever) on the stock pooling runner: the
   bare Qwen3Model architecture hits the ("Model", ("pooling", "embed")) suffix rule
-  (vllm/config/model.py:2327 at the pinned ref, :2288 at the tag), normalises to Qwen3ForCausalLM,
+  (vllm/config/model.py:2327 at the pinned ref, :2356 at the tag), normalises to Qwen3ForCausalLM,
   and as_embedding_model pools the normalised last hidden state (models/adapters.py:250-255). The
   checkpoint's own sentence-transformers configs give seq_pooling_type LAST and the normalize
-  activation (transformers_utils/config.py:1023-1055 reads modules.json: the Normalize ENTRY sets
+  activation (transformers_utils/config.py:1012-1095 reads modules.json: the Normalize ENTRY sets
   use_activation -- the content of 2_Normalize/config.json is never read), so pooler_config stays
   empty. The checkpoint ships no lm_head with tie_word_embeddings false; the converted pooling class
   replaces the head with a StageMissingLayer at init, so no hf_overrides are needed (the upstream
@@ -104,7 +104,7 @@ notes: >-
   the string, never as separately tokenised ids: ids("- " + doc) differ from ids("- ") + ids(doc)
   (the space merges into the next word; 19 vs 20 ids on a sample document measured when the recipe was written), so the
   client sends the rendered string and the engine tokenises it whole. The /v1/embeddings route adds
-  the tokenizer's post-processor tokens (renderers/params.py:183), which append the end-of-text
+  the tokenizer's post-processor tokens (renderers/params.py:199), which append the end-of-text
   anchor (added-token name endoftext, id 151643; NOT the tokenizer_config eos, which is the chat
   end-of-turn marker 151645) -- declared with add_special_tokens: true, so the budget reserves it,
   and it is the token the model pools. The shape ends on its content span and pins
@@ -144,13 +144,12 @@ notes: >-
   relies on the tokenizer's limit, and the card's context claims disagree among themselves
   (README.md:99 says 40,960; its results table says 32,768). Serving the 8192-token budget safely
   the at-budget pooling rule: the largest client budget reaches serve.max_model_len exactly and this
-  recipe carries no pooling-full-context patch, so the renderer declares `--max-num-batched-tokens` at
+  recipe carries no engine patch, so the renderer declares `--max-num-batched-tokens` at
   serve.max_model_len (8192) when nothing sets one. The engine's own GPU-dependent default chunk (2048
-  on A100 and GPUs under 70 GiB) would chunk an at-budget prompt, and the pinned v0.31.0 scheduler
-  never schedules a chunked prompt's last token: the request hangs and holds the engine slot. Carrying
-  the pooling-full-context patch stays deferred: v0.31.0 is the latest release and the
-  five pooling bugfix PRs upstream (60978, 55226, 55192, 60035, 61062) are open, none merged, so no
-  release carries the fix yet.
+  on A100 and GPUs under 70 GiB) would chunk an at-budget prompt, and the pre-0.32 scheduler
+  never scheduled a chunked prompt's last token: the request hung and held the engine slot. That hang
+  is fixed in the pinned image (vllm-project/vllm#48039, first released in vLLM v0.32.0), so no
+  backport patch is declared.
 
   dtype bfloat16 (config.json; the paper loads bf16 explicitly, experiments/paper/rerankers/reference/octen.py:55); vLLM's pooled head
   normalises in fp32 on both paths. empty_doc: send -- the paper embeds an empty document as the bare

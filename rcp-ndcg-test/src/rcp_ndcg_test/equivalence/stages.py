@@ -1351,7 +1351,7 @@ def text_only_conversation(conversation: list[Any]) -> list[Any]:
 def _messages_template_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict[str, Any]:
     """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
 
-    vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through the served chat template
+    vLLM v0.33.0 renders every chat-shaped ``/embeddings`` request through the served chat template
     (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with the request's ``add_generation_prompt``,
     false by default, vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content
     only.  So the served template file, rendered with transformers' jinja2 settings over every captured
@@ -1563,7 +1563,7 @@ def engine_render_merge(
 
 
 CHECKPOINT_TEMPLATE_FILES = ("chat_template.jinja", "chat_template.json", "tokenizer_config.json")
-"""Where a checkpoint carries its chat template, in the order the engine's resolution reads them: vLLM v0.31.0
+"""Where a checkpoint carries its chat template, in the order the engine's resolution reads them: vLLM v0.33.0
 takes the AutoProcessor's template, then the AutoTokenizer's (vllm/renderers/hf.py:263-300), and transformers
 reads a processor's from ``chat_template.jinja`` (else ``chat_template.json``) and a tokenizer's from
 ``chat_template.jinja`` (else ``tokenizer_config.json``'s ``chat_template``)."""
@@ -1624,9 +1624,9 @@ def _jinja_environment(*, strict: bool = True) -> Any:
 
 
 def engine_conversation(conversation: list[Any]) -> list[dict[str, Any]]:
-    """A sent conversation as vLLM v0.31.0 hands it to a chat template (the ``openai`` content format).
+    """A sent conversation as vLLM v0.33.0 hands it to a chat template (the ``openai`` content format).
 
-    vllm/entrypoints/chat_utils.py:1875-1999 (``_parse_chat_message_content_part`` with ``wrap_dicts``): a
+    vllm/renderers/chat_utils/chat_message.py:443-577 (``parse_chat_message_content_part`` with ``wrap_dicts``): a
     string part becomes ``{"type": "text", "text": ...}``, a text part keeps its text, an ``image_url`` part
     becomes ``{"type": "image"}`` and a ``video_url`` part ``{"type": "video"}`` -- the template sees the
     modality, never the URL.  A message whose content is a string stays as it is.

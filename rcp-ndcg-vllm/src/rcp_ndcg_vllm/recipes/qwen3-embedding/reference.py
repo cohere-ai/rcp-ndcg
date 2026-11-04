@@ -26,7 +26,7 @@ Published code path, per mode:
   ``over_cap_cut_differs`` and over-cap rows ride the harness's non-gating table.
 
 The anchor: the served route (``/v1/embeddings``, string inputs) tokenizes with the tokenizer's
-default ``add_special_tokens=True`` (vllm/renderers/params.py:183 at tag v0.31.0), appending one
+default ``add_special_tokens=True`` (vllm/renderers/params.py:199 at tag v0.33.0), appending one
 endoftext token (id 151643) that last-token pooling reads. The card's truncation keeps it inside the
 8192 budget (8191 content+frame ids, then the anchor: measured); a naive first-8192-token cut drops
 it and diverges at exactly the pooled token — the over-cap divergence the harness's stage-1 anchor

@@ -126,7 +126,7 @@ role: rerank                     # embed | multi_vector | rerank
 input: [text]                    # subset of [text, image, video]
 scoring: pointwise               # rerank only: pointwise | listwise
 licence: apache-2.0              # SPDX id or see-model-card
-engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+engine: {name: vllm, image: "vllm/vllm-openai:v0.33.0", min_version: "0.33.0"}
 resources: {gpus: 1}             # tensor_parallel_size = gpus
 serve:                           # everything rendered into `vllm serve` argv; nothing implicit
   runner: pooling
@@ -254,12 +254,12 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
   uv run --no-sync python -m rcp_ndcg_test.jobs.reference_lock build --family <family> \
       --in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.in \
       --out rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.lock \
-      --image-freeze rcp-ndcg-vllm/reference-image-v0.31.0.txt \
+      --image-freeze rcp-ndcg-vllm/reference-image-v0.33.0.txt \
       --image <the family's engine.image from family.yaml>
   ```
 
   For a digest-pinned nightly whose torch/CUDA stack is not committed, add
-  `--image-freeze-source vllm/vllm-openai:v0.31.0` (the released image the floors were checked
+  `--image-freeze-source vllm/vllm-openai:v0.33.0` (the released image the floors were checked
   against): the lock then records `image-freeze-sha256: uncommitted` with that source, never a
   false hash.
 

@@ -106,9 +106,9 @@ __all__ = [
     "serve_argv",
 ]
 
-_PINNED_VLLM_REF = "v0.31.0"
+_PINNED_VLLM_REF = "v0.33.0"
 """The upstream vLLM release the PoolerConfig field list below was read at (the shipped image's tag,
-``vllm/vllm-openai:v0.31.0``); a field that exists only past the tag is refused, because the engine's
+``vllm/vllm-openai:v0.33.0``); a field that exists only past the tag is refused, because the engine's
 argparse/``TypeAdapter`` rejects it at CLI parse."""
 
 PINNED_POOLER_CONFIG_FIELDS = (
@@ -117,6 +117,7 @@ PINNED_POOLER_CONFIG_FIELDS = (
     "seq_pooling_type",
     "tok_pooling_type",
     "use_activation",
+    "enable_flash_late_interaction",
     "dimensions",
     "enable_chunked_processing",
     "max_embed_len",
@@ -127,8 +128,10 @@ PINNED_POOLER_CONFIG_FIELDS = (
 )
 """Every field of vLLM's ``PoolerConfig`` at the pinned release (``vllm/config/pooler.py`` at
 :data:`_PINNED_VLLM_REF`); ``serve.pooler_config`` keys are validated against this tuple, because the
-engine rejects unknown keys (r-vllm-drift risk 2).  ``enable_flash_late_interaction`` is deliberately
-absent: it exists at the tag's successor checkout, not at the shipped tag."""
+engine rejects unknown keys (r-vllm-drift risk 2).  ``enable_flash_late_interaction`` (default ``True`` at
+the pinned release) is accepted because the engine's parser carries it; no shipped recipe sets it, and the
+field is inert for all of them: the engine applies ``late_interaction_params`` on the scoring route only,
+and the late-interaction recipes score MaxSim client-side."""
 
 _ID_PATTERN = r"^[a-z0-9][a-z0-9.-]*$"
 _REVISION_PATTERN = r"^[0-9a-f]{40}$"
@@ -647,7 +650,7 @@ FIELD_ROLES: Mapping[str, FieldSpec] = {
     # deployment's shape: _deployment_values renders serve.max_num_batched_tokens at serve.max_model_len when
     # the client's largest budget reaches it exactly on a pooling recipe, so an at-budget prompt is one
     # prefill step instead of the engine's GPU-dependent default chunk (the values it would return are the
-    # same; the v0.31.0 liveness bug that first motivated the floor is fixed upstream from vLLM v0.32.0).
+    # same; the liveness bug that first motivated the floor is fixed upstream from vLLM v0.32.0).
     # An explicit value below that floor is warned about and replaced by the safe one.
     "serve.host": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--host", str, position="head", default="0.0.0.0"),
     "serve.port": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--port", int, low=0, high=65535, position="head"),
@@ -1126,7 +1129,7 @@ def _document_skip_agrees(recipe: Recipe) -> None:
     """The engine-side document skip rule has one declaration and two readers; both halves must agree.
 
     A late-interaction checkpoint's own mask excludes a set of token ids from a document's scored positions
-    (the recipe's ``client.document_skip_token_ids``). vLLM v0.31.0's pooling route cannot return the
+    (the recipe's ``client.document_skip_token_ids``). vLLM v0.33.0's pooling route cannot return the
     engine's per-position token ids, so the pplx-late plugin applies the rule engine-side -- the recipe
     renders it for the engine in ``serve.hf_overrides.document_skip_token_ids`` (a CONTENT field: it changes
     the engine's output) and the client's ``document_skip_engine_side`` declares that the served plugin is
@@ -1197,7 +1200,7 @@ def _media_keep_agrees(recipe: Recipe) -> None:
 
     A late-interaction checkpoint's own mask may keep only a subset of a media document's positions (the
     recipe's ``client.media_keep_token_ids``: topk-embed-v1's image-patch token, the only positions its
-    reference keeps for an image document). vLLM v0.31.0's pooling route cannot return the engine's
+    reference keeps for an image document). vLLM v0.33.0's pooling route cannot return the engine's
     per-position token ids, so the plugin applies the allowlist engine-side -- the recipe renders it for the
     engine in ``serve.hf_overrides.document_keep_token_ids`` (a CONTENT field: it changes the engine's
     output) and the client's declared kept count checks the reply. The two lists are the one rule (the
@@ -1247,7 +1250,7 @@ def _pixel_budgets_agree(recipe: Recipe) -> None:
 
     The client resizes and counts every image under ``client.image_policy``; the engine resizes it again under
     its own budget -- the processor family's stock range, or what ``serve.mm_processor_kwargs`` pins: the
-    nested ``images_kwargs`` (the one pixel-pin shape, read from the vLLM v0.31.0 source; it reaches the HF
+    nested ``images_kwargs`` (the one pixel-pin shape, read from the vLLM v0.33.0 source; it reaches the HF
     image processor and the vLLM-side image token budget) or the flat keys (which also reach every image),
     each as ``min_pixels``/``max_pixels`` or the HF processor's ``size: {shortest_edge, longest_edge}``.  A
     client policy that declares ``engine_pixel_pinning`` -- the only way to declare a budget outside the
@@ -1531,8 +1534,8 @@ def _client_budgets(recipe: Recipe) -> dict[str, int]:
 def _output_cap(recipe: Recipe) -> int | None:
     """The judge's completion cap (``client.max_output_tokens``), or ``None`` for a role without one.
 
-    The cap is a floor of its own: the engine reserves the completion out of ``--max-model-len`` (vLLM
-    v0.31.0's input budget is ``max_model_len - max_output_tokens``), so a context at or below the cap
+    The cap is a floor of its own: the engine reserves the completion out of ``--max-model-len`` (vLLM's
+    input budget before v0.32.0 was ``max_model_len - max_output_tokens``), so a context at or below the cap
     admits no prompt at all.  A judge that declares no ``context_tokens`` (documents sent whole) would
     otherwise have no floor here.
     """
@@ -1551,7 +1554,7 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
     GPUs under 70 GiB) can never split a request the client is allowed to send whole -- the at-budget prompt
     is one prefill step.  vLLM v0.32.0 stores ``num_sampled_tokens_per_step = 0`` for the pooling runner
     (vllm-project/vllm#48039, commit ``e6fc81bc78``), so the floor is the declared deployment shape, not a
-    workaround for the v0.31.0 scheduler's never-finished last token.  An explicit value below that floor is
+    workaround for the pre-0.32 scheduler's never-finished last token.  An explicit value below that floor is
     warned about (:class:`RecipeWarning`) and the safe value is rendered instead.
 
     Raises:

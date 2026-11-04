@@ -59,7 +59,7 @@ rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8000 \
 | `resources.gpus` | `--tensor-parallel-size` | the recipe's per-variant GPU count, overridden |
 | `serve.gpu_memory_utilization` | `--gpu-memory-utilization` | a finite fraction above 0 and at most 1 (the engine's own default until set) |
 | `serve.max_num_seqs` | `--max-num-seqs` | |
-| `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | rendered at `serve.max_model_len` when the client's largest budget reaches it and the recipe carries no `pooling-full-context` patch; a smaller explicit value is warned about and replaced, see below |
+| `serve.max_num_batched_tokens` | `--max-num-batched-tokens` | rendered at `serve.max_model_len` when the client's largest budget reaches it; a smaller explicit value is warned about and replaced, see below |
 | `serve.host` | `--host` | the interface the engine listens on (`0.0.0.0` by default) |
 | `serve.port` | `--port` | wins over the console's `--port`; 0-65535 (0: the engine binds an ephemeral port) |
 | `serve.max_model_len` | `--max-model-len` | at or above the client's largest token budget, see below |
@@ -81,21 +81,18 @@ the GPU waves serve the recipes as shipped, with no overrides. `--port` (the run
 `serve.port`) and `--set serve.port` are checked the same way; `--set serve.port` wins when both are given.
 
 `serve.max_num_batched_tokens` is **rendered at** `serve.max_model_len` when the client's largest token budget
-reaches `serve.max_model_len` exactly and the recipe does not declare
-`serve.patches: [pooling-full-context]`: an exactly-full prompt is then chunked, and the
-pinned v0.31.0 scheduler never schedules its last token, so the request hangs and holds the engine slot. The
-engine's own default chunk depends on the GPU class (2048 on A100 and GPUs under 70 GiB, below these
-recipes' budgets), so the recipe renders the safe value instead of relying on it -- nothing is left to the
-engine's default. A recipe whose client budget stays below `serve.max_model_len` (the `qwen3-reranker`
-family: 8192 against 10000) never sends such a prompt, and a recipe that carries the patch finishes it; both
-may chunk freely and render no derived value. An explicit `--set serve.max_num_batched_tokens` below the
-floor is **warned about and replaced by** `serve.max_model_len`, naming the value asked for, the value
-rendered and the patch: the rule warns rather than refuses, but rendering the smaller value would
-reproduce the hang the rule exists to prevent. Carrying the patch on the nine affected recipes
-(`ctxl-rerank-v2-instruct-multilingual-2b`, the three `octen-embedding` sizes, the two
-`qwen3-vl-embedding` sizes, `zerank-2-reranker`, and the later `embeddinggemma-2` and
-`jina-embeddings-v5-text-nano` rows) is deferred: v0.31.0 is the latest release and the five pooling bugfix
-PRs upstream (60978, 55226, 55192, 60035, 61062) are open, none merged, so no release carries the fix yet.
+reaches `serve.max_model_len` exactly: the engine's own default chunk depends on the GPU class (2048 on A100
+and GPUs under 70 GiB, below these recipes' budgets), so an exactly-full prompt would be split into more than
+one prefill step. The recipe renders the safe value instead of relying on that default -- nothing is left to
+the engine, and the at-budget prompt is one prefill step. A recipe whose client budget stays below
+`serve.max_model_len` (the `qwen3-reranker` family: 8192 against 10000) never sends such a prompt and renders
+no derived value. An explicit `--set serve.max_num_batched_tokens` below the floor is **warned about and
+replaced by** `serve.max_model_len`, naming the value asked for and the value rendered: the rule warns rather
+than refuses, but rendering the smaller value would split the prompt the floor exists to keep whole. The floor
+fires for the sixteen affected recipes: every pooling recipe whose largest client budget reaches
+`serve.max_model_len` (`ctxl-rerank-v2-instruct-multilingual-2b`, `embeddinggemma-2`, the three
+`harrier-oss-v1` sizes, the two `jina-embeddings-v5-text` sizes, the three `octen-embedding` sizes, the two
+`pplx-embed-v1` sizes, the two `qwen3-vl-embedding` sizes, `zembed-1-embedding` and `zerank-2-reranker`).
 
 ## 3. Your own recipe file: a path instead of an id
 

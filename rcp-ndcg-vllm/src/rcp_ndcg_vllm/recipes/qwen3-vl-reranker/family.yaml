@@ -6,21 +6,21 @@ scoring: pointwise
 licence: apache-2.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"        # the known-good image line (the family convention)
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"        # the known-good image line (the family convention)
 resources: {gpus: 1}
 serve:
   runner: pooling
   convert: null            # not needed: the ForSequenceClassification suffix resolves to
                            # native Qwen3VLForConditionalGeneration wrapped by as_seq_cls_model
-                           # (pooling/classify); config/model.py:2279 at the v0.31.0 tag
+                           # (pooling/classify); config/model.py:2347 at the v0.33.0 tag
   hf_overrides:
     architectures: ["Qwen3VLForSequenceClassification"]
     classifier_from_token: ["no", "yes"]   # quoted: YAML reads a bare no as false. Order is
                                            # load-bearing: tokens[0]=no(false), tokens[1]=yes(true)
                                            # -> score head W[yes]-W[no] (adapters.py:566-571)
     is_original_qwen3_reranker: true       # sets method from_2_way_softmax, num_labels=1
-                                           # (model_executor/models/config.py:793-816, :1058;
+                                           # (model_executor/models/config.py:932-936, :945;
                                            # adapters.py:436-437)
     head_dtype: model                      # the engine's score head in the model's bf16, like the
                                            # card script's (GPU-E1 follow-up: 93% of documents
@@ -28,8 +28,8 @@ serve:
                                            # pooling head defaults to fp32)
   chat_template: template.jinja
   pooler_config: {use_activation: true}    # the sigmoid default pinned as CONTENT on the server too
-                                           # (v0.31.0 config/pooler.py:60; the engine falls back to the
-                                           # pooler default, pooling_params.py:111-125): client.use_activation: true
+                                           # (v0.33.0 config/pooler.py:60; the engine falls back to the
+                                           # pooler default, pooling_params.py:182-197): client.use_activation: true
                                            # is the wire field, this covers any caller that does not
                                            # send it. No other pooler field: the
                                            # defaults are LAST pooling + the sigmoid, pinned above
@@ -37,13 +37,13 @@ serve:
   max_model_len: 32768     # model card context length; config.json allows 262144
   dtype: bfloat16          # config.json dtype
   plugin: null             # native vLLM class + the conversion covers scoring; no plugin
-  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}}   # the reference's numbers (the pixel pin); 1280 tokens/image at max_pixels. ONE shape across the media recipes -- nested images_kwargs, decided from the v0.31.0 tag source: the nested dict reaches the HF processor's images_kwargs and the vLLM-side image token budget (context.py:44-84, :293-331; qwen3_vl.py:939-985), while flat keys also re-size every video clip (qwen3_vl.py:1371-1382)
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1310720}}   # the reference's numbers (the pixel pin); 1280 tokens/image at max_pixels. ONE shape across the media recipes -- nested images_kwargs, decided from the v0.33.0 tag source: the nested dict reaches the HF processor's images_kwargs and the vLLM-side image token budget (context.py:57-120, :376,402; qwen3_vl.py:1004-1005), while flat keys also re-size every video clip (qwen3_vl.py:1451-1489)
   limit_mm_per_prompt: {"image": 1}        # one media item per request (client.max_images carries the
                                            # same number): never the engine's multi-item hoist
   extra_args: []           # the wave runner passes --served-model-name <recipe id>; the client's
                            # model field is the same id, so name validation passes
 client:
-#   recipe: "vllm v0.31.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model; hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker}; served chat template template.jinja; LAST pooling with use_activation true pinned server-side and sent on the wire; mm_processor_kwargs nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the one pixel-pin shape) with the client's image_processor qwen3_vl under the pinned budget (engine_pixel_pinning); one media item per request (limit_mm_per_prompt image=1 = max_images 1)"
+#   recipe: "vllm v0.33.0 pooling/classify: Qwen3VLForSequenceClassification via as_seq_cls_model; hf_overrides {architectures, classifier_from_token [no, yes], is_original_qwen3_reranker}; served chat template template.jinja; LAST pooling with use_activation true pinned server-side and sent on the wire; mm_processor_kwargs nested images_kwargs min_pixels 4096 / max_pixels 1310720 (the one pixel-pin shape) with the client's image_processor qwen3_vl under the pinned budget (engine_pixel_pinning); one media item per request (limit_mm_per_prompt image=1 = max_images 1)"
   api: rerank
   request_shape: text
   max_tokens: 8192         # the model's whole input as the engine sees it (rendered template,
@@ -121,7 +121,7 @@ reference:
                                             # card's cut
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-13"
   report: "docs/reference/gpu-validation.md"
@@ -132,29 +132,29 @@ sources:
      1_LogitScore/config.json)"
   - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Reranker-2B (sha re-checked at recipe time:
      4bd860ac4f15ad1897a214615cccc700f8f71818)"
-  - "https://github.com/vllm-project/vllm/blob/v0.31.0/examples/pooling/score/template/qwen3_vl_reranker.jinja
+  - "https://github.com/vllm-project/vllm/blob/v0.33.0/examples/pooling/score/template/qwen3_vl_reranker.jinja
      (the served template; this recipe's copy rewrites the two expression blocks to the
      query/document variable convention with a messages fallback, byte-equal under the engine's
      render)"
-  - "vllm v0.31.0 vllm/renderers/hf.py:778 safe_apply_chat_template (its ChatTemplateResolutionError raise at :795); vllm/entrypoints/pooling/
+  - "vllm v0.33.0 vllm/renderers/hf.py:847 safe_apply_chat_template (its ChatTemplateResolutionError raise at :885); vllm/entrypoints/pooling/
      scoring/protocol.py:38-66 (the /rerank instruction field merged into chat_template_kwargs);
-     scoring/io_processor.py:605 get_score_prompt, :690-707 the chat-template render with
+     scoring/io_processor.py:707 get_score_prompt, :807-818 the chat-template render with
      messages [{role: query}, {role: document}] (the template's messages fallback) and the
      ChatTemplateResolutionError fallback to the un-templated pair encode"
-  - "vllm v0.31.0 model_executor/models/config.py:793-816 and :1058 (is_original_qwen3_reranker -> method
+  - "vllm v0.33.0 model_executor/models/config.py:932-945 (is_original_qwen3_reranker -> method
      from_2_way_softmax + classifier_from_token); model_executor/models/adapters.py:436-437
      (num_labels=1) and :516-571 load_weights_using_from_2_way_softmax with the fp32 head
-     W[true] - W[false] at :566-571; vllm/config/model.py:2279 (the ForSequenceClassification
+     W[true] - W[false] at :566-571; vllm/config/model.py:2347 (the ForSequenceClassification
      suffix -> pooling/classify); model_executor/layers/pooler/activations.py:118-141
      (PoolerClassify, num_labels<2 -> sigmoid); model_executor/models/interfaces_base.py:160
      (default LAST pooling); vllm/config/pooler.py:60 (use_activation) and
-     pooling_params.py:111-125 (_merge_default_parameters: a request that sends none takes the pooler config's)"
-  - "the pixel-pin shape (the full chain is cited once, in qwen3-vl-embedding-2b's sources): vllm v0.31.0
-     vllm/multimodal/processing/context.py:44-84 (the image-only overlay of a nested images_kwargs
-     dict), :293-331 (no overlay at processor construction and HF __call__: the nested dict reaches
-     the HF processor); vllm/model_executor/models/qwen3_vl.py:939-985 (the vLLM-side image token
-     budget reads through the overlay) and :1371-1382 (flat min_pixels/max_pixels re-size every
-     video clip); transformers 5.17.0 processing_utils.py:1513-1630 (_merge_kwargs routes the
+     pooling_params.py:182-197 (_merge_default_parameters: a request that sends none takes the pooler config's)"
+  - "the pixel-pin shape (the full chain is cited once, in qwen3-vl-embedding-2b's sources): vllm v0.33.0
+     vllm/multimodal/processing/context.py:57-120 (the image-only overlay of a nested images_kwargs
+     dict), :376,402 (no overlay at processor construction and HF __call__: the nested dict reaches
+     the HF processor); vllm/model_executor/models/qwen3_vl.py:1004-1005 (the vLLM-side image token
+     budget reads through the overlay) and :1451-1489 (flat min_pixels/max_pixels re-size every
+     video clip); transformers 5.17.0 (the 0.31 image's version; W4 records the 0.33 image's) processing_utils.py:1513-1630 (_merge_kwargs routes the
      nested dict to images_kwargs only) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129
      (min_pixels + max_pixels become the resize size)"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed
@@ -175,7 +175,7 @@ notes: |-
   a new template file and a new recipe (a changed frame is a new judgement family and never
   pools with this one).
 
-  Served template (template.jinja): vLLM v0.31.0's qwen3_vl_reranker.jinja with its two
+  Served template (template.jinja): vLLM v0.33.0's qwen3_vl_reranker.jinja with its two
   expression blocks rewritten to the recipe variable convention (query, document, instruction)
   and a messages fallback, so the file renders byte-identically both the way the harness's
   stage-1 template check calls it and the way the engine calls it (messages + the instruction
@@ -186,7 +186,7 @@ notes: |-
 
   Media policy (the pixel pin, both halves). Serve: serve.mm_processor_kwargs pins min_pixels 4096 /
   max_pixels 1310720 under the nested images_kwargs scope -- ONE shape across the media
-  recipes, decided from the v0.31.0 tag source (the nested dict reaches the HF processor's
+  recipes, decided from the v0.33.0 tag source (the nested dict reaches the HF processor's
   images_kwargs and the vLLM-side image token budget; the flat form also re-sizes every video
   clip): the reference script's own numbers, so the engine and the reference resize identically
   by construction (the repo's preprocessor default min_pixels 4095 can tip one image token for
@@ -301,7 +301,7 @@ variants:
       scale) on one document, every other document within one quantum of its round-7 value, so the
       wave-to-wave spread of the floor is the quantum, not a moved path: nothing in the recipe, the
       reference or the engine changed between the two waves (the recipe was last edited by the
-      round-7 declaration itself, the engine image is the same v0.31.0 pin, the reference
+      round-7 declaration itself, the engine image is the same v0.33.0 pin, the reference
       environment is the same lock, and the 8b re-measured its round-7 0.0273 exactly). This size
       therefore declares `overrides.gates.prob_p99_abs: 0.035`, the tight tolerance covering its
       measured maximum, so 100% of the wave's documents pass while the p99 gate still catches a real
@@ -368,7 +368,7 @@ variants:
       tie_word_embeddings false at the top level, and its text_config carries NO tie_word_embeddings key
       (the 2b's text_config does -- the difference between the two checkpoints' config.json files), so
       vLLM's seq-cls weight loader, which reads text_config.tie_word_embeddings
-      (vllm/model_executor/models/adapters.py:542 and :611 at v0.31.0), raised AttributeError:
+      (vllm/model_executor/models/adapters.py:542 and :611 at v0.33.0), raised AttributeError:
       'Qwen3VLTextConfig' object has no attribute 'tie_word_embeddings' at model load while the 2b
       served. The variant's overrides.serve.hf_overrides restates the family's scorer keys and declares
       text_config.tie_word_embeddings false -- vLLM applies a dict-valued hf_overrides entry to the

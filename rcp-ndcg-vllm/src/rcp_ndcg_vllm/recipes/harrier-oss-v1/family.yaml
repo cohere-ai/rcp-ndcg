@@ -1,5 +1,5 @@
 # Serving recipe family: microsoft/harrier-oss-v1 (270m, 0.6b, 27b) on stock vLLM (image
-# vllm/vllm-openai:v0.31.0). One family, three sizes: every fact below is measured
+# vllm/vllm-openai:v0.33.0). One family, three sizes: every fact below is measured
 # at each variant's pinned revision (the variant rows carry their own file citations), and the shared
 # blocks are shared because the checkpoints agree byte for byte where it matters -- modules.json is
 # byte-identical at all three revisions (sha256 84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf:
@@ -13,35 +13,35 @@
 # below (anchor: last with add_special_tokens: true) covers both. Nothing else differs per size, so the
 # family shares one template, one reference and one client shape.
 #
-# Served path (every fact measured at the v0.31.0 tag): the engine is told --runner pooling and the
+# Served path (every fact measured at the v0.33.0 tag): the engine is told --runner pooling and the
 # decoder backbones are converted to embedding models (convert auto -> embed for a pooling runner on a
-# non-pooling architecture: the *Model suffix default at vllm/config/model.py:2288 and the
+# non-pooling architecture: the *Model suffix default at vllm/config/model.py:2356 and the
 # sentence-transformers fallback at :1310; the conversion wraps the loaded class at
-# vllm/model_executor/model_loader/utils.py:272-277). The pooler needs no flag: the checkpoints' own
+# vllm/model_executor/model_loader/utils.py:306,330). The pooler needs no flag: the checkpoints' own
 # sentence-transformers metadata resolves LAST pooling + L2 normalize (modules.json -> 1_Pooling/config.json
-# pooling_mode_lasttoken + the Normalize module; vllm/transformers_utils/config.py:982-1066, applied at
-# vllm/config/model.py:733-753 unless a user --pooler-config overrides). Attention is causal (the card:
+# pooling_mode_lasttoken + the Normalize module; vllm/transformers_utils/config.py:1012-1095, applied at
+# vllm/config/model.py:777-804 unless a user --pooler-config overrides). Attention is causal (the card:
 # "decoder-only architectures"; the Gemma3 layers are DECODER attention with the per-layer type from
 # config.layer_types at vllm/model_executor/models/gemma3.py:153-156, 175-182, 198; Qwen3 is plain
-# causal). dtype bfloat16 is the checkpoints' own dtype, and v0.31.0 refuses float16 for gemma3_text
-# outright (vllm/config/model.py:2330-2335).
+# causal). dtype bfloat16 is the checkpoints' own dtype, and v0.33.0 refuses float16 for gemma3_text
+# outright (vllm/config/model.py:2398-2403).
 id: harrier-oss-v1
 schema_version: "1" # the recipe file format's version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
 input: [text]
 licence: mit
-engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}
+engine: {name: vllm, image: "vllm/vllm-openai:v0.33.0", min_version: "0.33.0"}
 resources: {gpus: 1}
 serve:
   runner: pooling
   convert: null # auto-resolves to embed for a pooling runner on either backbone: the *Model suffix
-    # default (model.py:2288, try_match_architecture_defaults :2296-2311) matches both Gemma3TextModel
-    # and Qwen3Model; the :1310-1311 ST fallback is for the *ForCausalLM case
+    # default (model.py:2356, try_match_architecture_defaults :2364-2381) matches both Gemma3TextModel
+    # and Qwen3Model; the :1331-1358 ST fallback is for the *ForCausalLM case
   hf_overrides: {} # the checkpoints declare their architectures; the engine normalizes the unregistered
-    # Qwen3Model to Qwen3ForCausalLM itself (registry.py:1287-1313 _normalize_arch, called at :1348/:1402)
+    # Qwen3Model to Qwen3ForCausalLM itself (registry.py:1341 _normalize_arch, called at :1348/:1402)
     # and the lm_head is tied
   chat_template: null # no template file ships: the served route renders no template over string inputs
-    # (vllm/entrypoints/pooling/base/io_processor.py:136-160; renderers/inputs/preprocess.py:129-132 is
+    # (vllm/entrypoints/pooling/base/io_processor.py:136-160; renderers/inputs/preprocess.py:28-56 is
     # the decode-only prompt path), and the checkpoints' own chat templates (the Gemma and Qwen instruct
     # templates) are for chat, not for the embeddings route
   pooler_config: {} # resolved from the checkpoints' own ST metadata (LAST + normalize); the argv sends
@@ -54,15 +54,15 @@ serve:
   dtype: bfloat16 # config.json dtype (bfloat16) on all three; gemma3_text refuses float16 at the tag
   plugin: rcp-ndcg-vllm # the wheel that carries the engine-side patches; this family declares none (below)
   extra_args: []
-  # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hangs, 32767 returns at
-  # v0.31.0) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
+  # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hung, 32767 returned on
+  # the pre-0.32 image) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
   # vLLM v0.32.0, which stores num_sampled_tokens_per_step = 0 for the pooling runner; the backport
   # patch this family used to declare is deleted. The at-budget prompt stays one prefill step:
   # serve.max_num_batched_tokens renders at serve.max_model_len when nothing sets it, so an exactly-full
   # prompt is one prefill step.
   patches: []
 client:
-#   recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoints' sentence-transformers metadata (last-token + L2 normalize); bare strings on /v1/embeddings with the post-processor anchor appended (the Gemma variants' eos id 1, the 0.6b's endoftext id 151643)"
+#   recipe: "vllm v0.33.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoints' sentence-transformers metadata (last-token + L2 normalize); bare strings on /v1/embeddings with the post-processor anchor appended (the Gemma variants' eos id 1, the 0.6b's endoftext id 151643)"
   api: openai_embeddings
   # The frame is the template below: the client prepends nothing (the product refuses
   # query_prompt/doc_prompt beside a template -- one home for a prompt prefix), so the two fields
@@ -119,7 +119,7 @@ reference:
   known_deviations: [over_cap_cut_differs]
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-14"
   report: "docs/reference/gpu-validation.md"
@@ -131,15 +131,15 @@ sources:
   - "1_Pooling/config.json at each pinned revision: pooling_mode_lasttoken true, every other mode false; the only differing key is word_embedding_dimension (640/1024/5376)"
   - "config_sentence_transformers.json, byte-identical at all three pinned revisions (sha256 ad2096929147368b5d0ba5322ea394d50911be4d348091c9f3b0ad06c3763d91): prompts.web_search_query is the query frame above, similarity_fn_name cosine"
   - "mteb_v2_eval_prompts.json, byte-identical at all three pinned revisions (sha256 08aaf10dc3d61ac54af15027d3a491ea06b2ed3edcb06dc05584539f5555fe51): 131 per-task instructions, the model-owned MTEB v2 prompts (the task-instruction field)"
-  - "vllm tag v0.31.0 vllm/model_executor/models/registry.py:228 (Gemma3TextModel -> gemma3.Gemma3Model, _EMBEDDING_MODELS) and :201 (Qwen3ForCausalLM; the Qwen3Model architecture normalizes to it at :1287-1313, called at :1348/:1402)"
+  - "vllm tag v0.33.0 vllm/model_executor/models/registry.py:228 (Gemma3TextModel -> gemma3.Gemma3Model, _EMBEDDING_MODELS) and :201 (Qwen3ForCausalLM; the Qwen3Model architecture normalizes to it at :1341-1360, called at :1402/:1456)"
   - "the three card READMEs at the pinned revisions (31de22b6.../f9b9dc8d.../0c0fc62f...) contain no Matryoshka/MRL/projection sentence, and each config.json declares neither is_matryoshka nor matryoshka_dimensions: mrl_kind: none is the declaration"
-  - "vllm tag v0.31.0 vllm/config/model.py:2288 (the *Model suffix default -> pooling/embed; try_match_architecture_defaults :2296-2311) and :1310-1311 (the fallback for a *ForCausalLM checkpoint)"
-  - "vllm tag v0.31.0 vllm/model_executor/model_loader/utils.py:272-277 (convert=embed wraps the resolved class as_embedding_model) and vllm/model_executor/models/adapters.py:250-268 (the default: the normalized hidden state of the last token)"
-  - "vllm tag v0.31.0 vllm/transformers_utils/config.py:982-1066 (get_pooling_config: modules.json + the Pooling module's config resolve seq_pooling_type LAST and use_activation) applied at vllm/config/model.py:733-753"
-  - "vllm tag v0.31.0 vllm/model_executor/models/gemma3.py:153-156, 175-182, 198 (per-layer attention from config.layer_types: sliding_attention with config.sliding_window, full_attention global; per_layer_sliding_window) and :175-182 (is_causal -> DECODER: causal attention, the card's decoder-only)"
-  - "vllm tag v0.31.0 vllm/config/model.py:2330-2335 (_FLOAT16_NOT_SUPPORTED_MODELS: gemma3/gemma3_text refuse float16) and vllm/config/model.py:2132-2166 (causal + LAST pooling supports chunked prefill)"
-  - "vllm tag v0.31.0 vllm/engine/arg_utils.py:2860-2866 (default max_num_batched_tokens 16384 on >=160 GB GPUs) and vllm/config/scheduler.py:315-327 (max_num_batched_tokens < max_model_len requires chunked prefill)"
-  - "vllm tag v0.31.0 vllm/renderers/params.py:183 (add_special_tokens defaults to true on the pooling routes) and vllm/entrypoints/pooling/base/io_processor.py:136-160 (no chat template is applied to string inputs)"
+  - "vllm tag v0.33.0 vllm/config/model.py:2356 (the *Model suffix default -> pooling/embed; try_match_architecture_defaults :2364-2381) and :1331-1358 (the fallback for a *ForCausalLM checkpoint)"
+  - "vllm tag v0.33.0 vllm/model_executor/model_loader/utils.py:306,330 (convert=embed wraps the resolved class as_embedding_model) and vllm/model_executor/models/adapters.py:250-268 (the default: the normalized hidden state of the last token)"
+  - "vllm tag v0.33.0 vllm/transformers_utils/config.py:1012-1095 (get_pooling_config: modules.json + the Pooling module's config resolve seq_pooling_type LAST and use_activation) applied at vllm/config/model.py:777-804"
+  - "vllm tag v0.33.0 vllm/model_executor/models/gemma3.py:153-156, 175-182, 198 (per-layer attention from config.layer_types: sliding_attention with config.sliding_window, full_attention global; per_layer_sliding_window) and :165 (is_causal -> DECODER: causal attention, the card's decoder-only)"
+  - "vllm tag v0.33.0 vllm/config/model.py:2398-2403 (_FLOAT16_NOT_SUPPORTED_MODELS: gemma3/gemma3_text refuse float16) and vllm/config/model.py:2132-2166 (causal + LAST pooling supports chunked prefill)"
+  - "vllm tag v0.33.0 vllm/engine/arg_utils.py:2973-2990 (default max_num_batched_tokens 16384 on >=160 GB GPUs) and vllm/config/scheduler.py:315-327 (max_num_batched_tokens < max_model_len requires chunked prefill)"
+  - "vllm tag v0.33.0 vllm/renderers/params.py:199 (add_special_tokens defaults to true on the pooling routes) and vllm/entrypoints/pooling/base/io_processor.py:136-160 (no chat template is applied to string inputs)"
   - "sentence-transformers >=3.0 sentence_transformers/models/Transformer.py (the Transformer module infers max_seq_length = min(config.max_position_embeddings, tokenizer.model_max_length) when the checkpoint sets none; the post-processor appends the pooled anchor after truncation)"
   - "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/reference.in (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)"
@@ -155,7 +155,7 @@ notes: >
   which post-processor token the route appends (the anchor declaration covers both), and the dims
   640/1024/5376 are the checkpoints' own (no Matryoshka field exists in the cards, so the client
   declares none). Served = the client renders the template (the query prompt for queries, bare text
-  for documents) and POSTs strings to /v1/embeddings; vLLM v0.31.0 serves each checkpoint with
+  for documents) and POSTs strings to /v1/embeddings; vLLM v0.33.0 serves each checkpoint with
   --runner pooling only. Prompt format: the frame ends "Query: " WITH a trailing space -- the
   checkpoint's own web_search_query prompt carries it (config_sentence_transformers.json, byte-pinned)
   and the card's get_detailed_instruct f-string writes "Query: {query}" the same way; the other
@@ -198,7 +198,7 @@ notes: >
   32-bit element-index limits under one forward of 131072 tokens -- the MLP activation alone is
   131072 x 21504 (intermediate_size) = 2.82e9 elements, over 2^31 (2,147,483,648), the fault class
   that killed pplx-embed-v2-context-9b-preview at 262144 (GPU-E1); at the card's own 32768 the same
-  product is 32768 x 21504 = 7.0e8 elements, well under. Pooling hang: on v0.31.0 a pooling prompt of
+  product is 32768 x 21504 = 7.0e8 elements, well under. Pooling hang: on the pre-0.32 line a pooling prompt of
   exactly max_model_len tokens could stick under the default chunked prefill (max_num_batched_tokens
   16384 on the >=160 GB GPUs; GPU-E1). vllm-project/vllm#48039 (commit e6fc81bc78, first released in
   vLLM v0.32.0) fixes it in the scheduler itself (num_sampled_tokens_per_step = 0 for the pooling
@@ -209,7 +209,7 @@ notes: >
   `serve.max_model_len` when nothing sets it); no flag workaround ships (a per-variant
   --max-num-batched-tokens raise
   would re-open the 32-bit arithmetic the 27b's budget exists to avoid). The wave monitors the
-  at-budget ladder. The engine image's transformers pin at the tag is >=5.10.4,<5.18.0
+  at-budget ladder. The engine image's transformers pin at the tag is >=5.16.1,<5.21.0
   (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance
   token-id check on the GPU host is the designed catch for library drift. No media processor settings
   apply: the models are text-only (input: [text], no processor files in any of the three repos).

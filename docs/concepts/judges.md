@@ -153,7 +153,7 @@ engine's `--limit-mm-per-prompt` need at least 5 (`{"video": 5}`), and its polic
 Inside one node, use the engine's own data parallelism for one URL per node (vLLM `--data-parallel-size`); across
 nodes, run independent replicas and list their URLs
 (below). The paper's judges ran on SGLang; the paper's submission code is the record of those engine commands, and
-this release serves the same checkpoints on vLLM v0.31.0.
+this release serves the same checkpoints on vLLM v0.33.0.
 
 ### Checking an endpoint before a long run
 

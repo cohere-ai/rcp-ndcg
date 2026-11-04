@@ -251,13 +251,13 @@ candidates:
 steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:
-    image: vllm/vllm-openai:v0.31.0                # your engine and your tag
+    image: vllm/vllm-openai:v0.33.0                # your engine and your tag
     command: [vllm, serve, Octen/Octen-Embedding-8B, --runner, pooling, --served-model-name, octen-embedding-8b,
               --host, 0.0.0.0, --port, "8000"]
     env: {HF_HOME: /models}
     resources: {gpus: 1}                           # per replica
   judge:
-    image: vllm/vllm-openai:v0.31.0
+    image: vllm/vllm-openai:v0.33.0
     command: [vllm, serve, openai/gpt-oss-120b, --served-model-name, gpt-oss-120b, --reasoning-parser, openai_gptoss,
               --max-model-len, "131072", --tensor-parallel-size, "4", --data-parallel-size, "2",
               --host, 0.0.0.0, --port, "8000"]
@@ -435,7 +435,7 @@ without it is handed the whole-run command as the job's `argv`, and a job whose 
 from rcp_ndcg.runners import JobPhase, JobSpec, Resources, ServeConfig, get_runner
 
 engine = ServeConfig(
-    image="vllm/vllm-openai:v0.31.0",
+    image="vllm/vllm-openai:v0.33.0",
     command="vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss",
     resources=Resources(gpus=8),
 )
@@ -602,7 +602,7 @@ spec:
     spec:
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.31.0         # pin the tag you tested
+          image: vllm/vllm-openai:v0.33.0         # pin the tag you tested
           command: [vllm, serve]
           args: ["openai/gpt-oss-120b", "--served-model-name", "gpt-oss-120b", "--reasoning-parser", "openai_gptoss",
                  "--tensor-parallel-size", "4", "--max-model-len", "131072", "--port", "8000"]

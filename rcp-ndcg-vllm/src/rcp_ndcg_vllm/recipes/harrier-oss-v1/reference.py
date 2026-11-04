@@ -50,7 +50,7 @@ the budget the two cuts can differ at the content boundary, so the recipe declar
 ``over_cap_cut_differs`` and over-cap rows ride the harness's non-gating table.
 
 The anchor: the served route (``/v1/embeddings``, string inputs) tokenizes with the tokenizer's
-default ``add_special_tokens=True`` (vllm/renderers/params.py:183 at tag v0.31.0), appending one
+default ``add_special_tokens=True`` (vllm/renderers/params.py:199 at tag v0.33.0), appending one
 post-processor token that last-token pooling reads -- the Gemma variants' ``<eos>`` (id 1, bos id 2
 leading) for the 270m and the 27b, the Qwen endoftext (id 151643) for the 0.6b (measured at the
 pinned revisions). Both survive the client's anchor-preserving cut, so the declared deviation is

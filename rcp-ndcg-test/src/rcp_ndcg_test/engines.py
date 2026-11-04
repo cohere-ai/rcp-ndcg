@@ -2,7 +2,7 @@
 docs/reference/gpu-validation.md).
 
 One emulator per (engine, version, recipe, behaviour fingerprint), selected as
-``fake://<engine>-<version>/<recipe>`` (e.g. ``fake://vllm-0.31.0/qwen3-embedding-0.6b``):
+``fake://<engine>-<version>/<recipe>`` (e.g. ``fake://vllm-0.33.0/qwen3-embedding-0.6b``):
 
 * the **protocol** is emulated, not replayed: routes, request validation, error statuses and bodies, the
   result ordering and framing, usage counts and token counting with the recipe's real tokenizer files --
@@ -240,7 +240,7 @@ def find_corpora(
         root: Where to scan (``rcp-ndcg-test/corpora``, one engine-version directory, or a mirror).
         recipe_id: Keep only the corpora whose manifest names this recipe.
         engine_name: Keep only this engine (``vllm``).
-        engine_version: Keep only this engine version (``0.31.0``).
+        engine_version: Keep only this engine version (``0.33.0``).
 
     Returns:
         The corpus directories (each holds a ``manifest.json``), sorted by path.
@@ -419,7 +419,7 @@ def _numeric_diff(expected: float, actual: float, path: str, tolerance: tuple[fl
 
 
 # ---------------------------------------------------------------------------
-# the request fields per route (vLLM v0.31.0's request models), and the replay key they make
+# the request fields per route (vLLM v0.33.0's request models), and the replay key they make
 # ---------------------------------------------------------------------------
 
 _COMMON_FIELDS = frozenset(
@@ -454,7 +454,7 @@ ROUTE_FIELDS: Mapping[str, frozenset[str]] = {
         "max_tokens_per_doc",
     },
 }
-"""The request fields each model route's request model declares in vLLM v0.31.0
+"""The request fields each model route's request model declares in vLLM v0.33.0
 (``vllm/entrypoints/pooling/{embed,pooling,scoring}/protocol.py`` and their mixins in
 ``pooling/base/protocol.py``). A field a route does not declare is **ignored** by the engine (its
 ``OpenAIBaseModel`` drops extra keys: ``vllm/entrypoints/serve/engine/protocol.py``, "fields were
@@ -508,7 +508,7 @@ absent field and its default ask the same question. Every other absent field sta
 value (``use_activation`` absent leaves the model's own default, which no record pins)."""
 
 _CHAT_ROUTE_DEFAULT = {"add_special_tokens": False}
-"""The chat-shaped (``messages``) routes' default of ``add_special_tokens``: vLLM v0.31.0's
+"""The chat-shaped (``messages``) routes' default of ``add_special_tokens``: vLLM v0.33.0's
 ``ChatRequestOptionsMixin`` declares it ``False`` (``pooling/base/protocol.py:230-237``), unlike the
 completion-shaped routes' ``True``. A recorded chat request that omits the field and one that sends
 ``false`` ask the engine the same question, so they key the same replay entry."""
@@ -1070,7 +1070,7 @@ class EngineFacts:
 
     Attributes:
         engine_name: ``vllm``.
-        engine_version: The served engine version (``0.31.0``): the protocol layer's key.
+        engine_version: The served engine version (``0.33.0``): the protocol layer's key.
         served_name: The ``--served-model-name`` (the request's ``model`` field, validated on every
             route).
         model_root: The checkpoint id (``GET /v1/models`` reports it as ``root``).
@@ -1603,7 +1603,7 @@ class VllmEmulator:
 
     def _pooling(self, body: Mapping[str, Any]) -> httpx.Response:
         """``POST /pooling``: the token-vector matrix per input, in the request's framing (vLLM
-        v0.31.0's ``PoolingResponse``, or the ``bytes`` framing of
+        v0.33.0's ``PoolingResponse``, or the ``bytes`` framing of
         ``vllm/entrypoints/pooling/utils.py::build_pooling_bytes_streaming_response``).
 
         The route refuses a per-request ``dimensions`` outright, whatever the checkpoint declares
@@ -1761,7 +1761,7 @@ class VllmEmulator:
         )
 
     def _tokenize(self, body: Mapping[str, Any]) -> httpx.Response:
-        """``POST /tokenize`` (vLLM v0.31.0's ``TokenizeCompletionRequest`` -> ``TokenizeResponse``): the
+        """``POST /tokenize`` (vLLM v0.33.0's ``TokenizeCompletionRequest`` -> ``TokenizeResponse``): the
         prompt's token ids with the recipe's real tokenizer, ``token_strs`` left ``null`` (the emulator
         does not model ``return_token_strs``)."""
         prompt = body.get("prompt")
@@ -1979,7 +1979,7 @@ def transport_for(url: str) -> httpx.MockTransport:
     ``rcp_ndcg.inference.fake`` hands engine-version URLs to).
 
     Args:
-        url: The fake URL, e.g. ``fake://vllm-0.31.0/qwen3-embedding-0.6b``.
+        url: The fake URL, e.g. ``fake://vllm-0.33.0/qwen3-embedding-0.6b``.
 
     Returns:
         A mock transport answering with the registered emulator.
@@ -2002,7 +2002,7 @@ def transport_for(url: str) -> httpx.MockTransport:
 
 
 def split_engine_host(host: str) -> tuple[str, str]:
-    """``vllm-0.31.0`` -> ``("vllm", "0.31.0")``: the engine name before its version, by the one
+    """``vllm-0.33.0`` -> ``("vllm", "0.33.0")``: the engine name before its version, by the one
     pattern :data:`rcp_ndcg.inference.fake.RE_ENGINE_URL` routes to the emulators.
 
     Raises:
@@ -2011,7 +2011,7 @@ def split_engine_host(host: str) -> tuple[str, str]:
     from rcp_ndcg.inference.fake import RE_ENGINE_URL
 
     if not RE_ENGINE_URL.match(f"fake://{host}/"):
-        raise ConfigError(f"{host!r} is not an engine-version host (e.g. 'vllm-0.31.0')")
+        raise ConfigError(f"{host!r} is not an engine-version host (e.g. 'vllm-0.33.0')")
     engine, version = host.split("-", 1)
     return engine, version
 
@@ -2129,7 +2129,7 @@ def _outputs_from_response(
 ) -> list[tuple[str, ModelObservation]]:
     """The model outputs one recorded 2xx exchange holds, keyed per replay key (prompt + context).
 
-    Decodes vLLM v0.31.0's framings: JSON floats, ``base64`` vectors (``embed_dtype`` and
+    Decodes vLLM v0.33.0's framings: JSON floats, ``base64`` vectors (``embed_dtype`` and
     ``endianness`` from the request, vLLM's defaults otherwise), and the ``bytes`` framing by its
     ``metadata`` header's per-item ``start``/``end``/``shape``. Anything it cannot decode -- a base64
     token matrix (vLLM sends no shape), a frame without metadata, a missing score -- is refused naming
@@ -2174,7 +2174,7 @@ def _outputs_from_response(
             if isinstance(payload, str):
                 if set_.slot == "token_vector":
                     raise DataError(
-                        f"{where}: a base64 token-vector item carries no shape (vLLM v0.31.0 sends none); "
+                        f"{where}: a base64 token-vector item carries no shape (vLLM v0.33.0 sends none); "
                         "record /pooling in float or bytes framing"
                     )
                 values = _unpack_frame(_b64(payload, where), dtype, endianness)

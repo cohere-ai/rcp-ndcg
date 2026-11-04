@@ -19,7 +19,7 @@ and one head file:
   [128, 1024] at 0.6b, [128, 4096] at 9b; neither revision ships a bias) -- a SEPARATE
   file the stock vLLM weight discovery never reads: ``DefaultModelLoader._prepare_weights``
   globs ``hf_folder/*.safetensors`` non-recursively (vllm/model_executor/
-  model_loader/default_loader.py:221 at v0.31.0), so the head must be loaded by the
+  model_loader/default_loader.py:221 at v0.33.0), so the head must be loaded by the
   plugin itself and renamed onto the projector module ``custom_text_proj`` that the
   inherited ``ColQwen3_5Model`` exposes to its token-embed pooler
   (vllm/model_executor/models/colqwen3_5.py:177-187).
@@ -60,7 +60,7 @@ __all__ = [
 ]
 
 #: The checkpoint's ``architectures[0]`` (config.json at the pinned revision) --
-#: the name the plugin registers with vLLM's model registry. vLLM v0.31.0's own
+#: the name the plugin registers with vLLM's model registry. vLLM v0.33.0's own
 #: registry carries the qwen3_5 family under other names (``Qwen3_5ForCausalLM``,
 #: ``ColQwen3_5``, ``Qwen3_5ForConditionalGeneration``, ...; vllm/model_executor/
 #: models/registry.py:203-204, :284, :596) and not this one, so a flags-only
@@ -89,13 +89,13 @@ DENSE_HEAD_BIAS_TENSOR = "linear.bias"
 #: ``ColQwen3_5Model`` exposes the projection as ``custom_text_proj`` and hands
 #: it to the token-embed pooler as its projector. The stock loader reaches that
 #: module only under its ``_PROJ_LAYER_NAMES`` ("custom_text_proj",
-#: "embedding_proj_layer" -- colqwen3_5.py:210-214 at v0.31.0), so the head
+#: "embedding_proj_layer" -- colqwen3_5.py:210-214 at v0.33.0), so the head
 #: tensors are renamed to these names before the stock loader sees them.
 PROJECTION_TARGET_NAME = "custom_text_proj.weight"
 PROJECTION_BIAS_TARGET_NAME = "custom_text_proj.bias"
 
 #: Restatement of the prefix mapping the plugin's model class inherits
-#: (vllm/model_executor/models/colqwen3_5.py:135-143 at v0.31.0), so the tests
+#: (vllm/model_executor/models/colqwen3_5.py:135-143 at v0.33.0), so the tests
 #: can verify the served mapping without importing vLLM: exactly this
 #: checkpoint's naming convention (top-level ``language_model.*`` maps onto the
 #: class's ``language_model.model.*``; ``visual.*`` matches as-is; this
@@ -116,7 +116,7 @@ CHECKPOINT_TENSOR_RE = re.compile(r"^(?:language_model|visual)\..+")
 #: bias, whose two qualnames share one parameter (the model attribute and the
 #: pooler head's projector). ``ColQwen3_5Model`` builds ``custom_text_proj``
 #: with ``bias=True`` and zero-initialises it (colqwen3_5.py:177-183 at
-#: v0.31.0), so this checkpoint's bias-less Dense head behaves exactly as
+#: v0.33.0), so this checkpoint's bias-less Dense head behaves exactly as
 #: ``bias=False`` -- and a future checkpoint revision that ships a head bias
 #: loads over the zeros instead of being silently dropped.
 ZERO_INITIALISED_PARAMETERS = ("custom_text_proj.bias", "pooler.head.projector.bias")
@@ -145,7 +145,7 @@ def mark_zero_initialised(loaded: set[str]) -> set[str]:
 
     Inputs: the ``set[str]`` ``ColQwen3_5Model.load_weights`` returns (every parameter the
     checkpoint's tensors were loaded into).  Output: the same set, with
-    :data:`ZERO_INITIALISED_PARAMETERS` added.  The reason: vLLM v0.31.0's load tracker
+    :data:`ZERO_INITIALISED_PARAMETERS` added.  The reason: vLLM v0.33.0's load tracker
     (``model_loader/default_loader.py:track_weights_loading``) raises for any model
     parameter outside that set, but this checkpoint is bias-less -- the bias is the
     constructor's zeros (score-equivalent, see the module docstring of

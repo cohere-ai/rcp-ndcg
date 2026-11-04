@@ -185,7 +185,7 @@ sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.Task
   record is written then -- the engine applied the rule. The engine's
   `usage.prompt_tokens` counts the *prompt*, so under this rule it no longer
   describes the vectors: the declared counts are what the reply is checked
-  against. vLLM v0.31.0's pooling route still returns no per-position token ids,
+  against. vLLM v0.33.0's pooling route still returns no per-position token ids,
   which is why the rule's home is the engine-side plugin; a recipe without
   this flag keeps the client-side rule above.
 * `media_keep_token_ids` is the MEDIA allowlist, for a checkpoint whose image

@@ -70,7 +70,7 @@ BOUNDARY_TOKEN_ID = 248079
 def is_engine_dummy(token_ids: list[int]) -> bool:
     """Whether a token-id row is one of vLLM's engine-side dummy inputs (no role prefix, leading id 0).
 
-    At the pinned engine (v0.31.0) two dummy paths reach the pooler, and both open with token id 0:
+    At the pinned engine (v0.33.0) two dummy paths reach the pooler, and both open with token id 0:
 
     - the kernel warmup builds its dummy requests' ids as ``list(range(prompt_len))`` with
       ``prompt_len = decode_query_len + 1`` (``vllm/v1/worker/gpu/warmup.py:256-257``, sent as a real

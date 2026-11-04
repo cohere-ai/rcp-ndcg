@@ -30,8 +30,8 @@ The tool is committed and run offline against a wheelhouse or online against an 
 
     python -m rcp_ndcg_test.jobs.reference_lock --family <family> \\
         --in recipes/<family>/reference.in --out recipes/<family>/reference.lock \\
-        --image-freeze rcp-ndcg-vllm/reference-image-v0.31.0.txt \\
-        --image vllm/vllm-openai:v0.31.0
+        --image-freeze rcp-ndcg-vllm/reference-image-v0.33.0.txt \\
+        --image vllm/vllm-openai:v0.33.0
 
 ``check`` validates a committed lock against its ``reference.in`` and the image stack without any
 network: the header hashes must match the committed inputs, every family requirement must appear as an

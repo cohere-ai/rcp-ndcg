@@ -1,7 +1,7 @@
 """The one vLLM version guard of the folded model plugins (layout-move item 3): topk and pplx share it.
 
-The plugin is developed and tested against one vLLM line (``>=0.31,<0.32``,
-the ``vllm/vllm-openai:v0.31.0`` image).  It refuses to register on any other
+The plugin is developed and tested against one vLLM line (``>=0.33,<0.34``,
+the ``vllm/vllm-openai:v0.33.0`` image).  It refuses to register on any other
 version with a message that names the tested range: subclassing
 ``ColQwen3_5Model`` and the pooler wiring below are vLLM-internals contracts
 that other releases may break silently, which would corrupt scores rather
@@ -36,9 +36,9 @@ __all__ = [
     "require_vllm_version",
 ]
 
-# The tested range, as (major, minor) bounds: [0.31, 0.32).
-TESTED_VLLM_MIN = (0, 31)
-TESTED_VLLM_MAX = (0, 32)
+# The tested range, as (major, minor) bounds: [0.33, 0.34).
+TESTED_VLLM_MIN = (0, 33)
+TESTED_VLLM_MAX = (0, 34)
 
 _LEADING_NUMBERS = re.compile(r"\d+")
 
@@ -46,15 +46,15 @@ _LEADING_NUMBERS = re.compile(r"\d+")
 def parse_vllm_minor_version(version: str) -> tuple[int, int] | None:
     """Return the ``(major, minor)`` prefix of a PEP 440 version string.
 
-    >>> parse_vllm_minor_version("0.31.0")
-    (0, 31)
-    >>> parse_vllm_minor_version("0.31.1rc2")
-    (0, 31)
+    >>> parse_vllm_minor_version("0.33.0")
+    (0, 33)
+    >>> parse_vllm_minor_version("0.33.1rc2")
+    (0, 33)
     >>> parse_vllm_minor_version("garbage") is None
     True
 
     Any pre-release/post/dev suffix after the second number is ignored, so a
-    hypothetical ``0.32.0.dev0`` still counts as 0.32 and is refused.
+    hypothetical ``0.34.0.dev0`` still counts as 0.34 and is refused.
     """
     numbers = _LEADING_NUMBERS.findall(version)
     if len(numbers) < 2:
@@ -79,7 +79,7 @@ def installed_vllm_version() -> str:
 
 
 def ensure_vllm_version() -> tuple[int, int]:
-    """Refuse any vLLM outside the tested range ``[0.31, 0.32)``.
+    """Refuse any vLLM outside the tested range ``[0.33, 0.34)``.
 
     Returns the parsed ``(major, minor)`` of the installed vLLM.  Raises
     ``RuntimeError`` with the tested range when the version is outside it (or
@@ -93,7 +93,7 @@ def ensure_vllm_version() -> tuple[int, int]:
         raise RuntimeError(
             f"rcp-ndcg-vllm: refusing to register TopkEmbedModel on "
             f"vLLM {version!r}. The plugin is written against "
-            f">={lo[0]}.{lo[1]},<{hi[0]}.{hi[1]} (the vllm/vllm-openai:v0.31.0 "
+            f">={lo[0]}.{lo[1]},<{hi[0]}.{hi[1]} (the vllm/vllm-openai:v0.33.0 "
             "image) and its vLLM-internals contracts "
             "(ColQwen3_5Model, pooler_for_token_embed, the is_causal config "
             "hook) are untested on any other version. Pin the image's vLLM "
@@ -117,14 +117,14 @@ def require_vllm_version() -> tuple[int, int]:
     """The pplx spelling of :func:`ensure_vllm_version` (one guard, both folded models).
 
     Raises:
-        RuntimeError: the running vLLM is outside ``>=0.31,<0.32``.
+        RuntimeError: the running vLLM is outside ``>=0.33,<0.34``.
     """
     version = checked_vllm_version()
     if not (SUPPORTED_VLLM_MIN <= version < SUPPORTED_VLLM_MAX):
         raise RuntimeError(
             f"rcp-ndcg-vllm's pplx model was validated against vLLM >= {SUPPORTED_VLLM_MIN[0]}."
             f"{SUPPORTED_VLLM_MIN[1]}, < {SUPPORTED_VLLM_MAX[0]}.{SUPPORTED_VLLM_MAX[1]} "
-            f"({version} is installed; the pinned image is vllm/vllm-openai:v0.31.0); "
+            f"({version} is installed; the pinned image is vllm/vllm-openai:v0.33.0); "
             "the model subclasses vLLM internals whose shapes vLLM does not "
             "promise across releases. Pin the engine image's vLLM to the validated line, or review the "
             "model against the new version and widen the range deliberately."

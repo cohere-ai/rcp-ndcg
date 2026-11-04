@@ -104,8 +104,10 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     # class so config.json parses locally, while the stock Qwen3ForCausalLM converted to pooling serves the
     # model -- so the modules are the shared config registration, keyed for every plugin recipe anyway.
     "PplxV1Config": ("rcp_ndcg_vllm.models.pplx.hf_config",),
-    # The embeddinggemma-2 fold (the engine image the recipe pins reports vLLM 0.31.0, whose registry
-    # carries neither the architecture nor the checkpoint's transformers classes): the registration
+    # The embeddinggemma-2 fold (the 0.31 image the waves served reported vLLM 0.31, whose registry
+    # carried neither the architecture nor the checkpoint's transformers classes; the v0.33.0 tag's
+    # registry carries EmbeddingGemma2Model, and what the 0.33 image carries is W4's measurement): the
+    # registration
     # module and the fold package with the five folded upstream files the
     # ``embeddinggemma2-transformers-fold`` patch installs -- the ``fold`` package's import installs
     # them under their upstream names before any folded module body runs, so the vendored vLLM model's

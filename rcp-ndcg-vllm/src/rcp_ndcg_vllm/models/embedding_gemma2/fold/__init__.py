@@ -8,7 +8,7 @@ relative imports resolve inside transformers.
 
 Importing this package installs them under those upstream names **before any folded module body
 runs**: vLLM imports the folded model module as the registered ``"module:Class"`` string, and that
-module's first statements are ``from transformers.models.embedding_gemma2...`` -- the stock v0.31.0
+module's first statements are ``from transformers.models.embedding_gemma2...`` -- the stock v0.33.0
 image's transformers does not carry the package, so those imports resolve only if the fold is installed
 first, in every process that imports the model (E2 round 5: the engine core imported the model with
 the plugin loaded but the fold's patch not applied there, and died with

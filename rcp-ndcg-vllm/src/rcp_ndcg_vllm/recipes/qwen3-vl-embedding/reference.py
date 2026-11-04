@@ -370,7 +370,7 @@ def video_processor_kwargs(declared_fps: float, pin: tuple[int, int]) -> dict[st
 
     * ``do_sample_frames`` true with ``fps`` the declared rate: the processor decodes the container and
       samples ``int(total_frames / original_fps * fps)`` frames, clamped to its own 4..768 bounds and
-      total, at ``np.linspace`` indices -- the rule vLLM v0.31.0's ``Qwen3VLVideoBackend``
+      total, at ``np.linspace`` indices -- the rule vLLM v0.33.0's ``Qwen3VLVideoBackend``
       (``compute_frames_index_to_sample``) implements, which the engine reports as already sampled.
     * ``size`` the recipe's whole-clip pin: the video processor's clip-level budget, which is what
       ``serve.mm_processor_kwargs.videos_kwargs``'s ``min_pixels``/``max_pixels`` name (vLLM's own

@@ -56,15 +56,17 @@ judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-3
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
 - The first-stage retrievers and rerankers of the paper's runs are served from the shipped recipes:
-  `rcp-ndcg-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.31.0` image,
-  and a run config's `recipe: <id>` reads the recipe's client block. The release ships 44 recipes in 24 families:
-  42 verified end to end on GPU in their waves, and 2 shipped with status failed (the `topk-embed-v1` variants,
-  small and xsmall); see the [`rcp-ndcg-vllm` README](rcp-ndcg-vllm/README.md).
+  `rcp-ndcg-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.33.0` image,
+  and a run config's `recipe: <id>` reads the recipe's client block. The release ships 44 recipes in 24 families.
+  On the vLLM 0.33 pin the waves have not re-run yet, so the tree records 0 verified end to end on GPU in their
+  waves and 0 shipped with status failed: every recipe is `status: unverified` until its 0.33 wave runs (the
+  0.0.1 tag's record was 42 verified and 2 failed, the `topk-embed-v1` variants, small and xsmall); see the
+  [`rcp-ndcg-vllm` README](rcp-ndcg-vllm/README.md).
 - The paper's judges ship the same way: `--judge recipe:<id>` (or `judge: recipe:<id>` in a run config) reads
   the recipe's client block, and `rcp-ndcg-vllm serve <id>` builds its engine command; the package itself keeps
   only the hosted `gpt5_hosted` vendor profile. The paper's
   judges ran on SGLang: the paper's submission code is the record of those engine commands, which this
-  repository does not ship; this release serves the same checkpoints on vLLM v0.31.0
+  repository does not ship; this release serves the same checkpoints on vLLM v0.33.0
   ([judges](docs/concepts/judges.md)).
 - [Calibrate your benchmark](docs/how-to/calibrate-your-benchmark.md) walks through a run.
 - The schedules are specified in placements per document, so their window counts scale with the pool. At the
@@ -153,7 +155,7 @@ The values are in the recipe's `client` block at its pinned revision:
   (`e89b16ebf1988b3d6befa7de50abc2d76f26eb09`) for a reproducible conformance replay; a different Hub revision
   would move its scores.
 - **SGLang to vLLM.** The paper's judges ran on SGLang; this release serves the same checkpoints on vLLM
-  v0.31.0 with the recipes' engine blocks (section 3). A different engine moves scores at the bf16 margin and
+  v0.33.0 with the recipes' engine blocks (section 3). A different engine moves scores at the bf16 margin and
   re-keys the behaviour fingerprint; the recipe notes record the parser-name differences
   (e.g. vLLM's `openai_gptoss` against SGLang's `gpt-oss`).
 

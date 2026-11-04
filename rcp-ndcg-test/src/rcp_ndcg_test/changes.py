@@ -17,7 +17,7 @@ Two commands, one library:
 Run from a checkout of the repository::
 
     python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
-        --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0
+        --corpora-root rcp-ndcg-test/corpora/vllm-0.33.0
     python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 """
 

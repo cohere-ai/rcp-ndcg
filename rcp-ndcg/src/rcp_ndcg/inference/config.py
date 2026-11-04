@@ -279,7 +279,7 @@ class _MediaEndpoint(Endpoint):
 
     @model_validator(mode="after")
     def _the_fps_rule_is_qwen3_vl_only(self) -> _MediaEndpoint:
-        """The engine's fps rule is ported for the qwen3_vl family only (the vLLM v0.31.0 Qwen3-VL backend):
+        """The engine's fps rule is ported for the qwen3_vl family only (the vLLM v0.33.0 Qwen3-VL backend):
         a video policy that samples at fps beside another processor family would count a frame count the
         engine never samples, so the pair is refused here rather than mis-counted later."""
         if self.video_policy is not None and self.video_policy.fps is not None and self.image_processor != "qwen3_vl":
@@ -364,7 +364,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
             so the engine's chat template renders its generation prompt (the assistant header) after the
             user turn -- the frame of a checkpoint whose declared template ends with it (Qwen3-VL-Embedding).
             vLLM's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237 at
-            v0.31.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other
+            v0.33.0), so an undeclared flag renders no header. Only on ``request_shape: messages`` (no other
             route renders a chat template); ``false`` is that default and declares nothing (stored as
             ``None``, no re-key). Content.
         query_prompt: Text prepended to every query (an asymmetric embedder's instruction prefix). Content.

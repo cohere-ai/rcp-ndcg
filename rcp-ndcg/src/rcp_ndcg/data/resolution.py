@@ -86,7 +86,7 @@ class ProcessorGeometry(NamedTuple):
             the video prompt is one ``boi + video_token*n + eoi`` block per frame, with no temporal patch)
             rather than one wrapper for the whole container.
         video_fps_only: Whether the family's engine video backend samples a container by fps and IGNORES
-            ``num_frames`` (vLLM v0.31.0's ``Qwen2VLVideoBackend`` for ``qwen2_vl``/``qwen2_5_vl``), so a
+            ``num_frames`` (vLLM v0.33.0's ``Qwen2VLVideoBackend`` for ``qwen2_vl``/``qwen2_5_vl``), so a
             pinned policy names a layout the engine never renders and a container cannot be counted for the
             family until its fps rule is ported.
     """
@@ -108,7 +108,7 @@ class ProcessorGeometry(NamedTuple):
 
 PROCESSORS: dict[str, ProcessorGeometry] = {
     # Qwen2-VL checkpoints: patch 14 x merge 2 and {min,max}_pixels 3136..12845056 in preprocessor_config.json,
-    # which vLLM applies. The engine's video backend (vLLM v0.31.0's Qwen2VLVideoBackend, registered for the
+    # which vLLM applies. The engine's video backend (vLLM v0.33.0's Qwen2VLVideoBackend, registered for the
     # Qwen2VLVideoProcessor) samples by fps and ignores num_frames; the per-frame budget below is what that
     # backend sizes a frame with, but the frame count is fps-driven and its rule is not ported here.
     "qwen2_vl": ProcessorGeometry(
@@ -200,7 +200,7 @@ class VideoPolicy(BaseModel):
     whose loaders are fps-driven and ignore ``num_frames``; the default loader's own
     count elsewhere -- so ``video_url`` is refused unless
     :attr:`engine_video_pinning` declares the engine pinned -- to a uniform
-    :attr:`num_frames`, or to the engine's own fps rule (:attr:`fps`, the vLLM v0.31.0
+    :attr:`num_frames`, or to the engine's own fps rule (:attr:`fps`, the vLLM v0.33.0
     ``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped
     to its bounds, :func:`qwen3_vl_video_frame_indices`). The two are different
     measurements, so exactly one is declared: a policy that declares neither, or both,
@@ -224,7 +224,7 @@ class VideoPolicy(BaseModel):
 
     fps: float | None = Field(default=None, gt=0)
     """The target sampling rate for a ``wire: video_url`` engine's own fps rule (the vLLM
-    v0.31.0 ``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped
+    v0.33.0 ``Qwen3VLVideoBackend``: ``int(total_frames / original_fps * fps)`` frames clamped
     to its 30 fps ceiling and its frame bounds, :func:`qwen3_vl_video_frame_indices`). The
     client counts the frames the engine samples from each clip's recorded frame count and fps.
     ``None`` with :attr:`num_frames` set. Content: a different rate shows the model different
@@ -316,7 +316,7 @@ class VideoPolicy(BaseModel):
         if (self.num_frames is None) == (self.fps is None):
             raise ValueError(
                 "`wire: video_url` sends the container for the engine to sample: declare exactly one of "
-                "`num_frames` (a pinned uniform count) or `fps` (the engine's own rate, the vLLM v0.31.0 "
+                "`num_frames` (a pinned uniform count) or `fps` (the engine's own rate, the vLLM v0.33.0 "
                 "Qwen3-VL backend's rule)"
             )
         if self.num_frames is not None and self.num_frames < 2:
@@ -400,15 +400,20 @@ def qwen3_vl_video_frame_indices(
     max_frames: int = 768,
     max_fps: float = 30.0,
 ) -> list[int]:
-    """The frame indices vLLM v0.31.0's ``Qwen3VLVideoBackend`` samples from a clip.
+    """The frame indices vLLM v0.33.0's ``Qwen3VLVideoBackend`` samples from a clip.
 
     A faithful port of ``Qwen3VLVideoBackend.compute_frames_index_to_sample``
-    (vllm/multimodal/video.py:360-400 at the v0.31.0 tag): the target rate is clamped to the
+    (vllm/multimodal/video.py:360-400 at the v0.33.0 tag): the target rate is clamped to the
     backend's 30 fps ceiling; the count is ``int(total_frames / original_fps * fps)``, then
     clamped to ``[min_frames, max_frames, total_frames]``; the indices are
     ``np.linspace(0, total_frames - 1, count).round()``. The backend ignores ``num_frames``
     entirely -- the count is fps-driven -- which is why the policy declares :attr:`VideoPolicy.fps`
     and the client counts a clip's frames with this function rather than a declared count.
+
+    One declared divergence, recorded and not ported: the engine's ``_prepare_source`` assumes ``24.0`` fps
+    for a container whose rate it cannot read (``vllm/multimodal/video.py`` at the pinned release); this
+    port never guesses -- a clip with no recorded rate raises :class:`~rcp_ndcg.errors.DataError`, because a
+    guessed rate silently changes the frame count and the frame count is what the prompt is priced at.
 
     Args:
         total_frames: Frames in the clip (> 0), as ingest recorded them.
@@ -1165,7 +1170,7 @@ def refuse_uncountable_containers(
     """Refuse a video container the resolved processor family cannot count, whatever the budget settings are.
 
     The Qwen2-VL families (``qwen2_vl``, ``qwen2_5_vl``) send their containers to an engine video backend
-    (vLLM v0.31.0's ``Qwen2VLVideoBackend``) that samples by fps and ignores ``num_frames``, and their fps
+    (vLLM v0.33.0's ``Qwen2VLVideoBackend``) that samples by fps and ignores ``num_frames``, and their fps
     rule is not ported here, so no container declaration can be counted honestly.
     :func:`content_media_tokens` refuses such a container when it counts, but a judging pass with no
     ``context_tokens`` or no tokenizer never reaches that count: this is the one home of the rule for the
@@ -1194,7 +1199,7 @@ def refuse_uncountable_containers(
                 detail = f"so the declared `fps` ({video.fps:g}) would count a layout the engine never renders"
             raise ConfigError(
                 f"cannot count the container {part.ref.uri}: the {image.processor} engine video backend "
-                f"samples by fps and ignores num_frames (vLLM v0.31.0's Qwen2VLVideoBackend), {detail}; and "
+                f"samples by fps and ignores num_frames (vLLM v0.33.0's Qwen2VLVideoBackend), {detail}; and "
                 "the family's fps rule is not ported here (only the qwen3_vl family's is), so a container "
                 "cannot be counted for this family.",
                 hint="send frames instead (`video_policy: {num_frames: N, wire: frames}`, client-sampled and "
@@ -1231,7 +1236,7 @@ def content_media_tokens(
     ``num_frames`` policy on that family is REFUSED: the Qwen3-VL backend samples by fps and ignores
     ``num_frames``, so the pin would name a layout the engine never renders. The Qwen2-VL families
     (``qwen2_vl``, ``qwen2_5_vl``) are REFUSED for a container under either rule: their engine backend
-    (vLLM v0.31.0's ``Qwen2VLVideoBackend``) is fps-driven too and its fps rule is not ported here, so no
+    (vLLM v0.33.0's ``Qwen2VLVideoBackend``) is fps-driven too and its fps rule is not ported here, so no
     declaration can be counted honestly -- send frames instead.
 
     Videos are counted as shown (:func:`sample_video_part`, which refuses clips shorter than the frame
@@ -1287,7 +1292,7 @@ def _container_tokens(
     sent unchanged, so the client's pixel budget never reaches the engine:
 
     * the Qwen2-VL families (``qwen2_vl``, ``qwen2_5_vl``) are refused: their engine backend (vLLM
-      v0.31.0's ``Qwen2VLVideoBackend``) samples by fps and ignores ``num_frames``, and its fps rule is
+      v0.33.0's ``Qwen2VLVideoBackend``) samples by fps and ignores ``num_frames``, and its fps rule is
       not ported here, so a pinned policy would count a layout the engine never renders.
     * ``qwen3_vl`` constrains the whole clip (a clip-level budget that shrinks per-frame resolution as the
       frame count grows) and renders one timestamp line and one vision block per temporal group, inside the
@@ -1308,7 +1313,7 @@ def _container_tokens(
         # the clip-level budget constrains all frames together and shrinks per-frame resolution as the
         # frame count grows; the prompt renders one timestamp line and one vision block per group, inside
         # the chat template's own vision pair. The Qwen3-VL backend samples by fps and IGNORES num_frames
-        # (vllm/multimodal/video.py:360-400 at v0.31.0), so a pinned policy would count a layout the engine
+        # (vllm/multimodal/video.py:360-400 at v0.33.0), so a pinned policy would count a layout the engine
         # never renders: the fps declaration is required here.
         if video.fps is None:
             raise ConfigError(
@@ -1354,13 +1359,13 @@ def _container_tokens(
             1,
         )
     if geometry.video_fps_only and video.num_frames is not None:
-        # This family's engine video backend samples by fps and IGNORES num_frames (vLLM v0.31.0's
+        # This family's engine video backend samples by fps and IGNORES num_frames (vLLM v0.33.0's
         # Qwen2VLVideoBackend for qwen2_vl/qwen2_5_vl), and its fps rule is not ported here (only
         # qwen3_vl's is): a pinned policy would count a layout the engine never renders, so a container
         # cannot be counted for this family at all.
         raise ConfigError(
             f"cannot count the container {ref.uri}: the {image.processor} engine video backend samples by fps "
-            "and ignores num_frames (vLLM v0.31.0's Qwen2VLVideoBackend), so a pinned `num_frames` names a "
+            "and ignores num_frames (vLLM v0.33.0's Qwen2VLVideoBackend), so a pinned `num_frames` names a "
             "layout the engine never renders; and the family's fps rule is not ported here (only the qwen3_vl "
             "family's is), so a container cannot be counted for this family.",
             hint="send frames instead (`video_policy: {num_frames: N, wire: frames}`, client-sampled and "
@@ -1467,7 +1472,7 @@ def _pruned_group_tokens(per_group: int, groups: int, video: VideoPolicy) -> lis
     """The engine's per-temporal-group video tokens under the declared pruning, or the unpruned run.
 
     A faithful port of vLLM's pruning count (vllm/multimodal/video_prune/evs.py:16-36 and
-    vidcom2.py:19-40 at the v0.31.0 tag): ``evs`` retains ``max(per_group, int(total * (1 - rate)))``
+    vidcom2.py:19-40 at the v0.33.0 tag): ``evs`` retains ``max(per_group, int(total * (1 - rate)))``
     (at least one frame's tokens), ``vidcom2`` retains ``max(groups, min(int(total * (1 - rate)), total))``
     (at least one token per group). The engine then renders the retained tokens in the FIRST group's slot
     and the other groups carry none (``tokens_per_frame = [num_tokens] + [0] * (num_frames - 1)``,

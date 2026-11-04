@@ -5,7 +5,7 @@ engine-agnostic judge recipes (named with `--judge recipe:<id>`) and one hosted 
 OpenAI-compatible URL, while
 this folder records which retriever and reranker produced each result of
 [arXiv:2609.35739](https://arxiv.org/abs/2609.35739). The paper's judges ran on SGLang; the paper's submission
-code is the record of those engine commands, and this release serves the same checkpoints on vLLM v0.31.0
+code is the record of those engine commands, and this release serves the same checkpoints on vLLM v0.33.0
 ([serving](../../docs/concepts/judges.md)). Use it from a checkout of the repository.
 
 | Folder | What it holds | Reproduces |
@@ -21,7 +21,7 @@ rejudge_nfcorpus`), and the tables themselves are recomputed from the public dat
 
 The paper's judges ran on SGLang, served on the GPU host at `http://127.0.0.1:8000/v1` under the name the judge
 config expects; the paper's submission code is the record of those engine commands, and this repository does not
-ship them. This release serves the same checkpoints on vLLM v0.31.0: the flags are in
+ship them. This release serves the same checkpoints on vLLM v0.33.0: the flags are in
 [serving a judge](../../docs/concepts/judges.md). The re-judging command is unchanged:
 
 ```bash

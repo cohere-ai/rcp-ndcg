@@ -13,7 +13,7 @@
 # path): Qwen3VLForConditionalGeneration backbone + the sigmoid head built from the LM head's
 # yes/no rows. render() needs the tokenizer files only (no torch); score() needs everything.
 torch>=2.0
-# Qwen3-VL support and the same renderer the engine image runs (vLLM v0.31.0 pins
-# >=5.10.4,<5.18.0), so the reference and the engine apply the repo chat template identically.
-transformers>=5.10.4,<5.18.0
+# Qwen3-VL support and the same renderer the engine image runs (vLLM v0.33.0 pins
+# >=5.16.1,<5.21.0), so the reference and the engine apply the repo chat template identically.
+transformers>=5.16.1,<5.21.0
 qwen-vl-utils >= 0.0.14  # the card's process_vision_info wiring, for image/video pairs in score mode

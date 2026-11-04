@@ -1,14 +1,14 @@
-# Folded from vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986 (the fold's source; the
-# embeddinggemma-2 recipe serves stock v0.31.0; `vllm/model_executor/models/embedding_gemma2.py` at that commit) by
-# the rcp-ndcg-vllm plugin: the stock v0.31.0 image the recipe serves carries no
-# `EmbeddingGemma2Model` (its supported-architecture list equals the v0.31.0 tag's), so
+# Folded from vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986 (the fold's source;
+# `vllm/model_executor/models/embedding_gemma2.py` at that commit) by the rcp-ndcg-vllm plugin: the
+# 0.31 image the waves served carried no `EmbeddingGemma2Model` (the v0.33.0 tag's registry does,
+# `registry.py:259`; what the 0.33 image carries is W4's measurement), so
 # the plugin ships the model class and `register_embedding_gemma2` registers it lazily as
 # `rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2:EmbeddingGemma2Model` when the
 # running vLLM does not already carry the architecture. The upstream body below is byte-identical
 # (its transformers imports resolve through this package's fold: the three 5.19.0 modules plus the
-# modeling module `install_fold` installs under their upstream names). Delete the fold when
-# `engine.image` moves to a vLLM release that carries the architecture and transformers >= 5.19.0
-# (the recipe's notes name the moment).
+# modeling module `install_fold` installs under their upstream names). The fold's status on the 0.33
+# pin is undecided: the tag's registry carries the architecture, and whether the image's transformers
+# ships `embedding_gemma2` is W4's measurement (D2 re-opened; the recipe's notes name the moment).
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """EmbeddingGemma2: bidirectional Gemma4-derived multimodal embedding model."""

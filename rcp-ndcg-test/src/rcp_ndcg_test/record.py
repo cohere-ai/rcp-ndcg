@@ -212,7 +212,7 @@ def placeholder_url(url: str) -> str:
 
 
 def _version(image: str) -> str:
-    """The engine version from the image tag: ``vllm/vllm-openai:v0.31.0`` -> ``0.31.0``."""
+    """The engine version from the image tag: ``vllm/vllm-openai:v0.33.0`` -> ``0.33.0``."""
     _, _, tag = image.rpartition(":")
     return tag.removeprefix("v") or "unknown"
 
@@ -731,7 +731,7 @@ def _bare_probes(
     (:func:`_role_body`), so the probes are requests the recipe's client would itself send -- a bare text
     is not, and such an engine's pooler refuses it by name, which kills the EngineCore.
 
-    An unknown request field is answered 200 by vLLM v0.31.0 on every role route (measured in the shakedown);
+    An unknown request field is answered 200 by vLLM v0.33.0 on every role route (measured in the shakedown);
     the corpus records what the engine answered and the acceptance check's status table expects the
     measurement.  ``wrong_model``, ``empty_input`` and the plan's rows carry no measured expectation.
     """

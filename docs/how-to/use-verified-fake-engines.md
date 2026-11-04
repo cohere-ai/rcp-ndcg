@@ -1,7 +1,7 @@
 # Use the verified fake engines
 
 One **verified fake engine** per (engine, version, recipe, behaviour fingerprint) answers
-`fake://`-URLs with an engine-version host -- `fake://vllm-0.31.0/qwen3-embedding-0.6b` -- inside
+`fake://`-URLs with an engine-version host -- `fake://vllm-0.33.0/qwen3-embedding-0.6b` -- inside
 every offline test and replay. The protocol is emulated (routes, request validation, error bodies,
 result ordering and framing, usage counts and token counting with the recipe's **real tokenizer
 files**); the model outputs are **replayed** for observed inputs and come from a declared
@@ -22,7 +22,7 @@ from tests._engines import emulator_for  # the recipe wiring of this repository'
 emulator = emulator_for("qwen3-reranker-0.6b")  # builds the emulator of its corpus and registers it
 assert emulator.verified is not None
 fingerprint = emulator.verified.behaviour_fingerprint
-assert registry.resolve("vllm", "0.31.0", fingerprint, "qwen3-reranker-0.6b") is emulator
+assert registry.resolve("vllm", "0.33.0", fingerprint, "qwen3-reranker-0.6b") is emulator
 ```
 
 An emulator records the engine version and recipe revision it was verified against (`Verified`) and
@@ -191,6 +191,6 @@ headers, framing, error bodies -- summarised by route) for review before a new c
 <!-- snippet: skip (a repository checkout with the corpora) -->
 ```bash
 python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
-    --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0
+    --corpora-root rcp-ndcg-test/corpora/vllm-0.33.0
 python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

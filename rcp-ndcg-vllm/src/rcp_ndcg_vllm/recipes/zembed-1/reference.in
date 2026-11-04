@@ -19,7 +19,7 @@
 # the preprocess-first pipeline (sentence_transformer/model.py:644 self.preprocess -> base/model.py:538
 # self[0].preprocess), which bypasses a tokenize-only remote module and silently drops that suffix.
 # The 5.1 line would also work, but 5.1.x requires transformers<5 and so could not reuse the engine
-# image's transformers (vLLM v0.31.0 requirements/common.txt: >=5.10.4,<5.18.0); 5.3.x accepts
+# image's transformers (vLLM v0.33.0 requirements/common.txt: >=5.16.1,<5.21.0); 5.3.x accepts
 # transformers>=4.41,<6. Measured: the recipe test's remote-tokenize instrument passes on 5.3.0 with
 # transformers 5.17.0 and on 5.1.2 with transformers 4.57.6.
 #

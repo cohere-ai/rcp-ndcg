@@ -1,7 +1,7 @@
 """The pooling contract of pplx-embed-v2-context-9b-preview, in pure torch.
 
 Everything in this module runs without vLLM: the span pooling and the int8 head are the
-parts of the served model that stock vLLM v0.31.0 cannot express, and they are where
+parts of the served model that stock vLLM v0.33.0 cannot express, and they are where
 fidelity to the reference implementation lives. The id-level contract and the per-chunk
 segmentation they read live in :mod:`rcp_ndcg_vllm.models.pplx.chunk_rule` (pure Python,
 so the observation corpus's acceptance check shares the one home); the vLLM-side wiring

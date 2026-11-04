@@ -159,7 +159,7 @@ class ServeConfig(BaseModel):
         if ":" not in tail or not tag or tag.lower() == "latest":
             raise ValueError(
                 f"the engine image {value!r} is not pinned: name an exact tag or a digest, e.g. "
-                "vllm/vllm-openai:v0.31.0 or repository:tag@sha256:..., so the job runs the image the recipe was "
+                "vllm/vllm-openai:v0.33.0 or repository:tag@sha256:..., so the job runs the image the recipe was "
                 "validated against"
             )
         return value

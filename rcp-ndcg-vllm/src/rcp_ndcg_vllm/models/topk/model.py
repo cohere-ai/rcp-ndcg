@@ -15,13 +15,13 @@ Serving contract (why each inherited piece is the right one):
 - Forward: inherited verbatim.  The reference implementation runs the six
   full-attention layers NON-causally (the checkpoint's ``text_config``
   carries ``is_causal: false``), and vLLM already honours that: the stock
-  ``Qwen3NextAttention`` constructor (vLLM v0.31.0,
-  vllm/model_executor/models/qwen3_next.py:335-343) reads
+  ``Qwen3NextAttention`` constructor (vLLM v0.33.0,
+  vllm/model_executor/models/qwen3_next.py:345-350) reads
   ``getattr(config, "is_causal", True)`` from the text config and builds
   ``AttentionType.ENCODER_ONLY`` (bidirectional, no KV cache needed for a
   pooling model) when it is false.  The in-tree ColQwen3.5 models reach the
   same state through a registry config handler that sets ``is_causal``
-  (vllm/model_executor/models/config.py:937 ColQwen3_5Config); this
+  (vllm/model_executor/models/config.py:1081 ColQwen3_5Config); this
   checkpoint carries the flag itself, and out-of-tree architectures get no
   config handler (``MODELS_CONFIG_MAP`` is keyed by in-tree architecture
   name), so no attention swap is needed or performed.  The linear-attention
@@ -130,7 +130,7 @@ class TopkEmbedModel(ColQwen3_5Model):
 
         The checkpoint's own mask keeps only the image-patch positions for an image document
         (``topk_embed_st.py:_image_row``: ``keep = ids == image_token_id``) and drops its 41 document-side
-        skip ids for a text one. vLLM v0.31.0's pooling route cannot return the engine's per-position token
+        skip ids for a text one. vLLM v0.33.0's pooling route cannot return the engine's per-position token
         ids, so the recipe declares the media allowlist (and, where a recipe declares it, the text skip
         rule) for the engine in ``serve.hf_overrides`` and the plugin's own pooler applies them -- the wire
         carries only kept vectors, and the client checks the reply's declared kept count (see
@@ -146,9 +146,9 @@ class TopkEmbedModel(ColQwen3_5Model):
 
         The checkpoint's ``head`` is bias-less while ``ColQwen3_5Model`` builds
         ``custom_text_proj`` with a zero-initialised bias (score-equivalent to
-        ``bias=False``).  vLLM v0.31.0's load tracker refuses a parameter the
+        ``bias=False``).  vLLM v0.33.0's load tracker refuses a parameter the
         checkpoint never supplied (``model_loader/default_loader.py:
-        track_weights_loading``: serving this checkpoint on the stock v0.31.0
+        track_weights_loading``: serving this checkpoint on the stock v0.33.0
         image died on ``{'custom_text_proj.bias'}``), so the returned set is annotated under
         both qualnames exactly as the in-tree projection loader marks a shipped
         one (``colqwen3_5.py:load_weights``).  A checkpoint revision that ships

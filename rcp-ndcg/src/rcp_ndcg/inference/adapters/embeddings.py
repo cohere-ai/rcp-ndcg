@@ -318,7 +318,7 @@ class OpenAIEmbeddings(_EmbedAdapter):
         if request.request_shape == "messages":
             from rcp_ndcg.data.media import content_parts_payload
 
-            # The chat-style embeddings input (2e): vLLM v0.31.0 renders every chat-shaped ``/embeddings``
+            # The chat-style embeddings input (2e): vLLM v0.33.0 renders every chat-shaped ``/embeddings``
             # request through the served chat template (vllm/entrypoints/pooling/embed/io_processor.py:302-355),
             # placing each media part's placeholder where it sits in the user turn -- so the items carry their
             # content (the client sends no frame of its own) and the template frames them exactly once.

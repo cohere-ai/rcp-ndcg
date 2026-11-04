@@ -10,12 +10,12 @@ input: [text]
 licence: cc-by-nc-4.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
   # min_version is the known-good image line (the family's one rule); the measured feature
   # floor (the native JinaEmbeddingsV5Model with jina_task and the is_matryoshka gate first
   # ships in v0.20.0 - absent from v0.19.0: no jina.py, HTTP 404; present in v0.20.0, both
   # tags measured) is named in the notes.
-  min_version: "0.31.0"
+  min_version: "0.33.0"
 resources: {gpus: 1}
 serve:
   runner: pooling
@@ -51,7 +51,7 @@ serve:
                         # v0.32.0 carries vllm-project/vllm#48039) and the -nano never had one.
   extra_args: []
 client:
-#   recipe: "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults (mask-based last token + PoolerNormalize); raw text on /v1/embeddings"
+#   recipe: "vllm v0.33.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults (mask-based last token + PoolerNormalize); raw text on /v1/embeddings"
   api: openai_embeddings
   # The whole input budget as the engine sees it: rendered prompt including the fixed frame,
   # in the declared tokenizer's tokens. Equals max_position_embeddings (config.json:19) and
@@ -116,14 +116,14 @@ reference:
   known_deviations: ["over_cap_cut_differs"]
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-14"
   report: "docs/reference/gpu-validation.md"
 sources:
   - "https://huggingface.co/jinaai/jina-embeddings-v5-text-small @ dd76d535f5447ca3897a9c893fb1e612ead98192 (re-checked 2026-10-05): config.json:2-8 (auto_map remote code, architectures [JinaEmbeddingsV5Model]), :19 (max_position_embeddings 32768), :21 (model_type jina_embeddings_v5), :30 (torch_dtype bfloat16); config_sentence_transformers.json:7-9 (prompts 'Query: ' / 'Document: '), :11 (default_prompt_name document); modeling_jina_embeddings_v5.py:79-80 (the prefixes, applied to raw texts), :85-91 (encode truncates right at max_position_embeddings), :95 (set_adapter([task])), :100-108 (mask-based last-real-token pooling), :110-112 (Matryoshka slice, then L2); adapters/retrieval/adapter_config.json:16,18,23,35 (alpha 32, dropout 0.1, r 32, FEATURE_EXTRACTION; scale alpha/r = 1.0, so the merge is exact); tokenizer_config.json:2,229,237 (add_bos_token false, bos_token null, tokenizer_class Qwen2Tokenizer); tokenizer.json sha256 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4; README.md:148-178 (the transformers snippet the reference follows), :300-310 (the vendor vLLM note)"
   - "https://huggingface.co/jinaai/jina-embeddings-v5-text-small-retrieval @ 6856e76bb72982e58de0620458a4e8b3614da340 (the vendor-merged retrieval variant: same prompts, same tokenizer file; the alternative serve, and the source of the card example cosines the reference cross-checks)"
-  - "vLLM v0.31.0 (line numbers at the tag): vllm/model_executor/models/registry.py:232 (JinaEmbeddingsV5Model registered); vllm/model_executor/models/jina.py:142-151 (load-time adapter merge rationale, task selection, _DEFAULT_TASK retrieval), :243 (the silent raw-base-weights fallback warning), :249 (scaling = lora_alpha / r); vllm/pooling_params.py:175,188 (a per-request dimensions needs is_matryoshka + matryoshka_dimensions); vllm/renderers/params.py:183 (the embeddings route tokenizes with add_special_tokens=true); vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 (the embed pooler: LAST + PoolerNormalize); vllm/model_executor/layers/pooler/seqwise/heads.py:95-113 (Matryoshka slice, then normalise - the reference's order); docs/models/pooling_models/embed.md:47,77-84,99 (the JinaEmbeddingsV5Model row, the jina-v5 serving note, the conversion legend); tests/models/language/pooling_mteb_test/test_jina.py:36-39,74 (the MTEB anchor 0.794535707854956 +/- 2e-3, seq_pooling_type LAST, the client-side 'Document: ' prefix); vllm/config/model.py:2288 (a 'Model'-suffix checkpoint converts via --convert embed)"
+  - "vLLM v0.33.0 (line numbers at the tag): vllm/model_executor/models/registry.py:232 (JinaEmbeddingsV5Model registered); vllm/model_executor/models/jina.py:142-151 (load-time adapter merge rationale, task selection, _DEFAULT_TASK retrieval), :243 (the silent raw-base-weights fallback warning), :249 (scaling = lora_alpha / r); vllm/pooling_params.py:246,259 (a per-request dimensions needs is_matryoshka + matryoshka_dimensions); vllm/renderers/params.py:199 (the embeddings route tokenizes with add_special_tokens=true); vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 (the embed pooler: LAST + PoolerNormalize); vllm/model_executor/layers/pooler/seqwise/heads.py:95-113 (Matryoshka slice, then normalise - the reference's order); docs/models/pooling_models/embed.md:47,77-84,99 (the JinaEmbeddingsV5Model row, the jina-v5 serving note, the conversion legend); tests/models/language/pooling_mteb_test/test_jina.py:36-39,74 (the MTEB anchor 0.794535707854956 +/- 2e-3, seq_pooling_type LAST, the client-side 'Document: ' prefix); vllm/config/model.py:2356 (a 'Model'-suffix checkpoint converts via --convert embed)"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: the frame, the anchors), rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget and fit: the content-only, anchor-reserving cut), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: this client block)"
 notes: >-
   Serving. The base repo ships four task LoRAs (retrieval, text-matching, classification,
@@ -181,10 +181,10 @@ notes: >-
   the engine never truncates. Stage 1's anchor_check audits last_content (the head marker opens
   every render and a content token closes it, over-length samples included). Feature floor: the native JinaEmbeddingsV5Model with jina_task and the
   is_matryoshka gate first ships in v0.20.0 (absent from v0.19.0: no jina.py, HTTP 404;
-  present in v0.20.0 - both tags measured; jina.py is byte-identical at the v0.31.0
-  tag); engine.min_version declares the known-good image line (v0.31.0, the family's one
+  present in v0.20.0 - both tags measured; jina.py is byte-identical at the v0.33.0
+  tag); engine.min_version declares the known-good image line (v0.33.0, the family's one
   rule). The -small's client budget EQUALS serve.max_model_len (32768), so a full-budget request
-  is exactly the prompt the v0.31.0 pooling scheduler never finished (GPU-E1: 32768 hangs,
+  is exactly the prompt the pre-0.32 pooling scheduler never finished (GPU-E1: 32768 hangs,
   32767 returns); vllm-project/vllm#48039 (commit e6fc81bc78, first released in vLLM v0.32.0) fixes
   it in the scheduler, so the -small's `serve.patches: [pooling-full-context]` opt-in is deleted and
   the render declares the at-budget prompt one prefill step (serve.max_num_batched_tokens is rendered at
@@ -241,7 +241,7 @@ variants:
       backbone under the same family: config.json architectures [JinaEmbeddingsV5Model] and
       model_type jina_embeddings_v5 as the -small, but hidden_size 768 over EuroBERT-210m
       (is_decoder false; a bidirectional encoder) instead of the -small's Qwen3-0.6B decoder.
-      vLLM v0.31.0 ships both under one class: JinaEmbeddingsV5Model dispatches on is_decoder to
+      vLLM v0.33.0 ships both under one class: JinaEmbeddingsV5Model dispatches on is_decoder to
       JinaEmbeddingsV5EncoderModel (vllm/model_executor/models/jina.py, the encoder class's
       docstring names this checkpoint), and the config handler
       (vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig) sets is_causal false for
@@ -286,14 +286,14 @@ variants:
     sources:
       - "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano @ 8a7f00aac812071b69403df470f1038ec85f8925 (default-branch sha re-checked 2026-10-09): config.json (architectures [JinaEmbeddingsV5Model], is_decoder false, hidden_size 768, max_position_embeddings 8192, torch_dtype float32, task_names retrieval/text-matching/clustering/classification); config_sentence_transformers.json (the Query: / Document: prompts); modules.json (custom_st.Transformer); adapters/retrieval/adapter_config.json (alpha 32, r 32, FEATURE_EXTRACTION); README.md:152,231 (the bf16 GPU recommendation) and the model table (239M parameters, Max Sequence Length 8192, Embedding Dimension 768, Matryoshka Dimensions 32, 64, 128, 256, 512, 768)"
       - "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano/tree/8a7f00aac812071b69403df470f1038ec85f8925 (the Hub tree API: model.safetensors 423,543,680 B and the four adapter_model.safetensors 13,586,992/13,587,024 B) and the Hub model API (BF16 parameter census 211,766,016)"
-      - "vLLM v0.31.0 vllm/model_executor/models/jina.py: JinaEmbeddingsV5Model.__new__ dispatches on is_decoder to JinaEmbeddingsV5EncoderModel, whose docstring names jina-embeddings-v5-text-nano; _setup_jina_v5_task_and_pooler and _load_jina_v5_weights are the same for both backbones; vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig sets is_causal false for encoder checkpoints"
+      - "vLLM v0.33.0 vllm/model_executor/models/jina.py: JinaEmbeddingsV5Model.__new__ dispatches on is_decoder to JinaEmbeddingsV5EncoderModel, whose docstring names jina-embeddings-v5-text-nano; _setup_jina_v5_task_and_pooler and _load_jina_v5_weights are the same for both backbones; vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig sets is_causal false for encoder checkpoints"
   - id: jina-embeddings-v5-text-small
     model: jinaai/jina-embeddings-v5-text-small
     revision: "dd76d535f5447ca3897a9c893fb1e612ead98192"
     overrides:
       serve:
         # No engine patch: the -small is a Qwen3 decoder whose client.max_tokens EQUALS
-        # serve.max_model_len (32768), and the v0.31.0 scheduler's at-budget pooling hang (GPU-E1:
+        # serve.max_model_len (32768), and the pre-0.32 scheduler's at-budget pooling hang (GPU-E1:
         # 32768 hangs, 32767 returns) is fixed upstream by vllm-project/vllm#48039 (commit
         # e6fc81bc78, first released in vLLM v0.32.0). The backport patch the -small used to declare
         # is deleted; the at-budget prompt stays one prefill step (serve.max_num_batched_tokens is

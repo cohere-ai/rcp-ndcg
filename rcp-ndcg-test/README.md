@@ -182,7 +182,7 @@ must answer the role's route(s) plus `GET /models` and `POST /tokenize` (the eng
 truth, so anything that cross-checks the client's `fit` can do it offline). The committed corpora's
 verified emulators (one per engine version, recipe and behaviour fingerprint, `rcp_ndcg_test.engines`) are
 built and registered by the harness's own conformance wiring (`tests._engines`) and reach a run as an
-engine target through a `fake://vllm-0.31.0/<recipe>` URL once registered; the fake registry itself ships
+engine target through a `fake://vllm-0.33.0/<recipe>` URL once registered; the fake registry itself ships
 one registered test fake for the packaged fixture recipe (`fake-embed`: recipe, tokenizer and cases under
 `rcp_ndcg_test/fixtures/`, all in the wheel), registered on import; the package's own tests rebuild
 deterministic pool and rerank test fakes for its `fake-pool` and `fake-rerank` fixture recipes

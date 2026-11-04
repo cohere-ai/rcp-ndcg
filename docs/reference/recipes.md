@@ -70,30 +70,28 @@ process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave r
 comma-separated list read by the one `vllm.general_plugins` entry point), overriding any inherited value so
 the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
 with, and the behaviour fingerprint hashes every opted-in patch's module, so a patch fix moves the recipe's
-key. Three patches ship:
+key. Two patches ship:
 
-- `pooling-full-context` -- the backport of vllm-project/vllm#48039 (commit `e6fc81bc78`): at vLLM v0.31.0 the
-  scheduler reserves one sampled-token slot for pooling requests too, so a prompt of exactly `max_model_len`
-  tokens under chunked prefill never schedules its last token and the request hangs. The patch stores
-  `num_sampled_tokens_per_step = 0` for the pooling runner only; it logs one line when it applies and one
-  inert line when the running vLLM already carries the fix. Delete the patch when `engine.image` moves to the
-  first vLLM release that carries `e6fc81bc78`.
-- `embeddinggemma2-transformers-fold` -- the embeddinggemma-2 backport: the engine image the recipe pins
-  (a vLLM 0.31.0-based build) has a transformers that does not know the checkpoint's `model_type:
-  embedding_gemma2`, so `AutoConfig` refuses `config.json`, and its vLLM registry carries no
-  `EmbeddingGemma2Model`. The patch loads transformers 5.19.0's four `embedding_gemma2` modules (shipped in
-  the plugin wheel under `rcp_ndcg_vllm/models/embedding_gemma2/fold/`) under their upstream module names
-  and registers the config with `AutoConfig`, the processor and video-processor classes with
-  `AutoProcessor`/`AutoVideoProcessor` and the two model classes with `AutoModel`; the plugin also ships
-  vLLM nightly `8cbd5d03`'s `embedding_gemma2` model (same directory, byte-identical plus a header) and
-  registers it -- with upstream's config hook -- when the running registry lacks the architecture. Both
-  steps are inert when the image already carries the classes and the architecture. Importing the fold
+- `embeddinggemma2-transformers-fold` -- the embeddinggemma-2 backport. The **0.31 image the waves served**
+  carried no `EmbeddingGemma2Model` and its transformers (5.17.0) no `embedding_gemma2` classes, so the
+  patch loads transformers 5.19.0's four `embedding_gemma2` modules (shipped in the plugin wheel under
+  `rcp_ndcg_vllm/models/embedding_gemma2/fold/`) under their upstream module names and registers the config
+  with `AutoConfig`, the processor and video-processor classes with `AutoProcessor`/`AutoVideoProcessor` and
+  the two model classes with `AutoModel`; the plugin also ships vLLM nightly `8cbd5d03`'s `embedding_gemma2`
+  model (same directory, byte-identical plus a header) and registers it -- with upstream's config hook --
+  when the running registry lacks the architecture. The **v0.33.0 tag** is further along: its registry
+  carries `EmbeddingGemma2Model` (`vllm/model_executor/models/registry.py:259`) and the backend
+  (`vllm/multimodal/video.py:428`), and PR #60254's commit is an ancestor of the tag, so on 0.33 the
+  architecture registration's probe returns early. What the **0.33 image** carries is W4's measurement
+  (the tag's Dockerfile resolves `transformers >=5.16.1,<5.21.0` at build time): until
+  `reference-image-v0.33.0.versions.txt` records the image's transformers version, whether the fold's class
+  install is load-bearing or inert on 0.33 is undecided (D2 re-opened). Importing the fold
   package (which every import of the folded model module does first) installs the same modules under their
   upstream names before any folded module body runs, so the model's own
   `transformers.models.embedding_gemma2...` imports resolve in every process that imports it, whatever
-  loaded the plugin and whether or not the patch applied there. Delete them (and the
-  recipe's `serve.plugin`/`plugin_architectures`) when `engine.image` moves to a vLLM release whose
-  registry carries `EmbeddingGemma2Model` and whose transformers ships `embedding_gemma2`.
+  loaded the plugin and whether or not the patch applied there. The fold is not removed while its status on
+  the 0.33 image is undecided (D2 re-opened); W4's recorded transformers version decides whether its class
+  install is still load-bearing, and the registry half alone never does.
 - `torch-sdpa-attention` -- the embeddinggemma-2 backend: the model's heterogeneous head dimensions
   (sliding 256, full 512) leave no backend the engine image can run -- TRITON_ATTN's prefill kernel
   cannot compile for head_dim 512, FA4's kernel caps head_dim at 256, `TORCH_SDPA`'s enum value is the

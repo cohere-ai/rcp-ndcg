@@ -261,7 +261,7 @@ release_of() { # release_of LOG_FILE: the job's release name, or fail loudly
 # The image the job records: --image (default the pinned wave-0 image), and its digest. The digest
 # resolution needs no credentials for a public image; a private one is resolved with the gcloud CLI.
 # Unresolvable is not fatal: the report records it as unknown with the way out.
-IMAGE="${IMAGE:-vllm/vllm-openai:v0.31.0}"
+IMAGE="${IMAGE:-vllm/vllm-openai:v0.33.0}"
 if [[ -n "${RCP_IMAGE_DIGEST:-}" ]]; then
   IMAGE_DIGEST="$RCP_IMAGE_DIGEST"
 else

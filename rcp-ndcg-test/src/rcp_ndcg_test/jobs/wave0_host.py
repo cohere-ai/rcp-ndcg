@@ -27,7 +27,7 @@ def collect(workdir: Path, transfer: str | None = None) -> dict[str, Any]:
     """The host facts: image (and digest when the operator resolved one), driver, GPUs, disk, /dev/shm,
     the image python's version."""
     return {
-        "image": os.environ.get("RCP_IMAGE") or "vllm/vllm-openai:v0.31.0",
+        "image": os.environ.get("RCP_IMAGE") or "vllm/vllm-openai:v0.33.0",
         "image_digest": os.environ.get("RCP_IMAGE_DIGEST"),
         "image_digest_note": (
             None

@@ -3,7 +3,7 @@
 # L2-normalized 128-dim vector per kept token, scored by client-side fp32 MaxSim. Both
 # checkpoints are NATIVE sentence-transformers exports (no custom Python code): Transformer ->
 # 1_Dense (Linear hidden->128, no bias) -> 2_MultiVectorMask (the 32 ASCII punctuation tokens
-# dropped document-side) -> 3_Normalize. Served on the stock vllm/vllm-openai:v0.31.0 image by
+# dropped document-side) -> 3_Normalize. Served on the stock vllm/vllm-openai:v0.33.0 image by
 # the same pure-Python plugin wheel that serves pplx-embed-v2-context-9b-preview (the folded
 # model plugin of rcp-ndcg-vllm, rcp_ndcg_vllm.models.pplx): the checkpoints' architecture
 # `Qwen3_5Model` is not in vLLM's registry, and each Dense head ships as a separate
@@ -17,8 +17,8 @@ input: [text, image]  # the card's usage: text and image DOCUMENTS, text queries
 licence: MIT  # the model card metadata; the repository ships no LICENSE file
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources: {gpus: 1}  # bf16 weights ~1.2 GB + KV; an entry-level GPU serves it
 serve:
   runner: pooling
@@ -68,7 +68,7 @@ serve:
                        # tokens under the shipped processor budget (see the
                        # notes, Budget); the Qwen3.5 default (262144) would
                        # over-reserve KV
-  dtype: bfloat16  # the served dtype: vLLM v0.31.0's GDN prefill kernels refuse
+  dtype: bfloat16  # the served dtype: vLLM v0.33.0's GDN prefill kernels refuse
                    # float32 on every backend (see notes, "dtype"), so the
                    # reference's fp32 run (the card loads the checkpoint at its
                    # config dtype, float32) cannot be matched exactly on this
@@ -87,7 +87,7 @@ serve:
                              # model class is the plugin seam here
   mm_processor_kwargs: {"images_kwargs": {"min_pixels": 3136, "max_pixels": 1800964}}
                                  # the pixel pin, the ONE shape of the media recipes (nested
-                                 # images_kwargs, decided from the v0.31.0 tag source): the shipped
+                                 # images_kwargs, decided from the v0.33.0 tag source): the shipped
                                  # processor's effective budget (processor_config.json
                                  # min_pixels/max_pixels, which override the size dict's edges in
                                  # transformers' Qwen2VLImageProcessor init). Load-bearing: the
@@ -110,7 +110,7 @@ client:
                        # ids wire needed (pplx-embed-v2-context-9b-preview
                        # needed token_ids only because its remote code splits
                        # special tokens; this checkpoint has no remote code)
-  recipe: "vLLM v0.31.0 pooling runner; plugin-registered PplxLateMultiVectorModel (ColQwen3_5Model subclass: the 1_Dense head loaded into custom_text_proj., the zero bias marked loaded; the checkpoint's is_causal false read by vLLM); the role-prefix frame ([Q] / [D] by name in the template); raw-text wire; the 1024/4096 per-shape right cuts client-side; 32 document-side skip ids, applied engine-side by the plugin (the client checks the declared kept count)"
+  recipe: "vLLM v0.33.0 pooling runner; plugin-registered PplxLateMultiVectorModel (ColQwen3_5Model subclass: the 1_Dense head loaded into custom_text_proj., the zero bias marked loaded; the checkpoint's is_causal false read by vLLM); the role-prefix frame ([Q] / [D] by name in the template); raw-text wire; the 1024/4096 per-shape right cuts client-side; 32 document-side skip ids, applied engine-side by the plugin (the client checks the declared kept count)"
   # The model's own limits are the sentence-transformers Transformer module's
   # per-task caps (sentence_bert_config.json: query_length 1024,
   # document_length 4096): the whole rendered prompt as the engine sees it, in
@@ -176,7 +176,7 @@ client:
             # non-skiplist token vector, the same rule as text.
   document_skip_engine_side: true
             # the rule above is applied by the SERVED PLUGIN, not the client:
-            # vLLM v0.31.0's pooling route cannot return the engine's
+            # vLLM v0.33.0's pooling route cannot return the engine's
             # per-position token ids, so the pplx-late plugin's pooler drops the
             # rule's positions from the token ids it sees (the render's own ids,
             # the image's special/structural positions included -- it drops
@@ -245,27 +245,27 @@ reference:
                                             # notes, "Budget")
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-14"
   report: "docs/reference/gpu-validation.md"
 sources:
   # The checkpoint, every file fetched at the pinned revision (2026-10-08).
   - "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-0.6b @ 8fc2de24534aa3610d85fa59c463313a5f096455 (README.md: the MultiVectorEncoder usage -- MultiVectorEncoder(repo, device), encode_query/encode_document, model.similarity MaxSim, one 128-dim vector per token, 'Use separate encoding calls for text-only and image-only batches. Mixed text+image inputs are not supported.', 'PyLate inserts Q/D markers at the second position; this model expects them first', requirements sentence-transformers>=6.0.0 transformers>=5.4.0, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 1024, 12 layers hybrid linear_attention/full_attention, dtype float32, tie_word_embeddings true, max_position_embeddings 262144, image_token_id 248056, vision_config patch_size 16 spatial_merge_size 2; config_sentence_transformers.json: model_type MultiVectorEncoder, similarity_fn_name maxsim, prompts query '[Q] ' document '[D] '; sentence_bert_config.json: query_length 1024, document_length 4096, query_expansion null, modality_config text/image/image+text/message all forward->last_hidden_state, module_output_name token_embeddings; 1_Dense/config.json: in_features 1024, out_features 128, bias false, Identity; 1_Dense/model.safetensors: one tensor linear.weight [128, 1024] F32, 524,376 bytes (file; 524,288 bytes of tensor data); 2_MultiVectorMask/config.json: skiplist_words = the 32 ASCII punctuation characters, skiplist_tasks ['document'], keep_only_token_ids null; modules.json: Transformer, Dense, MultiVectorMask, Normalize; tokenizer_config.json: extra_special_tokens ['[Q] ', '[D] '], bos null, eos im-end marker, pad newline, model_max_length 262144; tokenizer.json: added ids 248077 '[Q] ' / 248078 '[D] ' (special), no embedded truncation or padding, NFC normalizer, ByteLevel post-processor; processor_config.json: Qwen3VLProcessor, image min_pixels 3136 max_pixels 1800964 with size {shortest_edge 65536, longest_edge 16777216}, video processor present (fps 2, max_frames 768); chat_template.jinja: system text first, then vision markers, then text parts, no im-start/im-end wrappers; model.safetensors 2,377,321,184 bytes (file; 2,377,286,400 bytes of tensor data), 305 F32 tensors = language_model.* (embed_tokens [248320, 1024], 150 layer tensors, norm) + visual.* (153), no lm_head (tied), no mtp; the README/card contains no Matryoshka/MRL/projection sentence and config.json declares neither is_matryoshka nor matryoshka_dimensions -- mrl_kind: none)"
-  # vLLM at the pinned image: the v0.31.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
-  - "vllm v0.31.0, why a plugin model class (the two stock-vLLM blockers): vllm/model_executor/models/registry.py -- the registry's qwen3_5-family entries are 'Qwen3_5ForCausalLM' (:203), 'Qwen3_5MoeForCausalLM' (:204), 'ColQwen3_5' (:284), 'Qwen3_5ForConditionalGeneration' (:596) and the MoE/MTP siblings; the checkpoint's architectures[0] 'Qwen3_5Model' is absent, so a flags-only serve falls through to vLLM's transformers-backend fallback (a generic AutoModel host), which cannot serve this checkpoint (its construction crashes on this config, and it has no path to the Dense head or the multi-vector contract); and vllm/model_executor/model_loader/default_loader.py:221 _prepare_weights globs 'hf_folder/*.safetensors' non-recursively, so the checkpoint's 1_Dense/model.safetensors (the Dense head, verified from the file's safetensors header) never enters the weight iterator -- vllm/model_executor/models/utils.py AutoWeightsLoader would then refuse custom_text_proj.weight/bias (track_weights_loading, default_loader.py:496-517, raise :508-517), the loud failure of the flags-only ColQwen3_5 conversion"
-  - "vllm v0.31.0, why ColQwen3_5Model is the right base (inherited, not restated): vllm/model_executor/models/colqwen3_5.py:106-112 (default_pooling_type CLS/ALL), :133 (is_pooling_model), :135-143 (hf_to_vllm_mapper 'language_model.' -> 'language_model.model.' -- exactly this checkpoint's top-level naming, measured from the safetensors header; 'visual.' matches as-is), :162-169 (embed_dim from config.embed_dim, else the stock chain ending in the 128 default -- the recipe declares it), :177-183 (custom_text_proj Linear(hidden, embed_dim, bias=True) with a zero-initialised bias -- score-equivalent to this checkpoint's bias=False head), :187 (pooler_for_token_embed with the projector), :210-214 (_PROJ_LAYER_NAMES: the head reaches the loader only under custom_text_proj/embedding_proj_layer names)"
-  - "vllm v0.31.0, the head file: vllm/model_executor/model_loader/weight_utils.py:426-520 download_weights_from_hf -- snapshot_download with allow_patterns ['*.safetensors', '*.bin'] downloads 1_Dense/model.safetensors too (huggingface_hub's pattern matching matches subdirectory paths; measured on huggingface_hub 1.32.0: filter_repo_objects(['1_Dense/model.safetensors'], allow_patterns=['*.safetensors']) keeps it), so the plugin reads it from the same cache; the in-tree precedent for a model class loading an extra safetensors file is vllm/model_executor/models/mimo_audio.py:1262-1272"
-  - "vllm v0.31.0, the config parse (no plugin config class, no remote code): vllm/transformers_utils/config.py HFConfigParser.parse (:359-437) resolves model_type qwen3_5 through the engine's own _CONFIG_REGISTRY entry ('qwen3_5': 'Qwen3_5Config', vllm/transformers_utils/configs/qwen3_5.py -- model_type 'qwen3_5' with text_config/vision_config sub-configs) and registers it with transformers' AutoConfig (:404-412), forcing trust_remote_code False; the checkpoint carries no auto_map (config.json at the revision). The in-tree ColQwen3_5Config handler (models/config.py:937) is for the ColQwen3_5 architecture and demands retrieval_attention_contract; this checkpoint is out-of-tree and carries text_config.is_causal false itself"
-  - "vllm v0.31.0, bidirectional attention: vllm/model_executor/models/qwen3_next.py:336-343 -- the full-attention layers read getattr(config, 'is_causal', True) and build AttentionType.ENCODER_ONLY when false; this checkpoint's text_config.is_causal is false at the pinned revision"
-  - "vllm v0.31.0, the dtype floor (why serve.dtype is bfloat16): vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 -- 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (the Triton/FLA prefill path; the flashinfer path raises the same refusal at kernel warmup, vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:93-130 _resolve_gdn_prefill_backend). config.json dtype float32 sets the load dtype; mamba_ssm_dtype float32 (text_config) sets only the SSM cache dtype (vllm/model_executor/models/config.py:824-841 at the tag). The reference runs the checkpoint's own fp32 (the card's MultiVectorEncoder passes no dtype override); stage 2's tolerance gate and the wave's retrieval numbers quantify the cast"
-  - "vllm v0.31.0, the pooler: vllm/model_executor/layers/pooler/tokwise/poolers.py:100-118 pooler_for_token_embed (the projector + PoolerNormalize), vllm/pooling_params.py:165-168 (the token_embed task's use_activation defaults True -> the head's L2 normalize runs), vllm/model_executor/layers/pooler/tokwise/heads.py:91-107 (the head casts to head_dtype, projects, L2-normalizes); the head runs fp32 by default for pooling runners (vllm/config/model.py:2046-2073 and :2447-2468, pooling branch) -- this checkpoint's fp32 head tensor loads exactly"
-  - "vllm v0.31.0, tied lm_head: the checkpoint has no lm_head tensors (tie_word_embeddings true, safetensors census); vLLM ties ParallelLMHead to embed_tokens when the text config says tie (qwen3_5.py:355-358) and AutoWeightsLoader skips the aliased name when its canonical loads (vllm/model_executor/models/utils.py:202-215 _get_tied_embedding_params and :475-486 _check_skipped_aliases)"
-  - "vllm v0.31.0, the shared torch.compile risk: vllm/model_executor/models/qwen3_5.py:209 @support_torch_compile on Qwen3_5Model -- the same decorated text stack pplx-embed-v2-context-9b-preview's engine runs, whose GPU serve currently crashes at startup inside torch.compile (CUDA illegal memory access, under investigation); see the notes, 'The compile risk'"
+  # vLLM at the pinned image: the v0.33.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
+  - "vllm v0.33.0, why a plugin model class (the two stock-vLLM blockers): vllm/model_executor/models/registry.py -- the registry's qwen3_5-family entries are 'Qwen3_5ForCausalLM' (:204), 'Qwen3_5MoeForCausalLM' (:205), 'ColQwen3_5' (:289), 'Qwen3_5ForConditionalGeneration' (:617) and the MoE/MTP siblings; the checkpoint's architectures[0] 'Qwen3_5Model' is absent, so a flags-only serve falls through to vLLM's transformers-backend fallback (a generic AutoModel host), which cannot serve this checkpoint (its construction crashes on this config, and it has no path to the Dense head or the multi-vector contract); and vllm/model_executor/model_loader/default_loader.py:221 _prepare_weights globs 'hf_folder/*.safetensors' non-recursively, so the checkpoint's 1_Dense/model.safetensors (the Dense head, verified from the file's safetensors header) never enters the weight iterator -- vllm/model_executor/models/utils.py AutoWeightsLoader would then refuse custom_text_proj.weight/bias (track_weights_loading, default_loader.py:521,525, the raise in track_weights_loading :525-560), the loud failure of the flags-only ColQwen3_5 conversion"
+  - "vllm v0.33.0, why ColQwen3_5Model is the right base (inherited, not restated): vllm/model_executor/models/colqwen3_5.py:106-112 (default_pooling_type CLS/ALL), :133 (is_pooling_model), :135-143 (hf_to_vllm_mapper 'language_model.' -> 'language_model.model.' -- exactly this checkpoint's top-level naming, measured from the safetensors header; 'visual.' matches as-is), :162-169 (embed_dim from config.embed_dim, else the stock chain ending in the 128 default -- the recipe declares it), :177-183 (custom_text_proj Linear(hidden, embed_dim, bias=True) with a zero-initialised bias -- score-equivalent to this checkpoint's bias=False head), :187 (pooler_for_token_embed with the projector), :210-214 (_PROJ_LAYER_NAMES: the head reaches the loader only under custom_text_proj/embedding_proj_layer names)"
+  - "vllm v0.33.0, the head file: vllm/model_executor/model_loader/weight_utils.py:426-520 download_weights_from_hf -- snapshot_download with allow_patterns ['*.safetensors', '*.bin'] downloads 1_Dense/model.safetensors too (huggingface_hub's pattern matching matches subdirectory paths; measured on huggingface_hub 1.32.0: filter_repo_objects(['1_Dense/model.safetensors'], allow_patterns=['*.safetensors']) keeps it), so the plugin reads it from the same cache; the in-tree precedent for a model class loading an extra safetensors file is vllm/model_executor/models/mimo_audio.py:1262-1272"
+  - "vllm v0.33.0, the config parse (no plugin config class, no remote code): vllm/transformers_utils/config.py HFConfigParser.parse (:359-437) resolves model_type qwen3_5 through the engine's own _CONFIG_REGISTRY entry ('qwen3_5': 'Qwen3_5Config', vllm/transformers_utils/configs/qwen3_5.py -- model_type 'qwen3_5' with text_config/vision_config sub-configs) and registers it with transformers' AutoConfig (:404-412), forcing trust_remote_code False; the checkpoint carries no auto_map (config.json at the revision). The in-tree ColQwen3_5Config handler (models/config.py:1081) is for the ColQwen3_5 architecture and demands retrieval_attention_contract; this checkpoint is out-of-tree and carries text_config.is_causal false itself"
+  - "vllm v0.33.0, bidirectional attention: vllm/model_executor/models/qwen3_next.py:345-350 -- the full-attention layers read getattr(config, 'is_causal', True) and build AttentionType.ENCODER_ONLY when false; this checkpoint's text_config.is_causal is false at the pinned revision"
+  - "vllm v0.33.0, the dtype floor (why serve.dtype is bfloat16): vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 -- 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (the Triton/FLA prefill path; the flashinfer path raises the same refusal at kernel warmup, vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:148-186 _resolve_gdn_prefill_backend). config.json dtype float32 sets the load dtype; mamba_ssm_dtype float32 (text_config) sets only the SSM cache dtype (vllm/model_executor/models/config.py:958-975 at the tag). The reference runs the checkpoint's own fp32 (the card's MultiVectorEncoder passes no dtype override); stage 2's tolerance gate and the wave's retrieval numbers quantify the cast"
+  - "vllm v0.33.0, the pooler: vllm/model_executor/layers/pooler/tokwise/poolers.py:100-118 pooler_for_token_embed (the projector + PoolerNormalize), vllm/pooling_params.py:236-238 (the token_embed task's use_activation defaults True -> the head's L2 normalize runs), vllm/model_executor/layers/pooler/tokwise/heads.py:91-107 (the head casts to head_dtype, projects, L2-normalizes); the head runs fp32 by default for pooling runners (vllm/config/model.py:2046-2073 and :2447-2468, pooling branch) -- this checkpoint's fp32 head tensor loads exactly"
+  - "vllm v0.33.0, tied lm_head: the checkpoint has no lm_head tensors (tie_word_embeddings true, safetensors census); vLLM ties ParallelLMHead to embed_tokens when the text config says tie (qwen3_5.py:294) and AutoWeightsLoader skips the aliased name when its canonical loads (vllm/model_executor/models/utils.py:202-215 _get_tied_embedding_params and :475-486 _check_skipped_aliases)"
+  - "vllm v0.33.0, the shared torch.compile risk: vllm/model_executor/models/qwen3_5.py:213 @support_torch_compile on Qwen3_5Model -- the same decorated text stack pplx-embed-v2-context-9b-preview's engine runs, whose GPU serve currently crashes at startup inside torch.compile (CUDA illegal memory access, under investigation); see the notes, 'The compile risk'"
   - "sentence-transformers v6.0.1 (the card's own floor 6.0.0): sentence_transformers/base/modules/transformer.py preprocess (:1229-1402) -- the text modality tokenizes with truncation 'longest_first' at the per-task max_length (task 'query' -> query_length, 'document' -> document_length, :1297-1315) AFTER the prompt is prepended (:1386-1392); when the modality_config carries 'message' (this checkpoint's does, format structured) text and image inputs both convert to messages and the prompt becomes a SYSTEM message (:1375-1377, :1386-1390), so the chat template renders it -- this checkpoint's chat_template.jinja emits system text first and wraps nothing, so the text render is byte-identical to the plain prompt+text prepend the /pooling route reads. sentence_transformers/multi_vector_encoder/modules/multi_vector_mask.py: resolve_with_tokenizer converts skiplist_words with convert_tokens_to_ids (unresolved words dropped loudly, :74-101), and forward (:127-155) drops the skiplisted DOCUMENT positions from the scoring mask (task or 'document' in skiplist_tasks); the encode loop slices per-row by that mask, so the reference's document vectors exclude exactly the 32 punctuation ids the recipe declares"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint: query_max_tokens, document_skip_token_ids, media_sides, the media fields, request_shape, outputs per_token, embed_dtype, dim); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)"
-  - "transformers 5.17.0 (the engine image's line, requirements/common.txt 'transformers >= 5.10.4, < 5.18.0'): models/qwen2_vl/image_processing_qwen2_vl.py __init__ (~:98-108) -- min_pixels/max_pixels kwargs override the size dict's shortest_edge/longest_edge, so the shipped processor_config resolves to min 3136 / max 1,800,964 px (<= 1,758 image tokens at 1,024 px per merged patch: the resize floors the area into the budget), the numbers both halves pin; smart_resize floors into the budget (the same function the product's resolution.py ports)"
-  - "the pixel-pin shape, vllm v0.31.0 (the ONE shape of the media recipes, the qwen3-vl-embedding-2b decision): vllm/multimodal/processing/context.py:44-84 (overlay_modality_mm_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :293-309 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1371-1382 (the video loop folds FLAT keys into the video size override -- nested images_kwargs never reaches it)"
+  - "transformers 5.17.0 (the 0.31 image's version; the v0.33.0 pin's range is requirements/common.txt:11's 'transformers >= 5.16.1, < 5.21.0', and W4 records the 0.33 image's actual version -- undecided until then): models/qwen2_vl/image_processing_qwen2_vl.py __init__ (~:98-108) -- min_pixels/max_pixels kwargs override the size dict's shortest_edge/longest_edge, so the shipped processor_config resolves to min 3136 / max 1,800,964 px (<= 1,758 image tokens at 1,024 px per merged patch: the resize floors the area into the budget), the numbers both halves pin; smart_resize floors into the budget (the same function the product's resolution.py ports)"
+  - "the pixel-pin shape, vllm v0.33.0 (the ONE shape of the media recipes, the qwen3-vl-embedding-2b decision): vllm/multimodal/processing/context.py:48-120 (_merge_scoped_mm_processor_value/_resolve_mm_processor_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :376 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), vllm/model_executor/models/qwen3_vl.py:1004-1005 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1451-1489 (the video loop folds FLAT keys into the video size override -- nested images_kwargs never reaches it)"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
 notes: |
   What the model is. A multimodal late-interaction (multi-vector) retriever: one
@@ -323,7 +323,7 @@ notes: |
   product:
   - The document-side skiplist -> client.document_skip_token_ids (the 32 ids
     above), applied ENGINE-SIDE (client.document_skip_engine_side: true):
-    vLLM v0.31.0's pooling route cannot return the engine's per-position
+    vLLM v0.33.0's pooling route cannot return the engine's per-position
     token ids, so the pplx-late plugin's pooler drops the rule's positions
     from the token ids it sees -- the render's own ids, a media document's
     head and vision markers included -- and the wire carries only kept
@@ -359,7 +359,7 @@ notes: |
   - The image budget -> client.image_policy {min_px 3136, max_px 1800964,
     engine_pixel_pinning: true} beside serve.mm_processor_kwargs
     {images_kwargs: {min_pixels 3136, max_pixels 1800964}} (the ONE pixel-pin
-    shape of the media recipes, decided from the v0.31.0 tag source): the
+    shape of the media recipes, decided from the v0.33.0 tag source): the
     SHIPPED processor's own numbers (processor_config.json; in transformers'
     Qwen2VLImageProcessor init the min_pixels/max_pixels kwargs override the
     size dict's edges, so those are the effective bounds), pinned on both
@@ -416,7 +416,7 @@ notes: |
   vision start/end markers, the shipped pixel budget) -- under the text cap,
   so one max_model_len covers both shapes.
 
-  dtype: vLLM v0.31.0 cannot run this model in float32: the GDN prefill kernels
+  dtype: vLLM v0.33.0 cannot run this model in float32: the GDN prefill kernels
   refuse it on every backend (the Triton/FLA path asserts "ChunkGatedDeltaRuleFunction
   does not support float32. Please use bfloat16.", third_party/flash_linear_attention/
   ops/chunk.py:213-215 at the tag; the flashinfer path raises the same refusal
@@ -433,7 +433,7 @@ notes: |
 
   The compile risk (flagged, shared with pplx-embed-v2-context-9b-preview):
   this model's forward runs vLLM's decorated Qwen3_5Model text stack
-  (@support_torch_compile, qwen3_5.py:209 at the tag) -- the same machinery the
+  (@support_torch_compile, qwen3_5.py:213 at the tag) -- the same machinery the
   context-9b recipe's engine currently crashes in at startup on GPU (CUDA
   illegal memory access inside torch.compile, under investigation). Nothing in
   this recipe's serve block can avoid the stack short of --enforce-eager, which

@@ -49,7 +49,7 @@ Scenarios (``scenarios/``):
 
 The judge models and their revisions are the owner's choice (docs/how-to/release-candidates.md,
 "The T4 scenario wave"): the four-phase
-and visual runs take ``nvidia/Qwen3.8-Flash-Next-NVFP4`` when a T0 smoke proves vLLM v0.31.0 serves it on
+and visual runs take ``nvidia/Qwen3.8-Flash-Next-NVFP4`` when a T0 smoke proves vLLM v0.33.0 serves it on
 this node, else their ``fallback`` (``Qwen/Qwen3.8-Flash-Next-FP8``); the outage and identity runs take
 ``Qwen/Qwen3.8-27B-FP8``.  Every scenario names its engines verbatim (``judge.command``: the user's
 ``vllm serve`` argv, ``{port}`` filled) -- the package never builds an engine's flags.
@@ -1488,7 +1488,7 @@ def _pick_judge(
 ) -> tuple[ManagedEngine | None, JudgeCandidate | None, dict[str, Any]]:
     """The judge engine of this scenario: the T0 smoke's winner (the primary recipe or its fallback).
 
-    The owner's T4 judge choice: the four-phase run takes the NVFP4 candidate when vLLM v0.31.0
+    The owner's T4 judge choice: the four-phase run takes the NVFP4 candidate when vLLM v0.33.0
     serves it (the source says it parses the checkpoint's ``hf_quant_config.json`` and serves
     ``Qwen4ExpForConditionalGeneration``; the T0 smoke proves this node does), else the FP8 fallback.  A
     ``mode: outage`` judge is started fresh here as the driver's run-scoped engine.

@@ -182,7 +182,7 @@ class Capture:
         for the rerank wire (the spans the engine assembles -- for a reranker, the settled query span).
 
         A ``messages`` body (the chat-style input: a media item's route, or ``request_shape: messages``) is
-        read as vLLM v0.31.0 reads it: a list of messages is ONE conversation and a list of conversations a
+        read as vLLM v0.33.0 reads it: a list of messages is ONE conversation and a list of conversations a
         batch.  It yields one ``input`` per conversation -- its messages' text parts joined in order with
         ``TEXT_JOIN`` (``"\n"``, vLLM's *string* content format's join,
         ``chat_utils.py``'s ``_get_full_multimodal_text_prompt``; the ``openai`` content format hands the

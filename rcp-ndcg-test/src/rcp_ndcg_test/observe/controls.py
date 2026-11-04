@@ -6,7 +6,7 @@ rendered prompt, (c) ``use_activation`` flipped, (d) the wrong pooling, (e) floa
 served through the ordinary gates, which must FAIL it.  A control that passes is a blocker
 (:func:`controls_summary`): its gate cannot see that breakage class.
 
-Every breakage is one vLLM v0.31.0 really exhibits, so a control never "fails" for an unrelated reason (an
+Every breakage is one vLLM v0.33.0 really exhibits, so a control never "fails" for an unrelated reason (an
 engine that refuses its argv would fail every gate and prove nothing):
 
 - **recipe variants** (served as their own engine, client and engine agreeing on the variant's id): (a) drops
@@ -19,7 +19,7 @@ engine that refuses its argv would fail every gate and prove nothing):
   the pin restates that budget); ``unresolved`` -- a blocker -- when that budget cannot be read;
 - **wire variants** (the recipe's own engine, the request bodies patched on the way out through
   :func:`rcp_ndcg_test.equivalence.wire.patched_wire`): (b) adds the request fields vLLM cuts with
-  (``truncate_prompt_tokens`` + ``truncation_side: right`` -- a request field, not a serve flag, in v0.31.0);
+  (``truncate_prompt_tokens`` + ``truncation_side: right`` -- a request field, not a serve flag, in v0.33.0);
   (e) asks ``/pooling`` for the other ``embed_dtype`` than the client decodes, so float32 frames are read as
   float16 (or the reverse); (g) adds a ``dimensions`` the engine's own gate must refuse (an undeclared ``k``
   beside a declared set, the field ``/pooling`` refuses outright, or any cut on a checkpoint without the
@@ -109,7 +109,7 @@ def _wrong_pooling(recipe: Any) -> tuple[str | None, dict[str, Any], str]:
             None,
             {},
             (
-                "token-level pooling has no wrong-but-servable alternative in vLLM v0.31.0 (STEP needs a step tag); "
+                "token-level pooling has no wrong-but-servable alternative in vLLM v0.33.0 (STEP needs a step tag); "
                 "a sequence pooler would change the route's contract, not the pooling"
             ),
         )

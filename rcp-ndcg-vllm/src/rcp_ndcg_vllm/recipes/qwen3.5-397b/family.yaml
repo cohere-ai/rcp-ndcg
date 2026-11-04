@@ -2,8 +2,8 @@
 #
 # The family's client block is rcp-ndcg's judge config: rcp-ndcg validates it with
 # `rcp_ndcg.judging.JudgeConfig` when it reads `recipe: qwen3.5-397b-a17b-nvfp4`, so this package carries no
-# second model of a judge. The serve block is the paper's SGLang command translated to vLLM v0.31.0 flags,
-# every flag checked in the vLLM v0.31.0 source.
+# second model of a judge. The serve block is the paper's SGLang command translated to vLLM v0.33.0 flags,
+# every flag checked in the vLLM v0.33.0 source.
 #
 # Serving shape: one engine fits the smallest TP that leaves a B200 useful cache, and the H100 shape is the
 # documented `--set` override. This judge's weights do not fit one GPU of either class.
@@ -14,8 +14,8 @@ input: [text, image]
 licence: apache-2.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
   # 251 GB of weights over 2 GPUs; the paper's own client allowed 2400 s for a cold start.
   startup_timeout_s: 3600
 resources: {gpus: 2}
@@ -67,7 +67,7 @@ notes: >-
   matching the checkpoint's preprocessor_config.json at the pinned revision), max_images 10.
   Serving: the reasoning parser qwen3 keeps the model's thinking in its own channel so the answer schema
   constrains the answer, not the reasoning. limit_mm_per_prompt matches the client's max_images (without it each
-  modality defaults to 999 at vLLM v0.31.0). The client declares no video (max_videos 0), and the paper's judge
+  modality defaults to 999 at vLLM v0.33.0). The client declares no video (max_videos 0), and the paper's judge
   read ViDoRe v3 as OCR TEXT rather than page images: the image path this
   recipe enables is a capability, not the paper's run.
   Memory arithmetic, both GPU classes (GiB, --gpu-memory-utilization 0.92 default; the paper's 0.85 was its own
@@ -81,20 +81,20 @@ notes: >-
     cache is TP4 (62.8 GB weights/GPU, 10.8 GB cache/GPU; KV 7 680 B/token/GPU, ~1.9 GiB per full-length
     sequence): serve with `--set resources.gpus=4`. Native FP4 GEMM wants SM100; on Hopper vLLM falls back to
     Marlin W4A16 with a warning (docs/features/quantization/modelopt.md:24-40), a capacity note, not a blocker.
-  History: the paper served this judge as TP4 x DP2 (8 GPUs, SGLang `--data-parallel-size 2`); vLLM v0.31.0 has
+  History: the paper served this judge as TP4 x DP2 (8 GPUs, SGLang `--data-parallel-size 2`); vLLM v0.33.0 has
   --data-parallel-size too, and the one-engine shape is one TP2 replica per engine, scaled by replicas, with
   the TP4 H100 shape above.
-  Engine support: Qwen3_5MoeForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:597-600,
+  Engine support: Qwen3_5MoeForConditionalGeneration is in vLLM v0.33.0's registry (registry.py:618-620,
   module qwen3_5); re-checked at the pinned revision 2026-10-09. No plugin, no hf_overrides: the stock image
   serves it. status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/nvidia/Qwen3.5-397B-A17B-NVFP4 (revision 0368c1b3233414cd4a617b8ff9515e25752dc16c resolves; licence apache-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4/raw/0368c1b3233414cd4a617b8ff9515e25752dc16c/config.json (Qwen3_5MoeForConditionalGeneration, 60 layers, hidden 4096, 512 experts top-10, vocab 248 320, mpe 262 144, full_attention_interval 4, 2 KV heads, head_dim 256), hf_quant_config.json (quant_algo NVFP4, kv_cache_quant_algo FP8), model.safetensors.index.json (metadata.total_size 251 135 201 368 B, 11 shards), preprocessor_config.json (patch 16, merge 2, shortest 65 536 / longest 16 777 216 px)"
-  - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:952 (--quantization), :1334 (--kv-cache-dtype), :1093 (--reasoning-parser), :1432 (--limit-mm-per-prompt); model_executor/models/registry.py:597-600; layers/quantization/modelopt.py:715,746 (ModelOptNvFp4Config name modelopt_fp4) and :138 (hf_quant_config NVFP4 mapping); docs/features/quantization/modelopt.md:24-40 (SM100 native FP4, Marlin W4A16 fallback)"
+  - "vLLM v0.33.0 (image vllm/vllm-openai:v0.33.0): engine/arg_utils.py:992 (--quantization), :1397 (--kv-cache-dtype), :1147 (--reasoning-parser), :1500 (--limit-mm-per-prompt); model_executor/models/registry.py:618-620; layers/quantization/modelopt.py:729,766 (ModelOptNvFp4Config name modelopt_fp4) and :827 (the NVFP4 hf_quant_config.json field check inside ModelOptNvFp4Config); docs/features/quantization/modelopt.md:24-40 (SM100 native FP4, Marlin W4A16 fallback)"
   - "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4 (the model card: the recommended engine settings, the quantisation notes and the media geometry the blocks above translate)"
-  - "experiments/paper/README.md at this tree's HEAD (the paper's judges ran on SGLang; this release serves the same checkpoints on vLLM v0.31.0)"
+  - "experiments/paper/README.md at this tree's HEAD (the paper's judges ran on SGLang; this release serves the same checkpoints on vLLM v0.33.0)"
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-12"
   report: "docs/reference/gpu-validation.md"

@@ -10,7 +10,7 @@ generation-only head) and ``load_weights``, because the stock path cannot serve
 either checkpoint's head contract:
 
 - **The architecture name.** Both checkpoints' ``architectures[0]`` is
-  ``Qwen3_5Model``, which vLLM v0.31.0's registry does not carry (its qwen3_5
+  ``Qwen3_5Model``, which vLLM v0.33.0's registry does not carry (its qwen3_5
   family is registered under ``Qwen3_5ForCausalLM``, ``ColQwen3_5``,
   ``Qwen3_5ForConditionalGeneration``, ...); the plugin's ``register``
   (``rcp_ndcg_vllm.models.pplx.__init__``) adds that one name, pointing at this class.
@@ -33,7 +33,7 @@ either checkpoint's head contract:
   sentence-transformers module file, ``1_Dense/model.safetensors`` (one
   tensor, ``linear.weight`` -- [128, 1024] at 0.6b, [128, 4096] at 9b, fp32).
   The stock loader's discovery globs ``*.safetensors`` in the snapshot root
-  non-recursively (default_loader.py:221 at v0.31.0), so the head never enters
+  non-recursively (default_loader.py:221 at v0.33.0), so the head never enters
   the weight iterator; this class fetches that file itself -- from the
   checkpoint directory when serving a local path, else from the same Hub
   snapshot the engine already downloaded (vLLM's own
@@ -51,7 +51,7 @@ either checkpoint's head contract:
   projection loader marks a shipped bias (colqwen3_5.py:load_weights).
 - **Bidirectional attention.** ``is_causal=False`` rides the checkpoints' own
   ``text_config`` (vLLM's qwen3-next layers read it and build
-  ``AttentionType.ENCODER_ONLY``, qwen3_next.py:336-343 at v0.31.0); the
+  ``AttentionType.ENCODER_ONLY``, qwen3_next.py:345-350 at v0.33.0); the
   in-tree ColQwen3_5 config handler is not registered for this out-of-tree
   architecture and none is needed.
 - **No config class registration.** ``model_type qwen3_5`` is native to the

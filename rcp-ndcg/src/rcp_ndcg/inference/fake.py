@@ -32,13 +32,13 @@ from rcp_ndcg.errors import ConfigError
 
 #: The URL scheme that selects a fake: ``fake://seed/<n>`` for the judge (``JudgeConfig.fake``), and the
 #: per-role equivalents for the encoder, the pooler and the reranker. A URL with an **engine-version
-#: host** (``fake://vllm-0.31.0/<recipe>``) selects a verified fake engine instead -- see
+#: host** (``fake://vllm-0.33.0/<recipe>``) selects a verified fake engine instead -- see
 #: data:`RE_ENGINE_URL`.
 FAKE_SCHEME = "fake://"
 
 RE_ENGINE_URL = re.compile(r"^fake://[a-z]+-\d+(?:\.\d+)+(?:rc\d+)?/")
 """The ``fake://`` URLs that name a **verified fake engine**: an engine-version host and a recipe path
-(``fake://vllm-0.31.0/qwen3-embedding-0.6b``). Those are routed through the ``rcp_ndcg.fake_transports``
+(``fake://vllm-0.33.0/qwen3-embedding-0.6b``). Those are routed through the ``rcp_ndcg.fake_transports``
 entry-point group (rcp-ndcg-test registers its emulators there -- the verified fake engines built from the
 observation corpora); every other ``fake://`` URL is the hash-seeded offline fake (``fake://seed/<n>`` and
 friends)."""
@@ -302,7 +302,7 @@ def _models(endpoint: FakeEndpoint) -> httpx.Response:
 
 def _raw_items(body: dict) -> list[object]:
     """The items of a request as sent: its ``input`` entries (a text, a token-id list, a part list), else its
-    ``messages`` conversations (:func:`_items` reads them as vLLM v0.31.0 does)."""
+    ``messages`` conversations (:func:`_items` reads them as vLLM v0.33.0 does)."""
     items = body.get("input")
     messages = body.get("messages")
     if items is None and isinstance(messages, list) and messages:
@@ -341,7 +341,7 @@ def _tokenizer(spec: str) -> Any:
 
 def _items(body: dict) -> list[str]:
     """The items of a request: its ``input`` (text, token ids or part lists), else its ``messages`` read as
-    vLLM v0.31.0 reads them (the chat-style embeddings input, 2e): a list of messages is ONE conversation, one
+    vLLM v0.33.0 reads them (the chat-style embeddings input, 2e): a list of messages is ONE conversation, one
     item, and a list of conversations is a batch, one item each (an item keys by its messages' contents; an
     image part by its rendered form)."""
     items = body.get("input")

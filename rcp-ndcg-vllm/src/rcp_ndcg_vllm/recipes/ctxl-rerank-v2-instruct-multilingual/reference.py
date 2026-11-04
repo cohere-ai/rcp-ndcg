@@ -23,7 +23,7 @@ The score is the raw logit of vocabulary position 0 at the final position (left-
 real token's), computed the way the served engine computes it: the final hidden state cast to
 float32 and projected onto the score row in float32 (``lm_head.weight[0]``), which is vLLM's
 pooling head construction -- the head defaults to fp32 for pooling runners and the recipe no
-longer overrides ``head_dtype`` (``vllm/config/model.py:2047-2057`` at the v0.31.0 tag). The paper
+longer overrides ``head_dtype`` (``vllm/config/model.py:2108-2134`` at the v0.33.0 tag). The paper
 pipeline's own ``logits[:, -1, 0]`` is the same quantity with the bf16 head's rounding; the
 like-for-like comparison the owner's precision rule asks for reads both sides through the engine's
 fp32 head at the engine's served dtype (E2 r1: 1b 0.2482, 2b 0.1337 against the 0.05 logit bound

@@ -5,7 +5,7 @@ implements — projection, Matryoshka slice, L2 normalisation — restated witho
 vLLM so the CPU equivalence test can execute it.  It mirrors the served chain
 exactly:
 
-- ``TokenEmbeddingPoolerHead.forward_chunk`` (vLLM v0.31.0,
+- ``TokenEmbeddingPoolerHead.forward_chunk`` (vLLM v0.33.0,
   vllm/model_executor/layers/pooler/tokwise/heads.py:74-100): cast the pooled
   data to ``head_dtype`` (float32 for pooling models,
   vllm/config/model.py:_get_head_dtype), apply the projector

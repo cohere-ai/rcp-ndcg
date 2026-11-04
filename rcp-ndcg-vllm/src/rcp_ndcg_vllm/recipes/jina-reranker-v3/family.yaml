@@ -1,4 +1,4 @@
-# jinaai/jina-reranker-v3, served with stock vLLM (image vllm/vllm-openai:v0.31.0, native JinaForRanking).
+# jinaai/jina-reranker-v3, served with stock vLLM (image vllm/vllm-openai:v0.33.0, native JinaForRanking).
 #
 # The declared pair shape below mirrors the engine's own 1-vs-1 prompt builder byte for byte
 # (vLLM JinaRankingIOProcessorMixin.format_docs_prompts_func, itself byte-identical to the
@@ -14,8 +14,8 @@ scoring: listwise
 licence: cc-by-nc-4.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources: {gpus: 1}
 serve:
   runner: pooling
@@ -33,7 +33,7 @@ serve:
   plugin: null
   extra_args: []
 client:
-#   recipe: "vllm v0.31.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its pair budget)"
+#   recipe: "vllm v0.33.0: --runner pooling; the server-side Jina ranking prompt builder and the marker-token projector pooler (float32 cosine); no per-text request caps are sent (the client cuts to its pair budget)"
   api: rerank
   # Identity content (client_config keeps it, and fills the recipe id when absent): the merged
   # product's serving settings the client cannot read.
@@ -70,7 +70,7 @@ reference:
   known_deviations: ["over_cap_cut_differs"]
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-13"
   report: "docs/reference/gpu-validation.md"
@@ -80,10 +80,10 @@ sources:
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/modeling.py (rerank(): block_size 125, max_doc_length 2048, max_query_length 512, flush at >=125 docs or capacity <= 2048; _truncate_texts; format_docs_prompts_func; projector 1024->512->ReLU->512; ids 151670/151671)"
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/added_tokens.json (embed_token 151670, rerank_token 151671)"
   - "https://huggingface.co/jinaai/jina-reranker-v3/raw/d7d7e73b6ea138ced340b83865931b5dfb6c97aa/README.md (licence CC BY-NC 4.0)"
-  - "vLLM v0.31.0 vllm/model_executor/models/registry.py:278 (JinaForRanking); vllm/model_executor/models/jina.py:44-146 (JinaForRanking, DispatchPooler token_embed, hard-coded ids 151670/151671, float32 cosine)"
-  - "vLLM v0.31.0 vllm/entrypoints/pooling/scoring/io_processor.py:725-795 (JinaRankingIOProcessorMixin.format_docs_prompts_func, the server-side builder; no chat template on this path), :796-883 (JinaRankingIOProcessor: one query's whole candidate set in one prompt), vllm/entrypoints/pooling/scoring/protocol.py:21-44 (max_tokens_per_query/max_tokens_per_doc defaults 0 = off; instruction via chat_template_kwargs) and vllm/entrypoints/pooling/scoring/utils.py:42-54 (truncate_text_to_tokens, the per-text offset slice the request caps apply)"
-  - "vLLM v0.31.0 vllm/entrypoints/pooling/embed/io_processor.py:656-700 (JinaRankingTokenEmbedIOProcessor: POST /pooling task token_embed, docs-then-query, for the client-side block replication)"
-  - "vLLM v0.31.0 tests/models/language/pooling/test_jina_reranker_v3.py:25-41 (listwise dependence: 0.345703125 1-vs-1 vs 0.294921875 1-vs-N; TOL 0.01), :50,62 (serving flags)"
+  - "vLLM v0.33.0 vllm/model_executor/models/registry.py:278 (JinaForRanking); vllm/model_executor/models/jina.py:44-146 (JinaForRanking, DispatchPooler token_embed, hard-coded ids 151670/151671, float32 cosine)"
+  - "vLLM v0.33.0 vllm/entrypoints/pooling/scoring/io_processor.py:836-906 (JinaRankingIOProcessorMixin.format_docs_prompts_func, the server-side builder; no chat template on this path), :907 (JinaRankingIOProcessor: one query's whole candidate set in one prompt), vllm/entrypoints/pooling/scoring/protocol.py:21-44 (max_tokens_per_query/max_tokens_per_doc defaults 0 = off; instruction via chat_template_kwargs) and vllm/entrypoints/pooling/scoring/utils.py:42-54 (truncate_text_to_tokens, the per-text offset slice the request caps apply)"
+  - "vLLM v0.33.0 vllm/entrypoints/pooling/embed/io_processor.py:755-805 (JinaRankingTokenEmbedIOProcessor: POST /pooling task token_embed, docs-then-query, for the client-side block replication)"
+  - "vLLM v0.33.0 tests/models/language/pooling/test_jina_reranker_v3.py:25-41 (listwise dependence: 0.345703125 1-vs-1 vs 0.294921875 1-vs-N; TOL 0.01), :50,62 (serving flags)"
   - "experiments/paper/rerankers/jina_v3.yaml (the paper's served-path config; it carries no `recipe:` pointer and its budgets 8192/4096 differ from this recipe's 3219/512, so the paper's served jina path is a different operating point)"
   - "experiments/paper/rerankers/reference/jina.py (the paper-exact in-process reference this reference.py derives from)"
   - "experiments/paper/rerankers/reference/jina.py (the paper's JinaRerank harness, moved unchanged out of the removed pre-unification retrieval/external_rerankers.py when retrieval unified: empty docs score 0.0, index re-alignment; predict() at :65-76)"
@@ -97,7 +97,7 @@ notes: >-
   the rerank family's uniform declaration.  The model is listwise: one
   query's whole candidate set travels in one prompt, built SERVER-SIDE by vLLM's native Python
   builder (JinaRankingIOProcessorMixin.format_docs_prompts_func), which is byte-identical to the
-  checkpoint's modeling.py (measured when the recipe was written; re-verified at the v0.31.0 tag).
+  checkpoint's modeling.py (measured when the recipe was written; re-verified at the v0.33.0 tag).
   NO chat-template file ships on purpose (serve.chat_template: null): this architecture's prompt
   builder is Python, not a jinja template, and vLLM never consults a chat template on the Jina path;
   the warn-and-concatenate fallback belongs to template-driven io processors.  The declared pair

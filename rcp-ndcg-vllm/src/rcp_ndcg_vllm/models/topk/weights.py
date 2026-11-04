@@ -43,14 +43,14 @@ __all__ = [
 # token-embed pooler as its projector, so the checkpoint name must be mapped
 # onto it (ColQwen3_5Model._PROJ_LAYER_NAMES only matches
 # "custom_text_proj"/"embedding_proj_layer"; vllm/model_executor/models/
-# colqwen3_5.py:210-217 at v0.31.0).
+# colqwen3_5.py:210-217 at v0.33.0).
 PROJECTION_SOURCE_PREFIX = "head."
 PROJECTION_TARGET_PREFIX = "custom_text_proj."
 
 # Restatement of the upstream prefix table the plugin's model class merges in
 # (vllm/model_executor/models/qwen3_vl.py:1819-1826, inherited by
 # Qwen3_5ForConditionalGeneration at vllm/model_executor/models/qwen3_5.py:
-# 476-479, at v0.31.0): the Qwen3-VL checkpoint convention is exactly this
+# 476-479, at v0.33.0): the Qwen3-VL checkpoint convention is exactly this
 # checkpoint's (`model.language_model.*`, `model.visual.*`), while the stock
 # ColQwen3_5Model mapper assumes ColPali's `language_model.*` convention and
 # would leave `model.language_model.*` unresolved.
@@ -90,7 +90,7 @@ def map_checkpoint_name(name: str) -> str | None:
 #: The served module parameters the checkpoint never supplies: the projection's
 #: bias, whose two qualnames share one parameter (the model attribute and the
 #: pooler head's projector).  ColQwen3_5Model builds ``custom_text_proj`` with
-#: ``bias=True`` and zero-initialises it (colqwen3_5.py:177-183 at v0.31.0) so a
+#: ``bias=True`` and zero-initialises it (colqwen3_5.py:177-183 at v0.33.0) so a
 #: bias-less checkpoint behaves exactly as ``bias=False`` -- and a future
 #: revision that ships ``head.bias`` is loaded over the zeros by the in-tree
 #: projection loader.
@@ -102,7 +102,7 @@ def mark_zero_initialised(loaded: set[str]) -> set[str]:
 
     Inputs: the ``set[str]`` ``ColQwen3_5Model.load_weights`` returns (every parameter the
     checkpoint's tensors were loaded into).  Output: the same set, with
-    :data:`ZERO_INITIALISED_PARAMETERS` added.  The reason: vLLM v0.31.0's load tracker
+    :data:`ZERO_INITIALISED_PARAMETERS` added.  The reason: vLLM v0.33.0's load tracker
     (``model_loader/default_loader.py:track_weights_loading``) raises for any model
     parameter outside that set, but this checkpoint is bias-less -- the bias is the
     constructor's zeros (score-equivalent, module docstring) and a shipped ``head.bias``

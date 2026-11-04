@@ -1,7 +1,7 @@
 # The Gemma 4 31B judge family: the dense NVFP4 Gemma 4, one variant.
 #
 # Gemma 4 is an addition, not a paper judge: the serve block is the model card's own recommendation
-# translated to vLLM v0.31.0 flags and the engine's defaults, every flag checked in the vLLM v0.31.0 source.
+# translated to vLLM v0.33.0 flags and the engine's defaults, every flag checked in the vLLM v0.33.0 source.
 #
 # The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
 # rcp-ndcg reads `recipe: gemma-4-31b-it-nvfp4` (this package carries no second model of a judge).
@@ -15,8 +15,8 @@ input: [text, image]
 licence: apache-2.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources: {gpus: 1}
 serve:
   runner: generate
@@ -71,15 +71,15 @@ notes: >-
     resources.gpus: 1; throughput scales by replicas.
   - H100 (80 GB; 0.92 -> 68.55 GiB): 68.55 - 30.39 = 38.16 GiB cache -> ~23 concurrent 32k windows. Same
     shape -- no `--set` override needed.
-  Engine support: Gemma4ForConditionalGeneration is in vLLM v0.31.0's registry (registry.py:418); checked at
+  Engine support: Gemma4ForConditionalGeneration is in vLLM v0.33.0's registry (registry.py:427); checked at
   the pinned revision 2026-10-09. status: verified by its GPU validation wave (rc0-202610121840, 2026-10-12).
 sources:
   - "https://huggingface.co/api/models/nvidia/Gemma-4-31B-IT-NVFP4 (revision 4135a98a9b728a548947683219633b25682223ac == the Hub head; Hub tag other with license_name apache-license-2.0; gated false; checked 2026-10-09)"
   - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4/raw/4135a98a9b728a548947683219633b25682223ac/config.json (Gemma4ForConditionalGeneration; text 60 layers = 50 sliding + 10 full, hidden 5376, intermediate 21 504, 32 query / 16 KV heads, head 256 / global head 512, global KV 4, sliding window 1024, vocab 262 144, mpe 262 144; quantization_config present), hf_quant_config.json, chat_template.jinja (NVIDIA re-export 16934 B, sha256 prefix 94899c0f917d93f6), model.safetensors.index.json (32 633 255 032 B, 4 shards)"
-  - "vLLM v0.31.0 (image vllm/vllm-openai:v0.31.0): engine/arg_utils.py:951, :952, :1093, :1334, :1432; model_executor/models/registry.py:418; layers/quantization/modelopt.py:745-746,756-761,775-791; utils/torch_utils.py:67-70,503-521"
+  - "vLLM v0.33.0 (image vllm/vllm-openai:v0.33.0): engine/arg_utils.py:991, :992, :1147, :1397, :1500; model_executor/models/registry.py:427; layers/quantization/modelopt.py:745-746,756-761,775-791; utils/torch_utils.py:457-458,503-521"
   - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4 (the model card: the recommended engine settings, the licence terms and the quantisation notes the blocks above translate)"
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-12"
   report: "docs/reference/gpu-validation.md"

@@ -16,19 +16,19 @@ input: [text]
 licence: MIT  # the model card metadata; the repositories ship no LICENSE file
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources: {gpus: 1}  # bf16 weights ~1.2 GB (0.6B) / ~8.0 GB (4B) + KV; one 80 GB-class GPU each
 serve:
   runner: pooling
   convert: null  # no --convert flag: a pooling runner on the non-pooling Qwen3ForCausalLM
-                 # architecture auto-resolves to embed (vllm/config/model.py:1311 at the tag)
+                 # architecture auto-resolves to embed (vllm/config/model.py:1358 at the tag)
   hf_overrides:
     # The checkpoint's own architecture (PPLXQwen3Model) is not in vLLM's registry
-    # (registry.py:201 carries Qwen3ForCausalLM only), and its modeling.py is exactly
+    # (registry.py:202 carries Qwen3ForCausalLM only), and its modeling.py is exactly
     # Qwen3Model with bidirectional attention: post_init flips every layer's is_causal and
     # forward builds an all-to-all mask. The stock class reads the same contract from the
-    # config (qwen3.py:191-197: is_causal false -> AttentionType.ENCODER_ONLY), so the
+    # config (qwen3.py:194-197: is_causal false -> AttentionType.ENCODER_ONLY), so the
     # architecture and the contract are pinned here, not inferred.
     architectures: ["Qwen3ForCausalLM"]
     is_causal: false
@@ -38,8 +38,8 @@ serve:
   pooler_config: {}  # resolved from the checkpoint's own sentence-transformers metadata:
                      # modules.json -> 1_Pooling/config.json pooling_mode_mean_tokens ->
                      # seq_pooling_type MEAN, and no Normalize module -> use_activation
-                     # false (vllm/transformers_utils/config.py:982-1063, merged at
-                     # vllm/config/model.py:730-746). A user --pooler-config would override
+                     # false (vllm/transformers_utils/config.py:1012-1095, merged at
+                     # vllm/config/model.py:777-804). A user --pooler-config would override
                      # it; the declared empty {} sends no values and overrides nothing
   trust_remote_code: false  # the checkpoint's config.json carries an auto_map to
                             # configuration.PPLXQwen3Config, but the plugin registers that
@@ -66,8 +66,8 @@ serve:
   mm_processor_kwargs: {}
   limit_mm_per_prompt: null
   extra_args: []
-  # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hangs, 32767 returns at
-  # v0.31.0) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
+  # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hung, 32767 returned on
+  # the pre-0.32 image) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
   # vLLM v0.32.0, which stores num_sampled_tokens_per_step = 0 for the pooling runner; the backport
   # patch this family used to declare is deleted. The at-budget prompt stays one prefill step:
   # serve.max_num_batched_tokens renders at serve.max_model_len when nothing sets it, so an exactly-full
@@ -77,7 +77,7 @@ client:
   api: openai_embeddings
   request_shape: text  # raw rendered strings to /v1/embeddings; the card's usage embeds
                        # the text itself (no instruction, no chat render)
-  recipe: "vLLM v0.31.0 pooling runner; the stock Qwen3ForCausalLM converted to embed with is_causal false; the plugin-registered config class parses config.json locally; the checkpoint's own ST metadata resolves MEAN pooling and no activation; raw text on /v1/embeddings; the 32768-token right cut client-side"
+  recipe: "vLLM v0.33.0 pooling runner; the stock Qwen3ForCausalLM converted to embed with is_causal false; the plugin-registered config class parses config.json locally; the checkpoint's own ST metadata resolves MEAN pooling and no activation; raw text on /v1/embeddings; the 32768-token right cut client-side"
   # The budget is the model's own context, as the card's table states (32K): config.json
   # max_position_embeddings 32768. The checkpoint ships no sentence_bert_config.json and no
   # config_sentence_transformers.json, so there are no per-task caps and no prompts; both
@@ -138,7 +138,7 @@ reference:
                                             # character reads one id no text carries
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-14"
   report: "docs/reference/gpu-validation.md"
@@ -146,12 +146,12 @@ sources:
   # The checkpoints, every file fetched at the pinned revisions (2026-10-09).
   - "https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b @ 2c4d510dd4a732063c31a0f70193e35067b51fd8 (README.md: the model table -- 1024 dims, 32K context, MRL yes, INT8/BINARY, instruction No, Mean pooling, 'All models are built on diffusion continued pre-trained Qwen3 at Perplexity AI', the SentenceTransformers usage with trust_remote_code=True and encode(texts, quantization='binary'), the ONNX float+int8+binary outputs, 'natively produce *unnormalized* int8-quantized embeddings ... compare them via *cosine similarity*', licence mit; config.json: architectures [PPLXQwen3Model], auto_map AutoConfig/AutoModel, model_type bidirectional_pplx_qwen3, hidden_size 1024, num_hidden_layers 28, num_attention_heads 16, num_key_value_heads 8, head_dim 128, intermediate_size 3072, max_position_embeddings 32768, dtype float32, tie_word_embeddings true, use_bidirectional_attention true, layer_types all full_attention, vocab_size 151936, rope_theta 1000000; configuration.py: PPLXQwen3Config(Qwen3Config) with model_type only; modeling.py: PPLXQwen3Model(Qwen3Model), post_init sets every layer's is_causal False, forward builds the all-to-all mask via create_causal_mask with or_mask_function; modules.json: Transformer -> 1_Pooling -> st_quantize.FlexibleQuantizer; 1_Pooling/config.json: word_embedding_dimension 1024, pooling_mode_mean_tokens true (the 4B's identical file omits include_prompt); st_quantize.py: FlexibleQuantizer default quantization 'int8' = round(tanh(x) * 127).clamp(-128, 127); tokenizer_config.json: model_max_length 131072, bos null, eos/pad endoftext (id 151643), no chat_template, split_special_tokens false; tokenizer.json: ByteLevel post-processor with no BOS/EOS template, NFC normaliser, 151669 entries incl. the added Qwen specials; model.safetensors header: 310 F32 tensors, 596,049,920 params, names unprefixed (embed_tokens.weight, layers.*, norm.weight), no lm_head (tied) and no projection; the card's MRL row gives no set -- mrl_kind: none is the declaration)"
   - "https://huggingface.co/perplexity-ai/pplx-embed-v1-4b @ 06456497a00540a582918fe8dcd3a5eabb207772 (README.md: 2560 dims, the same 32K/MRL/INT8/No/Mean row, licence mit; config.json: hidden_size 2560, num_hidden_layers 36, num_attention_heads 32, num_key_value_heads 8, head_dim 128, intermediate_size 9728, max_position_embeddings 32768, dtype float32, tie_word_embeddings true, use_bidirectional_attention true; 1_Pooling/config.json: word_embedding_dimension 2560, pooling_mode_mean_tokens true; model.safetensors header: 398 F32 tensors, 4,022,468,096 params, the same unprefixed names, no lm_head and no projection; the tokenizer.json, tokenizer_config.json, configuration.py, modeling.py, modules.json and st_quantize.py are byte-identical to the 0.6B's at their pinned revisions -- measured by SHA-256 -- and special_tokens_map.json differs only in the serialization of sep_token as a plain string instead of an object)"
-  # vLLM at the pinned image: the v0.31.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
-  - "vllm v0.31.0, why the stock class serves it: vllm/model_executor/models/registry.py:201 -- the registry carries Qwen3ForCausalLM ('qwen3', 'Qwen3ForCausalLM') and no PPLXQwen3Model entry; vllm/model_executor/models/qwen3.py:265 Qwen3Model(Qwen2Model) and :272 Qwen3ForCausalLM; :191-197 Qwen3DecoderLayer reads getattr(config, 'is_causal', True) and builds AttentionType.ENCODER_ONLY (bidirectional) when false -- the hook the recipe's hf_overrides is_causal: false drives; vllm/config/model.py:1311 the pooling-runner fallback returns convert 'embed' for a non-pooling architecture, and vllm/model_executor/model_loader/utils.py:277 wraps the class with as_embedding_model (adapters.py:250)"
-  - "vllm v0.31.0, why the weight names load: vllm/model_executor/models/adapters.py:189-192 -- the converted pooling wrapper's _load_pooling_model_weights probes the candidate prefixes ['', 'model.'] against its parameter names and prepends the one that matches, so this checkpoint's UNPREFIXED tensors (embed_tokens.weight, layers.*, norm.weight; the model class is the bare Qwen3Model) land on Qwen3ForCausalLM's model.* parameters; config.json tie_word_embeddings true and the absent lm_head load as the tied alias the loader already skips (vllm/model_executor/models/utils.py:202-215, :475-486)"
-  - "vllm v0.31.0, the pooling and the budget: vllm/transformers_utils/config.py:982-1063 get_pooling_config reads modules.json and the pooling module's config.json (the module type table at :57-60 includes sentence_transformers.models.Pooling) and resolves pooling_mode_mean_tokens true -> seq_pooling_type MEAN with use_activation = the presence of a Normalize module (false here: the pipeline's third module is the quantiser); vllm/config/model.py:730-746 merges that base config under the user's pooler_config; vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 builds the embed pooler (EmbeddingPoolerHead + PoolerNormalize) and vllm/pooling_params.py:164-168 defaults use_activation only when nothing set it, so the metadata's false stands; seqwise/methods.py:60-107 MeanPool averages over each sequence's prompt tokens"
-  - "vllm v0.31.0, the config parse: vllm/transformers_utils/config.py HFConfigParser.parse (~:359-437) -- a model_type outside the engine's _CONFIG_REGISTRY goes through AutoConfig.from_pretrained with the request's trust_remote_code; the plugin's AutoConfig.register of model_type bidirectional_pplx_qwen3 (rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config, the checkpoint's own class restated) makes transformers resolve the local class and skip the remote-code branch, so trust_remote_code stays false and nothing remote runs"
-  - "vllm v0.31.0, the pooling hang at exactly max_model_len: the first GPU wave's measured result -- any pooling prompt of exactly max_model_len tokens that is chunked never completes (32768 hangs, 32767 returns); the jina recipe's wave verified with --max-num-batched-tokens 32768; this family's client budget EQUALS its max_model_len, so a full-budget request is exactly that input (see the notes, 'The exactly-max_model_len hang')"
+  # vLLM at the pinned image: the v0.33.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
+  - "vllm v0.33.0, why the stock class serves it: vllm/model_executor/models/registry.py:202 -- the registry carries Qwen3ForCausalLM ('qwen3', 'Qwen3ForCausalLM') and no PPLXQwen3Model entry; vllm/model_executor/models/qwen3.py:269 Qwen3Model(Qwen2Model) and :280 Qwen3ForCausalLM; :194-197 Qwen3DecoderLayer reads getattr(config, 'is_causal', True) and builds AttentionType.ENCODER_ONLY (bidirectional) when false -- the hook the recipe's hf_overrides is_causal: false drives; vllm/config/model.py:1358 the pooling-runner fallback returns convert 'embed' for a non-pooling architecture, and vllm/model_executor/model_loader/utils.py:330 wraps the class with as_embedding_model (adapters.py:250)"
+  - "vllm v0.33.0, why the weight names load: vllm/model_executor/models/adapters.py:189-192 -- the converted pooling wrapper's _load_pooling_model_weights probes the candidate prefixes ['', 'model.'] against its parameter names and prepends the one that matches, so this checkpoint's UNPREFIXED tensors (embed_tokens.weight, layers.*, norm.weight; the model class is the bare Qwen3Model) land on Qwen3ForCausalLM's model.* parameters; config.json tie_word_embeddings true and the absent lm_head load as the tied alias the loader already skips (vllm/model_executor/models/utils.py:202-215, :475-486)"
+  - "vllm v0.33.0, the pooling and the budget: vllm/transformers_utils/config.py:1012-1095 get_pooling_config reads modules.json and the pooling module's config.json (the module type table at :88-100 includes sentence_transformers.models.Pooling) and resolves pooling_mode_mean_tokens true -> seq_pooling_type MEAN with use_activation = the presence of a Normalize module (false here: the pipeline's third module is the quantiser); vllm/config/model.py:777-804 merges that base config under the user's pooler_config; vllm/model_executor/layers/pooler/seqwise/poolers.py:97-105 builds the embed pooler (EmbeddingPoolerHead + PoolerNormalize) and vllm/pooling_params.py:237-238 defaults use_activation only when nothing set it, so the metadata's false stands; seqwise/methods.py:60-107 MeanPool averages over each sequence's prompt tokens"
+  - "vllm v0.33.0, the config parse: vllm/transformers_utils/config.py HFConfigParser.parse (~:359-437) -- a model_type outside the engine's _CONFIG_REGISTRY goes through AutoConfig.from_pretrained with the request's trust_remote_code; the plugin's AutoConfig.register of model_type bidirectional_pplx_qwen3 (rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config, the checkpoint's own class restated) makes transformers resolve the local class and skip the remote-code branch, so trust_remote_code stays false and nothing remote runs"
+  - "vllm's pre-0.32 pooling scheduler, the hang at exactly max_model_len: the first GPU wave's measured result -- any pooling prompt of exactly max_model_len tokens that is chunked never completes (32768 hangs, 32767 returns); the jina recipe's wave verified with --max-num-batched-tokens 32768; this family's client budget EQUALS its max_model_len, so a full-budget request is exactly that input (see the notes, 'The exactly-max_model_len hang')"
   - "sentence-transformers v6.x (the card's own dependency): sentence_transformers/base/modules/transformer.py -- __init__ caps tokenizer.model_max_length at config.max_position_embeddings when no model_max_length was passed (:874-883); the max_seq_length property reads the capped tokenizer value (:1136-1146); the text modality defaults to padding + truncation 'longest_first' (:1260) with max_length = the task cap when one is configured (none is: the checkpoint ships no sentence_bert_config.json) and the tokenizer's capped model_max_length otherwise. The reference restates exactly this cap derivation (min of tokenizer_config.json model_max_length and config.json max_position_embeddings)"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: max_tokens, template, empty_doc/omit_zero, normalize, dimensions, request_shape); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: content-only shapes, anchor mean, add_special_tokens); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, census)"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from; a content-only shape declares mean pooling)"
@@ -170,13 +170,13 @@ notes: |
   st_quantize.FlexibleQuantizer (the int8/binary storage step). There is no head and no
   projection: the output width is the hidden size.
 
-  The serving path (established from the v0.31.0 tag source, no model class needed):
-  - The architecture. vLLM v0.31.0's registry carries Qwen3ForCausalLM and no
-    PPLXQwen3Model (registry.py:201). The checkpoint's class is Qwen3Model with
+  The serving path (established from the v0.33.0 tag source, no model class needed):
+  - The architecture. vLLM v0.33.0's registry carries Qwen3ForCausalLM and no
+    PPLXQwen3Model (registry.py:202). The checkpoint's class is Qwen3Model with
     bidirectional attention, so the recipe pins hf_overrides {architectures:
     [Qwen3ForCausalLM], is_causal: false}: the stock Qwen3DecoderLayer reads the flag
-    (qwen3.py:191-197) and builds ENCODER_ONLY attention, and a pooling runner on a
-    non-pooling architecture auto-resolves to convert embed (model.py:1311).
+    (qwen3.py:194-197) and builds ENCODER_ONLY attention, and a pooling runner on a
+    non-pooling architecture auto-resolves to convert embed (model.py:1358).
   - The config. model_type bidirectional_pplx_qwen3 is outside vLLM's _CONFIG_REGISTRY;
     the plugin registers the checkpoint's own class locally with transformers'
     AutoConfig (rcp_ndcg_vllm.models.pplx.hf_config.PplxV1Config, a plain Qwen3Config
@@ -191,8 +191,8 @@ notes: |
     the skipped alias.
   - The pooling. The checkpoint's own ST metadata resolves the pooler: modules.json ->
     1_Pooling/config.json pooling_mode_mean_tokens true -> seq_pooling_type MEAN, and no
-    Normalize module -> use_activation false (config.py:982-1063, merged at
-    model.py:730-746). The engine therefore returns the unnormalized mean-pooled hidden
+    Normalize module -> use_activation false (config.py:1012-1095, merged at
+    model.py:777-804). The engine therefore returns the unnormalized mean-pooled hidden
     state; the client L2-normalises it (cosine is scale-invariant, so the comparison is
     unaffected).
   - The wire. Raw text on /v1/embeddings (request_shape text), no chat template
@@ -219,7 +219,7 @@ notes: |
   The exactly-max_model_len hang (GPU-E1, applies to both variants): the client's
   max_tokens EQUALS serve.max_model_len (32768 = the model's own context; the
   tokenizer's 131072 is above the model's range and is not a budget). Any pooling prompt
-  of exactly max_model_len tokens that is chunked never completes on vLLM v0.31.0
+  of exactly max_model_len tokens that is chunked never completed on the pre-0.32 line
   (GPU-E1: 32768 hangs, 32767 returns); the jina recipe's wave verified with
   --max-num-batched-tokens 32768. vllm-project/vllm#48039 (commit e6fc81bc78, first released in vLLM
   v0.32.0) fixes it in the scheduler (num_sampled_tokens_per_step = 0 for the pooling runner), so the

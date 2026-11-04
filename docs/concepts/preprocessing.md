@@ -287,7 +287,7 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   `num_frames` policy is refused at count time: the backend would ignore the pin, so the declared policy
   would name a layout the engine never renders (declare `fps`). The Qwen2-VL families
   (`qwen2_vl`, `qwen2_5_vl`) are refused for a container under either rule: their engine backend
-  (vLLM v0.31.0's `Qwen2VLVideoBackend`) is fps-driven too, and its fps rule is not ported here, so no
+  (vLLM v0.33.0's `Qwen2VLVideoBackend`) is fps-driven too, and its fps rule is not ported here, so no
   declaration can be counted honestly -- send `wire: frames` instead, or serve a `qwen3_vl` checkpoint.
   The policy refuses a
   single-frame container (the declared instrument merges frames in time, which needs a temporal pair; a
@@ -299,7 +299,7 @@ sampling rule is declared -- a uniform `num_frames` or the engine's own `fps`:
   changes (below); a mismatch says the engine's media handling is not the one the counted tokens describe.
   An `fps` pin has two halves on an engine whose video loader samples the whole clip and reports the frames
   as already sampled (`do_sample_frames=True`: a vLLM without the checkpoint's own video backend, e.g. the
-  stock `vllm/vllm-openai:v0.31.0` for a checkpoint whose backend landed later). There the
+  stock `vllm/vllm-openai:v0.33.0` for a checkpoint whose backend landed later). There the
   `--media-io-kwargs` pin reaches only the decoder; the checkpoint's processor resamples those decoded frames
   with its own defaults (its `processor_config.json` fps, usually 1), so the model sees a handful of frames
   while the client counted the declared number. The recipe declares the same numbers a second time in

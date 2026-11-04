@@ -19,7 +19,7 @@ The registry maps recipe ids to fakes. ``target='fake'`` covers the **registered
 corpora's **verified emulators** (one per engine version, recipe and behaviour fingerprint,
 :mod:`rcp_ndcg_test.engines`) are built and registered by the harness's own conformance wiring
 (``tests._engines``) and reach a run as an **engine target** through a
-``fake://vllm-0.31.0/<recipe>`` URL once registered (the product's ``rcp_ndcg.fake_transports``
+``fake://vllm-0.33.0/<recipe>`` URL once registered (the product's ``rcp_ndcg.fake_transports``
 entry point routes it). What ships in this registry is one test fake for the packaged fixture recipe
 (:class:`FakeEmbedEngine`, recipe ``fake-embed``), so the runner is exercised end to end on CPU. A test
 fake is a deterministic surrogate, clearly marked -- a test that asserts numbers may only do so against
@@ -183,7 +183,7 @@ def fake_engine_for(recipe_id: str) -> FakeEngine:
 
     Raises:
         ConformanceError: none is -- the hint names the registry call, the live-engine target and the
-            ``fake://vllm-0.31.0/<recipe>`` route a committed corpus's verified emulator reaches a run
+            ``fake://vllm-0.33.0/<recipe>`` route a committed corpus's verified emulator reaches a run
             through once registered.
     """
     engine = _REGISTRY.get(recipe_id)
@@ -193,7 +193,7 @@ def fake_engine_for(recipe_id: str) -> FakeEngine:
             f"{', '.join(registered_fake_engines()) or 'none'}); register one with "
             "rcp_ndcg_test.fakes.register_fake_engine, run the suite against a live engine "
             "(target='engine', base_url=...), or -- for a committed corpus -- against its verified emulator "
-            "through base_url='fake://vllm-0.31.0/<recipe>' once that emulator is registered"
+            "through base_url='fake://vllm-0.33.0/<recipe>' once that emulator is registered"
         )
     return engine
 

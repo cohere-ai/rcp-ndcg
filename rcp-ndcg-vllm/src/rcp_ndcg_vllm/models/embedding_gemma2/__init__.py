@@ -12,12 +12,13 @@ model classes with ``AutoModel`` (the folded vLLM model's ``AutoModel.from_confi
 text backbone and vision tower through it).
 
 E2 round 4: serve failed again -- ``Model architectures ['EmbeddingGemma2Model'] are not supported
-for now`` -- and the wave's serve log's supported-architecture list is exactly the vLLM v0.31.0
-tag's (plus the plugin's own registrations), while vLLM commit
+for now`` -- and the 0.31 wave's serve log's supported-architecture list was exactly the 0.31
+image's (plus the plugin's own registrations; the v0.33.0 tag's carries EmbeddingGemma2Model,
+``registry.py:259``), while vLLM commit
 ``8cbd5d03006c33185f402249ff2b448efd594986`` (the fold's source, read on the nightly) carries both
-the model module and its registry entry: the stock v0.31.0 image the recipe serves is a v0.31.0
-build, so vLLM's registry does NOT carry the model class (the r1 reading, inferred from the PR, was
-wrong).  The plugin therefore also ships vLLM's own
+the model module and its registry entry: the 0.31 image the waves served is a 0.31 build, so its
+registry did NOT carry the model class (the r1 reading, inferred from the PR, was wrong; the v0.33.0
+tag's registry does carry it).  The plugin therefore also ships vLLM's own
 ``embedding_gemma2.py`` from that commit (``fold/embedding_gemma2.py``, 1142 lines, byte-identical
 plus a header) and :func:`register_embedding_gemma2` registers it lazily -- with upstream's config
 hook (``.config``: the Gemma4 heterogeneous-head-dimension handling, TRITON_ATTN as the declared
@@ -177,10 +178,8 @@ def install_fold() -> None:
 def register_embedding_gemma2() -> None:
     """Register the folded model architecture and its config hook with the running vLLM (idempotent).
 
-    E2 round 4: the stock v0.31.0 image the recipe serves reports vLLM 0.31.0 and its registry
-    carries no ``EmbeddingGemma2Model`` (its supported-architecture list equals the v0.31.0 tag's,
-    while vLLM commit 8cbd5d03, the fold's source, carries both the model module and the registry
-    entry), so the
+    E2 round 4: the stock 0.31 image the waves served reports vLLM 0.31 and its registry carried
+    no ``EmbeddingGemma2Model`` (the v0.33.0 tag's does, ``registry.py:259``), so the
     plugin registers the folded model class lazily and, when the running vLLM's ``MODELS_CONFIG_MAP``
     lacks the architecture, upstream's config hook beside it (:mod:`.config`: the Gemma4
     heterogeneous-head-dimension handling, TRITON_ATTN as the default backend, the 8192 cap).

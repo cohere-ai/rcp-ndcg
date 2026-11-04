@@ -1,33 +1,33 @@
-# Recipe: Qwen/Qwen3-VL-Embedding-2B served with stock vLLM (vllm/vllm-openai:v0.31.0).
+# Recipe: Qwen/Qwen3-VL-Embedding-2B served with stock vLLM (vllm/vllm-openai:v0.33.0).
 # The pixel pin rides ONE shape across the media recipes -- nested images_kwargs, decided from the
-# v0.31.0 tag source (cited in sources) -- and the video sampling is one declared rule on every side.
+# v0.33.0 tag source (cited in sources) -- and the video sampling is one declared rule on every side.
 id: qwen3-vl-embedding
 schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
 role: embed
 input: [text, image, video]     # the model's capability (card); text, images and video ride the messages route -- see notes, "Media"
 licence: apache-2.0
-engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0"}   # min_version = the image actually verified (the family convention)
+engine: {name: vllm, image: "vllm/vllm-openai:v0.33.0", min_version: "0.33.0"}   # min_version = the image actually verified (the family convention)
 resources: {gpus: 1}            # 2B bf16 (~4.0 GiB weights) fits one GPU; the card states no multi-GPU requirement
 serve:
   runner: pooling
-  convert: embed                # a generative VLM as an embedder; auto would resolve to embed, explicit silences the log (v0.31.0 config/model.py:113)
+  convert: embed                # a generative VLM as an embedder; auto would resolve to embed, explicit silences the log (v0.33.0 config/model.py:113)
   hf_overrides: {is_matryoshka: true}  # the card's Matryoshka range 64..2048 is a per-request /v1/embeddings capability (dimensions, cut before L2 at seqwise/heads.py:85-105); the checkpoint declares no is_matryoshka, so the gate is declared here with no set (the card's prose gives a range, and the client's mrl_range carries the floor the engine does not check)
   chat_template: null           # no template file: the messages route renders the checkpoint's own chat_template.jinja at the pinned revision, which frames the content exactly as the declared template (the harness's template check reads that file; see notes, "Frame")
-  pooler_config: {seq_pooling_type: LAST}   # the default seq pooler, pinned explicitly; the head is the default PoolerNormalize (L2, v0.31.0 seqwise/poolers.py:97-110)
+  pooler_config: {seq_pooling_type: LAST}   # the default seq pooler, pinned explicitly; the head is the default PoolerNormalize (L2, v0.33.0 seqwise/poolers.py:97-110)
   trust_remote_code: false      # no auto_map in config.json; the native class needs none (the card's script passes true, inert there too)
   max_model_len: 8192           # == the reference's MAX_LENGTH; an over-length prompt is an HTTP 400, never a silent engine cut
   dtype: bfloat16               # the checkpoint's dtype
   plugin: null                  # no out-of-tree model class: stock vLLM serves it
-  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}, "videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320}}   # the pixel pin, the ONE shape (nested images_kwargs): the card script's MIN/MAX_PIXELS (4*32^2 / 1800*32^2) and the card's per-clip video total_pixels 7864320 (the HF Qwen3VL video processor's max_pixels is the whole clip's budget, video_processing_qwen3_vl.py at transformers 5.17:360-381). At the tag the nested dict reaches the HF processor's images_kwargs/videos_kwargs and the vLLM-side token budget alike, while flat keys also re-size every VIDEO clip (qwen3_vl.py:1371-1382) -- see sources. Load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image tokens vs the reference's 1776 (measured on the checkpoint's own processor)
+  mm_processor_kwargs: {"images_kwargs": {"min_pixels": 4096, "max_pixels": 1843200}, "videos_kwargs": {"min_pixels": 4096, "max_pixels": 7864320}}   # the pixel pin, the ONE shape (nested images_kwargs): the card script's MIN/MAX_PIXELS (4*32^2 / 1800*32^2) and the card's per-clip video total_pixels 7864320 (the HF Qwen3VL video processor's max_pixels is the whole clip's budget, video_processing_qwen3_vl.py at transformers 5.17:360-381). At the tag the nested dict reaches the HF processor's images_kwargs/videos_kwargs and the vLLM-side token budget alike, while flat keys also re-size every VIDEO clip (qwen3_vl.py:1451-1489) -- see sources. Load-bearing: at the checkpoint default max_pixels=1310720 a 1700x2200 page renders 1240 image tokens vs the reference's 1776 (measured on the checkpoint's own processor)
   limit_mm_per_prompt: {"image": 1, "video": 1}   # one media item per request (the client's max_images/max_videos carry the same numbers): never the engine's multi-item hoist
   extra_args:                  # the ONE video policy's engine half: a container is sampled at the engine's own rate
     - "--media-io-kwargs"
-    - '{"video": {"fps": 2}}'      # v0.31.0 multimodal/video.py:360-400: the Qwen3-VL backend samples int(total/original_fps * fps) frames (its 30 fps ceiling, 4..768 bounds) and IGNORES num_frames, so the pin is the rate (fps 2: the checkpoint video processor's own fps, video_preprocessor_config.json)
+    - '{"video": {"fps": 2}}'      # v0.33.0 multimodal/video.py:360-400: the Qwen3-VL backend samples int(total/original_fps * fps) frames (its 30 fps ceiling, 4..768 bounds) and IGNORES num_frames, so the pin is the rate (fps 2: the checkpoint video processor's own fps, video_preprocessor_config.json)
 client:
-#   recipe: "vLLM 0.31.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy fps 2 as video_url with --media-io-kwargs video fps 2 pinned (engine_video_pinning; the Qwen3-VL backend's fps rule, which ignores num_frames); request_shape messages with add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget (engine_pixel_pinning)"
+#   recipe: "vLLM 0.33.0 pooling runner (--convert embed), seq_pooling_type LAST with the default PoolerNormalize head; no served chat template (the checkpoint's own frames the messages route); media: nested images_kwargs min_pixels=4096 max_pixels=1843200 (serve.mm_processor_kwargs, the one pixel-pin shape), one media item per request (serve.limit_mm_per_prompt image=1 video=1 = client.max_images/max_videos 1/1), video_policy fps 2 as video_url with --media-io-kwargs video fps 2 pinned (engine_video_pinning; the Qwen3-VL backend's fps rule, which ignores num_frames); request_shape messages with add_generation_prompt and add_special_tokens true: the checkpoint's chat template frames each item once and the engine's post-processor appends the end anchor; image_processor qwen3_vl under the pinned budget (engine_pixel_pinning)"
   api: openai_embeddings
   request_shape: messages       # the chat-style /v1/embeddings input: each item one conversation carrying its content (the cut text, its image or video parts), framed once by the engine's chat template -- the only route that carries media (notes, "Media")
-  add_generation_prompt: true   # the declared frame ends with the assistant header, which the checkpoint's template renders only under add_generation_prompt; vLLM v0.31.0's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237), so the flag is sent
+  add_generation_prompt: true   # the declared frame ends with the assistant header, which the checkpoint's template renders only under add_generation_prompt; vLLM v0.33.0's chat routes default it to false (vllm/entrypoints/pooling/base/protocol.py:230-237), so the flag is sent
   max_tokens: 8192              # the declared budget: the frame's fixed tokens (including the instruction and the post-processor anchor) are reserved, only the content span is cut (on_overflow: cut). No query_max_tokens: the card caps the WHOLE prompt (MAX_LENGTH 8192), queries and documents alike
   image_processor: qwen3_vl     # the checkpoint's Qwen3VLProcessor family (patch 16 x merge 2 = 32 px per token edge): the client resizes and counts every image as the engine's processor does
   image_policy: {min_px: 4096, max_px: 1843200, engine_pixel_pinning: true}   # the pixel pin's client half: the same numbers as serve.mm_processor_kwargs; engine_pixel_pinning declares the engine pinned to them, which admits the card's 4096 px floor below the family's stock 65536 (notes, "Media")
@@ -46,7 +46,7 @@ client:
       - {content: document}
       - {fixed: "{special:im_end}\n{special:im_start}assistant\n"}   # the trailing fixed segment + the post-processor's endoftext are the anchor the model pools from
     anchor: last
-    add_special_tokens: true    # sent with every messages request (the chat route's own default is false, v0.31.0 base/protocol.py ChatRequestOptionsMixin): the tokenizer's post-processor appends endoftext (id 151643, tokenizer.json TemplateProcessing) after the chat render -- the pooled last token
+    add_special_tokens: true    # sent with every messages request (the chat route's own default is false, v0.33.0 base/protocol.py ChatRequestOptionsMixin): the tokenizer's post-processor appends endoftext (id 151643, tokenizer.json TemplateProcessing) after the chat render -- the pooled last token
   on_overflow: cut
   empty_doc: send_text          # the DOCUMENT side's policy only: empty_doc never applies to a query (the product sends an empty query as given), so this pair is the declared parity for an empty document and nothing else
   instruction: none             # the card's own instruction is part of the fixed frame; a dataset
@@ -69,7 +69,7 @@ reference:
   known_deviations: [anchor_drop_over_cap]   # the card's processor truncation (truncation=True at MAX_LENGTH=8192) right-cuts the rendered prompt: the frame's tail (im_end, the assistant header) is cut and only the post-processor's endoftext is re-appended. reference.py renders exactly that cut; the client keeps the whole frame. Which over-cap rows the harness reports rather than gates today: see notes, "Budgets"
 gates: {}
 status:
-  state: verified
+  state: unverified
   image: "vllm/vllm-openai:v0.31.0"
   date: "2026-10-13"
   report: "docs/reference/gpu-validation.md"
@@ -83,15 +83,15 @@ sources:
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/preprocessor_config.json (checkpoint image defaults min 4096 / max 1310720, overridden above)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/video_preprocessor_config.json (fps 2, min_frames 4, max_frames 768, size 4096..25165824 px per clip: the served defaults the declared policy supersedes for the frame count)"
   - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B/raw/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda/config_sentence_transformers.json (prompts.default, similarity cosine)"
-  - "vllm v0.31.0 (= db9527a46873454610df6dbedf79a36d6bf1a7f6) vllm/model_executor/models/registry.py:591 (native Qwen3VL entry)"
-  - "vllm v0.31.0 vllm/config/model.py:113 (_RUNNER_CONVERTS pooling -> embed/classify)"
-  - "vllm v0.31.0 vllm/model_executor/layers/pooler/seqwise/poolers.py:97-110 (embed head LAST + PoolerNormalize)"
-  - "vllm v0.31.0 vllm/entrypoints/pooling/base/protocol.py:230-257 ChatRequestOptionsMixin (add_generation_prompt and add_special_tokens default false on the chat routes; the recipe sends both true)"
-  - "vllm v0.31.0 vllm/entrypoints/pooling/base/io_processor.py get_request_factory_online (completion-style input never applies a chat template; chat input does)"
-  - "the pixel-pin shape, vllm v0.31.0: vllm/multimodal/processing/context.py:44-84 (overlay_modality_mm_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :293-309 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), :311-331 (call_hf_processor filters through get_allowed_kwarg_only_overrides with allow_var_kwargs=True: both shapes pass the processor's **kwargs); vllm/utils/func_utils.py:47-96,122-181 (the filter); vllm/transformers_utils/processor.py:340-387 (images_kwargs is a dynamic key, filtered out at construction); vllm/model_executor/models/qwen3_vl.py:939-985 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1371-1382 (the video loop folds FLAT min_pixels/max_pixels into the video size override -- nested images_kwargs never reaches it), :1482-1489 (the image call: the merged kwargs, nested dict included, go to the HF processor)"
-  - "the pixel-pin shape, transformers 5.17.0 (inside the image's pin >=5.10.4,<5.18.0, vllm requirements/common.txt:10): processing_utils.py:657-683 (ProcessorMixin.__call__ merges the kwargs and calls the image processor with images_kwargs), :1513-1630 (_merge_kwargs: a nested images_kwargs dict lands in images_kwargs only; a flat key lands in every modality that declares it); models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (_standardize_kwargs: min_pixels and max_pixels together become the resize size), :139-157 (resize through smart_resize)"
-  - "vllm v0.31.0 vllm/config/multimodal.py:159-162 and vllm/multimodal/video.py:202-241 (--media-io-kwargs video num_frames pins the loader's uniform frame sample: compute_frames_index_to_sample takes np.linspace over the clip)"
-  - "vllm v0.31.0 examples/pooling/embed/vision_embedding_online.py (run_qwen3_vl: the request shape, reproduced on CPU with identical token ids)"
+  - "vllm v0.33.0 (= db9527a46873454610df6dbedf79a36d6bf1a7f6) vllm/model_executor/models/registry.py:612 (native Qwen3VL entry)"
+  - "vllm v0.33.0 vllm/config/model.py:113 (_RUNNER_CONVERTS pooling -> embed/classify)"
+  - "vllm v0.33.0 vllm/model_executor/layers/pooler/seqwise/poolers.py:97-110 (embed head LAST + PoolerNormalize)"
+  - "vllm v0.33.0 vllm/entrypoints/pooling/base/protocol.py:230-257 ChatRequestOptionsMixin (add_generation_prompt and add_special_tokens default false on the chat routes; the recipe sends both true)"
+  - "vllm v0.33.0 vllm/entrypoints/pooling/base/io_processor.py get_request_factory_online (completion-style input never applies a chat template; chat input does)"
+  - "the pixel-pin shape, vllm v0.33.0: vllm/multimodal/processing/context.py:48-120 (_merge_scoped_mm_processor_value/_resolve_mm_processor_kwargs: a nested images_kwargs dict is overlaid onto the flat namespace for the image modality only), :376 (get_merged_mm_kwargs: no overlay at processor construction and HF __call__, so the nested dict reaches the HF processor), :402 (call_hf_processor filters through get_allowed_kwarg_only_overrides with allow_var_kwargs=True: both shapes pass the processor's **kwargs); vllm/utils/func_utils.py:47-96,122-181 (the filter); vllm/transformers_utils/processor.py:325-387 (images_kwargs is a dynamic key, filtered out at construction); vllm/model_executor/models/qwen3_vl.py:1004-1005 (_get_vision_info reads min_pixels/max_pixels through the image overlay: the vLLM-side token budget), :1451-1489 (the video loop folds FLAT min_pixels/max_pixels into the video size override -- nested images_kwargs never reaches it), :1615 (the image call: the merged kwargs, nested dict included, go to the HF processor)"
+  - "the pixel-pin shape, transformers 5.17.0 (the 0.31 image's version; the v0.33.0 pin's range is >=5.16.1,<5.21.0, vllm requirements/common.txt:11, and W4 records the 0.33 image's actual version -- undecided until then): processing_utils.py:657-683 (ProcessorMixin.__call__ merges the kwargs and calls the image processor with images_kwargs), :1513-1630 (_merge_kwargs: a nested images_kwargs dict lands in images_kwargs only; a flat key lands in every modality that declares it); models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (_standardize_kwargs: min_pixels and max_pixels together become the resize size), :139-157 (resize through smart_resize)"
+  - "vllm v0.33.0 vllm/config/multimodal.py:341-342 and vllm/multimodal/video.py:202-241 (--media-io-kwargs video num_frames pins the loader's uniform frame sample: compute_frames_index_to_sample takes np.linspace over the clip)"
+  - "vllm v0.33.0 examples/pooling/embed/vision_embedding_online.py (run_qwen3_vl: the request shape, reproduced on CPU with identical token ids)"
   - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the messages route sends the content, add_special_tokens and add_generation_prompt), rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy.engine_pixel_pinning admits a budget below qwen3_vl's 65536 px stock floor when the engine is pinned to it)"
   - "qwen-vl-utils 0.0.14 qwen_vl_utils/vision_process.py smart_resize and fetch_image (the card's image resize: factor 32, its per-item min_pixels/max_pixels; reference.py --mode media restates it; the container route is no longer this loader)"
   - "transformers 5.19.0 models/qwen3_vl/video_processing_qwen3_vl.py (Qwen3VLVideoProcessor: sample_frames int(total_num_frames / metadata.fps * fps) clamped to min_frames 4 / max_frames 768 / total, np.linspace indices -- the rule the engine's Qwen3VLVideoBackend implements; resize's clip-level smart_resize under size shortest_edge/longest_edge, the budget vLLM folds videos_kwargs' min_pixels/max_pixels into; cap_pixels_per_frame false, the uncapped resize the engine's 5.17 applies) and models/qwen3_vl/processing_qwen3_vl.py (replace_video_token renders one timestamp line and one vision block per temporal group: the layout the client counts)"
@@ -129,7 +129,7 @@ notes: >-
   the frame) in the non-gating table under the declared deviation, and gates every other text exactly.
 
   Media (the pixel pin). Serve: serve.mm_processor_kwargs pins {min_pixels: 4096, max_pixels: 1843200} under the
-  nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.31.0 tag source:
+  nested images_kwargs scope - ONE shape across the media recipes, decided from the v0.33.0 tag source:
   the nested dict reaches the HF processor's images_kwargs (and through it the resize) and the vLLM-side
   image token budget, while the flat form also re-sizes every video clip (see sources). The checkpoint's
   own default is 4096..1310720 px (preprocessor_config.json), so the pin is load-bearing: unpinned, a
@@ -149,7 +149,7 @@ notes: >-
   as a video_url part and the engine samples it at the checkpoint video processor's own rate, pinned with
   --media-io-kwargs '{"video": {"fps": 2}}' (serve.extra_args): client.video_policy {fps: 2, wire:
   video_url, engine_video_pinning: true}. The Qwen3-VL backend samples by fps and IGNORES num_frames
-  (vllm/multimodal/video.py:360-400 at v0.31.0: int(total_frames / original_fps * fps), clamped to its
+  (vllm/multimodal/video.py:360-400 at v0.33.0: int(total_frames / original_fps * fps), clamped to its
   30 fps ceiling and 4..768 frame bounds), so the old num_frames pin was inert and the client's 64-frame
   count was wrong (GPU-E1: engine 98/458 vs client 512/1952). The client counts each clip's frames with
   that rule from the clip's recorded frame count and rate (qwen3_vl_video_frame_indices); the
@@ -204,13 +204,12 @@ notes: >-
   just below its measured floor, so a real regression still fails. E2 re-measures after any change.
 
   Serving the 8192-token budget safely: this family's largest client budget
-  reaches serve.max_model_len exactly and it carries no pooling-full-context patch, so the renderer
+  reaches serve.max_model_len exactly and it carries no engine patch, so the renderer
   declares `--max-num-batched-tokens` at serve.max_model_len (8192) when nothing sets one. The engine's
   own GPU-dependent default chunk (2048 on A100 and GPUs under 70 GiB) would chunk an at-budget prompt,
-  and the pinned v0.31.0 scheduler never schedules a chunked prompt's last token: the request hangs and
-  holds the engine slot. Carrying the pooling-full-context patch stays deferred: v0.31.0 is
-  the latest release and the five pooling bugfix PRs upstream (60978, 55226, 55192, 60035, 61062) are
-  open, none merged, so no release carries the fix yet.
+  and the pre-0.32 scheduler never scheduled a chunked prompt's last token: the request hung and
+  held the engine slot. That hang is fixed in the pinned image (vllm-project/vllm#48039, first released
+  in vLLM v0.32.0), so no backport patch is declared.
 
 variants:
   - id: qwen3-vl-embedding-2b

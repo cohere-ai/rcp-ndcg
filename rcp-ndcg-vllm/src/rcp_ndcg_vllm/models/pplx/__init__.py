@@ -1,4 +1,4 @@
-"""rcp-ndcg-vllm: serve the perplexity-ai pplx embedding checkpoints on stock vLLM v0.31.x.
+"""rcp-ndcg-vllm: serve the perplexity-ai pplx embedding checkpoints on stock vLLM v0.33.x.
 
 Registered through the ``vllm.general_plugins`` entry point (``rcp_ndcg_vllm.models``): every
 vLLM process calls :func:`register_pplx`, which (a) refuses a vLLM outside the validated range,

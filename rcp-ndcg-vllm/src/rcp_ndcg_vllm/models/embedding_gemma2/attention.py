@@ -1,6 +1,6 @@
 """The plugin's ``TORCH_SDPA`` attention backend: encoder-only attention over torch SDPA.
 
-E2 round 10. vLLM v0.31.0 (the stock image the recipe serves) refuses every backend the
+E2 round 10. vLLM v0.33.0 (the stock image the recipe serves) refuses every backend the
 embeddinggemma-2 recipe tried: TRITON_ATTN cannot
 compile its prefill kernel for the full layers' head_dim 512, FA4 caps head_dim at 256, and
 ``TORCH_SDPA`` is not a decoder backend on the image -- its enum value is the empty string ("this tag
