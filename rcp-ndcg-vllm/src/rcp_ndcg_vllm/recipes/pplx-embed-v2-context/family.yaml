@@ -131,7 +131,7 @@ sources:
   - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/tokenizer_config.json
   - "modeling_pplx_contextual.py at the revision: :16-32 PplxContextualModel (Qwen3_5Model subclass, _keep_in_fp32_modules contextual_projection), :46-75 query prepare_inputs (the [Q] prefix id prepended over a split_special_tokens tokenize of the query text), :77-113 document prepare_inputs (the joined text tokenized split-side; chunk token spans from the offsets), :126-133 the 262144-token raise, :136-167 _pool (masked means; span means via the cumsum over the char spans), :214 round(tanh(x)*127) int8 head"
   - "configuration_pplx_contextual.py at the revision: :6-27 the remote config class the plugin's hf_config.py restates (model_type pplx_contextual_qwen3_5; embedding_dim/prefix/boundary-marker fields; query_length/document_length feeding max_position_embeddings; text_config.use_cache off)"
-  # vLLM at the pinned image: the v0.33.0 tag (db9527a46873454610df6dbedf79a36d6bf1a7f6).
+  # vLLM at the pinned image: the v0.33.0 tag (4ba787ec9959e566d3b587a796dff07673324da5).
   - "vllm v0.33.0: vllm/entrypoints/pooling/base/protocol.py:212-220 (completion input takes text and token ids; add_special_tokens defaults true)"
   - "vllm v0.33.0: vllm/entrypoints/pooling/pooling/protocol.py (PoolingCompletionRequest: /pooling text input renders no chat template)"
   - "vllm v0.33.0: vllm/entrypoints/pooling/base/io_processor.py:135-149 (the completion branch applies no template, only tok_params)"
