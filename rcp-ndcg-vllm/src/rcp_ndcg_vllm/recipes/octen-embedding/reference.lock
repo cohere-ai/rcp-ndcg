@@ -1,10 +1,10 @@
 # rcp-reference-lock: rcp-reference-lock/1
 # family: octen-embedding
-# image: vllm/vllm-openai:v0.31.0
-# image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
+# image: vllm/vllm-openai:v0.33.0
+# image-freeze-sha256: 02e121d5b5f24e78d5fea60676c90a59af9f7f382e467dfbad6f736fc32d9fea
 # reference-in-sha256: 9a0caae706fdf93e043b68a13919af06e28094925a231fe7b78d77969099885b
 # own-torch: false
-# image-constraint: torch==2.13.0+cu130 (family floor: torch>=2.0)
+# image-constraint: torch==2.14.0+cu130 (family floor: torch>=2.0)
 #
 # The pins below install into the family's reference venv with `pip install --no-deps --no-index --find-links <wheelhouse> -r <this file>`; the image's torch/CUDA stack is read through --system-site-packages and never replaced.
 transformers==5.19.0 \

@@ -1,7 +1,7 @@
 # rcp-reference-lock: rcp-reference-lock/1
 # family: topk-embed-v1
-# image: vllm/vllm-openai:v0.31.0
-# image-freeze-sha256: e2453f9246cc73a264ca5f5d0360c33a7eb4b8eadffd03ba1c1e94bc965cdc01
+# image: vllm/vllm-openai:v0.33.0
+# image-freeze-sha256: 02e121d5b5f24e78d5fea60676c90a59af9f7f382e467dfbad6f736fc32d9fea
 # reference-in-sha256: 18b56facf5e010db32e0f1eed02e95f47b6988dd535c61a9208fad4f717a5235
 # own-torch: true
 # own-torch-evidence: the checkpoint's own requirements.txt at the pinned revision pins torch==2.11.0 and torchvision==0.26.0 beside flash-linear-attention 0.5.1 (a compiled extension); the card's published path is the reference, so the family owns its stack

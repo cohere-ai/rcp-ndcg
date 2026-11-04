@@ -1,0 +1,23 @@
+# The non-stack versions of the stock engine image vllm/vllm-openai:v0.33.0 that a recipe's gates
+# read by name: the engine's own `vllm`, the `transformers` line the recipes' processor and model
+# behaviour is pinned to, and its tokenizer backend.  The torch/CUDA stack is
+# `reference-image-v0.33.0.txt` beside this file; this file records only what that one leaves out.
+# Read from the image itself (the multi-arch index digest
+# vllm/vllm-openai@sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e):
+#   docker run --rm --entrypoint python3 vllm/vllm-openai:v0.33.0 -m pip freeze
+#   docker run --rm --entrypoint python3 vllm/vllm-openai:v0.33.0 \
+#       -c 'import transformers, tokenizers, vllm; print(transformers.__version__, tokenizers.__version__, vllm.__version__)'
+# `vllm` is a direct-URL install in the image (`vllm @ file:///vllm-workspace/dist/...whl`), so its
+# version is read from the module, not from a `vllm==` freeze line.
+vllm==0.33.0
+transformers==5.20.2
+tokenizers==0.23.3
+#
+# Measured fact for the embeddinggemma-2 fold's deletion gate (the fold's class half is load-bearing
+# only if the image's transformers does not ship the classes): this image's transformers DOES ship
+# them -- `transformers/models/embedding_gemma2/` is present and imports EmbeddingGemma2Config,
+# EmbeddingGemma2Model, EmbeddingGemma2TextModel, EmbeddingGemma2PreTrainedModel and
+# EmbeddingGemma2Processor (transformers 5.20.2 >= the 5.19.0 the classes landed in), and the
+# v0.33.0 tag's registry carries EmbeddingGemma2Model (registry.py:259).  Measured with:
+#   docker run --rm --entrypoint python3 vllm/vllm-openai:v0.33.0 -c \
+#       'import transformers.models.embedding_gemma2 as m; print(m.__name__)'

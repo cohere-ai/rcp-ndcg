@@ -13,7 +13,7 @@ from rcp_ndcg_test.jobs import reference_lock as rl
 
 ROOT = Path(__file__).resolve().parents[2]
 RECIPES = ROOT / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
-IMAGE_STACK = ROOT / "rcp-ndcg-vllm" / "reference-image-v0.31.0.txt"
+IMAGE_STACK = ROOT / "rcp-ndcg-vllm" / "reference-image-v0.33.0.txt"
 
 FREEZE = "torch==2.13.0+cu130\nnvidia-cublas==13.1.1.3\ntransformers==5.17.0\n"
 
