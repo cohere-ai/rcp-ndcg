@@ -9,12 +9,12 @@ import rcp_ndcg_vllm.models.version_guard as guard  # noqa: I001 - conftest prep
 @pytest.mark.parametrize(
     ("version", "expected"),
     [
-        ("0.31.0", (0, 31)),  # the vllm/vllm-openai:v0.31.0 image
-        ("0.31.1", (0, 31)),
-        ("0.31.0rc2", (0, 31)),  # pre-releases of the tested line count in
-        ("0.30.2", (0, 30)),
-        ("0.32.0", (0, 32)),
-        ("0.32.0.dev0", (0, 32)),
+        ("0.33.0", (0, 33)),  # the vllm/vllm-openai:v0.33.0 image
+        ("0.33.1", (0, 33)),
+        ("0.33.0rc2", (0, 33)),  # pre-releases of the tested line count in
+        ("0.32.3", (0, 32)),
+        ("0.34.0", (0, 34)),
+        ("0.34.0.dev0", (0, 34)),
     ],
 )
 def test_parse_vllm_minor_version(version: str, expected: tuple[int, int]) -> None:
@@ -27,7 +27,7 @@ def test_parse_vllm_minor_version_rejects_underspecified(
     version: str,
 ) -> None:
     """A string without a major and minor number cannot be range-checked; the
-    caller refuses it (a two-component release like 0.31 is fine and counts
+    caller refuses it (a two-component release like 0.33 is fine and counts
     as the tested line)."""
     assert guard.parse_vllm_minor_version(version) is None
 
@@ -35,16 +35,16 @@ def test_parse_vllm_minor_version_rejects_underspecified(
 def test_ensure_vllm_version_accepts_the_tested_line(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """0.31.x passes and is returned as (major, minor)."""
-    monkeypatch.setattr(guard, "installed_vllm_version", lambda: "0.31.0")
-    assert guard.ensure_vllm_version() == (0, 31)
+    """0.33.x passes and is returned as (major, minor)."""
+    monkeypatch.setattr(guard, "installed_vllm_version", lambda: "0.33.0")
+    assert guard.ensure_vllm_version() == (0, 33)
 
 
-@pytest.mark.parametrize("version", ["0.30.3", "0.32.0", "0.32.0.dev0"])
+@pytest.mark.parametrize("version", ["0.32.3", "0.34.0", "0.34.0.dev0"])
 def test_ensure_vllm_version_refuses_other_lines(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
-    """Outside [0.31, 0.32) the guard raises with the tested range named."""
+    """Outside [0.33, 0.34) the guard raises with the tested range named."""
     monkeypatch.setattr(guard, "installed_vllm_version", lambda: version)
-    with pytest.raises(RuntimeError, match=r">=0\.31,<0\.32") as excinfo:
+    with pytest.raises(RuntimeError, match=r">=0\.33,<0\.34") as excinfo:
         guard.ensure_vllm_version()
     # The message must carry the refused version so the operator sees what ran.
     assert version in str(excinfo.value)

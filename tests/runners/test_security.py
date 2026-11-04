@@ -32,7 +32,7 @@ def test_a_control_character_in_a_name_or_an_image_is_refused(value: str) -> Non
     with pytest.raises(ValidationError, match="control character"):
         JobSpec(name="j", argv=("true",), image=f"img:{value}")
     with pytest.raises(ValidationError, match="control character"):
-        ServeConfig(image=f"vllm/vllm-openai:v0.31.0{value}", command=("vllm", "serve"))
+        ServeConfig(image=f"vllm/vllm-openai:v0.33.0{value}", command=("vllm", "serve"))
 
 
 @pytest.mark.parametrize("value", ["a\x00b"])
@@ -45,9 +45,9 @@ def test_a_nul_in_a_free_form_value_is_refused(value: str) -> None:
     with pytest.raises(ValidationError, match="NUL"):
         JobPhase(argv=("true", value))
     with pytest.raises(ValidationError, match="NUL"):
-        ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", value))
+        ServeConfig(image="vllm/vllm-openai:v0.33.0", command=("vllm", "serve", value))
     with pytest.raises(ValidationError, match="NUL"):
-        ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve"), env={"HF_HOME": value})
+        ServeConfig(image="vllm/vllm-openai:v0.33.0", command=("vllm", "serve"), env={"HF_HOME": value})
 
 
 def test_a_newline_in_a_free_form_value_round_trips_inert(tmp_path: Path) -> None:
@@ -152,7 +152,7 @@ def test_a_mirror_uri_with_a_control_character_is_refused() -> None:
 
 
 def test_a_valid_namespace_and_its_engine_hosts_render_inert() -> None:
-    serve = ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), replicas=2)
+    serve = ServeConfig(image="vllm/vllm-openai:v0.33.0", command=("vllm", "serve", "m"), replicas=2)
     job = JobSpec(name="j", phases=(JobPhase(engines={"judge": serve}, argv=("true",)),))
     rendered = KubernetesRunner(namespace="eval", secrets=["hf-token"]).render([job])["j"]
     check_objects(list(yaml.safe_load_all(rendered)))
@@ -162,7 +162,7 @@ def test_a_valid_namespace_and_its_engine_hosts_render_inert() -> None:
 def test_engine_hosts_are_quoted_where_they_become_shell_words(monkeypatch: pytest.MonkeyPatch) -> None:
     """The replicas' stable names become one shell word each in ``wait_for_replicas``; a hostile host must be
     inert. The namespace is DNS-validated, so the quoting is the render site's own guard."""
-    serve = ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), replicas=2)
+    serve = ServeConfig(image="vllm/vllm-openai:v0.33.0", command=("vllm", "serve", "m"), replicas=2)
     job = JobSpec(name="j", phases=(JobPhase(engines={"judge": serve}, argv=("true",)),))
     monkeypatch.setattr(KubernetesRunner, "_engine_hosts", lambda self, serve, role, job: ["h;touch /tmp/pwned"])
     rendered = KubernetesRunner().render([job])["j"]
@@ -181,7 +181,7 @@ def test_the_pod_is_hardened_by_default() -> None:
 
 
 def test_the_engine_pods_are_hardened_too() -> None:
-    serve = ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), replicas=2)
+    serve = ServeConfig(image="vllm/vllm-openai:v0.33.0", command=("vllm", "serve", "m"), replicas=2)
     job = JobSpec(name="j", phases=(JobPhase(engines={"judge": serve}, argv=("true",)),))
     objects = KubernetesRunner(run_as_non_root=True).engine_objects(job)
     stateful_set = next(obj for obj in objects if obj["kind"] == "StatefulSet")
@@ -207,7 +207,7 @@ def test_an_image_that_allows_non_root_and_a_declared_token_opt_in() -> None:
 def test_render_emits_applyable_objects_without_the_submit_uid_placeholder() -> None:
     """The rendered multi-document stream is what ``kubectl apply`` gets: an owner reference with the
     placeholder uid is an invalid object, so ``render`` leaves the reference to ``submit``."""
-    serve = ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), replicas=2)
+    serve = ServeConfig(image="vllm/vllm-openai:v0.33.0", command=("vllm", "serve", "m"), replicas=2)
     job = JobSpec(name="j", phases=(JobPhase(engines={"judge": serve}, argv=("true",)),))
     rendered = KubernetesRunner(namespace="eval").render([job])["j"]
     assert "<the Job's uid" not in rendered
@@ -220,5 +220,5 @@ def test_the_engine_image_must_be_pinned() -> None:
     for image in ("vllm/vllm-openai:latest", "vllm/vllm-openai", "registry.example:5000/vllm"):
         with pytest.raises(ValidationError, match="pin|digest|tag"):
             ServeConfig(image=image, command=("vllm", "serve", "m"))
-    for image in ("vllm/vllm-openai:v0.31.0", "registry.example:5000/vllm:v1", "repo@sha256:" + "0" * 64):
+    for image in ("vllm/vllm-openai:v0.33.0", "registry.example:5000/vllm:v1", "repo@sha256:" + "0" * 64):
         assert ServeConfig(image=image, command=("vllm", "serve", "m")).image == image

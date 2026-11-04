@@ -104,7 +104,7 @@ def test_an_undecodable_recorded_body_is_refused_loudly(tmp_path: Path) -> None:
     payload = base64.b64encode(b"\x00\x3c" * 6).decode()
     reply = {"object": "list", "data": [{"index": 0, "object": "pooling", "data": payload}]}
     exchange = Exchange(3, "POST", "/pooling", {"input": ["the a of"], "encoding_format": "base64"}, 200, JSON, reply)
-    facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 8)
+    facts = EngineFacts("vllm", "0.33.0", "tiny", "fixtures/Tiny", 8)
     corpus = observation_corpus(tmp_path, [exchange])
     with pytest.raises(DataError) as error:
         VllmEmulator.from_corpus(corpus, StringsPrompts("token_vector"), word_tokenizer(), facts)

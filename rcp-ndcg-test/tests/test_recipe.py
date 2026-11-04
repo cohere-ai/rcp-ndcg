@@ -286,7 +286,7 @@ def test_json_schema_export_is_current() -> None:
 
 
 def test_an_engine_spec_accepts_a_dev_version_floor() -> None:
-    """A digest-pinned nightly carries a setuptools-scm dev version (``0.31.1.devN``); the floor a recipe
+    """A digest-pinned nightly carries a setuptools-scm dev version (``0.33.1.devN``); the floor a recipe
     declares for it is the dev series, and the digest in ``image`` is the real pin (decision 38)."""
     from rcp_ndcg_vllm.recipe import EngineSpec
 
@@ -294,11 +294,11 @@ def test_an_engine_spec_accepts_a_dev_version_floor() -> None:
     spec = EngineSpec(
         name="vllm",
         image=f"vllm/vllm-openai:nightly-8cbd5d03006c33185f402249ff2b448efd594986@{digest}",
-        min_version="0.31.1.dev0",
+        min_version="0.33.1.dev0",
     )
-    assert spec.min_version == "0.31.1.dev0"
+    assert spec.min_version == "0.33.1.dev0"
     with pytest.raises(ValueError):
-        EngineSpec(name="vllm", image="x", min_version="0.31.1.dev")
+        EngineSpec(name="vllm", image="x", min_version="0.33.1.dev")
     with pytest.raises(ValueError):
         EngineSpec(name="vllm", image="x", min_version="nightly")
 
@@ -588,7 +588,7 @@ _ENGINE_SPECIFIC_FIELDS: list[tuple[str, object]] = [
     ("max_model_len", 4096),  # the engine's context: a serve field
     ("pooler_config", {"use_activation": True}),  # the engine-side activation pin
     ("dtype", "bfloat16"),  # the engine's weights dtype
-    ("image", "vllm/vllm-openai:v0.31.0"),  # the engine image: an engine field
+    ("image", "vllm/vllm-openai:v0.33.0"),  # the engine image: an engine field
     ("gpus", 1),  # the tensor-parallel count: a resources field
 ]
 """Keys that name engine-side knobs (owner decision 19): none of them belongs in the engine-neutral client
@@ -631,7 +631,7 @@ def _serve_field_recipe(tmp_path: Path, *, base: str = "fixture-embed", **serve:
 
 
 def test_the_engine_dtype_literal_is_vllms_model_dtype(tmp_path: Path) -> None:
-    """vLLM v0.31.0's ``ModelDType`` (what ``--dtype``'s argparse choices come from) is
+    """vLLM v0.33.0's ``ModelDType`` (what ``--dtype``'s argparse choices come from) is
     ``auto``/``half``/``float16``/``bfloat16``/``float``/``float32``: the schema accepted ``float8`` (not a
     ModelDType: the engine refuses it at CLI parse) and refused ``float``."""
     for dtype in ("auto", "half", "float16", "bfloat16", "float", "float32"):
@@ -641,10 +641,13 @@ def test_the_engine_dtype_literal_is_vllms_model_dtype(tmp_path: Path) -> None:
 
 
 def test_pooler_config_keys_are_the_served_images_own(tmp_path: Path) -> None:
-    """The shipped image is vLLM v0.31.0; ``enable_flash_late_interaction`` is a PoolerConfig field only at
-    the checkout 376 commits past that tag, so accepting it renders an argv the engine refuses at parse."""
-    with pytest.raises(RecipeError, match="enable_flash_late_interaction"):
-        load_recipe(_serve_field_recipe(tmp_path / "late", pooler_config={"enable_flash_late_interaction": True}))
+    """The shipped image is vLLM v0.33.0, whose ``PoolerConfig`` carries ``enable_flash_late_interaction``
+    (default ``True``), so the tuple accepts it; a key no release at the pin carries is still refused, or the
+    rendered argv would be one the engine rejects at parse."""
+    recipe = load_recipe(_serve_field_recipe(tmp_path / "late", pooler_config={"enable_flash_late_interaction": True}))
+    assert recipe.serve.pooler_config == {"enable_flash_late_interaction": True}
+    with pytest.raises(RecipeError, match="not_a_pooler_field"):
+        load_recipe(_serve_field_recipe(tmp_path / "unknown", pooler_config={"not_a_pooler_field": True}))
     recipe = load_recipe(_serve_field_recipe(tmp_path / "ok", pooler_config={"use_activation": False}))
     assert recipe.serve.pooler_config == {"use_activation": False}
 

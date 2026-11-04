@@ -183,7 +183,9 @@ def test_the_recipe_loads_and_declares_the_served_path(variant_id: str) -> None:
     assert recipe.serve.pooler_config == {} and recipe.serve.plugin is None
     assert recipe.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert recipe.reference.kind == "transformers" and recipe.reference.score_scale == "cosine"
-    assert recipe.reference.known_deviations == ["over_cap_cut_differs"] and recipe.status.state == "verified"
+    # the 0.33 pin: unverified until its wave runs (W13 flips it)
+    assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
+    assert recipe.status.state == "unverified"
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[:3] == ["vllm", "serve", facts["model"]]
     assert argv[argv.index("--revision") + 1] == facts["revision"]

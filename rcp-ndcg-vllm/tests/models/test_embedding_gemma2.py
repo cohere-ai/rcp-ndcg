@@ -1,14 +1,16 @@
-"""The embeddinggemma-2 fold: the classes the engine image the recipe pins lacks.
+"""The embeddinggemma-2 fold: the classes the 0.31 image the waves served lacked.
 
-E2 r1: the image's transformers does not know the checkpoint's ``model_type: embedding_gemma2``, so
+E2 r1: that image's transformers does not know the checkpoint's ``model_type: embedding_gemma2``, so
 serve failed; the plugin ships transformers 5.19.0's four ``embedding_gemma2`` modules and the
-``embeddinggemma2-transformers-fold`` patch installs them. E2 round 4: the image reports vLLM 0.31.0
-and its registry carries no ``EmbeddingGemma2Model`` (its supported-architecture list equals the
+``embeddinggemma2-transformers-fold`` patch installs them. E2 round 4: the image reported vLLM 0.31.0
+and its registry carried no ``EmbeddingGemma2Model`` (its supported-architecture list equals the
 v0.31.0 tag's, while the nightly commit the recipe names carries both the model module and the
 registry entry), so the plugin also ships that model (vLLM nightly 8cbd5d03's
-``embedding_gemma2.py``) and registers it with upstream's config hook. This module pins the fold's
-declaration (its modules are the ones the fingerprint keys) offline and, where transformers is
-importable, the registration's effect on the real library.
+``embedding_gemma2.py``) and registers it with upstream's config hook.  The recipe now pins
+``vllm/vllm-openai:v0.33.0``, whose registry carries the architecture; whether the fold survives that
+pin is D2, gated on W4's recorded transformers version.  This module pins the fold's declaration (its
+modules are the ones the fingerprint keys) offline and, where transformers is importable, the
+registration's effect on the real library.
 """
 
 from __future__ import annotations
@@ -183,14 +185,18 @@ def test_the_folded_modules_are_registry_lazy() -> None:
 
 
 def test_the_fold_names_its_upstream_source_and_removal_condition() -> None:
-    """The fold's headers record the upstream versions and when the fold goes away."""
+    """The fold's headers record the upstream versions and when the fold goes away.
+
+    The vLLM-side model file's removal condition is the open D2: the v0.33.0 tag's registry carries the
+    architecture and what the 0.33 image's transformers ships is W4's measurement, so the file states
+    that the fold's status on the pin is undecided instead of naming a deletion it cannot yet make."""
     for name in UPSTREAM_FILES:
         text = (FOLD_DIR / "fold" / name).read_text(encoding="utf-8")
         assert "transformers 5.19.0" in text, name
         assert "Delete the fold when" in text, name
     vllm_model = (FOLD_DIR / "fold" / VLLM_MODEL_FILE).read_text(encoding="utf-8")
     assert "vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986" in vllm_model
-    assert "Delete the fold when" in vllm_model
+    assert "The fold's status on the 0.33" in vllm_model
     init = (FOLD_DIR / "__init__.py").read_text(encoding="utf-8")
     assert "2026-10-10" in init and "embedding_gemma2" in init
 
@@ -210,7 +216,7 @@ def test_the_patch_is_declared_and_names_the_fold_module() -> None:
 def test_register_embedding_gemma2_registers_the_model_and_the_config_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """E2 round 4: the image's registry lacks ``EmbeddingGemma2Model`` (its supported list equals the
+    """E2 round 4: the 0.31 image's registry lacks ``EmbeddingGemma2Model`` (its supported list equals the
     v0.31.0 tag's) and its ``MODELS_CONFIG_MAP`` lacks the hook, so the plugin registers both; an
     engine that already carries them is left alone (the fold's removal condition)."""
     registered: dict[str, str] = {}

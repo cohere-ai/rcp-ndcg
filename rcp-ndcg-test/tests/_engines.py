@@ -5,7 +5,7 @@ recipes (``rcp-ndcg-vllm``) name the tokenizer, the template and the listwise pr
 the one adapter between them (test-side): it loads the recipe through the harness package, resolves the
 recipe's real tokenizer from the corpora's vendored store, picks the prompt derivation the role and
 scoring name, builds the emulator over the recipe's corpus and registers it for
-``fake://vllm-0.31.0/<recipe>``. The wiring mirrors what a golden-replay or conformance run needs --
+``fake://vllm-0.33.0/<recipe>``. The wiring mirrors what a golden-replay or conformance run needs --
 and what an out-of-tree ``rcp_ndcg.emulators`` entry point would construct for its own models.
 """
 
@@ -395,6 +395,8 @@ def observation_corpus(
     (directory / NONDETERMINISM_FILE).write_text(json.dumps({"derived": derived}), encoding="utf-8")
     manifest = {
         "schema": CORPUS_SCHEMA,
+        # The synthetic corpus's own recorded version: the emulator gate's tests need a corpus recorded on
+        # a version other than the host they flip to, so this fixture stays on the 0.31.0 recording.
         "engine": {"name": "vllm", "version": "0.31.0"},
         "model": {"id": "fixtures/Tiny", "revision": "f" * 40},
         "recipe": {"id": recipe_id, "behaviour_fingerprint": fingerprint},

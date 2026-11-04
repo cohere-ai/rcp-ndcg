@@ -1,7 +1,7 @@
 """Plugin tests that need vLLM importable (the engine image's environment).
 
 These skip with a clear reason wherever vLLM cannot import on CPU (the rcp-ndcg dev
-venv carries torch only); on the GPU wave they run against the image's vLLM 0.31.0.
+venv carries torch only); on the GPU wave they run against the image's vLLM 0.33.0.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ pytest.importorskip(
     "vllm",
     reason="vLLM is not importable in this environment (the rcp-ndcg dev venv carries "
     "torch only, by design); the wired-pooler and model-class checks run on the GPU "
-    "wave, whose engine image has vLLM 0.31.0",
+    "wave, whose engine image has vLLM 0.33.0",
 )
 
 from rcp_ndcg_vllm.models.pplx.pooler import PplxChunkPool, build_pooler  # noqa: E402  (conftest inserts src/)
@@ -160,6 +160,6 @@ def test_registration_against_the_real_registry() -> None:
     from rcp_ndcg_vllm.models.version_guard import require_vllm_version
 
     version = require_vllm_version()
-    assert version == (0, 31), f"the engine image pinned 0.31.x; found {vllm.__version__}"
+    assert version == (0, 33), f"the engine image pinned 0.33.x; found {vllm.__version__}"
     register_pplx()
     assert PLUGIN_ARCHITECTURE in vllm.ModelRegistry.get_supported_archs()

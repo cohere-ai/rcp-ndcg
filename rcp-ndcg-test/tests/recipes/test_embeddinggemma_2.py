@@ -242,26 +242,28 @@ def test_recipe_contract_pins_every_field() -> None:
     (the shared helper is exact in both directions: a drifted value and an unpinned field both fail)."""
     recipe = load_recipe(RECIPE_DIR)
     assert_recipe_contract(recipe, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
-    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
-    assert recipe.engine.min_version == "0.31.0"
+    assert recipe.engine.image == "vllm/vllm-openai:v0.33.0"
+    assert recipe.engine.min_version == "0.33.0"
+    # the status block records the wave that last verified it: still the stock 0.31 image (W13 re-verifies)
     assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
     assert not (RECIPE_DIR / "template.jinja").exists(), "no template file ships (serve.chat_template null)"
 
 
 def test_the_verified_engine_is_the_stock_image_the_waves_ran() -> None:
     """vllm-7 (owner decision 8): the verifying embeddinggemma-2 waves ran stock
-    ``vllm/vllm-openai:v0.31.0`` (the needed pieces were backported), so ``engine.image``,
-    ``status.image`` and every module docstring say that.  The nightly digest remains the fold's source
-    provenance only; no document claims the verified state ran on it."""
+    ``vllm/vllm-openai:v0.31.0`` (the needed pieces were backported), so ``status.image`` -- the wave's
+    record -- and every module docstring say that.  ``engine.image`` is the 0.33 pin the recipe serves on
+    now, and the notes record both: the 0.31 wave, and the classes' presence at the v0.33.0 tag.  The
+    nightly digest remains the fold's source provenance only; no document claims a wave ran on it."""
     recipe = load_recipe(RECIPE_DIR)
-    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
-    assert recipe.engine.min_version == "0.31.0"
+    assert recipe.engine.image == "vllm/vllm-openai:v0.33.0"
+    assert recipe.engine.min_version == "0.33.0"
     assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
     assert "The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint" not in recipe.notes
     assert "the pinned image is a v0.31.0-based build" not in recipe.notes
-    # The verifying-wave record: the stock image, and the fold as the fallback for images that lack the
-    # classes (the removal condition stays).
-    assert "stock vllm/vllm-openai:v0.31.0" in recipe.notes or "stock `vllm/vllm-openai:v0.31.0`" in recipe.notes
+    # The verifying-wave record: the stock 0.31 image, and the fold as the fallback for images that lack
+    # the classes (the removal condition stays).
+    assert "ran the stock 0.31 image" in recipe.notes
     assert "backport" in recipe.notes
     modules = [
         RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "__init__.py",

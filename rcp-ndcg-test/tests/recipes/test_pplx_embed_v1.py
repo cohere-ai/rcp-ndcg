@@ -163,7 +163,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "instruction": "none",
         "request_shape": "text",
         "recipe": (
-            "vLLM v0.31.0 pooling runner; the stock Qwen3ForCausalLM converted to embed with "
+            "vLLM v0.33.0 pooling runner; the stock Qwen3ForCausalLM converted to embed with "
             "is_causal false; the plugin-registered config class parses config.json locally; the "
             "checkpoint's own ST metadata resolves MEAN pooling and no activation; raw text on "
             "/v1/embeddings; the 32768-token right cut client-side"
@@ -187,7 +187,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
 
 
 EXPECTED_SERVE = {
-    "patches": ["pooling-full-context"],
+    "patches": [],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {"architectures": ["Qwen3ForCausalLM"], "is_causal": False},
@@ -240,12 +240,12 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     """The recipe loads against the product's EmbeddingEndpoint and declares exactly its contract."""
     recipe = resolve_recipe(variant_id)
     _contract(recipe, variant_id)
-    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0" and recipe.engine.min_version == "0.31.0"
+    assert recipe.engine.image == "vllm/vllm-openai:v0.33.0" and recipe.engine.min_version == "0.33.0"
     assert recipe.resources.gpus == 1
     assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")  # the engine must not 400 the budget
     assert (FAMILY_DIR / "reference.lock").is_file()  # the family's one environment (decision 35)
     assert (FAMILY_DIR / "reference.py").is_file()
-    assert recipe.status.state == "verified"
+    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
     assert recipe.sources
 
 

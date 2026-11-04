@@ -36,7 +36,7 @@
   "use_activation": true
  },
  "fingerprint": {
-  "fingerprint": "80bba2ca3db21cdaa641fa8d43367aa3fc3dc685d2d9a81524c096759d6175c5",
+  "fingerprint": "2ce04f46bfcd3e8d8af154731943797f415a5d0262d0cdcfd8d683e5d3628caa",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -52,8 +52,8 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"{special:im_start}system\\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \\\"yes\\\" or \\\"no\\\".{special:im_end}\\n{special:im_start}user\\n<Instruct>: Given a web search query, retrieve relevant passages that answer the query\\n<Query>: \"},{\"content\":\"query\"},{\"fixed\":\"\\n<Document>: \"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n{special:<think>}\\n\\n{special:</think>}\\n\\n\"}]}",
    "client.use_activation": "true",
-   "engine.image": "vllm/vllm-openai:v0.31.0",
-   "engine.min_version": "0.31.0",
+   "engine.image": "vllm/vllm-openai:v0.33.0",
+   "engine.min_version": "0.33.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "Qwen/Qwen3-Reranker-4B",
    "revision": "22e683669bc0f0bd69640a1354a6d0aebcfeede5",
@@ -114,8 +114,8 @@
    "use_activation": true
   },
   "engine": {
-   "image": "vllm/vllm-openai:v0.31.0",
-   "min_version": "0.31.0",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "min_version": "0.33.0",
    "name": "vllm",
    "startup_timeout_s": 1800,
    "step_budget_s": null
@@ -184,17 +184,17 @@
   },
   "sources": [
    "https://huggingface.co/Qwen/Qwen3-Reranker-4B (sha 22e683669bc0f0bd69640a1354a6d0aebcfeede5): README.md, config.json, config_sentence_transformers.json, chat_template.jinja; revision re-checked against the Hub API",
-   "vLLM d0d6e5f3a (image vllm/vllm-openai:v0.31.0; d0d6e5f3a is 376 commits ahead of the v0.31.0 tag, 27 behind; adapters.py and the score examples are zero-diff tag->d0d6e5f3a per the family's measurement, while models/config.py, io_processor.py, renderers/hf.py, registry.py and config/model.py differ by error-output plumbing and config bookkeeping - the line numbers below hold at d0d6e5f3a, and in the tag build io_processor's warning and concatenation sit about 29 lines earlier): examples/pooling/score/qwen3_reranker_offline.py; examples/pooling/score/template/qwen3_reranker.jinja (685 B, one trailing newline short of the paper prompt); vllm/model_executor/models/adapters.py:566-571 (score_weight float32 diff) and :307 (as_seq_cls_model); vllm/model_executor/models/config.py:783-801; vllm/entrypoints/pooling/scoring/io_processor.py:460-476 (the startup warning when is_original_qwen3_reranker is set without a template), :659-737 (get_score_prompt: the chat template is applied to [query, document] messages; without one the prompts are concatenated, :697-698); vllm/entrypoints/pooling/scoring/protocol.py:38-65 (the request instruction's route into chat_template_kwargs) and the stock template's instruction-default chain (examples/pooling/score/template/qwen3_reranker.jinja:4-6); vllm/renderers/hf.py:826-833 (safe_apply_chat_template)",
+   "vLLM d0d6e5f3a (the checkout the facts were read on before the image pin moved; d0d6e5f3a is 376 commits ahead of the release tag then current, 27 behind; adapters.py and the score examples are zero-diff tag->d0d6e5f3a per the family's measurement, while models/config.py, io_processor.py, renderers/hf.py, registry.py and config/model.py differ by error-output plumbing and config bookkeeping - the line numbers below are the v0.33.0 tag's, and the d0d6e5f3a checkout's copies sit LOWER, by a per-file offset: io_processor.py +18 (warning) to +84 (concatenation), renderers/hf.py +88, models/config.py +145, registry.py +55, config/model.py +29): examples/pooling/score/qwen3_reranker_offline.py; examples/pooling/score/template/qwen3_reranker.jinja (685 B, one trailing newline short of the paper prompt); vllm/model_executor/models/adapters.py:566-571 (score_weight float32 diff) and :307 (as_seq_cls_model); vllm/model_executor/models/config.py:932-945; vllm/entrypoints/pooling/scoring/io_processor.py:474-491 (the startup warning when is_original_qwen3_reranker is set without a template), :707-818 (get_score_prompt: the chat template is applied to [query, document] messages; without one the prompts are concatenated, :782); vllm/entrypoints/pooling/scoring/protocol.py:38-65 (the request instruction's route into chat_template_kwargs) and the stock template's instruction-default chain (examples/pooling/score/template/qwen3_reranker.jinja:4-6); vllm/renderers/hf.py:847-885 (safe_apply_chat_template)",
    "no Qwen3ForSequenceClassification entry exists in vllm/model_executor/models/registry.py: the mapping is the suffix table at vllm/config/model.py:2318 -> _normalize_arch (registry.py:1286) -> as_seq_cls_model (vllm/model_executor/model_loader/utils.py:280)",
    "experiments/paper/rerankers/qwen3_reranker_4b.yaml (the served-path config: max_tokens 8192, query_max_tokens 4096, instruction none; the paper's batch_size 8 is the pre-unified-inference config, git show 28dc100^:experiments/paper/rerankers/qwen3_reranker_4b.yaml) and experiments/paper/rerankers/reference/qwen3.py at HEAD (the paper-exact in-process QwenOGRerank this reference.py derives from; yes/no ids and the pair truncation) plus experiments/paper/rerankers/reference/requirements.txt (torch 2.9.1, transformers 4.57.6, flash-attn 2.8.3): the paper facts. The budgets MAX_SEQ_LENGTH 8192 / MAX_QUERY_LENGTH 4096 were constants of the PRE-UNIFIED-INFERENCE tree's rcp-ndcg/src/rcp_ndcg/retrieval/cross_encoder.py (its :256-269 served call sent max_tokens_per_query/truncate_prompt_tokens); that tree also carried the in-package copy rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py (QwenOGRerank's former home, pair truncation :113-118, yes/no ids :95-96; re-anchored copies sit at the pre-deletion commit 28dc100^) -- both files are gone at the unified-inference merge. The product's preprocessor (rcp-ndcg/src/rcp_ndcg/data/preprocess.py fit; rcp-ndcg/src/rcp_ndcg/data/templates.py TemplateSpec) is cited at this tree's HEAD",
-   "vLLM at the v0.31.0 tag and at the d0d6e5f3a checkout (image vllm/vllm-openai:v0.31.0): the missing-template warning, the /rerank render of query/document messages, the score weight's float32 difference and the classifier-from-token conversion; the checkout carries only error-output plumbing and config bookkeeping differences from the tag",
+   "vLLM at the v0.33.0 tag and at the d0d6e5f3a checkout (the checkout read before the image pin moved): the missing-template warning, the /rerank render of query/document messages, the score weight's float32 difference and the classifier-from-token conversion; the checkout carries only error-output plumbing and config bookkeeping differences from the tag",
    "the family's adversarial over-cap/NFC battery: within-share over-cap rows byte-identical in all three qwen3-reranker recipes, over-share rows byte-unequal, NFD input NFC-mapped by decode-based renders"
   ],
   "status": {
    "date": "2026-10-12",
    "image": "vllm/vllm-openai:v0.31.0",
    "report": "docs/reference/gpu-validation.md",
-   "state": "verified"
+   "state": "unverified"
   }
  },
  "serve_argv": [

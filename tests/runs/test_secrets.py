@@ -55,7 +55,7 @@ def test_a_secret_looking_name_is_refused_in_a_job_and_an_engine_environment(nam
     with pytest.raises(ValidationError, match="secret"):
         JobOptions(env={name: SECRET})
     with pytest.raises(ValidationError, match="secret"):
-        ServeConfig(image="vllm/vllm-openai:v0.31.0", command=("vllm", "serve", "m"), env={name: SECRET})
+        ServeConfig(image="vllm/vllm-openai:v0.33.0", command=("vllm", "serve", "m"), env={name: SECRET})
 
 
 def test_a_connection_string_value_is_refused_whatever_its_name() -> None:

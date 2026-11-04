@@ -6,7 +6,7 @@ checkpoint's safetensors census against the name mapping, the separate Dense-hea
 and its tensor, the zero-initialised bias marking, and the registration call (stub
 registries, as ``test_contract_core.py`` does). Tests that need vLLM importable (the
 class resolving through the real base class) skip with a clear reason and run on the
-GPU wave, whose engine image has vLLM 0.31.0.
+GPU wave, whose engine image has vLLM 0.33.0.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ MTP_WEIGHT = "mtp.layers.0.fc.weight"
 
 def test_the_registered_architecture_is_the_checkpoints_own() -> None:
     """The plugin registers exactly the checkpoint's ``architectures[0]`` -- and it is NOT
-    one of vLLM v0.31.0's own names (a flags-only serve cannot resolve the model class)."""
+    one of vLLM v0.33.0's own names (a flags-only serve cannot resolve the model class)."""
     assert LATE_ARCHITECTURE == "Qwen3_5Model" == ARCHITECTURE
     assert LATE_ARCHITECTURE != PLUGIN_ARCHITECTURE  # the contextual sibling keeps its own
     assert LATE_MODEL_QUALNAME == "rcp_ndcg_vllm.models.pplx.late:PplxLateMultiVectorModel"
@@ -87,7 +87,7 @@ def test_the_dense_head_is_a_separate_file_loaded_by_name() -> None:
     assert DENSE_HEAD_FILE == "1_Dense/model.safetensors"
     assert DENSE_HEAD_TENSOR == "linear.weight"
     assert PROJECTION_TARGET_NAME == "custom_text_proj.weight"
-    # The stock loader's interception names (colqwen3_5.py:210-214 at v0.31.0) contain the target's stem.
+    # The stock loader's interception names (colqwen3_5.py at v0.33.0) contain the target's stem.
     assert any("custom_text_proj" in stem for stem in ("custom_text_proj", "embedding_proj_layer"))
     # The head tensor never passes through the backbone mapper (the plugin renames it first).
     assert map_checkpoint_name(DENSE_HEAD_TENSOR) == DENSE_HEAD_TENSOR  # unprefixed: unchanged
@@ -119,7 +119,7 @@ def test_register_registers_both_architectures(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(
         importlib.metadata,
         "version",
-        lambda name: "0.31.0",  # noqa: ARG005
+        lambda name: "0.33.0",  # noqa: ARG005
     )
     registered: dict[str, str] = {}
     registry = types.SimpleNamespace(
@@ -230,7 +230,7 @@ def test_the_dense_head_bias_target_is_pinned() -> None:
 
 VLLM_MISSING_REASON = (
     "vLLM is not importable in this environment (the dev and plugin venvs carry torch only, "
-    "by design); the mapper cross-check runs on the GPU wave, whose engine image has vLLM 0.31.0"
+    "by design); the mapper cross-check runs on the GPU wave, whose engine image has vLLM 0.33.0"
 )
 
 

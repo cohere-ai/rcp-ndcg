@@ -516,7 +516,7 @@ class TestEngineUrlsWithoutAProvider:
         from rcp_ndcg.inference.fake import fake_transport
 
         with pytest.raises(ConfigError, match="no emulator provider is installed") as excinfo:
-            fake_transport("fake://vllm-0.31.0/qwen3-embedding-0.6b", model="qwen3-embedding-0.6b", tokenizer=None)
+            fake_transport("fake://vllm-0.33.0/qwen3-embedding-0.6b", model="qwen3-embedding-0.6b", tokenizer=None)
         assert "rcp-ndcg-test" in str(excinfo.value)
 
     def test_a_provider_is_used_when_installed(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -531,7 +531,7 @@ class TestEngineUrlsWithoutAProvider:
             name = "test-provider"
 
             def load(self):
-                return lambda url: transport if "vllm-0.31.0" in url else None
+                return lambda url: transport if "vllm-0.33.0" in url else None
 
         fake_eps = types.SimpleNamespace(
             select=lambda group: [FakeEntryPoint()] if group == "rcp_ndcg.fake_transports" else []
@@ -543,5 +543,5 @@ class TestEngineUrlsWithoutAProvider:
         )
         from rcp_ndcg.inference.fake import fake_transport
 
-        answered = fake_transport("fake://vllm-0.31.0/qwen3-embedding-0.6b", model="m", tokenizer=None)
+        answered = fake_transport("fake://vllm-0.33.0/qwen3-embedding-0.6b", model="m", tokenizer=None)
         assert answered is transport

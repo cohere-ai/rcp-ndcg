@@ -32,8 +32,8 @@ input: [text]
 licence: apache-2.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources: {{gpus: 1}}
 serve:
   runner: generate
@@ -62,8 +62,8 @@ scoring: pointwise
 licence: apache-2.0
 engine:
   name: vllm
-  image: "vllm/vllm-openai:v0.31.0"
-  min_version: "0.31.0"
+  image: "vllm/vllm-openai:v0.33.0"
+  min_version: "0.33.0"
 resources: {{gpus: 1}}
 serve:
   runner: pooling
@@ -621,7 +621,7 @@ def test_an_unshipped_recipes_status_is_unverified(tmp_path: Path) -> None:
     """A user file's own verification claim is not ours: every record of it says unverified."""
     directory = _write_family(
         tmp_path,
-        status="{state: verified, image: 'vllm/vllm-openai:v0.31.0', date: '2026-01-01', report: 'https://example.invalid/report'}",
+        status="{state: verified, image: 'vllm/vllm-openai:v0.33.0', date: '2026-01-01', report: 'https://example.invalid/report'}",
     )
     recipe = load_recipe(directory)
     assert recipe.status.state == "unverified"
@@ -636,13 +636,13 @@ def test_a_shipped_recipes_status_is_kept(monkeypatch: pytest.MonkeyPatch, tmp_p
     directory = _write_family(
         tmp_path,
         family="verified-family",
-        status="{state: verified, image: 'vllm/vllm-openai:v0.31.0', date: '2026-01-01', report: 'https://example.invalid/r'}",
+        status="{state: verified, image: 'vllm/vllm-openai:v0.33.0', date: '2026-01-01', report: 'https://example.invalid/r'}",
     )
     monkeypatch.setattr(recipe_module, "default_recipes_root", lambda: tmp_path)
     recipe = recipe_module.load_recipe(directory)
     assert recipe.shipped is True
     assert recipe.status.state == "verified"
-    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+    assert recipe.status.image == "vllm/vllm-openai:v0.33.0"
 
 
 def test_a_shipped_id_is_not_shadowed_by_a_directory_of_the_same_name(

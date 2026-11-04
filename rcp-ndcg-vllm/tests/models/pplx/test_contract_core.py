@@ -312,7 +312,7 @@ def test_pooler_warmup_dummy_is_single_span() -> None:
 
 
 def test_pooler_kernel_warmup_ids_are_single_span() -> None:
-    """The engine's kernel warmup sends ``[0, 1]``, the measured ids (v0.31.0 ``warmup.py:256-257``).
+    """The engine's kernel warmup sends ``[0, 1]``, the measured ids (v0.33.0 ``warmup.py``).
 
     A pooling model's warmup prompt is ``list(range(decode_query_len + 1))`` with
     ``decode_query_len == 1``, so the pooler sees a two-id row that opens with 0 and carries no role
@@ -339,30 +339,30 @@ def test_int8_head_is_created_in_head_dtype() -> None:
 # Version guard.
 # ---------------------------------------------------------------------------
 def test_version_guard_refuses_outside_the_validated_range(monkeypatch: pytest.MonkeyPatch) -> None:
-    for bad in ("0.30.2", "0.32.0", "1.0.0", "0.29"):
+    for bad in ("0.32.0", "0.34.0", "1.0.0", "0.29"):
         monkeypatch.setattr(
             importlib.metadata,
             "version",
             lambda name, _b=bad: _b,  # noqa: ARG005
         )
-        with pytest.raises(RuntimeError, match="vLLM >= 0.31"):
+        with pytest.raises(RuntimeError, match="vLLM >= 0.33"):
             require_vllm_version()
 
 
 def test_version_guard_accepts_the_pinned_range(monkeypatch: pytest.MonkeyPatch) -> None:
-    for good in ("0.31.0", "0.31.5", "0.31.0rc1", "0.31.0.dev123"):
+    for good in ("0.33.0", "0.33.5", "0.33.0rc1", "0.33.0.dev123"):
         monkeypatch.setattr(
             importlib.metadata,
             "version",
             lambda name, _g=good: _g,  # noqa: ARG005
         )
-        assert require_vllm_version() == (0, 31)
-        assert checked_vllm_version() == (0, 31)
+        assert require_vllm_version() == (0, 33)
+        assert checked_vllm_version() == (0, 33)
 
 
 def test_version_guard_bounds_match_the_brief() -> None:
-    assert SUPPORTED_VLLM_MIN == (0, 31)
-    assert SUPPORTED_VLLM_MAX == (0, 32)
+    assert SUPPORTED_VLLM_MIN == (0, 33)
+    assert SUPPORTED_VLLM_MAX == (0, 34)
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +391,7 @@ def test_register_registers_model_and_config_handler(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(
         importlib.metadata,
         "version",
-        lambda name: "0.31.0",  # noqa: ARG005
+        lambda name: "0.33.0",  # noqa: ARG005
     )
     registered: dict[str, str] = {}
     registry = types.SimpleNamespace(
@@ -451,7 +451,7 @@ def test_register_refuses_a_vllm_outside_the_range(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(importlib.metadata, "version", lambda name: "0.30.0")  # noqa: ARG005
     import rcp_ndcg_vllm.models.pplx
 
-    with pytest.raises(RuntimeError, match="vllm/vllm-openai:v0.31.0"):
+    with pytest.raises(RuntimeError, match="vllm/vllm-openai:v0.33.0"):
         rcp_ndcg_vllm.models.pplx.register_pplx()
 
 
@@ -527,7 +527,7 @@ def test_the_registered_config_wins_over_the_checkpoint_auto_map(tmp_path: Path,
     """``AutoConfig`` resolves a checkpoint directory whose config.json carries the checkpoint's own
     ``auto_map`` to the plugin's registered class, executing no remote code -- with
     ``trust_remote_code=False`` (vLLM's call without the flag, vllm/transformers_utils/config.py:432-437 at
-    v0.31.0) and with ``True`` alike (transformers' explicit-local-code path). The remote module the
+    v0.33.0) and with ``True`` alike (transformers' explicit-local-code path). The remote module the
     ``auto_map`` names does not exist here: any attempt to run it fails this test loudly. Without the
     registration, the False call raises transformers' "requires you to execute the configuration file"."""
     pytest.importorskip(

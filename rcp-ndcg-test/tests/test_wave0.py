@@ -380,7 +380,7 @@ def _full_report(tmp_path: Path) -> Path:
     report = tmp_path / "wave0-report.json"
     fragments = {
         "host": {
-            "image": "vllm/vllm-openai:v0.31.0",
+            "image": "vllm/vllm-openai:v0.33.0",
             "image_digest": "sha256:" + "0" * 64,
             "driver": "580.0",
             "gpus": [{"index": 0, "name": "B200", "memory_total_mib": 183000}],
@@ -393,7 +393,7 @@ def _full_report(tmp_path: Path) -> Path:
             "passed": True,
         },
         "bootstrap": {
-            "engine": {"python": "3.12.9", "vllm": "0.31.0", "freeze_unchanged": True, "plugins": []},
+            "engine": {"python": "3.12.9", "vllm": "0.33.0", "freeze_unchanged": True, "plugins": []},
             "client": {
                 "rcp-ndcg": "0.0.1",
                 "rcp-ndcg-core": "0.0.1",
@@ -430,7 +430,7 @@ def _full_report(tmp_path: Path) -> Path:
                     "port": 8100,
                     "ready_after_s": 90.0,
                     "models": ["qwen3-embedding-0-6b"],
-                    "engine_version": "0.31.0",
+                    "engine_version": "0.33.0",
                     "served_model_name_expected": "qwen3-embedding-0-6b",
                 },
                 {
@@ -440,7 +440,7 @@ def _full_report(tmp_path: Path) -> Path:
                     "port": 8101,
                     "ready_after_s": 20.0,
                     "models": ["all-minilm-l6-v2"],
-                    "engine_version": "0.31.0",
+                    "engine_version": "0.33.0",
                     "served_model_name_expected": "all-minilm-l6-v2",
                 },
             ],

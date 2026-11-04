@@ -66,14 +66,14 @@ def test_the_fake_docs_name_the_emulator_route() -> None:
 
     doc = fakes_module.__doc__ or ""
     assert "No model-level fake ships" not in doc
-    assert "fake://vllm-0.31.0/<recipe>" in doc
+    assert "fake://vllm-0.33.0/<recipe>" in doc
     with pytest.raises(ConformanceError) as excinfo:
         fake_engine_for("no-such-recipe")
-    assert "fake://vllm-0.31.0/<recipe>" in str(excinfo.value)
+    assert "fake://vllm-0.33.0/<recipe>" in str(excinfo.value)
 
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
     assert "No model-level fake ships" not in readme
-    assert "fake://vllm-0.31.0/<recipe>" in readme
+    assert "fake://vllm-0.33.0/<recipe>" in readme
 
 
 def test_a_second_fake_for_one_recipe_is_refused() -> None:

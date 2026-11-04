@@ -332,7 +332,7 @@ def test_a_digest_pinned_recipe_records_the_pod_version_not_the_digest(
     yaml = root / "fixture-embed" / "family.yaml"
     yaml.write_text(
         yaml.read_text(encoding="utf-8").replace(
-            'image: "vllm/vllm-openai:v0.31.0"',
+            'image: "vllm/vllm-openai:v0.33.0"',
             'image: "registry.example.com/engine:nightly-abc@sha256:' + "a" * 64 + '"',
         ),
         encoding="utf-8",

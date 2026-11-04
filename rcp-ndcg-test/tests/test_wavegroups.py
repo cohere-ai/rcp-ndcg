@@ -20,7 +20,7 @@ WAVE_LIST = ROOT / "rcp-ndcg-test" / "wave-lists" / "all-retrieval.txt"
 
 
 def test_slug_of_is_stable_and_digest_specific() -> None:
-    assert wg.slug_of("vllm/vllm-openai:v0.31.0") == "vllm-vllm-openai-v0-31-0"
+    assert wg.slug_of("vllm/vllm-openai:v0.33.0") == "vllm-vllm-openai-v0-33-0"
     first = wg.slug_of("vllm/vllm-openai:nightly-abc@sha256:" + "a" * 64)
     second = wg.slug_of("vllm/vllm-openai:nightly-abc@sha256:" + "b" * 64)
     assert first != second and first.endswith("-" + "a" * 12)
@@ -33,7 +33,7 @@ def test_group_ids_keeps_the_wave_order_and_first_appearance(tmp_path: Path) -> 
         yaml = tmp_path / family / "family.yaml"
         text = yaml.read_text(encoding="utf-8")
         text = text.replace("id: fixture-embed", f"id: {family}")
-        text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
+        text = text.replace('image: "vllm/vllm-openai:v0.33.0"', f'image: "{image}"')
         yaml.write_text(text, encoding="utf-8")
     groups = wg.group_ids(["family-a", "family-b", "family-a"], tmp_path)
     assert groups == {"registry.example.com/a:1": ["family-a", "family-a"], "registry.example.com/b:2": ["family-b"]}
@@ -64,7 +64,7 @@ def test_write_groups_writes_one_list_per_image(tmp_path: Path) -> None:
 
 def test_the_real_catalog_is_one_engine_image() -> None:
     """Every shipped recipe now runs the released image: embeddinggemma-2's record names
-    `vllm/vllm-openai:v0.31.0` too, because the pieces its digest-pinned nightly carried were backported into
+    `vllm/vllm-openai:v0.33.0` too, because the pieces its digest-pinned nightly carried were backported into
     the released engine (owner decision 8, 2026-10-15), so the wave is one job rather than two.
 
     A digest-pinned image still groups on its own: the second assertion holds that property, which is what the

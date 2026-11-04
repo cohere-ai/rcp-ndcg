@@ -167,7 +167,7 @@ def test_a_corpus_whose_key_holds_different_outputs_is_refused(tmp_path: Path) -
 
     body = {"model": "tiny", "input": ["the a"]}
     corpus = observation_corpus(tmp_path, [exchange(0, body, 1.0), exchange(1, {**body, "ignored": 1}, 0.5)])
-    facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 8)
+    facts = EngineFacts("vllm", "0.33.0", "tiny", "fixtures/Tiny", 8)
     with pytest.raises(DataError) as error:
         VllmEmulator.from_corpus(corpus, StringsPrompts(), word_tokenizer(), facts, dim=2)
     assert "#0" in str(error.value) and "#1" in str(error.value)
@@ -184,7 +184,7 @@ def test_a_top_n_truncated_reply_is_the_ranked_prefix_of_the_full_observation(tm
     from tests._tokenizers import word_tokenizer
 
     tokenizer = word_tokenizer()
-    facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 128)
+    facts = EngineFacts("vllm", "0.33.0", "tiny", "fixtures/Tiny", 128)
     body = {"model": "tiny", "query": "q", "documents": ["a", "b", "c"]}
     full = {
         "results": [
@@ -263,7 +263,7 @@ def test_a_top_n_truncated_reply_that_is_not_the_stored_prefix_is_refused(tmp_pa
             corpus,
             EnginePrompts(builder=lambda query, documents: f"{query}|{'|'.join(documents)}"),
             word_tokenizer(),
-            EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 128),
+            EngineFacts("vllm", "0.33.0", "tiny", "fixtures/Tiny", 128),
             dim=2,
         )
     assert "#0" in str(error.value) and "#1" in str(error.value)

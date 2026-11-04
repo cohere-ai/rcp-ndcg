@@ -71,7 +71,7 @@ def test_an_unshipped_recipe_is_marked_in_the_provenance(tmp_path: Path) -> None
     directory = _user_family(tmp_path)
     yaml_path = directory / "family.yaml"
     data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    data["status"] = {"state": "verified", "image": "vllm/vllm-openai:v0.31.0", "date": "2026-01-01", "report": "x"}
+    data["status"] = {"state": "verified", "image": "vllm/vllm-openai:v0.33.0", "date": "2026-01-01", "report": "x"}
     yaml_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
     facts = recipe_facts(load_recipe(directory))

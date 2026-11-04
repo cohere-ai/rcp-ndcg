@@ -135,7 +135,7 @@ def test_a_tokenizer_change_is_named(tmp_path: Path) -> None:
 def test_harness_metadata_and_recipe_identity_are_out(tmp_path: Path) -> None:
     def rewrite(data: dict) -> dict:
         data["notes"] = "another note"
-        data["status"] = {"state": "verified", "image": "vllm/vllm-openai:v0.31.0", "date": "2026-02-02", "report": "x"}
+        data["status"] = {"state": "verified", "image": "vllm/vllm-openai:v0.33.0", "date": "2026-02-02", "report": "x"}
         data["reference"] = {"kind": "transformers", "score_scale": "logit", "entry": "reference.py"}
         data["gates"] = {"tau_min": 0.5}
         return data
@@ -310,18 +310,18 @@ def test_the_engine_image_and_version_are_named_inputs(tmp_path: Path) -> None:
     """The engine image and its version floor shape the engine's processing (a vLLM/transformers change can
     move a count or a resize), so they are fingerprint inputs of their own."""
     before = fingerprint_inputs(_load())
-    assert before["engine.image"] == "vllm/vllm-openai:v0.31.0"
-    assert before["engine.min_version"] == "0.31.0"
+    assert before["engine.image"] == "vllm/vllm-openai:v0.33.0"
+    assert before["engine.min_version"] == "0.33.0"
 
     def rewrite_image(data: dict) -> dict:
-        data["engine"]["image"] = "vllm/vllm-openai:v0.31.1"
+        data["engine"]["image"] = "vllm/vllm-openai:v0.33.1"
         return data
 
     after_image = fingerprint_inputs(load_recipe(_copy(tmp_path / "image", rewrite=rewrite_image)))
     assert _changed(before, after_image) == {"engine.image"}
 
     def rewrite_floor(data: dict) -> dict:
-        data["engine"]["min_version"] = "0.31.1"
+        data["engine"]["min_version"] = "0.33.1"
         return data
 
     after_floor = fingerprint_inputs(load_recipe(_copy(tmp_path / "floor", rewrite=rewrite_floor)))

@@ -118,7 +118,7 @@ def _wave0_env(tmp_path: Path, tools: dict[str, Path], *, sdk_dirs: str = "") ->
         "RCP_GCS_HELPER_SH": str(JOBS / "gcs.sh"),
         "RCP_GCS_HELPER_PY": str(JOBS / "gcs.py"),
         "RCP_REFERENCE_DEPS_PY": str(JOBS / "reference_deps.py"),
-        "RCP_IMAGE": "vllm/vllm-openai:v0.31.0",
+        "RCP_IMAGE": "vllm/vllm-openai:v0.33.0",
         "RCP_IMAGE_DIGEST": "sha256:" + "0" * 64,
     }
 

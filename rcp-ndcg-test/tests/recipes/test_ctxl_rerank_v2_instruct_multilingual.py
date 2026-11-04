@@ -156,8 +156,8 @@ def _expected(variant_id: str) -> dict[str, dict[str, object]]:
             "scoring": "pointwise",
         },
         "engine": {
-            "image": "vllm/vllm-openai:v0.31.0",
-            "min_version": "0.31.0",
+            "image": "vllm/vllm-openai:v0.33.0",
+            "min_version": "0.33.0",
             "name": "vllm",
             "startup_timeout_s": 1800,  # the schema default; the recipe no longer restates it
             "step_budget_s": None,  # the schema default; the recipe no longer restates it
@@ -279,7 +279,9 @@ def test_recipe_loads_and_declares_the_full_contract(variant_id: str) -> None:
         top=expected["top"],
     )
     assert recipe.engine.model_dump(mode="json") == expected["engine"]
-    assert recipe.input == ["text"] and recipe.status.state == "verified"
+    # the 0.33 pin: no wave has verified this recipe yet, so the record says unverified (W13 flips it
+    # together with status.image, which still names the image the 0.31 wave ran)
+    assert recipe.input == ["text"] and recipe.status.state == "unverified"
 
 
 def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(variant_id: str) -> None:

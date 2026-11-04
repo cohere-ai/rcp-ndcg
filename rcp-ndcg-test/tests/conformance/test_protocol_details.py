@@ -124,7 +124,7 @@ def test_a_corpus_recorded_on_another_engine_version_is_refused_by_its_host(tmp_
         registry.clear()
 
 
-@pytest.mark.parametrize("url", ["fake://vllm-1/qwen3-reranker-8b", "fake://vllm-0.31/qwen3-reranker-8b"])
+@pytest.mark.parametrize("url", ["fake://vllm-1/qwen3-reranker-8b", "fake://vllm-0.33/qwen3-reranker-8b"])
 def test_the_engine_host_is_one_pattern(url: str) -> None:
     """``rcp_ndcg.inference.fake`` routes a URL to the emulators exactly when the emulators read its
     host as an engine and version (one pattern, never two)."""

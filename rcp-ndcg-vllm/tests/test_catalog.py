@@ -135,8 +135,31 @@ _OWNER_DISPOSED = frozenset({"topk-embed-v1-small", "topk-embed-v1-xsmall"})
 
 def test_every_shipped_recipe_is_verified_or_owner_disposed() -> None:
     """AGENTS.md: "status: unverified does not ship in a tag, and a failed variant ships only when the owner's
-    explicit disposition list names it".  The shipped states are exactly ``verified`` plus that one list, so
-    flipping a verified recipe to ``failed`` (or a variant to ``unverified``) reds here -- the README row and
-    the recipe move together, so the catalog test above cannot see it."""
-    not_verified = {recipe.id for recipe in iter_recipes() if recipe.status.state != "verified"}
-    assert not_verified == set(_OWNER_DISPOSED)
+    explicit disposition list names it".
+
+    Two rules, both read off a status block: the state it records and the image it names.  First, a recipe
+    may claim ``verified`` only on the image it pins (``status.image == engine.image``): the 0.33 pin bump
+    sets every recipe to ``unverified``, and writing ``verified`` before a 0.33 wave has run is the
+    false-evidence path the plan forbids, so the goldens and this rule would freeze it.  Second, a ``failed``
+    variant must be named by the owner's list.  The shipped states are therefore
+    ``verified``-on-its-own-image plus that list; a recipe whose status block still names another image is
+    waiting for its wave and is ``unverified``.
+
+    The exactness is one-sided while the waves are outstanding: ``unshipped <= _OWNER_DISPOSED`` becomes
+    ``==`` once W13 restores the topk variants' recorded ``failed`` (the pin bump set them ``unverified``
+    too).  Until then, a recipe that flips to ``failed`` without being owner-named still reds here.
+    """
+    recipes = {recipe.id: recipe for recipe in iter_recipes()}
+    for recipe in recipes.values():
+        if recipe.status.state == "verified":
+            assert recipe.status.image == recipe.engine.image, (
+                f"{recipe.id}: claims verified on {recipe.status.image!r} while pinning "
+                f"{recipe.engine.image!r}: no wave has run on the pinned image"
+            )
+    # Waiting for its wave is ``unverified`` and only that: a recipe that flips to ``failed`` is a
+    # disposition decision, never a pending one, so it falls through to the owner-list check below.
+    pending = {recipe.id for recipe in recipes.values() if recipe.status.state == "unverified"}
+    unshipped = {recipe.id for recipe in recipes.values() if recipe.status.state != "verified"} - pending
+    assert unshipped <= set(_OWNER_DISPOSED), (
+        f"unshipped recipes that the owner's disposition list does not name: {sorted(unshipped)}"
+    )

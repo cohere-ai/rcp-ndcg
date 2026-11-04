@@ -19,8 +19,11 @@ from tests.docs._markdown import ROOT, code_blocks
 
 PAGE = ROOT / "docs" / "how-to" / "add-a-model.md"
 
-#: The number words a docs page spells a small count with (the serve page states the derived-chunk count).
-_NUMBER_WORDS = "zero one two three four five six seven eight nine ten".split()
+#: The number words a docs page spells a small count with (the serve page states the derived-chunk count;
+#: the 0.33 pin's chunk floor reaches sixteen recipes, so the table runs past ten).
+_NUMBER_WORDS = (
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen"
+).split()
 
 REFERENCE_STUB = '''"""The docs snippet's reference stub: the guide documents the contract, this file satisfies it."""
 

@@ -36,7 +36,7 @@
   "use_activation": false
  },
  "fingerprint": {
-  "fingerprint": "9f143b140d8545aff06c1983752ba988f6168aee67e8b970b23562bd9be6ce48",
+  "fingerprint": "7b66b6690d1255a95881eb705d5b3fad6bb1ffd1e2934dc4806a2b411651ef23",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -52,8 +52,8 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[],\"pair\":[{\"fixed\":\"Check whether a given document contains information helpful to answer the query.\\n<Document> \"},{\"content\":\"document\"},{\"fixed\":\"\\n<Query> \"},{\"content\":\"query\"},{\"fixed\":\" ??\"}]}",
    "client.use_activation": "false",
-   "engine.image": "vllm/vllm-openai:v0.31.0",
-   "engine.min_version": "0.31.0",
+   "engine.image": "vllm/vllm-openai:v0.33.0",
+   "engine.min_version": "0.33.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
    "revision": "8fd1edf6a98564cb712064f884b8ef7df5c1b876",
@@ -114,8 +114,8 @@
    "use_activation": false
   },
   "engine": {
-   "image": "vllm/vllm-openai:v0.31.0",
-   "min_version": "0.31.0",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "min_version": "0.33.0",
    "name": "vllm",
    "startup_timeout_s": 1800,
    "step_budget_s": null
@@ -135,7 +135,7 @@
   ],
   "licence": "CC-BY-NC-SA-4.0",
   "model": "ContextualAI/ctxl-rerank-v2-instruct-multilingual-1b",
-  "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). Numerics (the 2026-10-10 like-for-like decision, extended by E2 round 4): the engine's pooling head is fp32 by default (config/model.py:2047-2057 at the tag), so the recipe declares no `head_dtype` and the reference's score head is fp32 too (reference.py projects the final hidden state onto the score row in float32). E2 round 4 measured the served-vs-reference max relative delta 0.2491 with only 20.5% of documents within 0.02 (tau 1.0) under bf16 on both sides, and reproduced the residual as the two bf16 attention-kernel stacks: the reference's own CPU-vs-GPU spread on the same rows is 0.21 max, and the 6b -- same kernels -- shows the same absolute spread (0.16) but passes the relative gate because its logits are larger. This size therefore serves `dtype: float32` and the reference loads the served dtype (`reference.py`'s `_served_dtype`, one rule for the family: the 6b keeps bfloat16), the deterministic like-for-like pair that reaches the 0.05 bound; `reference.attn_implementation: sdpa` stays (flash-attention kernels cannot run fp32, so no `--attention-backend` pin rides with this). The engine's /tokenize agreement (R29) was measured on this size: 3/70 texts diverged by 2..10 tokens (563/565, 179/184, 676/686) because `tokenizer_config.json` declares `pad_token: \"+\"`, which HF's AutoTokenizer adds as an added token and the product's tokenizer load now applies too (the product fix landed here); stage 1 gates it. The reference environment is reference.in/reference.lock beside reference.py (the paper's pins, flash-attn dropped).\n",
+  "notes": "template.jinja is the vendor score template adapted for the served path: no instruction reaches the prompt (client.instruction: none, the paper's served-path mode -- the engine's instruction request field is never sent, so the template does not read the kwarg), and the bos line the vendor 6B template emits is absent (this checkpoint's ByteLevel post-processor adds no tokens; the 1B variant of the family's template). The engine renders exactly two messages (roles query and document) and tokenizes the render with add_special_tokens=True; the same render must equal the client template's segments (stage 1's template_render_check proves it).\nreference.py keeps the paper's own prompt construction and score path: the uncut prompt, whole- prompt right truncation at encode over the cap (the declared anchor_drop_over_cap deviation, stage 2's non-gating table), and no query share of its own. Its render mode fills the harness's rerank span format with the paper's own spans -- the raw query and the raw documents its prompt builder receives, uncut -- and never reproduces the client's cut (neither the settle rule nor the anchor-preserving content cut): under the cap and within the share these equal the wire's spans byte for byte; over the cap they differ by declaration and ride stage 1's non-gating table.\nDivergence rows and the pairs-file rule: an over-share query (over 4096 tokens and under the pair budget) is a declared divergence row -- the wire ships the query settled at its share, the reference keeps it whole -- and an over-cap pair is the declared anchor_drop_over_cap row. The gating pairs therefore keep queries within the share and documents within the budget; stage 1 reports over-cap pairs in its non-gating table under the declared deviation.\nThe card's own vLLM recipe (VLLM_USE_V1=0 plus a logits processor over generate/logprobs) is unusable on v1 and is superseded by this one; the card documents the same target quantity (the raw logit at token id 0, final position). Numerics (the 2026-10-10 like-for-like decision, extended by E2 round 4): the engine's pooling head is fp32 by default (config/model.py:2108-2134 at the tag), so the recipe declares no `head_dtype` and the reference's score head is fp32 too (reference.py projects the final hidden state onto the score row in float32). E2 round 4 measured the served-vs-reference max relative delta 0.2491 with only 20.5% of documents within 0.02 (tau 1.0) under bf16 on both sides, and reproduced the residual as the two bf16 attention-kernel stacks: the reference's own CPU-vs-GPU spread on the same rows is 0.21 max, and the 6b -- same kernels -- shows the same absolute spread (0.16) but passes the relative gate because its logits are larger. This size therefore serves `dtype: float32` and the reference loads the served dtype (`reference.py`'s `_served_dtype`, one rule for the family: the 6b keeps bfloat16), the deterministic like-for-like pair that reaches the 0.05 bound; `reference.attn_implementation: sdpa` stays (flash-attention kernels cannot run fp32, so no `--attention-backend` pin rides with this). The engine's /tokenize agreement (R29) was measured on this size: 3/70 texts diverged by 2..10 tokens (563/565, 179/184, 676/686) because `tokenizer_config.json` declares `pad_token: \"+\"`, which HF's AutoTokenizer adds as an added token and the product's tokenizer load now applies too (the product fix landed here); stage 1 gates it. The reference environment is reference.in/reference.lock beside reference.py (the paper's pins, flash-attn dropped).\n",
   "reference": {
    "attn_implementation": "sdpa",
    "device": null,
@@ -189,13 +189,13 @@
    "rcp-ndcg/src/rcp_ndcg/data/templates.py \u2014 TemplateSpec: the pair frame, the anchor, add_special_tokens",
    "rcp-ndcg/src/rcp_ndcg/data/preprocess.py \u2014 fit(): the content-only cut that reserves the frame (the anchors)",
    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipe.py \u2014 the Recipe schema; pooler_config keys validated against the pinned engine",
-   "vLLM v0.31.0 (verified at the tag): model_executor/models/adapters.py:307 as_seq_cls_model, :593 load_weights_no_post_processing, :637 the score head from the lm_head row, :659 SEQ_CLS_LOAD_METHODS; entrypoints/pooling/scoring/io_processor.py:605 get_score_prompt (chat-template render, :693-705), :677-678 the un-templated fallback when no template is passed; entrypoints/pooling/scoring/protocol.py:56-65 the instruction field folded into chat_template_kwargs, :72 add_special_tokens=True; pooling_params.py:111 _merge_default_parameters (pooler_config fills unset request fields); layers/pooler/activations.py (sigmoid for num_labels < 2); renderers/params.py (truncate right = slice(0, N))"
+   "vLLM v0.33.0 (verified at the tag): model_executor/models/adapters.py:307 as_seq_cls_model, :593 load_weights_no_post_processing, :637 the score head from the lm_head row, :659 SEQ_CLS_LOAD_METHODS; entrypoints/pooling/scoring/io_processor.py:707 get_score_prompt (chat-template render, :693-705), :677-678 the un-templated fallback when no template is passed; entrypoints/pooling/scoring/protocol.py:56-65 the instruction field folded into chat_template_kwargs, :72 add_special_tokens=True; pooling_params.py:182 _merge_default_parameters (pooler_config fills unset request fields); layers/pooler/activations.py (sigmoid for num_labels < 2); renderers/params.py (truncate right = slice(0, N))"
   ],
   "status": {
    "date": "2026-10-13",
    "image": "vllm/vllm-openai:v0.31.0",
    "report": "docs/reference/gpu-validation.md",
-   "state": "verified"
+   "state": "unverified"
   }
  },
  "serve_argv": [

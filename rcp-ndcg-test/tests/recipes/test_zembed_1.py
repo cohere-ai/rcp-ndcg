@@ -284,8 +284,8 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert recipe.role == "embed"
     assert recipe.input == ["text"]
     assert recipe.licence == "apache-2.0"
-    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0"
-    assert recipe.engine.min_version == "0.31.0"
+    assert recipe.engine.image == "vllm/vllm-openai:v0.33.0"
+    assert recipe.engine.min_version == "0.33.0"
     serve = recipe.serve
     assert (serve.runner, serve.convert) == ("pooling", "embed")
     assert serve.hf_overrides == {}
@@ -294,7 +294,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert serve.trust_remote_code is False
     assert serve.max_model_len == MAX_TOKENS
     assert serve.dtype == "bfloat16"
-    assert serve.plugin == "rcp-ndcg-vllm"  # the patch carrier for the pooling-full-context opt-in
+    assert serve.plugin == "rcp-ndcg-vllm"  # the plugin carrier: the pooling-full-context patch is gone
     client = recipe.client
     assert client.get("api") == "openai_embeddings"
     assert client.get("tokenizer") == f"{REPO}@{REVISION}"
@@ -306,7 +306,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert recipe.reference.kind == "sentence_transformers"
     assert recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["anchor_drop_over_cap"]  # the model's over-cap cut drops the anchor
-    assert recipe.status.state == "verified"
+    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
     assert recipe.sources, "the recipe lists the URLs and path:line references it rests on"
 
 
@@ -530,7 +530,7 @@ EXPECTED_TOP = {
     "role": "embed",
 }
 EXPECTED_SERVE = {
-    "patches": ["pooling-full-context"],
+    "patches": [],
     "chat_template": None,
     "convert": "embed",
     "dtype": "bfloat16",

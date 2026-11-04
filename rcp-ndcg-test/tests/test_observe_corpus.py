@@ -107,7 +107,7 @@ def test_the_engine_environment_drops_the_pods_service_discovery_variables() -> 
         environ={
             PATCHES_ENV: "",
             "VLLM_PORT": "9101",
-            "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0",
+            "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.33.0",
             "VLLM_SERVICE_EXAMPLE_EMBED_SERVICE_HOST": "198.51.100.7",
             "VLLM_SERVICE_EXAMPLE_EMBED_SERVICE_PORT": "80",
             "VLLM_SERVICE_EXAMPLE_EMBED_SERVICE_PORT_HTTP": "80",
@@ -121,7 +121,7 @@ def test_the_engine_environment_drops_the_pods_service_discovery_variables() -> 
         ready_wait_s=None,
         runner=_no_gpu_runner,
     )
-    assert facts["env"] == {PATCHES_ENV: "", "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.31.0", "VLLM_PORT": "9101"}
+    assert facts["env"] == {PATCHES_ENV: "", "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.33.0", "VLLM_PORT": "9101"}
 
 
 def test_engine_facts_records_the_version_the_pod_reported() -> None:
@@ -136,10 +136,10 @@ def test_engine_facts_records_the_version_the_pod_reported() -> None:
         environ={},
         started=None,
         ready_wait_s=None,
-        version="0.31.0",
+        version="0.33.0",
         runner=_no_gpu_runner,
     )
-    assert facts["version"] == "0.31.0"
+    assert facts["version"] == "0.33.0"
     assert facts["image"].startswith("registry.example.com/engine:nightly-abc@")
 
 
@@ -894,13 +894,13 @@ def test_changed_since_keys_on_the_fingerprint_and_the_engine_version() -> None:
     from rcp_ndcg_test.observe.corpus import changed_since
 
     recipe = load_recipe(RECIPES / "fixture-embed")
-    index = {"fingerprints": {recipe.id: behaviour_fingerprint(recipe)}, "engine_versions": {recipe.id: "0.31.0"}}
-    same = changed_since([recipe], index, engine_version_of=lambda _: "0.31.0")
+    index = {"fingerprints": {recipe.id: behaviour_fingerprint(recipe)}, "engine_versions": {recipe.id: "0.33.0"}}
+    same = changed_since([recipe], index, engine_version_of=lambda _: "0.33.0")
     assert same["changed"] == [] and same["unchanged"] == [recipe.id] and same["protocol_due"] == []
     new_engine = changed_since([recipe], index, engine_version_of=lambda _: "0.32.0")
     assert new_engine["changes"] == {recipe.id: ["engine_version"]} and new_engine["protocol_due"] == ["0.32.0"]
     index["fingerprints"][recipe.id] = "0" * 64
-    moved = changed_since([recipe], index, engine_version_of=lambda _: "0.31.0")
+    moved = changed_since([recipe], index, engine_version_of=lambda _: "0.33.0")
     assert moved["changes"] == {recipe.id: ["behaviour_fingerprint"]}
 
 

@@ -31,7 +31,7 @@ from tests._engines import observation_corpus
 
 from tests._tokenizers import word_tokenizer
 
-FACTS = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", 512)
+FACTS = EngineFacts("vllm", "0.33.0", "tiny", "fixtures/Tiny", 512)
 SOURCE = "x-rcp-ndcg-emulator-source"
 
 

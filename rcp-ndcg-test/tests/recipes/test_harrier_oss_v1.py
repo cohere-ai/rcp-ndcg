@@ -177,7 +177,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
     variant = VARIANTS[variant_id]
     return {
         "serve": {
-            "patches": ["pooling-full-context"],
+            "patches": [],
             "runner": "pooling",
             "convert": None,
             "hf_overrides": {},
@@ -331,13 +331,13 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     """The recipe loads against the product's EmbeddingEndpoint and declares exactly its contract."""
     recipe = resolve_recipe(variant_id)
     _contract(recipe, variant_id)
-    assert recipe.engine.image == "vllm/vllm-openai:v0.31.0" and recipe.engine.min_version == "0.31.0"
+    assert recipe.engine.image == "vllm/vllm-openai:v0.33.0" and recipe.engine.min_version == "0.33.0"
     max_tokens = recipe.client.get("max_tokens")
     assert isinstance(max_tokens, int)
     assert recipe.serve.max_model_len >= max_tokens  # the engine must not 400 the budget
     assert (FAMILY_DIR / "reference.py").is_file()
     assert (FAMILY_DIR / "reference.in").is_file() and (FAMILY_DIR / "reference.lock").is_file()
-    assert recipe.status.state == "verified"
+    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
     assert recipe.sources
     assert recipe.serve.runner == "pooling" and recipe.serve.convert is None
     assert recipe.reference.kind == "sentence_transformers" and recipe.reference.score_scale == "cosine"

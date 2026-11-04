@@ -33,7 +33,7 @@ def test_a_recipe_that_declares_a_plugin_never_claims_an_unplugged_image() -> No
     """The plugin wheel carries the engine patches; a recipe that declares ``serve.plugin`` does not run
     on an unplugged image, so its prose must not claim one (zembed-1's notes said "on the unmodified
     vllm/vllm-openai:v0.31.0 image, no plugin" while its serve block declared ``plugin: rcp-ndcg-vllm``
-    with the pooling-full-context patch)."""
+    without any engine patch)."""
     unplugged = re.compile(r"unmodified [^\n]*image,? no plugin", re.IGNORECASE)
     offenders = [
         family.name

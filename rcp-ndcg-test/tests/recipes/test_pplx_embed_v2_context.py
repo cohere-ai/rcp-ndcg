@@ -57,7 +57,7 @@ HF_CACHE = CACHE / "hf-cache"
 os.environ.setdefault("HF_HUB_CACHE", str(HF_CACHE))
 
 EXPECTED_SERVE = {
-    "patches": ["pooling-full-context"],
+    "patches": [],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {},
@@ -310,7 +310,7 @@ def test_recipe_contract() -> None:
         reference=EXPECTED_REFERENCE,
         top=EXPECTED_TOP,
     )
-    assert recipe.status.state == "verified"
+    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
     assert recipe.sources
 
 

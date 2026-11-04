@@ -321,8 +321,8 @@ EXPECTED_REFERENCE = {
 
 EXPECTED_ENGINE = {
     "name": "vllm",
-    "image": "vllm/vllm-openai:v0.31.0",
-    "min_version": "0.31.0",
+    "image": "vllm/vllm-openai:v0.33.0",
+    "min_version": "0.33.0",
     "startup_timeout_s": 1800,
     "step_budget_s": None,  # the schema default
 }
@@ -456,10 +456,12 @@ def test_recipe_contract(variant_id: str) -> None:
     # The wave ran and the per-token gate failed in every run (rc0-202610120045..
     # rc0-202610131205-record), and the re-verification on the final candidate
     # (waves-rc0-202610140620/plugin-carriers-vllm) failed the same gate at the current fingerprint:
-    # the schema's `failed`, with the image/date/report of the latest wave that measured it. Never
-    # `unverified` (the measurement exists) and never `verified` without a green re-run; the gate, its
-    # dtype and the disposition stay the owner's.
-    assert recipe.status.state == "failed"
+    # the schema's `failed`, with the image/date/report of the latest wave that measured it.  Never
+    # `verified` without a green re-run; the gate, its dtype and the disposition stay the owner's.
+    # The 0.33 pin bump sets every status to `unverified` (the false-evidence rule), so the recorded
+    # `failed` returns with W13's wave; until then the date and report of that measurement stand.
+    assert recipe.status.state == "unverified"
+    # the status block records the wave that measured it: still the stock 0.31 image (W13 re-verifies)
     assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
     assert recipe.status.date == "2026-10-14"
     assert recipe.status.report is not None and "waves-rc0-202610140620" in recipe.status.report

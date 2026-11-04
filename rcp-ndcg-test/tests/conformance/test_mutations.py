@@ -34,7 +34,7 @@ def _tiny(directory: Path, cap: int = 8, exchanges=()) -> tuple[VllmEmulator, ob
     from tests._tokenizers import word_tokenizer
 
     tokenizer = word_tokenizer()
-    facts = EngineFacts("vllm", "0.31.0", "tiny", "fixtures/Tiny", cap)
+    facts = EngineFacts("vllm", "0.33.0", "tiny", "fixtures/Tiny", cap)
     corpus = observation_corpus(directory, exchanges)
     emulator = VllmEmulator.from_corpus(corpus, StringsPrompts(), tokenizer, facts, dim=4)
     return emulator, tokenizer

@@ -754,7 +754,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     lock.parent.mkdir(parents=True)
     lock.write_text(
         "# rcp-reference-lock: rcp-reference-lock/1\n# family: demo\n"
-        "# image: vllm/vllm-openai:v0.31.0\n# own-torch: false\n",
+        "# image: vllm/vllm-openai:v0.33.0\n# own-torch: false\n",
         encoding="utf-8",
     )
     # the stub client mechanism (uvx): node-shaped -- it refuses a closure without the harness wheel,
@@ -1231,7 +1231,7 @@ def test_submit_groups_a_wave_by_engine_image(tmp_path: Path, monkeypatch: pytes
         yaml = stage / "recipes" / family / "family.yaml"
         text = yaml.read_text(encoding="utf-8")
         text = text.replace("id: fixture-embed", f"id: {family}")
-        text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
+        text = text.replace('image: "vllm/vllm-openai:v0.33.0"', f'image: "{image}"')
         yaml.write_text(text, encoding="utf-8")
     (stage / "wave-lists" / "wave-a.txt").write_text("family-a\nfamily-b\n", encoding="utf-8")
     uv = shutil.which("uv")
@@ -1272,7 +1272,7 @@ def test_submit_groups_a_wave_by_engine_image_over_the_gcloud_cli(
         yaml = recipes / family / "family.yaml"
         text = yaml.read_text(encoding="utf-8")
         text = text.replace("id: fixture-embed", f"id: {family}")
-        text = text.replace('image: "vllm/vllm-openai:v0.31.0"', f'image: "{image}"')
+        text = text.replace('image: "vllm/vllm-openai:v0.33.0"', f'image: "{image}"')
         yaml.write_text(text, encoding="utf-8")
     wave_list = tmp_path / "wave-a.txt"
     wave_list.write_text("family-a\nfamily-b\n", encoding="utf-8")

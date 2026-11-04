@@ -39,7 +39,7 @@
   "use_activation": true
  },
  "fingerprint": {
-  "fingerprint": "f4ca536b33ae99928cb8c2266ae34f4e613b45f675e78ad52f7aa72039389f31",
+  "fingerprint": "d2df9d554c4b7c9ae893646d83af008863ee47ebbb449e1c9d3074630cc7f390",
   "inputs": {
    "client.api": "rerank",
    "client.empty_doc": "send",
@@ -55,8 +55,8 @@
    "client.request_shape": "text",
    "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"normalize\":[\"strip\"],\"pair\":[{\"fixed\":\"{special:im_start}system\\n\"},{\"content\":\"query\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}user\\n\"},{\"content\":\"document\"},{\"fixed\":\"{special:im_end}\\n{special:im_start}assistant\\n\"}]}",
    "client.use_activation": "true",
-   "engine.image": "vllm/vllm-openai:v0.31.0",
-   "engine.min_version": "0.31.0",
+   "engine.image": "vllm/vllm-openai:v0.33.0",
+   "engine.min_version": "0.33.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "zeroentropy/zerank-1-reranker",
    "revision": "d03c467e29e29c0a16a130a86ce3b62d30116a2c",
@@ -120,8 +120,8 @@
    "use_activation": true
   },
   "engine": {
-   "image": "vllm/vllm-openai:v0.31.0",
-   "min_version": "0.31.0",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "min_version": "0.33.0",
    "name": "vllm",
    "startup_timeout_s": 1800,
    "step_budget_s": null
@@ -203,7 +203,7 @@
    "date": "2026-10-14",
    "image": "vllm/vllm-openai:v0.31.0",
    "report": "docs/reference/gpu-validation.md",
-   "state": "verified"
+   "state": "unverified"
   }
  },
  "serve_argv": [

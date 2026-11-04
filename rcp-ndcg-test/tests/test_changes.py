@@ -48,11 +48,11 @@ def _record(embedding: list[float]) -> dict:
 def _corpora_root(tmp_path: Path, index: dict, *, recipe_id: str = "fixture-embed") -> Path:
     """A corpora root whose manifests carry ``index``'s fingerprints over the fixture recipe."""
     for fingerprint, inputs in index.items():
-        directory = tmp_path / "vllm-0.31.0" / recipe_id / fingerprint
+        directory = tmp_path / "vllm-0.33.0" / recipe_id / fingerprint
         directory.mkdir(parents=True)
         manifest = {
             "schema": "rcp-ndcg.observation-corpus/1",
-            "engine": {"name": "vllm", "version": "0.31.0", "image": "vllm/vllm-openai:v0.31.0"},
+            "engine": {"name": "vllm", "version": "0.33.0", "image": "vllm/vllm-openai:v0.33.0"},
             "model": {"id": "fixtures/DenseEmbedder", "revision": "0123456789abcdef0123456789abcdef01234567"},
             "recipe": {"id": recipe_id, "behaviour_fingerprint": fingerprint, "fingerprint_inputs": inputs},
         }
@@ -64,7 +64,7 @@ def _corpora_root(tmp_path: Path, index: dict, *, recipe_id: str = "fixture-embe
         }
         manifest["integrity"]["manifest_sha256"] = manifest_digest(manifest)
         (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    return tmp_path / "vllm-0.31.0"
+    return tmp_path / "vllm-0.33.0"
 
 
 def test_a_missing_corpora_root_is_refused_not_reported_as_all_new(tmp_path: Path) -> None:

@@ -223,7 +223,7 @@ def run_retrieval_view(recipe_id: str, row: dict, tmp_path: Path) -> tuple[objec
 
     recipe = load_recipe(recipe_id)
     harness()
-    data = client_config(recipe, base_url=f"fake://vllm-0.31.0/{recipe_id}")
+    data = client_config(recipe, base_url=f"fake://vllm-0.33.0/{recipe_id}")
     data["tokenizer"] = str(_tokenizer_file(recipe_id, tmp_path))
     encoder = ServedEmbedding(**data)
     dataset = _dataset(row, tmp_path, f"{recipe_id}-retrieval")
@@ -243,7 +243,7 @@ def run_rerank_view(recipe_id: str, row: dict, tmp_path: Path) -> tuple[object, 
 
     recipe = load_recipe(recipe_id)
     harness()
-    data = client_config(recipe, base_url=f"fake://vllm-0.31.0/{recipe_id}")
+    data = client_config(recipe, base_url=f"fake://vllm-0.33.0/{recipe_id}")
     data["tokenizer"] = str(_tokenizer_file(recipe_id, tmp_path))
     reranker = ServedReranker(**data)
     dataset = _dataset(row, tmp_path, f"{recipe_id}-rerank")

@@ -3,7 +3,7 @@ schema_version: "1"   # the recipe file format version (decision 18: the contrac
 role: embed
 input: [text]
 licence: apache-2.0
-engine: {name: vllm, image: "vllm/vllm-openai:v0.31.0", min_version: "0.31.0", startup_timeout_s: 60}
+engine: {name: vllm, image: "vllm/vllm-openai:v0.33.0", min_version: "0.33.0", startup_timeout_s: 60}
 resources: {gpus: 1}
 serve:
   runner: pooling

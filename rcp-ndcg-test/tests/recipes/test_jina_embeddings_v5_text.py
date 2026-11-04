@@ -266,7 +266,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "role": "embed",
         },
         "serve": {
-            "patches": ["pooling-full-context"] if variant_id.endswith("-small") else [],
+            "patches": [],
             "chat_template": None,
             "convert": None,
             "dtype": "bfloat16",
@@ -356,11 +356,11 @@ def test_recipe_loads_with_the_product_endpoint_config(variant_id: str) -> None:
     assert recipe.serve.trust_remote_code is True
     assert recipe.serve.chat_template is None  # raw text on /v1/embeddings; see the recipe notes
     assert recipe.serve.hf_overrides == VARIANTS[variant_id]["hf_overrides"]
-    assert recipe.serve.plugin == "rcp-ndcg-vllm" and recipe.serve.pooler_config == {}  # the plugin is the
-    # patch carrier (the small variant's pooling-full-context opt-in), not an architecture plugin
+    assert recipe.serve.plugin == "rcp-ndcg-vllm" and recipe.serve.pooler_config == {}  # the plugin carries
+    # the model, not a patch: the pooling-full-context opt-in is gone (vllm#48039 ships in 0.32+)
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
-    assert recipe.status.state == "verified"
+    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
     # The client block is the product's config: the dump constructs the product model unchanged.
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     endpoint = EmbeddingEndpoint.model_validate(config)
@@ -590,7 +590,7 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
     assert "Stage 1's anchor_check audits last_content" in notes
     assert "does not yet list peft" not in notes
     assert "no separate query cap exists in the referent" in notes
-    assert recipe.engine.min_version == "0.31.0"  # the image verified -- not a measured feature floor
+    assert recipe.engine.min_version == "0.33.0"  # the image pin -- not a measured feature floor
     assert recipe.engine.startup_timeout_s == 1800  # the schema default, not restated in the YAML
     assert "startup_timeout_s" not in (RECIPE_DIR / "family.yaml").read_text(encoding="utf-8")
     assert "first ships in v0.20.0" in notes  # the feature floor, named in the notes

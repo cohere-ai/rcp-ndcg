@@ -297,7 +297,7 @@ def _expected_client(variant_id: str) -> dict[str, Any]:
         "revision": variant["revision"],
         "tokenizer": _tokenizer_spec(variant_id),
         "recipe": (
-            "vLLM v0.31.0 pooling runner; plugin-registered PplxLateMultiVectorModel "
+            "vLLM v0.33.0 pooling runner; plugin-registered PplxLateMultiVectorModel "
             "(ColQwen3_5Model subclass: the 1_Dense head loaded into custom_text_proj., the zero "
             "bias marked loaded; the checkpoint's is_causal false read by vLLM); the role-prefix "
             "frame ([Q] / [D] by name in the template); raw-text wire; the 1024/4096 per-shape "
@@ -347,8 +347,8 @@ def _expected_engine() -> dict[str, Any]:
     """The family's engine block (the image the wave runs)."""
     return {
         "name": "vllm",
-        "image": "vllm/vllm-openai:v0.31.0",
-        "min_version": "0.31.0",
+        "image": "vllm/vllm-openai:v0.33.0",
+        "min_version": "0.33.0",
         "startup_timeout_s": 1800,
         "step_budget_s": None,  # the schema default
     }
@@ -436,7 +436,7 @@ def test_recipe_contract(variant_id: str) -> None:
     _contract(recipe, variant_id)
     assert recipe.engine.model_dump(mode="json") == _expected_engine()
     assert recipe.resources.model_dump(mode="json") == _expected_resources()
-    assert recipe.status.state == "verified"
+    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
     assert recipe.sources
 
 
