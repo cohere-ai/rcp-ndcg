@@ -24,7 +24,7 @@ classifiers = [
 # Anything heavier (torch for the IRT estimators) is an extra so that
 # `pip install rcp-ndcg-core` stays viable on any platform.
 dependencies = [
-  "numpy>=1.26",
+  "numpy>=2.5.4",
   "pydantic>=2.11",
 ]
 
