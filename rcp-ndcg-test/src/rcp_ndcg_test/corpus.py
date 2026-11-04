@@ -424,8 +424,9 @@ def write_corpus_index(corpora_root: str | Path) -> Path:
     a corpus directory and regenerates this file; it is never hand-edited.
 
     Args:
-        corpora_root: The engine-version directory holding the corpus directories (e.g.
-            ``corpora/vllm-0.33.0``); the index is written beside the recipe directories.
+        corpora_root: The engine-version directory holding the corpus directories -- the committed ones
+            are still ``corpora/vllm-0.31.0`` until the re-record renames them to ``corpora/vllm-0.33.0``;
+            the index is written beside the recipe directories.
 
     Returns:
         The written ``index.json``.

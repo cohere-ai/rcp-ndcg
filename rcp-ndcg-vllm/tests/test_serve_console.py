@@ -893,10 +893,11 @@ def test_a_serve_without_patches_clears_an_inherited_opt_in(
 
 
 def test_a_judge_without_context_tokens_floors_the_engine_on_its_output_cap() -> None:
-    """A judge that declares no ``context_tokens`` (qwen3.6-27b: documents are sent whole) still reserves
-    its completion from the engine's context.  vLLM v0.31.0's input budget is
-    ``--max-model-len - max_output_tokens``, so a context at or below the cap admits no prompt at all;
-    the refusal names both numbers, and one token above the cap is the smallest context that serves."""
+    """A judge that declares no ``context_tokens`` (qwen3.6-27b: documents are sent whole) still declares
+    its completion's output upper bound against the engine's context: at vLLM v0.33.0 the input budget is
+    the whole ``--max-model-len`` and the completion is clamped to what is left, so a cap at or above the
+    context leaves no room for a prompt at all; the refusal names both numbers, and one token above the cap
+    is the smallest context that serves."""
     recipe = load_recipe("qwen3.6-27b-fp8")  # client.max_output_tokens 16384, no context_tokens
     with pytest.raises(RecipeError) as excinfo:
         serve_argv(

@@ -7,6 +7,13 @@ result ordering and framing, usage counts and token counting with the recipe's *
 files**); the model outputs are **replayed** for observed inputs and come from a declared
 deterministic surrogate for unseen ones, marked in every reply.
 
+**The committed corpora are still the `vllm-0.31.0` recording.** An emulator registers under the engine
+version its corpus was recorded on, and `rcp-ndcg-test/corpora/vllm-0.31.0/` was recorded on the v0.31.0
+image. Re-recording on the v0.33.0 image is the GPU waves' work: `rcp-ndcg-test/corpora/vllm-0.33.0/` is
+the destination that re-record renames the directory into, and the `fake://vllm-0.33.0/...` host this page
+uses is what the corpora register under once it lands. Until then a `vllm-0.33.0` lookup is refused by
+name -- the version gate below, not a missing feature.
+
 ## Selecting an emulator
 
 A verified engine URL is `fake://<engine>-<version>/<recipe>`, with `?fingerprint=<sha>` when several
@@ -22,7 +29,8 @@ from tests._engines import emulator_for  # the recipe wiring of this repository'
 emulator = emulator_for("qwen3-reranker-0.6b")  # builds the emulator of its corpus and registers it
 assert emulator.verified is not None
 fingerprint = emulator.verified.behaviour_fingerprint
-assert registry.resolve("vllm", "0.33.0", fingerprint, "qwen3-reranker-0.6b") is emulator
+# the committed corpora are the v0.31.0 recording; the re-record registers them under 0.33.0
+assert registry.resolve("vllm", "0.31.0", fingerprint, "qwen3-reranker-0.6b") is emulator
 ```
 
 An emulator records the engine version and recipe revision it was verified against (`Verified`), and the
@@ -190,9 +198,9 @@ records the `changed` and `new` ones), and `diff` writes the behaviour diff of t
 recipe (per input, the score or vector deltas, changed statuses and changed protocol behaviour --
 headers, framing, error bodies -- summarised by route) for review before a new corpus replaces the old.
 
-<!-- snippet: skip (a repository checkout with the corpora) -->
+<!-- snippet: skip (a repository checkout with the corpora; the path is the v0.31.0 recording's until the re-record) -->
 ```bash
 python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
-    --corpora-root rcp-ndcg-test/corpora/vllm-0.33.0
+    --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0  # renamed to vllm-0.33.0 after the re-record
 python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

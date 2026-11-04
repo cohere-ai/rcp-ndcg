@@ -138,10 +138,11 @@ notes: >-
   environment already carried the classes (E2 round 10's direct read: transformers 5.19.0 with
   `transformers/models/embedding_gemma2/`, the registry carrying EmbeddingGemma2Model), which is why
   the fold's source provenance names that nightly and why both probes returned early there; on the
-  0.33 image the fold's status is undecided: the tag's registry carries EmbeddingGemma2Model (so the
-  registration's probe returns early), and whether the image's transformers ships the embedding_gemma2
-  classes -- which decides whether the fold's class install is load-bearing or inert -- is W4's
-  measurement (D2 re-opened). E2 r1 (the first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
+  0.33 image the fold's class install is decided and its deletion is not: the tag's registry carries
+  EmbeddingGemma2Model (so the registration's probe returns early), and the image's transformers is 5.20.2
+  (`reference-image-v0.33.0.versions.txt`), which ships the embedding_gemma2 classes (>= 5.19.0) -- so the
+  fold's class install is inert there. Its deletion waits for the cross-image parity wave (the 0.31 image
+  with the fold active against the 0.33 image with the native model). E2 r1 (the first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
   does not carry the embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's
   embedding_gemma2 model module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`
   installs the plugin wheel and `serve.patches: [embeddinggemma2-transformers-fold]` opts into the patch
@@ -189,13 +190,14 @@ notes: >-
   anything, and the fold stays as the carrier for an engine image that lacks the classes. On the
   0.31 image the two probes did NOT return early: the fold and the registration are what made that image
   serve the checkpoint. On the v0.33.0 pin the registration is inert (the tag's registry carries
-  EmbeddingGemma2Model, so its probe returns early) and the fold's class install is undecided until W4
-  records the image's transformers version.
-  SWITCH TO RELEASE / REMOVAL: undecided (D2 re-opened). The registry half is already satisfied at the
-  v0.33.0 tag (registry.py:259); the class half needs the image's transformers to ship
-  `embedding_gemma2` (>= 5.19.0). W4 records the image's actual transformers version in
-  `reference-image-v0.33.0.versions.txt`; until then neither the fold's removal nor its load-bearing
-  status is claimed here.
+  EmbeddingGemma2Model, so its probe returns early) and the fold's class install is inert too: the image's
+  transformers is 5.20.2 (`reference-image-v0.33.0.versions.txt`), which ships the `embedding_gemma2`
+  classes (>= 5.19.0).
+  SWITCH TO RELEASE / REMOVAL: the deletion is undecided; it needs the cross-image parity wave (the 0.31
+  image with the fold active against the 0.33 image with the native model). The registry half is satisfied
+  at the v0.33.0 tag (registry.py:259) and the class half by the image's transformers 5.20.2; what is
+  undecided is whether the fold may be deleted, and until that wave is green the fold stays and its
+  load-bearing status is not claimed here.
 
   Engine flags (E2 rounds 8-10). The model's heterogeneous head dimensions (sliding 256, full 512)
   leave no default backend on this image, and the backend is the only lever: TRITON_ATTN cannot

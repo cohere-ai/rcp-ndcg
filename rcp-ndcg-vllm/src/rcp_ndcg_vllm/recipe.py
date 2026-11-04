@@ -865,8 +865,8 @@ class Recipe(BaseModel):
         if output_cap is not None and output_cap >= self.serve.max_model_len:
             raise ValueError(
                 f"client.max_output_tokens ({output_cap}) must be below serve.max_model_len "
-                f"({self.serve.max_model_len}): the engine reserves the completion from the context, "
-                "so a context at or below the cap admits no prompt"
+                f"({self.serve.max_model_len}): an output upper bound at or above the context leaves no "
+                "room for a prompt"
             )
         if self.role in ("embed", "multi_vector") and client.get("template") is not None:
             # An embed or multi-vector recipe's client CAN fill an instruction span (its encode takes the task
@@ -1534,10 +1534,11 @@ def _client_budgets(recipe: Recipe) -> dict[str, int]:
 def _output_cap(recipe: Recipe) -> int | None:
     """The judge's completion cap (``client.max_output_tokens``), or ``None`` for a role without one.
 
-    The cap is a floor of its own: the engine reserves the completion out of ``--max-model-len`` (vLLM's
-    input budget before v0.32.0 was ``max_model_len - max_output_tokens``), so a context at or below the cap
-    admits no prompt at all.  A judge that declares no ``context_tokens`` (documents sent whole) would
-    otherwise have no floor here.
+    The cap is a floor of its own: ``max_output_tokens`` is an output upper bound, and one at or above
+    ``--max-model-len`` leaves no room for a prompt at all.  (Before v0.32.0 the engine reserved the
+    completion out of the context -- the input budget was ``max_model_len - max_output_tokens`` -- which is
+    the mechanism older text named.)  A judge that declares no ``context_tokens`` (documents sent whole)
+    would otherwise have no floor here.
     """
     if recipe.role != "judge":
         return None
@@ -1606,8 +1607,8 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
     if output_cap is not None and values["serve.max_model_len"] <= output_cap:
         raise RecipeError(
             f"serve.max_model_len {values['serve.max_model_len']} must exceed the judge's max_output_tokens "
-            f"{output_cap} (client.max_output_tokens): the engine reserves the completion from the context, "
-            "so a context at or below the cap admits no prompt"
+            f"{output_cap} (client.max_output_tokens): an output upper bound at or above the context leaves "
+            "no room for a prompt"
         )
     return values
 

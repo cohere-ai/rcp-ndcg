@@ -1352,8 +1352,10 @@ def _messages_template_check(recipe: Recipe, probe: dict[str, Any], tokenizer: A
     """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
 
     vLLM v0.33.0 renders every chat-shaped ``/embeddings`` request through the served chat template
-    (vllm/entrypoints/pooling/embed/io_processor.py:302-355, with the request's ``add_generation_prompt``,
-    false by default, vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content
+    (the chat-input preprocessing at vllm/entrypoints/pooling/embed/io_processor.py:319-320, which validates
+    the request's own template at :330-333, and the render at vllm/renderers/hf.py:847-914, with the
+    request's ``add_generation_prompt``, false by default,
+    vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content
     only.  So the served template file, rendered with transformers' jinja2 settings over every captured
     conversation (its content parts as the engine hands them to the template, :func:`engine_conversation`)
     and with the flag that request carried, must equal the declared template's render of the same content --

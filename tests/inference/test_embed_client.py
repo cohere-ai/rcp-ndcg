@@ -522,8 +522,9 @@ class TestRequestShapes:
         assert sender.calls[0].json["input"] == [word_tokenizer().ids(text)]
 
     def test_the_messages_route_sends_the_content_and_the_engine_frames_it_once(self, tmp_path: Any) -> None:
-        """H5: vLLM v0.31.0 renders every chat-shaped ``/embeddings`` request through its chat template
-        (vllm/entrypoints/pooling/embed/io_processor.py:302-355), and a media part's placeholder lands where the
+        """H5: vLLM v0.33.0 renders every chat-shaped ``/embeddings`` request through its chat template
+        (the chat-input preprocessing at vllm/entrypoints/pooling/embed/io_processor.py:319-320, the render at
+        vllm/renderers/hf.py:847-914), and a media part's placeholder lands where the
         part sits in the message -- inside the template's user turn. So the client sends each item's CONTENT
         (the prompt and the cut content span, its media parts beside it), never the framed render: framed, the
         engine would frame it a second time. The engine's frame (here the declared template's own head and

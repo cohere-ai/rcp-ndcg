@@ -369,8 +369,8 @@ incompatibly, independently of the package version. All four distributions carry
   pooler config the serve argv renders gains `enable_flash_late_interaction` (the engine's own default, inert
   for every recipe: the late-interaction scores are computed client-side), and every recipe's `sources`
   citations the pin rewrote were checked against the tag (a sweep for the cited identifiers, not a re-read:
-  two defects are recorded for the release's citation check — `gemma-4-12b`'s `gemma4_mm.py` line range
-  carries the old ranges appended after the re-read ones, and a 0.31-era checkout sha `d0d6e5f3a` is
+  two defects were found and fixed by the release's citation check — `gemma-4-12b`'s `gemma4_mm.py` line
+  range carried the old ranges appended after the re-read ones, and a 0.31-era checkout sha `d0d6e5f3a` was
   labelled `v0.33.0` in `zerank` — the other two families cite it as the checkout it is). The engine image is part of the
   behaviour fingerprint, so every recipe's key moved: the pin sets every variant to `status: unverified`, a
   recipe returns to `verified` only from a wave that re-recorded its corpus on the 0.33 image, and the 44 recipe goldens (and their redactions file)
