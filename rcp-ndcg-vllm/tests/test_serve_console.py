@@ -330,48 +330,62 @@ def test_the_largest_budget_is_the_largest_of_the_clients_declared_budgets(tmp_p
     assert "8192" in message and "9000" in message and "document_max_tokens" in message
 
 
-#: vllm-1 decision 6(b): the seven pooling recipes whose largest client budget reaches max_model_len and
-#: that carry no pooling-full-context patch (ctxl-2b, octen x3, qwen3-vl-embedding x2, zerank-2).
+#: vllm-1 decision 6(b): every pooling recipe whose largest client budget reaches ``serve.max_model_len``.
+#: The five families that used to opt out of the floor by carrying the pooling-full-context patch
+#: (harrier-oss-v1 x3, zembed-1, jina-embeddings-v5-text-small, pplx-embed-v1 x2) are in the list: vLLM
+#: v0.32.0 carries vllm-project/vllm#48039 (commit e6fc81bc78) for the pooling runner, the patch is
+#: deleted, and nothing is exempt from the floor.
 POOLING_AT_BUDGET = (
     "ctxl-rerank-v2-instruct-multilingual-2b",
+    "harrier-oss-v1-270m",
+    "harrier-oss-v1-0.6b",
+    "harrier-oss-v1-27b",
+    "jina-embeddings-v5-text-small",
     "octen-embedding-0.6b",
     "octen-embedding-4b",
     "octen-embedding-8b",
+    "pplx-embed-v1-0.6b",
+    "pplx-embed-v1-4b",
     "qwen3-vl-embedding-2b",
     "qwen3-vl-embedding-8b",
     "zerank-2-reranker",
+    "zembed-1-embedding",
 )
 
 
 def test_a_full_budget_pooling_recipe_declares_the_chunk_its_prompt_needs() -> None:
     """vllm-1 decision 6(b): every pooling recipe whose largest client budget reaches
-    ``serve.max_model_len`` and that does not carry the pooling-full-context patch renders
-    ``--max-num-batched-tokens`` at that budget, so the engine's own GPU-dependent default (2048 on A100 and
-    GPUs under 70 GiB) can never chunk an exactly-full prompt -- the v0.31.0 scheduler would never finish
-    its last token."""
+    ``serve.max_model_len`` renders ``--max-num-batched-tokens`` at that budget, so an exactly-full prompt
+    is one prefill step and never the engine's own GPU-dependent default (2048 on A100 and GPUs under
+    70 GiB).  The floor stands on the at-budget declaration alone: vLLM v0.32.0 sets
+    ``num_sampled_tokens_per_step = 0`` for the pooling runner (vllm-project/vllm#48039, commit
+    e6fc81bc78), so the deleted pooling-full-context patch is not what the floor needed."""
     for recipe_id in POOLING_AT_BUDGET:
         recipe = load_recipe(recipe_id)
         argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
-        assert _flag_value(argv, "--max-model-len") == "8192", recipe_id
-        assert _flag_value(argv, "--max-num-batched-tokens") == "8192", recipe_id
+        assert _flag_value(argv, "--max-num-batched-tokens") == _flag_value(argv, "--max-model-len"), recipe_id
 
 
-def test_a_recipe_that_cannot_hang_renders_no_derived_chunk() -> None:
-    """The render-time declaration is exactly the hang condition: a recipe that carries the patch and a
-    recipe whose largest budget stays below ``serve.max_model_len`` keep the engine's own default (no flag)
-    when nothing is set."""
-    for recipe_id in ("harrier-oss-v1-27b", SHIPPED):
-        recipe = load_recipe(recipe_id)
-        argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
-        assert "--max-num-batched-tokens" not in argv, recipe_id
+def test_a_recipe_whose_budget_stays_below_max_model_len_renders_no_derived_chunk() -> None:
+    """The render-time declaration is exactly the at-budget condition: a recipe whose largest budget stays
+    below ``serve.max_model_len`` never sends an at-budget prompt and keeps the engine's own default (no
+    flag) when nothing is set."""
+    recipe = load_recipe(SHIPPED)  # qwen3-reranker-0.6b: largest budget 8192 < serve.max_model_len 10000
+    argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
+    assert "--max-num-batched-tokens" not in argv
 
 
-def test_a_chunk_below_max_model_len_is_warned_about_and_replaced_by_the_safe_value() -> None:
+@pytest.mark.parametrize(
+    ("recipe_id", "floor"),
+    [("octen-embedding-8b", "8192"), ("harrier-oss-v1-27b", "32768")],
+)
+def test_a_chunk_below_max_model_len_is_warned_about_and_replaced_by_the_safe_value(recipe_id: str, floor: str) -> None:
     """Decision 6(b) chose warning over refusal: an explicit chunk below a ``serve.max_model_len`` that an
-    at-budget prompt reaches exactly is warned about -- naming the value asked for, the value rendered and
-    the patch -- and the safe chunk (``max_model_len``) is rendered, because rendering the smaller value
-    would reproduce the hang the decision exists to prevent."""
-    recipe = load_recipe("octen-embedding-8b")  # client.max_tokens 8192 == serve.max_model_len 8192
+    at-budget prompt reaches exactly is warned about -- naming the value asked for and the value rendered --
+    and the safe chunk (``max_model_len``) is rendered, because the smaller value would chunk the at-budget
+    prompt the floor declares whole.  A recipe that used to opt out by carrying the pooling-full-context
+    patch is warned about like every other one."""
+    recipe = load_recipe(recipe_id)  # client.max_tokens == serve.max_model_len on both
     with pytest.warns(UserWarning) as caught:
         argv = serve_argv(
             recipe,
@@ -379,16 +393,15 @@ def test_a_chunk_below_max_model_len_is_warned_about_and_replaced_by_the_safe_va
             served_model_name=recipe.id,
             deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
         )
-    assert _flag_value(argv, "--max-num-batched-tokens") == "8192"
+    assert _flag_value(argv, "--max-num-batched-tokens") == floor
     message = str(caught[0].message)
-    assert "max_num_batched_tokens" in message and "4096" in message and "8192" in message
-    assert "pooling-full-context" in message
+    assert "max_num_batched_tokens" in message and "4096" in message and floor in message
 
 
-def test_a_chunk_at_max_model_len_or_a_patch_carrier_or_a_smaller_budget_is_allowed() -> None:
-    """The rule is exactly the hang: the chunk may equal ``max_model_len``; a recipe that opts into
-    pooling-full-context may chunk; and a recipe whose largest budget is below ``max_model_len`` never sends
-    an at-budget prompt (the documented qwen3-reranker example keeps working)."""
+def test_a_chunk_at_max_model_len_or_a_smaller_budget_is_allowed() -> None:
+    """The rule is exactly the at-budget condition: the chunk may equal ``max_model_len``, and a recipe
+    whose largest budget is below ``max_model_len`` never sends an at-budget prompt (the documented
+    qwen3-reranker example keeps working)."""
     recipe = load_recipe("octen-embedding-8b")
     at_the_edge = serve_argv(
         recipe,
@@ -397,15 +410,6 @@ def test_a_chunk_at_max_model_len_or_a_patch_carrier_or_a_smaller_budget_is_allo
         deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=8192"]),
     )
     assert _flag_value(at_the_edge, "--max-num-batched-tokens") == "8192"
-
-    carrier = load_recipe("harrier-oss-v1-27b")  # patches: [pooling-full-context]
-    patched = serve_argv(
-        carrier,
-        port=8000,
-        served_model_name=carrier.id,
-        deployment=parse_deployment_overrides(["serve.max_num_batched_tokens=4096"]),
-    )
-    assert _flag_value(patched, "--max-num-batched-tokens") == "4096"
 
     below = load_recipe(SHIPPED)  # qwen3-reranker-0.6b: largest budget 8192 < serve.max_model_len 10000
     documented = serve_argv(
@@ -419,10 +423,12 @@ def test_a_chunk_at_max_model_len_or_a_patch_carrier_or_a_smaller_budget_is_allo
 
 def test_the_dry_run_shows_the_engine_environment_a_patched_recipe_needs(capsys: pytest.CaptureFixture[str]) -> None:
     """The argv alone is not the engine command for a patched recipe: the dry run also prints the patch
-    opt-in the console would set, so a copied argv cannot silently run without pooling-full-context."""
-    assert run_console(["serve", "harrier-oss-v1-27b", "--dry-run"]) == 0
+    opt-in the console would set, so a copied argv cannot silently run without the recipe's patches."""
+    assert run_console(["serve", "embeddinggemma-2", "--dry-run"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert "RCP_NDCG_VLLM_PATCHES=pooling-full-context" in lines[3]
+    assert lines[3] == (
+        "engine environment: RCP_NDCG_VLLM_PATCHES=embeddinggemma2-transformers-fold,torch-sdpa-attention"
+    )
     assert lines[0].startswith("vllm serve ")
 
 
@@ -683,15 +689,15 @@ def test_the_plugin_declaration_is_mandatory_and_checked() -> None:
             patches=("not-a-patch",),
         )
     with pytest.raises(ValidationError, match="patch"):
-        ServeConfig(**base, patches=("pooling-full-context",))
+        ServeConfig(**base, patches=("torch-sdpa-attention",))
     declared = ServeConfig(
         **base,
         plugin="rcp-ndcg-vllm",
         plugin_architectures=("PplxContextualModel",),
-        patches=("pooling-full-context",),
+        patches=("torch-sdpa-attention",),
     )
     assert declared.plugin_architectures == ("PplxContextualModel",)
-    assert declared.patches == ("pooling-full-context",)
+    assert declared.patches == ("torch-sdpa-attention",)
 
 
 def test_an_io_processor_plugin_is_config_resolved_not_installed_by_name(tmp_path: Path) -> None:
@@ -849,7 +855,7 @@ def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
         tmp_path,
         family="patched",
         serve_extra=(
-            "  plugin: rcp-ndcg-vllm\n  plugin_architectures: [PplxContextualModel]\n  patches: [pooling-full-context]"
+            "  plugin: rcp-ndcg-vllm\n  plugin_architectures: [PplxContextualModel]\n  patches: [torch-sdpa-attention]"
         ),
     )
     monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")
@@ -861,7 +867,7 @@ def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
     monkeypatch.setattr(serve_module.os, "execvp", _exec)
     with pytest.raises(SystemExit):
         serve_module.run_console(["serve", str(directory)])
-    assert os.environ[PATCHES_ENV] == "pooling-full-context"
+    assert os.environ[PATCHES_ENV] == "torch-sdpa-attention"
 
 
 def test_a_serve_without_patches_clears_an_inherited_opt_in(
@@ -875,7 +881,7 @@ def test_a_serve_without_patches_clears_an_inherited_opt_in(
     from rcp_ndcg_vllm.patches import PATCHES_ENV
 
     monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")
-    monkeypatch.setenv(PATCHES_ENV, "pooling-full-context")
+    monkeypatch.setenv(PATCHES_ENV, "torch-sdpa-attention")
 
     def _exec(*_args: object) -> None:
         raise SystemExit(0)

@@ -85,7 +85,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 
 from .errors import RecipeError
 from .models import ARCHITECTURE_MODULES
-from .patches import PATCH_NAMES, pooling_full_context
+from .patches import PATCH_NAMES
 
 __all__ = [
     "FIELD_ROLES",
@@ -643,12 +643,12 @@ class FieldSpec:
 
 FIELD_ROLES: Mapping[str, FieldSpec] = {
     # The deployment fields, in argv order. Each is a resource, scheduling or address knob of the engine: it
-    # cannot change what the model returns, so an operator may set it at serve time. One of them can change
-    # whether a request finishes at all: _deployment_values renders serve.max_num_batched_tokens at
-    # serve.max_model_len when the client's largest budget reaches it exactly on a pooling recipe that does
-    # not carry the pooling-full-context patch (an exactly-full prompt would otherwise be chunked, and the
-    # v0.31.0 scheduler would never schedule its last token -- the request hangs; the values it would return
-    # are the same). An explicit value below that floor is warned about and replaced by the safe one.
+    # cannot change what the model returns, so an operator may set it at serve time. One of them declares the
+    # deployment's shape: _deployment_values renders serve.max_num_batched_tokens at serve.max_model_len when
+    # the client's largest budget reaches it exactly on a pooling recipe, so an at-budget prompt is one
+    # prefill step instead of the engine's GPU-dependent default chunk (the values it would return are the
+    # same; the v0.31.0 liveness bug that first motivated the floor is fixed upstream from vLLM v0.32.0).
+    # An explicit value below that floor is warned about and replaced by the safe one.
     "serve.host": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--host", str, position="head", default="0.0.0.0"),
     "serve.port": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--port", int, low=0, high=65535, position="head"),
     "resources.gpus": FieldSpec(RecipeFieldRole.DEPLOYMENT, "--tensor-parallel-size", int, low=1, position="head"),
@@ -1546,11 +1546,13 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
     """The effective deployment values: the recipe's own, the run's ``port``, the declared defaults, the overrides.
 
     One value is not merely passed through: a pooling recipe whose client's largest budget reaches
-    ``serve.max_model_len`` exactly and that does not carry the pooling-full-context patch gets
-    ``serve.max_num_batched_tokens`` rendered at ``serve.max_model_len`` when nothing sets it (vllm-1
-    decision 6(b)), so the engine's own GPU-dependent default (2048 on A100 and GPUs under 70 GiB) can never
-    chunk an exactly-full prompt into the v0.31.0 scheduler's never-finished last token.  An explicit value
-    below that floor is warned about (:class:`RecipeWarning`) and the safe value is rendered instead.
+    ``serve.max_model_len`` exactly gets ``serve.max_num_batched_tokens`` rendered at ``serve.max_model_len``
+    when nothing sets it (vllm-1 decision 6(b)), so the engine's own GPU-dependent default (2048 on A100 and
+    GPUs under 70 GiB) can never split a request the client is allowed to send whole -- the at-budget prompt
+    is one prefill step.  vLLM v0.32.0 stores ``num_sampled_tokens_per_step = 0`` for the pooling runner
+    (vllm-project/vllm#48039, commit ``e6fc81bc78``), so the floor is the declared deployment shape, not a
+    workaround for the v0.31.0 scheduler's never-finished last token.  An explicit value below that floor is
+    warned about (:class:`RecipeWarning`) and the safe value is rendered instead.
 
     Raises:
         RecipeError: a value that is not a DEPLOYMENT field or does not fit it, no port to serve on, or a
@@ -1580,25 +1582,19 @@ def _deployment_values(recipe: Recipe, *, port: int | None, deployment: Mapping[
                 f"{budgets[largest]} (client.{largest}): the engine would reject admissible prompts"
             )
         chunk = values["serve.max_num_batched_tokens"]
-        if (
-            values["serve.max_model_len"] == budgets[largest]
-            and recipe.serve.runner == "pooling"
-            and pooling_full_context.PATCH_NAME not in recipe.serve.patches
-        ):
+        if values["serve.max_model_len"] == budgets[largest] and recipe.serve.runner == "pooling":
             floor = values["serve.max_model_len"]
             if chunk is None:
                 # vllm-1 decision 6(b): the render-time declaration.  Nothing set the chunk, so the engine
                 # would use its own GPU-dependent default -- 2048 on A100 and GPUs under 70 GiB, below this
-                # recipe's budget -- and an exactly-full prompt would hang.  Render the floor instead.
+                # recipe's budget -- and an at-budget prompt would be split.  Render the floor instead.
                 values["serve.max_num_batched_tokens"] = floor
             elif chunk < floor:
                 warnings.warn(
                     f"serve.max_num_batched_tokens {chunk} is below serve.max_model_len {floor}, which the "
                     f"client's largest token budget ({budgets[largest]}) reaches exactly: the engine would "
-                    f"chunk an at-budget prompt, and the v0.31.0 scheduler would never finish its last token "
-                    f"(the hang {pooling_full_context.PATCH_NAME!r} fixes). Rendering "
-                    f"serve.max_num_batched_tokens={floor} instead; pass a value at least that high, or a "
-                    "recipe that carries the patch",
+                    "chunk an at-budget prompt the recipe declares whole. Rendering "
+                    f"serve.max_num_batched_tokens={floor} instead; pass a value at least that high",
                     RecipeWarning,
                     stacklevel=2,
                 )
@@ -2137,10 +2133,10 @@ def serve_argv(
     nothing: the first two name pip packages installed before the engine starts, the third declares which
     plugin architectures the fingerprint keys, and the last is rendered into the engine's environment by the
     ``rcp-ndcg-vllm serve`` console.  A pooling recipe whose client's largest budget reaches
-    ``serve.max_model_len`` exactly and that carries no pooling-full-context patch renders
-    ``--max-num-batched-tokens`` at that budget when nothing sets one (vllm-1 decision 6(b): the engine's own
-    GPU-dependent default could chunk an at-budget prompt and hang it); an explicit smaller value is warned
-    about and replaced by that safe value.  Raises :class:`RecipeError` when the recipe sets
+    ``serve.max_model_len`` exactly renders ``--max-num-batched-tokens`` at that budget when nothing sets one
+    (vllm-1 decision 6(b): the engine's own GPU-dependent default would chunk an at-budget prompt the
+    recipe declares whole); an explicit smaller value is warned about and replaced by that safe value.
+    Raises :class:`RecipeError` when the recipe sets
     ``serve.chat_template`` but was not loaded from a directory (the template's absolute path is needed), when
     a deployment value is not a DEPLOYMENT field or does not fit it, when no port is resolvable, or when
     ``serve.max_model_len`` falls below the client's largest token budget.

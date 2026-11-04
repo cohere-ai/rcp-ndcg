@@ -44,11 +44,11 @@ serve:
   # config.json max_position_embeddings; must stay >= client.max_tokens (they are equal).
   max_model_len: 32768
   dtype: bfloat16
-  plugin: rcp-ndcg-vllm  # the family's patch-carrier wheel: the node installs it for the family and its
-                        # vllm.general_plugins entry point applies the patches a variant opts into. The
-                        # -small declares `patches: [pooling-full-context]`; the -nano declares none, so it
-                        # carries the wheel with no patch applied (inert: the entry point registers only
-                        # the package's own model classes and the named patches)
+  plugin: rcp-ndcg-vllm  # the plugin wheel: the node installs it for the family and its
+                        # vllm.general_plugins entry point registers the package's own model classes and
+                        # applies the patches a variant opts into. Neither variant declares a patch now:
+                        # the -small's pooling-full-context opt-in was deleted with the patch (vLLM
+                        # v0.32.0 carries vllm-project/vllm#48039) and the -nano never had one.
   extra_args: []
 client:
 #   recipe: "vllm v0.31.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults (mask-based last token + PoolerNormalize); raw text on /v1/embeddings"
@@ -184,10 +184,12 @@ notes: >-
   present in v0.20.0 - both tags measured; jina.py is byte-identical at the v0.31.0
   tag); engine.min_version declares the known-good image line (v0.31.0, the family's one
   rule). The -small's client budget EQUALS serve.max_model_len (32768), so a full-budget request
-  is exactly the prompt the v0.31.0 pooling scheduler never finishes (GPU-E1: 32768 hangs,
-  32767 returns); the -small declares `serve.patches: [pooling-full-context]` (the upstream fix,
-  carried by the rcp-ndcg-vllm plugin wheel), and the -nano (a bidirectional encoder, chunked
-  prefill off) declares none.
+  is exactly the prompt the v0.31.0 pooling scheduler never finished (GPU-E1: 32768 hangs,
+  32767 returns); vllm-project/vllm#48039 (commit e6fc81bc78, first released in vLLM v0.32.0) fixes
+  it in the scheduler, so the -small's `serve.patches: [pooling-full-context]` opt-in is deleted and
+  the render declares the at-budget prompt one prefill step (serve.max_num_batched_tokens is rendered at
+  serve.max_model_len when nothing sets it). The -nano (a bidirectional encoder, chunked prefill
+  off) declares no patch either.
   empty_doc: send - the reference path embeds an empty document as its bare prefix, so
   omit_zero would diverge from the card path. dtype bfloat16 is the checkpoint's
   torch_dtype (config.json:30); the vendor's merged-repo example uses float16 - the GPU
@@ -290,12 +292,14 @@ variants:
     revision: "dd76d535f5447ca3897a9c893fb1e612ead98192"
     overrides:
       serve:
-        # The -small is a Qwen3 decoder: chunked prefill is supported, and client.max_tokens EQUALS
-        # serve.max_model_len (32768), so a full-budget request is exactly the prompt the v0.31.0
-        # scheduler never finishes (GPU-E1: 32768 hangs, 32767 returns). The pooling-full-context
-        # patch is the upstream fix; the -nano is a bidirectional encoder (chunked prefill off), so
-        # it declares no patch.
-        patches: [pooling-full-context]
+        # No engine patch: the -small is a Qwen3 decoder whose client.max_tokens EQUALS
+        # serve.max_model_len (32768), and the v0.31.0 scheduler's at-budget pooling hang (GPU-E1:
+        # 32768 hangs, 32767 returns) is fixed upstream by vllm-project/vllm#48039 (commit
+        # e6fc81bc78, first released in vLLM v0.32.0). The backport patch the -small used to declare
+        # is deleted; the at-budget prompt stays one prefill step (serve.max_num_batched_tokens is
+        # rendered at serve.max_model_len when nothing sets it). The -nano is a bidirectional encoder
+        # (chunked prefill off) and declares no patch either.
+        patches: []
       client:
         # The card's Matryoshka Dimensions 32, 64, 128, 256, 512, 768, 1024; equal to the family's
         # serve-side matryoshka_dimensions list.

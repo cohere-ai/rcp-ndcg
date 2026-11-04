@@ -1503,7 +1503,7 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
         recipe_yaml.read_text(encoding="utf-8").replace(
             "  plugin: null\n",
             "  plugin: rcp-ndcg-vllm\n  plugin_architectures: [PplxContextualModel]\n"
-            "  patches: [pooling-full-context]\n",
+            "  patches: [torch-sdpa-attention]\n",
         ),
         encoding="utf-8",
     )
@@ -1522,8 +1522,8 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     monkeypatch.setattr(run_wave_module.subprocess, "Popen", _Popen)
     monkeypatch.setenv(PATCHES_ENV, "some-other-patch")
     run = run_wave_module._start(recipe, [0], 0, tmp_path / "out", None, 0, wave=wave)
-    assert run.env[PATCHES_ENV] == "pooling-full-context"
-    assert started and started[0]["env"][PATCHES_ENV] == "pooling-full-context"  # type: ignore[index]
+    assert run.env[PATCHES_ENV] == "torch-sdpa-attention"
+    assert started and started[0]["env"][PATCHES_ENV] == "torch-sdpa-attention"  # type: ignore[index]
     # The fake engine went into the wave's live-engine registry; leave the process-global registry as
     # this test found it, or a later wave's final sweep stops the fake (whose Popen has no pid).
     run_wave_module._LIVE_ENGINES.discard(run)

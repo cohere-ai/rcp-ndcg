@@ -66,12 +66,13 @@ serve:
   mm_processor_kwargs: {}
   limit_mm_per_prompt: null
   extra_args: []
-  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
-  # serve.max_model_len (32768) on both variants, so a full-budget request is exactly the
-  # prompt the v0.31.0 scheduler never finishes (32768 hangs, 32767 returns). The
-  # pooling-full-context patch is the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78);
-  # delete it when engine.image moves to the first release that carries the commit.
-  patches: [pooling-full-context]
+  # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hangs, 32767 returns at
+  # v0.31.0) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
+  # vLLM v0.32.0, which stores num_sampled_tokens_per_step = 0 for the pooling runner; the backport
+  # patch this family used to declare is deleted. The at-budget prompt stays one prefill step:
+  # serve.max_num_batched_tokens renders at serve.max_model_len when nothing sets it, so an exactly-full
+  # prompt is one prefill step.
+  patches: []
 client:
   api: openai_embeddings
   request_shape: text  # raw rendered strings to /v1/embeddings; the card's usage embeds
@@ -220,9 +221,11 @@ notes: |
   tokenizer's 131072 is above the model's range and is not a budget). Any pooling prompt
   of exactly max_model_len tokens that is chunked never completes on vLLM v0.31.0
   (GPU-E1: 32768 hangs, 32767 returns); the jina recipe's wave verified with
-  --max-num-batched-tokens 32768. The declared `serve.patches: [pooling-full-context]` is the remedy
-  (the upstream fix, exported into the engine process by the serve path); this family's two variants need it
-  (a request that fills the whole budget is exactly the hanging input).
+  --max-num-batched-tokens 32768. vllm-project/vllm#48039 (commit e6fc81bc78, first released in vLLM
+  v0.32.0) fixes it in the scheduler (num_sampled_tokens_per_step = 0 for the pooling runner), so the
+  `serve.patches: [pooling-full-context]` opt-in this family used to declare is deleted: both variants
+  keep the at-budget prompt whole through the render-time declaration (serve.max_num_batched_tokens is
+  rendered at serve.max_model_len when nothing sets it), which is what the jina wave measured by hand.
 
   The 32-bit check at max_model_len (GPU-E1's second lesson: attention q bytes and MLP
   activation elements below 2^31 for one forward): at 32768 tokens, 0.6B q bytes =
@@ -247,8 +250,10 @@ notes: |
   - T2 stage 2: served vs reference vector cosine per text (the bf16 cast is the declared
     deviation; the bidirectional ENCODER_ONLY attention is the serving contract), and the
     /tokenize equality on prompts over 32768 tokens.
-  - The exactly-max_model_len hang: the declared `serve.patches: [pooling-full-context]` carries the
-    upstream fix into the engine process; the wave records that the full-budget request completes.
+  - The exactly-max_model_len hang: the render declares serve.max_num_batched_tokens at
+    serve.max_model_len when nothing sets it, and vLLM v0.32.0 carries the upstream fix
+    (vllm-project/vllm#48039, commit e6fc81bc78) in the scheduler; the wave records that the
+    full-budget request completes.
   - The empty document: the client's omit_zero never sends it (the pairs generator
     records the empty-content stratum absent); a served empty prompt would be a NaN --
     assert the policy, never send one.

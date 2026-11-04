@@ -22,15 +22,15 @@ serve:
   trust_remote_code: false
   max_model_len: 32768
   dtype: bfloat16
-  plugin: rcp-ndcg-vllm  # the patch carrier: the pooling-full-context patch is applied by this
-                        # wheel's vllm.general_plugins entry point
+  plugin: rcp-ndcg-vllm  # the wheel that carries the engine-side patches; this recipe declares none (below)
   extra_args: []
-  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
-  # serve.max_model_len (32768), so a full-budget request is exactly the prompt the v0.31.0
-  # scheduler never finishes (32768 hangs, 32767 returns). The pooling-full-context patch is
-  # the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78); delete it when
-  # engine.image moves to the first release that carries the commit.
-  patches: [pooling-full-context]
+  # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hangs, 32767 returns at
+  # v0.31.0) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
+  # vLLM v0.32.0, which stores num_sampled_tokens_per_step = 0 for the pooling runner; the backport
+  # patch this recipe used to declare is deleted. The at-budget prompt stays one prefill step:
+  # serve.max_num_batched_tokens renders at serve.max_model_len when nothing sets it, so an exactly-full
+  # prompt is one prefill step.
+  patches: []
 client:
 #   recipe: "vllm v0.31.0: --runner pooling --convert embed; the pooler resolves from the checkpoint's modules.json (last-token + normalize); the checkpoint's remote tokenize appends the trailing marker the template declares"
   api: openai_embeddings
@@ -101,7 +101,7 @@ sources:
 notes: |
   Serving: vllm serve zeroentropy/zembed-1-embedding --runner pooling --convert embed
   --max-model-len 32768, on the stock vllm/vllm-openai:v0.31.0 image with the rcp-ndcg-vllm plugin
-  wheel (the pooling-full-context patch; no custom image).
+  wheel (no engine patch: vllm-project/vllm#48039 is upstream from vLLM v0.32.0; no custom image).
   1. Runner/convert are explicit for robustness: at v0.31.0 a bare serve already resolves this
      checkpoint to pooling + embed, because the sentence-transformers modules.json wins over the
      generative Qwen3ForCausalLM architecture and convert falls through to embed for a pooling
@@ -161,7 +161,8 @@ notes: |
      suffix (min cosine 0.081024 over the same 68 vectors), while under the pinned 5.3.x line the
      same comparison is min 0.999203; the direct transformers path and the card's encode_query
      agree with the recorded engine vector at 0.999884-0.999890. The served path is correct, the
-     recipe now opts into the pooling-full-context patch for the hang, and E2 re-measured stage 2
+     recipe opted into the pooling-full-context patch for the hang at the time (deleted now that
+     vLLM v0.32.0 carries vllm-project/vllm#48039), and E2 re-measured stage 2
      under the pinned reference environment (rc0-202610140620, plugin-carriers: min cosine
      0.9992174, PASS).
 variants:

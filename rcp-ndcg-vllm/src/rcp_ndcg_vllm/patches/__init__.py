@@ -7,7 +7,7 @@ patch imports the vLLM surface it wraps inside its own ``apply``, so importing t
 
 The opt-in contract: the recipe's declared patch names (``serve.patches``, validated against
 :data:`PATCH_NAMES`) are rendered into the engine process's value of :data:`PATCHES_ENV` by
-``rcp-ndcg-vllm serve``, comma-separated, e.g. ``RCP_NDCG_VLLM_PATCHES=pooling-full-context``. A name
+``rcp-ndcg-vllm serve``, comma-separated, e.g. ``RCP_NDCG_VLLM_PATCHES=torch-sdpa-attention``. A name
 outside that set is ignored with a warning. The engine's environment is recorded in the corpus provenance,
 so the value the engine actually ran with is visible beside the fingerprint that keys it.
 """
@@ -27,7 +27,7 @@ import logging
 import os
 from collections.abc import Iterable, Mapping
 
-from . import embeddinggemma2_fold, pooling_full_context, torch_sdpa_attention
+from . import embeddinggemma2_fold, torch_sdpa_attention
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,6 @@ PATCHES_ENV = "RCP_NDCG_VLLM_PATCHES"
 #: (``plugin_sha256.<module>``), so a patch fix moves the fingerprint of exactly the recipes that opt in.
 PATCH_MODULES: dict[str, str] = {
     embeddinggemma2_fold.PATCH_NAME: "rcp_ndcg_vllm.patches.embeddinggemma2_fold",
-    pooling_full_context.PATCH_NAME: "rcp_ndcg_vllm.patches.pooling_full_context",
     torch_sdpa_attention.PATCH_NAME: "rcp_ndcg_vllm.patches.torch_sdpa_attention",
 }
 
@@ -75,16 +74,11 @@ def opted_in_patch_names(environ: Mapping[str, str] | None = None) -> tuple[str,
     return tuple(dict.fromkeys(name.strip() for name in raw.split(",") if name.strip()))
 
 
-def apply_opted_in_patches(
-    *, environ: Mapping[str, str] | None = None, scheduler_cls: type | None = None
-) -> tuple[str, ...]:
+def apply_opted_in_patches(*, environ: Mapping[str, str] | None = None) -> tuple[str, ...]:
     """Apply every opted-in engine patch, in this package's order.
 
     Args:
         environ: The mapping to read the opt-in from (default :data:`os.environ`).
-        scheduler_cls: The scheduler class to wrap; vLLM's own
-            (``vllm.v1.core.sched.scheduler.Scheduler``) is imported when omitted. A seam for the CPU
-            tests, which run without vLLM.
 
     Returns:
         The opted-in patch names that this package knows (empty when none were named). An unknown name is
@@ -95,8 +89,6 @@ def apply_opted_in_patches(
     unknown = [name for name in names if name not in PATCH_NAMES]
     if unknown:
         logger.warning("ignoring unknown %s names: %s", PATCHES_ENV, ", ".join(unknown))
-    if pooling_full_context.PATCH_NAME in names:
-        pooling_full_context.apply(scheduler_cls=scheduler_cls)
     if embeddinggemma2_fold.PATCH_NAME in names:
         embeddinggemma2_fold.apply()
     if torch_sdpa_attention.PATCH_NAME in names:

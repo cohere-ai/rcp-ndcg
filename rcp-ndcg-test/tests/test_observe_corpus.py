@@ -82,12 +82,12 @@ def test_the_engine_facts_record_the_patch_opt_in() -> None:
         image="registry.example.com/stub-engine:test",
         serve_argv=["stub_engine.py"],
         engine_python=None,
-        environ={PATCHES_ENV: "pooling-full-context", "VLLM_LOGGING_LEVEL": "INFO", "VLLM_API_KEY_SECRET": "x"},
+        environ={PATCHES_ENV: "torch-sdpa-attention", "VLLM_LOGGING_LEVEL": "INFO", "VLLM_API_KEY_SECRET": "x"},
         started=None,
         ready_wait_s=None,
         runner=_no_gpu_runner,
     )
-    assert facts["env"][PATCHES_ENV] == "pooling-full-context"
+    assert facts["env"][PATCHES_ENV] == "torch-sdpa-attention"
     assert "VLLM_API_KEY_SECRET" not in facts["env"]  # the secret filter still applies
 
 

@@ -52,15 +52,15 @@ serve:
     # served -- the 32-bit arithmetic is in the notes. Given explicitly so a tokenizer change cannot
     # silently raise it.
   dtype: bfloat16 # config.json dtype (bfloat16) on all three; gemma3_text refuses float16 at the tag
-  plugin: rcp-ndcg-vllm # the patch carrier: the pooling-full-context patch is applied by this wheel's
-                        # vllm.general_plugins entry point
+  plugin: rcp-ndcg-vllm # the wheel that carries the engine-side patches; this family declares none (below)
   extra_args: []
-  # The pooling hang at exactly max_model_len (GPU-E1): client.max_tokens EQUALS
-  # serve.max_model_len (32768) on all three variants, so a full-budget request is exactly the
-  # prompt the v0.31.0 scheduler never finishes (32768 hangs, 32767 returns). The
-  # pooling-full-context patch is the upstream fix (vllm-project/vllm#48039, commit e6fc81bc78);
-  # delete it when engine.image moves to the first release that carries the commit.
-  patches: [pooling-full-context]
+  # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hangs, 32767 returns at
+  # v0.31.0) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in
+  # vLLM v0.32.0, which stores num_sampled_tokens_per_step = 0 for the pooling runner; the backport
+  # patch this family used to declare is deleted. The at-budget prompt stays one prefill step:
+  # serve.max_num_batched_tokens renders at serve.max_model_len when nothing sets it, so an exactly-full
+  # prompt is one prefill step.
+  patches: []
 client:
 #   recipe: "vllm v0.31.0: --runner pooling (convert auto -> embed); the pooler resolves from the checkpoints' sentence-transformers metadata (last-token + L2 normalize); bare strings on /v1/embeddings with the post-processor anchor appended (the Gemma variants' eos id 1, the 0.6b's endoftext id 151643)"
   api: openai_embeddings
@@ -199,13 +199,16 @@ notes: >
   131072 x 21504 (intermediate_size) = 2.82e9 elements, over 2^31 (2,147,483,648), the fault class
   that killed pplx-embed-v2-context-9b-preview at 262144 (GPU-E1); at the card's own 32768 the same
   product is 32768 x 21504 = 7.0e8 elements, well under. Pooling hang: on v0.31.0 a pooling prompt of
-  exactly max_model_len tokens can stick under the default chunked prefill (max_num_batched_tokens
-  16384 on the >=160 GB GPUs; GPU-E1; fixed upstream in vllm#48039). ALL THREE VARIANTS NEED THE
-  OPT-IN: client.max_tokens == serve.max_model_len == 32768, so the client's over-cap cut lands exactly
-  on the documented trigger, and no flag workaround ships (a --max-num-batched-tokens raise would
-  re-open the 32-bit arithmetic the 27b's budget exists to avoid, and the flag is not the recipe's
-  contract). The family declares `serve.patches: [pooling-full-context]`, so the serve path exports the
-  opt-in and the engine applies the upstream fix; the wave monitors the
+  exactly max_model_len tokens could stick under the default chunked prefill (max_num_batched_tokens
+  16384 on the >=160 GB GPUs; GPU-E1). vllm-project/vllm#48039 (commit e6fc81bc78, first released in
+  vLLM v0.32.0) fixes it in the scheduler itself (num_sampled_tokens_per_step = 0 for the pooling
+  runner), so the backport patch this family used to declare is deleted and the family declares no
+  patch. All three variants still reach their budget exactly: client.max_tokens == serve.max_model_len
+  == 32768, so the client's over-cap cut lands on the documented trigger and the render declares the
+  at-budget prompt one prefill step (the renderer declares `serve.max_num_batched_tokens` at
+  `serve.max_model_len` when nothing sets it); no flag workaround ships (a per-variant
+  --max-num-batched-tokens raise
+  would re-open the 32-bit arithmetic the 27b's budget exists to avoid). The wave monitors the
   at-budget ladder. The engine image's transformers pin at the tag is >=5.10.4,<5.18.0
   (requirements/common.txt); the tokenizer files are pinned by revision and the stage-1 zero-tolerance
   token-id check on the GPU host is the designed catch for library drift. No media processor settings

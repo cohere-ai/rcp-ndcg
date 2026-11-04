@@ -401,7 +401,7 @@ def test_editing_one_plugin_module_moves_exactly_the_recipes_that_use_it(
     contextual = _plugin_recipe(tmp_path, "plugin-contextual", "PplxContextualModel")
     late = _plugin_recipe(tmp_path, "plugin-late", "Qwen3_5Model")
     topk = _plugin_recipe(tmp_path, "plugin-topk", "TopkEmbedModel")
-    patched = _plugin_recipe(tmp_path, "plugin-patched", "PplxContextualModel", patches=("pooling-full-context",))
+    patched = _plugin_recipe(tmp_path, "plugin-patched", "PplxContextualModel", patches=("torch-sdpa-attention",))
     plain = _load()
     recipes = {recipe.id: recipe for recipe in (contextual, late, topk, patched, plain)}
     real = fingerprint._module_sha256
@@ -425,7 +425,7 @@ def test_editing_one_plugin_module_moves_exactly_the_recipes_that_use_it(
         "plugin-topk",
         "plugin-patched",
     }, "the config registrations run in every plugin engine"
-    assert moved("rcp_ndcg_vllm.patches.pooling_full_context") == {"plugin-patched"}
+    assert moved("rcp_ndcg_vllm.patches.torch_sdpa_attention") == {"plugin-patched"}
     assert moved("rcp_ndcg_vllm.models.pplx.model") == {"plugin-contextual", "plugin-patched"}
 
 
