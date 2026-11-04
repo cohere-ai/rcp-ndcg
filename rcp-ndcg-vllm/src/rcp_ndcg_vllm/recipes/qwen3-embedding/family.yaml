@@ -118,7 +118,7 @@ sources:
   - "vllm tag v0.33.0 vllm/renderers/inputs/preprocess.py:28-56 and vllm/entrypoints/pooling/base/io_processor.py:126-160 (no chat template is applied to string inputs)"
   - "vllm tag v0.33.0 vllm/entrypoints/pooling/embed/protocol.py:35-45 and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (dimensions: MRL cut before L2)"
   - "vllm tag v0.33.0 vllm/entrypoints/pooling/base/protocol.py:325-340 (embed_dtype affects base64/bytes only; encoding_format float is float32)"
-  - "vllm tag v0.33.0 docs/models/pooling_models/embed.md:53,99 (Qwen3ForCausalLM converted embed; the 0.6B example)"
+  - "vllm tag v0.33.0 docs/models/pooling_models/embed.md:54,100 (Qwen3ForCausalLM converted embed; the 0.6B example)"
   - "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "sglang docs/docs/supported-models/embedding_models.mdx:91-97 and python/sglang/srt/models/qwen3_embedding.py:41-43 (the SGLang alternative: --is-embedding, native LAST + normalize -- a different engine, never mixed into this vLLM recipe)"
   - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-embedding/reference.in (the reference environment: torch, transformers>=4.51 for embed mode; render mode needs only tokenizers + huggingface_hub)"

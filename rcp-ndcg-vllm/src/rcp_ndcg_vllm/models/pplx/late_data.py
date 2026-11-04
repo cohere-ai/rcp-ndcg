@@ -19,7 +19,7 @@ and one head file:
   [128, 1024] at 0.6b, [128, 4096] at 9b; neither revision ships a bias) -- a SEPARATE
   file the stock vLLM weight discovery never reads: ``DefaultModelLoader._prepare_weights``
   globs ``hf_folder/*.safetensors`` non-recursively (vllm/model_executor/
-  model_loader/default_loader.py:221 at v0.33.0), so the head must be loaded by the
+  model_loader/default_loader.py:230 at v0.33.0), so the head must be loaded by the
   plugin itself and renamed onto the projector module ``custom_text_proj`` that the
   inherited ``ColQwen3_5Model`` exposes to its token-embed pooler
   (vllm/model_executor/models/colqwen3_5.py:177-187).

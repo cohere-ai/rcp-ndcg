@@ -33,7 +33,7 @@ either checkpoint's head contract:
   sentence-transformers module file, ``1_Dense/model.safetensors`` (one
   tensor, ``linear.weight`` -- [128, 1024] at 0.6b, [128, 4096] at 9b, fp32).
   The stock loader's discovery globs ``*.safetensors`` in the snapshot root
-  non-recursively (default_loader.py:221 at v0.33.0), so the head never enters
+  non-recursively (default_loader.py:230 at v0.33.0), so the head never enters
   the weight iterator; this class fetches that file itself -- from the
   checkpoint directory when serving a local path, else from the same Hub
   snapshot the engine already downloaded (vLLM's own
