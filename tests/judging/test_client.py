@@ -383,6 +383,29 @@ class TestProbe:
         _ask(client)
         assert client.engines[0].system_fingerprint == "vllm-0.30.0-tp4-abcdef12"
 
+    def test_a_request_the_served_context_would_clamp_is_refused(self, word_tokenizer_file: Path) -> None:
+        """The engine clamps the completion to ``max_model_len - prompt``: a request whose prompt leaves less
+        than the declared cap comes back truncated and the judgement is recorded cut, so it is refused before
+        the wire.  The band's constants are the probe's report and the config's own cap; outside it, it passes."""
+
+        def serve(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"object": "list", "data": [{"id": "m", "max_model_len": 20}]})
+            return httpx.Response(200, json=_answer())
+
+        config = JudgeConfig(
+            base_url="http://judge.test/v1",
+            model="m",
+            max_retries=0,
+            tokenizer=str(word_tokenizer_file),
+            max_output_tokens=8,
+        )
+        client = JudgeClient(config, httpx_transport=httpx.MockTransport(serve))
+        asyncio.run(client.probe())
+        with pytest.raises(CapabilityError, match="clamp"):
+            _ask(client, CompletionInput(user_prompt=" ".join(["w"] * 15)))
+        _ask(client, CompletionInput(user_prompt=" ".join(["w"] * 5)))
+
     def test_a_completion_records_its_fingerprint_even_where_the_probe_found_nothing(self) -> None:
         def serve(request: httpx.Request) -> httpx.Response:
             if request.url.path == "/v1/models":

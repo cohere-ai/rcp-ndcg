@@ -42,9 +42,10 @@ from rcp_ndcg_core.schemas import Decoding
 
 from rcp_ndcg.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
 from rcp_ndcg.data.text_budget import TextBudget
-from rcp_ndcg.data.tokenizer import TextTokenizer
+from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp_ndcg.errors import (
     BackendUnavailableError,
+    CapabilityError,
     CredentialsError,
     RequestRejectedError,
 )
@@ -523,12 +524,42 @@ class JudgeClient(RoleClient[JudgeConfig]):
     # The call
     # ------------------------------------------------------------------
 
+    def _refuse_a_clamped_completion(self, request: CompletionInput) -> None:
+        """Refuse a request the served context would silently clamp.
+
+        At the pinned engine the completion is clamped to ``max_model_len - prompt`` (``get_max_tokens`` in
+        ``vllm/entrypoints/serve/utils/api_utils.py``), so a prompt that leaves fewer than the declared
+        ``max_output_tokens`` comes back truncated and the judgement is recorded cut.  The served context is
+        the probe's report (``EngineInfo.max_model_len``); with no probe report, no tokenizer to count the
+        prompt, or no declared cap, nothing is checked.  The text count is a lower bound: the media tokens the
+        engine's processor adds are the pass's media charge, not counted here.
+
+        Raises:
+            CapabilityError: the prompt plus the completion cap exceeds the served context.
+        """
+        cap = self._config.max_output_tokens
+        if cap is None or self._config.tokenizer is None:
+            return
+        served = [info.max_model_len for info in self.engines if info.max_model_len is not None]
+        if not served:
+            return
+        context = min(served)
+        prompt = load_tokenizer(self._config.tokenizer).count(request.user_prompt)
+        if prompt + cap > context:
+            raise CapabilityError(
+                f"the request's prompt is {prompt:,} tokens and its completion cap {cap:,}, but the served "
+                f"context is {context:,}: the engine would clamp the completion to {max(context - prompt, 0):,} "
+                "tokens and the judgement would be recorded truncated",
+                hint="declare judge.context_tokens to size the windows, or lower judge.max_output_tokens",
+            )
+
     async def complete(self, request: CompletionInput) -> Completion:
         """Answer one prompt on the least busy live replica, waiting out an outage as the module docstring says.
 
         Raises:
             CapabilityError: the prompt carries media the model is not declared to read, or the server refuses
-                the window's number of images or videos, or its answer schema.
+                the window's number of images or videos, or its answer schema, or the prompt leaves fewer than
+                ``max_output_tokens`` out of the served context (the engine would silently clamp it).
             BackendUnavailableError: every replica stayed down for longer than ``wait_on_outage_s``.
             CredentialsError: the endpoint refused the credentials (HTTP 401 or 403), or a configured
                 environment variable is not set.
@@ -536,6 +567,7 @@ class JudgeClient(RoleClient[JudgeConfig]):
             RequestRejectedError: the endpoint refused this request, or answered it with no choices.
             DataError: an image or video reached the request unprepared.
         """
+        self._refuse_a_clamped_completion(request)
         adapter, transport = self._wire()
         replies = await transport.send(adapter.calls(request, model=self.model))
         try:
