@@ -41,9 +41,9 @@ serve:
     # Qwen3Model to Qwen3ForCausalLM itself (registry.py:1341 _normalize_arch, called at :1402/:1456)
     # and the lm_head is tied
   chat_template: null # no template file ships: the served route renders no template over string inputs
-    # (vllm/entrypoints/pooling/base/io_processor.py:136-160; renderers/inputs/preprocess.py:28-56 is
-    # the decode-only prompt path), and the checkpoints' own chat templates (the Gemma and Qwen instruct
-    # templates) are for chat, not for the embeddings route
+    # (vllm/entrypoints/pooling/base/io_processor.py:136-160), and the decode-only prompt path is at
+    # renderers/inputs/preprocess.py:129, which defines ``parse_dec_only_prompt``; the checkpoints' own
+    # chat templates (the Gemma and Qwen instruct templates) are for chat, not for the embeddings route
   pooler_config: {} # resolved from the checkpoints' own ST metadata (LAST + normalize); the argv sends
     # an empty object, which overrides nothing (a user --pooler-config would)
   trust_remote_code: false # no remote code in any of the three repos (no *.py among the Hub siblings)

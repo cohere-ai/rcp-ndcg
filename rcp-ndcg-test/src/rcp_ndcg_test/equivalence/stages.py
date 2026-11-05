@@ -1351,13 +1351,14 @@ def text_only_conversation(conversation: list[Any]) -> list[Any]:
 def _messages_template_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict[str, Any]:
     """The ``messages`` route's frame check: the engine frames each sent conversation exactly once.
 
-    vLLM v0.33.0 renders every chat-shaped ``/embeddings`` request through the served chat template
-    (the chat-input preprocessing at vllm/entrypoints/pooling/embed/io_processor.py:319-320, which validates
-    the request's own template at :330-333, and the render at vllm/renderers/hf.py:847-914, with the
-    request's ``add_generation_prompt``, false by default,
-    vllm/entrypoints/pooling/base/protocol.py:230-237), and the client sends the content
-    only.  So the served template file, rendered with transformers' jinja2 settings over every captured
-    conversation (its content parts as the engine hands them to the template, :func:`engine_conversation`)
+    vLLM v0.33.0 renders every chat-shaped ``/embeddings`` request through the served chat template: the
+    chat-input preprocessing section at vllm/entrypoints/pooling/embed/io_processor.py:319-320, the request
+    template's validation at :330-333, and the render at vllm/renderers/hf.py:847-914 through
+    ``safe_apply_chat_template``.  The request model at
+    vllm/entrypoints/pooling/base/protocol.py:230-237 declares ``add_generation_prompt``, false by default,
+    and the client sends the content only.  So the served template file, rendered with transformers' jinja2
+    settings over every captured conversation (its content parts as the engine hands them to the template,
+    :func:`engine_conversation`)
     and with the flag that request carried, must equal the declared template's render of the same content --
     the frame the client's budget reserved, once.  Without ``serve.chat_template`` the engine renders the
     checkpoint's own template, which the check reads at the pinned revision
