@@ -666,6 +666,7 @@ class RecordingProxy:
         from .record import entry_from_exchange
 
         records = []
+        engine_version = str((manifest.get("engine") or {}).get("version") or "")
         for sequence, exchange in enumerate(self.exchanges):
             request, response = entry_from_exchange(exchange)
             records.append(
@@ -674,6 +675,7 @@ class RecordingProxy:
                     repetition="same_process_1",
                     batch_context={"size": 1, "request_ids": [f"golden:{sequence}"], "positions": [0]},
                     server_run_id=str(manifest.get("server_run_id", "golden")),
+                    engine_version=engine_version,
                     request=request,
                     response=response,
                     inputs={

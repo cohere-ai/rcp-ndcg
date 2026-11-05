@@ -395,7 +395,8 @@ def test_the_recorder_records_topks_media_row_as_sent(tmp_path: Path, tokenizer,
     assert not recipe.client.get("media_keep_token_ids"), "the fake applies no allowlist"
     rows, _ = planned_media_rows(recipe)
     row = {**{key: rows[0][key] for key in ("query", "documents", "media")}, "request_id": "pairs:21"}
-    collected = _Collector(recipe, tokenizer_of(recipe))
+    version = recipe.engine.image.rpartition(":")[2].removeprefix("v")
+    collected = _Collector(recipe, tokenizer_of(recipe), engine_version=version)
     _model_layer(recipe, "", [row], collected, (1,))
     (record,) = collected.records
     assert record["inputs"]["probe"] == "ok" and record["inputs"]["request_id"] == "pairs:21"

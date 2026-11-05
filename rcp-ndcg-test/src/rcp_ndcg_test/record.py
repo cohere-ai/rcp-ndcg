@@ -395,11 +395,17 @@ def omission_exchange(recipe: Recipe, request_id: str, reason: str) -> dict[str,
 
 
 class _Collector:
-    """One corpus recording: the records in sending order, the pass being sent and its engine run."""
+    """One corpus recording: the records in sending order, the pass being sent and its engine run.
 
-    def __init__(self, recipe: Recipe, tokenizer: Any) -> None:
+    ``engine_version`` is the version the RUNNING engine reported for this recording (the fact the corpus is
+    keyed by): every record it builds carries it, so the exchanges themselves refuse a later manifest re-key
+    (:func:`rcp_ndcg_test.corpus.engine_version_mismatches`).
+    """
+
+    def __init__(self, recipe: Recipe, tokenizer: Any, *, engine_version: str) -> None:
         self.recipe = recipe
         self.tokenizer = tokenizer
+        self.engine_version = engine_version
         self.records: list[dict[str, Any]] = []
         self.repetition = "same_process_1"
         self.server_run_id = ""
@@ -415,6 +421,7 @@ class _Collector:
                 repetition=self.repetition,
                 batch_context=batch_context,
                 server_run_id=self.server_run_id,
+                engine_version=self.engine_version,
                 request=request,
                 response=response,
                 inputs=inputs,
@@ -476,7 +483,8 @@ def record_corpus(
 
     Output: ``{"passed", "checks", "corpus_dir", "records"}``; the corpus directory holds ``records.jsonl``,
     ``nondeterminism.json`` and the hash-chained ``manifest.json`` with the section-4 provenance and the plan,
-    and :func:`~rcp_ndcg_test.observe.corpus.verify_corpus` has accepted or refused it before this returns.
+    every exchange stamped with the engine version the running engine reported (``engine.version``), and
+    :func:`~rcp_ndcg_test.observe.corpus.verify_corpus` has accepted or refused it before this returns.
     """
     from .equivalence.fitting import tokenizer_of
     from .observe.adversarial import checkpoint_vocab_size
@@ -489,7 +497,10 @@ def record_corpus(
         raise HarnessError("record_corpus needs at least one request row")
     tokenizer = tokenizer_of(recipe)
     plan = corpus_plan(recipe, tokenizer, rows, embeddable_vocab_size=checkpoint_vocab_size(recipe))
-    collected = _Collector(recipe, tokenizer)
+    # The engine version every exchange is stamped with: the one the RUNNING engine reported, which is also
+    # what keys the corpus (the manifest's ``engine.version`` and the path segment) -- one fact, so a later
+    # re-key of the manifest is refused by the exchanges themselves.
+    collected = _Collector(recipe, tokenizer, engine_version=str(engine_facts.get("version") or ""))
     passes: list[dict[str, Any]] = []
 
     def one_pass(repetition: str, url: str, run_id: str) -> None:

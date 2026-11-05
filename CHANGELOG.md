@@ -383,6 +383,12 @@ incompatibly, independently of the package version. All four distributions carry
   then a 0.31 corpus under the 0.33 host is the refusal). The two `topk-embed-v1` variants keep their
   recorded gate failure and the owner's disposition: their state returns to `failed` only from a wave that
   re-runs that gate, and they read `unverified` until then like every other recipe.
+- **A corpus records the engine it was recorded on**: the exchange record's schema is now 2 (a registered
+  1→2 migration; a record without the stamp reads as "stamp unavailable", never invented), every exchange
+  carries the engine version the running engine reported, and `verify_corpus` refuses a corpus whose records
+  name another engine. A manifest re-keyed over a 0.31 recording is refused by name instead of reading
+  `unchanged`; the twelve committed `vllm-0.31.0` recordings still read until the waves re-record them, and an
+  unstamped corpus under a 0.33 manifest is refused.
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data

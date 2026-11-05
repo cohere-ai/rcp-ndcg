@@ -12,7 +12,9 @@ A corpus is one directory:
 - ``records.jsonl`` -- one record per exchange (``RECORD_SCHEMA``): the request and the response as they
   crossed the wire (``body_raw``: UTF-8 text, or ``{"base64": ...}`` for bytes that are not), the headers
   that matter, ``exchange_id`` (the SHA-256 of the canonical request), ``sequence``, ``repetition``,
-  ``batch_context``, ``server_run_id`` and ``inputs`` (what the request set meant by it);
+  ``batch_context``, ``server_run_id``, ``engine_version`` (the version the running engine reported when the
+  exchange crossed the wire -- the fact a manifest re-key cannot move) and ``inputs`` (what the request set
+  meant by it);
 - ``nondeterminism.json`` -- the measured differences between repeated sendings and the tolerances derived
   from them;
 - ``manifest.json`` -- the provenance (:data:`PROVENANCE_KEYS`, checked by :func:`missing_provenance`) and
@@ -66,12 +68,15 @@ __all__ = [
     "ObservationCorpus",
     "append_verification",
     "credential_findings",
+    "engine_version_mismatches",
     "integrity_mismatches",
     "load_corpus",
     "manifest_digest",
     "missing_provenance",
     "normalise_body",
     "normalise_raw",
+    "predates_record_stamp",
+    "record_engine_version",
     "register_record_migration",
     "verification_records",
     "write_corpus_index",
@@ -84,9 +89,20 @@ CORPUS_SCHEMA = "rcp-ndcg.observation-corpus/1"
 SUBSET_INDEX_SCHEMA = "rcp-ndcg.observation-subset/1"
 """The repository subset's ``index.json`` ``schema``."""
 
-RECORD_SCHEMA = 1
+RECORD_SCHEMA = 2
 """The version of one exchange record. A bump never invalidates an old corpus: :func:`load_corpus` migrates
-every older record through the migrations registered with :func:`register_record_migration`."""
+every older record through the migrations registered with :func:`register_record_migration`.
+
+Version 2 stamps ``engine_version`` -- the engine version the RUNNING engine reported when the exchange was
+recorded -- on every exchange, so a corpus carries the fact a re-key cannot move: a manifest edited from one
+engine version to another is refused by the exchanges themselves (:func:`engine_version_mismatches`). A
+version 1 record carried no such fact and is migrated with it explicitly unavailable, never given one."""
+
+RECORD_STAMP_ENGINE_VERSION = "0.32.0"
+"""The engine version line the stamped record schema starts at. Every recording before it -- the committed
+``vllm-0.31.0`` corpora -- predates :data:`RECORD_SCHEMA` 2 and can carry no ``engine_version``, so an absent
+stamp there is a fact about the epoch, not a hole; from this line on an absent stamp is a refusal
+(:func:`predates_record_stamp`)."""
 
 NORMALISATION_VERSION = 1
 """The version of :func:`normalise_body`'s rule. Version 1 strips the volatile leaves of a reply: the top-level
@@ -176,6 +192,79 @@ def missing_provenance(manifest: dict[str, Any]) -> list[str]:
     return missing
 
 
+def record_engine_version(record: dict[str, Any]) -> str | None:
+    """The engine version one exchange record was recorded on.
+
+    Args:
+        record: One exchange record, as written (or as :func:`load_corpus` migrated it).
+
+    Returns:
+        The stamped version, or ``None`` when the record carries none (a ``record_schema`` 1 exchange, whose
+        migration says so, or a record written without one). ``None`` is a fact -- the version is unknown --
+        never a version to guess.
+    """
+    version = record.get("engine_version")
+    return version if isinstance(version, str) and version else None
+
+
+def predates_record_stamp(engine_version: str) -> bool:
+    """Whether an engine version belongs to the pre-stamp epoch (below :data:`RECORD_STAMP_ENGINE_VERSION`).
+
+    The stamp arrived with :data:`RECORD_SCHEMA` 2; the committed recordings are the ``vllm-0.31.0`` line and
+    could not have carried one, so an absent ``engine_version`` there is the epoch's fact. From
+    :data:`RECORD_STAMP_ENGINE_VERSION` on, a recording without the stamp is refused.
+
+    Args:
+        engine_version: The engine version a corpus manifest claims.
+
+    Returns:
+        ``True`` for the historical line (``0.31.x`` and below); ``False`` for anything at or above it, and
+        for a version that does not parse as ``major.minor`` (an unknown line is refused the stamp
+        requirement, never excused from it).
+    """
+    parts = engine_version.split(".")[:2]
+    try:
+        return (int(parts[0]), int(parts[1])) < tuple(int(part) for part in RECORD_STAMP_ENGINE_VERSION.split(".")[:2])
+    except (IndexError, ValueError):
+        return False
+
+
+def engine_version_mismatches(corpus: ObservationCorpus, *, require_stamp: bool = True) -> list[str]:
+    """What the exchanges say about the engine version the manifest claims (the W3 provenance check).
+
+    A corpus is keyed by engine version, and the manifest is an editable claim; the exchange record's own
+    ``engine_version`` is the recorded fact a re-key cannot move. A manifest edited from ``vllm-0.31.0`` to
+    ``vllm-0.33.0`` over untouched exchanges therefore fails here, by name, instead of reading as a 0.33
+    recording (the fingerprint does not include the engine).
+
+    Args:
+        corpus: A corpus read through :func:`load_corpus`.
+        require_stamp: Whether an exchange that carries no engine version is a problem. A recording made now
+            always stamps one, so the acceptance check requires it; the staleness gate reads corpora of every
+            epoch, so it refuses a stamp that contradicts the manifest but does not refuse a corpus for a fact
+            its collector never wrote (``record_schema`` 1).
+
+    Returns:
+        One entry per offending exchange, naming its sequence, repetition and path, the version it was
+        recorded on and the version the manifest claims; ``[]`` when every exchange corroborates the manifest.
+    """
+    claimed = str((corpus.manifest.get("engine") or {}).get("version") or "")
+    mismatches: list[str] = []
+    for record in corpus.records:
+        where = f"#{record.get('sequence')} ({record.get('repetition')}, {(record.get('request') or {}).get('path')})"
+        recorded = record_engine_version(record)
+        if recorded is None:
+            if require_stamp:
+                mismatches.append(
+                    f"{where}: carries no engine version, so it cannot corroborate the manifest's "
+                    f"{claimed or 'unstated version'} (recorded at record_schema {record.get('record_schema')}; "
+                    "re-record the corpus on the engine the manifest names)"
+                )
+        elif recorded != claimed:
+            mismatches.append(f"{where}: recorded on engine {recorded}, the manifest claims {claimed or 'nothing'}")
+    return mismatches
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 """``{schema: migrate}``: each migration takes one record of ``schema`` to ``schema + 1``."""
 
@@ -251,6 +340,25 @@ def _migrated(record: dict[str, Any], where: str) -> dict[str, Any]:
         record = migrate(record)
         schema += 1
     return record
+
+
+def _one_to_two(record: dict[str, Any]) -> dict[str, Any]:
+    """A ``record_schema`` 1 exchange at 2: it carried no engine version, and this never invents one.
+
+    The migrated stamp is an explicit ``{"unavailable": <reason>}`` (:func:`record_engine_version` reads it as
+    ``None``), so a corpus recorded before the stamp says so rather than borrowing the manifest's claim -- the
+    one value a re-key can move. A record that already carries a version keeps it: the migration adds a fact
+    the schema lacked, it never overwrites a recorded one.
+    """
+    migrated = {**record, "record_schema": 2}
+    migrated.setdefault(
+        "engine_version",
+        {"unavailable": "recorded at record_schema 1, which stamped no engine version on its exchanges"},
+    )
+    return migrated
+
+
+register_record_migration(1, _one_to_two)
 
 
 def load_corpus(directory: str | Path) -> ObservationCorpus:

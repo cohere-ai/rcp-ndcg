@@ -61,8 +61,21 @@ def _recorded(corpora_root: str | Path, recipe_id: str) -> dict[str, tuple[Path,
     """The recipe's committed corpora by recorded fingerprint: ``{fingerprint: (directory, inputs)}``,
     found by scanning manifests (:func:`rcp_ndcg_test.engines.find_corpora`) and read through the one
     corpus reader (:func:`rcp_ndcg_test.corpus.load_corpus`) with its integrity check: a corpus whose
-    hashes do not hold is refused (:class:`HarnessError` naming it and the mismatches), never compared."""
-    from rcp_ndcg_test.corpus import integrity_mismatches, load_corpus
+    hashes do not hold is refused (:class:`HarnessError` naming it and the mismatches), never compared.
+
+    The behaviour fingerprint does not include the engine, so a manifest re-keyed from one engine version to
+    another over untouched exchanges reads ``unchanged``: the exchanges' own recorded ``engine_version`` is the
+    fact that refuses it (:func:`rcp_ndcg_test.corpus.engine_version_mismatches`), by name.  An exchange that
+    carries no version at all is refused too, unless the manifest claims the pre-stamp engine line
+    (:func:`rcp_ndcg_test.corpus.predates_record_stamp` -- the committed ``vllm-0.31.0`` recordings, which could
+    not have carried one): an absent stamp under a 0.33 manifest is the hole this check exists to close.
+    """
+    from rcp_ndcg_test.corpus import (
+        engine_version_mismatches,
+        integrity_mismatches,
+        load_corpus,
+        predates_record_stamp,
+    )
     from rcp_ndcg_test.engines import find_corpora
 
     recorded: dict[str, tuple[Path, dict[str, str]]] = {}
@@ -71,6 +84,15 @@ def _recorded(corpora_root: str | Path, recipe_id: str) -> dict[str, tuple[Path,
         mismatches = integrity_mismatches(corpus)
         if mismatches:
             raise HarnessError(f"corpus {directory}: its hashes do not hold ({'; '.join(mismatches)})")
+        claimed = str((corpus.manifest.get("engine") or {}).get("version") or "")
+        relabelled = engine_version_mismatches(corpus, require_stamp=not predates_record_stamp(claimed))
+        if relabelled:
+            raise HarnessError(
+                f"corpus {directory}: its exchanges do not corroborate the engine version its manifest claims "
+                f"({'; '.join(relabelled[:3])}{f' (+{len(relabelled) - 3} more)' if len(relabelled) > 3 else ''}): "
+                "a re-keyed manifest over another engine's exchanges is not evidence; re-record the recipe on "
+                "the engine the manifest names"
+            )
         manifest = corpus.manifest
         fingerprint = str(manifest["recipe"]["behaviour_fingerprint"])
         recorded[fingerprint] = (directory, dict(manifest["recipe"].get("fingerprint_inputs") or {}))

@@ -103,8 +103,9 @@ pieces is versioned separately (`rcp_ndcg_test.corpus`):
 
 - the corpus manifest's `schema`: `rcp-ndcg.observation-corpus/1`;
 - a repository subset's `index.json`: `rcp-ndcg.observation-subset/1`;
-- one exchange record: `RECORD_SCHEMA` (`1`); a bump never invalidates an old corpus, because `load_corpus`
-  migrates older records forward;
+- one exchange record: `RECORD_SCHEMA` (`2`); a bump never invalidates an old corpus, because `load_corpus`
+  migrates older records forward (the `1` -> `2` migration stamps the engine version a version 1 record could
+  not carry as explicitly unavailable, and never invents one);
 - the normalisation rule applied before a comparison: `NORMALISATION_VERSION` (`1`); a changed rule is a new
   version, never a silent edit;
 - the conformance verifier's record: `rcp-ndcg.verification/1`.

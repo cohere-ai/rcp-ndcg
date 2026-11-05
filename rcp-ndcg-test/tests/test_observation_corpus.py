@@ -115,7 +115,7 @@ def test_an_older_record_schema_is_migrated_on_load(tmp_path: Path, monkeypatch:
         load_corpus(directory)
     register_record_migration(0, zero_to_one)
     loaded = load_corpus(directory)
-    assert loaded.records[0]["record_schema"] == 1 and "legacy_field" not in loaded.records[0]
+    assert loaded.records[0]["record_schema"] == RECORD_SCHEMA and "legacy_field" not in loaded.records[0]
 
 
 def test_a_manifest_of_another_format_is_refused(tmp_path: Path) -> None:

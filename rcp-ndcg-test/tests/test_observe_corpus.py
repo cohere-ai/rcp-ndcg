@@ -163,7 +163,7 @@ def test_the_standing_probes_carry_the_recipes_own_render_ids(tmp_path: Path) ->
     document = special_token_spellings(tokenizer)
     rows = [{"request_id": "row-0", "query": "a query", "documents": [document]}]
     plan = corpus_plan(recipe, tokenizer, rows)
-    collected = _Collector(recipe, tokenizer)
+    collected = _Collector(recipe, tokenizer, engine_version="test")  # the stub's version
     stub = start_stub("--tokenizer", str(TOKENIZER))
     try:
         _bare_probes(recipe, stub.base_url, plan.rows, plan.bare, collected, timeout_s=60.0)
@@ -198,7 +198,7 @@ def test_a_token_ids_wires_model_layer_has_no_text_to_tokenize(tmp_path: Path) -
     recipe = token_ids_recipe(tmp_path)
     tokenizer = fitting.tokenizer_of(recipe)
     rows = [{"request_id": "row-0", "query": "a query", "documents": ["a document"]}]
-    collected = _Collector(recipe, tokenizer)
+    collected = _Collector(recipe, tokenizer, engine_version="test")  # the stub's version
     stub = start_stub("--tokenizer", str(TOKENIZER))
     try:
         sent = _model_layer(recipe, stub.base_url, rows, collected, (1,))
@@ -259,6 +259,7 @@ def _exchange(path: str, request: dict[str, Any], response: dict[str, Any], *, r
         repetition=rep,
         batch_context={"size": 1, "request_ids": ["r"], "positions": [0]},
         server_run_id="run",
+        engine_version="test",  # the stub engine's version: _engine_facts's image tag
         request={
             "method": "POST",
             "path": path,
@@ -478,6 +479,27 @@ def test_a_manifest_missing_a_provenance_fact_fails_the_check(tmp_path: Path) ->
     directory = _synthetic_corpus(tmp_path / "c", [_exchange("/v1/embeddings", request, reply)], engine=engine)
     check = _checks(verify_corpus(directory))["provenance_complete"]
     assert check["passed"] is False and "engine.image_digest" in check["missing"]
+
+
+def test_a_corpus_recorded_on_another_engine_version_is_refused_by_name(tmp_path: Path) -> None:
+    """W3's provenance check: a manifest re-key over another engine's exchanges is refused, naming the
+    version the exchanges were recorded on, and a corpus whose exchanges carry no engine version at all is
+    refused too -- so a re-verify can never stamp 0.33 over untouched 0.31 exchanges (the same refusal the
+    emulator gate gives a renamed host)."""
+    request = {"model": "m", "input": ["x"], "encoding_format": "float"}
+    reply = {"object": "list", "data": [{"index": 0, "embedding": [0.6, 0.8]}]}
+    engine = {**_engine_facts(), "version": "0.33.0", "image": "vllm/vllm-openai:v0.33.0"}
+    exchange = _exchange("/v1/embeddings", request, reply)
+    rekeyed = _synthetic_corpus(tmp_path / "rekeyed", [{**exchange, "engine_version": "0.31.0"}], engine=engine)
+    check = _checks(verify_corpus(rekeyed))["records_carry_the_engine_version"]
+    assert check["passed"] is False, check
+    assert "0.31.0" in json.dumps(check) and "0.33.0" in json.dumps(check), check
+    unstamped = {key: value for key, value in exchange.items() if key != "engine_version"} | {"record_schema": 1}
+    directory = _synthetic_corpus(tmp_path / "unstamped", [unstamped], engine=engine)
+    check = _checks(verify_corpus(directory))["records_carry_the_engine_version"]
+    assert check["passed"] is False and "no engine version" in json.dumps(check), check
+    _, report = _record(tmp_path / "recorded")
+    assert _checks(report)["records_carry_the_engine_version"]["passed"] is True
 
 
 # --- section 6: the acceptance checks --------------------------------------------------------------------------

@@ -52,6 +52,7 @@ from rcp_ndcg_test.corpus import (
     VERIFICATION_FILE,
     ObservationCorpus,
     credential_findings,
+    engine_version_mismatches,
     integrity_mismatches,
     load_corpus,
     manifest_digest,
@@ -137,6 +138,7 @@ def build_record(
     repetition: str,
     batch_context: dict[str, Any],
     server_run_id: str,
+    engine_version: str,
     request: dict[str, Any],
     response: dict[str, Any],
     inputs: dict[str, Any],
@@ -144,12 +146,14 @@ def build_record(
     """One ``RECORD_SCHEMA`` exchange record (OBSERVATIONS-SPEC section 3).
 
     Inputs: the order sent (``sequence``), the repetition (:data:`REPETITIONS`), the batch context (companion
-    request ids and positions), the engine run's id, the request and the response (method/path, the headers
-    that matter -- never authorisation or gateway headers -- and the body **as sent/received**, UTF-8 text or
-    ``{"base64": ...}``, with its parsed JSON form when it is JSON) and what the request set meant (``inputs``:
-    request id, stratum labels, layer, token counts, media).  Output: the record; ``exchange_id`` is the
-    SHA-256 of the canonical request (method, path, body), a content address.  Raises :class:`HarnessError`
-    for a repetition outside :data:`REPETITIONS`.
+    request ids and positions), the engine run's id, the engine version the running engine reported when the
+    exchange crossed the wire (stamped on every record, :data:`~rcp_ndcg_test.corpus.RECORD_SCHEMA`), the
+    request and the response (method/path, the headers that matter -- never authorisation or gateway headers
+    -- and the body **as sent/received**, UTF-8 text or ``{"base64": ...}``, with its parsed JSON form when it
+    is JSON) and what the request set meant (``inputs``: request id, stratum labels, layer, token counts,
+    media).  Output: the record; ``exchange_id`` is the SHA-256 of the canonical request (method, path, body),
+    a content address, and ``engine_version`` is the recorded fact a manifest re-key cannot move.  Raises
+    :class:`HarnessError` for a repetition outside :data:`REPETITIONS`.
     """
     if repetition not in REPETITIONS:
         raise HarnessError(f"repetition {repetition!r} is not one of {REPETITIONS}")
@@ -161,6 +165,7 @@ def build_record(
         "repetition": repetition,
         "batch_context": batch_context,
         "server_run_id": server_run_id,
+        "engine_version": engine_version,
         "request": request,
         "response": response,
         "inputs": inputs,
@@ -580,7 +585,10 @@ def verify_corpus(
     rule is checked against the kept count per item, :func:`declared_kept_counts`, and a recipe declaring a
     per-chunk head (``outputs: per_chunk``) against the declared chunk count per item,
     :func:`declared_chunk_counts`), ``nondeterminism_report``,
-    ``provenance_complete``, ``no_credentials``, and -- given the equivalence exchanges --
+    ``provenance_complete``, ``records_carry_the_engine_version`` (every exchange was recorded on the engine
+    version the manifest claims, :func:`~rcp_ndcg_test.corpus.engine_version_mismatches` -- a re-keyed manifest
+    over another engine's exchanges is refused by name, and so is an exchange that carries no version),
+    ``no_credentials``, and -- given the equivalence exchanges --
     ``equivalence_consistent`` (the same served replies, within the measured tolerance).
     """
     directory = Path(corpus_dir)
@@ -626,6 +634,14 @@ def verify_corpus(
         not missing,
         "every OBSERVATIONS-SPEC section 4 provenance key carries its value or an explicit unavailable reason",
         missing=missing,
+    )
+    recorded_elsewhere = engine_version_mismatches(corpus)
+    record_check(
+        "records_carry_the_engine_version",
+        not recorded_elsewhere,
+        "every exchange's recorded engine version against the version the manifest claims (a re-keyed manifest "
+        "over another engine's exchanges is not evidence)",
+        mismatches=recorded_elsewhere,
     )
     hits: list[str] = []
     for path in sorted(directory.iterdir()):
@@ -850,6 +866,7 @@ def _consistency(
             repetition="same_process_1",
             batch_context={},
             server_run_id="equivalence",
+            engine_version=str((corpus.manifest.get("engine") or {}).get("version") or ""),
             request=request,
             response=response,
             inputs={},

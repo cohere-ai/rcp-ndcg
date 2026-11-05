@@ -369,6 +369,7 @@ def observation_corpus(
         records.append(
             {
                 "record_schema": RECORD_SCHEMA,
+                "engine_version": "0.31.0",  # the version this fixture's manifest claims (below)
                 "exchange_id": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
                 "sequence": exchange.sequence,
                 "repetition": "same_process_1",

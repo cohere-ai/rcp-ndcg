@@ -15,16 +15,21 @@ from rcp_ndcg_vllm.recipe import load_recipe
 RECIPES = Path(__file__).resolve().parent / "fixtures" / "recipes"
 
 
-def _record(embedding: list[float]) -> dict:
-    """One record in the observation-corpus format (``rcp_ndcg_test.corpus``, ``RECORD_SCHEMA`` 1)."""
+def _record(embedding: list[float], *, engine_version: str | None = "0.33.0") -> dict:
+    """One record in the observation-corpus format (``rcp_ndcg_test.corpus``, ``RECORD_SCHEMA`` 1).
+
+    ``engine_version`` is the stamp the record carries (``None``: a pre-stamp recording, which carries none).
+    """
     request = {"model": "fixture-embed", "input": ["doc: hi [END]"]}
     reply = {
         "object": "list",
         "data": [{"object": "embedding", "index": 0, "embedding": embedding}],
         "usage": {"prompt_tokens": 2, "total_tokens": 2},
     }
+    stamped = {} if engine_version is None else {"engine_version": engine_version}
     return {
         "record_schema": 1,
+        **stamped,
         "exchange_id": "a" * 64,
         "sequence": 0,
         "repetition": "same_process_1",
@@ -45,26 +50,42 @@ def _record(embedding: list[float]) -> dict:
     }
 
 
-def _corpora_root(tmp_path: Path, index: dict, *, recipe_id: str = "fixture-embed") -> Path:
-    """A corpora root whose manifests carry ``index``'s fingerprints over the fixture recipe."""
+def _corpora_root(
+    tmp_path: Path,
+    index: dict,
+    *,
+    recipe_id: str = "fixture-embed",
+    engine_version: str = "0.33.0",
+    stamped: bool = True,
+) -> Path:
+    """A corpora root whose manifests carry ``index``'s fingerprints over the fixture recipe.
+
+    ``engine_version`` is what the manifest claims and ``stamped`` whether the exchanges carry that version
+    (``False``: a recording made before the record stamp existed).
+    """
     for fingerprint, inputs in index.items():
-        directory = tmp_path / "vllm-0.33.0" / recipe_id / fingerprint
+        directory = tmp_path / f"vllm-{engine_version}" / recipe_id / fingerprint
         directory.mkdir(parents=True)
         manifest = {
             "schema": "rcp-ndcg.observation-corpus/1",
-            "engine": {"name": "vllm", "version": "0.33.0", "image": "vllm/vllm-openai:v0.33.0"},
+            "engine": {
+                "name": "vllm",
+                "version": engine_version,
+                "image": f"vllm/vllm-openai:v{engine_version}",
+            },
             "model": {"id": "fixtures/DenseEmbedder", "revision": "0123456789abcdef0123456789abcdef01234567"},
             "recipe": {"id": recipe_id, "behaviour_fingerprint": fingerprint, "fingerprint_inputs": inputs},
         }
         records = directory / "records.jsonl"
-        records.write_text(json.dumps(_record([0.5, 0.5])) + "\n", encoding="utf-8")
+        stamp = engine_version if stamped else None
+        records.write_text(json.dumps(_record([0.5, 0.5], engine_version=stamp)) + "\n", encoding="utf-8")
         manifest["integrity"] = {
             "files": {"records.jsonl": {"sha256": hashlib.sha256(records.read_bytes()).hexdigest()}},
             "records_count": 1,
         }
         manifest["integrity"]["manifest_sha256"] = manifest_digest(manifest)
         (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    return tmp_path / "vllm-0.33.0"
+    return tmp_path / f"vllm-{engine_version}"
 
 
 def test_a_missing_corpora_root_is_refused_not_reported_as_all_new(tmp_path: Path) -> None:
@@ -203,3 +224,43 @@ def test_a_corpus_whose_hashes_do_not_hold_is_refused(tmp_path: Path) -> None:
     path.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(HarnessError, match="manifest_sha256 mismatch"):
         recipe_state(recipe, root)
+
+
+def test_a_manifest_re_key_over_another_engines_exchanges_is_refused(tmp_path: Path) -> None:
+    """W3: the fingerprint does not include the engine, so a corpus re-keyed from vllm-0.31.0 to 0.33.0
+    reads ``unchanged``. The exchanges' own recorded engine version is the fact that refuses it, naming the
+    version they were recorded on -- a re-keyed manifest over old exchanges is never evidence."""
+    from rcp_ndcg_test.changes import recipe_state
+    from rcp_ndcg_test.errors import HarnessError
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    fingerprint = behaviour_fingerprint(recipe)
+    root = _corpora_root(tmp_path, {fingerprint: dict(fingerprint_inputs(recipe))})
+    assert recipe_state(recipe, root)["state"] == "unchanged"
+    records = root / "fixture-embed" / fingerprint / "records.jsonl"
+    records.write_text(json.dumps({**_record([0.5, 0.5]), "engine_version": "0.31.0"}) + "\n", encoding="utf-8")
+    path = records.parent / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["integrity"]["files"]["records.jsonl"]["sha256"] = hashlib.sha256(records.read_bytes()).hexdigest()
+    manifest["integrity"]["manifest_sha256"] = manifest_digest(manifest)
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(HarnessError) as error:
+        recipe_state(recipe, root)
+    assert "0.31.0" in str(error.value) and "0.33.0" in str(error.value), error.value
+
+
+def test_an_unstamped_corpus_is_tolerated_only_on_the_pre_stamp_engine_line(tmp_path: Path) -> None:
+    """The committed ``vllm-0.31.0`` recordings predate the record stamp, so an absent ``engine_version`` is
+    the epoch's fact there and the corpus reads today; under a 0.33 manifest the same absent stamp is a
+    refusal, named -- the hole the stamp exists to close."""
+    from rcp_ndcg_test.changes import recipe_state
+    from rcp_ndcg_test.errors import HarnessError
+
+    recipe = load_recipe(RECIPES / "fixture-embed")
+    index = {behaviour_fingerprint(recipe): dict(fingerprint_inputs(recipe))}
+    historical = _corpora_root(tmp_path / "old", index, engine_version="0.31.0", stamped=False)
+    assert recipe_state(recipe, historical)["state"] == "unchanged"
+    current = _corpora_root(tmp_path / "new", index, engine_version="0.33.0", stamped=False)
+    with pytest.raises(HarnessError) as error:
+        recipe_state(recipe, current)
+    assert "no engine version" in str(error.value) and "0.33.0" in str(error.value), error.value
