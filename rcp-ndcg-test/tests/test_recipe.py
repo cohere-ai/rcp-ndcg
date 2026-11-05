@@ -191,6 +191,26 @@ def test_recipe_rules_refuse_the_budget_over_the_engine_context(tmp_path: Path) 
         load_recipe(judge)
 
 
+def test_a_judge_cap_without_the_context_window_it_reserves_is_refused(tmp_path: Path) -> None:
+    """A judge's completion cap is reserved out of the window the client declares (``context_tokens``): at the
+    pinned engine the completion is clamped to ``max_model_len - prompt``, so a cap with no window is silently
+    truncated for any prompt in ``(max_model_len - cap, max_model_len)``.  The refusal names both fields; a
+    recipe that wants documents whole declares no cap (the endpoint's default then applies, never a value the
+    recipe cannot honour)."""
+    import shutil
+
+    import yaml
+
+    copied = tmp_path / "fixture-judge"
+    copied.mkdir()
+    shutil.copy(recipe_dirs_path() / "fixture-judge" / "family.yaml", copied / "family.yaml")
+    data = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
+    del data["client"]["context_tokens"]
+    (copied / "family.yaml").write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(RecipeError, match=r"client\.context_tokens"):
+        load_recipe(copied)
+
+
 def test_reference_block_declares_a_required_device(tmp_path: Path) -> None:
     """GPU-E1: every reference ran on CPU because nothing could require otherwise.  ``reference.device``
     declares the device the reference must run on (``cpu`` or ``cuda``); the default is ``None`` (the

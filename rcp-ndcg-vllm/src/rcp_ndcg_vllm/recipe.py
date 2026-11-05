@@ -184,6 +184,16 @@ _ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rer
 A judge recipe declares ``client.api: chat``, the recipe-facing name of the judge role's
 ``openai_chat`` wire (:data:`rcp_ndcg.inference.adapters.base._ALIASES`)."""
 
+JUDGE_CAP_WITHOUT_WINDOW: tuple[str, ...] = ("qwen3.6-27b-fp8",)
+"""The judge recipe variants the product declares as a cap-without-window exception, by recipe id.
+
+Their windows send documents whole under the engine's own bound (the paper's TREC-DL preset), so the band
+below cannot be closed for them: at the pinned engine the completion is clamped to ``max_model_len`` minus
+the prompt, and a prompt in ``(max_model_len - max_output_tokens, max_model_len)`` is truncated rather than
+refused.  The exception is a deliberate, reviewed decision (the recipe's notes and
+``tests/judging/test_client.py`` pin it); a new judge that declares a completion cap must declare
+``client.context_tokens``, the window the cap is reserved out of, and fails at load otherwise."""
+
 _ENGINE_SPECIFIC_CLIENT_KEYS = frozenset(
     {
         # the serve block's keys (the vllm serve argv and the pre-install specs)
@@ -867,6 +877,27 @@ class Recipe(BaseModel):
                 f"client.max_output_tokens ({output_cap}) must be below serve.max_model_len "
                 f"({self.serve.max_model_len}): an output upper bound at or above the context leaves no "
                 "room for a prompt"
+            )
+        if output_cap is not None and not isinstance(context_tokens, int):
+            # The completion cap is reserved out of the window the client declares; without one the engine
+            # clamps the completion to serve.max_model_len minus the prompt, so any prompt in
+            # (serve.max_model_len - cap, serve.max_model_len) is silently truncated.  A recipe that wants
+            # documents whole declares no cap: the endpoint's own default then applies, never a value the
+            # recipe cannot honour.  JUDGE_CAP_WITHOUT_WINDOW is the product's declared exception.
+            if self.id not in JUDGE_CAP_WITHOUT_WINDOW:
+                raise ValueError(
+                    f"client.max_output_tokens ({output_cap}) needs client.context_tokens: the engine clamps "
+                    "the completion to serve.max_model_len minus the prompt, so a cap declared without the "
+                    "window it is reserved out of is silently truncated whenever the prompt lands in "
+                    f"(serve.max_model_len - {output_cap}, serve.max_model_len) -- declare "
+                    "client.context_tokens (the served window; the paper's own presets declare it), or drop "
+                    "the cap"
+                )
+        if output_cap is not None and isinstance(context_tokens, int) and context_tokens <= output_cap:
+            raise ValueError(
+                f"client.context_tokens ({context_tokens}) must exceed client.max_output_tokens "
+                f"({output_cap}): the window cannot hold the completion cap and any prompt, so the engine "
+                "would clamp the cap it declares"
             )
         if self.role in ("embed", "multi_vector") and client.get("template") is not None:
             # An embed or multi-vector recipe's client CAN fill an instruction span (its encode takes the task
