@@ -25,7 +25,12 @@
 #                  topk-probe (one family's controlled GPU probe: topk_probe.sh builds the client
 #                  environment and the family's reference venv, then runs topk_probe.py, whose
 #                  E0-E7 experiments name the first divergent tensor; its own RCP_TOPK_* knobs are
-#                  forwarded into the job when the operator sets them)
+#                  forwarded into the job when the operator sets them) or
+#                  sdpa-probe (D4's probe: sdpa_probe.sh builds the client mechanism and the recipe's
+#                  plugin wheel, then runs sdpa_probe.py, which starts the recipe's engine twice --
+#                  with the torch-sdpa-attention patch and without it -- and uploads the comparison
+#                  against the recorded gate plus the verdict; its own RCP_SDPA_* knobs are forwarded
+#                  into the job when the operator sets them)
 #
 # Environment (required, no defaults: this script must not name any machine's paths or buckets):
 #   RCP_JOBS_CONFIG    the job-CLI config file (the job CLI's -f argument)
@@ -48,7 +53,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe] \\
+  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe|sdpa-probe] \\
          <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]" >&2
 }
 
@@ -64,7 +69,7 @@ while (($#)); do
   case "$1" in
     --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
     --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
-    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e, casefill, judgecheck or topk-probe}"; shift 2 ;;
+    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e, casefill, judgecheck, topk-probe or sdpa-probe}"; shift 2 ;;
     --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
@@ -72,8 +77,8 @@ while (($#)); do
   esac
 done
 [[ -n "$RC_STAGE_URI" && -n "$OUT_PREFIX" && ${#WAVES[@]} -ge 1 ]] || { usage; exit 2; }
-[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" || "$SCRIPT_NAME" == "judgecheck" || "$SCRIPT_NAME" == "topk-probe" ]] || {
-  echo "submit.sh: --script must be bootstrap, wave0, e2e, casefill, judgecheck or topk-probe, got $SCRIPT_NAME" >&2
+[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" || "$SCRIPT_NAME" == "judgecheck" || "$SCRIPT_NAME" == "topk-probe" || "$SCRIPT_NAME" == "sdpa-probe" ]] || {
+  echo "submit.sh: --script must be bootstrap, wave0, e2e, casefill, judgecheck, topk-probe or sdpa-probe, got $SCRIPT_NAME" >&2
   exit 2
 }
 [[ "$MAX_JOBS" =~ ^[0-9]+$ && "$MAX_JOBS" -ge 1 ]] || { echo "submit.sh: --max-jobs must be a positive number" >&2; exit 2; }
@@ -164,6 +169,14 @@ case "$(basename "$HERE")" in
   jobs) TOPK_PROBE_COSINES="$HERE/wave-cosines-topk-small.json" ;;
   *) TOPK_PROBE_COSINES="$HERE/jobs/wave-cosines-topk-small.json" ;;
 esac
+case "$(basename "$HERE")" in
+  jobs) SDPA_PROBE_SH="$HERE/sdpa_probe.sh" ;;
+  *) SDPA_PROBE_SH="$HERE/jobs/sdpa_probe.sh" ;;
+esac
+case "$(basename "$HERE")" in
+  jobs) SDPA_PROBE_PY="$HERE/sdpa_probe.py" ;;
+  *) SDPA_PROBE_PY="$HERE/jobs/sdpa_probe.py" ;;
+esac
 [[ "$SCRIPT_NAME" != "wave0" || -f "$WAVE0_SH" ]] || {
   echo "submit.sh: wave0.sh not found at $WAVE0_SH (run submit.sh from the checkout)" >&2
   exit 2
@@ -194,6 +207,14 @@ esac
 }
 [[ "$SCRIPT_NAME" != "topk-probe" || -f "$TOPK_PROBE_COSINES" ]] || {
   echo "submit.sh: wave-cosines-topk-small.json not found at $TOPK_PROBE_COSINES (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "sdpa-probe" || -f "$SDPA_PROBE_SH" ]] || {
+  echo "submit.sh: sdpa_probe.sh not found at $SDPA_PROBE_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "sdpa-probe" || -f "$SDPA_PROBE_PY" ]] || {
+  echo "submit.sh: sdpa_probe.py not found at $SDPA_PROBE_PY (run submit.sh from the checkout)" >&2
   exit 2
 }
 
@@ -449,6 +470,21 @@ for plan_row in "${PLAN[@]}"; do
       RCP_TOPK_DEVICE RCP_TOPK_REFERENCE_DEVICE RCP_TOPK_GPU_FRACTION RCP_TOPK_DTYPE \
       RCP_TOPK_REFERENCE_DTYPE RCP_TOPK_GDN_BACKEND RCP_TOPK_CONTROL_VECTORS RCP_TOPK_MODEL \
       RCP_TOPK_REVISION; do
+      if [[ -n "${!knob:-}" ]]; then args+=("env.$knob=${!knob}"); fi
+    done
+  elif [[ "$SCRIPT_NAME" == "sdpa-probe" ]]; then
+    # D4's probe: the wrapper builds the client mechanism and installs the recipe's plugin wheel through
+    # bootstrap.sh envs, then runs the probe, which starts the recipe's engine twice (with the
+    # torch-sdpa-attention patch and without it) and uploads the report and the verdict.  Its own knobs are
+    # forwarded only when the operator set them (unset means the wrapper's defaults); the mounted helper
+    # paths are the node's own and are never forwarded.
+    args+=(
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/sdpaprobe/sdpa_probe.sh $RC_STAGE_URI $OUT_URI"
+      "files.sdpaprobe.from_file=$SDPA_PROBE_SH" "files.sdpaprobe.mount_path=/etc/rcp/files/sdpaprobe/sdpa_probe.sh"
+      "files.sdpaprobepy.from_file=$SDPA_PROBE_PY" "files.sdpaprobepy.mount_path=/etc/rcp/files/sdpaprobe/sdpa_probe.py"
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+    for knob in RCP_SDPA_RECIPE RCP_SDPA_ROWS RCP_SDPA_PORT_BASE RCP_SDPA_GPUS RCP_SDPA_STARTUP_TIMEOUT_S; do
       if [[ -n "${!knob:-}" ]]; then args+=("env.$knob=${!knob}"); fi
     done
   else

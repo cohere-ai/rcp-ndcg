@@ -36,11 +36,13 @@ JUDGECHECK_PROBE = JOBS / "judgecheck_probe.py"
 TOPK_PROBE_SH = JOBS / "topk_probe.sh"
 TOPK_PROBE_PY = JOBS / "topk_probe.py"
 TOPK_PROBE_COSINES = JOBS / "wave-cosines-topk-small.json"
+SDPA_PROBE_SH = JOBS / "sdpa_probe.sh"
+SDPA_PROBE_PY = JOBS / "sdpa_probe.py"
 WAVE0_HOST = JOBS / "wave0_host.py"
 CHECK_DEPS_INSTALL = JOBS.parents[3] / "rcp-ndcg-vllm" / "tests" / "models" / "check_no_deps_install.py"
 REPO = Path(__file__).resolve().parents[2]
 
-SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH)
+SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH, SDPA_PROBE_SH)
 
 needs_shellcheck = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 
@@ -1346,7 +1348,7 @@ def test_submit_refuses_an_unknown_script(tmp_path: Path, monkeypatch: pytest.Mo
         tmp_path, monkeypatch, "--script", "deploy", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a"
     )
     assert completed.returncode == 2
-    assert "bootstrap, wave0, e2e, casefill, judgecheck or topk-probe" in completed.stderr
+    assert "bootstrap, wave0, e2e, casefill, judgecheck, topk-probe or sdpa-probe" in completed.stderr
 
 
 def test_submit_forwards_record_corpus_only_when_the_operator_set_it(
@@ -3379,3 +3381,77 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     assert set(gemma["modes"]) == {"off", "on"} and all(row["ok"] for row in gemma["modes"].values())
     assert "modes_note" not in gemma
     assert isinstance(report["engine"]["vllm"], str)
+
+
+def test_submit_sdpa_probe_mounts_the_probe_and_forwards_the_operator_knobs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D4's probe job: ``sdpa_probe.sh`` mounted beside its module and ``bootstrap.sh`` (whose envs mode
+    builds the client mechanism and installs the recipe's plugin wheel), run with the stage and the
+    probe's own output prefix; the wrapper's knobs reach the pod only when the operator set them.
+    Mutation: drop the module mount (the job dies on the node) or forward a knob nobody set (an empty
+    value would override the wrapper's default)."""
+    completed = _submit(
+        tmp_path, monkeypatch,
+        "--script", "sdpa-probe", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "sdpa-probe",
+        env_overrides={"RCP_SDPA_ROWS": "3,4", "RCP_SDPA_GPUS": "1"},
+    )  # fmt: skip
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    command = next(word for word in words if word.startswith("worker.command="))
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/sdpaprobe/sdpa_probe.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/sdpa-probe"
+    )
+    assert any(word.startswith("files.sdpaprobe.from_file=") and word.endswith("sdpa_probe.sh") for word in words)
+    assert any(word.startswith("files.sdpaprobepy.from_file=") and word.endswith("sdpa_probe.py") for word in words)
+    assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    assert "env.RCP_SDPA_ROWS=3,4" in words and "env.RCP_SDPA_GPUS=1" in words
+    assert not any(word.startswith("env.RCP_SDPA_PORT_BASE") for word in words)
+    for stream in (completed.stdout, completed.stderr):
+        assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_the_sdpa_probe_arms_render_one_flag_apart_and_its_gate_reds_on_a_seeded_delta(tmp_path: Path) -> None:
+    """D4's probe, on CPU: the two arms' argv differ by exactly the ``--attention-backend TORCH_SDPA``
+    pair and the patch name (so the comparison isolates the backend), a seeded delta above the recorded
+    gate is ``differs`` (the patch stays), the same class of delta inside the gate beside a null control
+    above it is ``near`` (the operator decides, never defaulted), and the written report carries the
+    gate's numbers and the verdict. Mutation: widen the gate, or leave the flag in the native arm."""
+    from rcp_ndcg_test.jobs import sdpa_probe
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    recipe = resolve_recipe("embeddinggemma-2")
+    plan = sdpa_probe.arms(recipe)
+    assert plan["patch"]["patches_env"] == "embeddinggemma2-transformers-fold,torch-sdpa-attention"
+    assert plan["native"]["patches_env"] == "embeddinggemma2-transformers-fold"
+    assert [word for word in plan["patch"]["argv"] if word not in plan["native"]["argv"]] == [
+        "--attention-backend",
+        "TORCH_SDPA",
+    ]
+    assert [word for word in plan["native"]["argv"] if word not in plan["patch"]["argv"]] == []
+
+    base = {"0:query": [0.1, -0.2, 0.3], "0:document:0": [0.0, 0.5, -0.4]}
+    nudged = {**base, "0:query": [0.1 + 1e-6, -0.2, 0.3]}
+    noisy = {**base, "0:query": [0.1 + 2e-5, -0.2, 0.3]}
+
+    def report(served_native: dict[str, list[float]], null_patch: dict[str, list[float]]) -> dict:
+        return sdpa_probe.build_report(
+            recipe,
+            engine={"image": recipe.engine.image},
+            arms={"patch": {"state": "served"}, "native": {"state": "served"}},
+            served={"patch": base, "native": served_native},
+            null={"patch": null_patch, "native": base},
+            texts=list(base),
+        )
+
+    outside = report(noisy, base)
+    assert outside["gate"] == {"max_abs_diff": 1e-5, "cosine": 0.99999, "source": sdpa_probe.GATE_SOURCE}
+    assert outside["comparison"]["patch_vs_native"]["max_abs_diff"] == pytest.approx(2e-5)
+    assert (outside["verdict"]["state"], outside["verdict"]["disposition"]) == ("differs", "keep")
+    near = report(nudged, noisy)
+    assert near["null_control"]["floor"]["max_abs_diff"] == pytest.approx(2e-5)
+    assert (near["verdict"]["state"], near["verdict"]["disposition"]) == ("near", "operator")
+    sdpa_probe.write_report(tmp_path, outside)
+    written = json.loads((tmp_path / "sdpa-report.json").read_text(encoding="utf-8"))
+    assert written["verdict"]["state"] == "differs" and written["decision_rule"]["equivalent"] == "delete"
