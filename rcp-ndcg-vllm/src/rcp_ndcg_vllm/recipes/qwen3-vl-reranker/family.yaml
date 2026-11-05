@@ -154,7 +154,7 @@ sources:
      dict), :376,402 (no overlay at processor construction and HF __call__: the nested dict reaches
      the HF processor); vllm/model_executor/models/qwen3_vl.py:1004-1005 (the vLLM-side image token
      budget reads through the overlay) and :1451-1489 (flat min_pixels/max_pixels re-size every
-     video clip); transformers 5.17.0 (the 0.31 image's version; W4 records the 0.33 image's) processing_utils.py:1513-1630 (_merge_kwargs routes the
+     video clip); transformers 5.17.0 (the 0.31 image's version, where these lines were read; the 0.33 image carries 5.20.2, reference-image-v0.33.0.versions.txt) processing_utils.py:1513-1630 (_merge_kwargs routes the
      nested dict to images_kwargs only) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129
      (min_pixels + max_pixels become the resize size)"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed

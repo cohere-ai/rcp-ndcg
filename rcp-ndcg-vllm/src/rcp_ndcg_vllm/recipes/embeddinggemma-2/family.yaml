@@ -4,10 +4,10 @@
 # embeddinggemma2-transformers-fold patch below -- supplies the classes (transformers 5.19.0) and the
 # model (vLLM commit 02b83919aa2e, PR #60254). The v0.33.0 tag's registry DOES carry the architecture
 # (vllm/model_executor/models/registry.py:259) and the backend (vllm/multimodal/video.py:428), and that
-# commit is an ancestor of the tag. What the 0.33 IMAGE carries is W4's measurement to record: the tag's
-# Dockerfile resolves `transformers >=5.16.1,<5.21.0` at build time, so whether the image's transformers
-# ships the embedding_gemma2 classes -- and therefore whether the fold's class install is load-bearing or
-# inert on 0.33 -- is undecided until W4 records it (D2 re-opened; no 0.33 wave has run, W13).
+# commit is an ancestor of the tag. The 0.33 image carries transformers 5.20.2
+# (`reference-image-v0.33.0.versions.txt`), which ships the embedding_gemma2 classes (>= 5.19.0), so the
+# fold's class install is inert on 0.33; the fold's deletion waits for the cross-image parity wave (the
+# 0.31 image with the fold active against the 0.33 image with the native model).
 # See notes, "Engine".
 id: embeddinggemma-2
 schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
