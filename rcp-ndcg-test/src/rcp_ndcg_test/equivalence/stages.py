@@ -92,7 +92,10 @@ def stage1_prompts(
       (the pairs file's ``content:whitespace_only@query``/``@document`` stratum), is the declared policy and
       is recorded as ``declared_stripped`` instead of failing; an unlabelled strip still fails.  A row whose
       whitespace-only document the recipe's ``empty_doc: omit_zero_blank`` omits whole (jina-reranker-v3) is
-      recorded as ``declared_blank`` the same way; an unlabelled omission still fails;
+      recorded as ``declared_blank`` the same way; an unlabelled omission still fails.  A row whose declared
+      empty side the reference renders with the card's literal placeholder (``client.empty_doc_text``, which
+      the card substitutes for ANY empty input while the product sends an empty query as given) is recorded
+      as ``declared_substituted`` the same way; an unlabelled substitution still fails;
     - ``template_render_check`` — when ``serve.chat_template`` is set: the template file's jinja2 render (the
       engine's settings) of every declared shape against the client's render of the same inputs, one row per
       shape (a media row where the pairs file carries one); on the ``messages`` route the served chat template
@@ -1052,7 +1055,11 @@ def _render_check(
     and a strip the row does not declare still fails.  The declared blank-document policy
     (``empty_doc: omit_zero_blank``) omits the row's whitespace-only document whole, so its empty query
     placeholder and missing document count are recorded as ``declared_blank`` instead of failing; an
-    unlabelled omission still fails.
+    unlabelled omission still fails.  A reference that renders the recipe's declared empty-input placeholder
+    (``client.empty_doc_text``) inside an otherwise identical frame -- the card's rule, which covers every
+    empty input on both shapes, against a product that sends an empty QUERY as given -- is recorded as
+    ``declared_substituted`` on the row's own ``content:empty@<side>`` label; an unlabelled substitution
+    still fails.
     """
     if reference_python is None:
         return {"status": "not_run", "passed": None, "reason": "no --reference-python given"}
@@ -1079,6 +1086,7 @@ def _render_check(
     failures: list[dict[str, Any]] = []
     declared_stripped: list[list[Any]] = []
     declared_blank: list[list[Any]] = []
+    declared_substituted: list[list[Any]] = []
     over_cap: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
     refused = {entry["row"] for entry in probe.get("refusals") or [] if isinstance(entry.get("row"), int)}
@@ -1185,6 +1193,18 @@ def _render_check(
         for mismatch in omitted:
             declared_blank.append([mismatch["index"], str(mismatch.get("span", shape))])
         mismatches = [mismatch for mismatch in mismatches if mismatch not in omitted]
+        # And for the reference's declared empty-input placeholder (``empty_doc_text``): the card renders an
+        # empty input as that literal on both shapes, while the product sends an empty QUERY as given, so the
+        # generator's empty row's query is the frame alone on the client and the frame with the placeholder on
+        # the reference -- that mismatch alone is the declared divergence, recorded, never gated.
+        substituted = [
+            mismatch
+            for mismatch in mismatches
+            if _declared_substitution(recipe, probe_entry, mismatch, served_list, row, tokenizer)
+        ]
+        for mismatch in substituted:
+            declared_substituted.append([mismatch["index"], str(mismatch.get("span", shape))])
+        mismatches = [mismatch for mismatch in mismatches if mismatch not in substituted]
         # Per text, never per row: only a text the client changed (its processing records say so) compares
         # differently by declaration; every other text of the row gates exactly.
         reported = [mismatch for mismatch in mismatches if deviation and _text_changed(probe_entry, shape, mismatch)]
@@ -1211,6 +1231,7 @@ def _render_check(
         "origins": [[row, position] for row, position in origin],
         "declared_stripped": declared_stripped,
         "declared_blank": declared_blank,
+        "declared_substituted": declared_substituted,
     }
     if over_cap:
         summary["over_cap"] = {
@@ -1287,6 +1308,47 @@ def _declared_blank(
     if span == "documents":
         return True
     return span == "query" and served.get("query") == ""
+
+
+def _declared_substitution(
+    recipe: Recipe,
+    entry: dict[str, Any],
+    mismatch: dict[str, Any],
+    served: list[Any],
+    row: dict[str, Any],
+    tokenizer: Any,
+) -> bool:
+    """Whether a render mismatch is exactly the reference's declared empty-input substitution.
+
+    The card's ``format_model_input`` renders an empty input as the literal placeholder on BOTH shapes, so a
+    family whose recipe declares ``client.empty_doc_text`` (the product's ``empty_doc: send_text`` placeholder)
+    has its reference render ``<head><placeholder><tail>`` for an empty query, while the product sends an empty
+    QUERY as given (``empty_doc`` is the DOCUMENT policy) -- ``<head><tail>``.  Only the row's own kind label
+    (``content:empty@<side>``, :func:`_declared_empty_side`) together with that declared placeholder and a
+    mismatch that is exactly the substitution declares it: any other difference, or an unlabelled row, still
+    fails the check.  A shape with more than one content span (a rerank pair) has no single span to
+    substitute, so it is never recorded here.  ``served`` carries the client's texts (the mismatch's heads are
+    snippets) and ``row`` the reference's written row.
+    """
+    placeholder = str(recipe.client.get("empty_doc_text") or "")
+    if not placeholder:
+        return False
+    shape = str(mismatch.get("shape", ""))
+    if not _declared_empty_side(entry, shape):
+        return False
+    template = fitting.client_template(recipe)
+    if template is None or shape not in template.shapes():
+        return False
+    segments = template.segments(fitting.cast_shape(shape))
+    contents = [index for index, segment in enumerate(segments) if segment.content is not None]
+    if len(contents) != 1:
+        return False
+    head = "".join(segment.render(tokenizer) for segment in segments[: contents[0]])
+    tail = "".join(segment.render(tokenizer) for segment in segments[contents[0] + 1 :])
+    position = int(mismatch.get("document", 0))
+    if position >= len(served):
+        return False
+    return str(served[position]) == head + tail and str(row.get("text", "")) == head + placeholder + tail
 
 
 def _text_changed(entry: dict[str, Any], shape: str, mismatch: dict[str, Any]) -> bool:

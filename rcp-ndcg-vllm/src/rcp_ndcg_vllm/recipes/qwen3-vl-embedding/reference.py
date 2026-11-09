@@ -63,7 +63,9 @@ empty document therefore renders the card's "NULL" on both sides and matches. An
 card's ``format_model_input`` substitutes "NULL" for any empty input, on both shapes, and this file mirrors
 the vendored card script rather than forking it to un-substitute one shape -- so an empty query's prompt is
 the card's "NULL" against the client's empty user turn, a divergence the declared ``empty_doc`` parity does
-not cover.
+not cover.  Stage 1's render check records it on the generator's ``content:empty@query`` row (its
+``declared_substituted`` table, keyed to that row's own kind label and to the declared ``empty_doc_text``)
+instead of gating it; any other render divergence still fails.
 
 Which over-cap rows the harness reports rather than gates is the recipe's notes' ("Budgets").
 

@@ -348,6 +348,48 @@ def test_a_declared_blank_document_row_is_recorded_and_does_not_fail_the_render_
         assert render["declared_stripped"] == [], name
 
 
+def test_a_declared_empty_query_row_is_recorded_and_does_not_fail_the_render_check(tmp_path: Path) -> None:
+    """qwen3-vl-embedding's shape: the card substitutes "NULL" for ANY empty input, both shapes, while the
+    product sends an empty QUERY as given (``empty_doc`` is the DOCUMENT policy).  The generator's empty row
+    (``content:empty@query``) therefore renders the frame alone on the client and the frame with the declared
+    placeholder on the reference, so the check records the span in ``declared_substituted`` instead of failing
+    it.  The same row WITHOUT the kind label still fails, so an undeclared divergence cannot hide behind it."""
+    source = (RECIPES / "fixture-embed" / "reference.py").read_text(encoding="utf-8")
+    manifest = (RECIPES / "fixture-embed" / "family.yaml").read_text(encoding="utf-8")
+    directory = tmp_path / "null" / "recipes" / "fixture-null"
+    directory.mkdir(parents=True)
+    shutil.copy(RECIPES.parent / "deterministic.py", tmp_path / "null" / "deterministic.py")
+    old = 'QUERY_PREFIX + row["query"]'
+    assert old in source
+    (directory / "reference.py").write_text(source.replace(old, 'QUERY_PREFIX + (row["query"] or "NULL") + SUFFIX'))
+    (directory / "family.yaml").write_text(_rebased(manifest, "fixture-null"), encoding="utf-8")
+    base = load_recipe(directory)
+    declaring = base.model_copy(
+        update={
+            "client": {
+                **base.client,
+                "template": {
+                    **base.client["template"],
+                    "query": [{"fixed": "query: "}, {"content": "query"}, {"fixed": " [END]"}],
+                },
+                "empty_doc": "send_text",
+                "empty_doc_text": "NULL",
+            }
+        }
+    )
+    labelled = {
+        "query": "",
+        "documents": ["Paris is the capital."],
+        "_strata": ["content:empty", "content:empty@query"],
+    }
+    plain = {"query": "", "documents": ["Paris is the capital."]}
+    for name, row, passed in (("declared", labelled, True), ("undeclared", plain, False)):
+        pairs = write_pairs(tmp_path / f"null-{name}.jsonl", [row])
+        render = stage1_prompts(declaring, pairs, REFERENCE_PYTHON, over_length_per_shape=1)["render_check"]
+        assert render["passed"] is passed, (name, render["failures"][:1])
+        assert render["declared_substituted"] == ([[0, "query"]] if passed else []), name
+
+
 def test_stage1_compares_shaped_pairs_rows(tmp_path: Path) -> None:
     """A pairs-file row carrying the documented per-row ``shape`` field is compared, not silently dropped."""
     recipe = load("fixture-embed")
