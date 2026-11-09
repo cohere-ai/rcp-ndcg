@@ -42,6 +42,7 @@ serve:
 client:
   api: chat
   max_output_tokens: {max_output_tokens}
+  context_tokens: {max_model_len}
 status: {{state: unverified, image: null, date: null, report: null}}
 variants:
   - id: {family}
