@@ -151,7 +151,7 @@ DRIFT = frozenset(
         },
         "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/topk/pooling.py": {8: ("activations.py:108-110 MISSING",)},
         "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual/family.yaml": {
-            145: ("pooling_params.py:182-182 NEAR",)
+            146: ("pooling_params.py:182-182 NEAR",)
         },
         "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/embeddinggemma-2/family.yaml": {
             275: ("vllm/model_executor/models/embedding_gemma2.py:707-721 MISSING",)
