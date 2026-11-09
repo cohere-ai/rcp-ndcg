@@ -418,6 +418,11 @@ incompatibly, independently of the package version. All four distributions carry
   stage 1 — the reference substitutes the card's `NULL` render, so the comparison is not a divergence. The
   `qwen3-embedding` family's `vec_min_cosine` moves to 0.9984 (its k=32 minimum 0.9988384 minus the largest
   observed per-vector movement 3.97e-4), the 4b keeping its published 0.999 and the 8b 0.9987.
+- **The `jina-embeddings-v5-text` nano's floor moves to 0.9964**, derived from its own corpus: the at_budget row
+  (8187 of 8192 tokens) is its minimum at every k (0.9978096 at k=128) and the cosine falls with length, so the
+  0.998 bound was era A's own minimum with 2e-5 of room — era A never gated that row (the client cut it then, so
+  it rode the declared over_cap table). The bound is the measured minimum minus the largest observed
+  era-to-era movement (1.397e-3), the derivation in the recipe's notes.
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data

@@ -598,15 +598,21 @@ def test_notes_pin_the_query_cap_check_the_feature_floor_and_the_download_figure
 
 
 def test_the_nano_declares_the_measured_bf16_cosine_floor() -> None:
-    """E2 r1: the nano's stage 2 measured 0.99806 at full width and 0.99831 / 0.99836 / 0.99802 at
-    k=32/64/128 against the published 0.999. Both sides are bf16 (the engine serves the family's
-    bfloat16; the reference loads the card snippet's ``dtype=torch.bfloat16``), so no like-for-like
-    dtype fix exists and the residual is the two bf16 kernel stacks; the variant declares the tight
-    bound covering every measured k, with the per-k numbers in its notes. The -small keeps the
-    published default (it verified at the 0.999 floor)."""
+    """E2 r1 (the 0.31 era) measured the nano's stage 2 at 0.99806 full width and 0.99831 / 0.99836 /
+    0.99802 at k=32/64/128 against the published 0.999; the rc4 wave (the 0.33 engine, the reference at
+    the image's transformers 5.20.2) measured 0.99790 / 0.99836 / 0.99832 / 0.99781 / 0.99810 / 0.99792 /
+    0.99790 at full width and k=32/64/128/256/512/768, whose minimum is the corpus's longest in-budget row
+    at every k. Both sides are bf16 (the engine serves the family's bfloat16; the reference loads the card
+    snippet's ``dtype=torch.bfloat16``), so no like-for-like dtype fix exists and the residual is the two
+    bf16 kernel stacks. The bound is the measured minimum less the largest observed per-vector movement
+    between the eras (0.9978096 - 1.397e-3 = 0.9964126, rounded down): a bound at the measured minimum
+    (0.9978) or above it (0.998) leaves less room than that movement and false-reds the wave. The -small
+    keeps the published default (it verified at the 0.999 floor)."""
     nano = load("jina-embeddings-v5-text-nano")
-    assert nano.gates.vec_min_cosine == 0.998
-    for measured in ("0.99806", "0.99831", "0.99836", "0.99802"):
+    measured_min, movement = 0.997809639104563, 0.0013970685838464725  # rc4 k=128; row 21 document 0
+    assert nano.gates.vec_min_cosine == 0.9964
+    assert measured_min - nano.gates.vec_min_cosine >= movement  # room for the engine's own movement
+    for measured in ("0.99806", "0.99831", "0.99836", "0.99802", "0.99790", "0.99832", "0.99781", "0.99792"):
         assert measured in nano.notes, measured
     assert load("jina-embeddings-v5-text-small").gates.vec_min_cosine is None
 
