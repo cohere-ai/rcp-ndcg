@@ -14,5 +14,11 @@
 # optional", and its GPU kwargs are unmeasured.
 
 torch>=2.0
-transformers>=4.57
+# The rc2 wave (2026-11-09) measured this family's stage 2 under the transformers 5.22.1 the open
+# floor had resolved to (lock 85810bfb6b49c51040595818f98a4461600713a09e42a2ccde72c9b39fb75215):
+# the nano's min_cosine fell to 0.9978969 against the variant's declared 0.998 gate at full width
+# (and at one MRL dim), stage 1 green. The engine image carries transformers 5.20.2 (vLLM v0.33.0
+# pins >=5.16.1,<5.21.0), so per the W19 fallback the reference re-pins to the image's transformers
+# generation and the wave re-runs the gate at it; the cap lifts only on a measured green gate.
+transformers>=4.57,<5.21.0
 peft>=0.13

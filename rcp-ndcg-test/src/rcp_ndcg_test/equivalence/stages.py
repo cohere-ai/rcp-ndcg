@@ -87,7 +87,12 @@ def stage1_prompts(
       content requirement (its head and its tail are still audited), and an unlabelled frame-alone body fails;
     - ``render_check`` — the reference subprocess's ``render`` output against the captured texts, zero
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
-      over-cap deviation, over-cap rows are reported separately and do not gate;
+      over-cap deviation, over-cap rows are reported separately and do not gate.  A span the template's
+      declared normalisation (``client.template normalize``) strips, on the generator's whitespace-only row
+      (the pairs file's ``content:whitespace_only@query``/``@document`` stratum), is the declared policy and
+      is recorded as ``declared_stripped`` instead of failing; an unlabelled strip still fails.  A row whose
+      whitespace-only document the recipe's ``empty_doc: omit_zero_blank`` omits whole (jina-reranker-v3) is
+      recorded as ``declared_blank`` the same way; an unlabelled omission still fails;
     - ``template_render_check`` — when ``serve.chat_template`` is set: the template file's jinja2 render (the
       engine's settings) of every declared shape against the client's render of the same inputs, one row per
       shape (a media row where the pairs file carries one); on the ``messages`` route the served chat template
@@ -1038,6 +1043,16 @@ def _render_check(
     text's ids under the shape's ``add_special_tokens`` flag (the product tokenizer, the ids the client would
     have sent for that text).  Under a declared over-cap deviation, over-cap texts are reported separately
     and do not gate (the reference cuts them differently by declaration).
+
+    A span the template's declared normalisation strips (``client.template normalize``, applied by the
+    product's fit to every content span) is the declared policy, not a divergence: the reference renders the
+    raw span, so on the generator's whitespace-only row (``content:whitespace_only@query``/``@document``) the
+    served span is empty and the reference's is its whitespace.  That mismatch alone is recorded as
+    ``declared_stripped`` (``[[row, span], ...]``) instead of failing -- the row's own kind label declares it,
+    and a strip the row does not declare still fails.  The declared blank-document policy
+    (``empty_doc: omit_zero_blank``) omits the row's whitespace-only document whole, so its empty query
+    placeholder and missing document count are recorded as ``declared_blank`` instead of failing; an
+    unlabelled omission still fails.
     """
     if reference_python is None:
         return {"status": "not_run", "passed": None, "reason": "no --reference-python given"}
@@ -1062,6 +1077,8 @@ def _render_check(
         )
     deviation = reference_of(recipe).over_cap_deviation is not None
     failures: list[dict[str, Any]] = []
+    declared_stripped: list[list[Any]] = []
+    declared_blank: list[list[Any]] = []
     over_cap: list[dict[str, Any]] = []
     seen: set[tuple[int, str]] = set()
     refused = {entry["row"] for entry in probe.get("refusals") or [] if isinstance(entry.get("row"), int)}
@@ -1146,6 +1163,28 @@ def _render_check(
                         }
                     )
         probe_entry = probe["rows"][key[0]]
+        # A mismatch that is exactly the template's declared strip of the row's whitespace-only kind is the
+        # declared policy (the reference renders the raw span): record it and let it pass.  Everything else
+        # gates, and so does a strip the row's own label does not declare.
+        excused = [
+            mismatch
+            for mismatch in mismatches
+            if _declared_strip(recipe, probe_entry, mismatch, served_list, row)
+        ]
+        for mismatch in excused:
+            declared_stripped.append([mismatch["index"], str(mismatch.get("span", shape))])
+        mismatches = [mismatch for mismatch in mismatches if mismatch not in excused]
+        # The same for the recipe's declared blank-document policy (``empty_doc: omit_zero_blank``): the
+        # generator's whitespace-only document is omitted whole, so the row ships no spans and the query's
+        # empty placeholder and the missing document count are the omission's, not divergences.
+        omitted = [
+            mismatch
+            for mismatch in mismatches
+            if _declared_blank(recipe, probe_entry, mismatch, served_list, row)
+        ]
+        for mismatch in omitted:
+            declared_blank.append([mismatch["index"], str(mismatch.get("span", shape))])
+        mismatches = [mismatch for mismatch in mismatches if mismatch not in omitted]
         # Per text, never per row: only a text the client changed (its processing records say so) compares
         # differently by declaration; every other text of the row gates exactly.
         reported = [mismatch for mismatch in mismatches if deviation and _text_changed(probe_entry, shape, mismatch)]
@@ -1170,6 +1209,8 @@ def _render_check(
         # note carrying the reference's written row maps back through this, never through the written index
         # (g-observe-4: an embed reference writes one row per document).
         "origins": [[row, position] for row, position in origin],
+        "declared_stripped": declared_stripped,
+        "declared_blank": declared_blank,
     }
     if over_cap:
         summary["over_cap"] = {
@@ -1185,6 +1226,67 @@ def _render_check(
             "of gated",
         }
     return summary
+
+
+def _declared_strip(
+    recipe: Recipe, entry: dict[str, Any], mismatch: dict[str, Any], served: dict[str, Any], row: dict[str, Any]
+) -> bool:
+    """Whether a render mismatch is exactly the template's declared strip of the row's whitespace-only kind.
+
+    The template's ``normalize`` declaration (``client.template normalize: [strip]``) is applied by the
+    product's fit to every content span, so the client ships the stripped span while the reference renders
+    the raw one: on the generator's whitespace-only row (:mod:`rcp_ndcg_test.observe.requests` plans its
+    text as the ``whitespace_only`` content kind) the served span is empty and the reference's is its
+    whitespace.  Only the row's own kind label (``content:whitespace_only@query``/``@document``) together
+    with the declared strip declares it: a span that differs any other way, or on a row the generator never
+    labelled, still fails the check.  ``served`` and ``row`` carry the full texts (the mismatch's heads are
+    snippets).
+    """
+    span = str(mismatch.get("span", ""))
+    side = "query" if span == "query" else "document" if span.startswith("document ") else ""
+    if not side or f"content:whitespace_only@{side}" not in set(entry.get("content_kinds") or ()):
+        return False
+    template = fitting.client_template(recipe)
+    shape = str(mismatch.get("shape", ""))
+    if template is None or shape not in template.shapes() or "strip" not in template.normalisers(shape):
+        return False
+    if side == "query":
+        reference_text, served_text = str(row.get("query", "")), str(served.get("query", ""))
+    else:
+        position = int(span.removeprefix("document "))
+        reference_documents = list(row.get("documents") or [])
+        served_documents = list(served.get("documents") or [])
+        if position >= len(reference_documents) or position >= len(served_documents):
+            return False
+        reference_text, served_text = str(reference_documents[position]), str(served_documents[position])
+    return reference_text != served_text and template.normalize_text(shape, reference_text) == served_text
+
+
+def _declared_blank(
+    recipe: Recipe, entry: dict[str, Any], mismatch: dict[str, Any], served: dict[str, Any], row: dict[str, Any]
+) -> bool:
+    """Whether a render mismatch is the recipe's declared blank-document policy omitting the row's pair.
+
+    ``empty_doc: omit_zero_blank`` is the paper's rule (jina-reranker-v3's declaration): a whitespace-only
+    document is empty and the pair is never sent.  The generator's whitespace-only row
+    (``content:whitespace_only@document``) is exactly such a document, so the row ships no span at all --
+    the probe's empty query placeholder and the missing document are the omission's, not divergences.  Only
+    the row's own kind label together with the declared policy and a genuinely blank reference document
+    declares it: an unlabelled row the policy also omitted still fails the check.
+    """
+    if str(recipe.client.get("empty_doc")) != "omit_zero_blank":
+        return False
+    if "content:whitespace_only@document" not in set(entry.get("content_kinds") or ()):
+        return False
+    if list(served.get("documents") or ()):
+        return False  # the client shipped spans: nothing was omitted
+    reference_documents = [str(document) for document in row.get("documents") or ()]
+    if not reference_documents or any(document.strip() for document in reference_documents):
+        return False
+    span = str(mismatch.get("span", ""))
+    if span == "documents":
+        return True
+    return span == "query" and served.get("query") == ""
 
 
 def _text_changed(entry: dict[str, Any], shape: str, mismatch: dict[str, Any]) -> bool:

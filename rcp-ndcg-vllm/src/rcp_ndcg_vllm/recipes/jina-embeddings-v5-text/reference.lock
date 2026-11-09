@@ -2,7 +2,7 @@
 # family: jina-embeddings-v5-text
 # image: vllm/vllm-openai:v0.33.0
 # image-freeze-sha256: 02e121d5b5f24e78d5fea60676c90a59af9f7f382e467dfbad6f736fc32d9fea
-# reference-in-sha256: f5d1e4af7d2952673981f139b96d025a8c3d6b6d61d17968b506e12d21cc60e5
+# reference-in-sha256: b14782ed8667d9726501e1f878ba6591559cbbcc4947ed6195ffbc5c724bda42
 # own-torch: false
 # image-constraint: torch==2.14.0+cu130 (family floor: torch>=2.0)
 #
@@ -10,6 +10,6 @@
 peft==0.21.2 \
     --hash=sha256:106ab6077ff72c54d21577f9af5970e34bac7582cb14209f7b2b511e322a4eae \
     --hash=sha256:b803ccfb3f3f316004d850284306687833a2235ea278fb56abc856203456142e
-transformers==5.22.1 \
-    --hash=sha256:bed9fd76d6f43b4a1a9fc5d0c565ace7c77edbd029784f8cbcdf772cb5e924d8 \
-    --hash=sha256:c940b4bf98de4f568723895f330ba1460a398bd83061b93b70238c3fe32e4389
+transformers==5.20.2 \
+    --hash=sha256:080871e061546d720be57f5846fce426f46b44d61574907cc7404c2cba49d180 \
+    --hash=sha256:7ae75dbc1fb3922aff1b6c97b9e5479d6cf26fd86a8866bfb71324190479f807

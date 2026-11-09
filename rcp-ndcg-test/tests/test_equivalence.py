@@ -294,6 +294,60 @@ def test_stage1_carves_over_cap_rows_out_of_the_render_check_when_declared(tmp_p
     assert render["passed"] is True, render["failures"][:1]
 
 
+def test_a_declared_strip_row_is_recorded_and_does_not_fail_the_render_check(tmp_path: Path) -> None:
+    """The generator's whitespace-only row (``content:whitespace_only@query``/``@document``) under a template
+    that declares ``normalize: [strip]``: the client ships the stripped span and the reference its own, so the
+    check records the span in ``declared_stripped`` instead of failing it.  The same spans WITHOUT the row's
+    kind label still fail, so a client that strips an undeclared row cannot hide behind the record."""
+    recipe = load("fixture-rerank-pointwise")
+    declaring = recipe.model_copy(
+        update={"client": {**recipe.client, "template": {**recipe.client["template"], "normalize": ["strip"]}}}
+    )
+    whitespace = "   \t\t\n   \u00a0 "
+    labelled = {
+        "query": whitespace,
+        "documents": [whitespace],
+        "_strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@query",
+            "content:whitespace_only@document",
+        ],
+    }
+    plain = {"query": whitespace, "documents": [whitespace]}
+    for name, row, passed in (("declared", labelled, True), ("undeclared", plain, False)):
+        pairs = write_pairs(tmp_path / f"{name}.jsonl", [row])
+        render = stage1_prompts(declaring, pairs, REFERENCE_PYTHON, over_length_per_shape=1)["render_check"]
+        assert render["passed"] is passed, (name, render["failures"][:1])
+        assert render["declared_stripped"] == ([[0, "query"], [0, "document 0"]] if passed else []), name
+        assert render["declared_blank"] == [], name
+
+
+def test_a_declared_blank_document_row_is_recorded_and_does_not_fail_the_render_check(tmp_path: Path) -> None:
+    """jina-reranker-v3's shape: ``empty_doc: omit_zero_blank`` and no template normalisation, so the
+    generator's whitespace-only row is omitted whole and no request carries its spans.  The check records the
+    omission's query placeholder and missing document in ``declared_blank`` instead of failing them; the same
+    row WITHOUT the kind label still fails, so a client that drops an undeclared row cannot hide behind it."""
+    recipe = load("fixture-rerank-pointwise")
+    blanking = recipe.model_copy(update={"client": {**recipe.client, "empty_doc": "omit_zero_blank"}})
+    whitespace = "   \t\t\n   \u00a0 "
+    labelled = {
+        "query": whitespace,
+        "documents": [whitespace],
+        "_strata": [
+            "content:whitespace_only",
+            "content:whitespace_only@query",
+            "content:whitespace_only@document",
+        ],
+    }
+    plain = {"query": whitespace, "documents": [whitespace]}
+    for name, row, passed in (("declared", labelled, True), ("undeclared", plain, False)):
+        pairs = write_pairs(tmp_path / f"blank-{name}.jsonl", [row])
+        render = stage1_prompts(blanking, pairs, REFERENCE_PYTHON, over_length_per_shape=1)["render_check"]
+        assert render["passed"] is passed, (name, render["failures"][:1])
+        assert render["declared_blank"] == ([[0, "query"], [0, "documents"]] if passed else []), name
+        assert render["declared_stripped"] == [], name
+
+
 def test_stage1_compares_shaped_pairs_rows(tmp_path: Path) -> None:
     """A pairs-file row carrying the documented per-row ``shape`` field is compared, not silently dropped."""
     recipe = load("fixture-embed")
