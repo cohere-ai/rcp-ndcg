@@ -387,7 +387,11 @@ incompatibly, independently of the package version. All four distributions carry
   labelled `v0.33.0` in `zerank` — the other two families cite it as the checkout it is). The engine image is part of the
   behaviour fingerprint, so every recipe's key moved: the pin sets every variant to `status: unverified`, a
   recipe returns to `verified` only from a wave that re-recorded its corpus on the 0.33 image, and the 44 recipe goldens (and their redactions file)
-  were regenerated with no client budget, template or role changed. The `pooling-full-context` patch is
+  were regenerated with no client budget, template or role changed. The waves have since verified 33 of the 44
+  variants on their own 0.33 runs, the two `topk-embed-v1` variants are `failed` under the owner's disposition,
+  and 9 read `unverified` with no wave yet — the ledger and every `status` block are generated from the waves'
+  evidence by `python -m rcp_ndcg_test.jobs.ledger --evidence <mirror> [--write]`, never by hand, and a row whose
+  key does not match the tree is refused by name. The `pooling-full-context` patch is
   deleted with its opt-ins, because the engine's own scheduler keeps the whole context of a pooling prefill
   (vllm-project/vllm#48039, vLLM v0.32.0), so the derived `--max-num-batched-tokens` now covers sixteen
   recipes instead of nine. The verified fake engines gate on the engine version: a corpus recorded on another
@@ -423,6 +427,9 @@ incompatibly, independently of the package version. All four distributions carry
   0.998 bound was era A's own minimum with 2e-5 of room — era A never gated that row (the client cut it then, so
   it rode the declared over_cap table). The bound is the measured minimum minus the largest observed
   era-to-era movement (1.397e-3), the derivation in the recipe's notes.
+- **`qwen3-vl-embedding-8b` declares its media floor** (`gates.media_vec_min_cosine: 0.9966`): its rc5 minimum
+  is a media row (a 4x-downscaled page), 0.9975178 minus the largest era-to-era movement 8.507e-4; its text
+  floor stays 0.9983 (text minimum 0.9990639).
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data

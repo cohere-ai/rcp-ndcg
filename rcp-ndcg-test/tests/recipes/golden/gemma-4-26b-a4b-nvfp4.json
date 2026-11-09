@@ -144,10 +144,10 @@
    "https://huggingface.co/nvidia/Gemma-4-26B-A4B-NVFP4/tree/a19cfe00be84568a6867111c9a68c9c44fdcffe6 (config.json, hf_quant_config.json, processor_config.json, chat_template.jinja, model.safetensors.index.json read at the pin)"
   ],
   "status": {
-   "date": "2026-10-12",
-   "image": "vllm/vllm-openai:v0.31.0",
-   "report": "docs/reference/gpu-validation.md",
-   "state": "unverified"
+   "date": "2026-11-09",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "report": "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/judgecheck/",
+   "state": "verified"
   }
  },
  "serve_argv": [

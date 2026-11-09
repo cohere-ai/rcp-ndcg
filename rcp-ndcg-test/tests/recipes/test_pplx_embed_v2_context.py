@@ -310,7 +310,7 @@ def test_recipe_contract() -> None:
         reference=EXPECTED_REFERENCE,
         top=EXPECTED_TOP,
     )
-    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
+    assert recipe.status.state == "verified"  # the rc2 equivalence wave verified it on the pinned image
     assert recipe.sources
 
 

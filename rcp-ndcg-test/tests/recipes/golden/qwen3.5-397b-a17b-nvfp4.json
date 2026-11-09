@@ -142,10 +142,10 @@
    "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4/tree/0368c1b3233414cd4a617b8ff9515e25752dc16c (config.json, hf_quant_config.json, preprocessor_config.json, model.safetensors.index.json read at the pin)"
   ],
   "status": {
-   "date": "2026-10-12",
-   "image": "vllm/vllm-openai:v0.31.0",
-   "report": "docs/reference/gpu-validation.md",
-   "state": "unverified"
+   "date": "2026-11-09",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "report": "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/judgecheck/",
+   "state": "verified"
   }
  },
  "serve_argv": [

@@ -95,10 +95,10 @@ sources:
   - "https://huggingface.co/google/gemma-4-12B-it (the model card: the standardized sampling configuration, the recommended engine settings and the media notes the serve block above translates)"
   - "transformers 5.17.0 (the 0.31 image's version, where these lines were read; the v0.33.0 image carries 5.20.2, reference-image-v0.33.0.versions.txt, inside the pin's runtime range >= 5.16.1, < 5.21.0): models/gemma4/image_processing_gemma4.py:33-84 and models/gemma4_unified/image_processing_gemma4_unified.py:54-105 (the aspect-ratio-preserving resize the product's gemma4 geometry reproduces), models/gemma4/processing_gemma4.py:179-188 (the per-frame mm:ss timestamp line)"
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-12"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/judgecheck/"
 variants:
   - id: gemma-4-12b-it
     model: google/gemma-4-12B-it

@@ -216,10 +216,10 @@
    "rcp-ndcg/src/rcp_ndcg/cli/retrieval.py:132 (the paper reranks depth-150 pools -- the CLI's rerank depth default)"
   ],
   "status": {
-   "date": "2026-10-13",
-   "image": "vllm/vllm-openai:v0.31.0",
-   "report": "docs/reference/gpu-validation.md",
-   "state": "unverified"
+   "date": "2026-11-09",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "report": "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/record-jina-reranker-v3/vllm-vllm-openai-v0-33-0/",
+   "state": "verified"
   }
  },
  "serve_argv": [

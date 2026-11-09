@@ -459,13 +459,12 @@ def test_recipe_contract(variant_id: str) -> None:
     # (waves-rc0-202610140620/plugin-carriers-vllm) failed the same gate at the current fingerprint:
     # the schema's `failed`, with the image/date/report of the latest wave that measured it.  Never
     # `verified` without a green re-run; the gate, its dtype and the disposition stay the owner's.
-    # The 0.33 pin bump sets every status to `unverified` (the false-evidence rule), so the recorded
-    # `failed` returns with W13's wave; until then the date and report of that measurement stand.
-    assert recipe.status.state == "unverified"
-    # the status block records the wave that measured it: still the stock 0.31 image (W13 re-verifies)
-    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
-    assert recipe.status.date == "2026-10-14"
-    assert recipe.status.report is not None and "waves-rc0-202610140620" in recipe.status.report
+    # The rc2 gate wave re-ran the gate on the pinned image and failed it, so the disposition's `failed`
+    # stands beside that wave's date and report -- never `verified` without a green re-run.
+    assert recipe.status.state == "failed"
+    assert recipe.status.image == recipe.engine.image
+    assert recipe.status.date == "2026-11-09"
+    assert recipe.status.report is not None and "gate-topk-embed-v1" in recipe.status.report
     assert recipe.sources
 
 

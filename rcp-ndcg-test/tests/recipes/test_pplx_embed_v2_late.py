@@ -436,7 +436,7 @@ def test_recipe_contract(variant_id: str) -> None:
     _contract(recipe, variant_id)
     assert recipe.engine.model_dump(mode="json") == _expected_engine()
     assert recipe.resources.model_dump(mode="json") == _expected_resources()
-    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
+    assert recipe.status.state == "unverified"  # no wave has landed for this family yet (W13's ledger row)
     assert recipe.sources
 
 

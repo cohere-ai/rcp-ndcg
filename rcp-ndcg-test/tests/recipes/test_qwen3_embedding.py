@@ -184,9 +184,10 @@ def test_the_recipe_loads_and_declares_the_served_path(variant_id: str) -> None:
     assert recipe.serve.pooler_config == {} and recipe.serve.plugin is None
     assert recipe.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert recipe.reference.kind == "transformers" and recipe.reference.score_scale == "cosine"
-    # the 0.33 pin: unverified until its wave runs (W13 flips it)
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
-    assert recipe.status.state == "unverified"
+    # The 4b and 8b are the rc2 equivalence wave's; the 0.6b's rc4 recording wave failed the MRL-32 floor
+    # (W33 re-derived it to 0.9984) and its re-run is queued, so its row claims nothing yet.
+    assert recipe.status.state == ("unverified" if variant_id == "qwen3-embedding-0.6b" else "verified")
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[:3] == ["vllm", "serve", facts["model"]]
     assert argv[argv.index("--revision") + 1] == facts["revision"]

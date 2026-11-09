@@ -70,10 +70,10 @@ sources:
   - "https://huggingface.co/Qwen/Qwen3.8-27B-FP8 (the model card: the checkpoint facts and the recommended engine settings the blocks above translate)"
   - "rcp-ndcg-test/scenarios/{identity,outage,text-four-phases}.yaml at this tree's HEAD (the scenario serve command and client block this family moves into a recipe)"
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-12"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/judgecheck/"
 variants:
   - id: qwen3.8-27b-fp8
     model: Qwen/Qwen3.8-27B-FP8

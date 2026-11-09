@@ -79,10 +79,10 @@ sources:
   - "vLLM v0.33.0 (image vllm/vllm-openai:v0.33.0): engine/arg_utils.py:991, :992, :1147, :1397, :1500; model_executor/models/registry.py:427; layers/quantization/modelopt.py:745-746,756-761,775-791; utils/torch_utils.py:457-458,503-521"
   - "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4 (the model card: the recommended engine settings, the licence terms and the quantisation notes the blocks above translate)"
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-12"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/judgecheck/"
 variants:
   - id: gemma-4-31b-it-nvfp4
     model: nvidia/Gemma-4-31B-IT-NVFP4

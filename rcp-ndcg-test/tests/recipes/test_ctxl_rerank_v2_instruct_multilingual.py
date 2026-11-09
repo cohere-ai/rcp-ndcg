@@ -280,9 +280,9 @@ def test_recipe_loads_and_declares_the_full_contract(variant_id: str) -> None:
         top=expected["top"],
     )
     assert recipe.engine.model_dump(mode="json") == expected["engine"]
-    # the 0.33 pin: no wave has verified this recipe yet, so the record says unverified (W13 flips it
-    # together with status.image, which still names the image the 0.31 wave ran)
-    assert recipe.input == ["text"] and recipe.status.state == "unverified"
+    # the rc3 equivalence wave verified every size on the pinned image: the record is the wave's
+    assert recipe.input == ["text"] and recipe.status.state == "verified"
+    assert recipe.status.image == recipe.engine.image
 
 
 def test_mutant_dropping_the_serve_max_model_len_reds_the_contract_naming_the_field(variant_id: str) -> None:

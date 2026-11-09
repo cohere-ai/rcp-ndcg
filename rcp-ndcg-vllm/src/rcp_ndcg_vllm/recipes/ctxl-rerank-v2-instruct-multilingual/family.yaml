@@ -105,10 +105,10 @@ reference:
   # download, so score() runs on the GPU wave).
 gates: {}
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-13"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-ctxl-rerank-v2-instruct-multilingual/vllm-vllm-openai-v0-33-0/"
 
 variants:
   - id: ctxl-rerank-v2-instruct-multilingual-1b

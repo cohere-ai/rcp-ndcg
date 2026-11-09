@@ -113,10 +113,10 @@ gates:
   # 4b keeps the published 0.999, the 8b its 0.9987).
   vec_min_cosine: 0.9984
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-12"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-qwen3-embedding/vllm-vllm-openai-v0-33-0/"
 sources:
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B (card: prompt format, padding, Matryoshka, 32k, TEI curl example)"
   - "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/raw/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/config.json (architectures, torch_dtype, max_position_embeddings)"
@@ -189,6 +189,11 @@ notes: >
   re-run measures them again.
 variants:
   - id: qwen3-embedding-0.6b
+    status:
+      state: unverified
+      image: "vllm/vllm-openai:v0.31.0"
+      date: "2026-10-12"
+      report: "docs/reference/gpu-validation.md"
     model: Qwen/Qwen3-Embedding-0.6B
     revision: "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     overrides:

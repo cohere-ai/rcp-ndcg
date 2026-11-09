@@ -76,10 +76,10 @@ reference:
   known_deviations: ["anchor_drop_over_cap"]
 gates: {}
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-14"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/record-zembed-1/vllm-vllm-openai-v0-33-0/"
 sources:
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/tree/cf13c81f3274394053d166740294f7eea4586f7a"
   - "https://huggingface.co/zeroentropy/zembed-1-embedding/raw/cf13c81f3274394053d166740294f7eea4586f7a/config.json"

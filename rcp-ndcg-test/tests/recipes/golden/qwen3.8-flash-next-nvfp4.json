@@ -141,10 +141,10 @@
    "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4/tree/fc694b54fb0174e0913e6adf86691ef85a4ead47 (config.json, hf_quant_config.json, preprocessor_config.json, model.safetensors.index.json read at the pin)"
   ],
   "status": {
-   "date": "2026-10-12",
-   "image": "vllm/vllm-openai:v0.31.0",
-   "report": "docs/reference/gpu-validation.md",
-   "state": "unverified"
+   "date": "2026-11-09",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "report": "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/judgecheck/",
+   "state": "verified"
   }
  },
  "serve_argv": [

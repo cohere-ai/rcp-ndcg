@@ -360,7 +360,9 @@ def test_recipe_loads_with_the_product_endpoint_config(variant_id: str) -> None:
     # the model, not a patch: the pooling-full-context opt-in is gone (vllm#48039 ships in 0.32+)
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
-    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
+    # The small's rc3 recording wave verified it; the nano's rc4 equivalence wave failed the 0.998 floor
+    # (W34 re-derived it to 0.9964) and its re-run is queued, so its row claims nothing yet.
+    assert recipe.status.state == ("unverified" if variant_id == "jina-embeddings-v5-text-nano" else "verified")
     # The client block is the product's config: the dump constructs the product model unchanged.
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     endpoint = EmbeddingEndpoint.model_validate(config)

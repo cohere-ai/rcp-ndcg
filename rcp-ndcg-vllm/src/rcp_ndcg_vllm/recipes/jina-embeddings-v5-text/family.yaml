@@ -301,6 +301,11 @@ variants:
       - "https://huggingface.co/jinaai/jina-embeddings-v5-text-nano/tree/8a7f00aac812071b69403df470f1038ec85f8925 (the Hub tree API: model.safetensors 423,543,680 B and the four adapter_model.safetensors 13,586,992/13,587,024 B) and the Hub model API (BF16 parameter census 211,766,016)"
       - "vLLM v0.33.0 vllm/model_executor/models/jina.py: JinaEmbeddingsV5Model.__new__ dispatches on is_decoder to JinaEmbeddingsV5EncoderModel, whose docstring names jina-embeddings-v5-text-nano; _setup_jina_v5_task_and_pooler and _load_jina_v5_weights are the same for both backbones; vllm/model_executor/models/config.py JinaEmbeddingsV5ModelConfig sets is_causal false for encoder checkpoints"
   - id: jina-embeddings-v5-text-small
+    status:
+      state: verified
+      image: "vllm/vllm-openai:v0.33.0"
+      date: "2026-11-09"
+      report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/record-jina-embeddings-v5-text/vllm-vllm-openai-v0-33-0/"
     model: jinaai/jina-embeddings-v5-text-small
     revision: "dd76d535f5447ca3897a9c893fb1e612ead98192"
     overrides:

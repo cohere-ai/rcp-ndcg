@@ -204,7 +204,7 @@ DRIFT = frozenset(
             95: ("vllm/transformers_utils/config.py:1012-1095 MISSING",)
         },
         "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank/family.yaml": {
-            124: ("vllm/model_executor/layers/pooler/activations.py:140-140 NEAR",)
+            129: ("vllm/model_executor/layers/pooler/activations.py:140-140 NEAR",)
         },
         "rcp-ndcg/src/rcp_ndcg/data/resolution.py": {1473: ("vidcom2.py:19-40 MISSING",)},
         "rcp-ndcg/src/rcp_ndcg/inference/adapters/embeddings.py": {320: ("vllm/renderers/hf.py:847-914 MISSING",)},

@@ -3,10 +3,11 @@
 The shipped retrieval models -- 34 of them (one served recipe id per checkpoint; a family's sizes share a
 directory) -- run on the stock `vllm/vllm-openai` image their recipe pins
 (`vllm/vllm-openai:v0.33.0` for every one of them), and a checkpoint the image cannot serve as shipped
-carries its model plugin instead (`embeddinggemma-2`). None of them is `verified` on that image yet: the
-pin moved every recipe to `status: unverified`, and a recipe returns to `verified` only from a wave that
-re-recorded its corpus on the pinned image (0 verified today; the [GPU validation
-ledger](../reference/gpu-validation.md) states the obligation and records every row). This walk-through
+carries its model plugin instead (`embeddinggemma-2`). The pin moved every recipe to `status: unverified`,
+and a recipe returns to `verified` only from a wave that re-recorded its corpus on the pinned image: 23 of
+these 34 are verified there today, and the rest claim nothing until their wave lands (33 verified today
+across all 44 recipes; the [GPU validation ledger](../reference/gpu-validation.md) states the rule and
+records every row). This walk-through
 serves one, points `rcp-ndcg` at it and scores what it retrieves. The rules of the
 recipes are in [recipes and serving models](../reference/recipes.md); hosted APIs (Cohere, Voyage, Gemini)
 need none of this -- [embedding endpoints](../concepts/embeddings.md) covers them.

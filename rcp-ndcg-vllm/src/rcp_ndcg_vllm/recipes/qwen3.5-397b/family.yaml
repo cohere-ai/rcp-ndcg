@@ -94,10 +94,10 @@ sources:
   - "https://huggingface.co/nvidia/Qwen3.5-397B-A17B-NVFP4 (the model card: the recommended engine settings, the quantisation notes and the media geometry the blocks above translate)"
   - "experiments/paper/README.md at this tree's HEAD (the paper's judges ran on SGLang; this release serves the same checkpoints on vLLM v0.33.0)"
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-12"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/judgecheck/"
 variants:
   - id: qwen3.5-397b-a17b-nvfp4
     model: nvidia/Qwen3.5-397B-A17B-NVFP4

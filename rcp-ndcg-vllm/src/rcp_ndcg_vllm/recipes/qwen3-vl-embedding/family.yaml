@@ -201,7 +201,10 @@ notes: >-
   0.998541 at full width and k=2048, 0.998906 at k=64; 14 of the 282 gated comparisons below the
   published 0.999) and the 8b 0.9983 (0.998335 at full width and k=4096, 0.998674 at k=64; 15 of 282).
   The published 0.999 is the bf16 kernel-stack residual, not a defect, and each declared bound sits
-  just below its measured floor, so a real regression still fails. E2 re-measures after any change.
+  just below its measured floor, so a real regression still fails. The sides whose input carries image or
+  video declare a wider floor of their own (`overrides.gates.media_vec_min_cosine`: 0.9975 at the 2b, 0.9966
+  at the 8b), each derived as its own media minimum minus the largest era-to-era movement that corpus
+  measured -- see each size's notes. E2 re-measures after any change.
 
   Serving the 8192-token budget safely: this family's largest client budget
   reaches serve.max_model_len exactly and it carries no engine patch, so the renderer
@@ -247,8 +250,8 @@ variants:
       wave's measured media minimum 0.9980392 minus 5.4e-4 of headroom, not the text floor rounded: the
       media band moved 1.4e-3 between the E2 corpus (media_set 3, minimum 0.9985411, itself a media row) and
       the rc3 corpus (media_set 4 re-hashes every image, so every media row's bytes changed), and the wave
-      re-measures it after any change. The 8b declares no media floor yet: it has no v0.33 measurement, so
-      its media sides gate on its own 0.9983 until its wave measures one.
+      re-measures it after any change. The 8b declares its own media floor (0.9966, derived from its rc5
+      media rows: see that size's notes); its text sides keep 0.9983.
   - id: qwen3-vl-embedding-8b
     model: Qwen/Qwen3-VL-Embedding-8B
     revision: "2c4565515e0f265c6511776e7193b22c0968ddc7"
@@ -260,6 +263,10 @@ variants:
                                # and 0.998674 at k=64, with 15 of 282 gated comparisons below the
                                # published 0.999 (7 full width, 7 at k=4096, 1 at k=64); both sides are
                                # bf16, so the residual is the two bf16 kernel stacks, not a cast
+        media_vec_min_cosine: 0.9966 # the media sides' own floor, derived from the rc5 wave: the media
+                               # minimum 0.9975178 (row 32 document 0, full width and k=4096) minus the
+                               # largest era-to-era movement 8.507301e-4 = 0.9966671, rounded down; the
+                               # text sides keep 0.9983 (their rc5 minimum is 0.9990639)
     notes: >-
       Per-size facts, read at the pinned revision. Architecture: Qwen3VLForConditionalGeneration
       (config.json:architectures), model_type qwen3_vl; text_config.hidden_size 4096, 36 layers,
@@ -298,6 +305,23 @@ variants:
       pinned revision); the media policy (nested images_kwargs 4096..1843200 px and videos_kwargs
       4096..7864320 px, one media item per request, the engine's fps-2 video rule) is the family's
       declared one, copied here, not redesigned.
+      Numerics, the media sides (rc5, the v0.33.0 wave): the binding comparison in both eras is a media
+      row, and the whole low tail is the media documents -- the 27 media vectors measure
+      0.9975178-0.9997855 at full width and k=4096 (median 0.9996907) against the text rows'
+      0.9990639-0.9998655, and 0.9988089 at k=64 -- so a text floor cannot cover that band: the rc5
+      wave reds 0.9983 on row 32 document 0 (a 4x-downscaled page), which is why this size declares
+      `overrides.gates.media_vec_min_cosine: 0.9966` for the sides whose input carries image or video
+      and keeps 0.9983 for the text sides. The bound is the rc5 media minimum 0.9975178 minus the
+      largest era-to-era movement the same corpus measured, 8.507301e-4 (row 32 document 0, full width
+      and k=4096: 0.9983686 in the 0.31.0 wave, 0.9975178 in rc5) = 0.9966671, rounded down. That
+      movement is an upper bound on the engine's own noise, not a noise estimate: media_set 4 re-hashed
+      every image between the two corpora, so part of it is the changed pixels -- which is why the bound
+      cannot be fitted to the measurement it gates. The distribution is a stable low group, not a
+      one-off: the six downscaled page documents sit at 0.9975-0.9987 in rc5 (0.99833-0.99859 in the
+      0.31.0 wave) while every text row stays above 0.99906 in both eras, and the runner-up (row 28
+      document 0) is 6.4e-4 above the minimum. Both corpora carry the same 94 vectors / 282 comparisons,
+      so the join is referent-for-referent; the media rows' median movement is +7.1e-5 and the text
+      rows' largest is 2.25e-4. The wave re-measures it after any change.
     sources:
       - "https://huggingface.co/api/models/Qwen/Qwen3-VL-Embedding-8B (sha 2c4565515e0f265c6511776e7193b22c0968ddc7, gated false, cardData.license apache-2.0; checked 2026-10-09)"
       - "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B/raw/2c4565515e0f265c6511776e7193b22c0968ddc7/config.json (architectures Qwen3VLForConditionalGeneration, dtype bfloat16, text_config hidden_size 4096 / 36 layers / 32 heads / 8 KV heads / head_dim 128 / intermediate_size 12288 / max_position_embeddings 262144, top-level tie_word_embeddings false, vision_config depth 27 / hidden_size 1152 / deepstack [8, 16, 24] / out_hidden_size 4096)"

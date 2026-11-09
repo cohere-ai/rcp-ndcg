@@ -189,10 +189,10 @@ gates: {}
 # is deferred past the tag: the gate, its dtype and the disposition stay untouched (the disposition is
 # the owner's).
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-14"
-  report: "gs://YOUR-BUCKET/rcp-ndcg/waves-rc0-202610140620/plugin-carriers-vllm/vllm-vllm-openai-v0-31-0/"
+  state: failed
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/gate-topk-embed-v1/vllm-vllm-openai-v0-33-0/"
 sources:
   # The checkpoint, every file byte-verified at the pinned revision (tokenizer.json via its
   # Git-LFS oid e56427d66f44..., sha256 e56427d66f44411c2dec1288b236f6d2c3eeafd611d1d0e2e92ad9301616e1e7).

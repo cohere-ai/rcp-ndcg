@@ -117,10 +117,10 @@ reference:
   known_deviations: [over_cap_cut_differs]
 gates: {}
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-14"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-pplx-embed-v2-context/vllm-vllm-openai-v0-33-0/"
 sources:
   # The model card and the checkpoint's own files, at the pinned revision.
   - https://huggingface.co/perplexity-ai/pplx-embed-v2-context-9b-preview/resolve/b667039ee8b438a6350fbc91bbcecd86f9d363ba/README.md

@@ -67,10 +67,10 @@ reference:
 # differs from the family's).
 gates: {vec_min_cosine: 0.993}
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-13"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-octen-embedding/vllm-vllm-openai-v0-33-0/"
 sources:
   - "https://huggingface.co/Octen/Octen-Embedding-8B @ 5adcfa292e712091dfc30f0e97f0b2282e6cc66c (default-branch sha, re-checked 2026-10-06)"
   - "the three card READMEs at the pinned revisions (d715b32e.../fea468fa.../5adcfa29...) contain no Matryoshka/MRL/projection sentence, and each config.json declares neither is_matryoshka nor matryoshka_dimensions: mrl_kind: none is the declaration (the truncation mentions in the cards are the tokenizer example and the >40K-token context note)"
@@ -222,6 +222,11 @@ variants:
       - "https://huggingface.co/Octen/Octen-Embedding-4B @ fea468fae3f0caffbae8a12ba792d1c394b6277d (default-branch sha re-checked 2026-10-09): config.json (architectures [Qwen3Model], dtype bfloat16, hidden_size 2560, max_position_embeddings 40960, tie_word_embeddings true, vocab_size 151665); config_sentence_transformers.json; modules.json; 1_Pooling/config.json (pooling_mode_lasttoken, word_embedding_dimension 2560); 2_Normalize/config.json; tokenizer_config.json (identical to the 8B's at 5adcfa29...); tokenizer.json sha256 83cdf8c3... (identical to the 8B's)"
       - "https://huggingface.co/Octen/Octen-Embedding-4B/tree/fea468fae3f0caffbae8a12ba792d1c394b6277d (the Hub tree API: model-00001-of-00002.safetensors 4,965,826,464 B + model-00002-of-00002.safetensors 3,077,765,624 B) and the Hub model API (BF16 parameter census 4,021,774,336)"
   - id: octen-embedding-8b
+    status:
+      state: verified
+      image: "vllm/vllm-openai:v0.33.0"
+      date: "2026-11-09"
+      report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/record-octen-embedding/vllm-vllm-openai-v0-33-0/"
     model: Octen/Octen-Embedding-8B
     revision: "5adcfa292e712091dfc30f0e97f0b2282e6cc66c"
     notes: >-

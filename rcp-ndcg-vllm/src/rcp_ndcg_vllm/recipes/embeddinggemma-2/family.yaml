@@ -104,10 +104,10 @@ gates: {}
 # this recipe at the current key before the tag; the rc0-202610140620 evidence above stays the
 # superseded-key record it is.
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-14"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-embeddinggemma-2/vllm-vllm-openai-v0-33-0/"
 sources:
   - "https://huggingface.co/google/embeddinggemma-2 @ 914f7f89142e33e77833254d9c9b90c3cef7303b (checked 2026-10-09; Apache-2.0, not gated)"
   - "https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/config.json (architectures [EmbeddingGemma2Model], model_type embedding_gemma2; text_config embedding_gemma2_text 24 layers, sliding_window 512, full attention every 6th layer, max_position_embeddings 262144; vision_config gemma4_vision; audio_config gemma4_audio; no auto_map; transformers_version 5.18.0.dev0)"

@@ -287,7 +287,7 @@ def test_recipe_validates_against_the_product_endpoints(variant_id: str) -> None
     assert [segment.fixed for segment in template.document] == [DOCUMENT_PREFIX, None]
     # The paper's encode-time cut keeps the anchor; its boundary can differ from fit's by a token.
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
-    assert recipe.status.state == "unverified"  # the 0.33 pin: unverified until its wave runs (W13 flips it)
+    assert recipe.status.state == "verified"  # the rc2 wave verified every size on the pinned image
     config = client_config(recipe, base_url="http://127.0.0.1:8100/v1")
     assert EmbeddingEndpoint(**config).model == recipe.id
 

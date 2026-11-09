@@ -245,21 +245,21 @@ def test_recipe_contract_pins_every_field() -> None:
     assert_recipe_contract(recipe, serve=SERVE, client=CLIENT, reference=REFERENCE, top=TOP)
     assert recipe.engine.image == "vllm/vllm-openai:v0.33.0"
     assert recipe.engine.min_version == "0.33.0"
-    # the status block records the wave that last verified it: still the stock 0.31 image (W13 re-verifies)
-    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+    # the status block records the wave that verified it: the rc2 equivalence wave, on the pinned image
+    assert recipe.status.state == "verified" and recipe.status.image == recipe.engine.image
     assert not (RECIPE_DIR / "template.jinja").exists(), "no template file ships (serve.chat_template null)"
 
 
-def test_the_verified_engine_is_the_stock_image_the_waves_ran() -> None:
-    """vllm-7 (owner decision 8): the verifying embeddinggemma-2 waves ran stock
-    ``vllm/vllm-openai:v0.31.0`` (the needed pieces were backported), so ``status.image`` -- the wave's
-    record -- and every module docstring say that.  ``engine.image`` is the 0.33 pin the recipe serves on
-    now, and the notes record both: the 0.31 wave, and the classes' presence at the v0.33.0 tag.  The
-    nightly digest remains the fold's source provenance only; no document claims a wave ran on it."""
+def test_the_verified_engine_is_the_pinned_image_the_wave_ran() -> None:
+    """vllm-7 (owner decision 8) recorded that the 0.0.1 waves ran the stock ``vllm/vllm-openai:v0.31.0``
+    image (the needed pieces were backported); on the 0.33 pin the rc2 equivalence wave ran the pinned
+    ``vllm/vllm-openai:v0.33.0`` image, so ``status.image`` -- the wave's record -- is ``engine.image``.
+    The notes keep the 0.31 history and the classes' presence at the v0.33.0 tag.  The nightly digest
+    remains the fold's source provenance only; no document claims a wave ran on it."""
     recipe = load_recipe(RECIPE_DIR)
     assert recipe.engine.image == "vllm/vllm-openai:v0.33.0"
     assert recipe.engine.min_version == "0.33.0"
-    assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
+    assert recipe.status.image == "vllm/vllm-openai:v0.33.0"
     assert "The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint" not in recipe.notes
     assert "the pinned image is a v0.31.0-based build" not in recipe.notes
     # The verifying-wave record: the stock 0.31 image, and the backport the fold was (the history stays in

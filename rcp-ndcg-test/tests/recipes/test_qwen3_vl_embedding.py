@@ -53,6 +53,10 @@ VARIANTS: dict[str, dict[str, Any]] = {
         # width, k=64 and k=2048) and the measured count below the published 0.999.
         "vec_min_cosine": 0.9985,
         "measured": ("0.998541", "0.998906", "14 of 282"),
+        # The media sides' own floor (the vision path's wider band): rc3's 27 media vectors, the
+        # minimum at full width and k=2048, and the headroom the derivation subtracts.
+        "media_vec_min_cosine": 0.9975,
+        "media_measured": ("0.9980392", "5.4e-4"),
     },
     "qwen3-vl-embedding-8b": {
         "model": "Qwen/Qwen3-VL-Embedding-8B",
@@ -62,6 +66,10 @@ VARIANTS: dict[str, dict[str, Any]] = {
         # floor; k=64 is the worst k).
         "vec_min_cosine": 0.9983,
         "measured": ("0.998335", "0.998674", "15 of 282"),
+        # rc5's 27 media vectors: the measured minimum at full width and k=4096, the k=64 minimum,
+        # and the largest era-to-era movement the bound subtracts.
+        "media_vec_min_cosine": 0.9966,
+        "media_measured": ("0.9975178", "0.9988089", "8.507301e-4"),
     },
 }
 VARIANT_IDS = sorted(VARIANTS)
@@ -340,16 +348,26 @@ def test_the_variant_declares_its_measured_bf16_cosine_floor(variant_id: str) ->
     282 gated comparisons below the published 0.999; the 8b measured 0.998335 at full width and
     k=4096 and 0.998674 at k=64, with 15 below. The declarations (2b 0.9985, 8b 0.9983) sit just
     below each measured floor, so the gate still catches a real regression; the published 0.999 is
-    the bf16 kernel-stack residual, not a defect."""
+    the bf16 kernel-stack residual, not a defect.
+
+    The sides whose input carries image or video declare their own, wider floor (``media_vec_min_cosine``):
+    the 2b 0.9975 from its rc3 media minimum, the 8b 0.9966 from its rc5 media minimum minus the largest
+    era-to-era movement that corpus measured. A bound at the measured minimum leaves no room for the
+    engine's own noise (the rc5 wave reds the 8b's text floor on a media row at 0.9975), so a recipe that
+    drops the media floor back to the text one, or pins it at the measurement, fails here."""
     recipe = load_recipe(variant_id)
     facts = VARIANTS[variant_id]
     assert recipe.gates.vec_min_cosine == facts["vec_min_cosine"]
     for measured in facts["measured"]:
         assert measured in recipe.notes, measured
-    # Each size carries its own bound: no family-wide gate is declared.
+    assert recipe.gates.media_vec_min_cosine == facts["media_vec_min_cosine"]
+    for measured in facts["media_measured"]:
+        assert measured in recipe.notes, measured
+    # Each size carries its own bounds: no family-wide gate is declared.
     for other in VARIANT_IDS:
         if other != variant_id:
             assert load_recipe(other).gates.vec_min_cosine == VARIANTS[other]["vec_min_cosine"]
+            assert load_recipe(other).gates.media_vec_min_cosine == VARIANTS[other]["media_vec_min_cosine"]
 
 
 @pytest.mark.parametrize("variant_id", VARIANT_IDS)

@@ -121,10 +121,10 @@ reference:
                                             # card's cut
 gates: {}
 status:
-  state: unverified
-  image: "vllm/vllm-openai:v0.31.0"
-  date: "2026-10-13"
-  report: "docs/reference/gpu-validation.md"
+  state: verified
+  image: "vllm/vllm-openai:v0.33.0"
+  date: "2026-11-09"
+  report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/record-qwen3-vl-reranker/vllm-vllm-openai-v0-33-0/"
 sources:
   - "https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B @ 4bd860ac4f15ad1897a214615cccc700f8f71818
      (README.md, config.json, preprocessor_config.json, chat_template.jinja,
@@ -308,6 +308,11 @@ variants:
       regression. The 8b keeps its own (0.03; measured max 0.0273, unchanged in round 10). E2
       re-measures after any change.
   - id: qwen3-vl-reranker-8b
+    status:
+      state: verified
+      image: "vllm/vllm-openai:v0.33.0"
+      date: "2026-11-09"
+      report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-qwen3-vl-reranker/vllm-vllm-openai-v0-33-0/"
     model: Qwen/Qwen3-VL-Reranker-8B
     revision: "b212dc8c91a8164aef1ea2de9c1a867611e75c04"
     overrides:
