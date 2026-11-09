@@ -520,8 +520,7 @@ def texts_of(rows: list[dict[str, Any]]) -> list[tuple[str, Any, Any]]:
     from rcp_ndcg_core.content import Content
 
     from rcp_ndcg.inference.types import EncodeRole
-
-    from ..equivalence.media import side_contents
+    from rcp_ndcg_test.equivalence.media import side_contents
 
     items: list[tuple[str, Any, Any]] = []
     for index, row in enumerate(rows):
@@ -538,7 +537,7 @@ def texts_of(rows: list[dict[str, Any]]) -> list[tuple[str, Any, Any]]:
 
 def encode_all(recipe: Recipe, base_url: str, items: list[tuple[str, Any, Any]]) -> dict[str, list[float]]:
     """One vector per text, through the product's role client (the recipe's own prompts and budget)."""
-    from ..equivalence.wire import role_client
+    from rcp_ndcg_test.equivalence.wire import role_client
 
     client, _capture = role_client(recipe, base_url, full_width=True)
     vectors: dict[str, list[float]] = {}
@@ -555,7 +554,7 @@ def encode_all(recipe: Recipe, base_url: str, items: list[tuple[str, Any, Any]])
 
 def _rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     """The pairs rows to probe: every row, or the ``--rows`` indices (comma-separated)."""
-    from ..equivalence.fitting import load_pairs
+    from rcp_ndcg_test.equivalence.fitting import load_pairs
 
     rows = load_pairs(args.pairs)
     if not args.rows:

@@ -243,7 +243,7 @@ def maxsim_gate(
     that read no gating pair fails loudly (the anchor audit's rule: an audit that checked nothing proves
     nothing).  Units: MaxSim scores as above; the bound in the same units.
     """
-    from ..equivalence.gates import kendall_tau_b, resolve_gates
+    from rcp_ndcg_test.equivalence.gates import kendall_tau_b, resolve_gates
 
     gates = resolve_gates(recipe)
     floor = gates.vec_min_cosine
@@ -383,7 +383,7 @@ def build_report(
     it).  Units: MaxSim scores as above.
     """
     gate = maxsim_gate(recipe, served_scores, expected_scores, query_tokens=query_tokens, gating=gating)
-    from ..equivalence.gates import resolve_gates
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
 
     resolved = resolve_gates(recipe)
     report: dict[str, Any] = {
@@ -474,7 +474,7 @@ def _encode_corpus(recipe: Recipe, base_url: str, items: list[tuple[str, Any, An
     applied stays as received) and, per key, whether the client changed the text (its processing
     records; a changed text's pairs are the declared over-cap deviation's, reported, not gated).
     """
-    from ..equivalence.wire import role_client
+    from rcp_ndcg_test.equivalence.wire import role_client
 
     client, _capture = role_client(recipe, base_url, full_width=True)
     sides: dict[str, Any] = {"query": {"matrices": [], "changed": {}}, "document": {"matrices": [], "changed": {}}}
@@ -499,7 +499,7 @@ def _unmeasured_report(
     recipe: Recipe, serve: dict[str, Any], reference: dict[str, Any], corpus: dict[str, Any]
 ) -> dict[str, Any]:
     """The report for a run that measured nothing: the steps' states and the loud ``unmeasured`` verdict."""
-    from ..equivalence.gates import resolve_gates
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
 
     resolved = resolve_gates(recipe)
     report: dict[str, Any] = {
@@ -539,9 +539,9 @@ def main(argv: list[str] | None = None) -> int:
     recipe = load_recipe(args.recipe)
     if recipe.role != "multi_vector":
         raise SystemExit(f"maxsim_probe: {recipe.id} is a {recipe.role} recipe; this gate scores MaxSim")
-    from ..equivalence.fitting import load_pairs, resolved_tokenizer_spec
-    from ..equivalence.reference import reference_entry, reference_of, run_reference
-    from .sdpa_probe import _stop, _wait_ready, texts_of
+    from rcp_ndcg_test.equivalence.fitting import load_pairs, resolved_tokenizer_spec
+    from rcp_ndcg_test.equivalence.reference import reference_entry, reference_of, run_reference
+    from rcp_ndcg_test.jobs.sdpa_probe import _stop, _wait_ready, texts_of
 
     all_rows = load_pairs(args.pairs)
     rows = text_rows(all_rows)
