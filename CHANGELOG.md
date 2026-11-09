@@ -380,9 +380,12 @@ incompatibly, independently of the package version. All four distributions carry
   recipes instead of nine. The verified fake engines gate on the engine version: a corpus recorded on another
   engine version is refused by name, never replayed, and the public `fake://` engine host moves to
   `fake://vllm-0.33.0/<recipe>` (the committed corpora are re-recorded and renamed with the waves; until
-  then a 0.31 corpus under the 0.33 host is the refusal). The two `topk-embed-v1` variants keep their
-  recorded gate failure and the owner's disposition: their state returns to `failed` only from a wave that
-  re-runs that gate, and they read `unverified` until then like every other recipe.
+  then a 0.31 corpus under the 0.33 host is the refusal). The two `topk-embed-v1` variants are the only
+  `failed` recipes, and the owner's explicit disposition for 0.0.1 names exactly those two: their end-to-end
+  validation does not meet the stage-2 per-token cosine floor on the available engine configurations (bf16 and
+  fp16 both fail, and fp32 cannot be served because the engine's GatedDeltaNet kernels refuse it), the gate
+  failure is recorded in the ledger, their state returns to `failed` only from a wave that re-runs that gate,
+  and they ship only under that disposition — never silently.
 - **A corpus records the engine it was recorded on**: the exchange record's schema is now 2 (a registered
   1→2 migration; a record without the stamp reads as "stamp unavailable", never invented), every exchange
   carries the engine version the running engine reported, and `verify_corpus` refuses a corpus whose records
