@@ -410,6 +410,14 @@ incompatibly, independently of the package version. All four distributions carry
   0.2338 vs reference 0.1581, ranks identical, tau 1.0), inside the family's recorded bf16 spread (0.16
   absolute) on a small logit; the reference stays the paper's `transformers==4.57.6` pin, and the family's
   own remedy for this class is fp32, not a re-pin.
+- **A media row's own floor, and the empty query declared in stage 2** (`gates.media_vec_min_cosine`): a recipe
+  whose media rows legitimately sit below its text rows (the declared image approximation) declares the media
+  rows' own bound, reported as separate gate rows per k and refused beside `media_approximation`;
+  `qwen3-vl-embedding-2b` declares 0.9975 from its measured media minimum (0.9980392 minus the observed band),
+  its text floor unchanged at 0.9985. An empty query's scores are declared, not gated, in stage 2 as well as
+  stage 1 — the reference substitutes the card's `NULL` render, so the comparison is not a divergence. The
+  `qwen3-embedding` family's `vec_min_cosine` moves to 0.9984 (its k=32 minimum 0.9988384 minus the largest
+  observed per-vector movement 3.97e-4), the 4b keeping its published 0.999 and the 8b 0.9987.
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data

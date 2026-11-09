@@ -223,6 +223,12 @@ variants:
                                # and 0.998906 at k=64, with 14 of the 282 gated comparisons below the
                                # published 0.999 (6 full width, 6 at k=2048, 2 at k=64); both sides are
                                # bf16, so the residual is the two bf16 kernel stacks, not a cast
+        media_vec_min_cosine: 0.9975 # the media sides' own floor (the declared media approximation):
+                               # the rc3 wave's 27 media vectors measure 0.9980392 at full width and
+                               # k=2048 (row 35, the query-image row) and 0.9986130 at k=64; this bound
+                               # sits 5.4e-4 below that measured minimum, and the media band moved
+                               # 1.4e-3 between the E2 and rc3 corpora (MEDIA_SET_VERSION 4 re-hashed
+                               # every image), so the wave re-measures it and this bound follows that
     notes: >-
       E2 round 7 (stage 2, the first measurement with the round-6 reference fix in place): the
       served-vs-reference minimum cosine over the 282 gated comparisons (94 vectors at full width,
@@ -233,6 +239,16 @@ variants:
       declares `overrides.gates.vec_min_cosine: 0.9985`, the tight bound covering its measured floor,
       with the per-MRL numbers above as the evidence; the 8b declares its own (0.9983). E2 re-measures
       after any change.
+      Media sides (the declared media approximation's own floor, rc3): the reference's media outputs are the
+      two bf16 stacks on the vision path, a band an order of magnitude wider than the text rows' (the media
+      rows' 27 vectors measure 0.9980392-0.9998303 at full width, median 0.9997962, against the text rows'
+      0.9991803-0.9998808), so this size declares `overrides.gates.media_vec_min_cosine: 0.9975` for the
+      sides whose input carries image or video, and keeps 0.9985 for the text sides. The bound is the rc3
+      wave's measured media minimum 0.9980392 minus 5.4e-4 of headroom, not the text floor rounded: the
+      media band moved 1.4e-3 between the E2 corpus (media_set 3, minimum 0.9985411, itself a media row) and
+      the rc3 corpus (media_set 4 re-hashes every image, so every media row's bytes changed), and the wave
+      re-measures it after any change. The 8b declares no media floor yet: it has no v0.33 measurement, so
+      its media sides gate on its own 0.9983 until its wave measures one.
   - id: qwen3-vl-embedding-8b
     model: Qwen/Qwen3-VL-Embedding-8B
     revision: "2c4565515e0f265c6511776e7193b22c0968ddc7"

@@ -19,6 +19,7 @@ so the rendered ids are the same.
 from __future__ import annotations
 
 import json
+import math
 import os
 import socket
 import sys
@@ -513,6 +514,32 @@ def test_two_contract_mutants_are_red(variant_id: str, label: str, block: str, v
     with pytest.raises(AssertionError) as caught:
         _assert_contract(_mutated_recipe(variant_id, block, value))
     assert needle in str(caught.value), f"{label}: the failure must name {needle}: {caught.value}"
+
+
+def test_the_family_vector_floor_is_the_measured_min_less_the_observed_spread() -> None:
+    """The 0.6b's MRL-32 gate carries the headroom the engine's own bf16 noise needs.
+
+    Evidence (stage 2, the same 69 vectors at both eras): the rc4 wave's k=32 minimum is 0.9988384352
+    (row 14 query); between the E2 r3 wave and rc4 the largest per-vector movement at k=32 is 3.974e-4
+    (row 15 query, +3.97e-4 -- larger than the min row's own -9.87e-5, so the worst move can land on
+    the min row). The bound is therefore ``0.9988384352 - 3.974e-4 = 0.9984410``, declared 0.9984
+    (rounded down): a bound below the measured min false-reds on the engine's noise (the defect this
+    closes), a bound above it fails the wave. The mutation that reds: any other declared value -- e.g.
+    0.998 lowered below the measured min, or the old 0.9989 raised above it -- fails the equality.
+    """
+    measured_min = 0.9988384352  # the rc4 stage-2 k=32 minimum, row 14 query
+    observed_spread = 3.974e-4  # the largest per-vector movement at k=32 between the two eras
+    derived = math.floor((measured_min - observed_spread) * 1e4) / 1e4
+    assert derived == 0.9984, f"the recorded evidence derives 0.9984410, not {derived}"
+    assert derived < measured_min, "a bound above the measured minimum fails the wave"
+    recipe = load_recipe("qwen3-embedding-0.6b")
+    assert recipe.gates.vec_min_cosine == derived, (
+        f"the 0.6b's declared floor {recipe.gates.vec_min_cosine} is not the derived {derived}"
+    )
+    # The family's one scalar covers the full width too (0.9992973389 measured there): 9.0e-4 of
+    # headroom, so the full-width gate stays a gate. A size whose measured floor differs declares its own.
+    assert load_recipe("qwen3-embedding-4b").gates.vec_min_cosine == 0.999
+    assert load_recipe("qwen3-embedding-8b").gates.vec_min_cosine == 0.9987
 
 
 def test_notes_state_the_merged_budget_wiring_and_the_query_cap_check() -> None:

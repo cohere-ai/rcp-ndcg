@@ -842,3 +842,129 @@ def test_an_fps_clip_gates_on_the_rules_realised_frame_count(tmp_path: Path) -> 
         failure["engine_media_tokens"] > failure["client_media_tokens"]
         for failure in drifted["engine_check"]["failures"]
     )
+
+
+def test_stage2_gates_a_media_side_on_its_own_declared_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recipe declaring ``gates.media_vec_min_cosine``: the sides whose input carries media gate on that
+    floor and the text sides keep ``vec_min_cosine``, each reported as its own gate row -- so the declared
+    media approximation's measured floor covers the media rows without loosening the text rows. The same
+    vector below its own floor still fails, and a recipe declaring the floor beside ``media_approximation``
+    is refused (the floor would gate nothing)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.errors import HarnessError
+
+    base = load_recipe(RECIPES / "fixture-vl-embed")
+    reference = {**base.reference.model_dump(mode="json"), "known_deviations": []}
+    # The media document sits at cosine 0.99: above a 0.9 media floor, below the 0.999 text floor.
+    monkeypatch.setattr(stages_module, "run_reference", _tilted_reference(0.99))
+    monkeypatch.setattr(
+        stages_module, "role_client", lambda recipe, base_url, **kwargs: (_FakeMediaClient(), _FakeCapture())
+    )
+    for floor, passed in ((0.9, True), (0.9995, False)):
+        gates = {**base.gates.model_dump(mode="json"), "vec_min_cosine": 0.999, "media_vec_min_cosine": floor}
+        recipe = base.model_copy(
+            update={
+                "reference": base.reference.model_validate(reference),
+                "gates": base.gates.model_validate(gates),
+            }
+        )
+        summary = stages_module.stage2_scores(
+            recipe, _media_stage2_pairs(tmp_path), "fake-python", base_url="http://engine"
+        )
+        assert summary["passed"] is passed, (floor, summary["gates"])
+        assert {(row["referent"], row["bound"]) for row in summary["gates"]} == {
+            ("cosine per vector (full width)", 0.999),
+            ("cosine per vector (media sides, full width)", floor),
+        }
+        assert summary["media_rows"]["gating"] is True and "media_vec_min_cosine" in summary["media_rows"]["referent"]
+    both = base.model_copy(
+        update={
+            "reference": base.reference.model_validate({**reference, "known_deviations": ["media_approximation"]}),
+            "gates": base.gates.model_validate({**gates, "media_vec_min_cosine": 0.9}),
+        }
+    )
+    with pytest.raises(HarnessError, match="media_vec_min_cosine"):
+        stages_module.stage2_scores(both, _media_stage2_pairs(tmp_path), "fake-python", base_url="http://engine")
+
+
+def test_stage2_records_a_declared_empty_pair_instead_of_gating_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reference renders the recipe's declared ``empty_doc_text`` for an empty input while the client sends
+    it as given, so the pair's vectors compare two different prompts: on the generator's
+    ``content:empty@document`` row the cosine is recorded in ``declared_substituted`` and does not gate, and
+    the same empty document *without* the label still gates (the record can never hide an undeclared
+    divergence)."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+
+    base = load_recipe(RECIPES / "fixture-vl-embed")
+    reference = {**base.reference.model_dump(mode="json"), "known_deviations": []}
+    recipe = base.model_copy(
+        update={
+            "reference": base.reference.model_validate(reference),
+            "client": {**dict(base.client), "empty_doc_text": "NULL"},
+        }
+    )
+    # The reference's vector for the empty side is orthogonal: a cosine of 0.0, far under any floor.
+    monkeypatch.setattr(stages_module, "run_reference", _orthogonal_empty_reference())
+    monkeypatch.setattr(
+        stages_module, "role_client", lambda recipe, base_url, **kwargs: (_FakeMediaClient(), _FakeCapture())
+    )
+    text_row = {"query": "a query", "documents": ["a document"], "_strata": ["content:ascii_prose"]}
+    empty = {"query": "a query", "documents": [""], "_strata": ["content:empty", "content:empty@document"]}
+    labelled = [empty, text_row]
+    summary = stages_module.stage2_scores(
+        recipe, write_pairs(tmp_path / "labelled.jsonl", labelled), "fake-python", base_url="http://engine"
+    )
+    assert summary["passed"] is True, summary["gates"]
+    assert [entry["referent"] for entry in summary["declared_substituted"]] == ["row 0 document 0 vector 0"]
+    assert summary["declared_substituted"][0]["cosine"] == pytest.approx(0.0)
+    unlabelled = [{**empty, "_strata": ["content:ascii_prose"]}, text_row]
+    summary = stages_module.stage2_scores(
+        recipe, write_pairs(tmp_path / "unlabelled.jsonl", unlabelled), "fake-python", base_url="http://engine"
+    )
+    assert summary["passed"] is False and summary["declared_substituted"] == []
+
+
+def _tilted_reference(cosine: float) -> Any:
+    """A fake ``run_reference``: the reference's media-document vector sits at ``cosine`` from the served
+    ``[1.0, 0.0]``, every other vector identical to it (a cosine of 1.0)."""
+    import math
+
+    tilted = [cosine, math.sqrt(max(0.0, 1.0 - cosine * cosine))]
+
+    def run(reference_python: str, entry: str, *, mode: str, pairs_path: Path, **kwargs: Any) -> dict[str, Any]:
+        rows = [json.loads(line) for line in Path(pairs_path).read_text(encoding="utf-8").splitlines() if line.strip()]
+        return {
+            "rows": [
+                {
+                    "index": index,
+                    "query_vectors": [[[1.0, 0.0]]],
+                    "document_vectors": [[tilted if row.get("media") else [1.0, 0.0]] for _ in row["documents"]],
+                }
+                for index, row in enumerate(rows)
+            ]
+        }
+
+    return run
+
+
+def _orthogonal_empty_reference() -> Any:
+    """A fake ``run_reference``: the reference's vector for an empty document is orthogonal to the served one."""
+
+    def run(reference_python: str, entry: str, *, mode: str, pairs_path: Path, **kwargs: Any) -> dict[str, Any]:
+        rows = [json.loads(line) for line in Path(pairs_path).read_text(encoding="utf-8").splitlines() if line.strip()]
+        return {
+            "rows": [
+                {
+                    "index": index,
+                    "query_vectors": [[[1.0, 0.0]]],
+                    "document_vectors": [[[0.0, 1.0] if not document else [1.0, 0.0]] for document in row["documents"]],
+                }
+                for index, row in enumerate(rows)
+            ]
+        }
+
+    return run

@@ -52,7 +52,7 @@
     },
     "Gates": {
       "additionalProperties": false,
-      "description": "Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.\n\nEvery field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field\nmeans, are in :mod:`rcp_ndcg_test.equivalence.gates`; ``tau_min`` applies to every scored scale,\n``metrics_max_abs`` to stage 3.",
+      "description": "Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.\n\nEvery field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field\nmeans, are in :mod:`rcp_ndcg_test.equivalence.gates`; ``tau_min`` applies to every scored scale,\n``metrics_max_abs`` to stage 3.  ``media_vec_min_cosine`` is the vector floor for the sides whose input\ncarries image or video -- the declared media approximation's own measured floor; unset, ``vec_min_cosine``\ngates those vectors too.  A recipe declaring it beside ``reference.known_deviations:\n[media_approximation]`` is refused: that declaration already reports every media row non-gating, so the\nfloor would gate nothing.",
       "properties": {
         "prob_p99_abs": {
           "anyOf": [
@@ -122,6 +122,20 @@
           ],
           "default": null,
           "title": "Vec Min Cosine"
+        },
+        "media_vec_min_cosine": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": -1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Vec Min Cosine"
         },
         "tau_min": {
           "anyOf": [

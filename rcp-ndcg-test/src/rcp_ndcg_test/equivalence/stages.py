@@ -315,7 +315,7 @@ def _probe(
         # The row's declared content kinds: the pairs file's own stratum labels (observe.requests plans the
         # empty kind's row as the empty string sent as given).  The last_content audit reads them to record
         # that row's frame-alone render as declared, never to excuse an unlabelled one.
-        kinds = [str(label) for label in row.get("_strata") or () if str(label).startswith("content:")]
+        kinds = _content_kinds(row)
         if kinds:
             entry["content_kinds"] = kinds
         try:
@@ -770,6 +770,16 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     }
 
 
+def _content_kinds(row: dict[str, Any]) -> list[str]:
+    """The pairs row's declared content-kind labels (its ``content:`` strata, :mod:`rcp_ndcg_test.observe.requests`).
+
+    The generator plans one row per content kind and labels it in the pairs file's ``_strata``; both stages read
+    the same labels (stage 1 through a probe entry's ``content_kinds``, stage 2 through the row itself), so the
+    mapping lives here once.
+    """
+    return [str(label) for label in row.get("_strata") or () if str(label).startswith("content:")]
+
+
 def _declared_empty_side(entry: dict[str, Any], shape: str) -> bool:
     """Whether the row's declared content kinds say the empty string is sent on this shape's side.
 
@@ -783,6 +793,29 @@ def _declared_empty_side(entry: dict[str, Any], shape: str) -> bool:
         return False
     sides = {"query", "document"} if shape == "pair" else {shape}
     return any(f"content:empty@{side}" in kinds for side in sides)
+
+
+def _declared_substitution_side(
+    recipe: Recipe, row: dict[str, Any], shape: str, text: Any, *, changed: bool
+) -> bool:
+    """Whether one side's stage-2 comparison is the reference's declared empty-input substitution.
+
+    The generator's empty row sends the empty string as given -- the product's ``empty_doc`` is the DOCUMENT
+    policy and never applies to a query -- while the card's ``format_model_input`` renders the recipe's
+    declared ``client.empty_doc_text`` placeholder for any empty input on either shape.  The two sides then
+    read different prompts, so their vectors are not comparable and the pair is **recorded, never gated**
+    (stage 1's render check proves the substitution on the same run and records it as
+    ``declared_substituted``; this is the stage-2 half of the same declaration).  Only the row's own
+    ``content:empty@<side>`` label with the recipe's declared placeholder declares it, and only where the
+    client sent the text **unchanged**: an unlabelled empty side, a recipe with no placeholder, or a side the
+    client itself changed (a ``send_text`` document, whose substituted text the reference also renders) still
+    gates exactly.
+    """
+    if not str(recipe.client.get("empty_doc_text") or ""):
+        return False
+    if changed or str(text) != "":
+        return False
+    return _declared_empty_side({"content_kinds": _content_kinds(row)}, shape)
 
 
 def _audit_last_content(
@@ -2266,9 +2299,18 @@ def stage2_scores(
         )
     from .media import media_rows
 
+    gates = resolve_gates(recipe)
     all_rows = load_pairs(pairs_path)
     media_indices = {index for index, _ in media_rows(all_rows)}
     if reference_of(recipe).media_approximation:
+        if gates.media_vec_min_cosine is not None:
+            # The approximation already reports every media row non-gating, so a media floor would gate
+            # nothing: a declared bound that never compares anything is refused, never silently inert.
+            raise HarnessError(
+                f"recipe {recipe.id} declares both reference.known_deviations: [media_approximation] and "
+                "gates.media_vec_min_cosine: the approximation reports every image/video row non-gating, so "
+                "the floor would gate nothing -- declare the approximation or the floor, not both"
+            )
         # A declared approximation: the reference's media outputs are not compared; the rows are
         # reported non-gating with the reason (the recipe's notes carry it), never silently dropped.
         rows = [row for index, row in enumerate(all_rows) if index not in media_indices]
@@ -2285,13 +2327,20 @@ def stage2_scores(
     else:
         # No declaration: the media rows are compared like the text rows (the reference computes their
         # scores/vectors; a reference that refuses them fails the stage loudly, never silently skips).
+        # A declared media floor is the one difference: the sides whose input carries media gate on it.
         rows = all_rows
         media_report = {
             "known_approximation": False,
             "n_rows": len(media_indices),
             "gating": bool(media_indices),
             "passed": True,
-            "referent": "image/video rows compared by the same gates as the text rows",
+            "referent": (
+                "image/video rows compared against their own measured floor "
+                f"(gates.media_vec_min_cosine: {gates.media_vec_min_cosine}); the text rows keep "
+                f"gates.vec_min_cosine: {gates.vec_min_cosine}"
+                if gates.media_vec_min_cosine is not None
+                else "image/video rows compared by the same gates as the text rows"
+            ),
         }
     reference, outputs = _reference_outputs(
         recipe,
@@ -2302,7 +2351,6 @@ def stage2_scores(
         store=reference_store,
         lock_sha256=(reference_environment or {}).get("lock_sha256"),
     )
-    gates = resolve_gates(recipe)
     if recipe.role == "rerank":
         summary = _rerank_stage2(recipe, rows, reference, base_url, gates, recorder, served_model_name)
     else:
@@ -2694,11 +2742,17 @@ def _vector_stage2(
     text exactly as the served path does -- the harness pre-fits nothing.  Under a declared over-cap
     deviation, the texts the client changed (a processing record: a budget cut counted with the frame, a
     shape's own cap, an empty substitution, a media change) are reported separately and do not gate: the
-    reference renders them its own way by declaration.
+    reference renders them its own way by declaration.  Two declarations of the same kind are read here:
+    a recipe's ``gates.media_vec_min_cosine`` gates the sides whose input carries image or video against
+    that measured floor (the declared media approximation) while the text sides keep ``vec_min_cosine``, and
+    a side the reference renders with the recipe's declared ``client.empty_doc_text`` placeholder while the
+    client sent it as given is recorded in ``declared_substituted`` instead of gated (stage 1's render check
+    proves that substitution on the same run).
     """
     deviation = reference_of(recipe).over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
+    declared_substituted: list[dict[str, Any]] = []
     # The run's selection is read from the recipe's declaration BEFORE the served client strips it: the
     # stripped client carries no selection, and a range declaration must still gate the k the run chose.
     selection = recipe.client.get("mrl_dim")
@@ -2724,6 +2778,8 @@ def _vector_stage2(
 
             served_matrices: list[list[list[float]]] = []
             cut_flags: list[bool] = []
+            media_flags: list[bool] = []
+            substituted: list[bool] = []
             for position, text in enumerate(texts):
                 # One call per text: the client's fan-out runs concurrently, so per-call record windows keep
                 # the position attribution exact.  A media row sends the product's Content (the media
@@ -2732,10 +2788,16 @@ def _vector_stage2(
                 if media:
                     content = query_content if role == "query" else document_contents[position]
                     embeddings = client.encode([content], encode_role)
+                    carries = bool(getattr(content, "has_media", False))
+                    changed = False
                 else:
                     embeddings = client.encode([Content.from_text(text)], encode_role)
+                    carries = False
+                    changed = _changed_rows(client, start, 1)[0]
                 served_matrices.extend(_embeddings_to_matrices(recipe, embeddings, 1))
-                cut_flags.extend([False] if media else _changed_rows(client, start, 1))
+                cut_flags.append(changed)
+                media_flags.append(carries)
+                substituted.append(_declared_substitution_side(recipe, row, shape, text, changed=changed))
             expected = reference_row.get(served_key) or []
             _compare_shape(
                 recipe,
@@ -2751,11 +2813,15 @@ def _vector_stage2(
                 row=row,
                 head=head,
                 dims=dims,
+                media_flags=media_flags,
+                substituted=substituted,
+                declared_substituted=declared_substituted,
             )
     if recorder is not None:
         recorder.extend(capture.exchanges)
     summary = _vector_summary(recipe, per_vector, gates, dims)
     summary["mrl_gate_version"] = MRL_GATE_VERSION
+    summary["declared_substituted"] = declared_substituted
     summary["over_cap"] = {
         "known_deviation": deviation,
         "n_pairs": len(over_cap),
@@ -2835,6 +2901,9 @@ def _compare_shape(
     row: dict[str, Any] | None = None,
     head: MrlHead | None = None,
     dims: tuple[int | None, ...] = (None,),
+    media_flags: list[bool] | None = None,
+    substituted: list[bool] | None = None,
+    declared_substituted: list[dict[str, Any]] | None = None,
 ) -> None:
     """Pair served with reference vectors positionally, every text's rows (per vector, or per token).
 
@@ -2843,7 +2912,14 @@ def _compare_shape(
     ``dims`` entry gates: the product's ``head`` cuts both sides at that ``k`` (``None`` is the full width)
     and each row carries the ``k`` it compared.  Inputs the client cut (over cap) are recorded in
     ``over_cap`` once and -- under the declared deviation -- reported separately instead of gated.
+
+    ``media_flags`` marks the texts whose input carries image or video: with a declared
+    ``gates.media_vec_min_cosine`` those vectors gate on that floor (and carry ``media`` in their report row),
+    the rest on ``vec_min_cosine``.  ``substituted`` marks the texts whose comparison is the reference's
+    declared empty-input substitution (:func:`_declared_substitution_side`): their cosines are recorded in
+    ``declared_substituted`` instead of gating, because the two sides read different prompts.
     """
+    media_bound: float | None = getattr(gates, "media_vec_min_cosine", None)
     if len(served_vectors) != len(expected):
         per_vector.append(
             {
@@ -2856,6 +2932,10 @@ def _compare_shape(
         return
     for index, (served_matrix, reference_item) in enumerate(zip(served_vectors, expected, strict=True)):
         over = bool(cut_flags[index]) if cut_flags and index < len(cut_flags) else False
+        declared = bool(substituted[index]) if substituted and index < len(substituted) else False
+        carries_media = bool(media_flags[index]) if media_flags and index < len(media_flags) else False
+        media_row = carries_media and media_bound is not None
+        bound: float = media_bound if media_row and media_bound is not None else gates.vec_min_cosine
         # A reference entry is one vector (wrap it) or one ragged matrix per text (use it as given).
         expected_matrix = (
             reference_item
@@ -2920,12 +3000,21 @@ def _compare_shape(
                     {
                         "referent": f"row {row_index} {role} {index} vector {position}",
                         "cosine": cosine,
-                        "within": bool(cosine >= gates.vec_min_cosine),
+                        "within": bool(cosine >= bound),
                         "over_cap": over,
                         "mrl_dim": k,
+                        **({"media": True} if media_row else {}),
                     }
                 )
+            if declared:
+                # The declared substitution: the two sides read different prompts, so the cosines are
+                # evidence, never a gate (the shape stage 1's render check records on the same run).
+                if declared_substituted is not None:
+                    declared_substituted.extend(rows)
+                rows = []
             per_vector.extend([] if (over and deviation) else rows)
+        if declared:
+            continue  # recorded in the substitution table; not an over-cap cut
         if over and deviation and over_cap is not None:
             over_cap.append(
                 {
@@ -2948,12 +3037,23 @@ def _compare_shape(
 def _vector_summary(
     recipe: Recipe, per_vector: list[dict[str, Any]], gates: Any, dims: tuple[int | None, ...] = (None,)
 ) -> dict[str, Any]:
-    """Aggregate the per-vector cosines into one gate row per gated ``k``; every non-within row fails."""
+    """Aggregate the per-vector cosines into one gate row per gated ``k``; every non-within row fails.
+
+    With a declared ``gates.media_vec_min_cosine`` the media-bearing vectors are aggregated against that floor
+    in their own row (the rows carry ``media``), so the wave's report shows the bound each set was compared
+    against; without it there is one row per ``k`` over every vector, exactly as before.
+    """
     multi = recipe.role == "multi_vector"
     label = f"cosine per {'token' if multi else 'vector'}"
+    media_bound = getattr(gates, "media_vec_min_cosine", None)
     gate_rows = []
     for k in dims:
-        cosines = [entry["cosine"] for entry in per_vector if entry.get("mrl_dim") == k and entry["cosine"] is not None]
+        entries = [
+            entry
+            for entry in per_vector
+            if entry.get("mrl_dim") == k and entry["cosine"] is not None and not entry.get("media")
+        ]
+        cosines = [entry["cosine"] for entry in entries]
         worst = min(cosines) if cosines else None
         gate_rows.append(
             {
@@ -2963,6 +3063,31 @@ def _vector_summary(
                 "value": worst,
                 "bound": gates.vec_min_cosine,
                 "referent": f"{label} (full width)" if k is None else f"{label} at k={k}",
+            }
+        )
+        if media_bound is None:
+            continue
+        media_cosines = [
+            entry["cosine"]
+            for entry in per_vector
+            if entry.get("mrl_dim") == k and entry["cosine"] is not None and entry.get("media")
+        ]
+        if not media_cosines:
+            continue
+        media_worst = min(media_cosines)
+        gate_rows.append(
+            {
+                "gate": "min_cosine",
+                "mrl_dim": k,
+                "media_rows": True,
+                "passed": bool(media_worst >= media_bound),
+                "value": media_worst,
+                "bound": media_bound,
+                "referent": (
+                    f"{label} (media sides, full width)"
+                    if k is None
+                    else f"{label} (media sides) at k={k}"
+                ),
             }
         )
     values = [row["value"] for row in gate_rows if row["value"] is not None]

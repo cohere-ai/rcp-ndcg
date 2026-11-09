@@ -6,7 +6,10 @@ probability-scale scores allow |delta| of 0.02 for 99% of documents and 0.05 for
 with a cosine of at least 1 - 1e-3 per vector (per token for a late-interaction model; both sides are compared
 as decoded, and the client's transfer precision is part of the behaviour fingerprint), and the median per-query
 Kendall tau between served and reference scores must be at least 0.98.  A recipe's ``gates`` section overrides
-any of them.
+any of them.  ``gates.media_vec_min_cosine`` is the one vector override that is not a single value for the whole
+run: it sets the floor for the sides whose input carries image or video (the declared media approximation's own
+measured floor, set below the text rows' bound), while ``vec_min_cosine`` keeps the text sides -- stage 2 reports
+the two sets as separate gate rows so the bound each vector was compared against is in the wave's report.
 """
 
 from __future__ import annotations
@@ -35,6 +38,9 @@ class ResolvedGates(BaseModel):
         logit_rel_abs: Logit scale: the |delta| bound as a fraction, ``rel_abs * (1 + |reference|)``.
         cos_max_abs: Cosine-scale rerank scores: the |delta| bound every document must meet.
         vec_min_cosine: Vectors: the cosine floor per vector (per token for a late-interaction model).
+        media_vec_min_cosine: Vectors whose input carries image or video: the cosine floor per such vector,
+            where the declared media approximation's measured floor sits below the text rows' bound.  ``None``
+            (the default) applies ``vec_min_cosine`` to them too.
         tau_min: The median per-query Kendall tau floor between served and reference scores.
         metrics_max_abs: Stage 3: the mean |delta nDCG@10| over subsets.
     """
@@ -46,6 +52,7 @@ class ResolvedGates(BaseModel):
     logit_rel_abs: float
     cos_max_abs: float
     vec_min_cosine: float
+    media_vec_min_cosine: float | None = None
     tau_min: float
     metrics_max_abs: float
 
@@ -59,6 +66,7 @@ def resolve_gates(recipe: Recipe) -> ResolvedGates:
         logit_rel_abs=overrides.logit_rel_abs if overrides.logit_rel_abs is not None else _LOGIT_REL_ABS,
         cos_max_abs=overrides.cos_max_abs if overrides.cos_max_abs is not None else _COSINE_MAX_ABS,
         vec_min_cosine=overrides.vec_min_cosine if overrides.vec_min_cosine is not None else _VECTOR_MIN_COSINE,
+        media_vec_min_cosine=overrides.media_vec_min_cosine,
         tau_min=overrides.tau_min if overrides.tau_min is not None else _TAU_MIN,
         metrics_max_abs=overrides.metrics_max_abs if overrides.metrics_max_abs is not None else _METRICS_MAX_ABS,
     )

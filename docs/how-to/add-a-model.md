@@ -197,7 +197,7 @@ variants:
     # overrides:                 # only the declared per-size fields; everything else is refused
     #   serve: {max_model_len: 16384}
     #   client: {max_tokens: 4096}
-    #   gates: {vec_min_cosine: 0.9987}   # this size's measured bound; unset fields keep the family's
+    #   gates: {vec_min_cosine: 0.9987, media_vec_min_cosine: 0.9975}   # this size's measured bounds; unset fields keep the family's
 ```
 
 Two YAML footguns, both caught in review and by the golden tests: always quote string tokens that YAML reads as

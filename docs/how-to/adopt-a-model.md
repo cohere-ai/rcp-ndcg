@@ -30,7 +30,7 @@ Two things may legitimately stop a gate from passing, and both are declared, nev
 
 - **A measured bound.** Where the residual is a genuine numeric floor — both sides run bf16 kernels, no
   ranking changes, τ = 1.0 — the family, or the size whose floor differs, declares the measured bound in
-  `gates` (`vec_min_cosine`, `prob_p99_abs`, …) and names the evidence (per-MRL, per-document) in its
+  `gates` (`vec_min_cosine`, `media_vec_min_cosine` for the media rows' own bound, `prob_p99_abs`, …) and names the evidence (per-MRL, per-document) in its
   notes and the CHANGELOG. A size's set field replaces the family's value -- or the published default
   where the family sets none -- in either direction, and must name its evidence; an unset field keeps
   the family's value. The bound still gates: a regression beyond it fails.

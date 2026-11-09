@@ -560,7 +560,11 @@ class Gates(BaseModel):
 
     Every field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field
     means, are in :mod:`rcp_ndcg_test.equivalence.gates`; ``tau_min`` applies to every scored scale,
-    ``metrics_max_abs`` to stage 3.
+    ``metrics_max_abs`` to stage 3.  ``media_vec_min_cosine`` is the vector floor for the sides whose input
+    carries image or video -- the declared media approximation's own measured floor; unset, ``vec_min_cosine``
+    gates those vectors too.  A recipe declaring it beside ``reference.known_deviations:
+    [media_approximation]`` is refused: that declaration already reports every media row non-gating, so the
+    floor would gate nothing.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -570,6 +574,7 @@ class Gates(BaseModel):
     logit_rel_abs: float | None = Field(default=None, ge=0)
     cos_max_abs: float | None = Field(default=None, ge=0, le=2)
     vec_min_cosine: float | None = Field(default=None, ge=-1, le=1)
+    media_vec_min_cosine: float | None = Field(default=None, ge=-1, le=1)
     tau_min: float | None = Field(default=None, ge=0, le=1)
     metrics_max_abs: float | None = Field(default=None, ge=0, le=1)
 

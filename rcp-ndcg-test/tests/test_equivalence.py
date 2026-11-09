@@ -1509,6 +1509,7 @@ def test_the_stage_2_defaults_are_the_published_ones_and_an_override_wins() -> N
         "logit_rel_abs": 0.05,
         "cos_max_abs": 0.01,
         "vec_min_cosine": 1.0 - 1e-3,
+        "media_vec_min_cosine": None,
         "tau_min": 0.98,
         "metrics_max_abs": 2e-3,
     }

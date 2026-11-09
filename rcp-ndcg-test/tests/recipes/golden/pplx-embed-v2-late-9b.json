@@ -242,6 +242,7 @@
   "gates": {
    "cos_max_abs": null,
    "logit_rel_abs": null,
+   "media_vec_min_cosine": null,
    "metrics_max_abs": null,
    "prob_max_abs": null,
    "prob_p99_abs": null,
