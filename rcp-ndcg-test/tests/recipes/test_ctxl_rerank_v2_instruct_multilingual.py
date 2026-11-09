@@ -54,7 +54,8 @@ VARIANTS: dict[str, dict[str, str | int]] = {
         "classifier_token": "!",
         "batch_size": 32,
         # E2 round 4: the bf16 attention-kernel stacks exceed the logit gate on this size's small
-        # logits, so the 1b/2b serve float32 (and the reference loads the served dtype).
+        # logits, so the 1b/2b serve float32 (and the reference loads the served dtype); the 6b
+        # joined after the rc2 row (see its entry).
         "dtype": "float32",
     },
     "ctxl-rerank-v2-instruct-multilingual-2b": {
@@ -75,7 +76,7 @@ VARIANTS: dict[str, dict[str, str | int]] = {
         "architecture": "MistralForSequenceClassification",
         "classifier_token": "<unk>",
         "batch_size": 32,
-        "dtype": "bfloat16",  # the 6b verified at bf16 (0.0307); it keeps the family default
+        "dtype": "float32",  # the rc2 row (0.0653 vs the 0.05 bound on one small logit) -> the family's float32 remedy
     },
 }
 VARIANT_IDS = list(VARIANTS)
@@ -360,19 +361,20 @@ def test_the_reference_resolves_the_hub_tokenizer_spec_without_the_revision_suff
     assert "@" not in module._tokenizer_dir(f"{repo}@rev")
 
 
-def test_the_1b_and_2b_serve_fp32_and_the_reference_computes_at_the_served_dtype() -> None:
+def test_every_size_serves_fp32_and_the_reference_computes_at_the_served_dtype() -> None:
     """E2 round 4: the 1b/2b served-vs-reference deltas (0.2557/0.1337) are the two bf16
     attention-kernel stacks -- the reference's own CPU-vs-GPU spread on the same rows is 0.21/0.62 --
-    so those two sizes serve float32 (small checkpoints; the 6b keeps bfloat16, its passing
-    measurement) and the reference loads the checkpoint at the engine's SERVED dtype (one rule, read
-    from the resolved recipe's ``serve.dtype``): the fp32 score head stays on both sides."""
+    so those two sizes serve float32, and the 6b joined them after rc2's one bf16 row over the logit
+    bound (0.0653 vs 0.05 on a small logit, inside this size's recorded 0.16 bf16 spread); the
+    reference loads the checkpoint at the engine's SERVED dtype (one rule, read from the resolved
+    recipe's ``serve.dtype``): the fp32 score head stays on both sides."""
     import importlib.util
     import types
 
     expected = {
         "ctxl-rerank-v2-instruct-multilingual-1b": "float32",
         "ctxl-rerank-v2-instruct-multilingual-2b": "float32",
-        "ctxl-rerank-v2-instruct-multilingual-6b": "bfloat16",
+        "ctxl-rerank-v2-instruct-multilingual-6b": "float32",
     }
     for variant_id, dtype in expected.items():
         assert resolve_recipe(variant_id).serve.dtype == dtype, variant_id

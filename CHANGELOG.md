@@ -405,6 +405,11 @@ incompatibly, independently of the package version. All four distributions carry
   name another engine. A manifest re-keyed over a 0.31 recording is refused by name instead of reading
   `unchanged`; the twelve committed `vllm-0.31.0` recordings still read until the waves re-record them, and an
   unstamped corpus under a 0.33 manifest is refused.
+- **`ctxl-rerank-v2-instruct-multilingual-6b` serves `float32`** (the 1b/2b's own dtype): on the v0.33 engine
+  the 6b's bf16 numerics put one document's relative delta at 0.0653 against the family's 0.05 gate (served
+  0.2338 vs reference 0.1581, ranks identical, tau 1.0), inside the family's recorded bf16 spread (0.16
+  absolute) on a small logit; the reference stays the paper's `transformers==4.57.6` pin, and the family's
+  own remedy for this class is fp32, not a re-pin.
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data

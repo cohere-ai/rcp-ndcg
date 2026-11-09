@@ -25,9 +25,10 @@ from tests.test_equivalence import REFERENCE_PYTHON, _rebased
 TOK = load_tokenizer(str(TOKENIZER))
 
 
-def _last_content_recipe(tmp_path: Path, *, add_special_tokens: bool) -> Any:
+def _last_content_recipe(tmp_path: Path, *, add_special_tokens: bool, empty_doc: str = "omit_zero") -> Any:
     """``fixture-embed`` re-declared as a last-content pooler: ``doc:`` and its separator space as two fixed head
-    segments, the document last (no fixed tail); the fixture reference renders ``doc: <document>``."""
+    segments, the document last (no fixed tail); the fixture reference renders ``doc: <document>``.  The empty
+    document policy is the fixture's (``omit_zero``) unless the caller declares another (jina's ``send``)."""
     name = f"last-content-{str(add_special_tokens).lower()}"
     root = tmp_path / name
     directory = root / "recipes" / name
@@ -42,7 +43,11 @@ def _last_content_recipe(tmp_path: Path, *, add_special_tokens: bool) -> Any:
         '      - {fixed: "doc:"}\n      - {fixed: " "}\n      - {content: document}\n    anchor: last_content\n'
         f"    add_special_tokens: {str(add_special_tokens).lower()}\n"
     )
-    (directory / "family.yaml").write_text(manifest.replace(old, new), encoding="utf-8")
+    declared = manifest.replace(old, new)
+    assert "  empty_doc: omit_zero\n" in declared
+    (directory / "family.yaml").write_text(
+        declared.replace("  empty_doc: omit_zero\n", f"  empty_doc: {empty_doc}\n"), encoding="utf-8"
+    )
     return load_recipe(directory)
 
 
@@ -80,3 +85,20 @@ def test_the_last_content_audit_fails_a_render_that_lost_its_head_or_its_content
         assert audit(TOK.ids(whole, add_special_tokens=False)) is False, "the post-processor's tail is missing"
     else:
         assert audit(TOK.ids("Paris is the capital of France.", add_special_tokens=False)) is False
+
+
+@pytest.mark.parametrize("add_special_tokens", [True, False])
+def test_a_declared_empty_row_is_recorded_and_does_not_fail_the_stage(tmp_path: Path, add_special_tokens: bool) -> None:
+    """The generator's empty content row -- the pairs row whose ``content:empty@document`` stratum declares the
+    empty string is sent as given (observe.requests) -- renders the frame alone on purpose: the audit records it
+    as declared empty and does not fail the stage.  The same body WITHOUT the declaration still fails
+    (``test_the_last_content_audit_fails_a_render_that_lost_its_head_or_its_content``), so a client that dropped
+    the content cannot hide behind the record."""
+    recipe = _last_content_recipe(tmp_path, add_special_tokens=add_special_tokens, empty_doc="send")
+    empty = {"query": "", "documents": [""], "_strata": ["content:empty", "content:empty@document"]}
+    pairs = write_pairs(tmp_path / "pairs.jsonl", [sample_pairs()[0], empty])
+    document = stage1_prompts(recipe, pairs, REFERENCE_PYTHON, over_length_per_shape=1)
+    audit = document["anchor_check"]
+    assert audit["declared_empty"] == [[1, "document"]]
+    assert audit["passed"] is True, audit["failures"][:1]
+    assert document["passed"] is True, document["render_check"]["failures"][:1]

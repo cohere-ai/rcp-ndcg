@@ -8,7 +8,7 @@ loaded it with ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp_ndcg.retrieval.cr
 the config's per-model ``batch_size`` (:data:`BATCH_SIZES`, 32/16/8 — the original in-process
 forms of ``experiments/paper/rerankers/ctxl_rerank_{1b,2b,6b}.yaml``), the engine's SERVED dtype
 (the pipeline's ``DTYPE`` was bfloat16; E2 round 4's like-for-like decision makes the reference
-compute at ``serve.dtype``, so the 1b/2b load float32 and the 6b keeps bfloat16) and the config's
+compute at ``serve.dtype``, so every size loads float32) and the config's
 revision (the paper configs pin none; the family-expanded recipe pins each variant's commit, read
 from ``--recipe``, so a moved default checkpoint cannot silently break equivalence).
 
@@ -123,9 +123,9 @@ def _served_dtype(recipe: dict[str, Any]) -> str:
     """The dtype the engine serves this variant at: ``serve.dtype`` of the resolved recipe.
 
     One rule for the family's reference: it computes at the engine's dtype (the owner's like-for-like
-    precision rule; the schema default is ``bfloat16``). The 1b/2b declare ``float32`` (E2 round 4:
-    the bf16 attention-kernel stacks diverge further than the logit gate on their small logits), the
-    6b keeps ``bfloat16`` (it verified).
+    precision rule; the schema default is ``bfloat16``). Every size declares ``float32`` (E2 round 4
+    on the 1b/2b and the rc2 row on the 6b: the bf16 attention-kernel stacks diverge further than
+    the logit gate on small logits).
     """
     dtype = str((recipe.get("serve") or {}).get("dtype") or "bfloat16")
     if dtype not in _DTYPE_NAMES:
@@ -215,8 +215,8 @@ class CtxlRerankReference:
         engine's SERVED dtype (``serve.dtype`` of the resolved recipe, :func:`_served_dtype`): the
         owner's like-for-like precision rule compares the two sides at one dtype, and E2 round 4's
         measurements showed the bf16 attention-kernel stacks diverging further than the logit gate
-        on the 1b/2b's small logits, so those two sizes serve float32 and this reference loads
-        float32 with them (the 6b keeps bfloat16). The attention implementation is the recipe's
+        on the 1b/2b's small logits, so every size serves float32 and this reference loads
+        float32 with it (the 6b joined after the rc2 row). The attention implementation is the recipe's
         DECLARED parameter (``reference.attn_implementation``, ``sdpa`` here), never a silent
         torch.cuda.is_available() choice: the stock reference environment carries the image's torch
         and no flash-attn, so the paper's flash-attention-2 path cannot load there (GPU-E1). The

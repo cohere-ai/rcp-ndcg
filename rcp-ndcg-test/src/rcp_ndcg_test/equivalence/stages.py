@@ -81,7 +81,10 @@ def stage1_prompts(
       ``over_length_per_shape`` per shape, padded in that shape's own span): every anchor must survive the
       client's cut, asserted on the captured requests and the client's processing records; for a reranker this
       is the settle-once query (one settled span per row, within its declared share, every document span within its
-      declared ``document_max_tokens``, no cut on an in-budget pair);
+      declared ``document_max_tokens``, no cut on an in-budget pair).  A row the generator planned as the empty
+      content kind (the pairs file's ``content:empty@query``/``content:empty@document`` stratum) renders the
+      frame alone on purpose: the ``last_content`` audit records it as ``declared_empty`` instead of failing the
+      content requirement (its head and its tail are still audited), and an unlabelled frame-alone body fails;
     - ``render_check`` — the reference subprocess's ``render`` output against the captured texts, zero
       tolerance (needs ``--reference-python``; reported ``not_run`` without one).  Under a declared
       over-cap deviation, over-cap rows are reported separately and do not gate;
@@ -301,6 +304,12 @@ def _probe(
         start = len(client.processing)
         shapes = [str(row["shape"])] if "shape" in row else fitting.declared_shapes(recipe)
         entry: dict[str, Any] = {"shapes": {}, "over_length": bool(row.get("over_length"))}
+        # The row's declared content kinds: the pairs file's own stratum labels (observe.requests plans the
+        # empty kind's row as the empty string sent as given).  The last_content audit reads them to record
+        # that row's frame-alone render as declared, never to excuse an unlabelled one.
+        kinds = [str(label) for label in row.get("_strata") or () if str(label).startswith("content:")]
+        if kinds:
+            entry["content_kinds"] = kinds
         try:
             if row.get("media_template"):
                 entry["media_template"] = True
@@ -630,9 +639,15 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
     span within its declared ``document_max_tokens``, and no cut on an
     in-budget pair (a change the client recorded for a pair under budget would mean the client
     shortened something the budget allowed whole).
+
+    A row the generator planned as the empty content kind (``content:empty@query`` / ``@document``, the pairs
+    file's own stratum) sends the empty string as given, so its render is the frame alone: the audit records
+    the row and shape in ``declared_empty`` (``[[row, shape], ...]``) and waives the last-content-token
+    requirement for it alone -- its head and tail still gate, and an unlabelled frame-alone body still fails.
     """
     template = fitting.client_template(recipe)
     failures: list[dict[str, Any]] = []
+    declared_empty: list[list[Any]] = []
     checked = 0
     max_tokens = recipe.client.get("max_tokens") or 0
     share = recipe.client.get("query_max_tokens")
@@ -656,7 +671,12 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 continue
             flag = _add_specials_flag(recipe, shape)
             if template is not None and template.anchor == "last_content":
-                checked += _audit_last_content(recipe, tokenizer, shape, shape_body["texts"], index, failures)
+                declared = _declared_empty_side(entry, shape)
+                if declared:
+                    declared_empty.append([index, shape])
+                checked += _audit_last_content(
+                    recipe, tokenizer, shape, shape_body["texts"], index, failures, declared_empty=declared
+                )
                 continue
             if template is not None and template.anchor == "mean":
                 checked += _audit_mean(recipe, tokenizer, shape, shape_body["texts"], index, failures)
@@ -734,11 +754,27 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
         "checked": checked,
         "passed": not failures,
         "failures": failures,
+        "declared_empty": declared_empty,
         "referent": "the anchor ids (the declared edge plus the post-processor's tokens on that side) must sit "
         "at their declared positions in the client's rendered request; a reranker's settled query must be one "
         "span per row, within its declared share, every document span within its declared cap, and no in-budget "
         "pair may be cut",
     }
+
+
+def _declared_empty_side(entry: dict[str, Any], shape: str) -> bool:
+    """Whether the row's declared content kinds say the empty string is sent on this shape's side.
+
+    The generator labels the row it plans the empty content kind on (``content:empty@query`` /
+    ``content:empty@document``, :mod:`rcp_ndcg_test.observe.requests`), so that row's render is the frame
+    alone on purpose.  Only the label declares it: a body without it is never treated as empty, so a client
+    that dropped the content still fails the audit.
+    """
+    kinds = set(entry.get("content_kinds") or ())
+    if "content:empty" not in kinds:
+        return False
+    sides = {"query", "document"} if shape == "pair" else {shape}
+    return any(f"content:empty@{side}" in kinds for side in sides)
 
 
 def _audit_last_content(
@@ -748,6 +784,8 @@ def _audit_last_content(
     bodies: list[Any],
     row_index: int,
     failures: list[dict[str, Any]],
+    *,
+    declared_empty: bool = False,
 ) -> int:
     """The ``anchor: last_content`` audit of one shape's captured bodies, per the product's definition
     (:data:`rcp_ndcg.data.templates.AnchorKind`): the model reads the last kept *content* token, and the fixed
@@ -759,6 +797,11 @@ def _audit_last_content(
     shape declares ``add_special_tokens``) must close them; and at least one token must sit between the two,
     which on a content-final shape is the last kept content token (the token a head marker merges into across
     the join counts as content: it carries the content's first characters).  Returns the bodies checked.
+
+    ``declared_empty`` is the caller's verdict that the row is the generator's empty content row (the empty
+    string sent as given, :func:`_declared_empty_side`): that row's frame-alone render is the declared request,
+    so the content requirement alone is waived there -- the head and the tail still gate, and the caller records
+    the row in the report's ``declared_empty``.  An undeclared frame-alone body still fails.
     """
     template = fitting.client_template(recipe)
     assert template is not None  # the caller branches on the template's anchor
@@ -794,7 +837,9 @@ def _audit_last_content(
         elif tail and ids[len(ids) - len(tail) :] != tail:
             problem = "tail"
         elif len(ids) - len(tail) <= len(head_edge):
-            problem = "no_content_token"
+            # The generator's declared empty row renders the frame alone on purpose (recorded by the caller);
+            # an undeclared body that lost its content is the failure this check exists for.
+            problem = None if declared_empty else "no_content_token"
         if problem is not None:
             failures.append(
                 {
