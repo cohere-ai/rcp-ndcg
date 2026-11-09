@@ -201,7 +201,7 @@ rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BU
 
 Options: `--max-jobs N` (default 1), `--priority <class>` (the `priority_class=` override; default
 `RCP_PRIORITY`, else `default`; verify with a dry run),
-`--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe`,
+`--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe|sdpa-probe|maxsim-probe`,
 and `RCP_JOBS_CLI=echo` to print the plan instead of submitting. `RCP_JOBS_CLI` names the job CLI
 (default `jobs`): any CLI that takes `submit -f <config> key=value...`. The job CLI's output goes to a file under
 `RCP_SUBMIT_DIR` (default: a fresh temp directory; the directory is created when it does not exist);
@@ -329,15 +329,19 @@ stages them with the recipe data, copy `rcp-ndcg-test/scenarios/*.yaml` into the
 
 The release checklist's judge item — `rcp-ndcg judge check` against each judge recipe's served engine,
 plus the engine's media token count — runs as one job through `judgecheck.sh`, which builds the node's
-client environment with `bootstrap.sh envs` and then, **one judge at a time** (the big judges need
-tensor parallelism, so they never share the node):
+client environment with `bootstrap.sh envs` and then serves the judges **packed onto the node's GPUs**: a
+judge's slice is the `resources.gpus` its recipe declares (the value that renders the engine's
+`--tensor-parallel-size`), taken first-fit in the list's order, so as many judges serve at the same time as
+the devices hold and two never share a device (the big judges keep the GPUs they need). A judge that
+declares more GPUs than the node has is refused before anything is served.
 
 ```bash
 rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script judgecheck --priority high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves judgecheck
 ```
 
-Per judge it serves the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`), waits for
+Per judge it serves the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`) with that judge's own
+`CUDA_VISIBLE_DEVICES`, `VLLM_PORT` and `TMPDIR`, waits for
 `GET /v1/models` within `RCP_JUDGECHECK_STARTUP_S` (3600 s; a dead engine fails fast), runs
 `rcp-ndcg judge check --judge <id> --judge-model <id> --set judge.base_url=http://127.0.0.1:<N>/v1 --json`
 for each **documented** thinking mode of the recipe (`jobs/judgecheck_probe.py` owns the table: the Gemma 4
@@ -349,10 +353,15 @@ verdicts, the engine version and the NVFP4/Marlin backend lines from the engine 
 failed judge is recorded, never fatal. A judge's record is `verified` only when every documented mode
 passed **and** its engine media check passed (a text-only judge's check is not applicable); a media
 mismatch, refusal or `not_checked` fails the judge exactly like a failed mode. The outputs are `<OUT_PREFIX>/<wave>/<recipe>/<mode>.json`, the
-`<recipe>/media.json` probes, and `judgecheck-report.json` beside them; the job exits 1 when any judge
+`<recipe>/media.json` probes, and `judgecheck-report.json` beside them (its `plan` section records the
+packing: the devices, how many judges serve at once, and each judge's slice, port, `VLLM_PORT` and
+`TMPDIR`); the job exits 1 when any judge
 failed. `JUDGECHECK_DRY=1 bash judgecheck.sh ...` prints the plan.
 
-The knobs: `RCP_JUDGECHECK_PORT_BASE` (8100; judge *i* serves on base + *i*),
+The knobs: `RCP_JUDGECHECK_GPUS` (the node's device indices, a comma list such as `0,1,2,3`; unset means the
+node's own from `nvidia-smi --list-gpus`, and a node with neither is refused rather than served with every
+device visible to every engine), `RCP_JUDGECHECK_PORT_BASE` (8100; judge *i* serves on base + *i*),
+`RCP_JUDGECHECK_VLLM_PORT_BASE` (9200; judge *i*'s internal `VLLM_PORT` is base + *i*),
 `RCP_JUDGECHECK_STARTUP_S` (3600), `RCP_JUDGECHECK_CHECK_S` / `RCP_JUDGECHECK_MEDIA_S` (900; the per-command
 budgets).
 

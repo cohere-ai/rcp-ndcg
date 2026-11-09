@@ -10,11 +10,16 @@
 #     OUT_URI       gs://.../waves/<wave>: the per-judge JSONs (<OUT_URI>/<recipe>/<mode>.json and
 #                   <OUT_URI>/<recipe>/media.json) and judgecheck-report.json upload here
 #
-# In order, continuing past a failed judge (a failed judge is recorded and the next still runs):
+# In order, continuing past a failed judge (a failed judge is recorded and its neighbours still run):
 #   1. environments  bootstrap.sh envs with a wave list of the ten judges: the client environment
 #                    (rcp-ndcg + rcp-ndcg-test + rcp-ndcg-vllm from the staged wheels) every command runs in
-#   2. per judge      serve the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`), wait for
-#                     GET /v1/models within RCP_JUDGECHECK_STARTUP_S, then, with the engine up:
+#   2. the plan      the judges packed onto the node's GPUs (RCP_JUDGECHECK_GPUS, else nvidia-smi): a judge's
+#                    slice is the `resources.gpus` its recipe declares, read from the client environment and
+#                    taken first-fit in the order below, so the release checklist's six start first.  A judge
+#                    that declares more GPUs than the node has is refused before anything is served.
+#   3. per judge      serve the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`) with the judge's own
+#                     CUDA_VISIBLE_DEVICES, VLLM_PORT and TMPDIR, wait for GET /v1/models within
+#                     RCP_JUDGECHECK_STARTUP_S, then, with the engine up:
 #                       thinking modes:  `rcp-ndcg judge check --judge <id> --judge-model <id>
 #                                        --set judge.base_url=http://127.0.0.1:<N>/v1
 #                                        [--set judge.extra_body=<the mode's switch>] --json`
@@ -22,8 +27,12 @@
 #                                             (one prepared probe image beside its no-media baseline; the
 #                                             engine's media delta against the client's counted tokens)
 #                     stop the engine's process group, record the verdict, the engine's version and the
-#                     NVFP4/Marlin backend lines from the engine log, move on
-#   3. upload        the per-judge JSONs and the report
+#                     NVFP4/Marlin backend lines from the engine log, move on.  A wave's judges serve at the
+#                     same time and the next wave starts once the last of them has stopped; every per-judge
+#                     output (the thinking modes, the media report, the check JSONs) is what one-at-a-time
+#                     writes -- the isolation is in the device slice, the ports and the TMPDIR, never in the
+#                     commands.
+#   4. upload        the per-judge JSONs and the report
 #
 # The thinking modes are the recipe's documented ones (jobs/judgecheck_probe.py owns the table): the
 # Gemma 4 judges' two (off, the shipped default; on, the recipe's declared `chat_template_kwargs`
@@ -34,8 +43,11 @@
 # Environment: RCP_GCS_AUTH_FILE (the mounted auth script; executed, never printed), HF_TOKEN (from the
 # mounted token file, exported by submit.sh's wrapper; never printed), RCP_BOOTSTRAP_SH / RCP_REPORT_PY /
 # RCP_JUDGECHECK_PROBE_PY / RCP_GCS_HELPER_SH / RCP_GCS_HELPER_PY (the mounted helpers),
-# RCP_JUDGECHECK_PORT_BASE (8100; judge i serves on base + i), RCP_JUDGECHECK_STARTUP_S (3600; the
-# /v1/models wait) and RCP_JUDGECHECK_CHECK_S / RCP_JUDGECHECK_MEDIA_S (900; the per-command budgets).
+# RCP_JUDGECHECK_GPUS (the node's devices, a comma list such as 0,1,2,3; unset means the node's own from
+# `nvidia-smi --list-gpus`, and a node with no nvidia-smi is refused rather than served whole),
+# RCP_JUDGECHECK_PORT_BASE (8100; judge i serves on base + i), RCP_JUDGECHECK_VLLM_PORT_BASE (9200; judge
+# i's internal VLLM_PORT is base + i), RCP_JUDGECHECK_STARTUP_S (3600; the /v1/models wait) and
+# RCP_JUDGECHECK_CHECK_S / RCP_JUDGECHECK_MEDIA_S (900; the per-command budgets).
 # JUDGECHECK_DRY=1 prints the plan and runs nothing.  The transfer runs gcloud or gsutil when either is
 # present, else the python gcsfs helper (jobs/gcs.sh owns the dispatch).
 
@@ -76,6 +88,8 @@ GCS_SH="${RCP_GCS_HELPER_SH:-/etc/rcp/files/gcshelper/gcs.sh}"
 GCS_HELPER_PY="${RCP_GCS_HELPER_PY:-/etc/rcp/files/gcshelper/gcs.py}"
 AUTH_SCRIPT="${RCP_GCS_AUTH_FILE:-/etc/rcp/gcs_auth.sh}"
 PORT_BASE="${RCP_JUDGECHECK_PORT_BASE:-8100}"
+VLLM_PORT_BASE="${RCP_JUDGECHECK_VLLM_PORT_BASE:-9200}"
+GPUS_DECLARED="${RCP_JUDGECHECK_GPUS:-}"
 STARTUP_S="${RCP_JUDGECHECK_STARTUP_S:-3600}"
 CHECK_S="${RCP_JUDGECHECK_CHECK_S:-900}"
 MEDIA_S="${RCP_JUDGECHECK_MEDIA_S:-900}"
@@ -85,13 +99,19 @@ if [[ "${JUDGECHECK_DRY:-0}" == "1" ]]; then
   echo "  1. bootstrap  $BOOTSTRAP_SH envs $RC_STAGE_URI --state <state> --recipes <stage>/recipes"
   echo "                --wave-list <state>/judgecheck-wave.txt (one recipe id per line:"
   printf '                %s\n' "${RECIPES[@]}"
-  echo "  2. per judge: serve the recipe, wait for /v1/models, the recipe's documented thinking modes, the media probe, stop"
+  echo "  2. the plan   the judges packed onto the node devices (${GPUS_DECLARED:-from nvidia-smi --list-gpus})"
+  echo "                -- each judge's slice is the resources.gpus its recipe declares, taken first-fit in"
+  echo "                the order above; a judge needing more GPUs than the node has is refused; the judges"
+  echo "                of one wave serve at the same time, the next wave starts when the last has stopped"
+  echo "  3. per judge: serve the recipe, wait for /v1/models, the recipe's documented thinking modes, the media probe, stop"
   echo "                the modes are the helper's documented table: the Gemma 4 judges' two (off, on), the others'"
   echo "                single documented mode (default, the shipped client block -- their recipes document no toggle)"
   for index in "${!RECIPES[@]}"; do
     recipe="${RECIPES[$index]}"
     port=$((PORT_BASE + index))
     echo "                serve    <state>/client rcp-ndcg-vllm serve $recipe --port $port"
+    echo "                         (CUDA_VISIBLE_DEVICES=<the recipe's slice>, VLLM_PORT=$((VLLM_PORT_BASE + index)),"
+    echo "                          TMPDIR=<state>/tmp-$recipe)"
     echo "                wait     GET http://127.0.0.1:$port/v1/models within ${STARTUP_S}s"
     echo "                modes    <state>/client python -m rcp_ndcg_test.jobs.judgecheck_probe modes --judge $recipe"
     echo "                check    per mode: <state>/client rcp-ndcg judge check --judge $recipe --judge-model $recipe \\"
@@ -100,7 +120,7 @@ if [[ "${JUDGECHECK_DRY:-0}" == "1" ]]; then
     echo "                         --judge-model $recipe --set judge.base_url=http://127.0.0.1:$port/v1 --out <state>/media-$recipe.json"
     echo "                stop     kill the engine's process group"
   done
-  echo "  3. upload     <state>/check-<recipe>-<mode>.json -> $OUT_URI/<recipe>/<mode>.json, the media JSONs and"
+  echo "  4. upload     <state>/check-<recipe>-<mode>.json -> $OUT_URI/<recipe>/<mode>.json, the media JSONs and"
   echo "                the report to $OUT_URI/judgecheck-report.json"
   echo "judgecheck (dry): the plan only; nothing ran"
   exit 0
@@ -221,15 +241,128 @@ print(json.dumps({"vllm": sys.argv[2]}), file=open(sys.argv[1], "w", encoding="u
 PYEOF
 python3 "$REPORT_PY" merge --file "$REPORT" --key engine --fragment "$STATE/engine.json"
 
-FAILED_RECIPES=()
-for index in "${!RECIPES[@]}"; do
-  recipe="${RECIPES[$index]}"
-  port=$((PORT_BASE + index))
+# --- the plan: the judges packed onto the node's devices ------------------------------------------------
+
+# The node's devices: the operator's comma list, else the node's own.  A node without nvidia-smi is refused
+# here rather than served with every device visible to every engine -- that is the collision this job must
+# not have, and a slice nobody declared is not a default this script may invent.
+GPU_IDS=()
+if [[ -n "$GPUS_DECLARED" ]]; then
+  IFS=, read -r -a GPU_IDS <<<"$GPUS_DECLARED"
+  for device in "${GPU_IDS[@]}"; do
+    [[ "$device" =~ ^[0-9]+$ ]] || {
+      echo "judgecheck: RCP_JUDGECHECK_GPUS is a comma list of device indices, got: $GPUS_DECLARED" >&2
+      exit 2
+    }
+  done
+else
+  command -v nvidia-smi >/dev/null || {
+    echo "judgecheck: no nvidia-smi on PATH to count the node's GPUs (set RCP_JUDGECHECK_GPUS to its devices)" >&2
+    exit 1
+  }
+  if ! gpu_listing="$(nvidia-smi --list-gpus 2>&1)"; then
+    echo "judgecheck: nvidia-smi --list-gpus failed: ${gpu_listing%%$'\n'*}" >&2
+    exit 1
+  fi
+  gpu_count="$(printf '%s\n' "$gpu_listing" | grep -c '^GPU ' || true)"
+  ((gpu_count >= 1)) || { echo "judgecheck: the node reports no GPUs (nvidia-smi --list-gpus)" >&2; exit 1; }
+  for ((index = 0; index < gpu_count; index++)); do GPU_IDS+=("$index"); done
+fi
+DEVICES=""
+for device in "${GPU_IDS[@]}"; do DEVICES+="${DEVICES:+,}$device"; done
+
+# What each judge occupies: the `resources.gpus` its recipe declares -- the value that renders the engine's
+# --tensor-parallel-size -- read in the client environment that will serve it (the recipe has one home).
+JUDGE_GPUS="$STATE/judge-gpus.json"
+if ! "$STATE/client" python - "${RECIPES[@]}" >"$JUDGE_GPUS" 2>"$STATE/judge-gpus.err" <<'PYEOF'
+import json
+import sys
+
+from rcp_ndcg_vllm.recipe import load_recipe
+
+print(json.dumps({recipe: load_recipe(recipe).resources.gpus for recipe in sys.argv[1:]}))
+PYEOF
+then
+  tail_line="$(tail -1 "$STATE/judge-gpus.err" 2>/dev/null | tr -d '\r')"
+  echo "judgecheck: the judges' declared GPU counts could not be read: ${tail_line:-the client environment failed}" >&2
+  exit 1
+fi
+
+# The waves: first-fit of those counts onto the devices, in the order above, so the release checklist's six
+# start first.  One planner writes both renderings: the TSV the run loop reads and the JSON the report
+# carries, so the packing is recorded rather than implicit.
+if ! python3 - "$STATE" "$PORT_BASE" "$VLLM_PORT_BASE" "$JUDGE_GPUS" "$DEVICES" "${RECIPES[@]}" \
+    >"$STATE/plan.out" 2>"$STATE/plan.err" <<'PYEOF'
+"""The wave plan: the judges' declared GPU counts packed first-fit onto the node's devices."""
+import json
+import sys
+from pathlib import Path
+
+state, port_base, vllm_base = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
+devices = [device for device in sys.argv[5].split(",") if device]
+recipes = sys.argv[6:]
+declared = json.loads(Path(sys.argv[4]).read_text(encoding="utf-8"))
+waves: list[dict] = []
+for index, recipe in enumerate(recipes):
+    need = int(declared[recipe])
+    if need > len(devices):
+        raise SystemExit(f"{recipe} declares {need} GPUs but the node has {len(devices)}")
+    wave = next((candidate for candidate in waves if candidate["used"] + need <= len(devices)), None)
+    if wave is None:
+        wave = {"used": 0, "members": []}
+        waves.append(wave)
+    member = {
+        "recipe": recipe,
+        "port": port_base + index,
+        "vllm_port": vllm_base + index,
+        "devices": ",".join(devices[wave["used"] : wave["used"] + need]),
+        "tmpdir": str(state / f"tmp-{recipe}"),
+    }
+    wave["used"] += need
+    wave["members"].append(member)
+lines = [
+    "\t".join(
+        [str(number), member["recipe"], str(member["port"]), str(member["vllm_port"]), member["devices"],
+         member["tmpdir"]]
+    )
+    for number, wave in enumerate(waves)
+    for member in wave["members"]
+]
+(state / "plan.tsv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+plan = {
+    "devices": devices,
+    "at_once": max(len(wave["members"]) for wave in waves),
+    "waves": [wave["members"] for wave in waves],
+}
+(state / "plan.json").write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+print(
+    f"judgecheck: {len(recipes)} judges in {len(waves)} wave(s) on devices {','.join(devices)}: "
+    f"at most {plan['at_once']} serve at once"
+)
+PYEOF
+then
+  tail_line="$(tail -1 "$STATE/plan.err" 2>/dev/null | tr -d '\r')"
+  echo "judgecheck: the judges could not be packed onto the node's devices: ${tail_line:-the planner failed}" >&2
+  exit 1
+fi
+cat "$STATE/plan.out"
+python3 "$REPORT_PY" merge --file "$REPORT" --key plan --fragment "$STATE/plan.json"
+
+# run_judge RECIPE PORT VLLM_PORT DEVICES TMPDIR: one judge, whole -- serve it with its own device slice,
+# internal VLLM_PORT and TMPDIR, wait for it, run its documented modes and the media probe, stop its process
+# group, write its record.  Each judge runs in its own subshell, so what fails here is that judge's alone.
+run_judge() {
+  local recipe="$1" port="$2" vllm_port="$3" devices="$4" tmpdir="$5"
+  local engine_pid engine_log started_s ready_status check_status media_status tail_line mode body check_out
+  local media_out mode_lines
   engine_log="$STATE/engine-$recipe.log"
   : >"$STATE/modes-$recipe.txt"  # exists even when the engine dies first (the record assembly reads it)
   started_s="$(date +%s)"
-  echo "judgecheck: serving $recipe on port $port"
-  setsid "$STATE/client" rcp-ndcg-vllm serve "$recipe" --port "$port" >"$engine_log" 2>&1 &
+  mkdir -p "$tmpdir"
+  echo "judgecheck: serving $recipe on port $port (CUDA_VISIBLE_DEVICES=$devices, VLLM_PORT=$vllm_port)"
+  export TMPDIR="$tmpdir"  # this judge's scratch: its temp files never meet another judge's
+  CUDA_VISIBLE_DEVICES="$devices" VLLM_PORT="$vllm_port" \
+    setsid "$STATE/client" rcp-ndcg-vllm serve "$recipe" --port "$port" >"$engine_log" 2>&1 &
   engine_pid=$!
 
   set +e
@@ -254,8 +387,9 @@ path, recipe, port, reason, wall_s = sys.argv[1:6]
 document = {"state": "failed", "error": reason, "port": int(port), "wall_s": int(wall_s)}
 print(json.dumps(document), file=open(path, "w", encoding="utf-8"))
 PYEOF
-    FAILED_RECIPES+=("$recipe")
-    continue
+    # The failure is the record's: the parent re-derives FAILED_RECIPES from the records in recipe order
+    # (this function runs in a subshell, so an append here would never reach it).
+    return 0
   fi
 
   # What the engine serves (the served entry of /v1/models), for the report.
@@ -398,6 +532,65 @@ raise SystemExit(0 if document["state"] == "verified" else 1)
 PYEOF
   then
     echo "judgecheck: $recipe failed a thinking mode or the media check (recorded in the report)" >&2
+  fi
+  return 0
+}
+
+# wait_wave: wait for every judge started so far (one wave), then let the next start.  A judge that died
+# before writing its record is recorded here: one judge's failure never touches its neighbours.
+wait_wave() {
+  local index pid status
+  for index in "${!WAVE_PIDS[@]}"; do
+    pid="${WAVE_PIDS[$index]}"
+    status=0
+    wait "$pid" || status=$?
+    if ((status != 0)) && [[ ! -f "$STATE/recipe-${WAVE_RECIPES[$index]}.json" ]]; then
+      python3 - "$STATE/recipe-${WAVE_RECIPES[$index]}.json" "${WAVE_RECIPES[$index]}" "$status" <<'PYEOF'
+import json
+import sys
+
+path, recipe, status = sys.argv[1:4]
+document = {"state": "failed", "error": f"the steps of {recipe} stopped with exit status {status}"}
+print(json.dumps(document), file=open(path, "w", encoding="utf-8"))
+PYEOF
+    fi
+  done
+  WAVE_PIDS=()
+  WAVE_RECIPES=()
+  return 0
+}
+
+# The waves: a wave's judges serve at the same time, and the next wave starts once the last judge of this
+# one has stopped -- its engine's process group included, so the node never holds two waves' engines.
+WAVE_PIDS=()
+WAVE_RECIPES=()
+wave_now=-1
+while IFS=$'\t' read -r wave recipe port vllm_port devices tmpdir; do
+  [[ -n "$recipe" ]] || continue
+  if ((wave != wave_now)); then
+    if ((${#WAVE_PIDS[@]})); then wait_wave; fi
+    wave_now="$wave"
+  fi
+  # </dev/null: the judge's subshell (and its engine) never inherits the plan.tsv fd this loop reads --
+  # nothing reads stdin today, and nothing added to run_judge may start eating the plan's lines.
+  run_judge "$recipe" "$port" "$vllm_port" "$devices" "$tmpdir" </dev/null &
+  WAVE_PIDS+=("$!")
+  WAVE_RECIPES+=("$recipe")
+done <"$STATE/plan.tsv"
+if ((${#WAVE_PIDS[@]})); then wait_wave; fi
+
+# The failures, in the recipes' own order: a wave finishes out of order, so the record decides, not the
+# finish time -- the exit line and the report's reason read as they did one judge at a time.
+FAILED_RECIPES=()
+for recipe in "${RECIPES[@]}"; do
+  if ! python3 - "$STATE/recipe-$recipe.json" <<'PYEOF'
+import json
+import sys
+
+document = json.load(open(sys.argv[1], encoding="utf-8"))
+raise SystemExit(0 if document["state"] == "verified" else 1)
+PYEOF
+  then
     FAILED_RECIPES+=("$recipe")
   fi
 done

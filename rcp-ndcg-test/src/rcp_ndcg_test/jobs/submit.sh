@@ -19,9 +19,10 @@
 #                  scenarios: e2e.sh drives them in the pod; the wave list names scenario ids) or
 #                  casefill (the cuda reference-case fills: casefill.sh builds the four families'
 #                  reference environments and uploads the edited case YAMLs) or judgecheck (the
-#                  release checklist's judge item: judgecheck.sh serves each judge recipe and runs
-#                  `rcp-ndcg judge check` in the recipe's documented thinking modes plus the engine
-#                  media probe) or
+#                  release checklist's judge item: judgecheck.sh packs the judge recipes onto the
+#                  node's GPUs and runs `rcp-ndcg judge check` in the recipe's documented thinking
+#                  modes plus the engine media probe; its own RCP_JUDGECHECK_* knobs are forwarded into
+#                  the job when the operator sets them) or
 #                  topk-probe (one family's controlled GPU probe: topk_probe.sh builds the client
 #                  environment and the family's reference venv, then runs topk_probe.py, whose
 #                  E0-E7 experiments name the first divergent tensor; its own RCP_TOPK_* knobs are
@@ -30,7 +31,14 @@
 #                  plugin wheel, then runs sdpa_probe.py, which starts the recipe's engine twice --
 #                  with the torch-sdpa-attention patch and without it -- and uploads the comparison
 #                  against the recorded gate plus the verdict; its own RCP_SDPA_* knobs are forwarded
-#                  into the job when the operator sets them)
+#                  into the job when the operator sets them) or
+#                  maxsim-probe (W13(c)'s gate: maxsim_probe.sh builds the client mechanism, the
+#                  plugin wheel and the family's reference venv, then runs maxsim_probe.py per variant
+#                  of pplx-embed-v2-late -- one engine start, the text rows through the product's role
+#                  client, the reference's --mode embed, then the product's own MaxSim scorer on the
+#                  served vectors against the card's direct float64 MaxSim on the reference's, the
+#                  expected rows recorded; its own RCP_MAXSIM_* knobs are forwarded into the job when
+#                  the operator sets them)
 #
 # Environment (required, no defaults: this script must not name any machine's paths or buckets):
 #   RCP_JOBS_CONFIG    the job-CLI config file (the job CLI's -f argument)
@@ -53,7 +61,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe|sdpa-probe] \\
+  echo "usage: submit.sh [--max-jobs N] [--priority CLASS] [--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe|sdpa-probe|maxsim-probe] \\
          <RC_STAGE_URI> <OUT_PREFIX> <WAVE_NAME> [<WAVE_NAME>...]" >&2
 }
 
@@ -69,7 +77,7 @@ while (($#)); do
   case "$1" in
     --max-jobs) MAX_JOBS="${2:?--max-jobs needs a number}"; shift 2 ;;
     --priority) PRIORITY="${2:?--priority needs a class}"; shift 2 ;;
-    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e, casefill, judgecheck, topk-probe or sdpa-probe}"; shift 2 ;;
+    --script) SCRIPT_NAME="${2:?--script needs bootstrap, wave0, e2e, casefill, judgecheck, topk-probe, sdpa-probe or maxsim-probe}"; shift 2 ;;
     --image) IMAGE="${2:?--image needs a repository:tag}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "submit.sh: unknown option: $1" >&2; usage; exit 2 ;;
@@ -77,8 +85,8 @@ while (($#)); do
   esac
 done
 [[ -n "$RC_STAGE_URI" && -n "$OUT_PREFIX" && ${#WAVES[@]} -ge 1 ]] || { usage; exit 2; }
-[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" || "$SCRIPT_NAME" == "judgecheck" || "$SCRIPT_NAME" == "topk-probe" || "$SCRIPT_NAME" == "sdpa-probe" ]] || {
-  echo "submit.sh: --script must be bootstrap, wave0, e2e, casefill, judgecheck, topk-probe or sdpa-probe, got $SCRIPT_NAME" >&2
+[[ "$SCRIPT_NAME" == "bootstrap" || "$SCRIPT_NAME" == "wave0" || "$SCRIPT_NAME" == "e2e" || "$SCRIPT_NAME" == "casefill" || "$SCRIPT_NAME" == "judgecheck" || "$SCRIPT_NAME" == "topk-probe" || "$SCRIPT_NAME" == "sdpa-probe" || "$SCRIPT_NAME" == "maxsim-probe" ]] || {
+  echo "submit.sh: --script must be bootstrap, wave0, e2e, casefill, judgecheck, topk-probe, sdpa-probe or maxsim-probe, got $SCRIPT_NAME" >&2
   exit 2
 }
 [[ "$MAX_JOBS" =~ ^[0-9]+$ && "$MAX_JOBS" -ge 1 ]] || { echo "submit.sh: --max-jobs must be a positive number" >&2; exit 2; }
@@ -177,6 +185,14 @@ case "$(basename "$HERE")" in
   jobs) SDPA_PROBE_PY="$HERE/sdpa_probe.py" ;;
   *) SDPA_PROBE_PY="$HERE/jobs/sdpa_probe.py" ;;
 esac
+case "$(basename "$HERE")" in
+  jobs) MAXSIM_PROBE_SH="$HERE/maxsim_probe.sh" ;;
+  *) MAXSIM_PROBE_SH="$HERE/jobs/maxsim_probe.sh" ;;
+esac
+case "$(basename "$HERE")" in
+  jobs) MAXSIM_PROBE_PY="$HERE/maxsim_probe.py" ;;
+  *) MAXSIM_PROBE_PY="$HERE/jobs/maxsim_probe.py" ;;
+esac
 [[ "$SCRIPT_NAME" != "wave0" || -f "$WAVE0_SH" ]] || {
   echo "submit.sh: wave0.sh not found at $WAVE0_SH (run submit.sh from the checkout)" >&2
   exit 2
@@ -215,6 +231,14 @@ esac
 }
 [[ "$SCRIPT_NAME" != "sdpa-probe" || -f "$SDPA_PROBE_PY" ]] || {
   echo "submit.sh: sdpa_probe.py not found at $SDPA_PROBE_PY (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "maxsim-probe" || -f "$MAXSIM_PROBE_SH" ]] || {
+  echo "submit.sh: maxsim_probe.sh not found at $MAXSIM_PROBE_SH (run submit.sh from the checkout)" >&2
+  exit 2
+}
+[[ "$SCRIPT_NAME" != "maxsim-probe" || -f "$MAXSIM_PROBE_PY" ]] || {
+  echo "submit.sh: maxsim_probe.py not found at $MAXSIM_PROBE_PY (run submit.sh from the checkout)" >&2
   exit 2
 }
 
@@ -444,14 +468,22 @@ for plan_row in "${PLAN[@]}"; do
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
   elif [[ "$SCRIPT_NAME" == "judgecheck" ]]; then
-    # The judge item: judgecheck.sh serves each judge recipe one at a time and runs the checks in the
-    # recipe's documented thinking modes; its probe helper owns the toggles and the engine media probe.
+    # The judge item: judgecheck.sh packs the judge recipes onto the node's GPUs (as many at once as their
+    # declared resources.gpus hold) and runs the checks in the recipe's documented thinking modes; its probe
+    # helper owns the toggles and the engine media probe.
     args+=(
       "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/judgecheck/judgecheck.sh $RC_STAGE_URI $OUT_URI"
       "files.judgecheck.from_file=$JUDGECHECK_SH" "files.judgecheck.mount_path=/etc/rcp/files/judgecheck/judgecheck.sh"
       "files.judgecheckprobe.from_file=$JUDGECHECK_PROBE_PY" "files.judgecheckprobe.mount_path=/etc/rcp/files/judgecheckprobe/judgecheck_probe.py"
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
+    # The wrapper's documented knobs (the how-to page's list) are forwarded only when the operator set
+    # them (unset means judgecheck.sh's own defaults); the mounted helper paths are the node's own and are
+    # never forwarded.
+    for knob in RCP_JUDGECHECK_GPUS RCP_JUDGECHECK_PORT_BASE RCP_JUDGECHECK_VLLM_PORT_BASE \
+      RCP_JUDGECHECK_STARTUP_S RCP_JUDGECHECK_CHECK_S RCP_JUDGECHECK_MEDIA_S; do
+      if [[ -n "${!knob:-}" ]]; then args+=("env.$knob=${!knob}"); fi
+    done
   elif [[ "$SCRIPT_NAME" == "topk-probe" ]]; then
     # One family's controlled GPU probe: the wrapper builds the node's client environment and the
     # family's reference venv through bootstrap.sh envs, then runs the probe (the engine image's own
@@ -485,6 +517,23 @@ for plan_row in "${PLAN[@]}"; do
       "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
     )
     for knob in RCP_SDPA_RECIPE RCP_SDPA_ROWS RCP_SDPA_PORT_BASE RCP_SDPA_GPUS RCP_SDPA_STARTUP_TIMEOUT_S; do
+      if [[ -n "${!knob:-}" ]]; then args+=("env.$knob=${!knob}"); fi
+    done
+  elif [[ "$SCRIPT_NAME" == "maxsim-probe" ]]; then
+    # W13(c)'s gate: the wrapper builds the client mechanism, the plugin wheel and the family's
+    # reference venv through bootstrap.sh envs, then runs the probe per variant of pplx-embed-v2-late
+    # (one engine start, the product's MaxSim scorer against the card's direct MaxSim on the
+    # reference's vectors) and uploads the reports and the recorded expected rows.  Its own knobs are
+    # forwarded only when the operator set them (unset means the wrapper's defaults); the mounted
+    # helper paths are the node's own and are never forwarded.
+    args+=(
+      "worker.command=${HF_TOKEN_PREFIX}/bin/bash /etc/rcp/files/maxsimprobe/maxsim_probe.sh $RC_STAGE_URI $OUT_URI"
+      "files.maxsimprobe.from_file=$MAXSIM_PROBE_SH" "files.maxsimprobe.mount_path=/etc/rcp/files/maxsimprobe/maxsim_probe.sh"
+      "files.maxsimprobepy.from_file=$MAXSIM_PROBE_PY" "files.maxsimprobepy.mount_path=/etc/rcp/files/maxsimprobe/maxsim_probe.py"
+      "files.bootstrap.from_file=$HERE/bootstrap.sh" "files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh"
+    )
+    for knob in RCP_MAXSIM_RECIPES RCP_MAXSIM_ROWS RCP_MAXSIM_PORT_BASE RCP_MAXSIM_GPUS \
+      RCP_MAXSIM_REFERENCE_GPUS RCP_MAXSIM_STARTUP_TIMEOUT_S; do
       if [[ -n "${!knob:-}" ]]; then args+=("env.$knob=${!knob}"); fi
     done
   else

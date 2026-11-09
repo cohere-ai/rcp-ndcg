@@ -38,11 +38,24 @@ TOPK_PROBE_PY = JOBS / "topk_probe.py"
 TOPK_PROBE_COSINES = JOBS / "wave-cosines-topk-small.json"
 SDPA_PROBE_SH = JOBS / "sdpa_probe.sh"
 SDPA_PROBE_PY = JOBS / "sdpa_probe.py"
+MAXSIM_PROBE_SH = JOBS / "maxsim_probe.sh"
+MAXSIM_PROBE_PY = JOBS / "maxsim_probe.py"
 WAVE0_HOST = JOBS / "wave0_host.py"
 CHECK_DEPS_INSTALL = JOBS.parents[3] / "rcp-ndcg-vllm" / "tests" / "models" / "check_no_deps_install.py"
 REPO = Path(__file__).resolve().parents[2]
 
-SCRIPTS = (BOOTSTRAP, SUBMIT, RC_BUILD, WAVE0_SH, E2E_SH, CASEFILL_SH, JUDGECHECK_SH, TOPK_PROBE_SH, SDPA_PROBE_SH)
+SCRIPTS = (
+    BOOTSTRAP,
+    SUBMIT,
+    RC_BUILD,
+    WAVE0_SH,
+    E2E_SH,
+    CASEFILL_SH,
+    JUDGECHECK_SH,
+    TOPK_PROBE_SH,
+    SDPA_PROBE_SH,
+    MAXSIM_PROBE_SH,
+)
 
 needs_shellcheck = pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 
@@ -1348,7 +1361,7 @@ def test_submit_refuses_an_unknown_script(tmp_path: Path, monkeypatch: pytest.Mo
         tmp_path, monkeypatch, "--script", "deploy", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "wave-a"
     )
     assert completed.returncode == 2
-    assert "bootstrap, wave0, e2e, casefill, judgecheck, topk-probe or sdpa-probe" in completed.stderr
+    assert "bootstrap, wave0, e2e, casefill, judgecheck, topk-probe, sdpa-probe or maxsim-probe" in completed.stderr
 
 
 def test_submit_forwards_record_corpus_only_when_the_operator_set_it(
@@ -2362,8 +2375,11 @@ def test_judgecheck_media_report_checks_an_engine_over_the_wire() -> None:
 
 def test_submit_judgecheck_mounts_the_judgecheck_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The judge-check job: judgecheck.sh mounted beside bootstrap.sh (whose envs mode builds the client
-    environment) and its probe helper beside it, run with the stage and the wave's output prefix; no token
-    value in the plan."""
+    environment) and its probe helper beside it, run with the stage and the wave's output prefix; the
+    wrapper's documented knobs reach the pod only when the operator set them (unset means the wrapper's own
+    defaults); no token value in the plan. Mutation: drop the forwarding loop -- the documented
+    ``RCP_JUDGECHECK_*`` knobs then cannot be set by exporting them before this submit -- or forward a knob
+    nobody set (an empty value would override the wrapper's default)."""
     completed = _submit(
         tmp_path,
         monkeypatch,
@@ -2372,6 +2388,7 @@ def test_submit_judgecheck_mounts_the_judgecheck_script(tmp_path: Path, monkeypa
         "gs://YOUR-BUCKET/rc0",
         "gs://YOUR-BUCKET/waves",
         "judgecheck",
+        env_overrides={"RCP_JUDGECHECK_GPUS": "0,1", "RCP_JUDGECHECK_VLLM_PORT_BASE": "9300"},
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
@@ -2385,6 +2402,8 @@ def test_submit_judgecheck_mounts_the_judgecheck_script(tmp_path: Path, monkeypa
         word.startswith("files.judgecheckprobe.from_file=") and word.endswith("judgecheck_probe.py") for word in words
     )
     assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    assert "env.RCP_JUDGECHECK_GPUS=0,1" in words and "env.RCP_JUDGECHECK_VLLM_PORT_BASE=9300" in words
+    assert not any(word.startswith("env.RCP_JUDGECHECK_CHECK_S") for word in words)  # nobody set it
     for stream in (completed.stdout, completed.stderr):
         assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
 
@@ -3184,7 +3203,14 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     served and waited for on its own port, both thinking modes' checks run with the recipe's client block and
     the family's toggle, the media probe runs for every judge, one judge whose engine dies does not stop the
     next, every engine's process group is stopped (including a TERM-ignoring survivor), a media mismatch fails
-    its judge, the JSONs and the report upload, and the job exits 1 with the failures recorded."""
+    its judge, the JSONs and the report upload, and the job exits 1 with the failures recorded.
+
+    The node's two declared devices are packed too: each judge's engine gets the slice its recipe declares
+    (`qwen3.5-397b` is TP2), its own `VLLM_PORT` and its own `TMPDIR`, and two judges of one wave are up at
+    the same time on disjoint devices -- two engines without those collide on every GPU, on vLLM's default
+    internal port and in `/tmp`.  The three refusals the header and the doc promise (a device list that is
+    not indices, a judge declaring more GPUs than the node has, a node with neither the knob nor
+    nvidia-smi) run on the same stubs and serve nothing."""
     auth = tmp_path / "gcs_auth.sh"
     auth.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     gcs_log = tmp_path / "gcs.log"
@@ -3214,6 +3240,7 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     bootstrap_log = tmp_path / "bootstrap.log"
     client_log = tmp_path / "client.log"
     serve_pids = tmp_path / "serve-pids"
+    slots_log = tmp_path / "slots.log"
     orphans = tmp_path / "orphans"
     bootstrap = tmp_path / "bootstrap.sh"
     bootstrap.write_text(
@@ -3233,6 +3260,8 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
         '    port=""; prev=""\n'
         '    for arg in "$@"; do [[ "$prev" == "--port" ]] && port="$arg"; prev="$arg"; done\n'
         '    echo "$$" >> "$STUB_SERVE_PIDS"\n'
+        '    printf \'slot\\t%s\\t%s\\t%s\\t%s\\t%s\\n\' "${3:-}" "$port" "${CUDA_VISIBLE_DEVICES:-}"'
+        ' "${VLLM_PORT:-}" "${TMPDIR:-}" >> "$STUB_SLOTS_LOG"\n'
         '    if [[ "${3:-}" == "gpt-oss-120b" ]]; then echo "stub engine: CUDA out of memory" >&2; exit 3; fi\n'
         '    if [[ "${3:-}" == "qwen3.6-27b-fp8" ]]; then\n'
         '      bash -c \'trap "" TERM; echo $$ >> "$STUB_ORPHANS"; exec sleep 300\' &\n'
@@ -3243,6 +3272,7 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
         '    echo \'{"schema": "rcp-ndcg.cli.v1", "command": "judge check", "ok": true}\'\n'
         "    ;;\n"
         "  python)\n"
+        '    if [[ "${2:-}" == "-" ]]; then printf \'%s\\n\' "$STUB_GPUS_JSON"; fi\n'
         '    if [[ "${2:-}" == "-m" && "${3:-}" == "rcp_ndcg_test.jobs.judgecheck_probe" ]]; then\n'
         '      recipe=""; prev=""\n'
         '      for arg in "$@"; do [[ "$prev" == "--judge" ]] && recipe="$arg"; prev="$arg"; done\n'
@@ -3274,26 +3304,33 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     stage = tmp_path / "stage"
     stage.mkdir()
     (stage / "manifest.json").write_text('{"version": "0.0.1"}\n', encoding="utf-8")
+    # the recipes' declared resources.gpus, as the client environment answers it (the 397b is TP2)
+    stub_gpus = {recipe: 2 if recipe == JUDGE_PRIORITY[0] else 1 for recipe in JUDGES}
+    node_env = {
+        "PATH": "/usr/bin:/bin",
+        "TMPDIR": str(tmp_path),  # the job's state dirs (mktemp) stay inside tmp_path
+        "RCP_GCS_AUTH_FILE": str(auth),
+        "RCP_GCS_HELPER_SH": str(gcs_sh),
+        "RCP_GCS_HELPER_PY": str(helper),
+        "RCP_BOOTSTRAP_SH": str(bootstrap),
+        "RCP_REPORT_PY": str(REPORT_PY),
+        "RCP_JUDGECHECK_PROBE_PY": str(JUDGECHECK_PROBE),
+        "STUB_BOOTSTRAP_LOG": str(bootstrap_log),
+        "STUB_CLIENT_LOG": str(client_log),
+        "STUB_SERVE_PIDS": str(serve_pids),
+        "STUB_SLOTS_LOG": str(slots_log),
+        "STUB_ENGINE_PY": str(stub_engine),
+        "STUB_GCS_LOG": str(gcs_log),
+        "STUB_ORPHANS": str(orphans),
+        "STUB_GPUS_JSON": json.dumps(stub_gpus),
+        "RCP_JUDGECHECK_GPUS": "0,1",
+        "RCP_JUDGECHECK_STARTUP_S": "20",
+    }
     completed = subprocess.run(
         ["bash", str(JUDGECHECK_SH), str(stage), "gs://YOUR-BUCKET/waves/judgecheck"],
         capture_output=True,
         text=True,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "RCP_GCS_AUTH_FILE": str(auth),
-            "RCP_GCS_HELPER_SH": str(gcs_sh),
-            "RCP_GCS_HELPER_PY": str(helper),
-            "RCP_BOOTSTRAP_SH": str(bootstrap),
-            "RCP_REPORT_PY": str(REPORT_PY),
-            "RCP_JUDGECHECK_PROBE_PY": str(JUDGECHECK_PROBE),
-            "STUB_BOOTSTRAP_LOG": str(bootstrap_log),
-            "STUB_CLIENT_LOG": str(client_log),
-            "STUB_SERVE_PIDS": str(serve_pids),
-            "STUB_ENGINE_PY": str(stub_engine),
-            "STUB_GCS_LOG": str(gcs_log),
-            "STUB_ORPHANS": str(orphans),
-            "RCP_JUDGECHECK_STARTUP_S": "20",
-        },
+        env=node_env,
     )
 
     def _kill_orphans() -> None:
@@ -3322,6 +3359,31 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     log = client_log.read_text(encoding="utf-8")
     for index, recipe in enumerate(JUDGES):
         assert f"rcp-ndcg-vllm serve {recipe} --port {8100 + index}" in log, log
+    # the judges are packed onto the node's two declared devices: the slice each recipe declares, an
+    # internal VLLM_PORT and a TMPDIR each, never shared (two engines on one node without them collide)
+    slots = {}
+    for line in slots_log.read_text(encoding="utf-8").splitlines():
+        _, recipe, port, devices, vllm_port, tmpdir = line.split("\t")
+        slots[recipe] = (port, devices, vllm_port, tmpdir)
+    assert set(slots) == set(JUDGES), slots
+    assert slots["qwen3.5-397b-a17b-nvfp4"][1] == "0,1", slots["qwen3.5-397b-a17b-nvfp4"]
+    for column in (0, 2, 3):  # the HTTP port, the internal VLLM_PORT, the TMPDIR
+        assert len({row[column] for row in slots.values()}) == len(JUDGES), slots
+    # a judge is up from its serve line to its last client command: a pair whose intervals overlap was
+    # served at the same time, on disjoint device slices
+    lines = log.splitlines()
+    serve_at = {recipe: next(i for i, line in enumerate(lines) if f"serve {recipe} " in line) for recipe in JUDGES}
+    commands = {recipe: [i for i, line in enumerate(lines) if f"--judge {recipe} " in line] for recipe in JUDGES}
+    last_at = {recipe: indices[-1] for recipe, indices in commands.items() if indices}
+    concurrent = [
+        (first, second)
+        for first in last_at
+        for second in last_at
+        if first < second and serve_at[second] < last_at[first] and serve_at[first] < last_at[second]
+    ]
+    assert concurrent, "no two judges were served at the same time"
+    for first, second in concurrent:
+        assert not set(slots[first][1].split(",")) & set(slots[second][1].split(",")), (first, second)
     # the documented thinking modes: the Gemma 4 judges' two (off without a toggle, on with the declared
     # body), every other judge's single `default` mode with no toggle passed; the dead judge ran neither
     for index, recipe in enumerate(JUDGES):
@@ -3370,6 +3432,9 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     assert report["recipes"]["gpt-oss-120b"]["state"] == "failed"
     assert "CUDA out of memory" in report["recipes"]["gpt-oss-120b"]["error"]
     assert report["recipes"]["qwen3.5-397b-a17b-nvfp4"]["state"] == "verified"
+    # a judge whose engine died leaves its own wave's neighbour alone: gpt-oss shares the wave's two
+    # devices with qwen3.6, which served and verified beside it
+    assert report["recipes"]["qwen3.6-27b-fp8"]["state"] == "verified"
     single = report["recipes"]["qwen3.5-397b-a17b-nvfp4"]
     assert set(single["modes"]) == {"default"} and single["modes"]["default"]["ok"] is True
     assert single["modes_note"] == "single documented mode: the recipe documents no thinking-mode toggle"
@@ -3381,6 +3446,35 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     assert set(gemma["modes"]) == {"off", "on"} and all(row["ok"] for row in gemma["modes"].values())
     assert "modes_note" not in gemma
     assert isinstance(report["engine"]["vllm"], str)
+
+    # The three refusals the header and the doc promise, on the same stubs: a device list that is not
+    # indices is a usage error (exit 2); a judge declaring more GPUs than the node has is refused before
+    # anything is served; a node with neither the knob nor nvidia-smi is refused rather than served with
+    # every device visible to every engine. Mutation: drop any of the three guards and the run serves
+    # instead of refusing (a silently clamped or whole-node plan).
+    def _refused(overrides: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", str(JUDGECHECK_SH), str(stage), "gs://YOUR-BUCKET/waves/judgecheck"],
+            capture_output=True,
+            text=True,
+            env={**node_env, **overrides},
+        )
+
+    bad_list = _refused({"RCP_JUDGECHECK_GPUS": "0,x"})
+    assert bad_list.returncode == 2, bad_list.stdout + bad_list.stderr
+    assert "RCP_JUDGECHECK_GPUS is a comma list of device indices, got: 0,x" in bad_list.stderr
+    too_many = _refused({"STUB_GPUS_JSON": json.dumps({**stub_gpus, "gemma-4-12b-it": 3})})
+    assert too_many.returncode == 1, too_many.stdout + too_many.stderr
+    assert "gemma-4-12b-it declares 3 GPUs but the node has 2" in too_many.stderr
+    bare = tmp_path / "bare-bin"  # the tools the script needs, and no nvidia-smi among them
+    bare.mkdir()
+    for tool in ("bash", "cat", "chmod", "date", "mktemp", "python3", "rm", "setsid"):
+        found = shutil.which(tool)
+        assert found, f"{tool} is not on PATH"
+        (bare / tool).symlink_to(found)
+    no_smi = _refused({"PATH": str(bare), "RCP_JUDGECHECK_GPUS": ""})
+    assert no_smi.returncode == 1, no_smi.stdout + no_smi.stderr
+    assert "no nvidia-smi on PATH to count the node's GPUs" in no_smi.stderr
 
 
 def test_submit_sdpa_probe_mounts_the_probe_and_forwards_the_operator_knobs(
@@ -3455,3 +3549,161 @@ def test_the_sdpa_probe_arms_render_one_flag_apart_and_its_gate_reds_on_a_seeded
     sdpa_probe.write_report(tmp_path, outside)
     written = json.loads((tmp_path / "sdpa-report.json").read_text(encoding="utf-8"))
     assert written["verdict"]["state"] == "differs" and written["decision_rule"]["equivalent"] == "delete"
+
+
+def test_submit_maxsim_probe_mounts_the_probe_and_forwards_the_operator_knobs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W13(c)'s gate as its own job: ``maxsim_probe.sh`` mounted beside its module and ``bootstrap.sh``
+    (whose envs mode builds the client mechanism, the plugin wheel and the family's reference venv),
+    run with the stage and the probe's own output prefix; the wrapper's knobs reach the pod only when
+    the operator set them. Mutation: drop the module mount (the job dies on the node) or forward a
+    knob nobody set (an empty value would override the wrapper's default)."""
+    completed = _submit(
+        tmp_path, monkeypatch,
+        "--script", "maxsim-probe", "gs://YOUR-BUCKET/rc0", "gs://YOUR-BUCKET/waves", "maxsim-probe",
+        env_overrides={"RCP_MAXSIM_ROWS": "3,4", "RCP_MAXSIM_GPUS": "1"},
+    )  # fmt: skip
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    words = shlex.split(next(line for line in completed.stdout.splitlines() if line.startswith("echo ")))
+    command = next(word for word in words if word.startswith("worker.command="))
+    assert command == (
+        "worker.command=/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash "
+        "/etc/rcp/files/maxsimprobe/maxsim_probe.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves/maxsim-probe"
+    )
+    assert any(word.startswith("files.maxsimprobe.from_file=") and word.endswith("maxsim_probe.sh") for word in words)
+    assert any(word.startswith("files.maxsimprobepy.from_file=") and word.endswith("maxsim_probe.py") for word in words)
+    assert any(word.startswith("files.bootstrap.from_file=") for word in words)
+    assert "env.RCP_MAXSIM_ROWS=3,4" in words and "env.RCP_MAXSIM_GPUS=1" in words
+    assert not any(word.startswith("env.RCP_MAXSIM_PORT_BASE") for word in words)
+    for stream in (completed.stdout, completed.stderr):
+        assert FAKE_TOKEN not in stream, "the token's value reached the script's output"
+
+
+def test_the_maxsim_gate_reds_on_a_seeded_wrong_row_and_records_the_expected_rows(tmp_path: Path) -> None:
+    """W13(c)'s MaxSim gate, on CPU: the product's own MaxSim scorer (``rcp_ndcg.retrieval.maxsim``, the
+    path stage 3 and the ``--quality`` view both consume) scores the served per-token vectors over the
+    pooled pairs corpus; the expected rows are the card's MaxSim -- direct, float64 -- on the reference's
+    vectors. The gate greens a matched pair of vector sets (the seeded delta inside the recipe's declared
+    per-token floor's implied bound) and reds a seeded wrong MaxSim row: one pair's served score moved
+    beyond anything the gated vectors can produce. The report records the expected MaxSim rows as data.
+    The bound derives BOTH moving sides: the counterexample leg moves a pair's query and document tokens
+    each exactly onto the declared per-token floor (a stage-2-passing pair) and its MaxSim delta must
+    stay inside the derived bound. Mutation: halve the bound (the counterexample reds a stage-2-passing
+    pair), widen it (the seeded wrong row passes), or drop the seeded row's comparison."""
+    import numpy as np
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+    from rcp_ndcg_test.jobs import maxsim_probe
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    from rcp_ndcg.inference.types import Embeddings
+
+    recipe = resolve_recipe("pplx-embed-v2-late-0.6b")
+    rng = np.random.default_rng(24)
+
+    def tokens(n: int) -> np.ndarray:
+        m = rng.normal(size=(n, 8))
+        return (m / np.linalg.norm(m, axis=1, keepdims=True)).astype(np.float32)
+
+    def embeddings(matrices: list[np.ndarray]) -> Embeddings:
+        return Embeddings(vectors=np.concatenate(matrices), offsets=np.cumsum([0, *(m.shape[0] for m in matrices)]))
+
+    def perturbed(matrices: list[np.ndarray], scale: float) -> list[np.ndarray]:
+        out = []
+        for m in matrices:
+            noise = rng.normal(size=m.shape).astype(np.float32)
+            mixed = m + scale * (noise / np.linalg.norm(noise, axis=1, keepdims=True))
+            out.append((mixed / np.linalg.norm(mixed, axis=1, keepdims=True)).astype(np.float32))
+        return out
+
+    queries, docs = [tokens(4) for _ in range(3)], [tokens(k) for _ in range(3) for k in (5, 3, 7)]
+    # (a) the scoring path's own pin: the product's blocked scorer equals the card's direct formula.
+    assert np.allclose(
+        maxsim_probe.score_matrix(embeddings(docs), embeddings(queries)),
+        maxsim_probe.expected_matrix(docs, queries),
+        atol=1e-5,
+    )
+    served = maxsim_probe.score_matrix(embeddings(perturbed(docs, 0.01)), embeddings(perturbed(queries, 0.01)))
+    expected = maxsim_probe.expected_matrix(docs, queries)
+    all_gating = [[True] * 9 for _ in range(3)]
+    # (b) green: the matched pair inside the declared per-token floor's implied per-pair bound.
+    green = maxsim_probe.build_report(
+        recipe, serve={"state": "served"}, reference={"state": "ran"}, served_scores=served,
+        expected_scores=expected, query_tokens=[4, 4, 4], gating=all_gating, corpus={"n_queries": 3},
+    )  # fmt: skip
+    assert (green["verdict"]["state"], green["gates"][0]["passed"]) == ("equivalent", True)
+    # (c) red: one seeded wrong MaxSim row, far beyond the bound.
+    seeded = served.copy()
+    seeded[0, 1] += 5.0
+    red = maxsim_probe.build_report(
+        recipe, serve={"state": "served"}, reference={"state": "ran"}, served_scores=seeded,
+        expected_scores=expected, query_tokens=[4, 4, 4], gating=all_gating, corpus={"n_queries": 3},
+    )  # fmt: skip
+    assert red["verdict"]["state"] == "differs" and red["gates"][0]["passed"] is False
+    assert red["verdict"]["reason"].startswith("maxsim_max_abs")
+    maxsim_probe.write_report(tmp_path, red)
+    written = json.loads((tmp_path / "maxsim-report.json").read_text(encoding="utf-8"))
+    assert written["expected_rows"]["scores"] == np.asarray(expected).tolist()
+    assert written["schema"] == "rcp-maxsim-gate/1"
+    # (d) the counterexample: query and document tokens each rotated exactly onto the declared floor
+    # (both sides are stage-2-passing), so the pair's delta sits beyond the single-sided half bound and
+    # inside the derived two-sided one -- the review's delta 0.2734 > 0.1414 regime, realized at 0.2793.
+    floor = resolve_gates(recipe).vec_min_cosine
+    sin = float(np.sqrt(1.0 - floor**2))
+    q_ref = [np.array([[1.0, 0.0]])]
+    d_ref = [np.array([[0.0, 1.0]]), np.array([[0.6, 0.8]])]
+    q_srv = [np.array([[floor, sin]])]
+    d_srv = [np.array([[sin, floor]]), np.array([[0.6 * floor - 0.8 * sin, 0.6 * sin + 0.8 * floor]])]
+    served_bound = maxsim_probe.score_matrix(embeddings(d_srv), embeddings(q_srv))
+    expected_bound = maxsim_probe.expected_matrix(d_ref, q_ref)
+    delta = float(abs(served_bound[0, 0] - expected_bound[0, 0]))
+    assert delta > np.sqrt(2.0 * (1.0 - floor)), "the counterexample must sit beyond the half bound"
+    assert delta <= 2.0 * np.sqrt(2.0 * (1.0 - floor)), "a stage-2-passing pair must sit inside the bound"
+    both = maxsim_probe.build_report(
+        recipe, serve={"state": "served"}, reference={"state": "ran"}, served_scores=served_bound,
+        expected_scores=expected_bound, query_tokens=[1], gating=[[True, True]], corpus={"n_queries": 1},
+    )  # fmt: skip
+    assert both["gates"][0]["passed"] is True and both["verdict"]["state"] == "equivalent"
+
+
+def test_a_nothing_checked_gate_is_a_named_verdict_not_a_crash() -> None:
+    """A gate whose gating mask excluded every pair (every text client-changed, or ``--rows`` picked only
+    changed rows) must reach the designed verdict: the gate's ``nothing_checked`` failure record names
+    itself, the verdict states nothing was compared (state ``nothing_checked``, the record's note as the
+    reason), and ``main`` exits non-zero because the state is not ``equivalent``. Pre-fix, ``verdict``
+    formatted that record like a pair failure and raised an untyped TypeError (``None:.3g``).
+    Mutation: format the nothing_checked record as a pair failure again."""
+    import numpy as np
+    from rcp_ndcg_test.jobs import maxsim_probe
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    recipe = resolve_recipe("pplx-embed-v2-late-0.6b")
+    report = maxsim_probe.build_report(
+        recipe, serve={"state": "served"}, reference={"state": "ran"}, served_scores=np.zeros((1, 2)),
+        expected_scores=np.zeros((1, 2)), query_tokens=[1], gating=[[False, False]], corpus={},
+    )  # fmt: skip
+    assert report["rows_summary"]["failures"][0]["check"] == "nothing_checked"
+    assert report["gates"][0]["passed"] is False and report["gates"][1]["passed"] is False
+    assert report["verdict"]["state"] == "nothing_checked"
+    assert "no gating pair" in report["verdict"]["reason"]
+
+
+def test_the_rows_filter_never_relabels_deselected_text_rows_as_excluded_media() -> None:
+    """``--rows`` narrows which text rows the gate scores; the report's ``media_rows_excluded`` must stay
+    the pairs file's media-row count (the media stage's own split, counted before the filter). Pre-fix,
+    ``main`` computed it as ``len(all_rows) - len(rows)`` after the ``--rows`` filter, so the operator's
+    deselected text rows were reported as excluded media. Mutation: subtract the post-filter length."""
+    from rcp_ndcg_test.jobs import maxsim_probe
+
+    all_rows = [
+        {"index": 0, "documents": ["a", "b"]},
+        {"index": 1, "media": ["img.png"], "documents": ["c"]},
+        {"index": 2, "documents": ["d"]},
+        {"index": 3, "media": ["clip.mp4"], "documents": ["e"]},
+        {"index": 4, "documents": ["f", "g"]},
+    ]
+    selected = [row for row in maxsim_probe.text_rows(all_rows) if row[0] in {2, 4}]
+    corpus = maxsim_probe.corpus_doc(all_rows, selected)
+    assert corpus["pairs_rows"] == 5
+    assert corpus["text_rows"] == 2
+    assert corpus["media_rows_excluded"] == 2
