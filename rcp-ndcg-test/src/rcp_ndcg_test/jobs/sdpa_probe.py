@@ -27,7 +27,9 @@ What the report carries (``sdpa-report.json``, ``sdpa-report.md``, ``sdpa-vector
 source, the two arms' ``argv``/``patches_env``/``state``/``serve_log_tail`` and the **engaged** backend read
 out of the engine's own serve log (never inferred from the request), the per-text and aggregate comparison,
 the null control per arm and its floor, the verdict, and the rule that produced it.  An arm that cannot serve
-leaves the engine's own error in the report; nothing is inferred from silence.
+leaves the engine's own error in the report; a request that fails inside an arm leaves the transport's typed
+error there too (the report is written either way, so the wrapper always uploads one); and a selection that
+carries no text is ``nothing_checked``, never ``equivalent``.  Nothing is inferred from silence.
 """
 
 from __future__ import annotations
@@ -65,6 +67,7 @@ import numpy as np
 from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
 from rcp_ndcg_vllm.recipe import Recipe, load_recipe, serve_argv
 
+from rcp_ndcg.errors import ProviderError
 from rcp_ndcg_test.errors import HarnessError
 
 SCHEMA = "rcp-sdpa-probe/1"
@@ -103,7 +106,9 @@ DECISION_RULE: dict[str, str] = {
     "unmeasured": "operator",
 }
 """The rule of DECISION-D4.md §3, one row per state: the report carries it so a reader of the uploaded
-artifact needs no external document."""
+artifact needs no external document.  ``nothing_checked`` (a selection with no text) is deliberately not a
+row: the pre-registered rule decides a comparison, and with none there is nothing to decide, so that state
+takes the ``unmeasured`` row's disposition."""
 
 _STOP_GRACE_S = 15.0
 _READY_POLL_S = 2.0
@@ -258,7 +263,9 @@ def verdict(report: dict[str, Any]) -> dict[str, Any]:
       the operator decides;
     - ``differs``: outside the gate -- the patch stays;
     - ``not_servable``: the native arm served no vectors -- the patch stays, the engine's error is the reason;
-    - ``unmeasured``: the patch arm failed, or nothing comparable was measured -- the operator decides.
+    - ``unmeasured``: the patch arm failed, or nothing comparable was measured -- the operator decides;
+    - ``nothing_checked``: the selection carries no text, so no vector was compared -- the operator decides,
+      on the ``unmeasured`` row's disposition (the rule's rows decide a comparison, and there is none).
     """
     gate = report["gate"]
     comparison = report.get("comparison") or {}
@@ -272,6 +279,14 @@ def verdict(report: dict[str, Any]) -> dict[str, Any]:
             "checkpoint; see arms.native.serve_log_tail",
         )
     pair = comparison.get("patch_vs_native")
+    if pair and not pair.get("n_texts"):
+        # An empty comparison is not evidence: zero texts read max_abs_diff 0.0 and cosine None, which the
+        # gate would call inside it -- a `--rows` selection that resolves to nothing would delete the patch.
+        return _verdict(
+            "nothing_checked",
+            "the selection carries no text: no vector was compared, so nothing is evidence for a deletion",
+            disposition=DECISION_RULE["unmeasured"],
+        )
     if not pair or pair.get("max_abs_diff") is None:
         return _verdict("unmeasured", "no comparable pair of vectors was measured (see the report's arms)")
     within = pair["max_abs_diff"] <= gate["max_abs_diff"] and (
@@ -298,9 +313,13 @@ def verdict(report: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _verdict(state: str, reason: str) -> dict[str, Any]:
-    """One verdict row: the state, its disposition from :data:`DECISION_RULE`, and the reason."""
-    return {"state": state, "disposition": DECISION_RULE[state], "reason": reason}
+def _verdict(state: str, reason: str, *, disposition: str | None = None) -> dict[str, Any]:
+    """One verdict row: the state, its disposition from :data:`DECISION_RULE`, and the reason.
+
+    ``disposition`` overrides the table for the one state the rule has no row for: ``nothing_checked`` takes
+    the ``unmeasured`` row's operator decision rather than adding a sixth row to a pre-registered rule.
+    """
+    return {"state": state, "disposition": disposition or DECISION_RULE[state], "reason": reason}
 
 
 def build_report(
@@ -582,7 +601,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the probe and write the report; 0 when a verdict was reached, 1 when nothing was measured."""
+    """Run the probe and write the report; 0 when a verdict was reached, 1 when nothing was measured.
+
+    A request that fails inside an arm is recorded in that arm's row (the transport's own typed error) and
+    the report is still written, so the wrapper always has an artifact to upload; ``unmeasured`` and
+    ``nothing_checked`` are the two states that mean no comparison was made, and both exit 1.
+    """
     args = build_parser().parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -604,7 +628,10 @@ def main(argv: list[str] | None = None) -> int:
         try:
             served[arm] = encode_all(recipe, run["base_url"], items)
             null[arm] = encode_all(recipe, run["base_url"], items)
-        except HarnessError as error:
+        except (HarnessError, ProviderError) as error:
+            # The harness's own refusals and the transport's typed request failures (a 404, an exhausted
+            # retry budget, a rejected or empty answer): the arm row carries the error and the verdict reads
+            # it, so the report the wrapper uploads is written even when a request fails mid-arm.
             arm_rows[arm] = {**row, "state": "failed", "error": str(error)}
         finally:
             _stop(run)
@@ -618,7 +645,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     write_report(out, report, vectors={"served": served, "null_control": null})
     print(f"sdpa_probe: verdict {report['verdict']['state']} ({report['verdict']['disposition']})")
-    return 0 if report["verdict"]["state"] != "unmeasured" else 1
+    return 0 if report["verdict"]["state"] not in ("unmeasured", "nothing_checked") else 1
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised through main() on the node

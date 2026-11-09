@@ -66,6 +66,7 @@ __all__ = [
     "main",
     "maxsim_gate",
     "plan",
+    "reference_query_matrix",
     "score_matrix",
     "text_rows",
     "verdict",
@@ -224,6 +225,32 @@ def expected_matrix(doc_mats: list[np.ndarray], query_mats: list[np.ndarray]) ->
     return out
 
 
+def reference_query_matrix(row: dict[str, Any], position: int) -> np.ndarray:
+    """One pairs row's query matrix, as the reference's embed output carries it: unwrapped.
+
+    The family reference writes ``query_vectors`` as a ONE-element list -- one (n_kept, width) matrix
+    per query text, positionally paired, and a pairs row carries a single query -- so ``np.asarray``
+    gives a ``(1, n_kept, width)`` array.  Fed straight into :func:`expected_matrix`, that shape
+    broadcasts the matmul and ``max(axis=1)`` reduces over the query tokens: the transposed MaxSim,
+    which reds an equivalent engine (measured delta 6.73 against the bound 2.26) and records wrong
+    numbers in ``maxsim-rows.json``.  The one element is unwrapped; a bare ``(n_kept, width)`` array
+    (the shape :func:`expected_matrix` takes) passes through unchanged; any other shape is a
+    :class:`HarnessError` -- never a silent ``[0]``.
+
+    Inputs: the reference's embed row and its pairs-row index (for the error).  Output: the query's
+    ``(n_kept, width)`` token-vector matrix, dtype float64.  Units: token vectors as the reference
+    wrote them.
+    """
+    query = np.asarray(row["query_vectors"], dtype=np.float64)
+    if query.ndim == 3 and query.shape[0] == 1:  # the wire shape: one matrix per query text
+        query = query[0]
+    if query.ndim != 2:
+        raise HarnessError(
+            f"pairs row {position}: the reference's query_vectors is {query.shape}, not one (n_kept, width) matrix"
+        )
+    return query
+
+
 def maxsim_gate(
     recipe: Recipe,
     served: np.ndarray,
@@ -327,7 +354,8 @@ def verdict(report: dict[str, Any]) -> dict[str, Any]:
 
     ``unmeasured`` when the engine or the reference did not run (nothing was scored) or no gate row was
     produced; ``differs`` when a gate row failed on a measured pair (its reason names the first failing
-    pair); ``nothing_checked`` when the gating mask excluded every pair (every text client-changed or
+    pair) or the rank gate failed on measured ranks (its reason names the median tau);
+    ``nothing_checked`` when the gating mask excluded every pair (every text client-changed or
     ``--rows`` selected only changed rows) -- the designed named failure: the reason carries the
     ``nothing_checked`` record's note, and ``main`` exits non-zero because the state is not
     ``equivalent``; ``equivalent`` when every gate row passed."""
@@ -344,6 +372,16 @@ def verdict(report: dict[str, Any]) -> dict[str, Any]:
         failures = (report.get("rows_summary") or {}).get("failures") or []
         pairs = [item for item in failures if "abs_delta" in item]
         if not pairs:
+            tau = (report.get("rows_summary") or {}).get("kendall_tau_median")
+            if tau is not None and "maxsim_tau_median" in failed:
+                # a measured rank failure: the deltas sat inside the bound, the ranks did not --
+                # nothing_checked is the no-gating-pair case's own state, and there the tau is None
+                bound = next(row["bound"] for row in gates if row["gate"] == "maxsim_tau_median")
+                return {
+                    "state": "differs",
+                    "reason": f"maxsim_tau_median failed: the median tau {tau:.4f} is below the "
+                    f"published rank gate {bound}",
+                }
             notes = (
                 "; ".join(str(item.get("note") or item.get("check") or "unexplained failure") for item in failures)
                 or "no failure record was written"
@@ -620,7 +658,7 @@ def main(argv: list[str] | None = None) -> int:
         row = by_index.get(position)
         if row is None:
             raise HarnessError(f"the reference wrote no row for pairs row {position}")
-        reference_queries.append(np.asarray(row["query_vectors"], dtype=np.float64))
+        reference_queries.append(reference_query_matrix(row, position))
         documents = row.get("document_vectors") or []
         if len(documents) != len(rows[position][1]["documents"]):
             raise HarnessError(

@@ -10,6 +10,7 @@ import functools
 import hashlib
 import json
 import os
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ from pathlib import Path
 import pytest
 import torch
 
+from rcp_ndcg.errors import ProviderError
 from tests.conftest import sandbox_path
 
 JOBS = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs"
@@ -3510,8 +3512,10 @@ def test_the_sdpa_probe_arms_render_one_flag_apart_and_its_gate_reds_on_a_seeded
     """D4's probe, on CPU: the two arms' argv differ by exactly the ``--attention-backend TORCH_SDPA``
     pair and the patch name (so the comparison isolates the backend), a seeded delta above the recorded
     gate is ``differs`` (the patch stays), the same class of delta inside the gate beside a null control
-    above it is ``near`` (the operator decides, never defaulted), and the written report carries the
-    gate's numbers and the verdict. Mutation: widen the gate, or leave the flag in the native arm."""
+    above it is ``near`` (the operator decides, never defaulted), a delta inside the gate beside a null
+    control inside it too is ``equivalent`` (the patch is deleted), and the written report carries the
+    gate's numbers and the verdict. Mutation: widen the gate, leave the flag in the native arm, or report
+    the floor-established inside-gate case as ``near``."""
     from rcp_ndcg_test.jobs import sdpa_probe
     from rcp_ndcg_vllm.recipe import resolve_recipe
 
@@ -3546,9 +3550,42 @@ def test_the_sdpa_probe_arms_render_one_flag_apart_and_its_gate_reds_on_a_seeded
     near = report(nudged, noisy)
     assert near["null_control"]["floor"]["max_abs_diff"] == pytest.approx(2e-5)
     assert (near["verdict"]["state"], near["verdict"]["disposition"]) == ("near", "operator")
+    equivalent = report(nudged, base)
+    assert (equivalent["verdict"]["state"], equivalent["verdict"]["disposition"]) == ("equivalent", "delete")
     sdpa_probe.write_report(tmp_path, outside)
     written = json.loads((tmp_path / "sdpa-report.json").read_text(encoding="utf-8"))
     assert written["verdict"]["state"] == "differs" and written["decision_rule"]["equivalent"] == "delete"
+
+
+def test_the_sdpa_probe_loads_by_path_and_never_deletes_from_an_unmeasured_arm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pod runs ``sdpa_probe.py`` by path, under no package; a request that fails inside an arm must
+    still leave the report the wrapper uploads, and a selection with no text must not read ``equivalent``.
+    Mutation: a relative import reds the load (the pod's ImportError); catching only ``HarnessError`` lets
+    the transport's ``ProviderError`` escape ``main`` with no report written; an unguarded zero-text
+    comparison reads ``equivalent``/delete."""
+    probe = runpy.run_path(str(SDPA_PROBE_PY), run_name="sdpa_probe_by_path")["main"].__globals__
+    assert callable(probe["main"])
+    served = {"state": "served", "base_url": "http://h"}
+    monkeypatch.setitem(probe, "_serve", lambda spec, **_kw: dict(served, arm=spec["arm"]))
+    monkeypatch.setitem(probe, "_rows", lambda _args: [{"query": "q", "documents": ["d"]}])
+
+    def refuse(*_args: object, **_kwargs: object) -> dict[str, list[float]]:
+        raise ProviderError("the endpoint failed after its retries: HTTP 503")
+
+    argv = ["--out", str(tmp_path), "--pairs", "pairs.jsonl", "--recipe", "embeddinggemma-2"]
+    monkeypatch.setitem(probe, "encode_all", refuse)
+    assert probe["main"](argv) == 1
+    failed = json.loads((tmp_path / "sdpa-report.json").read_text(encoding="utf-8"))
+    assert (failed["verdict"]["state"], failed["verdict"]["disposition"]) == ("unmeasured", "operator")
+    assert failed["arms"]["patch"]["state"] == "failed" and "503" in failed["arms"]["patch"]["error"]
+
+    monkeypatch.setitem(probe, "_rows", lambda _args: [])
+    monkeypatch.setitem(probe, "encode_all", lambda *_a, **_k: {})
+    assert probe["main"](argv) == 1
+    empty = json.loads((tmp_path / "sdpa-report.json").read_text(encoding="utf-8"))
+    assert (empty["verdict"]["state"], empty["verdict"]["disposition"]) == ("nothing_checked", "operator")
 
 
 def test_submit_maxsim_probe_mounts_the_probe_and_forwards_the_operator_knobs(
@@ -3707,3 +3744,77 @@ def test_the_rows_filter_never_relabels_deselected_text_rows_as_excluded_media()
     assert corpus["pairs_rows"] == 5
     assert corpus["text_rows"] == 2
     assert corpus["media_rows_excluded"] == 2
+
+
+def test_the_reference_query_wire_shape_is_unwrapped_before_the_expected_rows() -> None:
+    """The pplx-embed-v2-late reference writes ``query_vectors`` as a ONE-element list (one (n_kept,
+    width) matrix per query text, positionally paired), so ``np.asarray`` yields ``(1, T, D)``; fed
+    straight into :func:`maxsim_probe.expected_matrix`, the matmul broadcasts and ``max(axis=1)``
+    reduces over the QUERY tokens -- the transposed MaxSim, which reds an equivalent engine (the GPU
+    run's delta 6.73 against bound 2.26) and writes wrong numbers to ``maxsim-rows.json``.  The probe's
+    ingestion unwraps the one element behind an ``ndim == 2`` guard; any other shape is a HarnessError,
+    never a silent ``[0]``.  Mutation: feed the wrapped array through (the pre-fix shape) -- the row
+    becomes the transposed 3-maxima sum."""
+    import numpy as np
+    from rcp_ndcg_test.errors import HarnessError
+    from rcp_ndcg_test.jobs import maxsim_probe
+
+    q = np.array([[1.0, 0.0], [0.0, 1.0]])
+    d = np.array([[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]])
+    row = {"index": 0, "query_vectors": [q.tolist()], "document_vectors": [d.tolist()]}
+    unwrapped = maxsim_probe.reference_query_matrix(row, 0)
+    assert unwrapped.shape == (2, 2) and np.allclose(unwrapped, q)
+    # the card's definition: one maximum per query token (2 here)
+    assert maxsim_probe.expected_matrix([d], [unwrapped])[0, 0] == pytest.approx(2.0)
+    # the pre-fix feed's signature: (1, T_q, T_d) @ d.T makes max(axis=1) reduce over the query axis,
+    # one maximum per document token (3) -- the transposed MaxSim the equivalent-engine red came from
+    assert maxsim_probe.expected_matrix([d], [np.asarray(row["query_vectors"])])[0, 0] == pytest.approx(2.8)
+    with pytest.raises(HarnessError):
+        maxsim_probe.reference_query_matrix({"index": 0, "query_vectors": [q.tolist(), q.tolist()]}, 0)
+
+
+def test_a_tau_only_failure_differs_with_the_median_tau_not_nothing_checked() -> None:
+    """A report whose only failing gate is ``maxsim_tau_median`` (every delta inside the derived bound,
+    the ranks flipped) is a measured failure: the verdict is ``differs`` and names the median tau.
+    ``nothing_checked`` is the no-gating-pair case's own state -- and there the tau is ``None``.
+    Pre-fix, ``verdict`` looked only for pair failures (``abs_delta`` records), found none, and called
+    a measured rank disagreement ``nothing_checked``.  Mutation: drop the tau branch (the verdict reads
+    ``nothing_checked`` again)."""
+    import numpy as np
+    from rcp_ndcg_test.jobs import maxsim_probe
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    recipe = resolve_recipe("pplx-embed-v2-late-0.6b")
+    # both deltas 0.13 sit inside the 1-token bound 2*sqrt(2*(1-0.99)) = 0.2828; the ranks are reversed
+    report = maxsim_probe.build_report(
+        recipe, serve={"state": "served"}, reference={"state": "ran"}, served_scores=np.array([[0.13, 0.0]]),
+        expected_scores=np.array([[0.0, 0.13]]), query_tokens=[1], gating=[[True, True]], corpus={},
+    )  # fmt: skip
+    assert report["gates"][0]["passed"] is True and report["gates"][1]["passed"] is False
+    assert report["rows_summary"]["failures"] == []
+    assert report["verdict"]["state"] == "differs"
+    assert "median tau -1.0000" in report["verdict"]["reason"]
+
+
+def test_the_maxsim_probe_loads_by_path_the_way_the_pod_runs_it() -> None:
+    """The pod runs ``maxsim_probe.py`` by path, under no package (``$STATE/client python
+    maxsim_probe.py``): a relative import has no parent package there and dies with the pod's
+    ImportError -- how the probe's first GPU run failed after the package-context import (and the whole
+    test file) imported fine.  Loading by path with runpy and driving the gate through that namespace
+    pins the module's import discipline.  Mutation: a relative import in ``maxsim_gate`` reds the load
+    with the pod's ImportError."""
+    from typing import Any
+
+    import numpy as np
+    from rcp_ndcg_vllm.recipe import resolve_recipe
+
+    probe: dict[str, Any] = runpy.run_path(str(MAXSIM_PROBE_PY), run_name="maxsim_probe_by_path")
+    assert callable(probe["main"]) and callable(probe["verdict"])
+    gate = probe["maxsim_gate"](
+        resolve_recipe("pplx-embed-v2-late-0.6b"),
+        np.array([[1.0, 0.0]]),
+        np.array([[1.0, 0.0]]),
+        query_tokens=[1],
+        gating=[[True, True]],
+    )
+    assert gate["passed"] is True
