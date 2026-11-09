@@ -1,0 +1,12 @@
+# The reference family pplx-embed-v2-late on the 0.33 image: T0 smoke + T2 equivalence (stages 1 and 2), the
+# family's reference subprocess in its own venv on a GPU of its own, the recorder's fixed 5 requests.
+#   submit.sh <RC_B> <OUT> equivalence-pplx-embed-v2-late
+# GATE: stage 1 (render/tokenize) and stage 2 (the family's declared gates, resolve_gates) green; this is
+# these variants' ledger evidence.
+# The late-interaction MaxSim scoring-path gate (PLAN v7 §3 W13(c), the reviews' D4) is NOT this wave:
+# stage 2's gate is the per-token vector floor only -- it never ranks on the product's own MaxSim. That
+# gate is its own wave: wave-lists/maxsim-probe.txt, submitted with `submit.sh --script maxsim-probe`
+# (the product's MaxSim scorer on the served vectors against the card's direct float64 MaxSim on the
+# reference's). Green here means enable_flash_late_interaction is inert for this family.
+pplx-embed-v2-late-0.6b
+pplx-embed-v2-late-9b

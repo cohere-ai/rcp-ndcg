@@ -1,0 +1,17 @@
+# W13(c)'s gate as its own wave (the reviews' D4): the late-interaction MaxSim scoring path.  The
+# equivalence waves run stages 1-2 only (per-token cosine; run_wave.py's equivalence step passes
+# stages=[1, 2]) and stage 3 / --quality never runs, so the product's client-side MaxSim scorer
+# (rcp_ndcg.retrieval.maxsim -- the path the late_interaction retrieval view and `rcp-ndcg eval score`
+# consume) had no wave: the release had no evidence for the late-interaction scoring path.
+#   submit.sh --script maxsim-probe <RC> <OUT> maxsim-probe   (maxsim_probe.sh -> maxsim_probe.py)
+# Per variant: one engine start, the pairs file's TEXT rows through the product's role client, the
+# reference's --mode embed in the family's reference venv (its own GPU), then the gate: the product's
+# OWN MaxSim scorer on the served vectors against the card's direct float64 MaxSim on the reference's
+# (the expected MaxSim rows, recorded as data in maxsim-rows.json), under the recipe's declared
+# per-token floor's derived per-pair bound (2 * n_query_tokens * sqrt(2 * (1 - vec_min_cosine)) --
+# both the query and the document tokens move, so twice the single-sided bound) and the
+# published median-Kendall-tau rank gate (tau >= 0.98).  Green here is the release's evidence for the
+# late-interaction scoring path; the media rows stay the media stage's (the scoring route's
+# late_interaction_params is exercised by every rerank family's equivalence).
+pplx-embed-v2-late-0.6b
+pplx-embed-v2-late-9b

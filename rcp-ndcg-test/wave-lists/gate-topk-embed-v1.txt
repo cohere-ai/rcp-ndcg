@@ -1,0 +1,13 @@
+# THE GATE RE-RUN (PLAN v7 §3 W13; the ledger's "Dispositions"): the two topk-embed-v1 variants are the
+# owner's recorded gate failure, and a `failed` state may only come from a wave that re-runs that gate.
+#   submit.sh <RC_B> <OUT> gate-topk-embed-v1
+# Stage 1 is expected to pass and stage 2's per-token cosine floor to fail with the same dtype-independent
+# signature the 0.31 waves recorded (docs/reference/gpu-validation.md, Dispositions). The outcome that
+# writes the ledger is `failed` for both rows -- the ONLY failed disposition in the 44; every other variant
+# must come out `verified` or the release does not ship. A green gate here would be a finding, not a win:
+# it would mean the recorded failure no longer reproduces and the owner's disposition list must be revisited.
+#
+# The late-interaction MaxSim scoring-path gate is its own wave (wave-lists/maxsim-probe.txt, the
+# reviews' D4): stage 2 here is the per-token vector floor, never a ranking on the product's MaxSim.
+topk-embed-v1-small
+topk-embed-v1-xsmall

@@ -1,0 +1,9 @@
+# The cross-image parity, arm 1 of 2: W7's fold decision (PLAN v7 §3 W7, D2).
+# Container vllm/vllm-openai:v0.31.0 -- its transformers (5.17.0) lacks the embedding_gemma2 classes, so the
+# recipe's embeddinggemma2-transformers-fold patch is ACTIVE and supplies the model.
+# Submitted ungrouped on that container (RCP_GROUP_IMAGES=0), because the recipe now pins 0.33:
+#   RCP_GROUP_IMAGES=0 submit.sh --image vllm/vllm-openai:v0.31.0 <RC_A> <OUT> parity-embeddinggemma-2-031
+# Gate (recorded in the wave's equivalence.json + the recorder's exchanges, applied by hand until a
+# parity probe module exists -- see PLAN.md §6 finding F1): pooled max abs diff <= 1e-5, cosine >= 0.99999
+# against the 0.33 arm (parity-embeddinggemma-2-033). Inside the gate -> delete the fold; outside -> keep.
+embeddinggemma-2

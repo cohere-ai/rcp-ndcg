@@ -1,0 +1,8 @@
+# The recording pass for qwen3-embedding: the 0.33 corpus re-record (PLAN v7 §3 W9; 12 directories, 9 families).
+#   RCP_RECORD_CORPUS=1 submit.sh <RC_B> <OUT> record-qwen3-embedding
+# The wave runs T0 smoke, T2 equivalence (stages 1+2) and the recorder, then --record-corpus's
+# observation_corpus step; the corpus lands at <out>/observations/vllm-0.33.0/<recipe>/<fingerprint>/<stamp>/
+# and is renamed into rcp-ndcg-test/corpora/vllm-0.33.0/ after the waves.
+# GATE: this wave's own stage-1 and stage-2 equivalence green on the new corpus. That gate IS these
+# variants' ledger evidence -- they are not re-run in an equivalence-qwen3-embedding wave (PLAN.md §3).
+qwen3-embedding-0.6b

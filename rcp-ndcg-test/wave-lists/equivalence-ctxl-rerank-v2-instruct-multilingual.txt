@@ -1,0 +1,8 @@
+# The reference family ctxl-rerank-v2-instruct-multilingual on the 0.33 image: T0 smoke + T2 equivalence (stages 1 and 2), the
+# family's reference subprocess in its own venv on a GPU of its own, the recorder's fixed 5 requests.
+#   submit.sh <RC_B> <OUT> equivalence-ctxl-rerank-v2-instruct-multilingual
+# GATE: stage 1 (render/tokenize) and stage 2 (the family's declared gates, resolve_gates) green; this is
+# these variants' ledger evidence.
+ctxl-rerank-v2-instruct-multilingual-1b
+ctxl-rerank-v2-instruct-multilingual-2b
+ctxl-rerank-v2-instruct-multilingual-6b

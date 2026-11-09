@@ -1,0 +1,9 @@
+# D4's probe: does the native model still need --attention-backend TORCH_SDPA and the plugin's
+# torch-sdpa-attention patch? (PLAN v7 §3 W7 / D4; the rule is exec/DECISION-D4.md §3, written before the run.)
+# submit.sh --script sdpa-probe does NOT read a wave list: the probe's recipe is RCP_SDPA_RECIPE (default
+# embeddinggemma-2, the one id below) and its own knobs are RCP_SDPA_ROWS / _GPUS / _STARTUP_TIMEOUT_S.
+#   submit.sh --script sdpa-probe <RC_A> <OUT> sdpa-probe
+# This file is the staged coverage record: the probe serves exactly this one variant, on one GPU, two arms
+# (patch as loaded, and the recipe with the patch and its --attention-backend pin removed), each arm twice
+# for the null control. Gate: max abs diff <= 1e-5, cosine >= 0.99999, the run's own floor inside it.
+embeddinggemma-2

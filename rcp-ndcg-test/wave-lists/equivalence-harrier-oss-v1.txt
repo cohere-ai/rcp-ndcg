@@ -1,0 +1,8 @@
+# The reference family harrier-oss-v1 on the 0.33 image: T0 smoke + T2 equivalence (stages 1 and 2), the
+# family's reference subprocess in its own venv on a GPU of its own, the recorder's fixed 5 requests.
+#   submit.sh <RC_B> <OUT> equivalence-harrier-oss-v1
+# GATE: stage 1 (render/tokenize) and stage 2 (the family's declared gates, resolve_gates) green; this is
+# these variants' ledger evidence.
+harrier-oss-v1-270m
+harrier-oss-v1-0.6b
+harrier-oss-v1-27b
