@@ -1115,9 +1115,11 @@ def test_the_reference_media_embed_reads_documents_and_keeps_their_positions() -
     PIL image -- the checkpoint's own image-only render, whose ``MultiVectorMask`` drops exactly the declared
     skip ids -- while a text document stays its text. The two kinds of one row are encoded in separate
     batches (the card's usage: separate text-only and image-only calls) and every matrix goes back to its
-    own document position. The forms the card refuses (a query with media, a mixed text+image document, an
-    interleaved text part) fail loudly. No model weights: the fake encoder returns synthetic per-token
-    matrices."""
+    own document position. The forms the card refuses LOUDLY (a query with media, an interleaved text
+    part) still exit; the one form it declares -- a mixed text+image document, the card's "Mixed text+image
+    inputs are not supported" -- is a RECORDED decline: a ``null`` at the document's position plus a
+    ``declined`` reason, so the harness records the row instead of losing the whole run. No model weights:
+    the fake encoder returns synthetic per-token matrices."""
     import base64
     import io
 
@@ -1128,7 +1130,8 @@ def test_the_reference_media_embed_reads_documents_and_keeps_their_positions() -
     Image.new("RGB", (32, 32), (1, 2, 3)).save(buffer, format="PNG")
     entry = {"kind": "image", "uri": "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()}
     row = {"query": "a query", "documents": ["a text document", ""], "media": {"documents": [[], [entry]]}}
-    inputs = module.document_inputs(row)
+    inputs, declined = module.document_inputs(row)
+    assert declined == []
     assert inputs[0] == "a text document"
     assert not isinstance(inputs[1], str) and inputs[1].size == (32, 32)
 
@@ -1158,9 +1161,13 @@ def test_the_reference_media_embed_reads_documents_and_keeps_their_positions() -
     assert len(model.calls) == 2, "the text and image documents must ride separate batches"
     assert document["rows"][0]["document_vectors"][0] == [[0.5] + [0.5] * 127]
     assert len(document["rows"][0]["document_vectors"][1]) == 3
+    # The card's declared refusal of a mixed text+image document is recorded, not an exit.
+    mixed = {"query": "q", "documents": ["caption"], "media": {"documents": [[entry]]}}
+    recorded = module.embed_rows(model, [mixed])
+    assert recorded["rows"][0]["document_vectors"] == [None]
+    assert recorded["rows"][0]["declined"] == [{"side": "document 0", "reason": module.MIXED_MEDIA_REASON}]
     for bad in (
         {"query": "q", "documents": [""], "media": {"query": [entry]}},
-        {"query": "q", "documents": ["caption"], "media": {"documents": [[entry]]}},
         {"query": "q", "documents": [""], "media": {"documents": [[{"kind": "text", "text": "x"}, entry]]}},
     ):
         with pytest.raises(SystemExit):

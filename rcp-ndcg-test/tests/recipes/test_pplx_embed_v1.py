@@ -551,7 +551,13 @@ def test_the_reference_embeds_one_query_vector_per_query_text() -> None:
     one vector per document, and the served client returns one vector per text too. A bare query vector
     reads as N entries (one per dimension) and fails the harness's count check -- the E2 round-2 shape
     mismatch ("the engine returned 1 matrix/matrices, the reference 1024/2560"). No model weights: the
-    fake encoder returns synthetic vectors."""
+    fake encoder returns synthetic vectors.
+
+    A side the card cannot encode is DECLARED, never encoded: this checkpoint's tokenizer emits no ids for
+    the empty string, so the model reads a zero-length sequence and its bidirectional mask indexes a
+    ``[0, 0]`` mask (the rc6 wave's ``IndexError``, reproduced frame-for-frame at transformers 5.20.2 and
+    5.22.1). The side is a ``null`` at its position plus a ``declined`` reason; a side that does encode is
+    untouched, and a row with nothing declined carries an empty list."""
     module = _reference_module()
 
     class FakeEncoder:
@@ -561,11 +567,22 @@ def test_the_reference_embeds_one_query_vector_per_query_text() -> None:
             assert normalize_embeddings is False
             return [[float(position + 1)] * 4 for position, _ in enumerate(texts)]
 
-    document = module.embed_rows(FakeEncoder(), [{"query": "a query", "documents": ["one", "two"]}])
+        def tokenizer(self, text: str, add_special_tokens: bool = True) -> dict[str, list[int]]:
+            """The pipeline's own tokenizer: this checkpoint's emits no ids for the empty string."""
+            assert add_special_tokens is True
+            return {"input_ids": [] if not text else [1, 2]}
+
+    rows = [{"query": "a query", "documents": ["one", "two"]}, {"query": "", "documents": ["one"]}]
+    document = module.embed_rows(FakeEncoder(), rows)
     query_vectors = document["rows"][0]["query_vectors"]
     assert len(query_vectors) == 1, "one entry per query text, never one per dimension"
     assert query_vectors[0] == [1.0, 1.0, 1.0, 1.0]
     assert document["rows"][0]["document_vectors"] == [[1.0] * 4, [2.0] * 4]
+    assert document["rows"][0]["declined"] == []
+    empty = document["rows"][1]
+    assert empty["query_vectors"] == [None], "a zero-length side is declared, never encoded"
+    assert empty["declined"] == [{"side": "query", "reason": module.ZERO_LENGTH_REASON}]
+    assert empty["document_vectors"] == [[1.0] * 4]
 
 
 def test_the_rebuilt_encoder_stays_on_the_declared_device(monkeypatch: pytest.MonkeyPatch) -> None:

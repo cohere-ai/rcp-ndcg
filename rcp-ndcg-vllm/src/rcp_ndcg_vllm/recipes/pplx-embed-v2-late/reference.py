@@ -96,6 +96,16 @@ MODEL = "perplexity-ai/pplx-embed-v2-late-0.6b"
 REVISION = "8fc2de24534aa3610d85fa59c463313a5f096455"
 OUTPUT_DIM = 128  # 1_Dense/config.json out_features at the pinned revision; asserted against the model
 
+MIXED_MEDIA_REASON = (
+    "the card encodes an image document alone: 'Mixed text+image inputs are not supported' (the model card's "
+    "usage note). The document carries one image beside its text, a form the card's own path does not define"
+)
+"""Why a document carrying an image beside its text is DECLARED instead of encoded: the card's usage says
+"Use separate encoding calls for text-only and image-only batches. Mixed text+image inputs are not supported."
+The reference cannot produce a vector there; the harness records the side (``declared_reference_refusal``) on
+the generator's ``media:image+text`` row instead of gating it, and the media mode reports the same side
+``refused``."""
+
 
 def _refuse_old_media_columns(pairs: list[dict[str, Any]]) -> None:
     """The retired per-column media fields are refused loudly: the harness's media rows carry ``media``.
@@ -276,30 +286,38 @@ def _decode_image(entry: dict[str, Any]) -> Any:
         return handle.convert("RGB")
 
 
-def document_inputs(row: dict[str, Any]) -> list[Any]:
+def document_inputs(row: dict[str, Any]) -> tuple[list[Any], list[dict[str, str]]]:
     """One pairs row's documents as the card's own ``encode_document`` inputs, media rows included.
 
     A document with no media is its text (the pipeline prepends the checkpoint's ``[D] `` prompt); a
     document whose entry is one image and whose text is empty is the loaded PIL image (the checkpoint's
     image-only render, whose ``MultiVectorMask`` drops exactly the declared document skip ids). The card's
-    usage encodes text-only and image-only batches separately, so a mixed text+image document, several
-    images, a video, or an interleaved text part is refused loudly here, never silently sent as text.
+    usage encodes text-only and image-only batches separately, and it DECLARES the one form it cannot
+    consume: a document carrying an image beside its text is ``None`` at its position with an entry in the
+    returned ``declined`` list (:data:`MIXED_MEDIA_REASON`, the card's own sentence) -- the harness records
+    that side instead of losing the run. Several images, a video, or an interleaved text part are not
+    declared: they are refused loudly here, never silently sent as text.
     """
     media = list((row.get("media") or {}).get("documents") or [])
     inputs: list[Any] = []
+    declined: list[dict[str, str]] = []
     for position, document in enumerate(row["documents"]):
         entries = list(media[position] or []) if position < len(media) else []
         if not entries:
             inputs.append(str(document))
             continue
         kinds = [str(entry.get("kind", "image")) for entry in entries]
-        if kinds != ["image"] or str(document):
+        if kinds == ["image"] and str(document):
+            inputs.append(None)
+            declined.append({"side": f"document {position}", "reason": MIXED_MEDIA_REASON})
+            continue
+        if kinds != ["image"]:
             raise SystemExit(
                 f"document {position} carries {kinds} with text {str(document)!r}: the card encodes an "
                 "image document alone ('Mixed text+image inputs are not supported')"
             )
         inputs.append(_decode_image(entries[0]))
-    return inputs
+    return inputs, declined
 
 
 def embed_rows(reference: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -309,7 +327,9 @@ def embed_rows(reference: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
     matrix going back to its own position; a query carrying media is refused (the recipe's ``media_sides``
     are documents only). The output width is asserted against the family's declared 128.  ``query_vectors``
     is a ONE-element list holding the row's query matrix: the harness pairs one matrix per query text
-    positionally, exactly as ``document_vectors`` pairs one matrix per document.
+    positionally, exactly as ``document_vectors`` pairs one matrix per document.  A document the card
+    declares it cannot consume (:func:`document_inputs`) is ``null`` at its position and named in the row's
+    ``declined`` list; every other document is encoded.
     """
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
@@ -319,24 +339,28 @@ def embed_rows(reference: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
         width = int(query_out[0].shape[-1])
         if width != OUTPUT_DIM:
             raise ValueError(f"the checkpoint's output width changed: expected {OUTPUT_DIM}, got {width}")
-        documents = document_inputs(row)
+        documents, declined = document_inputs(row)
         document_out: list[Any] = [None] * len(documents)
         for positions in (
             [position for position, item in enumerate(documents) if isinstance(item, str)],
-            [position for position, item in enumerate(documents) if not isinstance(item, str)],
+            [position for position, item in enumerate(documents) if item is not None and not isinstance(item, str)],
         ):
             if not positions:
                 continue
             batch = reference.encode_document([documents[position] for position in positions])
             for position, matrix in zip(positions, batch, strict=True):
                 document_out[position] = matrix
-        if any(matrix is None for matrix in document_out):  # pragma: no cover - every position is text or image
-            raise SystemExit(f"pairs row {index}: a document was not encoded")
+        unencoded = [position for position, matrix in enumerate(document_out) if matrix is None]
+        if unencoded != [int(entry["side"].removeprefix("document ")) for entry in declined]:
+            # Every position is a text document, an image document or a DECLARED decline: anything else is a
+            # bug in this file, never a silent gap in the row.
+            raise SystemExit(f"pairs row {index}: document(s) {unencoded} were not encoded and are not declared")
         out_rows.append(
             {
                 "index": index,
                 "query_vectors": [_fp16_lists(query_out[0])],
-                "document_vectors": [_fp16_lists(document) for document in document_out],
+                "document_vectors": [_fp16_lists(matrix) if matrix is not None else None for matrix in document_out],
+                "declined": declined,
             }
         )
     return {"rows": out_rows}

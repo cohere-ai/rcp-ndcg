@@ -570,6 +570,29 @@ def _compare(key: tuple[int, str], client: dict[str, Any], reference: dict[str, 
     return failures
 
 
+def _declared_mixed_media_side(row: dict[str, Any], side: str) -> bool:
+    """Whether ``side`` is the generator's mixed text+image document (the pairs row's ``media:image+text``
+    stratum, :mod:`rcp_ndcg_test.observe.media_set`): a document carrying one image beside a non-empty text.
+
+    The card's usage encodes text-only and image-only batches separately ("Mixed text+image inputs are not
+    supported"), so this is the one media form a late-interaction reference DECLARES it cannot consume.  Both
+    stages read the rule here, once: stage 2's ``declared_reference_refusal`` (the vectors) and this stage's
+    (the media facts).  Only the row's own label with that structure declares it: an image-only document, a
+    several-images side or a mislabelled row is never authorised, so its refusal still fails.
+    """
+    if "media:image+text" not in {str(label) for label in row.get("_strata") or ()}:
+        return False
+    if not side.startswith("document "):
+        return False
+    position = int(side.removeprefix("document "))
+    documents = list(row.get("documents") or ())
+    entries: list[Any] = list((row.get("media") or {}).get("documents") or ())
+    if position >= len(documents) or position >= len(entries):
+        return False
+    kinds = [str(entry.get("kind", "image")) for entry in entries[position] or ()]
+    return kinds == ["image"] and bool(str(documents[position]))
+
+
 def stage_media(
     recipe: Recipe, pairs_path: str | Path, reference_python: str | None, *, base_url: str | None = None
 ) -> dict[str, Any] | None:
@@ -577,12 +600,16 @@ def stage_media(
 
     Inputs: the recipe, the pairs file (its media rows), the reference interpreter and the engine's URL.
     Output: ``{"status", "scope", "scope_note", "rows", "sides", "items", "unresolved_rows",
-    "failures", "refusals", "engine_check", "passed", "referent"}`` (``unresolved_rows``: rows whose
-    media are source coordinates, reported, not compared): ``passed`` only when every media item of every
-    side matched the reference (count, placement, geometry or frames, tokens), the client refused no media
-    row and -- with an engine -- the engine counted what the client counted.  Without ``reference_python``
-    the stage is ``not_run`` (neutral, as stage 1's render check); a media recipe whose pairs carry no media
-    row fails.
+    "failures", "refusals", "declared_reference_refusal", "engine_check", "passed", "referent"}``
+    (``unresolved_rows``: rows whose media are source coordinates, reported, not compared): ``passed`` only
+    when every media item of every side matched the reference (count, placement, geometry or frames,
+    tokens), the client refused no media row and -- with an engine -- the engine counted what the client
+    counted.  A side the reference reports ``refused`` gates -- the card does not define the input -- except
+    on the generator's own ``media:image+text`` row, where the refusal is the card's DECLARED policy
+    (:func:`_declared_mixed_media_side`, the same rule stage 2 reads): that side is recorded in
+    ``declared_reference_refusal`` and gates nothing, and an undeclared refusal still fails.  Without
+    ``reference_python`` the stage is ``not_run`` (neutral, as stage 1's render check); a media recipe whose
+    pairs carry no media row fails.
     """
     from .fitting import load_pairs
 
@@ -610,15 +637,23 @@ def stage_media(
         }
     client, refusals, requests, tokenizer = _client_facts(recipe, rows, base_url)
     reference = _reference_facts(recipe, reference_python, rows)
+    by_index = dict(rows)
     failures: list[dict[str, Any]] = []
+    declared_reference_refusal: list[dict[str, Any]] = []
     for key in sorted(set(client) | set(reference)):
         if key not in reference:
             failures.append(
                 {"row": key[0], "side": key[1], "check": "reference", "note": "the reference reported no media facts"}
             )
         elif reference[key].get("refused"):
-            # The card does not define this input: that decides the row (the generator prunes it), whether or
-            # not the client sent it.
+            # The card does not define this input.  On the generator's own `media:image+text` row that is the
+            # card's DECLARED policy (one image beside its text), so the side is recorded and gates nothing;
+            # any other refusal decides the row (the generator prunes it), whether or not the client sent it.
+            if _declared_mixed_media_side(by_index.get(key[0], {}), key[1]):
+                declared_reference_refusal.append(
+                    {"row": key[0], "side": key[1], "reason": reference[key]["refused"]}
+                )
+                continue
             failures.append(
                 {"row": key[0], "side": key[1], "check": "reference_refused", "reason": reference[key]["refused"]}
             )
@@ -638,6 +673,7 @@ def stage_media(
         "unresolved_rows": unresolved,
         "failures": failures,
         "refusals": refusals,
+        "declared_reference_refusal": declared_reference_refusal,
         "engine_check": engine,
         "passed": bool(items) and not failures and not refusals and engine.get("passed") is not False,
         "referent": "per media row and side, what the client sent (the parts in order, each image's prepared "

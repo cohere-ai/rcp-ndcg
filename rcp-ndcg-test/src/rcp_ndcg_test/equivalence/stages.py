@@ -818,6 +818,36 @@ def _declared_substitution_side(
     return _declared_empty_side({"content_kinds": _content_kinds(row)}, shape)
 
 
+def _declined_sides(row: dict[str, Any], reference_row: dict[str, Any]) -> dict[tuple[str, int], tuple[str, str]]:
+    """The sides the reference DECLARED it cannot encode, authorised by the row's own planner kind.
+
+    A reference that cannot produce a vector for a side writes a ``null`` at that position of its vector list
+    plus ``declined: [{"side": "query"|"document <i>", "reason"}]``: pplx-embed-v1's checkpoint indexes a
+    ``[0, 0]`` mask on a zero-length sequence, and pplx-embed-v2-late's card refuses a mixed text+image
+    document.  Only the row's own kind label authorises the record -- the generator's ``content:empty@<side>``
+    row is ``declared_unencodable``, the ``media:image+text`` row is ``declared_reference_refusal`` -- so an
+    UNDECLARED decline still gates: the reference produced no vector and nothing names why.  Returns
+    ``{(role, position): (record, reason)}``; every other declaration is left out and gates.
+    """
+    out: dict[tuple[str, int], tuple[str, str]] = {}
+    from .media import _declared_mixed_media_side
+
+    for entry in reference_row.get("declined") or ():
+        side = str(entry.get("side", ""))
+        reason = str(entry.get("reason", ""))
+        if side == "query":
+            role, position = "query", 0
+        elif side.startswith("document "):
+            role, position = "document", int(side.removeprefix("document "))
+        else:
+            continue
+        if _declared_empty_side({"content_kinds": _content_kinds(row)}, role):
+            out[(role, position)] = ("declared_unencodable", reason)
+        elif _declared_mixed_media_side(row, side):
+            out[(role, position)] = ("declared_reference_refusal", reason)
+    return out
+
+
 def _audit_last_content(
     recipe: Recipe,
     tokenizer: Any,
@@ -2747,12 +2777,18 @@ def _vector_stage2(
     that measured floor (the declared media approximation) while the text sides keep ``vec_min_cosine``, and
     a side the reference renders with the recipe's declared ``client.empty_doc_text`` placeholder while the
     client sent it as given is recorded in ``declared_substituted`` instead of gated (stage 1's render check
-    proves that substitution on the same run).
+    proves that substitution on the same run).  Two more declarations are read here: a side the reference
+    DECLARED it cannot encode (:func:`_declined_sides`) is recorded in ``declared_unencodable`` (a zero-length
+    sequence the checkpoint's mask cannot index) or ``declared_reference_refusal`` (the card's refusal of a
+    mixed text+image document) and not gated, and the served call is not made for it -- there is no vector to
+    compare, and the client's send-as-given policy is stage 1's audit.  An undeclared decline still gates.
     """
     deviation = reference_of(recipe).over_cap_deviation is not None
     per_vector: list[dict[str, Any]] = []
     over_cap: list[dict[str, Any]] = []
     declared_substituted: list[dict[str, Any]] = []
+    declared_unencodable: list[dict[str, Any]] = []
+    declared_reference_refusal: list[dict[str, Any]] = []
     # The run's selection is read from the recipe's declaration BEFORE the served client strips it: the
     # stripped client carries no selection, and a range declaration must still gate the k the run chose.
     selection = recipe.client.get("mrl_dim")
@@ -2764,6 +2800,7 @@ def _vector_stage2(
 
     for row_index, row in enumerate(rows):
         reference_row = _reference_row(reference, row_index)
+        declined = _declined_sides(row, reference_row)
         media = bool(row.get("media"))
         query_content, document_contents = _client_sides(row) if media else (None, [])
         for role, served_key, texts in (
@@ -2776,11 +2813,20 @@ def _vector_stage2(
             encode_role = EncodeRole.QUERY if role == "query" else EncodeRole.DOCUMENT
             from rcp_ndcg_core.content import Content
 
-            served_matrices: list[list[list[float]]] = []
+            served_matrices: list[list[list[float]] | None] = []
             cut_flags: list[bool] = []
             media_flags: list[bool] = []
             substituted: list[bool] = []
+            declined_flags: list[tuple[str, str] | None] = []
             for position, text in enumerate(texts):
+                declaration = declined.get((role, position))
+                declined_flags.append(declaration)
+                if declaration is not None:
+                    served_matrices.append(None)
+                    cut_flags.append(False)
+                    media_flags.append(False)
+                    substituted.append(False)
+                    continue
                 # One call per text: the client's fan-out runs concurrently, so per-call record windows keep
                 # the position attribution exact.  A media row sends the product's Content (the media
                 # stage's path) and gates; its prep is the media stage's own comparison.
@@ -2815,13 +2861,18 @@ def _vector_stage2(
                 dims=dims,
                 media_flags=media_flags,
                 substituted=substituted,
+                declined=declined_flags,
                 declared_substituted=declared_substituted,
+                declared_unencodable=declared_unencodable,
+                declared_reference_refusal=declared_reference_refusal,
             )
     if recorder is not None:
         recorder.extend(capture.exchanges)
     summary = _vector_summary(recipe, per_vector, gates, dims)
     summary["mrl_gate_version"] = MRL_GATE_VERSION
     summary["declared_substituted"] = declared_substituted
+    summary["declared_unencodable"] = declared_unencodable
+    summary["declared_reference_refusal"] = declared_reference_refusal
     summary["over_cap"] = {
         "known_deviation": deviation,
         "n_pairs": len(over_cap),
@@ -2888,7 +2939,7 @@ def _embeddings_to_matrices(recipe: Recipe, embeddings: Any, n_texts: int) -> li
 
 def _compare_shape(
     recipe: Recipe,
-    served_vectors: list[list[list[float]]],
+    served_vectors: list[list[list[float]] | None],
     expected: list[Any],
     row_index: int,
     role: str,
@@ -2903,7 +2954,10 @@ def _compare_shape(
     dims: tuple[int | None, ...] = (None,),
     media_flags: list[bool] | None = None,
     substituted: list[bool] | None = None,
+    declined: list[tuple[str, str] | None] | None = None,
     declared_substituted: list[dict[str, Any]] | None = None,
+    declared_unencodable: list[dict[str, Any]] | None = None,
+    declared_reference_refusal: list[dict[str, Any]] | None = None,
 ) -> None:
     """Pair served with reference vectors positionally, every text's rows (per vector, or per token).
 
@@ -2917,7 +2971,11 @@ def _compare_shape(
     ``gates.media_vec_min_cosine`` those vectors gate on that floor (and carry ``media`` in their report row),
     the rest on ``vec_min_cosine``.  ``substituted`` marks the texts whose comparison is the reference's
     declared empty-input substitution (:func:`_declared_substitution_side`): their cosines are recorded in
-    ``declared_substituted`` instead of gating, because the two sides read different prompts.
+    ``declared_substituted`` instead of gating, because the two sides read different prompts.  ``declined``
+    carries, per text, the record the reference's own declaration earned (:func:`_declined_sides`) and its
+    reason: that text is recorded in ``declared_unencodable``/``declared_reference_refusal`` and gates
+    nothing.  A ``null`` reference vector or a missing served one without such a declaration is a gating row
+    -- an undeclared decline is a failure, never a skip.
     """
     media_bound: float | None = getattr(gates, "media_vec_min_cosine", None)
     if len(served_vectors) != len(expected):
@@ -2934,6 +2992,24 @@ def _compare_shape(
         over = bool(cut_flags[index]) if cut_flags and index < len(cut_flags) else False
         declared = bool(substituted[index]) if substituted and index < len(substituted) else False
         carries_media = bool(media_flags[index]) if media_flags and index < len(media_flags) else False
+        declaration = declined[index] if declined and index < len(declined) else None
+        if declaration is not None:
+            table = declared_unencodable if declaration[0] == "declared_unencodable" else declared_reference_refusal
+            if table is not None:
+                table.append({"referent": f"row {row_index} {role} {index}", "reason": declaration[1]})
+            continue
+        if served_matrix is None or reference_item is None:
+            per_vector.append(
+                {
+                    "referent": f"row {row_index} {role} {index}",
+                    "cosine": None,
+                    "within": False,
+                    "over_cap": over,
+                    "note": "the reference declared no vector for this text and the row's own kind does not "
+                    "authorise the record: an undeclared decline gates",
+                }
+            )
+            continue
         media_row = carries_media and media_bound is not None
         bound: float = media_bound if media_row and media_bound is not None else gates.vec_min_cosine
         # A reference entry is one vector (wrap it) or one ragged matrix per text (use it as given).

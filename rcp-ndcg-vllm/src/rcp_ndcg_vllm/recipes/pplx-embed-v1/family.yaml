@@ -270,6 +270,16 @@ notes: |
   0.998196 rounds to 0.9982, which the `>=` gate would miss, so the declared bound is one step
   below the rounded value); the 4b keeps the published 0.999. Every bound is declared with that
   measured evidence, never defaulted; the re-run measures them again.
+  The empty-content row (declared unencodable): the pairs generator plans the empty-content row on the
+  QUERY side (empty_doc: omit_zero keeps the empty document out), and the checkpoint's own path cannot encode
+  it -- the tokenizer emits no ids for the empty string, so the model reads a zero-length sequence and its
+  bidirectional mask indexes a [0, 0] mask (masking_utils or_mask selects index 0 of an empty key axis), an
+  IndexError that reproduces frame-for-frame at transformers 5.20.2 and 5.22.1 (measured; not a pin). The
+  reference therefore DECLARES the side it cannot encode (a null at the position plus a `declined` reason)
+  and stage 2 records it in `declared_unencodable`, gating nothing: the client's send-as-given policy stands
+  and only the comparison is skipped, keyed to the row's own `content:empty@<side>` label. An undeclared
+  empty side still fails; nothing is cut, substituted or dropped.
+
 variants:
   - id: pplx-embed-v1-0.6b
     model: perplexity-ai/pplx-embed-v1-0.6b

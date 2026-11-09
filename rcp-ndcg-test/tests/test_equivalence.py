@@ -1704,3 +1704,93 @@ def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:
     emptied = {"rows": [{"shapes": {"document": {"texts": ["doc: "]}}}]}
     check = stages_module._anchor_check(recipe, emptied, tokenizer)
     assert check["passed"] is False and check["failures"][0]["check"] == "mean_content"
+
+
+def test_a_declined_zero_length_side_is_recorded_and_an_undeclared_one_still_gates() -> None:
+    """pplx-embed-v1's reference cannot produce a vector for the generator's empty-content row: the
+    checkpoint's tokenizer emits no ids for the empty string, so the model receives a zero-length sequence
+    and its bidirectional mask indexes a ``[0, 0]`` mask (the rc6 wave's ``IndexError``, which reproduces
+    frame-for-frame at transformers 5.20.2 and 5.22.1 -- not a pin).  The reference therefore DECLARES the
+    side it cannot encode (a ``null`` at that position plus a ``declined`` reason) and stage 2 records it in
+    ``declared_unencodable`` on the row's own ``content:empty@<side>`` label: the client's send-as-given
+    policy stands and only the comparison is skipped.  The same declaration on a row whose kind does not
+    carry that label is not authorised -- the reference produced no vector for a text nothing declares, so
+    the text gates."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+
+    from tests.fixtures.deterministic import vector
+
+    recipe = load("fixture-embed")
+    gates = resolve_gates(recipe)
+    reason = "a zero-length sequence"
+    declared = {
+        "rows": [
+            {
+                "index": 0,
+                "document_vectors": [None, [float(value) for value in vector("doc: a document [END]", "embed")]],
+                "declined": [{"side": "document 0", "reason": reason}],
+            }
+        ]
+    }
+    engine = start_stub("--tokenizer", str(TOKENIZER))
+    try:
+        labelled = {"query": "q", "documents": ["", "a document"]}
+        labelled["_strata"] = ["content:empty", "content:empty@document"]
+        summary = stages_module._vector_stage2(recipe, [labelled], declared, engine.base_url, gates, None)
+        assert summary["declared_unencodable"] == [{"referent": "row 0 document 0", "reason": reason}]
+        assert summary["passed"] is True, summary["per_vector"]
+        unlabelled = {"query": "q", "documents": ["a document", "another document"], "_strata": ["content:empty"]}
+        declared["rows"][0]["document_vectors"] = [
+            None,
+            [float(value) for value in vector("doc: another document [END]", "embed")],
+        ]
+        summary = stages_module._vector_stage2(recipe, [unlabelled], declared, engine.base_url, gates, None)
+        assert summary["declared_unencodable"] == []
+        assert summary["passed"] is False
+        assert any(entry["cosine"] is None and entry["within"] is False for entry in summary["per_vector"])
+    finally:
+        engine.stop()
+
+
+def test_a_declined_mixed_media_document_is_recorded_only_on_the_mixed_row() -> None:
+    """pplx-embed-v2-late's card refuses a document carrying an image beside its text ("Mixed text+image
+    inputs are not supported"): the reference declares that side ``declined`` (its media mode already
+    reports the same side ``refused``) instead of exiting the subprocess, and stage 2 records it in
+    ``declared_reference_refusal`` on the generator's ``media:image+text`` row, keyed to the side's own
+    structure (one image, non-empty text).  A decline on any other row -- no ``media:image+text`` label, an
+    image-only document, a several-images side -- is not authorised: the reference produced no vector, so
+    the text gates."""
+    from rcp_ndcg_test.equivalence import stages as stages_module
+    from rcp_ndcg_test.equivalence.gates import resolve_gates
+    from rcp_ndcg_test.observe.media_set import image_entry
+
+    recipe = load("fixture-vl-embed")
+    gates = resolve_gates(recipe)
+    row = {
+        "query": "a query",
+        "documents": ["a caption"],
+        "media": {"documents": [[image_entry("red", 64, 64)]]},
+        "_strata": ["media:image", "media:image+text"],
+    }
+    reference_row = {"index": 0, "document_vectors": [None], "declined": [{"side": "document 0", "reason": "mixed"}]}
+    expected = {("document", 0): ("declared_reference_refusal", "mixed")}
+    assert stages_module._declined_sides(row, reference_row) == expected
+    per_vector: list[dict[str, Any]] = []
+    declared: list[dict[str, Any]] = []
+    stages_module._compare_shape(
+        recipe,
+        [None],
+        [None],
+        0,
+        "document",
+        per_vector,
+        gates,
+        declined=[("declared_reference_refusal", "mixed")],
+        declared_reference_refusal=declared,
+    )
+    assert declared == [{"referent": "row 0 document 0", "reason": "mixed"}]
+    assert per_vector == []
+    assert stages_module._declined_sides({**row, "_strata": ["media:image"]}, reference_row) == {}
+    stages_module._compare_shape(recipe, [[[1.0, 0.0]]], [None], 0, "document", per_vector, gates)
+    assert per_vector and per_vector[0]["within"] is False

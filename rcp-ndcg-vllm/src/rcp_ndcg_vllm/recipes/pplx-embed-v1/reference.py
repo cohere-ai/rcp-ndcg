@@ -58,11 +58,15 @@ Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
   ids are a strict prefix of the card's. Everywhere else the text runs to the first
   dropped token's start offset and its ids equal the card's. Nothing here follows the
   product client's cut; where the two differ the recipe declares ``over_cap_cut_differs``.
-- ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...], ...]}]}``
+- ``embed``: ``{"rows": [{"index", "query_vectors": [[...]], "document_vectors": [[...], ...], "declined": [...]}]}``
   -- one float vector per text, exactly the pooled encoder output the served engine
   returns (mean pooling over the tokens, no quantiser; see the module docstring);
   ``query_vectors`` is a one-element list holding the row's query vector, the harness's
   positional contract (one entry per query text, like ``document_vectors`` per document).
+  A side the checkpoint's model cannot encode is ``null`` at its position and named in
+  ``declined`` with its reason (:data:`ZERO_LENGTH_REASON`: a zero-length sequence, which
+  the checkpoint's bidirectional mask cannot index), so the harness records the side
+  instead of gating it; the mode never dies on that row.
 
 The per-variant facts (the model id and revision) travel through ``--recipe``, the
 resolved recipe JSON the harness passes: one reference serves the whole family.
@@ -84,6 +88,17 @@ DEFAULT_REVISION = "2c4d510dd4a732063c31a0f70193e35067b51fd8"
 #: The module class names the card's ``modules.json`` pipeline must carry, in order
 #: (``Transformer`` -> ``Pooling`` -> the storage quantiser this reference stops before).
 EXPECTED_MODULES = ("Transformer", "Pooling", "FlexibleQuantizer")
+
+ZERO_LENGTH_REASON = (
+    "the pipeline's tokenizer emits no ids for this text, so the model reads a zero-length sequence: the "
+    "checkpoint's own bidirectional mask indexes a [0, 0] mask (masking_utils or_mask selects index 0 of an "
+    "empty key axis). Measured at transformers 5.20.2 and 5.22.1 -- the same frames, the same message"
+)
+"""Why a side with no tokens is DECLARED instead of encoded: the checkpoint's remote ``modeling.py`` builds
+``create_causal_mask(..., or_mask_function=bidirectional_mask_function(mask))``, whose ``or_mask`` indexes the
+mask with ``0``, so an all-empty batch raises ``IndexError: select(): index 0 out of range for tensor of size
+[0, 0]``.  The reference cannot produce a vector there; the harness records the side (``declared_unencodable``)
+instead of gating it, keyed to the row's own ``content:empty@<side>`` label."""
 
 
 def _recipe_facts(recipe_path: str | None) -> tuple[str, str]:
@@ -231,6 +246,13 @@ def embed(rows: list[dict[str, Any]], device: str, model: str, revision: str) ->
     return embed_rows(encoder, rows)
 
 
+def _zero_length(text: str, tokenizer: Any) -> bool:
+    """Whether the card's pipeline reads this text as a zero-length sequence: its own tokenizer emits no ids
+    for it (this checkpoint's Qwen2 BPE has a null ``bos_token``, so the empty string tokenizes to nothing and
+    sentence-transformers pads a one-text batch to length 0)."""
+    return not tokenizer(text, add_special_tokens=True)["input_ids"]
+
+
 def embed_rows(encoder: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """The card's own encode calls for every row, vectors assembled positionally.
 
@@ -238,16 +260,38 @@ def embed_rows(encoder: Any, rows: list[dict[str, Any]]) -> dict[str, Any]:
     per query text positionally, exactly as ``document_vectors`` pairs one vector per document.  A bare
     query vector reads as N entries (one per dimension) and fails the harness's count check -- the E2
     round-2 shape mismatch ("the engine returned 1 matrix/matrices, the reference 1024/2560").
+
+    A side the card cannot encode is DECLARED, never encoded (:data:`ZERO_LENGTH_REASON`): the pipeline's own
+    tokenizer emits no ids for the empty string, so the side is a ``null`` at its position in the row's vector
+    list plus an entry in ``declined`` (``{"side": "query"|"document <i>", "reason"}``).  Every other side is
+    encoded exactly as before, the encodable documents of one row in one batch.
     """
+    tokenizer = encoder.tokenizer
     out_rows: list[dict[str, Any]] = []
     for index, row in enumerate(rows):
-        query_vectors = encoder.encode([str(row["query"])], normalize_embeddings=False)
-        document_vectors = encoder.encode([str(document) for document in row["documents"]], normalize_embeddings=False)
+        declined: list[dict[str, str]] = []
+        query_text = str(row["query"])
+        if _zero_length(query_text, tokenizer):
+            declined.append({"side": "query", "reason": ZERO_LENGTH_REASON})
+            query_vectors: list[Any] = [None]
+        else:
+            query_vectors = [_vector(encoder.encode([query_text], normalize_embeddings=False)[0])]
+        documents = [str(document) for document in row["documents"]]
+        encodable = [position for position, text in enumerate(documents) if not _zero_length(text, tokenizer)]
+        for position in range(len(documents)):
+            if position not in encodable:
+                declined.append({"side": f"document {position}", "reason": ZERO_LENGTH_REASON})
+        document_vectors: list[list[float] | None] = [None] * len(documents)
+        if encodable:
+            batch = encoder.encode([documents[position] for position in encodable], normalize_embeddings=False)
+            for position, vector in zip(encodable, batch, strict=True):
+                document_vectors[position] = _vector(vector)
         out_rows.append(
             {
                 "index": index,
-                "query_vectors": [_vector(query_vectors[0])],
-                "document_vectors": [_vector(vector) for vector in document_vectors],
+                "query_vectors": query_vectors,
+                "document_vectors": document_vectors,
+                "declined": declined,
             }
         )
     return {"rows": out_rows}

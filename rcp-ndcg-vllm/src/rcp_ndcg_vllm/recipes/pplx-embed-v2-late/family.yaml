@@ -522,6 +522,14 @@ notes: |
   variant declares its measured floor in overrides.gates.vec_min_cosine (0.6b 0.99, 9b 0.978). Every
   bound is declared with that measured evidence, never defaulted; E2's re-run measures them again.
 
+  The mixed text+image document (declared reference refusal): the generator plans one captioned page
+  (`media:image+text`, one image beside its text), a form the card's usage does not define ("Mixed
+  text+image inputs are not supported"). The reference reports that side `declined` (a null at the
+  document's position, the card's own sentence as the reason) instead of exiting the subprocess, and stage 2
+  records it in `declared_reference_refusal`, gating nothing, keyed to the row's own `media:image+text` label
+  and the side's structure (one image, non-empty text). An image-only document still gates exactly, several
+  images and an interleaved text part still fail loudly, and a decline on any other row gates.
+
 variants:
   - id: pplx-embed-v2-late-0.6b
     model: perplexity-ai/pplx-embed-v2-late-0.6b

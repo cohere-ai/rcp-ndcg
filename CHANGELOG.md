@@ -430,6 +430,12 @@ incompatibly, independently of the package version. All four distributions carry
 - **`qwen3-vl-embedding-8b` declares its media floor** (`gates.media_vec_min_cosine: 0.9966`): its rc5 minimum
   is a media row (a 4x-downscaled page), 0.9975178 minus the largest era-to-era movement 8.507e-4; its text
   floor stays 0.9983 (text minimum 0.9990639).
+- **The pplx references' two declared limits are recorded, not gated**: a zero-id side (`content:empty@<side>`)
+  is declined and recorded as `declared_unencodable` (the comparison and the served call are skipped — the
+  model cannot mask a zero-length sequence, at either transformers generation), and a mixed text+image document
+  is refused by the reference's own declared policy and recorded as `declared_reference_refusal` in stage 2 and
+  the media stage, keyed to the row's kind. Several images, interleaved text, a media query, or an undeclared
+  crash or refusal still fail loudly.
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data
