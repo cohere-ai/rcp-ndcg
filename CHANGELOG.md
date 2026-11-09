@@ -364,6 +364,19 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Changed
 
+- **The embeddinggemma-2 fold is deleted, and the SDPA patch stays**: the `embeddinggemma2-transformers-fold`
+  patch, the five folded transformers 5.19.0 modules it registered, the vLLM `8cbd5d03` model and the folded
+  config hook are gone; the recipe is a patch-only carrier (`plugin_architectures: []`,
+  `patches: [torch-sdpa-attention]`) and the pinned 0.33 image serves the checkpoint with its own classes and
+  registry entry. The parity decision is measured, not assumed: the cross-image cosine 0.999972 is inside the
+  recipe's own measured bf16 floor 0.999882, and the fold is inert on the 0.33 image, so the deletion moves
+  nothing the engine returns. The `torch-sdpa-attention` patch stays (outside the null-controlled probe gate
+  its backend differs from the engine's native path), with `attention.py` and the `--attention-backend
+  TORCH_SDPA` + `--enforce-eager` pins; the patch now keys that backend module as well, so a change to it
+  moves the recipe's fingerprint instead of leaving it still. Deleting the fold's registrations, and adding
+  the backend module to the patch's keyed set, move the plugin recipes' fingerprints (the shared
+  `rcp_ndcg_vllm.patches` module is one of the hashed inputs), so the 13 plugin goldens were regenerated;
+  the committed corpora keep their pre-deletion keys until their re-record.
 - **The engine pin moves to vLLM v0.33.0, and no recipe claims a wave on it**: every one of the 24 families
   pins `vllm/vllm-openai:v0.33.0` with `min_version: "0.33.0"`, the version guard accepts the 0.33 line, the
   pooler config the serve argv renders gains `enable_flash_late_interaction` (the engine's own default, inert

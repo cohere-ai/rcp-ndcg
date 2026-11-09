@@ -27,7 +27,7 @@ import logging
 import os
 from collections.abc import Iterable, Mapping
 
-from . import embeddinggemma2_fold, torch_sdpa_attention
+from . import torch_sdpa_attention
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +38,17 @@ logger = logging.getLogger(__name__)
 #: workers), so the variable is read there, never in the client.
 PATCHES_ENV = "RCP_NDCG_VLLM_PATCHES"
 
-#: Every patch this package ships, by name, and the module that implements it -- the one home of the
-#: name-to-code mapping. A recipe may declare a name (the recipe schema validates it against
-#: :data:`PATCH_NAMES`), and the behaviour fingerprint hashes the module's bytes for every declared patch
-#: (``plugin_sha256.<module>``), so a patch fix moves the fingerprint of exactly the recipes that opt in.
-PATCH_MODULES: dict[str, str] = {
-    embeddinggemma2_fold.PATCH_NAME: "rcp_ndcg_vllm.patches.embeddinggemma2_fold",
-    torch_sdpa_attention.PATCH_NAME: "rcp_ndcg_vllm.patches.torch_sdpa_attention",
+#: Every patch this package ships, by name, and every module the patch runs -- the one home of the
+#: name-to-code mapping. The patch's own module comes first; the modules it registers or patches follow, so a
+#: change to a backend the patch installs moves the same fingerprint input. A recipe may declare a name (the
+#: recipe schema validates it against :data:`PATCH_NAMES`), and the behaviour fingerprint hashes every listed
+#: module's bytes for every declared patch (``plugin_sha256.<module>``), so a patch fix moves the fingerprint
+#: of exactly the recipes that opt in.
+PATCH_MODULES: dict[str, tuple[str, ...]] = {
+    torch_sdpa_attention.PATCH_NAME: (
+        "rcp_ndcg_vllm.patches.torch_sdpa_attention",
+        "rcp_ndcg_vllm.models.embedding_gemma2.attention",
+    ),
 }
 
 #: Every patch this package ships, by name -- what a recipe may declare (``serve.patches``).
@@ -89,8 +93,6 @@ def apply_opted_in_patches(*, environ: Mapping[str, str] | None = None) -> tuple
     unknown = [name for name in names if name not in PATCH_NAMES]
     if unknown:
         logger.warning("ignoring unknown %s names: %s", PATCHES_ENV, ", ".join(unknown))
-    if embeddinggemma2_fold.PATCH_NAME in names:
-        embeddinggemma2_fold.apply()
     if torch_sdpa_attention.PATCH_NAME in names:
         torch_sdpa_attention.apply()
     return tuple(name for name in names if name in PATCH_NAMES)

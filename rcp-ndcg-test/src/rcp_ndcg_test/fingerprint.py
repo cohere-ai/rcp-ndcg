@@ -81,7 +81,8 @@ FINGERPRINT_SCHEMA = "rcp-fp/4"
 canonicalisation is a new schema (``rcp-fp/5``), so old and new corpora never collide in one key.
 Version 4 keys the engine image and its version floor (``engine.image``, ``engine.min_version``), the
 plugin code the recipe's engine runs (``plugin_sha256.<module>``: the shared entry modules, every declared
-architecture's modules and every opted-in patch's module) and, as version 3 did, exactly the client fields
+architecture's modules and every module of an opted-in patch -- the patch module and the backend it
+registers) and, as version 3 did, exactly the client fields
 that change the request bytes (:data:`CLIENT_FIELDS`): client-side post-processing of the reply is out,
 request packing (``batch_size``) and the media caps are in."""
 
@@ -289,8 +290,9 @@ def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
 
     The shipped plugin wheel's declaration is the truth: the shared engine modules every plugin recipe runs
     (:data:`~rcp_ndcg_vllm.models.PLUGIN_ENGINE_MODULES`), the modules of each declared architecture
-    (:data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`) and the module of every opted-in patch
-    (:data:`~rcp_ndcg_vllm.patches.PATCH_MODULES`), deduplicated in declaration order.  A recipe without a
+    (:data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`) and every module of every opted-in patch -- its own
+    module and the modules it registers (:data:`~rcp_ndcg_vllm.patches.PATCH_MODULES`) -- deduplicated in
+    declaration order.  A recipe without a
     plugin has none.  A foreign plugin spec is refused by name: its modules cannot be resolved here, and a
     name-only key is exactly the hole ``rcp-fp/4`` closes.  The wave runner hashes the same modules inside
     the staged wheel it serves (item 9) and refuses to record when the two disagree, so this function is
@@ -311,7 +313,7 @@ def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
     for architecture in recipe.serve.plugin_architectures:
         modules.extend(ARCHITECTURE_MODULES[architecture])
     for patch in recipe.serve.patches:
-        modules.append(PATCH_MODULES[patch])
+        modules.extend(PATCH_MODULES[patch])
     return {module: _module_sha256(module) for module in dict.fromkeys(modules)}
 
 

@@ -104,7 +104,7 @@
   "tokenizer": "topk-io/topk-embed-v1-small@e54485ebab921f2c18c4d092b3f4c40dcca26781"
  },
  "fingerprint": {
-  "fingerprint": "5f4187fa05e2be520fd669c0d311088e9e12f22014ea944b6a8111d927646bc4",
+  "fingerprint": "54fadf9869a199b297724747b21dec3a9b5dee7a8a1fa5905846fcc0de3d9b8e",
   "inputs": {
    "client.api": "vllm_pooling",
    "client.batch_size": "32",
@@ -128,9 +128,7 @@
    "engine.min_version": "0.33.0",
    "fingerprint_schema": "rcp-fp/4",
    "model": "topk-io/topk-embed-v1-small",
-   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:4f32116cd0ddbec2cc37b25c7eeef317e376f51e1c741eb0bbb2e20e0208c91b",
-   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2": "sha256:0ce4617efc3017f1a526dacfb08b4c697a211832e9379b0484fbe16831c824b7",
-   "plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config": "sha256:e5f3347c96f0f773ec5867016c7877f800d8a357a908b2841bcdf509117981a1",
+   "plugin_sha256.rcp_ndcg_vllm.models": "sha256:58bb613843ba9b2339ef014287edef8ece758727d34c2cf679298a4b1d37486d",
    "plugin_sha256.rcp_ndcg_vllm.models.keep_pooler": "sha256:ea455e2d934a7bdbddfdf302b4cb4113320c8be4592707c32c4fc491d7168e67",
    "plugin_sha256.rcp_ndcg_vllm.models.keep_rule": "sha256:273140b9a72a3885090a381398e722c79ff49624075bc6ae88ca13b4df29a443",
    "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:7f94f3ada56dfe78b352769275987c3ebd50da8c92df13d5318e0102e317b6df",
@@ -143,7 +141,7 @@
    "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:59590cade14dc1b5de1509a3c2c5e5585bbee38b0512b26b291d679bf18d6a86",
    "plugin_sha256.rcp_ndcg_vllm.models.topk.weights": "sha256:c370c754423b37ee0de88c9c81eba9c13125c8f67fecd87aaea2981656e4ed79",
    "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:f704eb481669980b6c270a6a69a78db2d5237f22d32e5e2dd3b72d3e68a312e5",
-   "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:5857724fa29701540d60b2f9d609f56a3feb207d67535bcbd8cd4414b4b61f38",
+   "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:acefa9a5969e9f9d8cf31406450d4bd5b6bf1b702722dc01c0568581ecefa85d",
    "revision": "e54485ebab921f2c18c4d092b3f4c40dcca26781",
    "serve.chat_template": "null",
    "serve.convert": "null",

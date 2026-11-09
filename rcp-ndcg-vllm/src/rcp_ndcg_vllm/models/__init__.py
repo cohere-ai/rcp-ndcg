@@ -2,9 +2,8 @@
 
 vLLM loads this group in every engine process at startup and calls :func:`register`, which guards the engine
 version once, applies the opted-in engine patches of :mod:`rcp_ndcg_vllm.patches` (the one place the engine
-process reads ``RCP_NDCG_VLLM_PATCHES``; the embeddinggemma-2 fold's patch installs the folded transformers
-modules the folded model module imports, so it lands before the registrations), and registers each folded
-model's architecture and config class. Every model class is registered as a lazy ``"module:Class"`` string,
+process reads ``RCP_NDCG_VLLM_PATCHES``), and registers each folded model's architecture and config class.
+Every model class is registered as a lazy ``"module:Class"`` string,
 so the registry imports ``rcp_ndcg_vllm.models.topk.model`` /
 ``rcp_ndcg_vllm.models.pplx.model`` only when a request for the architecture actually needs it; importing this
 package (or executing :func:`register`) never imports torch or vLLM here — the model modules do, inside vLLM.
@@ -17,13 +16,6 @@ from __future__ import annotations
 
 LAZY_MODEL_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models.embedding_gemma2.attention",
-    "rcp_ndcg_vllm.models.embedding_gemma2.config",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
     "rcp_ndcg_vllm.models.keep_pooler",
     "rcp_ndcg_vllm.models.pplx.config",
     "rcp_ndcg_vllm.models.pplx.hf_config",
@@ -49,8 +41,6 @@ harness scan may import it, and it is keyed by the fingerprint all the same."""
 PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.models",
     "rcp_ndcg_vllm.models.version_guard",
-    "rcp_ndcg_vllm.models.embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.config",
     "rcp_ndcg_vllm.models.pplx",
     "rcp_ndcg_vllm.models.pplx.config",
     "rcp_ndcg_vllm.models.pplx.hf_config",
@@ -60,11 +50,9 @@ PLUGIN_ENGINE_MODULES: tuple[str, ...] = (
     "rcp_ndcg_vllm.patches",
 )
 """The engine-side modules every plugin recipe's engine imports at registration, whatever its architecture:
-:func:`register`'s entry-point callable, the one version guard, the package inits, the three config
-registrations and the patch applier.  ``register`` imports the embeddinggemma-2 package and calls its
-registration for every plugin recipe, and on the pinned image (whose registry lacks the architecture)
-that call imports the config hook (``.config``); ``pplx.config``/``topk.config`` are registered by their
-``register_*`` calls the same way.  A recipe that declares ``serve.plugin`` keys these beside its
+:func:`register`'s entry-point callable, the one version guard, the package inits, the config
+registrations and the patch applier.  ``pplx.config``/``topk.config`` are registered by their
+``register_*`` calls at startup.  A recipe that declares ``serve.plugin`` keys these beside its
 architectures' modules (``rcp-fp/4``); a change to one of them moves every plugin recipe, because every
 plugin engine imports it.  The patch modules themselves are keyed per recipe, by its declared
 ``serve.patches``: a patch is imported unconditionally but applied only when opted in."""
@@ -104,41 +92,6 @@ ARCHITECTURE_MODULES: dict[str, tuple[str, ...]] = {
     # class so config.json parses locally, while the stock Qwen3ForCausalLM converted to pooling serves the
     # model -- so the modules are the shared config registration, keyed for every plugin recipe anyway.
     "PplxV1Config": ("rcp_ndcg_vllm.models.pplx.hf_config",),
-    # The embeddinggemma-2 fold (the 0.31 image the waves served reported vLLM 0.31, whose registry
-    # carried neither the architecture nor the checkpoint's transformers classes; the v0.33.0 tag's
-    # registry carries EmbeddingGemma2Model, and what the 0.33 image carries is W4's measurement): the
-    # registration
-    # module and the fold package with the five folded upstream files the
-    # ``embeddinggemma2-transformers-fold`` patch installs -- the ``fold`` package's import installs
-    # them under their upstream names before any folded module body runs, so the vendored vLLM model's
-    # own ``from transformers.models.embedding_gemma2...`` imports resolve in every process that imports
-    # it (transformers 5.19.0's configuration/processing/video-processing/modeling modules and vLLM
-    # nightly 8cbd5d03's ``embedding_gemma2`` model).  The plugin registers the model class and the
-    # config hook (``register_embedding_gemma2``); the fold's files are keyed here for the recipe that
-    # declares this registration.
-    "EmbeddingGemma2Config": (
-        "rcp_ndcg_vllm.models.embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
-    ),
-    # The folded vLLM model itself (the architecture the image's registry lacks): the model module,
-    # upstream's config hook and the fold package with the folded files the model's transformers imports
-    # resolve through. The encoder-only SDPA backend the recipe's ``torch-sdpa-attention`` patch
-    # registers is keyed here too (the recipe that declares this architecture is the one that opts the
-    # backend in), so a change to it moves that recipe's fingerprint.
-    "EmbeddingGemma2Model": (
-        "rcp_ndcg_vllm.models.embedding_gemma2.config",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.attention",
-    ),
 }
 """Every architecture (and config-only registration) this wheel registers, mapped to the engine-side
 modules that implement it.
@@ -148,7 +101,13 @@ One home: the registration constants (``PLUGIN_ARCHITECTURE``, ``LATE_ARCHITECTU
 for the pplx-embed-v1 family) are the truth, and ``tests/test_plugin_modules.py`` pins the keys against
 them and the values against the lazy-import contract.  The behaviour fingerprint hashes these modules for
 a recipe that declares the registration (``plugin_sha256.<module>``), so a change that can move that
-architecture's output moves the recipes that declare it -- and no other recipe's key."""
+architecture's output moves the recipes that declare it -- and no other recipe's key.
+
+The embeddinggemma-2 fold's two registrations (``EmbeddingGemma2Config`` and ``EmbeddingGemma2Model``)
+were deleted with the fold: the pinned image's registry carries the architecture and its transformers the
+classes, and the recipe is a patch-only plugin carrier now (``serve.plugin_architectures`` empty,
+``serve.patches: [torch-sdpa-attention]``), so the patch name is what keys the engine code it runs.
+"""
 
 __all__ = ["ARCHITECTURE_MODULES", "LAZY_MODEL_MODULES", "PLUGIN_ENGINE_MODULES", "register"]
 
@@ -159,9 +118,9 @@ def register() -> None:
 
     The version guard runs before the registries are touched, so an unsupported engine fails with an explicit
     message instead of importing classes whose contracts may have moved. The patches apply before the
-    architectures are registered: the embeddinggemma-2 fold's patch installs the folded transformers
-    modules under their upstream names, which is what the folded model module's own imports need (E2
-    round 5), and a registration must never land ahead of the code that makes it importable.
+    architectures are registered: a patch is the code that makes an architecture importable or runnable
+    (the embeddinggemma-2 recipe's ``torch-sdpa-attention`` registers the SDPA backend its
+    ``--attention-backend`` pin selects), so it must never land after the registration that needs it.
 
     Raises:
         RuntimeError: the running vLLM is outside the validated range
@@ -175,10 +134,8 @@ def register() -> None:
 
     apply_opted_in_patches()
 
-    from .embedding_gemma2 import register_embedding_gemma2
     from .pplx import register_pplx
     from .topk.plugin import register_topk
 
     register_topk()
     register_pplx()
-    register_embedding_gemma2()

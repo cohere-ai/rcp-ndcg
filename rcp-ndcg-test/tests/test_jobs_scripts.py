@@ -3521,8 +3521,8 @@ def test_the_sdpa_probe_arms_render_one_flag_apart_and_its_gate_reds_on_a_seeded
 
     recipe = resolve_recipe("embeddinggemma-2")
     plan = sdpa_probe.arms(recipe)
-    assert plan["patch"]["patches_env"] == "embeddinggemma2-transformers-fold,torch-sdpa-attention"
-    assert plan["native"]["patches_env"] == "embeddinggemma2-transformers-fold"
+    assert plan["patch"]["patches_env"] == "torch-sdpa-attention"
+    assert plan["native"]["patches_env"] == ""
     assert [word for word in plan["patch"]["argv"] if word not in plan["native"]["argv"]] == [
         "--attention-backend",
         "TORCH_SDPA",

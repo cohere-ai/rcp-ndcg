@@ -170,7 +170,8 @@ The fingerprint rule's version is an input of its own (`fingerprint_schema`), so
 different rules never collide. `rcp-fp/4` is current: it keys the engine image and version floor
 (`engine.image`, `engine.min_version`) and the plugin code the recipe's engine runs
 (`plugin_sha256.<module>`: the shared entry modules, every declared `serve.plugin_architectures` module
-and every opted-in `serve.patches` module) beside version 3's inputs. The rule bumps to `rcp-fp/5` when
+and every module an opted-in `serve.patches` patch runs -- its own module and the backend it registers)
+beside version 3's inputs. The rule bumps to `rcp-fp/5` when
 the input set or its canonicalisation changes: adding or removing an input, or moving a field between the
 request-shaping and reply-processing classes. A bump is deliberate and recorded here, in the fingerprint
 module and in the CHANGELOG; every committed corpus and every per-variant golden is then either re-keyed

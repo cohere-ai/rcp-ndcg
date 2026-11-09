@@ -154,7 +154,7 @@ DRIFT = frozenset(
             145: ("pooling_params.py:182-182 NEAR",)
         },
         "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/embeddinggemma-2/family.yaml": {
-            270: ("vllm/model_executor/models/embedding_gemma2.py:707-721 MISSING",)
+            275: ("vllm/model_executor/models/embedding_gemma2.py:707-721 MISSING",)
         },
         "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/gemma-4-12b/family.yaml": {
             94: ("reasoning/__init__.py:55-58 MISSING",)
@@ -228,10 +228,7 @@ RECORDED_0_31 = {
     "rcp-ndcg-test/src/rcp_ndcg_test/corpus.py": "the 0.31 recordings predate the record schema's version stamp",
     "rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave-cosines-topk-small.json": "the wave's own image record",
     "rcp-ndcg-test/src/rcp_ndcg_test/observe/corpus.py": "the v0.31.0 status table the shakedown measured",
-    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/__init__.py": "the fold's history comment",
     "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/__init__.py": "the fold's history comment",
-    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/config.py": "the fold's history comment",
-    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/fold/embedding_gemma2.py": "the fold's history",
 }
 
 

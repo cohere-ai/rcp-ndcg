@@ -12,7 +12,6 @@ import re
 from pathlib import Path
 
 from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES, PLUGIN_ENGINE_MODULES
-from rcp_ndcg_vllm.models.embedding_gemma2 import MODEL_ARCHITECTURE as GEMMA_ARCHITECTURE
 from rcp_ndcg_vllm.models.pplx import LATE_ARCHITECTURE, PLUGIN_ARCHITECTURE
 from rcp_ndcg_vllm.models.topk.plugin import MODEL_ARCHITECTURE
 from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
@@ -32,9 +31,7 @@ def test_the_architecture_mapping_names_every_registered_architecture() -> None:
         PLUGIN_ARCHITECTURE,
         LATE_ARCHITECTURE,
         MODEL_ARCHITECTURE,
-        GEMMA_ARCHITECTURE,
         "PplxV1Config",
-        "EmbeddingGemma2Config",
     }
 
 
@@ -69,8 +66,6 @@ def test_register_keys_every_registration_package_it_runs() -> None:
     entry makes unconditional there) must be keyed for every plugin recipe, or an edit there moves every
     plugin engine's startup while every non-gemma recipe's fingerprint stays put."""
     for package in (
-        "rcp_ndcg_vllm.models.embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.config",
         "rcp_ndcg_vllm.models.pplx",
         "rcp_ndcg_vllm.models.pplx.config",
         "rcp_ndcg_vllm.models.topk",
@@ -85,8 +80,6 @@ def test_the_shared_engine_modules_resolve_and_are_not_lazy() -> None:
     assert PLUGIN_ENGINE_MODULES == (
         "rcp_ndcg_vllm.models",
         "rcp_ndcg_vllm.models.version_guard",
-        "rcp_ndcg_vllm.models.embedding_gemma2",
-        "rcp_ndcg_vllm.models.embedding_gemma2.config",
         "rcp_ndcg_vllm.models.pplx",
         "rcp_ndcg_vllm.models.pplx.config",
         "rcp_ndcg_vllm.models.pplx.hf_config",
@@ -100,14 +93,16 @@ def test_the_shared_engine_modules_resolve_and_are_not_lazy() -> None:
 
 
 def test_the_patch_mapping_names_every_patch_and_resolves_it() -> None:
-    """``PATCH_MODULES`` is the one home of the patch-name -> module mapping; ``PATCH_NAMES`` follows it."""
+    """``PATCH_MODULES`` is the one home of the patch-name -> modules mapping; ``PATCH_NAMES`` follows it,
+    the implementing module comes first, and every module a patch runs resolves to a source file."""
     assert PATCH_NAMES == tuple(PATCH_MODULES)
-    for name, module in PATCH_MODULES.items():
-        path = _module_file(module)
-        assert path.is_file(), name
-        assert f'PATCH_NAME = "{name}"' in path.read_text(encoding="utf-8"), name
+    for name, modules in PATCH_MODULES.items():
+        assert modules, name
+        paths = [_module_file(module) for module in modules]
+        assert all(path.is_file() for path in paths), name
+        assert f'PATCH_NAME = "{name}"' in paths[0].read_text(encoding="utf-8"), name
 
 
-def test_every_patch_module_declares_its_apply() -> None:
-    for module in PATCH_MODULES.values():
-        assert "def apply(" in _module_file(module).read_text(encoding="utf-8"), module
+def test_every_patch_declares_its_apply() -> None:
+    for name, modules in PATCH_MODULES.items():
+        assert "def apply(" in _module_file(modules[0]).read_text(encoding="utf-8"), name

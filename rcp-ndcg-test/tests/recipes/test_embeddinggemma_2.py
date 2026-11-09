@@ -48,11 +48,12 @@ IMAGE_SPELLING = chr(60) + "|image|" + chr(62)
 #: The resolved blocks the contract pins (the product's ``model_dump(mode="json")`` shape): every field of
 #: ``serve``, ``client`` (minus the runtime ``base_url``) and ``reference``, defaults included.
 SERVE = {
-    # E2 r1: the digest-pinned nightly's transformers does not carry the checkpoint's embedding_gemma2
-    # classes, so the recipe opts into the plugin's fold patch (the owner's 2026-10-10 backport decision).
     # E2 round 10: torch-sdpa-attention registers the plugin's encoder-only SDPA backend as
-    # Backend.TORCH_SDPA, which the --attention-backend pin below selects.
-    "patches": ["embeddinggemma2-transformers-fold", "torch-sdpa-attention"],
+    # Backend.TORCH_SDPA, which the --attention-backend pin below selects. The transformers fold is
+    # deleted: the 0.33 image's transformers (5.20.2) ships the checkpoint's embedding_gemma2 classes and
+    # the tag's registry the architecture, so the backport was inert there, and the cross-image parity
+    # (cosine 0.999972) is inside the recipe's measured bf16 floor (0.999882).
+    "patches": ["torch-sdpa-attention"],
     "runner": "pooling",
     "convert": None,
     "hf_overrides": {"is_matryoshka": True, "matryoshka_dimensions": [128, 256, 512, 768]},
@@ -62,9 +63,9 @@ SERVE = {
     "max_model_len": 8192,
     "dtype": "bfloat16",
     "plugin": "rcp-ndcg-vllm",
-    # E2 round 4: the image reports vLLM 0.31.0 and its registry carries no EmbeddingGemma2Model, so
-    # the plugin also registers the folded model (the transformers-side fold alone was not enough).
-    "plugin_architectures": ["EmbeddingGemma2Config", "EmbeddingGemma2Model"],
+    # the plugin is a patch-only carrier now: the fold's registrations (the config hook and the folded
+    # model) went with the fold, so the patch name is what keys the engine code the recipe runs.
+    "plugin_architectures": [],
     "io_processor_plugin": None,
     # E2 round 13: the pod's engine is vLLM v0.31.0 (no EmbeddingGemma2VideoBackend), so the
     # --media-io-kwargs pin reaches only the generic decoder and the processor resamples at its own
@@ -261,20 +262,13 @@ def test_the_verified_engine_is_the_stock_image_the_waves_ran() -> None:
     assert recipe.status.image == "vllm/vllm-openai:v0.31.0"
     assert "The released image vllm/vllm-openai:v0.31.0 cannot serve this checkpoint" not in recipe.notes
     assert "the pinned image is a v0.31.0-based build" not in recipe.notes
-    # The verifying-wave record: the stock 0.31 image, and the fold as the fallback for images that lack
-    # the classes (the removal condition stays).
+    # The verifying-wave record: the stock 0.31 image, and the backport the fold was (the history stays in
+    # the notes; the fold itself is deleted, see the deletion pin below).
     assert "ran the stock 0.31 image" in recipe.notes
     assert "backport" in recipe.notes
     modules = [
         RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "__init__.py",
-        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "config.py",
         RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "attention.py",
-        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "__init__.py",
-        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "configuration_embedding_gemma2.py",
-        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "modeling_embedding_gemma2.py",
-        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "processing_embedding_gemma2.py",
-        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "video_processing_embedding_gemma2.py",
-        RECIPE_DIR.parents[1] / "models" / "embedding_gemma2" / "fold" / "embedding_gemma2.py",
     ]
     for path in modules:
         text = path.read_text(encoding="utf-8")
@@ -284,17 +278,36 @@ def test_the_verified_engine_is_the_stock_image_the_waves_ran() -> None:
         assert "nightly-8cbd5d03" not in text, path
 
 
-def test_the_recipe_declares_the_folded_model_the_image_registry_lacks() -> None:
-    """The fold stays as the carrier for an engine image whose registry lacks ``EmbeddingGemma2Model``:
-    the plugin ships the model and the recipe declares its registration beside the transformers fold, with
-    the removal condition recorded.  On the stock v0.31.0 image the verifying waves ran, the backported
-    classes make both probes return early."""
+def test_the_fold_is_deleted_and_the_recipe_is_a_patch_only_carrier() -> None:
+    """The fold's deletion (the parity decision: cosine 0.999972 is inside the recipe's measured bf16 floor
+    0.999882, and the fold is inert on the 0.33 image).  Nothing of the fold is left: the patch name, the
+    patch module, the folded files, the config hook and the two registrations are gone, and the recipe
+    declares the plugin as a patch-only carrier with the SDPA patch -- the one that stays (D4).  A
+    half-deletion reds here: a re-declared name, a surviving registration or a resurrected file fails."""
+    from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES, PLUGIN_ENGINE_MODULES
+    from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
+
     recipe = load_recipe(RECIPE_DIR)
-    assert recipe.serve.plugin_architectures == ("EmbeddingGemma2Config", "EmbeddingGemma2Model")
+    assert recipe.serve.plugin == "rcp-ndcg-vllm"
+    assert recipe.serve.plugin_architectures == ()
+    assert recipe.serve.patches == ("torch-sdpa-attention",)
+    assert PATCH_NAMES == ("torch-sdpa-attention",)
+    assert PATCH_MODULES["torch-sdpa-attention"] == (
+        "rcp_ndcg_vllm.patches.torch_sdpa_attention",
+        "rcp_ndcg_vllm.models.embedding_gemma2.attention",
+    )
+    assert "EmbeddingGemma2Config" not in ARCHITECTURE_MODULES
+    assert "EmbeddingGemma2Model" not in ARCHITECTURE_MODULES
+    assert "rcp_ndcg_vllm.models.embedding_gemma2.fold" not in LAZY_MODEL_MODULES
+    assert "rcp_ndcg_vllm.models.embedding_gemma2" not in PLUGIN_ENGINE_MODULES
+    package = RECIPE_DIR.parents[1] / "models" / "embedding_gemma2"
+    assert not (package / "fold").exists(), "the folded transformers/vLLM files are deleted with the fold"
+    assert not (package / "config.py").exists(), "the folded config hook went with the fold"
+    assert (package / "attention.py").is_file(), "the SDPA backend stays (D4 keeps its patch)"
+    assert not (RECIPE_DIR.parents[1] / "patches" / "embeddinggemma2_fold.py").exists()
     notes = recipe.notes
-    assert "backport" in notes
-    assert "8cbd5d03006c33185f402249ff2b448efd594986" in notes
-    assert "SWITCH TO RELEASE / REMOVAL" in notes
+    assert "cross-image parity" in notes
+    assert "0.999882" in notes and "0.999972" in notes
 
 
 def test_two_contract_mutants_are_red() -> None:
@@ -379,7 +392,7 @@ def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
     assert "--enforce-eager" in argv
     assert "torch-sdpa-attention" in recipe.serve.patches
     assert "torch-sdpa-attention" in PATCH_NAMES
-    assert PATCH_MODULES["torch-sdpa-attention"] == "rcp_ndcg_vllm.patches.torch_sdpa_attention"
+    assert PATCH_MODULES["torch-sdpa-attention"][0] == "rcp_ndcg_vllm.patches.torch_sdpa_attention"
     spec = importlib.util.find_spec("rcp_ndcg_vllm.models.embedding_gemma2.attention")
     assert spec is not None and spec.origin is not None, "the backend module ships with the plugin"
     source = Path(spec.origin).read_text(encoding="utf-8")

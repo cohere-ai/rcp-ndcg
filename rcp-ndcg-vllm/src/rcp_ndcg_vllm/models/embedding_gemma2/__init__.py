@@ -1,199 +1,23 @@
-"""The embeddinggemma-2 fold: the classes the stock engine image the recipe serves lacks.
+"""The embeddinggemma-2 plugin package: the ``TORCH_SDPA`` backend its recipe's patch registers.
 
-E2 r1: ``google/embeddinggemma-2`` served by the image failed at startup -- the image's transformers
-does not know the checkpoint's ``model_type: embedding_gemma2``, so ``AutoConfig`` refuses
-``config.json``.  The owner's 2026-10-10 decision: backport the architecture into the engine
-environment through the plugin.  This module ships transformers 5.19.0's four ``embedding_gemma2``
-modules (``fold/``, byte-identical bodies plus a header each: configuration 207 lines, modeling 933,
-processing 417, video processing 381) and, at engine startup (the ``vllm.general_plugins`` entry
-point), loads each under its upstream module name, registers the config class with ``AutoConfig``,
-the processor and video-processor classes with ``AutoProcessor`` / ``AutoVideoProcessor`` and the two
-model classes with ``AutoModel`` (the folded vLLM model's ``AutoModel.from_config`` calls resolve its
-text backbone and vision tower through it).
+E2 r1-E2 round 10 shipped a transformers/vLLM backport here (``fold/``, the four transformers 5.19.0
+``embedding_gemma2`` modules and vLLM commit ``8cbd5d03``'s model, plus ``config.py``'s config hook and
+``install_fold``/``register_embedding_gemma2``): the 0.31 image the verifying waves ran carried no
+``EmbeddingGemma2Model`` and its transformers (5.17.0) no ``embedding_gemma2`` classes, so the plugin
+supplied both.  The fold is **deleted** (the parity decision: the cross-image cosine 0.999972 is inside
+the recipe's measured bf16 floor 0.999882, and the 0.33 image's transformers 5.20.2 ships the classes
+while the v0.33.0 tag's registry carries the architecture, so the backport was inert on the pinned
+image).  Nothing here installs or registers anything any more; the recipe's engine uses the image's own
+model, and the plugin contributes only the SDPA backend below.
 
-E2 round 4: serve failed again -- ``Model architectures ['EmbeddingGemma2Model'] are not supported
-for now`` -- and the 0.31 wave's serve log's supported-architecture list was exactly the 0.31
-image's (plus the plugin's own registrations; the v0.33.0 tag's carries EmbeddingGemma2Model,
-``registry.py:259``), while vLLM commit
-``8cbd5d03006c33185f402249ff2b448efd594986`` (the fold's source, read on the nightly) carries both
-the model module and its registry entry: the 0.31 image the waves served is a 0.31 build, so its
-registry did NOT carry the model class (the r1 reading, inferred from the PR, was wrong; the v0.33.0
-tag's registry does carry it).  The plugin therefore also ships vLLM's own
-``embedding_gemma2.py`` from that commit (``fold/embedding_gemma2.py``, 1142 lines, byte-identical
-plus a header) and :func:`register_embedding_gemma2` registers it lazily -- with upstream's config
-hook (``.config``: the Gemma4 heterogeneous-head-dimension handling, TRITON_ATTN as the declared
-default backend, the 8192 cap) -- when the running vLLM lacks them, and only then.
-
-Two details are deliberate:
-
-* the fold's classes are loaded under their upstream names so their relative imports
-  (``from ...configuration_utils import PreTrainedConfig``) resolve inside transformers; their
-  ``__module__`` is then set to this package's ``fold`` subpackage. transformers 5.17's
-  ``_LazyAutoMapping.register`` refuses to map a key whose ``__module__`` starts with
-  ``"transformers."`` (``auto_factory.py``, the native-config guard), and a folded class is local
-  code -- it ships in this wheel -- so it must present itself as such for ``AutoProcessor.register``
-  to take effect. Without the registration ``processor_class_from_name`` finds nothing, and
-  ``AutoProcessor.from_pretrained`` silently falls back to the bare tokenizer, dropping the
-  checkpoint's processor. The ``fold`` package re-exports the classes, so the location their
-  ``__module__`` names carries them: vLLM pickles the checkpoint's config when it spawns the engine
-  core, and a class whose declared module has no such attribute cannot be pickled (E2 round 5).
-* an engine image whose transformers already carries the classes -- and whose registry carries the
-  architecture -- is left alone: the import probe returns before anything is installed and the
-  registration checks the registry first, so both steps are inert there (the removal condition in
-  ``fold/``'s headers).
-
-E2 round 5: importing the ``fold`` package installs the folded modules under their upstream names
-itself, before any folded module body runs, so the vendored vLLM model's own
-``from transformers.models.embedding_gemma2...`` statements resolve in every process that imports
-it -- whatever loaded the plugin and whether or not the patch applied there (the wave's engine core
-imported the model without the fold and died with ``ModuleNotFoundError: No module named
-'transformers.models.embedding_gemma2'``). The patch's install stays the *early* one, before vLLM
-parses the checkpoint's ``config.json``.
+:mod:`.attention` is what survives, because the recipe's ``torch-sdpa-attention`` patch stays (D4: the
+probe differs from the native backend outside its null-controlled gate): the model's heterogeneous head
+dimensions (sliding 256, full 512) leave no backend the pinned image can run, and the backend class
+there is registered under ``Backend.TORCH_SDPA`` by that patch.  The module imports vLLM/torch by
+design, so it is registry-lazy (``rcp_ndcg_vllm.models.LAZY_MODEL_MODULES``), and this package's
+``__init__`` imports nothing.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-__all__ = [
-    "FOLD_MODULES",
-    "FOLD_PACKAGE",
-    "HF_MODEL_TYPE",
-    "MODEL_ARCHITECTURE",
-    "MODEL_QUALNAME",
-    "install_fold",
-    "register_embedding_gemma2",
-]
-
-#: The checkpoint's ``model_type`` (config.json), what ``AutoConfig.register`` keys on.
-HF_MODEL_TYPE = "embedding_gemma2"
-#: The upstream package the folded modules are installed as.
-FOLD_PACKAGE = "transformers.models.embedding_gemma2"
-#: The architecture the checkpoint's ``config.json`` declares and the vLLM registry resolves.
-MODEL_ARCHITECTURE = "EmbeddingGemma2Model"
-#: The folded model class, as vLLM's registry imports it (lazy ``"module:Class"`` string).
-MODEL_QUALNAME = "rcp_ndcg_vllm.models.embedding_gemma2.fold.embedding_gemma2:EmbeddingGemma2Model"
-#: The fold's own source modules, as this package ships them (the behaviour fingerprint keys exactly
-#: these for a recipe that declares the ``EmbeddingGemma2Config`` registration; the model
-#: registration adds the folded vLLM model and the config hook -- see
-#: :data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`). The ``fold`` package itself is keyed too: its
-#: import installs the folded modules under their upstream names before the vendored model's own
-#: imports run.
-FOLD_MODULES: tuple[str, ...] = (
-    "rcp_ndcg_vllm.models.embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.configuration_embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.modeling_embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.processing_embedding_gemma2",
-    "rcp_ndcg_vllm.models.embedding_gemma2.fold.video_processing_embedding_gemma2",
-)
-
-#: ``(upstream module name, file in fold/)``, in import order (the processing module imports the
-#: config module's classes through their upstream names, and the modeling module the config's).
-_UPSTREAM_MODULES: tuple[tuple[str, str], ...] = (
-    ("configuration_embedding_gemma2", "configuration_embedding_gemma2.py"),
-    ("processing_embedding_gemma2", "processing_embedding_gemma2.py"),
-    ("video_processing_embedding_gemma2", "video_processing_embedding_gemma2.py"),
-    ("modeling_embedding_gemma2", "modeling_embedding_gemma2.py"),
-)
-
-
-def install_fold() -> None:
-    """Install the folded modules and register their classes with transformers (idempotent).
-
-    Called by the ``embeddinggemma2-transformers-fold`` patch, which the embeddinggemma-2 recipe opts
-    into, and by the ``fold`` package's own import (which runs before the vendored vLLM model's body,
-    so its ``from transformers.models.embedding_gemma2...`` statements resolve in every process that
-    imports the model); an engine serving another recipe runs neither. Each folded class is set on the
-    ``fold`` package, the location this function declares as its ``__module__``: vLLM pickles the
-    checkpoint's config when it spawns the engine core, and a class whose declared module has no such
-    attribute cannot be pickled. Inert (returns immediately) when the running transformers already
-    carries ``transformers.models.embedding_gemma2``: an engine image that ships the classes is the
-    fold's removal condition, and shadowing its modules would be worse than doing nothing.
-    """
-    import importlib
-    import importlib.util
-    import sys
-    import types
-
-    try:
-        import transformers.models.embedding_gemma2  # noqa: F401, PLC0415 -- the probe, not a use
-    except ImportError:
-        pass
-    else:
-        return
-    if FOLD_PACKAGE in sys.modules:
-        return
-
-    from transformers import AutoConfig, AutoModel, AutoProcessor, AutoVideoProcessor  # noqa: PLC0415
-
-    package = types.ModuleType(FOLD_PACKAGE)
-    package.__path__ = []
-    sys.modules[FOLD_PACKAGE] = package
-    here = Path(__file__).parent / "fold"
-    for module_name, filename in _UPSTREAM_MODULES:
-        qualified = f"{FOLD_PACKAGE}.{module_name}"
-        spec = importlib.util.spec_from_file_location(qualified, here / filename)
-        if spec is None or spec.loader is None:  # pragma: no cover - a missing fold file is a broken wheel
-            raise RuntimeError(f"rcp-ndcg-vllm: the embeddinggemma-2 fold file {filename!r} is missing")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[qualified] = module
-        spec.loader.exec_module(module)
-        setattr(package, module_name, module)
-
-    from transformers.models.embedding_gemma2.configuration_embedding_gemma2 import (  # noqa: PLC0415
-        EmbeddingGemma2Config,
-        EmbeddingGemma2TextConfig,
-    )
-    from transformers.models.embedding_gemma2.modeling_embedding_gemma2 import (  # noqa: PLC0415
-        EmbeddingGemma2Model,
-        EmbeddingGemma2TextModel,
-    )
-    from transformers.models.embedding_gemma2.processing_embedding_gemma2 import (  # noqa: PLC0415
-        EmbeddingGemma2Processor,
-    )
-    from transformers.models.embedding_gemma2.video_processing_embedding_gemma2 import (  # noqa: PLC0415
-        EmbeddingGemma2VideoProcessor,
-    )
-
-    fold_package = importlib.import_module(f"{__name__}.fold")
-    for cls in (
-        EmbeddingGemma2Config,
-        EmbeddingGemma2TextConfig,
-        EmbeddingGemma2Processor,
-        EmbeddingGemma2VideoProcessor,
-        EmbeddingGemma2Model,
-        EmbeddingGemma2TextModel,
-    ):
-        cls.__module__ = f"{__name__}.fold"
-        setattr(fold_package, cls.__name__, cls)
-
-    AutoConfig.register(HF_MODEL_TYPE, EmbeddingGemma2Config, exist_ok=True)
-    AutoModel.register(EmbeddingGemma2Config, EmbeddingGemma2Model, exist_ok=True)
-    AutoModel.register(EmbeddingGemma2TextConfig, EmbeddingGemma2TextModel, exist_ok=True)
-    AutoProcessor.register(EmbeddingGemma2Config, EmbeddingGemma2Processor, exist_ok=True)
-    AutoVideoProcessor.register(EmbeddingGemma2Config, EmbeddingGemma2VideoProcessor, exist_ok=True)
-
-
-def register_embedding_gemma2() -> None:
-    """Register the folded model architecture and its config hook with the running vLLM (idempotent).
-
-    E2 round 4: the stock 0.31 image the waves served reports vLLM 0.31 and its registry carried
-    no ``EmbeddingGemma2Model`` (the v0.33.0 tag's does, ``registry.py:259``), so the
-    plugin registers the folded model class lazily and, when the running vLLM's ``MODELS_CONFIG_MAP``
-    lacks the architecture, upstream's config hook beside it (:mod:`.config`: the Gemma4
-    heterogeneous-head-dimension handling, TRITON_ATTN as the default backend, the 8192 cap).
-
-    An engine that already carries the architecture keeps its own class and hook: the registration
-    is the fold's removal condition, so nothing is shadowed. Raises :class:`RuntimeError` when the
-    running vLLM is outside the validated range (:func:`~rcp_ndcg_vllm.models.version_guard.require_vllm_version`).
-    """
-    from vllm.model_executor.models import ModelRegistry  # noqa: PLC0415 -- the engine's registry
-    from vllm.model_executor.models.config import MODELS_CONFIG_MAP  # noqa: PLC0415
-
-    if MODEL_ARCHITECTURE not in ModelRegistry.get_supported_archs():
-        ModelRegistry.register_model(MODEL_ARCHITECTURE, MODEL_QUALNAME)
-    if MODEL_ARCHITECTURE not in MODELS_CONFIG_MAP:
-        from .config import EmbeddingGemma2ModelConfig  # noqa: PLC0415 -- imports vLLM by design
-
-        MODELS_CONFIG_MAP[MODEL_ARCHITECTURE] = EmbeddingGemma2ModelConfig
+__all__: list[str] = []

@@ -34,8 +34,11 @@ backend (``AttentionBackendEnum.get_class`` -> ``resolve_obj_by_qualname``). Eve
 engine runs without the opt-in, so the enum override never lands there.
 
 Removal condition: delete this module, the patch and the recipe's ``--attention-backend TORCH_SDPA``
-pin together with the fold, when ``engine.image`` moves to a vLLM image whose registry carries the
-model, whose own backends clear head_dim 512, and whose transformers ships ``embedding_gemma2``.
+pin when ``engine.image`` moves to a vLLM image whose own backends clear head_dim 512.  The fold this
+docstring's earlier draft named is already gone (the cross-image parity is inside the recipe's measured
+bf16 floor, and the 0.33 image's registry carries the architecture); D4's probe is why this module does
+**not** go with it -- the patched backend differs from the engine's native path outside the probe's
+null-controlled gate, so the patch and its pin stay.
 """
 
 from __future__ import annotations

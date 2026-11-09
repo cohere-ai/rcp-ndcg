@@ -35,7 +35,9 @@ UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELO
 #: ``RecipeFamily`` in the serving package), so no public name has two homes.  ``apply`` is the patch
 #: interface, not a second concept: every module in ``rcp_ndcg_vllm.patches.PATCH_MODULES`` implements
 #: it (one interface, one implementation per patch), so each patch module defines it by design.
-KNOWN_SECOND_HOMES: frozenset[str] = frozenset({"apply"})
+# empty since the embeddinggemma-2 fold patch was deleted: ``apply`` was the second ``def apply(``
+# (the fold patch and the SDPA patch); one patch module ships now, so there is no second home.
+KNOWN_SECOND_HOMES: frozenset[str] = frozenset()
 
 
 def _update() -> bool:

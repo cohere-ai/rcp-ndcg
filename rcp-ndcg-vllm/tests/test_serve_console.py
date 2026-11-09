@@ -427,9 +427,7 @@ def test_the_dry_run_shows_the_engine_environment_a_patched_recipe_needs(capsys:
     opt-in the console would set, so a copied argv cannot silently run without the recipe's patches."""
     assert run_console(["serve", "embeddinggemma-2", "--dry-run"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[3] == (
-        "engine environment: RCP_NDCG_VLLM_PATCHES=embeddinggemma2-transformers-fold,torch-sdpa-attention"
-    )
+    assert lines[3] == ("engine environment: RCP_NDCG_VLLM_PATCHES=torch-sdpa-attention")
     assert lines[0].startswith("vllm serve ")
 
 

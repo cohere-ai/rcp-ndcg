@@ -1,13 +1,14 @@
 # google/embeddinggemma-2 served with stock vllm/vllm-openai:v0.33.0. The waves that verified this recipe
 # ran the stock 0.31 image (the status block's `image`): its registry had no EmbeddingGemma2Model and its
-# transformers (5.17.0) no embedding_gemma2 classes, so the plugin's fold -- the
-# embeddinggemma2-transformers-fold patch below -- supplies the classes (transformers 5.19.0) and the
-# model (vLLM commit 02b83919aa2e, PR #60254). The v0.33.0 tag's registry DOES carry the architecture
-# (vllm/model_executor/models/registry.py:259) and the backend (vllm/multimodal/video.py:428), and that
-# commit is an ancestor of the tag. The 0.33 image carries transformers 5.20.2
-# (`reference-image-v0.33.0.versions.txt`), which ships the embedding_gemma2 classes (>= 5.19.0), so the
-# fold's class install is inert on 0.33; the fold's deletion waits for the cross-image parity wave (the
-# 0.31 image with the fold active against the 0.33 image with the native model).
+# transformers (5.17.0) no embedding_gemma2 classes, so the plugin's fold supplied the classes
+# (transformers 5.19.0) and the model (vLLM commit 02b83919aa2e, PR #60254). The fold is DELETED: the
+# v0.33.0 tag's registry carries the architecture (vllm/model_executor/models/registry.py:259) and the
+# backend (vllm/multimodal/video.py:428), the 0.33 image carries transformers 5.20.2
+# (`reference-image-v0.33.0.versions.txt`), which ships the embedding_gemma2 classes (>= 5.19.0), and the
+# cross-image parity (the 0.31 image with the fold active against the 0.33 image with the native model)
+# measured cosine 0.999972, inside this recipe's measured bf16 floor 0.999882. What stays is the
+# torch-sdpa-attention patch (D4: its backend differs from the engine's native path outside the probe's
+# null-controlled gate).
 # See notes, "Engine".
 id: embeddinggemma-2
 schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
@@ -30,24 +31,19 @@ serve:
   trust_remote_code: false      # the checkpoint has no auto_map; the native class needs none
   max_model_len: 8192           # the card's 8K context; the engine config caps an unset max_model_len at 8192 too (config.py:293-340)
   dtype: bfloat16               # the card: bfloat16 or float32, NEVER float16 (README.md:189-193)
-  plugin: rcp-ndcg-vllm      # the fold carrier: the embeddinggemma2-transformers-fold patch below installs the
-                             # transformers classes the image's transformers lacks (E2 r1) and the plugin
-                             # registers the folded model class (E2 round 4)
-  plugin_architectures: [EmbeddingGemma2Config, EmbeddingGemma2Model]   # the config/processor/
-                             # video-processor/modeling registration (E2 r1) and the folded model class the
-                             # image's registry lacks (E2 round 4); the fingerprint keys their modules
-                             # (rcp_ndcg_vllm.models.ARCHITECTURE_MODULES) and the patch module
-  patches: [embeddinggemma2-transformers-fold, torch-sdpa-attention]   # E2 r1: the fold patch installs
-                             # transformers 5.19.0's four embedding_gemma2 modules under their upstream
-                             # names when the running transformers lacks them (E2 round 4 added the
-                             # modeling module; see notes, "Engine"). E2 round 10: the torch-sdpa-attention
-                             # patch registers the plugin's encoder-only SDPA backend as
-                             # Backend.TORCH_SDPA, which the --attention-backend pin below selects (the
-                             # engine's own error names register_backend). Delete the fold patch and the
-                             # plugin when engine.image moves to a vLLM image whose transformers carries
-                             # the classes and whose registry carries the model; delete the SDPA patch
-                             # and its pin when the image's own backends clear the model's head
-                             # dimensions.
+  plugin: rcp-ndcg-vllm      # the patch carrier: the torch-sdpa-attention patch below registers the
+                             # encoder-only SDPA backend the --attention-backend pin selects (D4: the
+                             # patched backend differs from the engine's native path outside the probe's
+                             # null-controlled gate). The fold this carrier used to ship is deleted.
+  plugin_architectures: []   # patch-only carrier: the fold's two registrations (EmbeddingGemma2Config,
+                             # EmbeddingGemma2Model) went with the fold; the patch name is what keys the
+                             # engine code this recipe runs (recipe.py's patch-only-carrier rule)
+  patches: [torch-sdpa-attention]   # E2 round 10: the patch registers the plugin's encoder-only SDPA
+                             # backend as Backend.TORCH_SDPA, which the --attention-backend pin below
+                             # selects (the engine's own error names register_backend). The fold patch is
+                             # deleted (the cross-image parity 0.999972 is inside the measured bf16 floor
+                             # 0.999882; see notes, "Engine"). Delete this patch and its pin when the
+                             # image's own backends clear the model's head dimensions.
   mm_processor_kwargs: {fps: 60, max_frames: 32}   # THE video pin's second home, beside --media-io-kwargs: the pod's engine was vLLM 0.31, which has no EmbeddingGemma2VideoBackend (the v0.33.0 tag has one, video.py:428), so --media-io-kwargs pins only the decoder and the generic loader reports do_sample_frames=True; the checkpoint's processor then samples with its own defaults (fps 1: the shipped 4.0 s clip becomes 4 frames, the wave's 492 = 4 x 123). The engine's model hands these numbers to the processor's call, which samples the same clip at 60 fps capped at 32 frames -- the client's 3936 = 32 x 123; see notes, "Media"
   limit_mm_per_prompt: {image: 1, video: 1}   # one media item per request (the client's max_images/max_videos carry the same numbers)
   extra_args:
@@ -138,11 +134,17 @@ notes: >-
   environment already carried the classes (E2 round 10's direct read: transformers 5.19.0 with
   `transformers/models/embedding_gemma2/`, the registry carrying EmbeddingGemma2Model), which is why
   the fold's source provenance names that nightly and why both probes returned early there; on the
-  0.33 image the fold's class install is decided and its deletion is not: the tag's registry carries
+  0.33 image the fold's class install is inert: the tag's registry carries
   EmbeddingGemma2Model (so the registration's probe returns early), and the image's transformers is 5.20.2
-  (`reference-image-v0.33.0.versions.txt`), which ships the embedding_gemma2 classes (>= 5.19.0) -- so the
-  fold's class install is inert there. Its deletion waits for the cross-image parity wave (the 0.31 image
-  with the fold active against the 0.33 image with the native model). E2 r1 (the first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
+  (`reference-image-v0.33.0.versions.txt`), which ships the embedding_gemma2 classes (>= 5.19.0). The
+  fold is DELETED on that evidence: the cross-image parity wave (the 0.31 image with the fold active
+  against the 0.33 image with the native model) measured max abs diff 1.048e-03 and cosine 0.999972292,
+  and this recipe's own measured bf16 floor is cosine 0.999882483 (parity-031's `equivalence.json`), so
+  the parity is inside the floor the product already accepts -- the gate the wave list had assumed
+  (cosine 0.99999) was not measured, and the corrected decision deleted the fold before the record
+  waves. The fold's patch, its folded files, its config hook and its two registrations are gone; the
+  torch-sdpa-attention patch stays (D4's probe differs from the engine's native path outside its
+  null-controlled gate). E2 r1 (the first wave on this image): serve failed -- the wave's reading was that the engine environment's transformers
   does not carry the embedding_gemma2 classes (AutoConfig refuses the checkpoint's config.json and vLLM's
   embedding_gemma2 model module cannot import them), so the wave's first fix is this recipe's fold: `serve.plugin: rcp-ndcg-vllm`
   installs the plugin wheel and `serve.patches: [embeddinggemma2-transformers-fold]` opts into the patch
@@ -186,18 +188,19 @@ notes: >-
   digest (its own python): `transformers.__version__` is 5.19.0, `transformers/models/embedding_gemma2/`
   is present, `ModelRegistry.get_supported_archs()` carries EmbeddingGemma2Model and
   `MODELS_CONFIG_MAP` carries its hook -- so on that digest both the fold patch's `install_fold` (its
-  import probe) and `register_embedding_gemma2` (the registry check) return without installing
-  anything, and the fold stays as the carrier for an engine image that lacks the classes. On the
-  0.31 image the two probes did NOT return early: the fold and the registration are what made that image
-  serve the checkpoint. On the v0.33.0 pin the registration is inert (the tag's registry carries
-  EmbeddingGemma2Model, so its probe returns early) and the fold's class install is inert too: the image's
-  transformers is 5.20.2 (`reference-image-v0.33.0.versions.txt`), which ships the `embedding_gemma2`
-  classes (>= 5.19.0).
-  SWITCH TO RELEASE / REMOVAL: the deletion is undecided; it needs the cross-image parity wave (the 0.31
-  image with the fold active against the 0.33 image with the native model). The registry half is satisfied
-  at the v0.33.0 tag (registry.py:259) and the class half by the image's transformers 5.20.2; what is
-  undecided is whether the fold may be deleted, and until that wave is green the fold stays and its
-  load-bearing status is not claimed here.
+  import probe) and `register_embedding_gemma2` (the registry check) returned without installing
+  anything. On the 0.31 image the two probes did NOT return early: the fold and the registration are
+  what made that image serve the checkpoint. On the v0.33.0 pin the registration was inert (the tag's
+  registry carries EmbeddingGemma2Model, so its probe returned early) and the fold's class install was
+  inert too: the image's transformers is 5.20.2 (`reference-image-v0.33.0.versions.txt`), which ships
+  the `embedding_gemma2` classes (>= 5.19.0).
+  SWITCH TO RELEASE / REMOVAL: DONE for the fold. The registry half is satisfied at the v0.33.0 tag
+  (registry.py:259), the class half by the image's transformers 5.20.2, and the cross-image parity
+  (cosine 0.999972292) is inside this recipe's measured bf16 floor (cosine 0.999882483, parity-031's
+  `equivalence.json`), so the fold and its patch are deleted -- the text above is the record of what the
+  fold did and why it existed, not a live carrier. What remains is the torch-sdpa-attention patch, whose
+  removal condition is D4's (the engine's own backends must clear the model's head dimensions); the fold
+  is not part of it any more.
 
   Engine flags (E2 rounds 8-10). The model's heterogeneous head dimensions (sliding 256, full 512)
   leave no default backend on this image, and the backend is the only lever: TRITON_ATTN cannot
@@ -237,12 +240,14 @@ notes: >-
   backend over `torch.nn.functional.scaled_dot_product_attention` (non-causal, no KV cache, no
   head-dimension cap, the sliding layers' window as a mask, one SDPA call per packed request) --
   under `Backend.TORCH_SDPA`, and pins `serve.extra_args: [--attention-backend, TORCH_SDPA,
-  --enforce-eager]`. The plugin's folded EmbeddingGemma2 hook leaves a requested backend alone (it
-  only defaults when none was requested), and the image's Gemma4 hook forces FA4 only for a None or
-  FLASH_ATTN backend, so the pin survives both; an invalid backend still fails loudly at startup (the
-  manual-selection validation), never silently. The GPU wave's T0 model load is the confirmation; the
-  flags and the patch are removed together with the fold when the engine image moves to a release
-  whose registry carries the model and whose own backends clear its head dimensions.
+  --enforce-eager]`. The image's Gemma4 hook leaves a requested backend alone (it forces FA4 only for a
+  None or FLASH_ATTN backend), so the pin survives it; an invalid backend still fails loudly at startup
+  (the manual-selection validation), never silently. The GPU wave's T0 model load is the confirmation.
+  The patch and its flags are NOT removed with the fold (they were removed together in the earlier
+  plan): D4's probe ran the patched backend against the engine's native path on the same checkpoint and
+  prompts, and the difference falls outside the run's null-controlled gate, so the patch stays; the
+  removal condition is the one the next sentence states -- an image whose own backends clear the
+  model's head dimensions.
 
   Frame. The model reads its input through no frame at all: the checkpoint's chat_template.jinja renders a
   message's text and media placeholders in order and adds nothing (no role markers, no default system turn).
