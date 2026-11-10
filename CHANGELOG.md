@@ -25,6 +25,18 @@ incompatibly, independently of the package version. All four distributions carry
 
 ## Unreleased
 
+### Public surface
+
+- **The serving recipes are a declared extra, and the three kept modules say why they stay** (the four hygiene
+  items of the downstream-surface work): `rcp` declares `vllm = ["rcp-vllm"]`, so `pip install "rcp[vllm]"`
+  installs the sibling a `recipe:` config needs, a `recipe:` config without it is refused naming that install
+  line, and `rcp_vllm` joins the error map (so `rcp doctor` reports the extra and a stray import gets the install
+  command); `rcp.data.preprocess` is kept as the one import path for the text machinery, and its docstring and
+  `docs/concepts/preprocessing.md` now say so; `rcp.eval.mteb` is kept in the product behind the `[mteb]` extra,
+  with a test that imports it and runs its mteb-only branch under that extra; and `rcp.judging.tokens` is kept
+  beside `TextBudget` because an estimate runs where no tokenizer can count, a split
+  `docs/concepts/text-budgets.md` states.
+
 ### Changed
 
 - **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and

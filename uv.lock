@@ -2766,6 +2766,9 @@ mteb = [
 s3 = [
     { name = "s3fs" },
 ]
+vllm = [
+    { name = "rcp-vllm" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2798,6 +2801,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rcp", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp" },
     { name = "rcp-core", editable = "rcp-core" },
+    { name = "rcp-vllm", marker = "extra == 'vllm'", editable = "rcp-vllm" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
     { name = "scipy", specifier = ">=1.15" },
@@ -2806,7 +2810,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'calibrate'", specifier = ">=2.0" },
     { name = "tqdm", specifier = ">=4.67" },
 ]
-provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "dev", "docs"]
+provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "vllm", "dev", "docs"]
 
 [[package]]
 name = "rcp-core"

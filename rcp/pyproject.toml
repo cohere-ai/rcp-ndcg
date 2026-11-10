@@ -96,6 +96,12 @@ data = [
   "pypdfium2>=4.30",
 ]
 
+# The serving recipes: a `recipe:` config, `rcp-vllm serve <id>` and the recipe expansion of a judge or role
+# config read `rcp_vllm.recipe` (``rcp.inference.recipes`` imports it lazily). Optional by design: a served-only
+# install reaches every model over HTTP and needs none of it, and an engine image installs the sibling on its
+# own. Absent, the lazy import is refused with this extra's install line, never a bare `ImportError`.
+vllm = ["rcp-vllm"]
+
 # Development & CI.  Includes ``[calibrate]``: the IRT fits are exercised by the
 # test suite, and a dev environment that skips them would let a calibration
 # regression through.  Includes ``[hf]``: the token-limit tests build a tokenizer.

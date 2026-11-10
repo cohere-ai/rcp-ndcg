@@ -41,7 +41,11 @@ def test_doctor_reports_the_variables_the_shipped_configs_read() -> None:
 
 
 def test_doctor_checks_every_module_the_error_map_names_under_its_extra() -> None:
-    """doctor builds its extras table from the one map, and the served-only package carries no engine extra."""
+    """doctor builds its extras table from the one map, and the served-only package needs no engine extra.
+
+    The `vllm` extra is declared (the sibling `rcp-vllm` the recipes live in) but nothing in the product requires
+    it: doctor reports its row as an install hint, like every other optional extra.
+    """
     from rcp.cli.doctor import _EXTRAS
     from rcp.errors import EXTRA_FOR_MODULE
 
@@ -49,7 +53,7 @@ def test_doctor_checks_every_module_the_error_map_names_under_its_extra() -> Non
         EXTRA_FOR_MODULE.items()
     )
     assert set(_EXTRAS["hf"]) == {"huggingface_hub", "tokenizers"}
-    assert "vllm" not in _EXTRAS
+    assert _EXTRAS["vllm"] == ("rcp_vllm",)
 
 
 def test_doctor_never_echoes_url_credentials(monkeypatch) -> None:

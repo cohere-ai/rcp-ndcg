@@ -82,7 +82,7 @@ DependencyError(message: str, *, hint: str | None = None, details: Mapping[str, 
 constant
 
 ```text
-EXTRA_FOR_MODULE = {'adlfs': 'azure', 'aiohttp': 'http', 'datasets': 'mteb', 'huggingface_hub': 'hf', 'mteb': 'mteb', 'pypdfium2': 'data', 's3fs': 's3', 'tokenizers': 'hf', 'torch': 'calibrate'}
+EXTRA_FOR_MODULE = {'adlfs': 'azure', 'aiohttp': 'http', 'datasets': 'mteb', 'huggingface_hub': 'hf', 'mteb': 'mteb', 'pypdfium2': 'data', 'rcp_vllm': 'vllm', 's3fs': 's3', 'tokenizers': 'hf', 'torch': 'calibrate'}
 ```
 
 ## `ExitCode`
