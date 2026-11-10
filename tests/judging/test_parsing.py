@@ -156,10 +156,12 @@ REFUSED = {
     ),
     "nesting-beyond-the-recursion-limit": ('{"ranking": ' + "[" * 100_000, "stop", "invalid_json"),
     "nesting-beyond-the-recursion-limit-at-the-token-limit": ('{"ranking": ' + "[" * 100_000, "length", "truncated"),
+    # A closed nesting this deep decodes on some Pythons and not on others (the C scanner's recursion limit moved
+    # between 3.12 and 3.14): either way the answer is refused, and the category is the decoder's, not ours.
     "closed-nesting-beyond-the-recursion-limit": (
         '{"scores": ' + '{"a": ' * 50_000 + "1" + "}" * 50_001,
         "stop",
-        "invalid_json",
+        ("invalid_json", "schema"),
     ),
     # the cut is at the last think-end wherever it stands: a block inside the object leaves no object (never one
     # of two duplicate values), and an object before a trailing think-end is not read, whatever its strings hold
@@ -214,9 +216,10 @@ REFUSED = {
 
 @pytest.mark.parametrize(("text", "finish_reason", "category"), REFUSED.values(), ids=REFUSED.keys())
 def test_an_answer_without_the_judges_complete_object_is_refused_with_its_category(
-    text: str, finish_reason: str, category: str
+    text: str, finish_reason: str, category: str | tuple[str, ...]
 ) -> None:
-    assert _category(_tournament, text, finish_reason=finish_reason) == category
+    allowed = (category,) if isinstance(category, str) else category
+    assert _category(_tournament, text, finish_reason=finish_reason) in allowed
 
 
 def test_what_json_raises_past_its_grammar_is_refused_in_the_rubric_too() -> None:
