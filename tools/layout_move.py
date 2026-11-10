@@ -5,7 +5,7 @@ Moves this repository to the four-distribution tree:
 
     rcp-core/   (was packages/rcp-ndcg-core)
     rcp/             (was the root package: pyproject.toml, MANIFEST.in, README.md, src/)
-    rcp-ndcg-vllm/   (was packages/rcp-ndcg-vllm)
+    rcp-vllm/        (was packages/rcp-ndcg-vllm)
     rcp-ndcg-test/   (was packages/rcp-ndcg-test, when that exists on the tip)
     pyproject.toml   the uv workspace only (members, tooling config)
 
@@ -50,7 +50,9 @@ MOVES: tuple[tuple[str, str], ...] = (
     ("rcp-core/src/rcp_ndcg_core", "rcp-core/src/rcp_core"),
     # So does the main package's (`rcp_ndcg` -> `rcp`), once the root source is in its new home.
     ("rcp/src/rcp_ndcg", "rcp/src/rcp"),
-    ("packages/rcp-ndcg-vllm", "rcp-ndcg-vllm"),
+    ("packages/rcp-ndcg-vllm", "rcp-vllm"),
+    # So does the serving package's (`rcp_ndcg_vllm` -> `rcp_vllm`).
+    ("rcp-vllm/src/rcp_ndcg_vllm", "rcp-vllm/src/rcp_vllm"),
     ("packages/rcp-ndcg-test", "rcp-ndcg-test"),
 )
 
@@ -74,15 +76,14 @@ EXEMPT_PREFIXES: tuple[str, ...] = (
     "handover/",
     "rcp-ndcg-test/corpora/",
     "rcp-ndcg-test/src/rcp_ndcg_test/fixtures/cases/",
-    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/",
-    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/patches/",
 )
 """Path prefixes the sweep and the stale scan skip: handover/ is temporary scaffolding (deleted in one
 commit before the release), and its workstream reports describe the tree as it was when written; the
 observation corpora are the GPU waves' records, keyed by the tree that recorded them (PLAN section 8);
-a case's expected values are derived from its input texts, so a renamed text there re-records evidence;
-and the engine-side plugin modules under models/ and patches/ are hashed by the behaviour fingerprint,
-so a cosmetic rename in one of them would cost a GPU re-record."""
+and a case's expected values are derived from its input texts, so a renamed text there re-records
+evidence. The engine-side plugin modules under models/ and patches/ were exempt while their bytes were a
+fingerprint input a layout move had no reason to touch; the rename moves the module names themselves, so
+their re-record is declared with the rest of it."""
 
 EXEMPT_SUFFIXES: tuple[str, ...] = (".jinja",)
 """File suffixes the sweep and the stale scan skip: a recipe template's bytes are a behaviour-fingerprint
@@ -113,6 +114,11 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # The main module, whole-token; a JSON or Python string escape is a word boundary, not an
     # identifier (`\nrcp_ndcg` is the module, `delta_rcp_ndcg` and `rcp_ndcg10` are the metric's).
     ("main-module", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg(?!\w)", "rcp", None),
+    # The serving distribution and its import package (`rcp-ndcg-vllm` -> `rcp-vllm`,
+    # `rcp_ndcg_vllm` -> `rcp_vllm`). The fingerprint moves with the name: `serve.plugin` and the
+    # plugin's module names are inputs, so every corpus a plugin recipe recorded is stale.
+    ("vllm-name", r"(?<![\w-])rcp-ndcg-vllm\b", "rcp-vllm", None),
+    ("vllm-module", r"(?<!\w)rcp_ndcg_vllm\b", "rcp_vllm", None),
     # The package directories, in one string or split the way a test spells a Path. The core-name
     # rule above has already mapped the core's directory to `rcp-core`; `\1` keeps the others.
     ("packages", r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))\b", r"\1", None),
@@ -145,7 +151,7 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     (
         "source-folders",
         r'\("src", "packages", "experiments"',
-        '("rcp/src", "rcp-core", "rcp-ndcg-vllm", "experiments"',
+        '("rcp/src", "rcp-core", "rcp-vllm", "experiments"',
         ("tests/**",),
     ),
     # basedpyright's include lists the root package's source as a bare "src".
@@ -219,9 +225,11 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
     for rule, pattern, replacement, files in REWRITES:
         if not _matches_files(name, files):
             continue
-        if rule.startswith(("core-", "main-")) and name.as_posix() == "CHANGELOG.md":
+        if rule.startswith(("core-", "main-", "vllm-")) and name.as_posix() == "CHANGELOG.md":
             continue  # the entries below Unreleased are history: they keep the names they shipped with
-        if rule in ("core-name", "main-name") and name.as_posix() == "rcp-ndcg-test/src/rcp_ndcg_test/jobs/ledger.py":
+        if rule in ("core-name", "main-name", "vllm-name", "vllm-module") and name.as_posix() == (
+            "rcp-ndcg-test/src/rcp_ndcg_test/jobs/ledger.py"
+        ):
             continue  # its source list names pre-rename trees' layouts as data, never a live path
         if rule == "root-src" and name.name == "MANIFEST.in":
             continue  # `recursive-include src/rcp ...` is relative to its own directory

@@ -11,10 +11,10 @@ same ``serve`` fields, same prompts through the product's own role client
 client call, so the per-text attribution is exact and both arms send the same bytes.
 
 The gate is the plan's, carried as data in the report (never re-typed at verdict time): pooled-output
-``max_abs_diff <= 1e-5`` and ``cosine >= 0.99999`` (``/tmp/rcp-ndcg-vllm-033/PLAN.md`` v7 §3 W7, decision D4).
+``max_abs_diff <= 1e-5`` and ``cosine >= 0.99999`` (``/tmp/rcp-vllm-033/PLAN.md`` v7 §3 W7, decision D4).
 The run's own noise floor is **measured**, not assumed: each arm is requested a second time over the same
 texts in the same call sequence (the null control), and the verdict reads that floor.  The decision rule, its
-dispositions and the deletion's whole surface are in ``/tmp/rcp-ndcg-vllm-033/exec/DECISION-D4.md``, written
+dispositions and the deletion's whole surface are in ``/tmp/rcp-vllm-033/exec/DECISION-D4.md``, written
 before this probe ran; the same table rides inside the report as ``decision_rule``.
 
     "$STATE/client" python sdpa_probe.py --out <dir> --recipe embeddinggemma-2 \
@@ -64,8 +64,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
-from rcp_ndcg_vllm.recipe import Recipe, load_recipe, serve_argv
+from rcp_vllm.patches import PATCHES_ENV, patches_env_value
+from rcp_vllm.recipe import Recipe, load_recipe, serve_argv
 
 from rcp.errors import ProviderError
 from rcp_ndcg_test.errors import HarnessError
@@ -174,9 +174,9 @@ def arms(recipe: Recipe, *, port_base: int = 8100, gpus: str = "0") -> dict[str,
 
     Inputs: the loaded recipe, the port the engines serve on (both arms run sequentially on it, so the
     second start reuses it), and the GPU list for ``CUDA_VISIBLE_DEVICES``.  Outputs: ``{arm: {argv, port,
-    patches_env, env}}`` -- the argv from :func:`rcp_ndcg_vllm.recipe.serve_argv` (the one renderer the serve
+    patches_env, env}}`` -- the argv from :func:`rcp_vllm.recipe.serve_argv` (the one renderer the serve
     console and the wave runner use too), the opt-in from
-    :func:`rcp_ndcg_vllm.patches.patches_env_value`, and the environment the arm's process needs
+    :func:`rcp_vllm.patches.patches_env_value`, and the environment the arm's process needs
     (``CUDA_VISIBLE_DEVICES``, :data:`PATCHES_ENV`, ``VLLM_PORT``).  Units: none.
     """
     plan: dict[str, dict[str, Any]] = {}

@@ -1,7 +1,7 @@
 """Serve a retrieval model from a recipe and score it (needs an engine: set RCP_NDCG_ENGINE_URL).
 
-The engine side is `rcp-ndcg-vllm serve qwen3-embedding-0.6b` on the stock vLLM image
-(`python3 -m pip install --no-deps rcp-ndcg-vllm`). This example prints the engine argv the recipe builds and
+The engine side is `rcp-vllm serve qwen3-embedding-0.6b` on the stock vLLM image
+(`python3 -m pip install --no-deps rcp-vllm`). This example prints the engine argv the recipe builds and
 then retrieves with the recipe's client block against the running engine.
 
     python examples/09_serve_recipe_score.py
@@ -16,18 +16,18 @@ from rcp.retrieval import validate_retriever
 
 url = os.environ.get("RCP_NDCG_ENGINE_URL")  # e.g. http://127.0.0.1:8000/v1
 if not url:
-    print("skipped: start an engine with `rcp-ndcg-vllm serve qwen3-embedding-0.6b` and set RCP_NDCG_ENGINE_URL")
+    print("skipped: start an engine with `rcp-vllm serve qwen3-embedding-0.6b` and set RCP_NDCG_ENGINE_URL")
     raise SystemExit(0)
 
 try:
-    from rcp_ndcg_vllm.recipe import iter_recipes, serve_argv
+    from rcp_vllm.recipe import iter_recipes, serve_argv
 except ImportError:
-    print("skipped: install the serving package first (python3 -m pip install --no-deps rcp-ndcg-vllm)")
+    print("skipped: install the serving package first (python3 -m pip install --no-deps rcp-vllm)")
     raise SystemExit(0) from None
 
 recipe = next(r for r in iter_recipes() if r.id == "qwen3-embedding-0.6b")
 print("engine argv:", serve_argv(recipe, port=8000, served_model_name=recipe.id))
-print("(rcp-ndcg-vllm serve builds the same argv; --dry-run prints it without running it)")
+print("(rcp-vllm serve builds the same argv; --dry-run prints it without running it)")
 
 TINY = tiny()
 dataset = rcp.load_dataset(f"jsonl:{TINY / 'rows.jsonl'}")

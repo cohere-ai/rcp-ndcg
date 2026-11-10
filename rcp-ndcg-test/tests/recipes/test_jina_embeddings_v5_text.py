@@ -31,7 +31,7 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.reference import run_reference
-from rcp_ndcg_vllm.recipe import Recipe, client_config, default_recipes_root, resolve_recipe
+from rcp_vllm.recipe import Recipe, client_config, default_recipes_root, resolve_recipe
 
 from rcp.data.tokenizer import load_tokenizer
 from rcp.inference.config import EmbeddingEndpoint
@@ -276,7 +276,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "limit_mm_per_prompt": None,
             "max_model_len": variant["max_model_len"],
             "mm_processor_kwargs": {},
-            "plugin": "rcp-ndcg-vllm",
+            "plugin": "rcp-vllm",
             "plugin_architectures": [],
             "pooler_config": {},
             "runner": "pooling",
@@ -356,7 +356,7 @@ def test_recipe_loads_with_the_product_endpoint_config(variant_id: str) -> None:
     assert recipe.serve.trust_remote_code is True
     assert recipe.serve.chat_template is None  # raw text on /v1/embeddings; see the recipe notes
     assert recipe.serve.hf_overrides == VARIANTS[variant_id]["hf_overrides"]
-    assert recipe.serve.plugin == "rcp-ndcg-vllm" and recipe.serve.pooler_config == {}  # the plugin carries
+    assert recipe.serve.plugin == "rcp-vllm" and recipe.serve.pooler_config == {}  # the plugin carries
     # the model, not a patch: the pooling-full-context opt-in is gone (vllm#48039 ships in 0.32+)
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]

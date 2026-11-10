@@ -15,7 +15,7 @@ from rcp_ndcg_test.jobs import run_wave as run_wave_module
 from rcp_ndcg_test.jobs import weights
 from rcp_ndcg_test.jobs.run_wave import _ZMQ_IPC_SUFFIX_CHARS, _slot_tmp_dir, run_wave
 from rcp_ndcg_test.record import record
-from rcp_ndcg_vllm import load_recipe
+from rcp_vllm import load_recipe
 
 from tests.conftest import RECIPES, ROOT, TOKENIZER, sample_pairs, start_stub, token_ids_recipe
 
@@ -240,7 +240,7 @@ def test_environment_facts_record_the_lock_and_freeze(tmp_path: Path) -> None:
     """Decision 35 item 5: the report names the family, the lock's SHA-256 (the environment identity)
     and, when the bootstrap recorded it, the venv's freeze."""
     from rcp_ndcg_test.jobs.reference_env import environment_facts
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     recipe = resolve_recipe("zerank-1-reranker")
     root = tmp_path / "reference"
@@ -303,7 +303,7 @@ def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.Monkey
     The smoke reads the reply too: its docstring promises the body parses and carries the role's payload,
     while the check was the status code alone -- an engine answering 200 with an empty body read as served."""
     import httpx
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     recipe = resolve_recipe("gemma-4-12b-it")
     seen: dict[str, object] = {}
@@ -347,7 +347,7 @@ def test_smoke_sends_a_judge_recipe_a_chat_completion(monkeypatch: pytest.Monkey
 
 def test_equivalence_skips_a_judge_with_the_decision_15_reason() -> None:
     """A judge has no reference (decision 15): the equivalence step is skipped by design, never failed."""
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     report = run_wave_module._equivalence(
         resolve_recipe("gemma-4-12b-it"),
@@ -366,7 +366,7 @@ def test_a_judges_skipped_equivalence_and_record_count_as_satisfied() -> None:
     """A judge's T0 evidence (serve + smoke) verifies it: its equivalence and recorder steps are skipped
     by design. An embed recipe's skipped equivalence does NOT verify it (the rc0 judges wave failed all
     ten judges on KeyError('judge') from the recorder and on the equivalence refusal)."""
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     judge_steps = {
         "serve": {"state": "passed"},
@@ -403,7 +403,7 @@ def test_a_judges_skipped_quality_and_controls_count_as_satisfied() -> None:
     conformance is judge check plus T4), but ``_row_state`` required them passed: a ``--quality`` or
     ``--controls`` wave over the default recipe list (which includes the judges) marked every judge row
     failed and the wave FAIL although nothing failed."""
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     judge = resolve_recipe("gemma-4-12b-it")
     steps = {"smoke": {"state": "passed"}, "equivalence": {"state": "skipped"}, "record": {"state": "skipped"}}
@@ -526,7 +526,7 @@ def test_a_skipped_corpus_step_leaves_the_row_unverified() -> None:
     file today, any future skip reason tomorrow) would mark a row ``verified`` with no corpus -- the one
     artifact the whole verified-emulator story rests on. A judge never gets the step at all (decision 15: a
     judge has no observation corpus), so the gate carries the same ``judge or`` its siblings do."""
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     recipe = resolve_recipe("jina-embeddings-v5-text-nano")
     base = {"smoke": {"state": "passed"}, "equivalence": {"state": "passed", "passed": True}}
@@ -568,7 +568,7 @@ def test_a_skipped_corpus_step_leaves_the_row_unverified() -> None:
 def test_reference_device_is_cpu_for_a_judge() -> None:
     """A judge has no reference: the device helper returns cpu instead of raising, so the equivalence
     step reaches its skip (the rc0 judges wave failed on `reference_of` before the skip could run)."""
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     assert run_wave_module._reference_device(resolve_recipe("gemma-4-12b-it"), 3) == "cpu"
     assert run_wave_module._reference_device(resolve_recipe("jina-embeddings-v5-text-nano"), None) == "cpu"
@@ -1489,7 +1489,7 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     monkeypatch.setattr(run_wave_module, "_CURRENT_WAVE", [wave])
     monkeypatch.setattr(run_wave_module, "_LIVE_ENGINES", set())  # its fake engine never reaches a later sweep
 
-    from rcp_ndcg_vllm.patches import PATCHES_ENV
+    from rcp_vllm.patches import PATCHES_ENV
 
     slots_root = tmp_path / "slots"
     slots_root.mkdir()
@@ -1502,8 +1502,7 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     recipe_yaml.write_text(
         recipe_yaml.read_text(encoding="utf-8").replace(
             "  plugin: null\n",
-            "  plugin: rcp-ndcg-vllm\n  plugin_architectures: [PplxContextualModel]\n"
-            "  patches: [torch-sdpa-attention]\n",
+            "  plugin: rcp-vllm\n  plugin_architectures: [PplxContextualModel]\n  patches: [torch-sdpa-attention]\n",
         ),
         encoding="utf-8",
     )

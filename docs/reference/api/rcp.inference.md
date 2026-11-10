@@ -727,7 +727,7 @@ adapter_roles_of(engine_role: EngineRole) -> frozenset[AdapterRole]
 
 ## `available_recipe_ids`
 
-function — The ids of every shipped recipe (the variant ids of ``rcp-ndcg-vllm``'s family directories).
+function — The ids of every shipped recipe (the variant ids of ``rcp-vllm``'s family directories).
 
 ```text
 available_recipe_ids() -> frozenset[str]

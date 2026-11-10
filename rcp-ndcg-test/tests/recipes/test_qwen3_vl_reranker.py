@@ -26,8 +26,8 @@ from jinja2 import StrictUndefined
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
-from rcp_ndcg_vllm import load_recipe, serve_argv
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm import load_recipe, serve_argv
+from rcp_vllm.recipe import default_recipes_root
 
 from rcp.data.tokenizer import load_tokenizer
 from tests.conftest import start_stub

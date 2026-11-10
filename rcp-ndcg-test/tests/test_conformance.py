@@ -23,7 +23,7 @@ from rcp_ndcg_test.fakes import (
     register_fake_engine,
     unregister_fake_engine,
 )
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 from tests.fakes_fixture import FakePoolEngine, FakeRerankEngine
 

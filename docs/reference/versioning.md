@@ -12,18 +12,18 @@ versions. The normative spelling of every name below lives in the repository, no
   and `tests/contract/snapshots/python_api.json` pins every name: the facade `rcp`; the core
   `rcp_core` with `.gain`, `.irt`, `.metric`, `.protocol` and `.records`; `rcp.calibration`,
   `.data`, `.data.preprocess`, `.data.revisions`, `.errors`, `.eval`, `.eval.mteb`, `.examples`, `.inference`,
-  `.judging`, `.results`, `.retrieval`, `.runners`, `.runs` and `.testing`; and `rcp_ndcg_vllm.recipe` (the
+  `.judging`, `.results`, `.retrieval`, `.runners`, `.runs` and `.testing`; and `rcp_vllm.recipe` (the
   serving package's recipe module).
 - **The command line**: the command tree, its flags, its output schemas and the exit codes
   (`tests/contract/snapshots/cli.json`, `exit_codes.json`; [the command line](cli.md)).
 - **The MCP tools** `rcp mcp serve` exposes (`tests/contract/snapshots/mcp_tools.json`).
 - **The packaging**: distributions, extras and entry-point groups (`tests/contract/snapshots/packaging.json`).
 - **The JSON Schemas** exported to `schemas/` (47 `*.v1.json` files in this release) and the
-  `rcp-ndcg-vllm` recipe schemas (`tests/contract/snapshots/vllm_cli.json`).
+  `rcp-vllm` recipe schemas (`tests/contract/snapshots/vllm_cli.json`).
 
 Everything else is internal and may change without notice: `rcp.cli`, `rcp.storage`,
 `rcp.support`, `rcp.data.io`, the submodules of `retrieval`, `judging`, `calibration`, `runs` and
-`runners`, the rest of `rcp_ndcg_vllm`, and all of the unpublished `rcp-ndcg-test`. A change to a public name,
+`runners`, the rest of `rcp_vllm`, and all of the unpublished `rcp-ndcg-test`. A change to a public name,
 flag, exit code or schema is a reviewed diff against the snapshot and gets a CHANGELOG entry; a pull request
 that changes either without one fails CI.
 
@@ -63,7 +63,7 @@ A `0.0.x` patch release:
   fit reproduce the paper and are pinned by anchor tests: a change to their numbers is deliberate, tested and in
   the CHANGELOG ([REPRODUCIBILITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/REPRODUCIBILITY.md)).
 
-The four distributions carry the same version; `rcp` pins `rcp-core==<version>`; `rcp-ndcg-vllm`
+The four distributions carry the same version; `rcp` pins `rcp-core==<version>`; `rcp-vllm`
 carries the same version but pins no sibling; `rcp-ndcg-test` is never published.
 
 ### Deprecating a public name
@@ -75,11 +75,11 @@ own CHANGELOG entry. Nothing is removed silently, and an internal name needs no 
 
 ## Serving recipes: `schema_version`
 
-The recipe file format is the versioned contract between `rcp-ndcg-vllm` (which ships the data) and `rcp`
+The recipe file format is the versioned contract between `rcp-vllm` (which ships the data) and `rcp`
 (which reads it): every family file carries `schema_version` (currently `"1"`), and `rcp` refuses a recipe
 whose version it cannot read, naming the versions it knows
 (`rcp.inference.recipes.RECIPE_SCHEMA_VERSIONS`) before any field is merged. The check runs first, so a
-newer `rcp-ndcg-vllm` and an older `rcp` fail with a versioned message instead of a schema surprise.
+newer `rcp-vllm` and an older `rcp` fail with a versioned message instead of a schema surprise.
 `schema_version` bumps when the file format changes incompatibly; adding an optional field does not bump it.
 There is no lockstep version pin between the two packages: the reader names the versions it understands, and a
 recipe of the operator's own goes through the same check ([recipes and serving models](recipes.md)).
@@ -132,7 +132,7 @@ new tag, never a silent reinterpretation. The rule, spelled out for the exported
 | Version | Home | Bumps when |
 |---|---|---|
 | the package version | all four `pyproject.toml` files, `rcp --version` | a public-surface change (minor) or an addition (patch), per the `0.0.x` rules above |
-| a recipe's `schema_version` | `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/family.yaml` | the recipe file format changes incompatibly |
+| a recipe's `schema_version` | `rcp-vllm/src/rcp_vllm/recipes/*/family.yaml` | the recipe file format changes incompatibly |
 | the behaviour fingerprint rule | `rcp_ndcg_test.fingerprint.FINGERPRINT_SCHEMA` (`rcp-fp/4`) | the fingerprint's input set or canonicalisation changes |
 | the corpus schemas | `rcp_ndcg_test.corpus` (`rcp-ndcg.observation-corpus/1`, `RECORD_SCHEMA`, `NORMALISATION_VERSION`) | the corpus format, record shape or normalisation rule changes |
 | an artifact tag | `schemas/*.v1.json` | that artifact changes incompatibly |

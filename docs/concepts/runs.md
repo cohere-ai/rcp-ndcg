@@ -197,7 +197,7 @@ same commands are:
 # pyproject.toml versions must match)
 uv build --package=rcp-core --out-dir /shared/wheelhouse/0.0.1rc1
 uv build --package=rcp --out-dir /shared/wheelhouse/0.0.1rc1
-uv build --package=rcp-ndcg-vllm --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --package=rcp-vllm --out-dir /shared/wheelhouse/0.0.1rc1
 # the unpublished harness wheel (the node's client environment imports rcp_ndcg_test), in its own directory
 uv build --package=rcp-ndcg-test --out-dir /shared/wheelhouse/0.0.1rc1/harness
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
@@ -205,8 +205,8 @@ uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --
   -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
 pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
   -c /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
-  'rcp-ndcg-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-ndcg-test==<version>' \
-  $(for lock in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/reference.lock; do
+  'rcp-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-ndcg-test==<version>' \
+  $(for lock in rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" || printf -- '-r %s ' "$lock";
     done) \
   --dest /shared/wheelhouse/0.0.1rc1 --find-links /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
@@ -214,7 +214,7 @@ pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
 # The own-torch families' locks pin a CUDA torch: download them from PyPI alone (PEP 440 orders a
 # ``+cpu`` local version above the plain release, so the CPU index must not see them).
 pip download \
-  $(for lock in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/reference.lock; do
+  $(for lock in rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" && printf -- '-r %s ' "$lock";
     done) \
   --dest /shared/wheelhouse/0.0.1rc1 --index-url https://pypi.org/simple

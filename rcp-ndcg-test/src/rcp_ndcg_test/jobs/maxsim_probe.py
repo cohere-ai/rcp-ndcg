@@ -12,7 +12,7 @@ This probe is that gate, as its own job (the probe pattern: ``sdpa_probe.sh``/``
 Per variant, on the node (``maxsim_probe.sh`` builds the client mechanism, the plugin wheel and the
 family's reference venv):
 
-1. serve the recipe's engine once (:func:`rcp_ndcg_vllm.recipe.serve_argv`), encode the pairs file's
+1. serve the recipe's engine once (:func:`rcp_vllm.recipe.serve_argv`), encode the pairs file's
    TEXT rows through the product's role client (the served side, ragged per-token matrices kept, exactly
    the wire stage 2 sends), and stop the engine;
 2. run the recipe's reference subprocess (``--mode embed``) in the family's reference venv on its own
@@ -82,7 +82,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_vllm.recipe import Recipe, load_recipe, serve_argv
+from rcp_vllm.recipe import Recipe, load_recipe, serve_argv
 
 from rcp_ndcg_test.errors import HarnessError
 
@@ -149,7 +149,7 @@ def plan(recipe: Recipe, *, port_base: int = 8100, gpus: str = "0", reference_gp
     """The run's plan: the engine's argv and env, the reference subprocess's argv and env.
 
     Inputs: the loaded recipe, the engine's port and the two GPU sets.  Outputs: ``{"serve": {argv, env,
-    port}, "reference": {argv, env}}`` -- the argv from :func:`rcp_ndcg_vllm.recipe.serve_argv` (the one
+    port}, "reference": {argv, env}}`` -- the argv from :func:`rcp_vllm.recipe.serve_argv` (the one
     renderer the wave runner and the serve console use too) and the reference's ``--mode embed`` shape.
     The reference's interpreter and paths are the node's own (placeholders here); the run records the
     executed argv in its step document.  Units: none.

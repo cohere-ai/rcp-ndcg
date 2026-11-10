@@ -28,15 +28,15 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
-from rcp_ndcg_vllm import RecipeError, resolve_recipe, serve_argv
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm import RecipeError, resolve_recipe, serve_argv
+from rcp_vllm.recipe import Recipe
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_rows, stage1_facts
 
 TESTS = Path(__file__).resolve().parent
 PACKAGE = TESTS.parent.parent  # rcp-ndcg-test
-RECIPES = PACKAGE.parent / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+RECIPES = PACKAGE.parent / "rcp-vllm" / "src" / "rcp_vllm" / "recipes"
 FAMILY_DIR = RECIPES / "zerank"
 TEMPLATE = "template.jinja"
 MAX_TOKENS = 8192

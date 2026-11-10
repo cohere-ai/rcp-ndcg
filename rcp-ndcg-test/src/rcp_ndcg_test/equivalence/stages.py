@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 from rcp.data.mrl import MrlHead
 from rcp_ndcg_test.errors import HarnessError
@@ -1901,7 +1901,7 @@ def _jinja_environment(*, strict: bool = True) -> Any:
         from jinja2.sandbox import ImmutableSandboxedEnvironment
     except ImportError as error:  # pragma: no cover - exercised only without jinja2
         raise HarnessError(
-            "the template-render check renders the served chat template with jinja2: install rcp-ndcg-vllm[test]"
+            "the template-render check renders the served chat template with jinja2: install rcp-vllm[test]"
         ) from error
     if not strict:
         return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
@@ -2317,7 +2317,7 @@ def stage2_scores(
 
     The engine is talked to through the product's role clients
     (:class:`~rcp.inference.clients.EmbeddingClient`, ``PoolingClient``, ``RerankClient``), built from
-    :func:`~rcp_ndcg_vllm.recipe.client_config` with the recipe's real budget: the client prompts, fits and
+    :func:`~rcp_vllm.recipe.client_config` with the recipe's real budget: the client prompts, fits and
     settles every request exactly as the served path does -- for a reranker, the shared query span settles
     once per call.  The harness pre-fits nothing and clears no budget field; a recorder's raw request and
     reply bodies come from the capturing ``httpx`` transport handed to the client's transport (the product's

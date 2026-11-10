@@ -362,7 +362,7 @@ class TestJudge:
         but the config's directory failed ('no family at ./my-judge')."""
         import shutil
 
-        from rcp_ndcg_vllm.recipe import default_recipes_root
+        from rcp_vllm.recipe import default_recipes_root
 
         configs = tmp_path / "configs"
         configs.mkdir()

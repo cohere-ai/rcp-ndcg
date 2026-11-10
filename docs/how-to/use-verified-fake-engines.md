@@ -192,7 +192,7 @@ RCP_APPEND_VERIFICATION=1 uv run --no-sync pytest tests/conformance -k verificat
 
 ## What moved between two corpora
 
-`rcp-ndcg-vllm`'s `python -m rcp_ndcg_test.changes` reports change handling (OBSERVATIONS-SPEC
+`rcp-vllm`'s `python -m rcp_ndcg_test.changes` reports change handling (OBSERVATIONS-SPEC
 section 7): `changed` is the re-record-changed-only selection (per recipe: `unchanged`, `changed`,
 `new` or `unloadable`, with the changed inputs named -- the wave runner's `--changed-since` mode
 records the `changed` and `new` ones), and `diff` writes the behaviour diff of two corpora of one
@@ -201,7 +201,7 @@ headers, framing, error bodies -- summarised by route) for review before a new c
 
 <!-- snippet: skip (a repository checkout with the corpora; the path is the v0.31.0 recording's until the re-record) -->
 ```bash
-python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
+python -m rcp_ndcg_test.changes changed --recipes-root rcp-vllm/src/rcp_vllm/recipes \
     --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0  # renamed to vllm-0.33.0 after the re-record
 python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

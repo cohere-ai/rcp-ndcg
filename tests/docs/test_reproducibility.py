@@ -1,6 +1,6 @@
 """REPRODUCIBILITY's judge section points at the shipped judges.
 
-The paper's judges are ``rcp-ndcg-vllm`` recipes now; the package's ``judging/judges/`` directory holds only the
+The paper's judges are ``rcp-vllm`` recipes now; the package's ``judging/judges/`` directory holds only the
 hosted ``gpt5_hosted`` vendor profile, so a reader sent there finds no paper judge.
 """
 
@@ -18,7 +18,7 @@ def test_the_judge_section_names_the_recipe_route() -> None:
     text = PAGE.read_text(encoding="utf-8")
     section = text[text.index("## 3. Re-judge a pool") : text.index("## Deviations")]
     assert "recipe:" in section, "the judge route is the recipe pointer"
-    assert "rcp-ndcg-vllm" in section, "the judges ship in rcp-ndcg-vllm"
+    assert "rcp-vllm" in section, "the judges ship in rcp-vllm"
     assert OLD_HOME not in section, f"the section still sends readers to {OLD_HOME}"
     assert list(judge_names()) == ["gpt5_hosted"], "the package holds only the hosted profile"
 
@@ -29,7 +29,7 @@ def test_the_ledger_lists_the_judge_side_divergences() -> None:
     the paper's run-level ``max_response_tokens``, the generation-defaults sampling decision, the Qwen3.6
     revision pin and the SGLang to vLLM move -- and every judge recipe whose notes declare a divergence is
     named in it."""
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     text = PAGE.read_text(encoding="utf-8")
     ledger = text[text.index("## Deviations from the paper's code") :]

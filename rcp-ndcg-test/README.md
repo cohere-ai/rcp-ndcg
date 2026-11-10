@@ -16,7 +16,7 @@ pip install "rcp-ndcg-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.
 ```
 
 No published package names it, and the release workflow builds only the three published distributions by
-name, so it is never published with them. It depends on `rcp` and `rcp-ndcg-vllm` at the release's
+name, so it is never published with them. It depends on `rcp` and `rcp-vllm` at the release's
 version — never the other way round.
 
 ## What a case is
@@ -99,7 +99,7 @@ specials included) and the stratum is judged on the rendered input: `long_under`
    ```bash
    uv run --no-sync python -c "
    from rcp_ndcg_test.cases import load_cases
-   from rcp_ndcg_vllm.recipe import load_recipe
+   from rcp_vllm.recipe import load_recipe
    recipe = load_recipe('<variant-id>')  # the family layout resolves the id
    bundle = load_cases('rcp-ndcg-test/cases', recipe)
    print(bundle)
@@ -146,7 +146,7 @@ import rcp_ndcg_test.fakes  # noqa: F401  (registers the shipped fixture fake)
 from rcp_ndcg_test.cases import load_cases
 from rcp_ndcg_test.conformance import run_suite
 from rcp_ndcg_test.fakes import fake_engine_for, fixture_path
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 # The packaged fixture recipe and its shipped fake: the runner's end-to-end exercise, CPU only.
 recipe = load_recipe(fixture_path("recipes", "fake-embed"))

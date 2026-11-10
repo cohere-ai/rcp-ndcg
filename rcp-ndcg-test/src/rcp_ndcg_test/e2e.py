@@ -82,8 +82,8 @@ from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
-from rcp_ndcg_vllm.recipe import Recipe, load_recipe, serve_argv
+from rcp_vllm.patches import PATCHES_ENV, patches_env_value
+from rcp_vllm.recipe import Recipe, load_recipe, serve_argv
 
 from rcp.errors import RcpNdcgError
 from rcp.runners.script import bootstrap_uv, install_argv
@@ -151,7 +151,7 @@ import sys as _sys
 _record = _os.environ.get("RCP_E2E_PROBE_JSONL")
 if _record:
     _versions = {}
-    for _dist in ("rcp", "rcp-core", "rcp-ndcg-vllm", "pydantic", "numpy", "tokenizers"):
+    for _dist in ("rcp", "rcp-core", "rcp-vllm", "pydantic", "numpy", "tokenizers"):
         try:
             _versions[_dist] = _metadata.version(_dist)
         except _metadata.PackageNotFoundError:
@@ -262,7 +262,7 @@ class JudgeCandidate(BaseModel):
     """One judge this scenario can serve, resolved from its recipe.
 
     Attributes:
-        recipe: The shipped judge recipe id (:mod:`rcp_ndcg_vllm.recipe`): its ``serve`` block renders the
+        recipe: The shipped judge recipe id (:mod:`rcp_vllm.recipe`): its ``serve`` block renders the
             engine argv and its ``client`` block is the judge config (R30: the scenario restates neither).
         model: The checkpoint the recipe pins.
         slot: The placement this candidate serves on; its ``gpus`` equals the recipe's ``resources.gpus``.
@@ -310,7 +310,7 @@ def judge_candidates(engine: JudgeEngine, roots: Sequence[Path]) -> list[JudgeCa
         HarnessError: the slot's ``gpus`` differs from the recipe's ``resources.gpus`` (the recipe renders
             ``--tensor-parallel-size`` from its own value, and the slot sizes ``--gres`` and
             ``CUDA_VISIBLE_DEVICES`` around it).
-        rcp_ndcg_vllm.RecipeError: a named recipe does not resolve.
+        rcp_vllm.RecipeError: a named recipe does not resolve.
     """
     candidates: list[JudgeCandidate] = []
     for recipe_id, declared_slot in ((engine.recipe, engine.slot), (engine.fallback_recipe, engine.fallback_slot)):
@@ -585,7 +585,7 @@ def build_serve(
 ) -> ServeByRole:
     """The engines this scenario's job starts by role (role configs at their runtime URLs).
 
-    Every engine's command is its recipe's :func:`~rcp_ndcg_vllm.recipe.serve_argv` (the judge's too: the
+    Every engine's command is its recipe's :func:`~rcp_vllm.recipe.serve_argv` (the judge's too: the
     scenario names a judge recipe, never a hand-written command).  Each engine gets its own
     ``CUDA_VISIBLE_DEVICES``, ``VLLM_PORT`` and ``TMPDIR`` (node-runtime item 7).  ``mode: outage`` starts
     no judge engine: the driver owns the judge (run-scoped, restarted by whatever runs it -- see
@@ -1929,7 +1929,7 @@ def write_report(out: Path, results: Sequence[ScenarioResult], *, upload: dict[s
     """
     passed = all(row.status == "passed" for row in results) and (upload is None or bool(upload["ok"]))
     document = {
-        "schema": "rcp-ndcg-vllm.e2e-report.v1",
+        "schema": "rcp-vllm.e2e-report.v1",
         "passed": passed,
         "scenarios": [row.model_dump(mode="json") for row in results],
     }

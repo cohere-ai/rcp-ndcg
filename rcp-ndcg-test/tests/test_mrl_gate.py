@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from rcp_ndcg_test.equivalence import run, stage2_scores
 from rcp_ndcg_test.equivalence.stages import MRL_GATE_VERSION
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 from rcp.errors import ConfigError
 from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub, write_pairs

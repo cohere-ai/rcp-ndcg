@@ -1,6 +1,6 @@
 """The observation-corpus format's one reader (``rcp_ndcg_test.corpus``): schemas, integrity, normalisation.
 
-The GPU waves write corpora (``rcp-ndcg-vllm``'s collector); the verified fake engines read them on CPU through
+The GPU waves write corpora (``rcp-vllm``'s collector); the verified fake engines read them on CPU through
 this module, so the reader is the single seam both sides share. The frozen sample under
 ``tests/fixtures/observation_corpus_v1/`` is a corpus written under ``RECORD_SCHEMA = 1``: every later reader must keep
 loading it (OBSERVATIONS-SPEC section 7: a schema bump never invalidates an old corpus).

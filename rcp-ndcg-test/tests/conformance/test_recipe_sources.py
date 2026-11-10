@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm.recipe import default_recipes_root
 
 ENGINES = Path(__file__).resolve().parents[2] / "corpora"
 RECIPES = default_recipes_root()
@@ -39,7 +39,7 @@ def test_every_corpus_recipe_loads() -> None:
 
     harness()
 
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     harness()
     known = {recipe.id: recipe for recipe in iter_recipes(RECIPES)}
@@ -57,7 +57,7 @@ def test_every_corpus_recipe_loads() -> None:
 
 def test_every_corpus_manifest_names_a_loaded_recipe() -> None:
     """Each committed corpus names a shipped recipe (its id is a family's variant id, decision 34)."""
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     known = {recipe.id for recipe in iter_recipes(RECIPES)}
     for manifest in sorted(ENGINES.glob("*/*/*/manifest.json")):

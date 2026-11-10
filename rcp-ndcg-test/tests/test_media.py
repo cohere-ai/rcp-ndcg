@@ -21,8 +21,8 @@ from typing import Any
 import pytest
 from rcp_ndcg_test.equivalence import run as run_equivalence
 from rcp_ndcg_test.equivalence.media import stage_media
-from rcp_ndcg_vllm import load_recipe
-from rcp_ndcg_vllm.recipe import serve_argv
+from rcp_vllm import load_recipe
+from rcp_vllm.recipe import serve_argv
 
 from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub, write_pairs
 
@@ -363,7 +363,7 @@ def video_entry(width: int, height: int, num_frames: int) -> dict[str, Any]:
 def video_recipe() -> Any:
     """The video fixture (fixture-vl-video): an fps policy (2 fps) whose Qwen3-VL rule realises 4 frames of
     the 12-frame clips, two images, one video."""
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     from tests.conftest import RECIPES
 

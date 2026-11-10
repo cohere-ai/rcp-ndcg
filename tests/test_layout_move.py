@@ -176,7 +176,8 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     assert (worktree / "rcp" / "README.md").read_text(encoding="utf-8").startswith("# Fixture")
     assert (worktree / "rcp" / "src" / "rcp" / "__init__.py").is_file()
     assert (worktree / "rcp-core" / "src" / "rcp_core" / "__init__.py").is_file()
-    assert (worktree / "rcp-ndcg-vllm" / "jobs" / "build.sh").is_file()
+    assert (worktree / "rcp-vllm" / "jobs" / "build.sh").is_file()
+    assert (worktree / "rcp-vllm" / "src" / "rcp_vllm" / "__init__.py").is_file()
     assert not (worktree / "packages").exists()
     assert not (worktree / "src").exists()
 
@@ -186,18 +187,18 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     assert "[project]" in package and "[tool.setuptools.packages.find]" in package
     assert "[tool.uv.workspace]" not in package and "[tool.ruff]" not in package
     assert "[project]" not in workspace
-    assert 'members = ["rcp", "rcp-core", "rcp-ndcg-vllm"]' in workspace
+    assert 'members = ["rcp", "rcp-core", "rcp-vllm"]' in workspace
     assert "[tool.uv.sources]" in workspace and "rcp-core = { workspace = true }" in workspace
-    assert 'include = ["rcp/src", "rcp-core/src", "rcp-ndcg-vllm/src"]' in workspace
-    assert 'extend-exclude = ["rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py"]' in workspace
+    assert 'include = ["rcp/src", "rcp-core/src", "rcp-vllm/src"]' in workspace
+    assert 'extend-exclude = ["rcp-vllm/recipes/*/qwen3_vl_embedding.py"]' in workspace
     assert 'where = ["src"]' in package  # package-relative: unchanged
 
     # The rewrites reach CI, workflows, scripts, helpers, the lock and prose.
     ci = (worktree / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "rcp-core/src/rcp_core" in ci and "packages/" not in ci
     assert "rcp/pyproject.toml" in ci  # the bare manifest token in a workflow is the root package's
-    build = (worktree / "rcp-ndcg-vllm" / "jobs" / "build.sh").read_text(encoding="utf-8")
-    assert "rcp/pyproject.toml" in build and "rcp-ndcg-vllm/dist" not in build
+    build = (worktree / "rcp-vllm" / "jobs" / "build.sh").read_text(encoding="utf-8")
+    assert "rcp/pyproject.toml" in build and "packages/" not in build
     helpers = (worktree / "tests" / "snap" / "helpers.py").read_text(encoding="utf-8")
     assert 'ROOT / "rcp" / "README.md"' in helpers
     assert 'ROOT / "rcp-core" / "README.md"' in helpers  # the split Path spelling moved too

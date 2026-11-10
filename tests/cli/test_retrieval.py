@@ -114,7 +114,7 @@ def test_a_retriever_yamls_relative_recipe_path_resolves_against_the_file(
     against the working directory instead of the file that names it."""
     import shutil
 
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     from rcp.cli._args import load_yaml_config
     from rcp.retrieval import validate_retriever

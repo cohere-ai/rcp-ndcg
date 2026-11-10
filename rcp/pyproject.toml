@@ -168,7 +168,7 @@ Paper = "https://arxiv.org/abs/2609.35739"
 where = ["src"]
 
 # Package data: the prompts (rcp/judging/prompts/*.txt) and the shipped judge vendor profiles
-# (rcp/judging/judges/*.yaml; the self-hosted judges are recipes in rcp-ndcg-vllm),
+# (rcp/judging/judges/*.yaml; the self-hosted judges are recipes in rcp-vllm),
 # loaded through importlib.resources. The JSON Schemas under schemas/ are generated from the models that ship
 # (`rcp schema export` writes them byte for byte), so the wheel carries them as models.
 
@@ -181,7 +181,7 @@ where = ["src"]
 # the CLI), ``rcp-core`` (the metric, the gains, the protocols,
 # the schemas and the IRT estimators; numpy + pydantic, its [irt] extra: torch,
 # scipy; released in lockstep with this package) and the unpublished
-# ``rcp-ndcg-test``, plus ``rcp-ndcg-vllm`` (the serving half).
-# ``rcp-ndcg-vllm`` depends on pydantic and PyYAML alone, so the same wheel
+# ``rcp-ndcg-test``, plus ``rcp-vllm`` (the serving half).
+# ``rcp-vllm`` depends on pydantic and PyYAML alone, so the same wheel
 # installs into an engine image that carries its own vLLM and torch; its
-# workspace lock entry is inert there.  See rcp-ndcg-vllm/README.md.
+# workspace lock entry is inert there.  See rcp-vllm/README.md.

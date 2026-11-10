@@ -9,7 +9,7 @@ asserts that). :func:`run_reference` invokes it as a subprocess, with a declared
 
 The ``--recipe`` file is the resolved recipe the harness loaded (decision 34: one family reference runs
 every variant, so the variant travels with the invocation): a JSON dump of the loaded
-:class:`rcp_ndcg_vllm.recipe.Recipe` (``model_dump(mode="json")``), written beside ``--out``. The reference
+:class:`rcp_vllm.recipe.Recipe` (``model_dump(mode="json")``), written beside ``--out``. The reference
 reads the variant's facts (model, revision, id, declared shapes) from it and imports nothing of this
 package or of the harness.
 
@@ -49,7 +49,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.recipe import Recipe, ReferenceSpec
+from rcp_vllm.recipe import Recipe, ReferenceSpec
 
 from rcp_ndcg_test.errors import HarnessError
 from rcp_ndcg_test.stepwatch import current_watch

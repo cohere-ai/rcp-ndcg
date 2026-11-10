@@ -30,7 +30,7 @@ from .conformance import CaseResult, run_case
 from .errors import CaseError
 
 if TYPE_CHECKING:
-    from rcp_ndcg_vllm.recipe import Recipe
+    from rcp_vllm.recipe import Recipe
 
 __all__ = ["CaseRun", "conformance_params"]
 
@@ -43,7 +43,7 @@ class CaseRun:
     body calls.
 
     Attributes:
-        recipe: The loaded :class:`rcp_ndcg_vllm.recipe.Recipe` the case belongs to.
+        recipe: The loaded :class:`rcp_vllm.recipe.Recipe` the case belongs to.
         case: The validated case.
         target: What answers (``engine`` or ``fake``).
         base_url: The engine's URL (an engine target); ``None`` for a fake.

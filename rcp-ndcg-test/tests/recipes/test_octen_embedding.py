@@ -44,7 +44,7 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
-from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, resolve_recipe
+from rcp_vllm.recipe import client_config, default_recipes_root, resolve_recipe
 
 from rcp.inference.config import EmbeddingEndpoint
 

@@ -19,7 +19,7 @@ the destination the re-record renames them into.
 
 Run from a checkout of the repository::
 
-    python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
+    python -m rcp_ndcg_test.changes changed --recipes-root rcp-vllm/src/rcp_vllm/recipes \
         --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0
     python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 """
@@ -34,7 +34,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.recipe import Recipe, load_family, load_recipes_of
+from rcp_vllm.recipe import Recipe, load_family, load_recipes_of
 
 from rcp_ndcg_test.errors import HarnessError
 

@@ -37,7 +37,7 @@ from .errors import ConformanceError
 from .ranks import spearman
 
 if TYPE_CHECKING:
-    from rcp_ndcg_vllm.recipe import Recipe
+    from rcp_vllm.recipe import Recipe
 
 __all__ = [
     "CaseResult",

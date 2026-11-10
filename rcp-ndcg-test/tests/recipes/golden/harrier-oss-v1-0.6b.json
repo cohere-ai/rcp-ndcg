@@ -165,7 +165,7 @@
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
    "patches": [],
-   "plugin": "rcp-ndcg-vllm",
+   "plugin": "rcp-vllm",
    "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",
@@ -190,7 +190,7 @@
    "vllm tag v0.33.0 vllm/renderers/params.py:199 (add_special_tokens defaults to true on the pooling routes) and vllm/entrypoints/pooling/base/io_processor.py:136-160 (no chat template is applied to string inputs)",
    "sentence-transformers >=3.0 sentence_transformers/models/Transformer.py (the Transformer module infers max_seq_length = min(config.max_position_embeddings, tokenizer.model_max_length) when the checkpoint sets none; the post-processor appends the pooled anchor after truncation)",
    "rcp/src/rcp/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)",
-   "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/reference.in (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)",
+   "rcp-vllm/src/rcp_vllm/recipes/harrier-oss-v1/reference.in (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)",
    "https://huggingface.co/microsoft/harrier-oss-v1-0.6b/raw/f9b9dc8d367d443f2479d27aa5d8d2850c0774ee/config.json (architectures [Qwen3Model], dtype bfloat16, layer_types 28x full_attention, tie_word_embeddings true, max_position_embeddings 32768)",
    "https://huggingface.co/microsoft/harrier-oss-v1-0.6b/raw/f9b9dc8d367d443f2479d27aa5d8d2850c0774ee/1_Pooling/config.json (lasttoken pooling, dim 1024)"
   ],

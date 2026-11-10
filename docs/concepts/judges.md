@@ -4,7 +4,7 @@ rcp's contract with a judge is one OpenAI-compatible URL. Serve it with any engi
 (vLLM, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
 judging steps here or through a job runner on SLURM or Kubernetes ([runs and job runners](runs.md)). For your own
 engines and your own judge the package never builds an image, never pins an engine and never translates engine
-flags. For the shipped retrieval models `rcp-ndcg-vllm serve <recipe-id>` composes the engine command from the
+flags. For the shipped retrieval models `rcp-vllm serve <recipe-id>` composes the engine command from the
 GPU-validated recipe ([serve a retrieval model](../how-to/serve-a-model.md)); anything else is your command,
 verbatim.
 
@@ -44,26 +44,26 @@ run-level fields are the exceptions: `model` (the served model name the engine a
 with the switch.
 
 1. **A shipped judge recipe** — `--judge gpt-oss-120b`, or `--judge recipe:gpt-oss-120b`, or `judge:
-   recipe:gpt-oss-120b` in a run config. The recipes are `rcp-ndcg-vllm`'s package data: the ten judges of the
+   recipe:gpt-oss-120b` in a run config. The recipes are `rcp-vllm`'s package data: the ten judges of the
    catalog (the six paper/owner judges plus the four Gemma 4 judges), one family per model family, every
    variant its own id. The recipe's `client` block is the judge config (validated here, never a second model),
-   its `serve` block is the engine argv (`rcp-ndcg-vllm serve <id>`), and its `base_url` stays unset until the
+   its `serve` block is the engine argv (`rcp-vllm serve <id>`), and its `base_url` stays unset until the
    run supplies it (`--set judge.base_url=...`, a run's `serve:` block, or `RCP_NDCG_ENGINES`). The `recipe`
    pointer in the judgement identity is the recipe's id, so judgements record the server-side settings they
-   came from. `rcp-ndcg-vllm serve <id> --dry-run` prints the exact argv, and the recipe's notes carry the
+   came from. `rcp-vllm serve <id> --dry-run` prints the exact argv, and the recipe's notes carry the
    memory arithmetic for one B200 and one H100 (the default serving environments).
 2. **Your own recipe directory** — `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or
    `recipe:/abs/path`: a family directory of your own loads through the same schema (families included),
    marked unshipped with `status: unverified` and identified by the content hash of its resolved form, so two
    runs whose files differ never share a run identity. The judge route reads a directory with exactly one
    variant (a multi-variant family is refused by name: `--variant <id>` selects a size for
-   `rcp-ndcg-vllm serve`, which the judging commands do not take); name the shipped variant id for a
+   `rcp-vllm serve`, which the judging commands do not take); name the shipped variant id for a
    multi-variant family of the catalog.
 3. **A plain judge config file, or a hosted vendor profile** — `--judge ./my-judge.yaml` for any
    OpenAI-compatible endpoint, and `--judge gpt5_hosted` for the shipped OpenAI profile. The self-hosted
    presets are gone (they became recipes); `gpt5_hosted` stays a vendor profile.
 
-The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-ndcg-vllm serve` take):
+The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-vllm serve` take):
 
 | Judge recipe | Weights | Reasoning parser | Context | GPUs (one B200) |
 |---|---|---|---|---|
@@ -124,13 +124,13 @@ matter to the judge:
   `max_videos`. The client sizes every image itself, so no pixel or processor flag is needed
   ([preprocessing](preprocessing.md)).
 
-For the shipped judges, with vLLM, the serve block is the recipe's own — `rcp-ndcg-vllm serve <id>` renders it,
+For the shipped judges, with vLLM, the serve block is the recipe's own — `rcp-vllm serve <id>` renders it,
 `--dry-run` prints it, and each recipe's notes state the flag citations and the memory arithmetic:
 
 ```bash
 # the recipe's exact argv (dry-run prints it; a real serve execs it)
-rcp-ndcg-vllm serve gpt-oss-120b --dry-run
-rcp-ndcg-vllm serve qwen3.8-27b-fp8 --dry-run
+rcp-vllm serve gpt-oss-120b --dry-run
+rcp-vllm serve qwen3.8-27b-fp8 --dry-run
 
 # the same engine by hand, for the second judge
 vllm serve openai/gpt-oss-120b --revision b5c939de8f754692c1647ca79fbf85e8c1e70f8a \

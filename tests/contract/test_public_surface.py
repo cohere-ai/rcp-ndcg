@@ -33,7 +33,7 @@ UPDATE_HINT = "Run `pytest tests/contract --update-snapshots` and add a CHANGELO
 #: Names exported with two different defining modules (two homes for one concept). May only shrink.
 #: 0.0.1 renamed the two ``Family`` classes to their own concepts (``JudgementFamily`` in the core,
 #: ``RecipeFamily`` in the serving package), so no public name has two homes.  ``apply`` is the patch
-#: interface, not a second concept: every module in ``rcp_ndcg_vllm.patches.PATCH_MODULES`` implements
+#: interface, not a second concept: every module in ``rcp_vllm.patches.PATCH_MODULES`` implements
 #: it (one interface, one implementation per patch), so each patch module defines it by design.
 # empty since the embeddinggemma-2 fold patch was deleted: ``apply`` was the second ``def apply(``
 # (the fold patch and the SDPA patch); one patch module ships now, so there is no second home.
@@ -100,13 +100,13 @@ def test_the_family_classes_carry_specific_names() -> None:
     """0.0.1 names the two family concepts: the judgement family (core) and the recipe family (serving)."""
     import rcp_core
     import rcp_core.schemas
-    import rcp_ndcg_vllm.recipe
+    import rcp_vllm.recipe
 
     assert rcp_core.JudgementFamily is rcp_core.schemas.JudgementFamily
     assert "JudgementFamily" in rcp_core.schemas.__all__
     assert "Family" not in rcp_core.schemas.__all__
-    assert "RecipeFamily" in rcp_ndcg_vllm.recipe.__all__
-    assert "Family" not in rcp_ndcg_vllm.recipe.__all__
+    assert "RecipeFamily" in rcp_vllm.recipe.__all__
+    assert "Family" not in rcp_vllm.recipe.__all__
 
 
 def test_a_broken_all_entry_fails_collection(monkeypatch: pytest.MonkeyPatch) -> None:

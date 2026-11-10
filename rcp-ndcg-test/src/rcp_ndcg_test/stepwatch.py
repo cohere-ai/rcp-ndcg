@@ -2,7 +2,7 @@
 
 GPU-E1: the wave runner worked through the recipes' steps serially, one stuck engine request held
 every other recipe's steps behind it, and the pod log said nothing.  The runner now gives every step a
-budget (from the recipe's request count; :attr:`rcp_ndcg_vllm.recipe.EngineSpec.step_budget_s` raises
+budget (from the recipe's request count; :attr:`rcp_vllm.recipe.EngineSpec.step_budget_s` raises
 it) and runs each recipe's steps in a worker of its own; this module is the budget's enforcement seam:
 
 - :class:`StepWatch` tracks the step's elapsed time and the request currently in flight

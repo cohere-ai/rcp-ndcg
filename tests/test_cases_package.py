@@ -22,7 +22,7 @@ CASES = ROOT / "rcp-ndcg-test" / "cases"
 def test_every_case_file_validates() -> None:
     """Every case in the repository loads; the recipe-backed rules run wherever a recipe exists."""
     from rcp_ndcg_test.cases import load_cases
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     bundle = load_cases(CASES, recipes_root=default_recipes_root(), check_lengths=False)
     directories = {directory.name for directory in CASES.iterdir() if directory.is_dir()}
@@ -33,7 +33,7 @@ def test_every_case_file_validates() -> None:
 def test_every_recipe_backed_case_validates_with_its_recipe() -> None:
     """For every recipe that both exists and has cases: the full recipe-backed validation, no lengths."""
     from rcp_ndcg_test.cases import load_cases
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     for recipe in iter_recipes():
         if not (CASES / recipe.id).is_dir():
@@ -49,7 +49,7 @@ def test_every_rerank_case_tolerance_covers_its_recipes_measured_stage2_bound() 
     ``prob_p99_abs`` (the measured stage-2 bound it declares)."""
     from rcp_ndcg_test.cases import load_cases
     from rcp_ndcg_test.equivalence.gates import resolve_gates
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     checked = 0
     for recipe in iter_recipes():
@@ -77,7 +77,7 @@ def test_every_case_note_names_the_recipes_declared_deviation() -> None:
     'known_deviations empty' or '[anchor_drop_over_cap]' while every one of those recipes declares
     [over_cap_cut_differs]; a note that names a deviation must name the recipe's own."""
     from rcp_ndcg_test.cases import load_cases
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     for recipe in iter_recipes():
         if not (CASES / recipe.id).is_dir():
@@ -106,7 +106,7 @@ def test_every_long_input_measures_its_stratum() -> None:
     network-marked run; the offline tests above still enforce the strata coverage.
     """
     from rcp_ndcg_test.cases import load_cases
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     for recipe in iter_recipes():
         if not (CASES / recipe.id).is_dir():

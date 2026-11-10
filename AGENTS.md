@@ -51,14 +51,14 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp.judging` |
 | Prompts (tournament, rubric, vision and video variants) | `rcp/src/rcp/judging/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp.data.text_policy` (the text policy, chunking, `Preprocessing`), `rcp.data.resolution` (image and video policies), `rcp.data.prepare` (media sent to a judge), `rcp.data.templates` |
-| The geometry a checkpoint's processor recomputes (the smart resize, the fixed point) | `rcp.data.resolution`. Declared exception: `rcp_ndcg_vllm/recipes/*/reference.py` are dependency-free reference subprocesses that must not import the product (no reference's `reference.in` pins a workspace distribution, so none can), so a family's reference mirrors the product's rule where the engine's own processor is the thing being checked; the mirror is a recorded copy, validated against the product on GPU (the equivalence waves) |
+| The geometry a checkpoint's processor recomputes (the smart resize, the fixed point) | `rcp.data.resolution`. Declared exception: `rcp_vllm/recipes/*/reference.py` are dependency-free reference subprocesses that must not import the product (no reference's `reference.in` pins a workspace distribution, so none can), so a family's reference mirrors the product's rule where the engine's own processor is the thing being checked; the mirror is a recorded copy, validated against the product on GPU (the equivalence waves) |
 | Judge/role text budgets, templates and their cut policy | `rcp.data.text_budget` (the fit), `rcp.data.census` (the cut record and census), `rcp.storage.census` (the census files' record I/O), `rcp.data.templates` |
 | What a document reads as (MTEB's title join, `title: separate`) and the two query instructions (the task instruction's placement, the per-query append) | `rcp_core.records` (`Document.model_content`, `Query.format_query`/`format_content`) -- the rule once; the role clients' `normalise` stage applies it, and the sparse (BM25) path has its own join (`retrieval/_api._sparse_corpus`, mteb's BM25) |
 | Postprocess of model output (L2 normalisation, chunk-score aggregation, the late-interaction skip ids) | `rcp.data.postprocess` |
 | The MRL head (the truncation cut, the learned projection, the declared set/range) | `rcp.data.mrl` |
 | The role clients' one preparation pipeline (stage order, per-row records) | `rcp.inference.clients._base` (`STAGES`, the runners) |
-| Serving recipes, the recipe schema, `serve` | `rcp_ndcg_vllm` |
-| Model plugins for served checkpoints | `rcp_ndcg_vllm.models/` |
+| Serving recipes, the recipe schema, `serve` | `rcp_vllm` |
+| Model plugins for served checkpoints | `rcp_vllm.models/` |
 | Reference cases, conformance, model-level fakes, equivalence/recording/GPU job tooling | `rcp_ndcg_test` |
 | Wire adapters, the transport, replicas, parking, provenance probe | `rcp.inference` |
 | Evaluation: scoring rankings, comparisons, explanations, MTEB tasks | `rcp.eval` |
@@ -119,7 +119,7 @@ returns typed results and raises typed errors from `rcp.errors`.
 ## Releasing
 
 Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp/`,
-`rcp-core/`, `rcp-ndcg-vllm/` and the unpublished `rcp-ndcg-test/`; the root manifest is the uv workspace
+`rcp-core/`, `rcp-vllm/` and the unpublished `rcp-ndcg-test/`; the root manifest is the uv workspace
 only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
 the four-member workspace; `rcp-ndcg-test` is never built), checks each version against the
 tag, that `rcp` pins `rcp-core==<version>`, and `requirements-constraints.txt` against the lock (the
@@ -138,8 +138,8 @@ environment from the table, and create each environment in the repository's sett
 
 The layout move added three release gates on top of `twine check`, each also run by CI's own jobs: a
 **fresh-venv wheel install** of every published distribution (the wheel, not the checkout, must import and
-work); the **`--no-deps` freeze check** for `rcp-ndcg-vllm` in a venv that has only pydantic and PyYAML
-(`pip freeze` before and after differs by exactly that wheel); and `rcp-ndcg-vllm serve <id> --dry-run` for
+work); the **`--no-deps` freeze check** for `rcp-vllm` in a venv that has only pydantic and PyYAML
+(`pip freeze` before and after differs by exactly that wheel); and `rcp-vllm serve <id> --dry-run` for
 every recipe (the serve argv renders for every variant). The node-side gates (the wheelhouse, the reference
 environments, the GPU waves) are in `docs/how-to/release-candidates.md`.
 
@@ -147,12 +147,12 @@ environments, the GPU waves) are in `docs/how-to/release-candidates.md`.
 |---|---|
 | `rcp` | `pypi` |
 | `rcp-core` | `pypi-core` |
-| `rcp-ndcg-vllm` | `pypi-vllm` |
+| `rcp-vllm` | `pypi-vllm` |
 
 ## Where to look
 
 - The concepts and their formulas: `docs/concepts/`. The paper: https://arxiv.org/abs/2609.35739.
-- The shipped serving recipes and their catalog: the `rcp_ndcg_vllm` package's recipe data, described in
+- The shipped serving recipes and their catalog: the `rcp_vllm` package's recipe data, described in
   [recipes and serving models](docs/reference/recipes.md).
 - The command line: `rcp --help`, `rcp schema show commands`, `docs/reference/cli.md`.
 - The public surface as data: `tests/contract/snapshots/` and `schemas/`, and the rules around it in

@@ -14,8 +14,8 @@ pip install "rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/w
 protocols need numpy and pydantic only; the IRT estimators need its `irt` extra (torch and scipy), which the
 `calibrate` extra below brings.
 `rcp` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The third
-distribution, `rcp-ndcg-vllm`, is the lean serving package: the GPU-validated serving recipes and
-`rcp-ndcg-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving
+distribution, `rcp-vllm`, is the lean serving package: the GPU-validated serving recipes and
+`rcp-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving
 models](reference/recipes.md)). `rcp-ndcg-test`, an unpublished contributor package (reference cases,
 conformance, the GPU job tooling), is never installed by users ([its page](reference/rcp-ndcg-test.md)). The
 extras:
@@ -33,7 +33,7 @@ extras:
 | `docs` | the local documentation preview (mkdocs-material) |
 
 Every retrieval model is served now: the client talks HTTP to the engines (role clients over one transport) and
-installs beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-ndcg-vllm` adds exactly
+installs beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-vllm` adds exactly
 one pure-Python wheel to the engine's environment (`pip install --no-deps`), and nothing else changes. The old
 `[local]` and `[vllm]` extras are gone; the paper's in-process reference implementations live in
 `experiments/paper/rerankers/reference/` with their own pinned requirements, outside the package's lock. BM25
@@ -84,16 +84,16 @@ the datasets and shows a complete example.
 
 ### Serve an open model and score it
 
-Engine side, on the stock `vllm/vllm-openai` image: `python3 -m pip install --no-deps rcp-ndcg-vllm` (the one
+Engine side, on the stock `vllm/vllm-openai` image: `python3 -m pip install --no-deps rcp-vllm` (the one
 change the engine environment takes; `pip freeze` differs by exactly that wheel), then serve a recipe:
 
 ```bash
-rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000
-rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8001   # a reranker, in another terminal or engine
-# `rcp-ndcg-vllm serve <id> --dry-run` prints the engine argv and exits
+rcp-vllm serve qwen3-embedding-0.6b --port 8000
+rcp-vllm serve qwen3-reranker-0.6b --port 8001   # a reranker, in another terminal or engine
+# `rcp-vllm serve <id> --dry-run` prints the engine argv and exits
 ```
 
-Client side, `rcp-ndcg-vllm` installed beside `rcp`, and a retriever config whose encoder names the recipe;
+Client side, `rcp-vllm` installed beside `rcp`, and a retriever config whose encoder names the recipe;
 `base_url` and the other run-time fields stay on the config (an explicit content field must equal the recipe's,
 or the config is refused naming both values):
 
@@ -150,7 +150,7 @@ python experiments/run_all.py
 
 One complete run config: candidates from a served encoder and reranker (their recipes supply the client blocks),
 a judge config, and one engine per role, started inside the job. The engine image prepares
-`python3 -m pip install --no-deps rcp-ndcg-vllm`; with the recipes the engine command is `rcp-ndcg-vllm serve
+`python3 -m pip install --no-deps rcp-vllm`; with the recipes the engine command is `rcp-vllm serve
 <id>`.
 
 ```yaml
@@ -158,7 +158,7 @@ a judge config, and one engine per role, started inside the job. The engine imag
 dataset: suite:nanobeir
 candidates:
   from: retrieval
-  # with `rcp-ndcg-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
+  # with `rcp-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
   # qwen3-reranker-0.6b}`) take their whole client block from the recipe instead of the fields below; a
   # self-hosted role config here must still declare its text budget (tokenizer + max_tokens), and a served
   # reranker sets use_activation explicitly
@@ -172,11 +172,11 @@ steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:
     image: registry.example.com/vllm-openai:my-tag
-    command: ["rcp-ndcg-vllm", "serve", "qwen3-embedding-0.6b"]
+    command: ["rcp-vllm", "serve", "qwen3-embedding-0.6b"]
     resources: {gpus: 1}
   reranker:
     image: registry.example.com/vllm-openai:my-tag
-    command: ["rcp-ndcg-vllm", "serve", "qwen3-reranker-0.6b"]
+    command: ["rcp-vllm", "serve", "qwen3-reranker-0.6b"]
     resources: {gpus: 1}
   judge:
     image: registry.example.com/vllm-openai:my-tag

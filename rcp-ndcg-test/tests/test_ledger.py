@@ -20,19 +20,19 @@ from rcp_ndcg_test.jobs.ledger import LedgerEvidenceError, main, plan
 
 ROOT = Path(__file__).resolve().parents[2]
 WRITTEN = (
-    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes",
+    "rcp-vllm/src/rcp_vllm/recipes",
     "rcp-ndcg-test/tests/recipes/golden",
     "docs/reference/gpu-validation.md",
-    "rcp-ndcg-vllm/README.md",
+    "rcp-vllm/README.md",
 )
 TREE = (
     "rcp-core/src",
     "rcp/src",
-    "rcp-ndcg-vllm/src",
+    "rcp-vllm/src",
     "rcp-ndcg-test/src",
     "rcp-ndcg-test/tests/recipes/golden",
     "docs/reference/gpu-validation.md",
-    "rcp-ndcg-vllm/README.md",
+    "rcp-vllm/README.md",
 )
 
 
@@ -114,7 +114,7 @@ def test_the_ledger_refuses_evidence_that_does_not_compute_todays_key(tmp_path: 
     a wave that claims a row without its own documents is refused too."""
     root, evidence = _checkout(tmp_path), tmp_path / "waves"
     commit = _commit(root)
-    family = root / "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding/family.yaml"
+    family = root / "rcp-vllm/src/rcp_vllm/recipes/octen-embedding/family.yaml"
     original = family.read_text(encoding="utf-8")
     _wave(evidence, "equivalence-octen-embedding", "octen-embedding-8b", commit)
     rows = {row.recipe: row for row in plan(evidence, root)}
@@ -147,7 +147,7 @@ def test_the_ledger_writes_the_waves_rows_and_a_second_write_changes_nothing(
     assert _snapshot(root) == before, "the default is a dry run"
     assert main([*argv, "--write"]) == 0
     written = _snapshot(root)
-    family = (root / "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/octen-embedding/family.yaml").read_text()
+    family = (root / "rcp-vllm/src/rcp_vllm/recipes/octen-embedding/family.yaml").read_text()
     # the octen family's other two sizes have no wave, so the verdict is the verified variant's own block
     assert (
         "  - id: octen-embedding-8b\n    status:\n      state: verified\n"

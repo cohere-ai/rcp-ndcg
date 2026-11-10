@@ -17,7 +17,7 @@ no network, no torch.
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_vllm.recipe import iter_recipes
+from rcp_vllm.recipe import iter_recipes
 
 #: Every shipped judge variant's sampling, from its checkpoint's own generation_config.json at the
 #: pinned revision (fetched 2026-10-10; the gpt-oss row corrected 2026-10-15 under owner decision 14(iii)).

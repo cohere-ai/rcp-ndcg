@@ -215,7 +215,7 @@ def _gains(row: dict) -> dict:
 def run_retrieval_view(recipe_id: str, row: dict, tmp_path: Path) -> tuple[object, str]:
     """The retrieval view (the paper's embedders): index and search a subset corpus through the recipe's
     emulator -> :class:`~rcp.data.Rankings`."""
-    from rcp_ndcg_vllm.recipe import client_config
+    from rcp_vllm.recipe import client_config
 
     from rcp.retrieval import index as build_index
     from rcp.retrieval import search
@@ -235,7 +235,7 @@ def run_retrieval_view(recipe_id: str, row: dict, tmp_path: Path) -> tuple[objec
 def run_rerank_view(recipe_id: str, row: dict, tmp_path: Path) -> tuple[object, str]:
     """The reranking view (the paper's rerankers over a released pool): rerank the ranked pool through
     the recipe's emulator -> :class:`~rcp.data.Rankings`."""
-    from rcp_ndcg_vllm.recipe import client_config
+    from rcp_vllm.recipe import client_config
 
     from rcp.data import Rankings
     from rcp.retrieval import rerank

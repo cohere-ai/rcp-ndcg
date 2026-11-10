@@ -30,7 +30,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
+from rcp_vllm.recipe import default_recipes_root, load_recipe
 
 from rcp_ndcg_test.errors import HarnessError
 

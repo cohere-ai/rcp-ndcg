@@ -86,7 +86,7 @@ def test_the_store_answers_before_the_hub(
     """A registered store's entry answers even with an empty Hub cache: the store is consulted before
     ``huggingface_hub``, so a vendored file needs neither the cache nor a Hub request. The entry here is
     ``.gz``: the index hashes the content, and the read decompresses."""
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     from tests.conftest import RECIPES, hub_cache
 

@@ -30,8 +30,8 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_test.equivalence import stage1_prompts
-from rcp_ndcg_vllm import Recipe, load_recipe
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm import Recipe, load_recipe
+from rcp_vllm.recipe import default_recipes_root
 
 from rcp.data.preprocess import TextBudget, fit
 from rcp.data.templates import TemplateSpec
@@ -294,7 +294,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert serve.trust_remote_code is False
     assert serve.max_model_len == MAX_TOKENS
     assert serve.dtype == "bfloat16"
-    assert serve.plugin == "rcp-ndcg-vllm"  # the plugin carrier: the pooling-full-context patch is gone
+    assert serve.plugin == "rcp-vllm"  # the plugin carrier: the pooling-full-context patch is gone
     client = recipe.client
     assert client.get("api") == "openai_embeddings"
     assert client.get("tokenizer") == f"{REPO}@{REVISION}"
@@ -540,7 +540,7 @@ EXPECTED_SERVE = {
     "limit_mm_per_prompt": None,
     "max_model_len": 32768,
     "mm_processor_kwargs": {},
-    "plugin": "rcp-ndcg-vllm",
+    "plugin": "rcp-vllm",
     "plugin_architectures": [],
     "pooler_config": {},
     "runner": "pooling",

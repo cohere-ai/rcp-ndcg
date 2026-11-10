@@ -838,7 +838,7 @@ def _yaml_float(value: float) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     """The CLI: ``python -m rcp_ndcg_test.case_fill --recipe <dir-or-id> --reference-python <python>``."""
-    from rcp_ndcg_vllm.recipe import load_recipe
+    from rcp_vllm.recipe import load_recipe
 
     parser = argparse.ArgumentParser(
         prog="python -m rcp_ndcg_test.case_fill",

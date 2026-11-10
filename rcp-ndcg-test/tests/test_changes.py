@@ -10,7 +10,7 @@ import pytest
 from rcp_ndcg_test.changes import behaviour_report, changed_recipes, main
 from rcp_ndcg_test.corpus import manifest_digest
 from rcp_ndcg_test.fingerprint import behaviour_fingerprint, fingerprint_inputs
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 RECIPES = Path(__file__).resolve().parent / "fixtures" / "recipes"
 

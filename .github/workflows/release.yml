@@ -1,4 +1,4 @@
-# Publish a release: on a tag v<version>, build the three distributions (rcp, rcp-core, rcp-ndcg-vllm),
+# Publish a release: on a tag v<version>, build the three distributions (rcp, rcp-core, rcp-vllm),
 # check each version against the tag, publish every package to its own PyPI project with trusted publishing (OIDC,
 # no secret), and attach the constraints file to the GitHub release.
 #
@@ -12,7 +12,7 @@
 #   |---------------|--------------------|
 #   | rcp      | pypi               |
 #   | rcp-core      | pypi-core          |
-#   | rcp-ndcg-vllm | pypi-vllm          |
+#   | rcp-vllm | pypi-vllm          |
 
 name: release
 
@@ -39,21 +39,21 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-      - name: build rcp-core, rcp and rcp-ndcg-vllm
+      - name: build rcp-core, rcp and rcp-vllm
         run: |
           # The three published distributions, one --package per invocation (uv refuses a repeated flag),
           # so the unpublished fourth workspace member, rcp-ndcg-test, is never swept in. No plugin
-          # wheels: the folded models ship inside rcp-ndcg-vllm (layout-move item 3).
+          # wheels: the folded models ship inside rcp-vllm (layout-move item 3).
           uv build --package rcp-core --out-dir dist
           uv build --package rcp --out-dir dist
-          uv build --package rcp-ndcg-vllm --out-dir dist
+          uv build --package rcp-vllm --out-dir dist
       - name: the versions are the tag's
         run: |
           version="${GITHUB_REF_NAME#v}"
           expected=(
             "dist/rcp-${version}-py3-none-any.whl" "dist/rcp-${version}.tar.gz"
             "dist/rcp_core-${version}-py3-none-any.whl" "dist/rcp_core-${version}.tar.gz"
-            "dist/rcp_ndcg_vllm-${version}-py3-none-any.whl" "dist/rcp_ndcg_vllm-${version}.tar.gz"
+            "dist/rcp_vllm-${version}-py3-none-any.whl" "dist/rcp_vllm-${version}.tar.gz"
           )
           ls -a dist
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
@@ -98,22 +98,22 @@ jobs:
       - name: the vllm wheel installs alone, serves and lists every recipe
         run: |
           uv venv "$RUNNER_TEMP/wheel-vllm" --python 3.12
-          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_ndcg_vllm-*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_vllm-*.whl
           "$RUNNER_TEMP/wheel-vllm/bin/python" - <<'PY'
-          from rcp_ndcg_vllm.recipe import iter_recipes
+          from rcp_vllm.recipe import iter_recipes
 
           recipes = list(iter_recipes())
           assert len(recipes) == 44, len(recipes)
-          print("rcp_ndcg_vllm wheel alone:", len(recipes), "recipes")
+          print("rcp_vllm wheel alone:", len(recipes), "recipes")
           PY
           # Release gate 2 (AGENTS.md): the --no-deps install must leave pip freeze unchanged in the
           # stock image, and must declare nothing the image does not ship.
-          python3 rcp-ndcg-vllm/tests/models/check_no_deps_install.py dist/rcp_ndcg_vllm-*.whl
+          python3 rcp-vllm/tests/models/check_no_deps_install.py dist/rcp_vllm-*.whl
           # Release gate 3 (AGENTS.md): every recipe must dry-run from the installed wheel, so a
           # template.jinja or package-data path that resolves only in the checkout fails here.
           for id in $("$RUNNER_TEMP/wheel-vllm/bin/python" -c \
-            'from rcp_ndcg_vllm.recipe import iter_recipes; print(" ".join(r.id for r in iter_recipes()))'); do
-            "$RUNNER_TEMP/wheel-vllm/bin/rcp-ndcg-vllm" serve "$id" --dry-run >/dev/null
+            'from rcp_vllm.recipe import iter_recipes; print(" ".join(r.id for r in iter_recipes()))'); do
+            "$RUNNER_TEMP/wheel-vllm/bin/rcp-vllm" serve "$id" --dry-run >/dev/null
           done
       - name: the rcp wheel installs (its core pin from dist/) and works
         run: |
@@ -138,8 +138,8 @@ jobs:
           path: dist/rcp-*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist-rcp-ndcg-vllm
-          path: dist/rcp_ndcg_vllm-*
+          name: dist-rcp-vllm
+          path: dist/rcp_vllm-*
 
   # One publish job per package, each with its own environment: the PyPI project in it is a pending trusted publisher
   # identified by owner, repository, workflow file and environment only.
@@ -176,11 +176,11 @@ jobs:
         with:
           packages-dir: dist/rcp
 
-  # rcp-ndcg-vllm names no sibling (decision 18: the lean package pins nothing), but every moment of the
+  # rcp-vllm names no sibling (decision 18: the lean package pins nothing), but every moment of the
   # rollout must install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a
-  # published rcp-ndcg-vllm whose siblings failed would be uninstallable forever).
+  # published rcp-vllm whose siblings failed would be uninstallable forever).
   publish-vllm:
-    name: publish rcp-ndcg-vllm to PyPI
+    name: publish rcp-vllm to PyPI
     needs: [build, publish-core, publish-rcp]
     runs-on: ubuntu-latest
     environment: pypi-vllm
@@ -189,11 +189,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp-ndcg-vllm
-          path: dist/rcp-ndcg-vllm
+          name: dist-rcp-vllm
+          path: dist/rcp-vllm
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
-          packages-dir: dist/rcp-ndcg-vllm
+          packages-dir: dist/rcp-vllm
 
   github-release:
     name: GitHub release with the constraints file
@@ -213,8 +213,8 @@ jobs:
           path: dist/rcp-core
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp-ndcg-vllm
-          path: dist/rcp-ndcg-vllm
+          name: dist-rcp-vllm
+          path: dist/rcp-vllm
       # The rendered jobs install against the constraints file attached here.
       - run: gh release create "$GITHUB_REF_NAME" requirements-constraints.txt dist/*/* --verify-tag --notes-from-tag
         env:

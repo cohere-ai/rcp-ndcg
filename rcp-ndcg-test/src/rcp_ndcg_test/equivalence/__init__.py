@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 from rcp_ndcg_test.errors import HarnessError
 

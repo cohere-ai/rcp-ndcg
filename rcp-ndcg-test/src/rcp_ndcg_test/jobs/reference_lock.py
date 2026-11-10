@@ -30,7 +30,7 @@ The tool is committed and run offline against a wheelhouse or online against an 
 
     python -m rcp_ndcg_test.jobs.reference_lock --family <family> \\
         --in recipes/<family>/reference.in --out recipes/<family>/reference.lock \\
-        --image-freeze rcp-ndcg-vllm/reference-image-v0.33.0.txt \\
+        --image-freeze rcp-vllm/reference-image-v0.33.0.txt \\
         --image vllm/vllm-openai:v0.33.0
 
 ``check`` validates a committed lock against its ``reference.in`` and the image stack without any
@@ -76,7 +76,7 @@ STACK_NAMES = frozenset({"torch", "torchvision", "torchaudio", "triton"})
 against the image's freeze and never installed; the ``nvidia-*`` distributions are the stack too
 (:func:`is_stack`)."""
 
-WORKSPACE_NAMES = frozenset({"rcp", "rcp-core", "rcp-ndcg-vllm", "rcp-ndcg-test"})
+WORKSPACE_NAMES = frozenset({"rcp", "rcp-core", "rcp-vllm", "rcp-ndcg-test"})
 """The project's own distributions: their pins stay verbatim (the staged wheelhouse carries the built
 wheels, so there is no index to hash them against) and must be exact."""
 

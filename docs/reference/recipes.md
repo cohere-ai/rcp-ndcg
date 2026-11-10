@@ -2,27 +2,27 @@
 
 Exact names on the serving surface. The catalog of the 24 shipped families and their 44 variants (the
 canonical variant ids, the model, the role, the input, the Matryoshka head, the plugin, the reference and the
-status of every row) is the table in the [`rcp-ndcg-vllm` README](https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-ndcg-vllm/README.md)
+status of every row) is the table in the [`rcp-vllm` README](https://github.com/cohere-ai/rcp-ndcg/blob/main/rcp-vllm/README.md)
 -- the distribution's PyPI page, and the one rendered copy. This page documents
 what the rows and the surface mean. [Serve a retrieval model](../how-to/serve-a-model.md) walks through using
 one; [add a serving recipe](../how-to/add-a-model.md) writes one.
 
-## The `rcp-ndcg-vllm` distribution
+## The `rcp-vllm` distribution
 
 The recipes are package data, grouped into **families**: `recipes/<family>/family.yaml` holds the
 shared blocks and the `variants` table, with the family's ONE `reference.py` (parameterised by the variant), its
 one chat template where the model needs one, its `reference.in` (the justified pins) and the generated
 `reference.lock` (one locked, hashed reference environment per family). Every variant resolves to a
 full `Recipe` (the unchanged recipe schema) and is served, contract-tested, stage-1-tested and GPU-validated on
-its own; a family id is never served. The public names are `rcp_ndcg_vllm.recipe`'s `RecipeFamily`, `Variant`,
+its own; a family id is never served. The public names are `rcp_vllm.recipe`'s `RecipeFamily`, `Variant`,
 `Recipe`, `RecipeFieldRole`, `FieldSpec`, `FIELD_ROLES`, `load_family`, `load_recipe`, `resolve_recipe`,
 `iter_families`, `iter_recipes`,
 `serve_argv` (the serve-argv builder), `deployment_fields`, `parse_deployment_overrides`,
 `recipe_digest` and `plugin_distribution_name`,
-the `rcp-ndcg-vllm` console tree (`serve`, with `--variant`, `--port`, `--set` and `--dry-run`), and the
+the `rcp-vllm` console tree (`serve`, with `--variant`, `--port`, `--set` and `--dry-run`), and the
 exported schemas (`schema/recipe.schema.json` for a resolved recipe, `schema/family.schema.json` for a family
 file); everything else in the package is internal (``RecipeError``, the typed refusal every loader raises,
-lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
+lives in `rcp_vllm.errors` and is re-exported from the package root).
 
 ## The shipped families
 
@@ -56,22 +56,22 @@ The families whose evidence carries a recorded limit or a disposition. A family 
 
 A judge family's `client` block is `rcp.judging.JudgeConfig` (the same config the judging commands take,
 validated by the product, never a second model), its `serve` block is the engine argv, and it carries no
-equivalence reference: `--judge <id>` and `rcp-ndcg-vllm serve <id>` take the same id
+equivalence reference: `--judge <id>` and `rcp-vllm serve <id>` take the same id
 ([judges](../concepts/judges.md)).
 
-`rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
+`rcp-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
 builds the `vllm serve` argv from the recipe's package data (the chat template file path, the media flags, the
 pooler config) and runs it; `--dry-run` prints the argv, the recipe's identity and the applied overrides, and
 exits. `--set` names a **deployment** field of the recipe -- the engine's resource, scheduling and address
 knobs (`resources.gpus`, `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
 `serve.max_num_batched_tokens`, `serve.host`, `serve.port`, `serve.max_model_len`) -- and the schema declares
-that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`): a content field is refused by name, and
+that surface once (`rcp_vllm.recipe.FIELD_ROLES`): a content field is refused by name, and
 `serve.max_model_len` is refused below the client's largest token budget, with both numbers named. A checkpoint
 that needs its model plugin is refused with the exact install line: the `topk-embed-v1-small`/`-xsmall`
 (`TopkEmbedModel`), the pplx checkpoints (pplx-embed-v1's config-only `PplxV1Config`; the pplx-embed-v2
 contextual and both
 late-interaction sizes) and embeddinggemma-2 (`EmbeddingGemma2Config`/`EmbeddingGemma2Model`) fold into
-`rcp_ndcg_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing `rcp_ndcg_vllm` never
+`rcp_vllm/models/` under one lazy `vllm.general_plugins` entry point (importing `rcp_vllm` never
 imports torch or vLLM). A recipe that names a plugin
 also declares `plugin_architectures` -- the architectures its engine registers (empty for a patch-only
 carrier) -- because the behaviour
@@ -90,8 +90,8 @@ run's resume, an index reload).
 
 A checkpoint the stock image cannot serve as shipped may need an engine-side fix: an architecture the
 image's registry lacks, or an attention backend its kernels cannot run. A recipe opts into such a fix with
-`serve.patches`, naming the patch (`rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the
-declared names into the engine process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave
+`serve.patches`, naming the patch (`rcp_vllm.patches.PATCH_NAMES`); every engine-start path renders the
+declared names into the engine process's `RCP_NDCG_VLLM_PATCHES` (the `rcp-vllm serve` console, the wave
 runner and the e2e driver -- a comma-separated list read by the one `vllm.general_plugins` entry point),
 overriding any inherited value so
 the engine runs exactly what the recipe declares. The corpus provenance records the value the engine ran
@@ -112,7 +112,7 @@ checkpoint's `embedding_gemma2` classes and the v0.33.0 tag's registry the archi
   `torch.compile`/CUDAGraph interaction. The patch registers the plugin's
   `TorchSdpaAttentionBackend` (an encoder-only backend over
   `torch.nn.functional.scaled_dot_product_attention`, in
-  `rcp_ndcg_vllm/models/embedding_gemma2/attention.py`) under `Backend.TORCH_SDPA`, which is the
+  `rcp_vllm/models/embedding_gemma2/attention.py`) under `Backend.TORCH_SDPA`, which is the
   member the recipe's `--attention-backend TORCH_SDPA` selects; the class has no head-dimension cap
   and runs the model's non-causal attention with the sliding layers' window as a mask. Delete the
   patch (and the recipe's `--attention-backend` pin) when `engine.image` moves to a release whose own
@@ -170,6 +170,6 @@ for a file of the operator's own), so a run identity follows the file's content,
 On the command line `--retriever recipe:<id-or-path>` and `--reranker recipe:<id-or-path>` expand to that
 mapping, with the URL from `--set ...base_url=...` or a `serve:` engine; `recipe:./my-family/` and
 `recipe:/abs/path` load the family directory through the same schema (a multi-variant directory names its
-variants in the refusal). Resolution is lazy through `rcp_ndcg_vllm`, so `rcp-ndcg-vllm` must be installed
+variants in the refusal). Resolution is lazy through `rcp_vllm`, so `rcp-vllm` must be installed
 alongside `rcp` (there is no extra alias for it); without it the refusal is typed and its hint is the
 install line.

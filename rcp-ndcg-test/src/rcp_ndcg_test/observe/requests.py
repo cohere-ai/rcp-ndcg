@@ -403,7 +403,7 @@ def _synthetic_rows(recipe: Any, tokenizer: Any, *, embeddable_vocab_size: int |
     overhead_query = _overhead(recipe, tokenizer, "pair" if pair else "query")
     doc_room = budget - overhead_doc - _GUARD_TOKENS - (tokenizer.count(anchor) if pair else 0)
     query_room = min(share or budget, budget) - overhead_query - _GUARD_TOKENS
-    # The client block is a plain dict (rcp_ndcg_vllm.recipe.Recipe.client): read it as one.  The
+    # The client block is a plain dict (rcp_vllm.recipe.Recipe.client): read it as one.  The
     # defaults are the product endpoint's (empty_query: refuse, empty_doc: send).  The sides are separate:
     # empty_doc governs the DOCUMENT side only, and the embed and pooling roles send an empty query as given
     # (clients._base's per-side policy, L03), so their query side is always planned as sent; the empty_query
@@ -623,7 +623,7 @@ def plan_recipe(
 ) -> RecipePlan:
     """One recipe's deterministic request plan (OBSERVATIONS-SPEC section 1).
 
-    Inputs: the loaded :class:`~rcp_ndcg_vllm.recipe.Recipe`, the recipe's tokenizer, the source
+    Inputs: the loaded :class:`~rcp_vllm.recipe.Recipe`, the recipe's tokenizer, the source
     corpora by suite name (:func:`rcp_ndcg_test.observe.sources.load_corpora` at
     :data:`PINNED_DATASET_COMMITS`) and the checkpoint's declared vocabulary size when the caller
     resolved it (:func:`~rcp_ndcg_test.observe.adversarial.checkpoint_vocab_size`: the spelling set's
@@ -1131,7 +1131,7 @@ def write_manifest(
             seen.add(key)
             pruned_all.append(entry)
     document = {
-        "schema": "rcp-ndcg-vllm.pairs-manifest.v1",
+        "schema": "rcp-vllm.pairs-manifest.v1",
         "schema_version": 1,
         "generator": {
             "module": "rcp_ndcg_test.observe.requests",
@@ -1214,7 +1214,7 @@ def _validate_and_prune(
     ``{query, documents}`` spans is a contract drift of the whole recipe family (lane ``recipe-common``
     reconciles it on its side), not a row problem.
     """
-    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+    from rcp_vllm.recipe import load_family, load_recipes_of
 
     from rcp_ndcg_test.errors import HarnessError
 
@@ -1537,7 +1537,7 @@ def _generate(argv: list[str] | None) -> int:
         "node-scale corpora and need the memory the node has)",
     )
     args = parser.parse_args(argv)
-    from rcp_ndcg_vllm.recipe import RecipeError, load_recipe
+    from rcp_vllm.recipe import RecipeError, load_recipe
 
     from .sources import load_corpora
 
@@ -1555,7 +1555,7 @@ def _generate(argv: list[str] | None) -> int:
                 print(f"{recipe_id}: cannot load -- {error}")
     else:
         # every family's every variant, in family/id order (one pairs file per variant id)
-        from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+        from rcp_vllm.recipe import load_family, load_recipes_of
 
         for directory in sorted(p for p in root.iterdir() if p.is_dir() and (p / "family.yaml").is_file()):
             try:
@@ -1621,7 +1621,7 @@ def _generate(argv: list[str] | None) -> int:
 
 def default_root() -> Path:
     """The package's recipes directory (the recipe lanes' one home)."""
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     return default_recipes_root()
 

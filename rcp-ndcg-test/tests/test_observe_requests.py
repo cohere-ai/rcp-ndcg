@@ -32,7 +32,7 @@ from rcp_ndcg_test.observe.requests import (
     write_pairs_file,
 )
 from rcp_ndcg_test.observe.sources import SourceCorpus, SourceDoc, SourceMedia, SourceQuery
-from rcp_ndcg_vllm.recipe import load_family, load_recipe, resolve_recipe
+from rcp_vllm.recipe import load_family, load_recipe, resolve_recipe
 
 from tests.conftest import RECIPES, token_ids_recipe
 

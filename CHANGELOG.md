@@ -11,7 +11,7 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
   `.records`; `rcp.calibration`, `rcp.data`, `rcp.data.preprocess`, `rcp.data.revisions`,
   `rcp.errors`, `rcp.eval`, `rcp.eval.mteb`, `rcp.examples`, `rcp.inference`,
   `rcp.judging`, `rcp.results`, `rcp.retrieval`, `rcp.runners`, `rcp.runs`,
-  `rcp.testing` and `rcp_ndcg_vllm.recipe`;
+  `rcp.testing` and `rcp_vllm.recipe`;
 - the command tree with its flags and output schemas, the exit codes, the MCP tools, the packaging (distributions,
   extras, entry points) and the JSON Schemas in `schemas/`.
 
@@ -21,7 +21,7 @@ pull request that changes `tests/contract/snapshots/` or `schemas/` must add an 
 
 Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
 incompatibly, independently of the package version. All four distributions carry the tag version; `rcp` pins
-`rcp-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
+`rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-ndcg-test` is never published.
 
 ## Unreleased
 
@@ -37,6 +37,12 @@ incompatibly, independently of the package version. All four distributions carry
   The artifact tags (`rcp-ndcg.<name>.v1`), the extension keys (`x-rcp-ndcg-*`), the public dataset ids, the
   bucket prefix and the repository URL keep the spellings they shipped with, and so do the historical entries
   below.
+- **The serving distribution is `rcp-vllm` and its package is `rcp_vllm`**: the `rcp-ndcg-vllm` distribution,
+  the `rcp_ndcg_vllm` package, the `rcp-ndcg-vllm` console and the `vllm.general_plugins` entry point are renamed,
+  and the recipes declare `serve.plugin: rcp-vllm`. **The behaviour fingerprint moves for every recipe that
+  declares a plugin** (`serve.plugin` and the plugin's module names are inputs, `rcp-fp/4`), so the committed
+  observation corpora are stale and the record and equivalence waves re-run before the ledger is regenerated;
+  the goldens are regenerated here. The CHANGELOG's historical entries and the wave records keep the old names.
 
 ### Fixed
 

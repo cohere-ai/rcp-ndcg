@@ -77,7 +77,7 @@ nav:
           - "rcp.runners": reference/api/rcp.runners.md
           - "rcp.runs": reference/api/rcp.runs.md
           - "rcp.testing": reference/api/rcp.testing.md
-          - "rcp_ndcg_vllm.recipe": reference/api/rcp_ndcg_vllm.recipe.md
+          - "rcp_vllm.recipe": reference/api/rcp_vllm.recipe.md
 
 # Links to files outside docs/ (experiments/, the repository root) resolve on GitHub, not in the local preview.
 validation:

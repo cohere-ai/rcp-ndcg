@@ -13,7 +13,7 @@ at all.
 An import of the facade (``rcp``) resolves to the layer of the name it binds (``from rcp import
 storage`` is a storage import); a name the facade itself defines (``__version__``) resolves to the facade. A
 lazily imported module is exempt in the product tree: its cost is paid when it runs, not when its layer is
-imported -- which is why the serving package (``rcp_ndcg_vllm``), above the facade, is imported by the product
+imported -- which is why the serving package (``rcp_vllm``), above the facade, is imported by the product
 lazily and never eagerly.
 """
 
@@ -55,7 +55,7 @@ LAYERS: tuple[str, ...] = (
     "cli",
     "testing",
     "examples",
-    "rcp_ndcg_vllm",  # the serving package: above the facade, which may only import it lazily
+    "rcp_vllm",  # the serving package: above the facade, which may only import it lazily
 )
 
 _LAYER = {name: index for index, name in enumerate(LAYERS)}
@@ -105,8 +105,8 @@ def _targets_of_import(
         target = f"{module}.{name}" if module else name
         if target.startswith("rcp_core"):
             yield "rcp_core"
-        elif target == "rcp_ndcg_vllm" or target.startswith("rcp_ndcg_vllm."):
-            yield "rcp_ndcg_vllm"
+        elif target == "rcp_vllm" or target.startswith("rcp_vllm."):
+            yield "rcp_vllm"
         elif target == "rcp" or target.startswith("rcp."):
             rest = target[len("rcp") :].strip(".")
             top = rest.split(".")[0] if rest else ""

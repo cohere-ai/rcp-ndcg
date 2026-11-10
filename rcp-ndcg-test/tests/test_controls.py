@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 from rcp_ndcg_test.jobs.run_wave import run_wave
 from rcp_ndcg_test.observe.controls import CONTROLS, control_variants, controls_summary, right_cut_tokens
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 from tests.conftest import RECIPES, TOKENIZER, sample_pairs, write_pairs
 
@@ -156,7 +156,7 @@ TOPK = ("topk-io/topk-embed-v1-small", "e54485ebab921f2c18c4d092b3f4c40dcca26781
 
 
 def _shipped(recipe_id: str) -> Any:
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     return next(recipe for recipe in iter_recipes() if recipe.id == recipe_id)
 

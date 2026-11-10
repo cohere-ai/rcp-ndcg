@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from rcp_ndcg_vllm.recipe import default_recipes_root, iter_families, iter_recipes
+from rcp_vllm.recipe import default_recipes_root, iter_families, iter_recipes
 
 from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp.judging import JudgeConfig

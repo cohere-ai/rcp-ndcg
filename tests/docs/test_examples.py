@@ -25,8 +25,8 @@ PUBLIC = {
     "rcp.eval.mteb",
     "rcp.retrieval",
     "rcp.testing",
-    "rcp_ndcg_vllm",
-    "rcp_ndcg_vllm.recipe",
+    "rcp_vllm",
+    "rcp_vllm.recipe",
 }
 
 
@@ -54,7 +54,7 @@ def test_examples_are_short_and_use_only_the_public_surface(example: Path) -> No
             imported |= {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
-    prefixes = {"rcp", "rcp_core", "rcp_ndcg_vllm", "mteb"}
+    prefixes = {"rcp", "rcp_core", "rcp_vllm", "mteb"}
     ours = {name for name in imported if name.split(".")[0] in prefixes}
     assert ours <= PUBLIC
     assert all(name.split(".")[0] in sys.stdlib_module_names for name in imported - ours)
@@ -88,7 +88,7 @@ def test_network_examples_run(example: Path, tmp_path: Path, monkeypatch: pytest
     if example.name == "07_mteb.py":
         pytest.importorskip("mteb")
     if example.name == "09_serve_recipe_score.py":
-        pytest.importorskip("rcp_ndcg_vllm")
+        pytest.importorskip("rcp_vllm")
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
     monkeypatch.delenv("HF_HUB_CACHE", raising=False)
     result = _run(example, tmp_path)

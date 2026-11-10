@@ -2,7 +2,7 @@
 
 Stage 1 and stage 2 both talk to the engine through the product's role clients
 (:class:`~rcp.inference.clients.EmbeddingClient`, :class:`~rcp.inference.clients.PoolingClient`,
-:class:`~rcp.inference.clients.RerankClient`), built from :func:`~rcp_ndcg_vllm.recipe.client_config` with
+:class:`~rcp.inference.clients.RerankClient`), built from :func:`~rcp_vllm.recipe.client_config` with
 the recipe's real budget: the client prompts, fits and settles exactly as the served path does. The harness
 never re-derives a render, a cut or a settlement.
 
@@ -26,7 +26,7 @@ from typing import Any
 
 import httpx
 from rcp_core.content import TEXT_JOIN
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 from rcp_ndcg_test.stepwatch import StepBudgetExceeded, current_watch
@@ -48,7 +48,7 @@ def prompt_tokens(exchange: Mapping[str, Any]) -> int | None:
 
 
 _WIRE_PATCH: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextvars.ContextVar(
-    "rcp_ndcg_vllm_wire_patch", default=None
+    "rcp_vllm_wire_patch", default=None
 )
 
 
@@ -234,7 +234,7 @@ def recipe_config(
 ) -> Any:
     """The product's validated endpoint config the recipe's ``client`` block implies.
 
-    One home for the construction :func:`role_client` uses: :func:`~rcp_ndcg_vllm.recipe.client_config`'s
+    One home for the construction :func:`role_client` uses: :func:`~rcp_vllm.recipe.client_config`'s
     dict (the recipe's client block plus its identity and ``base_url``) with the recipe's resolved
     tokenizer, validated by the product's role endpoint model.  A caller that needs the recipe's declared
     media processing (its effective image and video policies) reads them off this config -- the same object
@@ -244,7 +244,7 @@ def recipe_config(
     (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.  ``served_model_name`` overrides the endpoint's
     ``model`` (the recipe's id) for an engine serving the recipe under another ``--served-model-name``.
     """
-    from rcp_ndcg_vllm.recipe import client_config
+    from rcp_vllm.recipe import client_config
 
     from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 
@@ -276,7 +276,7 @@ def role_client(
     needs one full-width pass, while the declaration (``mrl_kind``/``mrl_dims``/``mrl_range``) stays.
     ``served_model_name`` overrides the endpoint's ``model`` (the recipe's id) for an engine serving the
     recipe under another ``--served-model-name``.  Outputs: the client (its config is
-    :func:`~rcp_ndcg_vllm.recipe.client_config`'s, with the recipe's real
+    :func:`~rcp_vllm.recipe.client_config`'s, with the recipe's real
     budget -- prompts, text budget, ``query_max_tokens``, the reranker's settle-once) and the
     :class:`Capture` whose ``exchanges`` carry every request and reply, in order.
     """

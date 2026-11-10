@@ -1,5 +1,5 @@
 {
-  "schema": "rcp-ndcg-vllm.pairs-manifest.v1",
+  "schema": "rcp-vllm.pairs-manifest.v1",
   "schema_version": 1,
   "generator": {
     "module": "rcp_ndcg_test.observe.requests",

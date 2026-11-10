@@ -26425,7 +26425,7 @@
       }
     }
   },
-  "rcp_ndcg_vllm.recipe": {
+  "rcp_vllm.recipe": {
     "all": {
       "FIELD_ROLES": {
         "keys": [
@@ -26443,7 +26443,7 @@
       },
       "FieldSpec": {
         "bases": [],
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "init": [
           {
             "annotation": "RecipeFieldRole",
@@ -26503,7 +26503,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "extra": "forbid",
         "fields": {
           "client": {
@@ -26518,14 +26518,14 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg_vllm.recipe.EngineSpec"
+            "type": "rcp_vllm.recipe.EngineSpec"
           },
           "gates": {
             "alias": null,
             "default": "<factory Gates>",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.Gates"
+            "type": "rcp_vllm.recipe.Gates"
           },
           "id": {
             "alias": null,
@@ -26567,14 +26567,14 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec | None"
+            "type": "rcp_vllm.recipe.ReferenceSpec | None"
           },
           "resources": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg_vllm.recipe.Resources"
+            "type": "rcp_vllm.recipe.Resources"
           },
           "revision": {
             "alias": null,
@@ -26609,7 +26609,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg_vllm.recipe.ServeConfig"
+            "type": "rcp_vllm.recipe.ServeConfig"
           },
           "sources": {
             "alias": null,
@@ -26623,7 +26623,7 @@
             "default": "<factory StatusSpec>",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.StatusSpec"
+            "type": "rcp_vllm.recipe.StatusSpec"
           }
         },
         "frozen": true,
@@ -26657,7 +26657,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "extra": "forbid",
         "fields": {
           "client": {
@@ -26672,14 +26672,14 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg_vllm.recipe.EngineSpec"
+            "type": "rcp_vllm.recipe.EngineSpec"
           },
           "gates": {
             "alias": null,
             "default": "<factory Gates>",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.Gates"
+            "type": "rcp_vllm.recipe.Gates"
           },
           "id": {
             "alias": null,
@@ -26714,14 +26714,14 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.ReferenceSpec | None"
+            "type": "rcp_vllm.recipe.ReferenceSpec | None"
           },
           "resources": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg_vllm.recipe.Resources"
+            "type": "rcp_vllm.recipe.Resources"
           },
           "role": {
             "alias": null,
@@ -26749,7 +26749,7 @@
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "rcp_ndcg_vllm.recipe.ServeConfig"
+            "type": "rcp_vllm.recipe.ServeConfig"
           },
           "sources": {
             "alias": null,
@@ -26763,14 +26763,14 @@
             "default": "<factory StatusSpec>",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.StatusSpec"
+            "type": "rcp_vllm.recipe.StatusSpec"
           },
           "variants": {
             "alias": null,
             "default": "<required>",
             "frozen": false,
             "required": true,
-            "type": "list[rcp_ndcg_vllm.recipe.Variant]"
+            "type": "list[rcp_vllm.recipe.Variant]"
           }
         },
         "frozen": true,
@@ -26780,7 +26780,7 @@
         "bases": [
           "enum.StrEnum"
         ],
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "enum",
         "values": [
           "content",
@@ -26792,7 +26792,7 @@
         "bases": [
           "pydantic.main.BaseModel"
         ],
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "extra": "forbid",
         "fields": {
           "id": {
@@ -26828,7 +26828,7 @@
             "default": "<factory VariantOverrides>",
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.VariantOverrides"
+            "type": "rcp_vllm.recipe.VariantOverrides"
           },
           "revision": {
             "alias": null,
@@ -26849,14 +26849,14 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp_ndcg_vllm.recipe.StatusSpec | None"
+            "type": "rcp_vllm.recipe.StatusSpec | None"
           }
         },
         "frozen": true,
         "kind": "pydantic_model"
       },
       "deployment_fields": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26865,7 +26865,7 @@
         ]
       },
       "iter_families": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26880,7 +26880,7 @@
         ]
       },
       "iter_recipes": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26895,7 +26895,7 @@
         ]
       },
       "load_family": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26910,7 +26910,7 @@
         ]
       },
       "load_recipe": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26937,7 +26937,7 @@
         ]
       },
       "parse_deployment_overrides": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26952,7 +26952,7 @@
         ]
       },
       "plugin_distribution_name": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26967,7 +26967,7 @@
         ]
       },
       "recipe_digest": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -26982,7 +26982,7 @@
         ]
       },
       "resolve_recipe": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {
@@ -27003,7 +27003,7 @@
         ]
       },
       "serve_argv": {
-        "defined_in": "rcp_ndcg_vllm.recipe",
+        "defined_in": "rcp_vllm.recipe",
         "kind": "function",
         "signature": [
           {

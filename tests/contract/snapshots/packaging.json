@@ -49,14 +49,14 @@
       "entry_points": {},
       "scripts": {}
     },
-    "rcp-ndcg-vllm": {
+    "rcp-vllm": {
       "entry_points": {
         "vllm.general_plugins": [
-          "rcp-ndcg-vllm"
+          "rcp-vllm"
         ]
       },
       "scripts": {
-        "rcp-ndcg-vllm": "rcp_ndcg_vllm.serve:run_console"
+        "rcp-vllm": "rcp_vllm.serve:run_console"
       }
     }
   },
