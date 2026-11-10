@@ -131,9 +131,9 @@ exactly, and `publish-vllm` waits for both (it names no sibling: the lean packag
 version): the publish order is `core` -> `rcp-ndcg` ->
 `vllm`. The GitHub release attaches the constraints
 file. When `uv.lock` changes, regenerate the constraints file with `python .github/scripts/check_constraints.py
---write` (the export command is in its header). One-time setup (done): on pypi.org, add a trusted publisher to each
-project (a
-pending one before the first upload) with owner `cohere-ai`, repository `rcp-ndcg`, workflow `release.yml` and the
+--write` (the export command is in its header). One-time setup: on pypi.org, add a trusted publisher to each project (a
+pending one before the first upload; the `rcp-core` project is new after the rename, so it needs its pending
+publisher before the first `publish-core` run) with owner `cohere-ai`, repository `rcp-ndcg`, workflow `release.yml` and the
 environment from the table, and create each environment in the repository's settings. No secret is needed.
 
 The layout move added three release gates on top of `twine check`, each also run by CI's own jobs: a
