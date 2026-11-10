@@ -11784,6 +11784,13 @@
             "required": false,
             "type": "str"
           },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -12816,6 +12823,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['float16', 'float32']"
+          },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
           },
           "empty_doc": {
             "alias": null,
@@ -16603,6 +16617,13 @@
             "required": false,
             "type": "str"
           },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -17357,6 +17378,13 @@
             "required": false,
             "type": "str"
           },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -17756,6 +17784,13 @@
             "required": false,
             "type": "str"
           },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -18092,6 +18127,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['float16', 'float32']"
+          },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
           },
           "empty_doc": {
             "alias": null,
@@ -18701,6 +18743,13 @@
             "required": false,
             "type": "str"
           },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
+          },
           "empty_doc": {
             "alias": null,
             "default": "send",
@@ -19037,6 +19086,13 @@
             "frozen": false,
             "required": false,
             "type": "Literal['float16', 'float32']"
+          },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
           },
           "empty_doc": {
             "alias": null,
@@ -19627,6 +19683,13 @@
             "frozen": false,
             "required": false,
             "type": "str"
+          },
+          "embedding_types": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None"
           },
           "empty_doc": {
             "alias": null,
@@ -22633,6 +22696,13 @@
             "required": false,
             "type": "rcp.runs.manifest.DatasetRef | None"
           },
+          "datasets": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp.runs.manifest._DatasetEntry]"
+          },
           "families": {
             "alias": null,
             "default": "<factory dict>",
@@ -22653,6 +22723,20 @@
             "frozen": false,
             "required": false,
             "type": "dict[str, float]"
+          },
+          "path": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "str | None"
+          },
+          "rows": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "rcp.runs.manifest._Rows | None"
           },
           "run_id": {
             "alias": null,
@@ -22681,6 +22765,13 @@
             "frozen": false,
             "required": false,
             "type": "list[rcp.runs.manifest.StepRecord]"
+          },
+          "suites": {
+            "alias": null,
+            "default": "<factory list>",
+            "frozen": false,
+            "required": false,
+            "type": "list[rcp.runs.manifest._SuiteEntry]"
           },
           "updated_at": {
             "alias": null,

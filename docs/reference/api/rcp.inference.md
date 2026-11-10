@@ -163,6 +163,8 @@ class EmbeddingEndpoint(rcp.inference.config._MediaEndpoint)
 
 - `doc_prompt: str` = ''
 
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
+
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 
 - `empty_doc_text: str | None` = None
@@ -396,6 +398,8 @@ class PoolingEndpoint(rcp.inference.config.EmbeddingEndpoint)
 - `document_split_special_tokens: bool | None` = None
 
 - `embed_dtype: Literal['float16', 'float32']` = 'float16'
+
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
 
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 

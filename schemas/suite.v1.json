@@ -62,5 +62,5 @@
   ],
   "title": "SuiteSpec",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.suite.v1"
+  "x-rcp-schema": "rcp.suite.v1"
 }

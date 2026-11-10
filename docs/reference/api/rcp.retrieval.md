@@ -47,6 +47,8 @@ class CohereEmbedding(rcp.retrieval.config._ApiSelected, rcp.inference.config.Em
 
 - `doc_prompt: str` = ''
 
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
+
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 
 - `empty_doc_text: str | None` = None
@@ -259,6 +261,8 @@ class GeminiEmbedding(rcp.retrieval.config._ApiSelected, rcp.inference.config.Em
 
 - `doc_prompt: str` = ''
 
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
+
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 
 - `empty_doc_text: str | None` = None
@@ -393,6 +397,8 @@ class PluginEmbedding(rcp.retrieval.config._ApiSelected, rcp.inference.config.Em
 
 - `doc_prompt: str` = ''
 
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
+
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 
 - `empty_doc_text: str | None` = None
@@ -492,6 +498,8 @@ class PluginPooling(rcp.retrieval.config._ApiSelected, rcp.inference.config.Pool
 - `document_split_special_tokens: bool | None` = None
 
 - `embed_dtype: Literal['float16', 'float32']` = 'float16'
+
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
 
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 
@@ -701,6 +709,8 @@ class ServedEmbedding(rcp.retrieval.config._ApiSelected, rcp.inference.config.Em
 
 - `doc_prompt: str` = ''
 
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
+
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 
 - `empty_doc_text: str | None` = None
@@ -800,6 +810,8 @@ class ServedPooling(rcp.retrieval.config._ApiSelected, rcp.inference.config.Pool
 - `document_split_special_tokens: bool | None` = None
 
 - `embed_dtype: Literal['float16', 'float32']` = 'float16'
+
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
 
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 
@@ -976,6 +988,8 @@ class VoyageEmbedding(rcp.retrieval.config._ApiSelected, rcp.inference.config.Em
 - `dimensions: int | None` = None
 
 - `doc_prompt: str` = ''
+
+- `embedding_types: tuple[Literal['int8', 'uint8', 'binary'], Ellipsis] | None` = None
 
 - `empty_doc: Literal['omit_zero', 'omit_zero_blank', 'send', 'send_text']` = 'send'
 

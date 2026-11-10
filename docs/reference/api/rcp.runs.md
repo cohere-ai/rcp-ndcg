@@ -149,11 +149,17 @@ class RunManifest(pydantic.main.BaseModel)
 
 - `dataset: rcp.runs.manifest.DatasetRef | None` = None
 
+- `datasets: list[rcp.runs.manifest._DatasetEntry]` = '<factory list>'
+
 - `families: dict[str, rcp_core.schemas.JudgementFamily]` = '<factory dict>'
 
 - `layout: Literal['rcp-ndcg.run-layout.v1']` = 'rcp-ndcg.run-layout.v1'
 
 - `metrics: dict[str, float]` = '<factory dict>'
+
+- `path: str | None` = None
+
+- `rows: rcp.runs.manifest._Rows | None` = None
 
 - `run_id: str`
 
@@ -162,6 +168,8 @@ class RunManifest(pydantic.main.BaseModel)
 - `status: rcp.runs.manifest.RunStatus` = 'running'
 
 - `steps: list[rcp.runs.manifest.StepRecord]` = '<factory list>'
+
+- `suites: list[rcp.runs.manifest._SuiteEntry]` = '<factory list>'
 
 - `updated_at: datetime.datetime` = '<factory _now>'
 
