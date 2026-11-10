@@ -1688,7 +1688,9 @@ def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:
     """``anchor: mean`` has no anchor token, so the audit checks what a cut must keep: the declared fixed
     edges (the shape's head here) and at least one content token between them.  A body missing the head, or
     one whose cut emptied the content, fails -- the audit is not vacuous for the shipped mean-anchor
-    recipes (pplx-embed-v1, embeddinggemma-2, topk-embed-v1, pplx-embed-v2-late)."""
+    recipes (pplx-embed-v1, embeddinggemma-2, topk-embed-v1, pplx-embed-v2-late).  The generator's declared
+    empty row (``content:empty@document``, the empty string sent as given) is the one frame-alone body that
+    is recorded instead: it is still counted, its head still gates, and an UNDECLARED frame-alone body fails."""
     from rcp_ndcg_test.equivalence import stages as stages_module
     from rcp_ndcg_test.equivalence.fitting import tokenizer_of
 
@@ -1704,6 +1706,22 @@ def test_the_mean_anchor_audit_checks_the_content_and_the_fixed_edges() -> None:
     emptied = {"rows": [{"shapes": {"document": {"texts": ["doc: "]}}}]}
     check = stages_module._anchor_check(recipe, emptied, tokenizer)
     assert check["passed"] is False and check["failures"][0]["check"] == "mean_content"
+    # The planner's declared empty row (its own pairs-file stratum label) renders the frame alone on purpose:
+    # recorded, still counted, and only the content requirement waived -- its head still gates.
+    declared = {
+        "rows": [
+            {
+                "content_kinds": ["content:empty", "content:empty@document"],
+                "shapes": {"document": {"texts": ["doc: "]}},
+            }
+        ]
+    }
+    check = stages_module._anchor_check(recipe, declared, tokenizer)
+    assert check["passed"] is True and check["checked"] == 1, check["failures"]
+    assert check["declared_empty"] == [[0, "document"]]
+    declared["rows"][0]["shapes"]["document"]["texts"] = [""]
+    check = stages_module._anchor_check(recipe, declared, tokenizer)
+    assert check["passed"] is False and check["failures"][0]["check"] == "mean_head"
 
 
 def test_a_declined_zero_length_side_is_recorded_and_an_undeclared_one_still_gates() -> None:

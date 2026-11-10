@@ -649,8 +649,10 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
 
     A row the generator planned as the empty content kind (``content:empty@query`` / ``@document``, the pairs
     file's own stratum) sends the empty string as given, so its render is the frame alone: the audit records
-    the row and shape in ``declared_empty`` (``[[row, shape], ...]``) and waives the last-content-token
-    requirement for it alone -- its head and tail still gate, and an unlabelled frame-alone body still fails.
+    the row and shape in ``declared_empty`` (``[[row, shape], ...]``) and waives the content requirement for it
+    alone -- its head and tail still gate, and an unlabelled frame-alone body still fails.  The waiver is the
+    content requirement of whichever anchor reads one: ``last_content``'s last kept content token
+    (:func:`_audit_last_content`) and ``mean``'s at-least-one-content-token (:func:`_audit_mean`).
     """
     template = fitting.client_template(recipe)
     failures: list[dict[str, Any]] = []
@@ -686,7 +688,12 @@ def _anchor_check(recipe: Recipe, probe: dict[str, Any], tokenizer: Any) -> dict
                 )
                 continue
             if template is not None and template.anchor == "mean":
-                checked += _audit_mean(recipe, tokenizer, shape, shape_body["texts"], index, failures)
+                declared = _declared_empty_side(entry, shape)
+                if declared:
+                    declared_empty.append([index, shape])
+                checked += _audit_mean(
+                    recipe, tokenizer, shape, shape_body["texts"], index, failures, declared_empty=declared
+                )
                 continue
             at_start = template is not None and template.anchor == "first"
             split = fitting.split_special_tokens(recipe, shape)
@@ -934,6 +941,8 @@ def _audit_mean(
     bodies: list[Any],
     row_index: int,
     failures: list[dict[str, Any]],
+    *,
+    declared_empty: bool = False,
 ) -> int:
     """The ``anchor: mean`` audit of one shape's captured bodies: mean pooling reads every kept position, so
     there is no fixed anchor token to assert -- but a cut must still keep the content it cuts, and every fixed
@@ -943,6 +952,12 @@ def _audit_mean(
     open the ids when the shape declares a fixed head, the declared tail edge must close them when it declares
     a fixed tail, and at least one token must sit between the two edges and the post-processor's tokens -- the
     kept content.  An audit that checked nothing is a failure, exactly as the edge audits' is.
+
+    ``declared_empty`` is the caller's verdict that the row is the generator's empty content row (the empty
+    string sent as given, :func:`_declared_empty_side`), the same verdict :func:`_audit_last_content` takes:
+    that row's frame-alone render is the declared request, so the content requirement alone is waived there --
+    the head and the tail still gate, and the caller records the row in the report's ``declared_empty``.  An
+    undeclared frame-alone body still fails ``mean_content``.
     """
     template = fitting.client_template(recipe)
     assert template is not None  # the caller branches on the template's anchor
@@ -969,7 +984,9 @@ def _audit_mean(
         elif tail_ids and ids[len(ids) - len(tail_ids) :] != tail_ids:
             problem = "mean_tail"
         elif len(ids) - len(head_edge) - len(tail_ids) <= 0:
-            problem = "mean_content"
+            # The generator's declared empty row renders the frame alone on purpose (recorded by the caller);
+            # an undeclared body that lost its content is the failure this check exists for.
+            problem = None if declared_empty else "mean_content"
         if problem is not None:
             failures.append(
                 {
