@@ -873,9 +873,7 @@ def test_an_fps_clip_gates_on_the_rules_realised_frame_count(tmp_path: Path) -> 
     )
 
 
-def test_stage2_gates_a_media_side_on_its_own_declared_floor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stage2_gates_a_media_side_on_its_own_declared_floor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A recipe declaring ``gates.media_vec_min_cosine``: the sides whose input carries media gate on that
     floor and the text sides keep ``vec_min_cosine``, each reported as its own gate row -- so the declared
     media approximation's measured floor covers the media rows without loosening the text rows. The same

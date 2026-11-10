@@ -801,9 +801,7 @@ def _declared_empty_side(entry: dict[str, Any], shape: str) -> bool:
     return any(f"content:empty@{side}" in kinds for side in sides)
 
 
-def _declared_substitution_side(
-    recipe: Recipe, row: dict[str, Any], shape: str, text: Any, *, changed: bool
-) -> bool:
+def _declared_substitution_side(recipe: Recipe, row: dict[str, Any], shape: str, text: Any, *, changed: bool) -> bool:
     """Whether one side's stage-2 comparison is the reference's declared empty-input substitution.
 
     The generator's empty row sends the empty string as given -- the product's ``empty_doc`` is the DOCUMENT
@@ -1254,9 +1252,7 @@ def _render_check(
         # declared policy (the reference renders the raw span): record it and let it pass.  Everything else
         # gates, and so does a strip the row's own label does not declare.
         excused = [
-            mismatch
-            for mismatch in mismatches
-            if _declared_strip(recipe, probe_entry, mismatch, served_list, row)
+            mismatch for mismatch in mismatches if _declared_strip(recipe, probe_entry, mismatch, served_list, row)
         ]
         for mismatch in excused:
             declared_stripped.append([mismatch["index"], str(mismatch.get("span", shape))])
@@ -1265,9 +1261,7 @@ def _render_check(
         # generator's whitespace-only document is omitted whole, so the row ships no spans and the query's
         # empty placeholder and the missing document count are the omission's, not divergences.
         omitted = [
-            mismatch
-            for mismatch in mismatches
-            if _declared_blank(recipe, probe_entry, mismatch, served_list, row)
+            mismatch for mismatch in mismatches if _declared_blank(recipe, probe_entry, mismatch, served_list, row)
         ]
         for mismatch in omitted:
             declared_blank.append([mismatch["index"], str(mismatch.get("span", shape))])
@@ -3175,11 +3169,7 @@ def _vector_summary(
                 "passed": bool(media_worst >= media_bound),
                 "value": media_worst,
                 "bound": media_bound,
-                "referent": (
-                    f"{label} (media sides, full width)"
-                    if k is None
-                    else f"{label} (media sides) at k={k}"
-                ),
+                "referent": (f"{label} (media sides, full width)" if k is None else f"{label} (media sides) at k={k}"),
             }
         )
     values = [row["value"] for row in gate_rows if row["value"] is not None]
