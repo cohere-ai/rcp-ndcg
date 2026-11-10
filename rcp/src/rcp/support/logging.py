@@ -72,7 +72,7 @@ def configure_logging(
         The package's root logger.
     """
     logger = logging.getLogger(BASE_LOGGER_NAME)
-    for handler in [h for h in logger.handlers if getattr(h, "_rcp_ndcg", False)]:
+    for handler in [h for h in logger.handlers if getattr(h, "_rcp", False)]:
         logger.removeHandler(handler)
         handler.close()
     stderr_level = logging.getLevelName(level.upper()) if isinstance(level, str) else level
@@ -92,7 +92,7 @@ def configure_logging(
         file_handler.setFormatter(logging.Formatter(_FORMAT))
         handlers.append(file_handler)
     for handler in handlers:
-        handler._rcp_ndcg = True  # type: ignore[attr-defined]
+        handler._rcp = True  # type: ignore[attr-defined]
         logger.addHandler(handler)
     logger.setLevel(min(h.level for h in handlers))
     logger.propagate = False
