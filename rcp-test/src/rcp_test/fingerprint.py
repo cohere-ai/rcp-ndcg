@@ -272,7 +272,7 @@ def _canonical_plugin_module(module: str) -> str:
     raise HarnessError(
         f"the plugin module {module!r} is not under a package name the canonicalisation map knows "
         f"({_CANONICAL_PLUGIN_PACKAGE!r} or {', '.join(_PLUGIN_PACKAGE_ALIASES)}); add the distribution's new "
-        "package name to rcp_ndcg_test.fingerprint._PLUGIN_PACKAGE_ALIASES so the recorded fingerprints do not move"
+        "package name to rcp_test.fingerprint._PLUGIN_PACKAGE_ALIASES so the recorded fingerprints do not move"
     )
 
 

@@ -4,7 +4,7 @@ The plugin's pooler (:func:`rcp_vllm.models.pplx.pooling_core.pool_sequence`) an
 DOCUMENT row with one vector per chunk -- the segments between the ``<|chunk_sep|>`` boundary
 markers of the ``[D] ``-prefixed render -- and a QUERY row with one vector (the whole-sequence
 mean).  The rule lives here, free of vLLM and torch, because two callers read it: the pooler
-itself, and the observation corpus's acceptance check (``rcp_ndcg_test.observe.corpus``), which
+itself, and the observation corpus's acceptance check (``rcp_test.observe.corpus``), which
 expects the declared per-chunk count of every vector reply a per-chunk recipe records
 (:func:`chunk_count`).  One home: a change to the segmentation moves both.
 

@@ -51,9 +51,7 @@ def test_no_published_package_names_the_test_package() -> None:
                 "the unpublished test package"
             )
     constraints = _read(ROOT / "requirements-constraints.txt")
-    assert "rcp-test" not in constraints, (
-        "the constraints file installs on the node: the test package is not on PyPI"
-    )
+    assert "rcp-test" not in constraints, "the constraints file installs on the node: the test package is not on PyPI"
 
 
 def test_the_workspace_root_reaches_it() -> None:
