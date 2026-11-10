@@ -601,3 +601,65 @@ def test_a_directory_where_a_report_belongs_is_a_missing_input(tmp_path: Path) -
 
     assert result.exit_code == 4, result.output + result.stderr
     assert "no report at" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# the metric seam (RFC-0002 G2): --metric lists and scores a registered plugin
+# ---------------------------------------------------------------------------
+
+
+def test_eval_score_help_lists_the_registered_metric_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--metric``'s help is computed when it is printed, so an installed plugin is listed by name."""
+    from tests.eval._metrics import install_metrics, metric_entry
+
+    install_metrics(monkeypatch, metric_entry("map", "tests.eval._metrics:MeanAveragePrecision"))
+
+    result = CliRunner().invoke(eval_group, ["score", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--metric" in result.output
+    assert "Registered: rcp, qrel_ndcg, count_ndcg, map." in " ".join(result.output.split())
+
+
+def test_metric_scores_a_plugin_alongside_the_shipped_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--metric map`` adds the plugin to ``--metrics`` and its value is in the summary."""
+    from tests.eval._metrics import install_metrics, metric_entry
+
+    install_metrics(monkeypatch, metric_entry("map", "tests.eval._metrics:MeanAveragePrecision"))
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"],
+           "qrels": {"a": 1.0, "b": 0.0, "c": 1.0}}  # fmt: skip
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_scores({"q1": {"a": 3.0, "c": 2.0, "b": 1.0}}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
+        "--metrics", "qrel_ndcg", "--metric", "map", "--k", "2",
+    )  # fmt: skip
+
+    assert document["exit_code"] == 0, document
+    assert set(document["data"]["metrics"]) == {"qrel_ndcg", "map"}
+    assert _summary(document, "map", 2, "mine") == pytest.approx(1.0)
+
+
+def test_a_metric_given_twice_is_scored_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--metric qrel_ndcg`` alongside ``--metrics qrel_ndcg`` does not double the summary rows."""
+    from tests.eval._metrics import install_metrics
+
+    install_metrics(monkeypatch)
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b"], "docs": ["A", "B"],
+           "qrels": {"a": 1.0, "b": 0.0}}  # fmt: skip
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_scores({"q1": {"a": 1.0, "b": 0.0}}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
+        "--metrics", "qrel_ndcg", "--metric", "qrel_ndcg", "--k", "2",
+    )  # fmt: skip
+
+    assert document["exit_code"] == 0, document
+    assert document["data"]["metrics"] == ["qrel_ndcg"]
+    assert len([r for r in document["data"]["summary"] if r["metric"] == "qrel_ndcg"]) == 1

@@ -71,6 +71,10 @@ class EvalScoreRequest(BaseModel):
     metrics: list[ScoreMetric] = Field(
         default_factory=lambda: ["rcp", "qrel_ndcg"], description="Metrics to compute (repeatable)."
     )
+    metric: list[str] = Field(
+        default_factory=list,
+        description="A registered metric by name (repeatable), added to --metrics.",
+    )
     system: list[str] = Field(
         default_factory=list,
         description="Score only these systems (repeatable; default every system the rankings hold). Use it to "
@@ -126,6 +130,23 @@ class EvalScoreResult(BaseModel):
 
 
 _DEFAULT_FIELDS = ("protocol", "gains_source", "metrics", "k", "summary", "per_dataset", "warnings", "inputs", "out")
+
+
+class _MetricOption(click.Option):
+    """``--metric``'s help names the metrics registered when it is printed, a plugin included.
+
+    The command builder renders a request field's static description; a metric plugin is installed after the
+    command is built, so the registered names are read here, at help time, rather than frozen into the text.
+    """
+
+    def get_help_record(self, ctx: click.Context) -> tuple[str, str] | None:
+        record = super().get_help_record(ctx)
+        if record is None:
+            return None
+        options, text = record
+        from rcp.eval import registered_metrics
+
+        return options, f"{text} Registered: {', '.join(registered_metrics())}."
 
 
 def _data(request: EvalScoreRequest | ReportInputs) -> dict[str, Any]:
@@ -282,8 +303,9 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
     rankings = load_rankings(request.rankings)
     if request.system:
         _systems_are_known(rankings.systems, request.system, what="systems")
+    metrics = list(dict.fromkeys([*request.metrics, *request.metric]))
     count_gains = None
-    if "count_ndcg" in request.metrics:
+    if "count_ndcg" in metrics:
         if not request.judgements:
             raise UsageError(
                 "--metrics count_ndcg needs the rubric judgements its gains are derived from",
@@ -298,7 +320,7 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
         count_gains=count_gains,
         protocol=request.protocol,
         k=request.k,
-        metrics=request.metrics,
+        metrics=metrics,
         systems=request.system or None,
         bootstrap=request.bootstrap,
         seed=request.seed,
@@ -310,6 +332,23 @@ def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
         storage.write_text(request.out, report.to_json(indent=2))
     values = {name: getattr(report, name) for name in selected if name in EvalReport.model_fields}
     return EvalScoreResult(**values, out=request.out if "out" in selected else None)
+
+
+def _registered_metric_help(command: click.Command) -> None:
+    """Replace the built ``--metric`` option with one whose help reads the registry at print time."""
+    for index, parameter in enumerate(command.params):
+        if isinstance(parameter, click.Option) and "--metric" in parameter.opts:
+            command.params[index] = _MetricOption(
+                ["--metric", "metric"],
+                type=parameter.type,
+                required=parameter.required,
+                multiple=parameter.multiple,
+                default=parameter.default,
+                help=parameter.help,
+            )
+
+
+_registered_metric_help(eval_score)
 
 
 class EvalCompareRequest(BaseModel):

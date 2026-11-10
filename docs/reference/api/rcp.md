@@ -33,7 +33,7 @@ class Comparison(pydantic.main.BaseModel)
 
 - `k: int`
 
-- `metric: Literal['rcp', 'qrel_ndcg', 'count_ndcg']`
+- `metric: str`
 
 - `pairs: list[rcp.eval.compare.PairComparison]`
 
@@ -153,7 +153,7 @@ class EvalReport(pydantic.main.BaseModel)
 
 - `k: list[int]`
 
-- `metrics: list[Literal['rcp', 'qrel_ndcg', 'count_ndcg']]`
+- `metrics: list[str]`
 
 - `per_dataset: list[rcp.eval.evaluate.DatasetValue]`
 
@@ -568,7 +568,7 @@ calibrate(judgements: JudgementSet | Sequence[JudgementSet], *, mode: Mode = 'au
 function — Compare the systems of a report pairwise: delta (B minus A), the paired t-test (the paper's), bootstrap interval.
 
 ```text
-compare(report: EvalReport, *, baseline: str | None = None, metric: MetricName = 'rcp', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
+compare(report: EvalReport, *, baseline: str | None = None, metric: str = 'rcp', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
 ```
 
 ## `estimate`
@@ -584,7 +584,7 @@ estimate(dataset: Any, candidates: Mapping[str, Sequence[str]] | None, judge: Ju
 function — Score rankings with RCP-nDCG, qrel-nDCG and Count-nDCG under a scoring protocol.
 
 ```text
-evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[MetricName] = ['rcp', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
+evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[str] = ['rcp', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
 ```
 
 ## `fuse`

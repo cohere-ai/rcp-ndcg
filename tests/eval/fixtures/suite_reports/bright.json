@@ -1,0 +1,95 @@
+{
+  "schema": "rcp-ndcg.eval-report.v1",
+  "protocol": {
+    "name": "bright",
+    "ties": "group_mean",
+    "qrel_gain": "linear",
+    "restrict_to_candidates": false,
+    "drop_identical_ids": false,
+    "round_digits": 5
+  },
+  "gains_source": "dataset",
+  "metrics": [
+    "rcp",
+    "qrel_ndcg"
+  ],
+  "k": [
+    10
+  ],
+  "per_query": [
+    {
+      "system": "system",
+      "dataset": "bright",
+      "query_id": "aops_1959_IMO_Problems/Problem_1",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.7371144922902809
+    },
+    {
+      "system": "system",
+      "dataset": "bright",
+      "query_id": "TheoremQA_jianyu_xu/Cayley_3.json",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.943098363224884
+    },
+    {
+      "system": "system",
+      "dataset": "bright",
+      "query_id": "aops_1959_IMO_Problems/Problem_1",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.41443
+    },
+    {
+      "system": "system",
+      "dataset": "bright",
+      "query_id": "TheoremQA_jianyu_xu/Cayley_3.json",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 1.0
+    }
+  ],
+  "per_dataset": [
+    {
+      "system": "system",
+      "dataset": "bright",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.8401064277575825,
+      "num_queries": 2
+    },
+    {
+      "system": "system",
+      "dataset": "bright",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.707215,
+      "num_queries": 2
+    }
+  ],
+  "summary": [
+    {
+      "system": "system",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.8401064277575825,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 2,
+      "num_datasets": 1
+    },
+    {
+      "system": "system",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.707215,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 2,
+      "num_datasets": 1
+    }
+  ],
+  "warnings": [],
+  "inputs": null
+}

@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_core.protocol import MetricName
 
 from rcp.errors import ConfigError, DataError
 from rcp.eval.evaluate import (
@@ -90,7 +89,7 @@ class Comparison(BaseModel):
     schema_name: Literal["rcp.comparison.v1", "rcp-ndcg.comparison.v1"] = Field(
         default="rcp.comparison.v1", alias="schema"
     )
-    metric: MetricName
+    metric: str
     k: int
     alpha: float
     baseline: str | None
@@ -124,7 +123,7 @@ def compare(
     report: EvalReport,
     *,
     baseline: str | None = None,
-    metric: MetricName = "rcp",
+    metric: str = "rcp",
     k: int | None = None,
     alpha: float = 0.05,
     bootstrap: int = 10_000,
@@ -154,7 +153,7 @@ def compare(
         DataError: Fewer than two systems to compare, or a ``(metric, k)`` the report never computed (the
             error names the cutoffs it has).
     """
-    k = _one_k(report, k)
+    k = _one_k(report, k, metric=metric)
     values = _values(report, metric, k)
     compared = report.systems
     if systems is not None:
@@ -199,7 +198,7 @@ def compare(
     )
 
 
-def sensitivity(report: EvalReport, *, metric: MetricName = "rcp", k: int | None = None, alpha: float = 0.05) -> float:
+def sensitivity(report: EvalReport, *, metric: str = "rcp", k: int | None = None, alpha: float = 0.05) -> float:
     """How often a metric separates systems, the paper's sensitivity (appendix B).
 
     Per dataset, the share of all system pairs whose paired t-test over their shared queries has ``p < alpha`` (a
@@ -219,7 +218,7 @@ def sensitivity(report: EvalReport, *, metric: MetricName = "rcp", k: int | None
         DataError: fewer than two systems, no dataset where a pair shares two queries, or a ``(metric, k)``
             the report never computed (the error names the cutoffs it has).
     """
-    k = _one_k(report, k)
+    k = _one_k(report, k, metric=metric)
     values = _values(report, metric, k)
     pairs = list(itertools.combinations(report.systems, 2))
     if not pairs:
