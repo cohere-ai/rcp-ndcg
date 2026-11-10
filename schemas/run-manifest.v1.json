@@ -614,6 +614,135 @@
       },
       "title": "Usage",
       "type": "object"
+    },
+    "_DatasetEntry": {
+      "additionalProperties": false,
+      "description": "One dataset a run read: the DatasetRef provenance plus the reader's slice and its visibility.",
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "description": "The reader arguments that selected the slice (the options passed to load_dataset); ``{}`` when none were recorded.",
+          "title": "Args",
+          "type": "object"
+        },
+        "internal": {
+          "default": false,
+          "description": "Whether the source is internal to the producer (not for publication), or ``False``.",
+          "title": "Internal",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "The dataset name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "revisions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``{source URI: {\"repo\", \"commit\", \"verified\"}}`` of the Hub sources, or ``None``.",
+          "title": "Revisions"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source split the labels were read at, or ``None``.",
+          "title": "Split"
+        },
+        "subset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source subset the data was read for (mteb's ``hf_subset``), or ``None``.",
+          "title": "Subset"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The mteb task the dataset realises, or ``None``.",
+          "title": "Task"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "_DatasetEntry",
+      "type": "object"
+    },
+    "_Rows": {
+      "additionalProperties": false,
+      "description": "The downstream row schema a run's exported rows are written as.",
+      "properties": {
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The row schema's name, a free string the package never interprets, or ``None``.",
+          "title": "Schema"
+        }
+      },
+      "title": "_Rows",
+      "type": "object"
+    },
+    "_SuiteEntry": {
+      "additionalProperties": false,
+      "description": "A suite a run read and the entries of it the run used.",
+      "properties": {
+        "entries": {
+          "description": "The suite entries the run evaluated; empty when the suite ran whole or the entries were not recorded.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "name": {
+          "description": "The suite's name (the ``suite:<name>`` it was loaded by, or the directory's name).",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "_SuiteEntry",
+      "type": "object"
     }
   },
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-manifest.v1.json",
@@ -645,6 +774,14 @@
       ],
       "default": null
     },
+    "datasets": {
+      "description": "The datasets the run read, with the reader arguments that selected each slice and whether the source is internal; empty when the producer recorded none. ``dataset`` remains the primary dataset.",
+      "items": {
+        "$ref": "#/$defs/_DatasetEntry"
+      },
+      "title": "Datasets",
+      "type": "array"
+    },
     "families": {
       "additionalProperties": {
         "$ref": "#/$defs/JudgementFamily"
@@ -665,6 +802,31 @@
       "title": "Metrics",
       "type": "object"
     },
+    "path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The run directory this manifest was last written in, or ``None`` in a manifest written before the field existed. The artifact paths in ``steps`` are relative to it.",
+      "title": "Path"
+    },
+    "rows": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/_Rows"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The downstream row schema the run's rows were written as, or ``None``."
+    },
     "run_id": {
       "title": "Run Id",
       "type": "string"
@@ -684,6 +846,14 @@
         "$ref": "#/$defs/StepRecord"
       },
       "title": "Steps",
+      "type": "array"
+    },
+    "suites": {
+      "description": "The suites the run read and the entries of each it used; empty when none were recorded.",
+      "items": {
+        "$ref": "#/$defs/_SuiteEntry"
+      },
+      "title": "Suites",
       "type": "array"
     },
     "updated_at": {
