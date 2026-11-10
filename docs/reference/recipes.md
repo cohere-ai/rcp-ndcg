@@ -30,9 +30,10 @@ lives in `rcp_ndcg_vllm.errors` and is re-exported from the package root).
 names every family's variants with their model, role, input, Matryoshka head, plugin, reference and status.
 
 Every family pins the stock engine image in its `engine` block (`vllm/vllm-openai:v0.33.0`, `min_version`
-`0.33.0`), and every variant's `status` reads `unverified` today: the engine image is one of the behaviour
-fingerprint's inputs, so no recipe's recorded evidence counts for the pinned image until a wave re-records
-its corpus there (the [GPU validation ledger](../reference/gpu-validation.md) states the obligation). A
+`0.33.0`), and every variant's `status` reads `verified` except the two owner-disposed `topk-embed-v1`
+variants, which read `failed`: the engine image is one of the behaviour fingerprint's inputs, so no recipe's
+recorded evidence counts for the pinned image until a wave re-records its corpus there, and every row names
+the wave that did (the [GPU validation ledger](../reference/gpu-validation.md) is that record). A
 `status` block keeps the `image`, `date` and `report` of the wave it names, and `verified` is only ever
 written beside the image the recipe pins. The two `topk-embed-v1` variants are the catalog's recorded gate
 failure (the stage-2 per-token cosine floor): their state returns to `failed` only from a wave that re-runs

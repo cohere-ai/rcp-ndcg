@@ -35,7 +35,9 @@ def test_the_gate_override_doctrine_matches_the_loader(recipe_id: str) -> None:
     bullet = paragraph(PAGE.read_text(encoding="utf-8"), "**A measured bound.**")
     assert "never loosen" not in bullet, "the loader replaces in either direction; it has no tighten-only rule"
     assert "replaces" in bullet
-    assert resolve_recipe(recipe_id).gates.vec_min_cosine == 0.978  # the shipped override replaces the default
+    # The 9b's own rc10 corpus derives its floor (0.9704627687 - 2.94e-2 = 0.9410, W40): the shipped override
+    # replaces the family default, which is the loader rule the page states.
+    assert resolve_recipe(recipe_id).gates.vec_min_cosine == 0.941
 
 
 def test_the_late_interaction_wire_matches_the_recipes() -> None:

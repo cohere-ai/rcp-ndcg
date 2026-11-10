@@ -22,10 +22,9 @@ ran against the fingerprint the tree computes today.
 The pin moved every recipe's `engine.image` to `vllm/vllm-openai:v0.33.0`. The engine image is one of the
 fingerprint's inputs, so every key moved, and **every corpus is recorded again on the 0.33 image (and every
 judge recipe probed again) before any recipe returns to `verified`**. The rows below are that re-record's
-record: 33 are the 0.33 waves' own (rc2, rc3 and rc4), 2 are the owner-disposed `topk-embed-v1` variants'
-gate wave, and 9 read `unverified` with `—` for the wave and the date because no wave has landed for them
-yet — a row never claims a wave that did not run, and it is regenerated from the wave that ran, never
-relabelled with a key the wave did not record. A recipe is `verified` only beside the image it pins.
+record: 42 are the 0.33 waves' own (rc2 through rc10), 2 are the owner-disposed `topk-embed-v1` variants'
+gate wave, and no row reads `unverified` — a row never claims a wave that did not run, and it is regenerated
+from the wave that ran, never relabelled with a key the wave did not record. A recipe is `verified` only beside the image it pins.
 
 A row's key is derived at the **wave's RC commit** — the commit every wave summary records — by checking
 that commit's tree out of this repository and running its own behaviour fingerprint there; the row is
@@ -55,25 +54,25 @@ disposition.
 | `harrier-oss-v1-270m` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `4bddf11cc828…` | verified |
 | `harrier-oss-v1-0.6b` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `63fe92dfa36d…` | verified |
 | `harrier-oss-v1-27b` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `1770d38c8ccb…` | verified |
-| `jina-embeddings-v5-text-nano` | embed | `vllm/vllm-openai:v0.33.0` | — | — | `d7a5ffc910b3…` | unverified |
+| `jina-embeddings-v5-text-nano` | embed | `vllm/vllm-openai:v0.33.0` | `rc6` | 2026-11-09 | `d7a5ffc910b3…` | verified |
 | `jina-embeddings-v5-text-small` | embed | `vllm/vllm-openai:v0.33.0` | `rc3` | 2026-11-09 | `ce3a71ba2a6d…` | verified |
 | `jina-reranker-v3` | rerank | `vllm/vllm-openai:v0.33.0` | `rc4` | 2026-11-09 | `02a5ddbe3c2e…` | verified |
 | `octen-embedding-0.6b` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `44f36e3a7e5f…` | verified |
 | `octen-embedding-4b` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `d6798d317a36…` | verified |
 | `octen-embedding-8b` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `03027d8b6e67…` | verified |
-| `pplx-embed-v1-0.6b` | embed | `vllm/vllm-openai:v0.33.0` | — | — | `e488235f2240…` | unverified |
-| `pplx-embed-v1-4b` | embed | `vllm/vllm-openai:v0.33.0` | — | — | `a20543637c05…` | unverified |
+| `pplx-embed-v1-0.6b` | embed | `vllm/vllm-openai:v0.33.0` | `rc8` | 2026-11-10 | `e488235f2240…` | verified |
+| `pplx-embed-v1-4b` | embed | `vllm/vllm-openai:v0.33.0` | `rc8` | 2026-11-10 | `a20543637c05…` | verified |
 | `pplx-embed-v2-context-9b-preview` | multi_vector | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `a00142136e43…` | verified |
-| `pplx-embed-v2-late-0.6b` | multi_vector | `vllm/vllm-openai:v0.33.0` | — | — | `14280b0d0a29…` | unverified |
-| `pplx-embed-v2-late-9b` | multi_vector | `vllm/vllm-openai:v0.33.0` | — | — | `fef737c045cb…` | unverified |
-| `qwen3-embedding-0.6b` | embed | `vllm/vllm-openai:v0.33.0` | — | — | `6063d7cd725e…` | unverified |
-| `qwen3-embedding-4b` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `a511a15e7b8d…` | verified |
-| `qwen3-embedding-8b` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `09e160550790…` | verified |
+| `pplx-embed-v2-late-0.6b` | multi_vector | `vllm/vllm-openai:v0.33.0` | `rc10` | 2026-11-10 | `14280b0d0a29…` | verified |
+| `pplx-embed-v2-late-9b` | multi_vector | `vllm/vllm-openai:v0.33.0` | `rc10` | 2026-11-10 | `fef737c045cb…` | verified |
+| `qwen3-embedding-0.6b` | embed | `vllm/vllm-openai:v0.33.0` | `rc5` | 2026-11-09 | `6063d7cd725e…` | verified |
+| `qwen3-embedding-4b` | embed | `vllm/vllm-openai:v0.33.0` | `rc6` | 2026-11-09 | `a511a15e7b8d…` | verified |
+| `qwen3-embedding-8b` | embed | `vllm/vllm-openai:v0.33.0` | `rc6` | 2026-11-09 | `09e160550790…` | verified |
 | `qwen3-reranker-0.6b` | rerank | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `9b165ceb168f…` | verified |
 | `qwen3-reranker-4b` | rerank | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `2ce04f46bfcd…` | verified |
 | `qwen3-reranker-8b` | rerank | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `f864df1ba669…` | verified |
-| `qwen3-vl-embedding-2b` | embed | `vllm/vllm-openai:v0.33.0` | — | — | `2a708ab3ba3f…` | unverified |
-| `qwen3-vl-embedding-8b` | embed | `vllm/vllm-openai:v0.33.0` | — | — | `336f3b423f7b…` | unverified |
+| `qwen3-vl-embedding-2b` | embed | `vllm/vllm-openai:v0.33.0` | `rc5` | 2026-11-09 | `2a708ab3ba3f…` | verified |
+| `qwen3-vl-embedding-8b` | embed | `vllm/vllm-openai:v0.33.0` | `rc6` | 2026-11-09 | `336f3b423f7b…` | verified |
 | `qwen3-vl-reranker-2b` | rerank | `vllm/vllm-openai:v0.33.0` | `rc3` | 2026-11-09 | `970db80eafdd…` | verified |
 | `qwen3-vl-reranker-8b` | rerank | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `34178ed7e8f8…` | verified |
 | `qwen3.5-397b-a17b-nvfp4` | judge | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `a74c53fda840…` | verified |
@@ -84,7 +83,7 @@ disposition.
 | `topk-embed-v1-xsmall` | multi_vector | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `fa00268b7a95…` | failed |
 | `topk-embed-v1-small` | multi_vector | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `54fadf9869a1…` | failed |
 | `zembed-1-embedding` | embed | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `1909add9dbf7…` | verified |
-| `zerank-1-reranker` | rerank | `vllm/vllm-openai:v0.33.0` | — | — | `d2df9d554c4b…` | unverified |
+| `zerank-1-reranker` | rerank | `vllm/vllm-openai:v0.33.0` | `rc6` | 2026-11-09 | `d2df9d554c4b…` | verified |
 | `zerank-1-small-reranker` | rerank | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `837099ca3304…` | verified |
 | `zerank-2-reranker` | rerank | `vllm/vllm-openai:v0.33.0` | `rc2` | 2026-11-09 | `1bb045f2f8f1…` | verified |
 

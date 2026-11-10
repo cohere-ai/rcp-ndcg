@@ -190,10 +190,10 @@ notes: >
 variants:
   - id: qwen3-embedding-0.6b
     status:
-      state: unverified
-      image: "vllm/vllm-openai:v0.31.0"
-      date: "2026-10-12"
-      report: "docs/reference/gpu-validation.md"
+      state: verified
+      image: "vllm/vllm-openai:v0.33.0"
+      date: "2026-11-09"
+      report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/record-qwen3-embedding/vllm-vllm-openai-v0-33-0/"
     model: Qwen/Qwen3-Embedding-0.6B
     revision: "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     overrides:

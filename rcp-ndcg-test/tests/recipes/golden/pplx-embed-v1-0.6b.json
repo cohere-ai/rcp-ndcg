@@ -189,10 +189,10 @@
    "https://huggingface.co/perplexity-ai/pplx-embed-v1-0.6b @ 2c4d510dd4a732063c31a0f70193e35067b51fd8 (the card at the pinned revision; config.json; 1_Pooling/config.json; model.safetensors header)"
   ],
   "status": {
-   "date": "2026-10-14",
-   "image": "vllm/vllm-openai:v0.31.0",
-   "report": "docs/reference/gpu-validation.md",
-   "state": "unverified"
+   "date": "2026-11-10",
+   "image": "vllm/vllm-openai:v0.33.0",
+   "report": "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-pplx-embed-v1/vllm-vllm-openai-v0-33-0/",
+   "state": "verified"
   }
  },
  "serve_argv": [

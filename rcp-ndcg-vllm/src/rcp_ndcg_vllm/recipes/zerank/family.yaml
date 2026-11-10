@@ -97,10 +97,10 @@ status:
 variants:
   - id: zerank-1-reranker
     status:
-      state: unverified
-      image: "vllm/vllm-openai:v0.31.0"
-      date: "2026-10-14"
-      report: "docs/reference/gpu-validation.md"
+      state: verified
+      image: "vllm/vllm-openai:v0.33.0"
+      date: "2026-11-09"
+      report: "gs://YOUR-BUCKET/rcp-ndcg-rfc/waves/equivalence-zerank/vllm-vllm-openai-v0-33-0/"
     model: zeroentropy/zerank-1-reranker
     revision: "d03c467e29e29c0a16a130a86ce3b62d30116a2c"
     notes: |-

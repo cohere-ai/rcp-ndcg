@@ -245,7 +245,11 @@ def test_recipe_contract_pins_every_field(variant_id: str) -> None:
     assert recipe.serve.max_model_len >= recipe.client.get("max_tokens")  # the engine must not 400 the budget
     assert (FAMILY_DIR / "reference.lock").is_file()  # the family's one environment (decision 35)
     assert (FAMILY_DIR / "reference.py").is_file()
-    assert recipe.status.state == "unverified"  # no wave has landed for this family yet (W13's ledger row)
+    # The rc8 equivalence wave verified both sizes on the pin (W37/W38's declared empty row), so the block
+    # is the ledger's row: the wave, the pinned image it ran on and the date.
+    assert recipe.status.state == "verified" and recipe.status.image == recipe.engine.image
+    assert recipe.status.date == "2026-11-10"
+    assert "/waves/equivalence-pplx-embed-v1/" in recipe.status.report
     assert recipe.sources
 
 

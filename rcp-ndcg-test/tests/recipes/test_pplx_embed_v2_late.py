@@ -437,7 +437,11 @@ def test_recipe_contract(variant_id: str) -> None:
     _contract(recipe, variant_id)
     assert recipe.engine.model_dump(mode="json") == _expected_engine()
     assert recipe.resources.model_dump(mode="json") == _expected_resources()
-    assert recipe.status.state == "unverified"  # no wave has landed for this family yet (W13's ledger row)
+    # The rc10 equivalence wave verified both sizes on the pin (W39's mean anchor, W40's 0.9410 floor), so
+    # the block is the ledger's row: the wave, the pinned image it ran on and the date.
+    assert recipe.status.state == "verified" and recipe.status.image == recipe.engine.image
+    assert recipe.status.date == "2026-11-10"
+    assert "/waves/equivalence-pplx-embed-v2-late/" in recipe.status.report
     assert recipe.sources
 
 

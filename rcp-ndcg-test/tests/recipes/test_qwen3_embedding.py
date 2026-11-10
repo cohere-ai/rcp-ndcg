@@ -185,9 +185,12 @@ def test_the_recipe_loads_and_declares_the_served_path(variant_id: str) -> None:
     assert recipe.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert recipe.reference.kind == "transformers" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]
-    # The 4b and 8b are the rc2 equivalence wave's; the 0.6b's rc4 recording wave failed the MRL-32 floor
-    # (W33 re-derived it to 0.9984) and its re-run is queued, so its row claims nothing yet.
-    assert recipe.status.state == ("unverified" if variant_id == "qwen3-embedding-0.6b" else "verified")
+    # The 0.6b's recording wave and the 4b/8b's equivalence wave verified every size on the pin (W33's
+    # 0.9984 floor), so the block is the ledger's row: the wave, the pinned image it ran on and the date.
+    wave = "record" if variant_id == "qwen3-embedding-0.6b" else "equivalence"
+    assert recipe.status.state == "verified" and recipe.status.image == recipe.engine.image
+    assert recipe.status.date == "2026-11-09"
+    assert f"/waves/{wave}-qwen3-embedding/" in recipe.status.report
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
     assert argv[:3] == ["vllm", "serve", facts["model"]]
     assert argv[argv.index("--revision") + 1] == facts["revision"]

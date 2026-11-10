@@ -87,25 +87,25 @@ variants).
 | `harrier-oss-v1` | `harrier-oss-v1-270m` | microsoft/harrier-oss-v1-270m | embed | text | none | the rcp-ndcg-vllm plugin | card | verified |
 | `harrier-oss-v1` | `harrier-oss-v1-0.6b` | microsoft/harrier-oss-v1-0.6b | embed | text | none | the rcp-ndcg-vllm plugin | card | verified |
 | `harrier-oss-v1` | `harrier-oss-v1-27b` | microsoft/harrier-oss-v1-27b | embed | text | none | the rcp-ndcg-vllm plugin | card | verified |
-| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | truncation 32/64/128/256/512/768 | the rcp-ndcg-vllm plugin | card | unverified |
+| `jina-embeddings-v5-text` | `jina-embeddings-v5-text-nano` | jinaai/jina-embeddings-v5-text-nano | embed | text | truncation 32/64/128/256/512/768 | the rcp-ndcg-vllm plugin | card | verified |
 | `jina-embeddings-v5-text` | `jina-embeddings-v5-text-small` | jinaai/jina-embeddings-v5-text-small | embed | text | truncation 32/64/128/256/512/768/1024 | the rcp-ndcg-vllm plugin | card | verified |
 | `jina-reranker-v3` | `jina-reranker-v3` | jinaai/jina-reranker-v3 | rerank | text | — | — | paper | verified |
 | `octen-embedding` | `octen-embedding-0.6b` | Octen/Octen-Embedding-0.6B | embed | text | none | — | paper | verified |
 | `octen-embedding` | `octen-embedding-4b` | Octen/Octen-Embedding-4B | embed | text | none | — | paper | verified |
 | `octen-embedding` | `octen-embedding-8b` | Octen/Octen-Embedding-8B | embed | text | none | — | paper | verified |
-| `pplx-embed-v1` | `pplx-embed-v1-0.6b` | perplexity-ai/pplx-embed-v1-0.6b | embed | text | none | the pplx model plugin | card | unverified |
-| `pplx-embed-v1` | `pplx-embed-v1-4b` | perplexity-ai/pplx-embed-v1-4b | embed | text | none | the pplx model plugin | card | unverified |
+| `pplx-embed-v1` | `pplx-embed-v1-0.6b` | perplexity-ai/pplx-embed-v1-0.6b | embed | text | none | the pplx model plugin | card | verified |
+| `pplx-embed-v1` | `pplx-embed-v1-4b` | perplexity-ai/pplx-embed-v1-4b | embed | text | none | the pplx model plugin | card | verified |
 | `pplx-embed-v2-context` | `pplx-embed-v2-context-9b-preview` | perplexity-ai/pplx-embed-v2-context-9b-preview | multi_vector | text | truncation 1024/2048 | the pplx model plugin | card | verified |
-| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | perplexity-ai/pplx-embed-v2-late-0.6b | multi_vector | text, image | none | the pplx model plugin | card | unverified |
-| `pplx-embed-v2-late` | `pplx-embed-v2-late-9b` | perplexity-ai/pplx-embed-v2-late-9b | multi_vector | text, image | none | the pplx model plugin | card | unverified |
-| `qwen3-embedding` | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | truncation 32-1024 | — | card | unverified |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-0.6b` | perplexity-ai/pplx-embed-v2-late-0.6b | multi_vector | text, image | none | the pplx model plugin | card | verified |
+| `pplx-embed-v2-late` | `pplx-embed-v2-late-9b` | perplexity-ai/pplx-embed-v2-late-9b | multi_vector | text, image | none | the pplx model plugin | card | verified |
+| `qwen3-embedding` | `qwen3-embedding-0.6b` | Qwen/Qwen3-Embedding-0.6B | embed | text | truncation 32-1024 | — | card | verified |
 | `qwen3-embedding` | `qwen3-embedding-4b` | Qwen/Qwen3-Embedding-4B | embed | text | truncation 32-2560 | — | card | verified |
 | `qwen3-embedding` | `qwen3-embedding-8b` | Qwen/Qwen3-Embedding-8B | embed | text | truncation 32-4096 | — | card | verified |
 | `qwen3-reranker` | `qwen3-reranker-0.6b` | Qwen/Qwen3-Reranker-0.6B | rerank | text | — | — | paper | verified |
 | `qwen3-reranker` | `qwen3-reranker-4b` | Qwen/Qwen3-Reranker-4B | rerank | text | — | — | paper | verified |
 | `qwen3-reranker` | `qwen3-reranker-8b` | Qwen/Qwen3-Reranker-8B | rerank | text | — | — | paper | verified |
-| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | truncation 64-2048 | — | card | unverified |
-| `qwen3-vl-embedding` | `qwen3-vl-embedding-8b` | Qwen/Qwen3-VL-Embedding-8B | embed | text, image, video | truncation 64-4096 | — | card | unverified |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-2b` | Qwen/Qwen3-VL-Embedding-2B | embed | text, image, video | truncation 64-2048 | — | card | verified |
+| `qwen3-vl-embedding` | `qwen3-vl-embedding-8b` | Qwen/Qwen3-VL-Embedding-8B | embed | text, image, video | truncation 64-4096 | — | card | verified |
 | `qwen3-vl-reranker` | `qwen3-vl-reranker-2b` | Qwen/Qwen3-VL-Reranker-2B | rerank | text, image | — | — | card | verified |
 | `qwen3-vl-reranker` | `qwen3-vl-reranker-8b` | Qwen/Qwen3-VL-Reranker-8B | rerank | text, image | — | — | card | verified |
 | `qwen3.5-397b` | `qwen3.5-397b-a17b-nvfp4` | nvidia/Qwen3.5-397B-A17B-NVFP4 | judge | text, image | — | — | — | verified |
@@ -116,7 +116,7 @@ variants).
 | `topk-embed-v1` | `topk-embed-v1-xsmall` | topk-io/topk-embed-v1-xsmall | multi_vector | text, image | truncation 64/128/256/512/1024 | the topk model plugin | card | failed |
 | `topk-embed-v1` | `topk-embed-v1-small` | topk-io/topk-embed-v1-small | multi_vector | text, image | truncation 64/128/256/512/1024/2048 | the topk model plugin | card | failed |
 | `zembed-1` | `zembed-1-embedding` | zeroentropy/zembed-1-embedding | embed | text | projection 1280/640/320/160/80/40 | the rcp-ndcg-vllm plugin | card | verified |
-| `zerank` | `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | — | paper | unverified |
+| `zerank` | `zerank-1-reranker` | zeroentropy/zerank-1-reranker | rerank | text | — | — | paper | verified |
 | `zerank` | `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | — | paper | verified |
 | `zerank` | `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | — | paper | verified |
 
