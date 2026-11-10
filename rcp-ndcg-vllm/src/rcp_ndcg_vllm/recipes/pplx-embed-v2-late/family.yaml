@@ -512,15 +512,24 @@ notes: |
   text and image documents of one row ride separate encode calls (the card's own usage) -- so stage 2
   gates the media rows' per-token vectors like the text rows'. The media stage still gates placement,
   geometry and tokens.
-  Precision bounds (the E2 r3 wave, stage 2): the reference runs the checkpoint's own fp32 (the card's
-  MultiVectorEncoder passes no dtype override) while the engine serves bf16, so stage 2's per-token
-  cosine gate quantifies the cast. Measured served-vs-reference minimum cosine per variant: 0.6b
-  0.999940 on the text rows and 0.99060 on the image-patch rows; 9b 0.999906 on the text rows and
-  0.97863 on the image-patch rows (every row's vector count and the document skip rule agree on both
-  sides; the worst vectors sit inside the long image renders). The text rows alone would clear the
-  published 0.999 floor; the image-patch vectors are the reason for the declared bound, so each
-  variant declares its measured floor in overrides.gates.vec_min_cosine (0.6b 0.99, 9b 0.978). Every
-  bound is declared with that measured evidence, never defaulted; E2's re-run measures them again.
+  Precision bounds (the E2 r3 wave and the rc9 re-measurement, stage 2): the reference runs the
+  checkpoint's own fp32 (the card's MultiVectorEncoder passes no dtype override) while the engine
+  serves bf16, so stage 2's per-token cosine gate quantifies the cast. Measured served-vs-reference
+  minimum cosine per variant at E2 r3 (the 0.31.0 engine): 0.6b 0.999940 on the text rows and 0.99060
+  on the image-patch rows; 9b 0.999906 on the text rows and 0.97863 on the image-patch rows (every
+  row's vector count and the document skip rule agree on both sides; the worst vectors sit inside the
+  long image renders). The text rows alone would clear the published 0.999 floor; the image-patch
+  vectors are the reason for the declared bound. rc9 (the 0.33.0 engine) re-measured the same
+  documents: the 0.6b 0.9919007 (its 0.99 keeps 1.9e-3 of room), the 9b 0.9704627687 at `row 31
+  document 0 vector 464` -- the `tall_receipt` image render, the same document that held E2 r3's
+  0.97863 minimum -- and the era-to-era per-referent movement over the 24,202 common referents: the
+  largest is -2.941929e-2 on that very vector (0.9998820567 -> 0.9704627687) and the largest rise
+  +2.135840e-2 on E2 r3's own minimum vector (0.9786325151 -> 0.9999909193); 98.2% of the referents
+  move within 1e-3 and the text rows at most 4.4e-4. The per-token cosine on the long image renders is
+  therefore noise-dominated at the 1e-2 scale (which token of the row is worst moves between the
+  eras), so the 9b's declared floor is its measured minimum less that movement (0.9704627687 -
+  2.94e-2 = 0.9410435, declared 0.9410): a bound at the measurement false-reds the next era. The 0.6b
+  keeps 0.99. Every bound is declared with that measured evidence, never defaulted.
 
   The mixed text+image document (declared reference refusal): the generator plans one captioned page
   (`media:image+text`, one image beside its text), a form the card's usage does not define ("Mixed
@@ -550,15 +559,19 @@ variants:
       (config.json dtype), 305 tensors, 2,377,286,400 bytes of tensor data (the file is
       2,377,321,184 bytes), and tie_word_embeddings true; bf16 weights ~1.2 GB, so one
       80 GB-class GPU. The E2 r3 wave measured the served-vs-reference minimum cosine
-      0.999940 on the text rows and 0.99060 on the image-patch rows; the measured
-      floor is declared in overrides.gates.vec_min_cosine 0.99.
+      0.999940 on the text rows and 0.99060 on the image-patch rows; the rc9 wave
+      re-measured 0.9998729 on the text rows and 0.9919007 on the image-patch rows, so
+      the measured floor 0.99 (1.9e-3 of room) is unchanged and declared in
+      overrides.gates.vec_min_cosine.
   - id: pplx-embed-v2-late-9b
     model: perplexity-ai/pplx-embed-v2-late-9b
     revision: "0f49a9977fe06b83377d598094c5c0204ce18ad9"
     overrides:
       gates:
-        vec_min_cosine: 0.978 # the E2 r3 wave's measured image-patch floor 0.97863 (text rows 0.999906);
-                              # the reference's fp32 cast against the engine's bf16
+        vec_min_cosine: 0.9410 # the rc9 wave's measured per-token minimum 0.9704627687 (row 31 document
+                               # 0 vector 464, the tall_receipt image render) less the largest era-to-era
+                               # per-vector movement 2.94e-2 = 0.9410435, rounded down; the reference's
+                               # fp32 cast against the engine's bf16 (text rows 0.9995588)
     notes: >-
       The 9B size (Hub API checked 2026-10-09: sha
       0f49a9977fe06b83377d598094c5c0204ce18ad9, licence mit, not gated; created
@@ -585,7 +598,11 @@ variants:
       max_model_len 4352: q bytes 4352 x 16 x 256 x 2 = 35,651,584, MLP elements
       4352 x 12288 = 53,477,376, both below 2^31. The E2 r3 wave measured the
       served-vs-reference minimum cosine 0.999906 on the text rows and 0.97863 on the
-      image-patch rows; the measured floor is declared in
-      overrides.gates.vec_min_cosine 0.978.
+      image-patch rows, and the rc9 wave re-measured the same documents at 0.9995588 on
+      the text rows and 0.9704627687 on the image-patch rows (row 31 document 0 vector
+      464, the tall_receipt render -- the same document that held E2 r3's minimum); that
+      row's own tokens move up to 2.94e-2 between the eras, so the measured floor is
+      declared in overrides.gates.vec_min_cosine 0.9410 = 0.9704627687 - 2.94e-2,
+      rounded down.
     sources:
       - "https://huggingface.co/perplexity-ai/pplx-embed-v2-late-9b @ 0f49a9977fe06b83377d598094c5c0204ce18ad9 (README.md: the same MultiVectorEncoder usage and the 0.6B/9B shared-embedding-space sentence, 'The export uses native Sentence Transformers modules and needs no custom Python code', licence mit; config.json: architectures [Qwen3_5Model], model_type qwen3_5, text_config.is_causal false, hidden_size 4096, 32 layers, full_attention_interval 4, num_attention_heads 16, num_key_value_heads 4, head_dim 256, attn_output_gate true, intermediate_size 12288, dtype float32, tie_word_embeddings false, max_position_embeddings 262144, vision_config depth 27 hidden_size 1152 out_hidden_size 4096; 1_Dense/config.json: in_features 4096, out_features 128, bias false; 1_Dense/model.safetensors: one tensor linear.weight [128, 4096] F32; model.safetensors header: 759 F32 tensors, 8,392,695,024 params, language_model.* 426 (embed_tokens [248320, 4096], 424 layer tensors, norm) + visual.* 333, no lm_head, no mtp; the tokenizer and every small ST/config file byte-identical to the 0.6b's at their pinned revisions)"

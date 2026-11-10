@@ -436,6 +436,11 @@ incompatibly, independently of the package version. All four distributions carry
   is refused by the reference's own declared policy and recorded as `declared_reference_refusal` in stage 2 and
   the media stage, keyed to the row's kind. Several images, interleaved text, a media query, or an undeclared
   crash or refusal still fail loudly.
+- **`pplx-embed-v2-late-9b`'s per-token floor moves to 0.9410**, derived from its own corpus: its rc9 minimum
+  (0.9704628, the `tall_receipt` render's document 0 — the same document that held era A's minimum) minus the
+  largest era-to-era per-vector movement (2.94e-2); 98.18% of the 24,202 referents move under 1e-3, the argmin
+  migrates, and the media tail improves (p0.1 0.98803 -> 0.99042), so the gap is the floor's missing margin, not
+  a divergence. The 0.6b keeps 0.99.
 - **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
   dataset's release 2 (the corrected Stage A parse and refit; see
   [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data

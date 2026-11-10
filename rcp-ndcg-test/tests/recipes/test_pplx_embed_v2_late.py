@@ -21,6 +21,7 @@ tokenizer and the pinned config files.
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import sys
 from collections.abc import Callable
@@ -516,6 +517,51 @@ def test_the_family_shares_every_behavioural_block() -> None:
     assert recipes[0].role == recipes[1].role == "multi_vector"
     assert recipes[0].input == recipes[1].input == ["text", "image"]
     assert recipes[0].model != recipes[1].model and recipes[0].revision != recipes[1].revision
+
+
+#: Each size's declared per-token floor and the stage-2 evidence it is derived from (the test below).
+FLOORS: dict[str, dict[str, Any]] = {
+    "pplx-embed-v2-late-0.6b": {
+        "floor": 0.99,
+        "numbers": ("0.999940", "0.99060", "0.9919007"),
+    },
+    "pplx-embed-v2-late-9b": {
+        "floor": 0.9410,
+        "measured_min": 0.9704627687156447,  # rc9 stage 2, row 31 document 0 vector 464
+        "movement": 0.0294192879494038,  # the largest per-vector movement, E2 r3 -> rc9
+        "numbers": ("0.9704627687", "0.999906", "0.97863", "2.94e-2"),
+    },
+}
+
+
+@pytest.mark.parametrize("variant_id", VARIANT_IDS)
+def test_the_variant_declares_the_floor_its_own_corpus_derives(variant_id: str) -> None:
+    """The per-token floor leaves room for the largest per-vector movement the two eras measured.
+
+    Stage 2 compares the reference's fp32 vectors with the engine's bf16 ones, so a floor pinned at (or
+    above) the measured minimum false-reds on the engine's own noise: the 9b's rc9 minimum 0.9704627687
+    (`row 31 document 0 vector 464`, the `tall_receipt` image render, the same document as the E2 r3
+    minimum) sits 7.5e-3 under the 0.978 declared from E2 r3's 0.97863, while the same row's tokens move
+    up to 2.94e-2 between the eras (98.2% of the 24,202 common referents move within 1e-3; the text rows
+    at most 4.4e-4). The bound is the measured minimum less that movement, rounded down. The 0.6b's 0.99
+    is unchanged: rc9 measured 0.9919007, 1.9e-3 of room. The mutation that reds: any other declared
+    value -- the old 0.978 above the measured minimum, or a floor below the derived 0.9410 -- fails here.
+    """
+    facts = FLOORS[variant_id]
+    recipe = resolve_recipe(variant_id)
+    if "measured_min" in facts:
+        derived = math.floor((facts["measured_min"] - facts["movement"]) * 1e4) / 1e4
+        assert derived == facts["floor"], f"the recorded evidence derives {derived}, not {facts['floor']}"
+        assert facts["measured_min"] - recipe.gates.vec_min_cosine >= facts["movement"], (
+            f"{variant_id}: the floor {recipe.gates.vec_min_cosine} leaves less room than the measured movement"
+        )
+        assert recipe.gates.vec_min_cosine == derived, (
+            f"{variant_id}: the declared floor {recipe.gates.vec_min_cosine} is not the derived {derived}"
+        )
+    else:
+        assert recipe.gates.vec_min_cosine == facts["floor"], f"{variant_id}: the floor moved"
+    for number in facts["numbers"]:
+        assert number in recipe.notes, number
 
 
 def test_the_dense_head_shape_is_the_variants(checkpoint, variant_id: str) -> None:
