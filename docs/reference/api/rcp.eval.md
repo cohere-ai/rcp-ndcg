@@ -21,7 +21,7 @@ class Comparison(pydantic.main.BaseModel)
 
 - `k: int`
 
-- `metric: Literal['rcp', 'qrel_ndcg', 'count_ndcg']`
+- `metric: str`
 
 - `pairs: list[rcp.eval.compare.PairComparison]`
 
@@ -69,7 +69,7 @@ class DatasetValue(pydantic.main.BaseModel)
 
 - `k: int`
 
-- `metric: Literal['rcp', 'qrel_ndcg', 'count_ndcg']`
+- `metric: str`
 
 - `num_queries: int`
 
@@ -91,7 +91,7 @@ class EvalReport(pydantic.main.BaseModel)
 
 - `k: list[int]`
 
-- `metrics: list[Literal['rcp', 'qrel_ndcg', 'count_ndcg']]`
+- `metrics: list[str]`
 
 - `per_dataset: list[rcp.eval.evaluate.DatasetValue]`
 
@@ -111,6 +111,26 @@ constant
 
 ```text
 METRICS = ['rcp', 'qrel_ndcg', 'count_ndcg']
+```
+
+## `METRICS_GROUP`
+
+constant
+
+```text
+METRICS_GROUP = 'rcp.metrics'
+```
+
+## `Metric`
+
+class — The contract a metric plugin implements: a name, whether it takes a cutoff, and one query's value.
+
+```text
+class Metric(abc.ABC)
+```
+
+```text
+Metric()
 ```
 
 ## `PairComparison`
@@ -179,7 +199,7 @@ class QueryValue(pydantic.main.BaseModel)
 
 - `k: int`
 
-- `metric: Literal['rcp', 'qrel_ndcg', 'count_ndcg']`
+- `metric: str`
 
 - `query_id: str`
 
@@ -295,7 +315,7 @@ class SummaryValue(pydantic.main.BaseModel)
 
 - `k: int`
 
-- `metric: Literal['rcp', 'qrel_ndcg', 'count_ndcg']`
+- `metric: str`
 
 - `num_datasets: int`
 
@@ -324,7 +344,7 @@ class SystemExplanation(pydantic.main.BaseModel)
 function — Compare the systems of a report pairwise: delta (B minus A), the paired t-test (the paper's), bootstrap interval.
 
 ```text
-compare(report: EvalReport, *, baseline: str | None = None, metric: MetricName = 'rcp', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
+compare(report: EvalReport, *, baseline: str | None = None, metric: str = 'rcp', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
 ```
 
 ## `evaluate`
@@ -332,7 +352,7 @@ compare(report: EvalReport, *, baseline: str | None = None, metric: MetricName =
 function — Score rankings with RCP-nDCG, qrel-nDCG and Count-nDCG under a scoring protocol.
 
 ```text
-evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[MetricName] = ['rcp', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
+evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[str] = ['rcp', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
 ```
 
 ## `explain`
@@ -343,6 +363,14 @@ function — Explain one query of a report: each system's top k, and the gaps be
 explain(report: EvalReport, query_id: str, *, calibration: Any = None, k: int = 10, dataset: str | None = None) -> QueryExplanation
 ```
 
+## `metric_class`
+
+function — The metric class registered under ``name`` in the ``rcp.metrics`` entry-point group.
+
+```text
+metric_class(name: str) -> type[Metric]
+```
+
 ## `per_criterion`
 
 function — The per-criterion decomposition of the gain at a calibrated ability.
@@ -351,10 +379,18 @@ function — The per-criterion decomposition of the gain at a calibrated ability
 per_criterion(theta: float, items: Any) -> list[CriterionContribution]
 ```
 
+## `registered_metrics`
+
+function — The metric names: the shipped three first, then the installed plugins, sorted.
+
+```text
+registered_metrics() -> tuple[str, ...]
+```
+
 ## `sensitivity`
 
 function — How often a metric separates systems, the paper's sensitivity (appendix B).
 
 ```text
-sensitivity(report: EvalReport, *, metric: MetricName = 'rcp', k: int | None = None, alpha: float = 0.05) -> float
+sensitivity(report: EvalReport, *, metric: str = 'rcp', k: int | None = None, alpha: float = 0.05) -> float
 ```

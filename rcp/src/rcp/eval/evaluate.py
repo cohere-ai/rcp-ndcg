@@ -12,11 +12,16 @@ RCP gains.
 no dataset (:meth:`~rcp.data.Rankings.resolve_dataset`). Rows that name no dataset are refused when subsets
 that read them share query ids, since a query id alone does not say which subset it belongs to.
 
+**Metrics** are resolved through the ``rcp.metrics`` entry-point group (:mod:`rcp.eval.metrics`): the shipped
+three (``rcp``, ``qrel_ndcg``, ``count_ndcg``) and any installed plugin. A plugin is scored per query on the
+dataset's qrels, at every requested cutoff when its ``k_required`` is true and once (at ``k=0``) when it is
+false; the shipped three keep their own labels.
+
 **Queries.** Each metric is scored on the queries that have its labels: RCP-nDCG on the queries with gains,
-Count-nDCG on those with count gains, qrel-nDCG on those with qrels. A labelled query that a system did not rank
-scores 0 and is reported in :attr:`EvalReport.warnings`. qrel-nDCG is undefined (``None``) for a query without a
-positive grade and drops out of the means. A system whose rankings match nothing of the dataset — no row names
-any of its subsets, or not one ranked id is in its pools or labels — is refused with a
+Count-nDCG on those with count gains, qrel-nDCG and a plugin on those with qrels. A labelled query that a system
+did not rank scores 0 and is reported in :attr:`EvalReport.warnings`. qrel-nDCG is undefined (``None``) for a
+query without a positive grade and drops out of the means. A system whose rankings match nothing of the dataset
+— no row names any of its subsets, or not one ranked id is in its pools or labels — is refused with a
 :class:`~rcp.errors.DataError`: every score would be 0, which reads as a weak system where the input is
 broken. ``systems=`` (``--system`` on the command line) scores only the named systems, so one broken system of
 a multi-system file no longer stops the others; an unknown name is refused, listing the systems the file holds.
@@ -29,21 +34,21 @@ stratified by dataset) with a fixed seed.
 from __future__ import annotations
 
 import math
+import numbers
 from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from rcp_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, resolve_protocol, score_query
+from rcp_core.protocol import PROTOCOLS, Protocol, aggregate, resolve_protocol
 
 from rcp.data.dataset import Dataset, load_dataset
 from rcp.data.rankings import Rankings, no_rankings_error
 from rcp.errors import ConfigError, DataError, WarningCode
+from rcp.eval.metrics import METRICS, Metric, metric_class, registered_metrics
 
 if TYPE_CHECKING:
     import pandas as pd
-
-METRICS: tuple[MetricName, ...] = ("rcp", "qrel_ndcg", "count_ndcg")
 
 GainsSource = Literal["gains", "calibration", "dataset", "none"]
 
@@ -69,7 +74,7 @@ class QueryValue(BaseModel):
     system: str
     dataset: str
     query_id: str
-    metric: MetricName
+    metric: str
     k: int
     value: float | None
 
@@ -81,7 +86,7 @@ class DatasetValue(BaseModel):
 
     system: str
     dataset: str
-    metric: MetricName
+    metric: str
     k: int
     value: float | None
     num_queries: int
@@ -96,7 +101,7 @@ class SummaryValue(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     system: str
-    metric: MetricName
+    metric: str
     k: int
     value: float | None
     ci_low: float | None
@@ -158,7 +163,7 @@ class EvalReport(BaseModel):
     schema_name: Literal["rcp-ndcg.eval-report.v1"] = Field(default="rcp-ndcg.eval-report.v1", alias="schema")
     protocol: Protocol
     gains_source: GainsSource
-    metrics: list[MetricName]
+    metrics: list[str]
     k: list[int]
     per_query: list[QueryValue]
     per_dataset: list[DatasetValue]
@@ -173,9 +178,13 @@ class EvalReport(BaseModel):
         """The systems, in the order of the rankings."""
         return list(dict.fromkeys(row.system for row in self.summary))
 
-    def value(self, system: str, metric: MetricName = "rcp", k: int | None = None) -> float | None:
-        """The summary value of one system (``k`` may be omitted when the report has one cutoff)."""
-        k = _one_k(self, k)
+    def value(self, system: str, metric: str = "rcp", k: int | None = None) -> float | None:
+        """The summary value of one system.
+
+        ``k`` may be omitted when the metric was scored at one cutoff (the report's own, or ``k=0`` for a
+        plugin whose ``k_required`` is false).
+        """
+        k = _one_k(self, k, metric=metric)
         for row in self.summary:
             if (row.system, row.metric, row.k) == (system, metric, k):
                 return row.value
@@ -193,7 +202,7 @@ class EvalReport(BaseModel):
         columns = list(type(rows[0]).model_fields) if rows else list(_TABLE_ROWS[table].model_fields)
         return pd.DataFrame([row.model_dump() for row in rows], columns=columns)
 
-    def leaderboard(self, metric: MetricName = "rcp", k: int | None = None) -> pd.DataFrame:
+    def leaderboard(self, metric: str = "rcp", k: int | None = None) -> pd.DataFrame:
         """The wide table of one metric: a row per system, a column per dataset, and the summary as ``mean``.
 
         ``mean`` is the protocol's aggregate (the unweighted mean over datasets), so it equals :meth:`value`.
@@ -209,7 +218,7 @@ class EvalReport(BaseModel):
         """
         import pandas as pd
 
-        k = _one_k(self, k)
+        k = _one_k(self, k, metric=metric)
         if metric not in self.metrics:
             raise DataError(f"the report has no {metric}; it has {self.metrics}")
         _refuse_missing_cutoff(self, metric, k)
@@ -249,7 +258,7 @@ def evaluate(
     gains: Mapping[str, Mapping[str, float]] | Any | None = None,
     protocol: str | Protocol | None = None,
     k: int | Sequence[int] = 10,
-    metrics: Sequence[MetricName] = ("rcp", "qrel_ndcg"),
+    metrics: Sequence[str] = ("rcp", "qrel_ndcg"),
     count_gains: Mapping[str, Mapping[str, float]] | None = None,
     systems: Sequence[str] | None = None,
     bootstrap: int = 1000,
@@ -268,7 +277,9 @@ def evaluate(
         protocol: A :data:`~rcp_core.protocol.PROTOCOLS` name or a :class:`~rcp_core.protocol.Protocol`;
             defaults to the dataset's (a suite's) protocol, else ``"plain"``.
         k: One cutoff or several.
-        metrics: Which of ``"rcp"``, ``"qrel_ndcg"``, ``"count_ndcg"`` to compute.
+        metrics: Which metrics to compute: the shipped ``"rcp"``, ``"qrel_ndcg"``, ``"count_ndcg"``, or the name
+            of an installed ``rcp.metrics`` plugin. A plugin is scored on the dataset's qrels, at every cutoff
+            when its ``k_required`` is true and once (at ``k=0``) when it is false.
         count_gains: The Count-nDCG gains (:func:`rcp_core.count_gain` per document), required for
             ``"count_ndcg"``. Keys are the gains': ``{query_id: {doc_id: gain}}``, or ``"<subset>/<query_id>"``
             for a suite -- and must be when subsets share query ids.
@@ -298,12 +309,15 @@ def evaluate(
             hint="pass positive cutoffs (k=10, or several [1, 5, 10])",
             cli_hint="pass positive cutoffs: --k 10 (repeatable)",
         )
-    unknown = sorted(set(metrics) - set(METRICS))
-    if unknown or not metrics:
+    requested = list(dict.fromkeys(metrics))
+    available = registered_metrics()
+    unknown = sorted(set(requested) - set(available))
+    if unknown or not requested:
         raise ConfigError(
-            f"unknown metrics {unknown or list(metrics)}; expected some of {list(METRICS)}",
-            hint=f"one of {', '.join(METRICS)}",
+            f"unknown metrics {unknown or list(requested)}; expected some of {list(available)}",
+            hint=f"one of {', '.join(available)}",
         )
+    metrics_by_name = {name: metric_class(name)() for name in requested}
     if suite is not None and dataset is not None:
         raise ConfigError(
             "pass either suite= or dataset=, not both",
@@ -322,8 +336,8 @@ def evaluate(
     _refuse_undivided(rankings, dataset)
     selected = _selected_systems(rankings, systems)
 
-    rcp_gains, source = _resolve_gains(gains, dataset) if "rcp" in metrics else (None, "none")
-    if "count_ndcg" in metrics:
+    rcp_gains, source = _resolve_gains(gains, dataset) if "rcp" in requested else (None, "none")
+    if "count_ndcg" in requested:
         # The gains are validated where they are scored: a qrel-only run that carries count gains for a later
         # run reads them as it left them, exactly as gains= on a qrel-only run reads the RCP ones.
         if count_gains is None:
@@ -341,16 +355,17 @@ def evaluate(
                 f"the count gains match no labelled query of {dataset.name!r}",
                 hint="key them by the dataset's query ids (or '<subset>/<query_id>' for a suite)",
             )
-    labels: dict[MetricName, dict[str, Mapping[str, Mapping[str, float]]]] = {}
+    labels: dict[str, dict[str, Mapping[str, Mapping[str, float]]]] = {}
     for part in dataset.parts:
-        if rcp_gains is not None:
-            labels.setdefault("rcp", {})[part.name] = _gains_for(rcp_gains[part.name], part, dataset)
-        if count_gains is not None and "count_ndcg" in metrics:
-            labels.setdefault("count_ndcg", {})[part.name] = _gains_for(count_gains, part, dataset)
-        if "qrel_ndcg" in metrics:
-            labels.setdefault("qrel_ndcg", {})[part.name] = part.qrels
+        for name in requested:
+            if name == "rcp" and rcp_gains is not None:
+                labels.setdefault("rcp", {})[part.name] = _gains_for(rcp_gains[part.name], part, dataset)
+            elif name == "count_ndcg" and count_gains is not None:
+                labels.setdefault("count_ndcg", {})[part.name] = _gains_for(count_gains, part, dataset)
+            elif name not in ("rcp", "count_ndcg"):
+                labels.setdefault(name, {})[part.name] = part.qrels
 
-    computed: list[MetricName] = [m for m in metrics if m in labels]
+    computed = [name for name in requested if name in labels]
     dataset_pools, dataset_labels = _dataset_targets(dataset)
     per_query: list[QueryValue] = []
     unranked: dict[str, set[tuple[str, str]]] = {}
@@ -358,21 +373,23 @@ def evaluate(
         scores = {part.name: _system_queries(rankings, system, part.name) for part in dataset.parts}
         _refuse_unmatched(rankings, dataset, system, scores, dataset_pools, dataset_labels)
         for part in dataset.parts:
-            for metric in computed:
-                for query_id, query_labels in labels[metric][part.name].items():
+            for name in computed:
+                metric = metrics_by_name[name]
+                cutoffs = ks if metric.k_required else [0]
+                for query_id, query_labels in labels[name][part.name].items():
                     ranked = scores[part.name].get(query_id)
                     if ranked is None:
                         unranked.setdefault(system, set()).add((part.name, query_id))
-                    for cutoff in ks:
-                        value = _score(rules, ranked or {}, query_labels, part, query_id, metric, cutoff)
+                    for cutoff in cutoffs:
+                        value = _score_metric(metric, rules, ranked or {}, query_labels, part, query_id, cutoff)
                         per_query.append(
                             QueryValue(
                                 system=system,
                                 dataset=part.name,
                                 query_id=query_id,
-                                metric=metric,
+                                metric=name,
                                 k=cutoff,
-                                value=None if math.isnan(value) else value,
+                                value=value,
                             )
                         )
 
@@ -390,7 +407,7 @@ def evaluate(
         )
         for system, missing in unranked.items()
     ]
-    undefined = sum(1 for row in per_query if row.value is None)
+    undefined = sum(1 for row in per_query if row.value is None and row.metric == "qrel_ndcg")
     if undefined:
         warnings.append(
             ReportWarning(
@@ -737,15 +754,21 @@ def _refuse_unknown_prefixes(gains: Mapping[str, Any], dataset: Dataset) -> None
         )
 
 
-def _score(
+def _score_metric(
+    metric: Metric,
     rules: Protocol,
     scores: Mapping[str, float],
     labels: Mapping[str, float],
     part: Dataset,
     query_id: str,
-    metric: MetricName,
     k: int,
-) -> float:
+) -> float | None:
+    """One metric's value for one query: the pool check, then the metric's own arithmetic.
+
+    Raises:
+        DataError: The protocol needs the query's judged pool and the dataset has none, or the plugin returns
+            something that is not a finite float or ``None`` (the seam's contract, named rather than crashed on).
+    """
     candidates = (part.candidates or {}).get(query_id)
     if candidates is None and (rules.restrict_to_candidates or rules.ties == "input_order"):
         raise DataError(
@@ -753,24 +776,36 @@ def _score(
             hint="load the dataset with its pools (HF top_ranked), or score it with protocol='plain'",
             cli_hint="load the dataset with its pools (HF top_ranked), or score it with --protocol plain",
         )
-    return score_query(
+    value = metric.score(
+        query_id,
         scores,
         labels,
         protocol=rules,
         k=k,
-        metric=metric,
         candidates=candidates,
         excluded=part.excluded.get(query_id, ()),
-        query_id=query_id,
     )
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise DataError(
+            f"the metric {metric.name!r} returned {value!r}, not a float or None",
+            hint="the rcp.metrics contract is score(query, ranking, labels, *, protocol, k) -> float | None",
+        )
+    value = float(value)
+    if math.isnan(value):
+        return None
+    if not math.isfinite(value):
+        raise DataError(f"the metric {metric.name!r} returned the non-finite value {value!r}")
+    return value
 
 
-def _has_cutoff(report: EvalReport, metric: MetricName, k: int) -> bool:
+def _has_cutoff(report: EvalReport, metric: str, k: int) -> bool:
     """Whether the report computed ``(metric, k)`` for at least one system."""
     return any((row.metric, row.k) == (metric, k) for row in report.summary)
 
 
-def _refuse_missing_cutoff(report: EvalReport, metric: MetricName, k: int) -> None:
+def _refuse_missing_cutoff(report: EvalReport, metric: str, k: int) -> None:
     """Refuse a ``(metric, k)`` the report never computed, before a reader gets an empty table from it.
 
     ``value()`` refuses a missing summary row by name; this is the same refusal for the readers that would
@@ -787,7 +822,7 @@ def _refuse_missing_cutoff(report: EvalReport, metric: MetricName, k: int) -> No
 def _aggregate(
     per_query: Iterable[QueryValue], *, bootstrap: int, seed: int
 ) -> tuple[list[DatasetValue], list[SummaryValue]]:
-    groups: dict[tuple[str, MetricName, int], dict[str, list[float]]] = {}
+    groups: dict[tuple[str, str, int], dict[str, list[float]]] = {}
     for row in per_query:
         values = groups.setdefault((row.system, row.metric, row.k), {}).setdefault(row.dataset, [])
         if row.value is not None:
@@ -863,16 +898,26 @@ def _stratified_draws(datasets: Mapping[str, np.ndarray], resamples: int, seed: 
     return np.mean(means, axis=0)
 
 
-def _one_k(report: EvalReport, k: int | None) -> int:
+def _one_k(report: EvalReport, k: int | None, *, metric: str | None = None) -> int:
+    """The one cutoff a reader means: the given one, the metric's only one, or the report's only one.
+
+    A metric scored at one cutoff is unambiguous even when the report scored several (a plugin whose
+    ``k_required`` is false has the single row ``k=0``).
+    """
     if k is not None:
         return k
-    if len(report.k) != 1:
+    cutoffs = report.k
+    if metric is not None:
+        held = sorted({row.k for row in report.summary if row.metric == metric})
+        if held:
+            cutoffs = held
+    if len(cutoffs) != 1:
         raise DataError(
-            f"the report has cutoffs {report.k}; pass k=",
+            f"the report has cutoffs {cutoffs}; pass k=",
             hint="the report scored several cutoffs; name one (k=...)",
             cli_hint="name one of the report's cutoffs: --k 10",
         )
-    return report.k[0]
+    return cutoffs[0]
 
 
 __all__ = [

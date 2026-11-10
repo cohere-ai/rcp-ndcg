@@ -170,11 +170,6 @@
       "type": "integer"
     },
     "metric": {
-      "enum": [
-        "rcp",
-        "qrel_ndcg",
-        "count_ndcg"
-      ],
       "title": "Metric",
       "type": "string"
     },

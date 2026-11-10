@@ -2,6 +2,7 @@
   "entry_point_groups_read": [
     "rcp.adapters",
     "rcp.fake_transports",
+    "rcp.metrics",
     "rcp.readers",
     "rcp.results",
     "rcp.runners",

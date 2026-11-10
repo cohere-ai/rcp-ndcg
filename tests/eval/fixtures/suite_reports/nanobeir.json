@@ -1,0 +1,111 @@
+{
+  "schema": "rcp-ndcg.eval-report.v1",
+  "protocol": {
+    "name": "nanobeir",
+    "ties": "group_mean",
+    "qrel_gain": "linear",
+    "restrict_to_candidates": true,
+    "drop_identical_ids": false,
+    "round_digits": 5
+  },
+  "gains_source": "dataset",
+  "metrics": [
+    "rcp",
+    "qrel_ndcg"
+  ],
+  "k": [
+    10
+  ],
+  "per_query": [
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "query_id": "test-religion-grcrgshwbr-pro03a",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.7822838779610906
+    },
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "query_id": "PLAIN-2051",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.9394042844350838
+    },
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "query_id": "5cd7b83eb30797aa8bf49b4b7a3f6a433aca4a75",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.9189039073099308
+    },
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "query_id": "test-religion-grcrgshwbr-pro03a",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.81546
+    },
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "query_id": "PLAIN-2051",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 1.0
+    },
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "query_id": "5cd7b83eb30797aa8bf49b4b7a3f6a433aca4a75",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.38357
+    }
+  ],
+  "per_dataset": [
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.8801973565687017,
+      "num_queries": 3
+    },
+    {
+      "system": "system",
+      "dataset": "nanobeir",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.73301,
+      "num_queries": 3
+    }
+  ],
+  "summary": [
+    {
+      "system": "system",
+      "metric": "rcp",
+      "k": 10,
+      "value": 0.8801973565687017,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 3,
+      "num_datasets": 1
+    },
+    {
+      "system": "system",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.73301,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 3,
+      "num_datasets": 1
+    }
+  ],
+  "warnings": [],
+  "inputs": null
+}
