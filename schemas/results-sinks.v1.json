@@ -8,7 +8,7 @@
       "type": "string"
     },
     "sinks": {
-      "description": "The sink names, sorted (the rcp_ndcg.results entry-point group).",
+      "description": "The sink names, sorted (the rcp.results entry-point group).",
       "items": {
         "type": "string"
       },

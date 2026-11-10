@@ -4,7 +4,7 @@ inside the pod (not pytest).
 One scenario is one declarative ``scenarios/<id>.yaml`` (the :class:`Scenario` schema below): the run
 config the product runs (its dataset, pools, steps and judge), the engines the run starts by role, and
 the scenario's own routine (``mode: run | outage | identity``).  The stage materializes the product's
-:class:`~rcp_ndcg.runs.config.RunConfig` from it (R30: the product validates and the product computes the
+:class:`~rcp.runs.config.RunConfig` from it (R30: the product validates and the product computes the
 role configs -- the recipe's ``client`` block IS the product's endpoint config), renders the run's phased
 job script with the product's SLURM renderer (``container_runtime: none``: the engines run as processes of
 the node, which in the pod is the one container), and runs that script in the pod::
@@ -15,7 +15,7 @@ the node, which in the pod is the one container), and runs that script in the po
 What the driver adds around the product's rendering (nothing of the product is copied):
 
 * **the client mechanism** -- each phase's coordinator command is wrapped with the product's own
-  :func:`~rcp_ndcg.runners.script.install_argv` from the staged wheelhouse (node-runtime item 2: the
+  :func:`~rcp.runners.script.install_argv` from the staged wheelhouse (node-runtime item 2: the
   ``uvx --find-links <wheelhouse> --no-index`` install source the runners' ``wheelhouse``/``constraints``
   options describe), so the coordinator never runs from the engine environment;
 * **the srun shim** -- the SLURM renderer starts each engine step under ``srun``; the pod has no SLURM
@@ -85,16 +85,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
 from rcp_ndcg_vllm.recipe import Recipe, load_recipe, serve_argv
 
-from rcp_ndcg.errors import RcpNdcgError
-from rcp_ndcg.runners.script import bootstrap_uv, install_argv
-from rcp_ndcg.runs.config import RunConfig
-from rcp_ndcg.runs.execution import job_for, stage_run
-from rcp_ndcg.runs.layout import RunLayout
-from rcp_ndcg.runs.manifest import RunManifest, StepStatus
-from rcp_ndcg.runs.run import prepare
-from rcp_ndcg.storage.artifacts import ArtifactRef
-from rcp_ndcg.support.resources import Resources
-from rcp_ndcg.support.serve import ServeByRole, ServeConfig
+from rcp.errors import RcpNdcgError
+from rcp.runners.script import bootstrap_uv, install_argv
+from rcp.runs.config import RunConfig
+from rcp.runs.execution import job_for, stage_run
+from rcp.runs.layout import RunLayout
+from rcp.runs.manifest import RunManifest, StepStatus
+from rcp.runs.run import prepare
+from rcp.storage.artifacts import ArtifactRef
+from rcp.support.resources import Resources
+from rcp.support.serve import ServeByRole, ServeConfig
 
 from .errors import HarnessError, RecipeError
 
@@ -151,7 +151,7 @@ import sys as _sys
 _record = _os.environ.get("RCP_E2E_PROBE_JSONL")
 if _record:
     _versions = {}
-    for _dist in ("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm", "pydantic", "numpy", "tokenizers"):
+    for _dist in ("rcp", "rcp-core", "rcp-ndcg-vllm", "pydantic", "numpy", "tokenizers"):
         try:
             _versions[_dist] = _metadata.version(_dist)
         except _metadata.PackageNotFoundError:
@@ -223,7 +223,7 @@ class EngineSlot(BaseModel):
             judge command it matches the command's ``--tensor-parallel-size``.
         startup_timeout_s: Seconds the script waits for the engine's readiness path.
         outage_timeout_s: Seconds a step waits while the engine is down before
-            :class:`~rcp_ndcg.errors.BackendUnavailableError` (the role config's ``wait_on_outage_s``).
+            :class:`~rcp.errors.BackendUnavailableError` (the role config's ``wait_on_outage_s``).
     """
 
     model_config = _no_extra()
@@ -285,7 +285,7 @@ class JudgeEngine(BaseModel):
         recipe: The shipped judge recipe id to serve.
         fallback_recipe: The recipe served when the primary's T0 smoke fails on this node
             (the owner's T4 choice: the NVFP4 candidate falls back to FP8).
-        config: Runtime :class:`~rcp_ndcg.judging.client.JudgeConfig` fields on top of the recipe's client
+        config: Runtime :class:`~rcp.judging.client.JudgeConfig` fields on top of the recipe's client
             block (``concurrency``, ``wait_on_outage_s``, ...); a CONTENT field here is refused (decision
             17: the recipe is the source of the client block).
         slot: The engine's placement; its ``gpus`` must equal the primary recipe's ``resources.gpus``.
@@ -338,8 +338,8 @@ def judge_client_data(engine: JudgeEngine, candidate: JudgeCandidate, *, base_ur
     (the slot name, the pinned checkpoint, the recipe id), and ``engine.config`` may carry RUNTIME fields
     only -- a CONTENT field is refused with the product's own role declaration (decision 17).
     """
-    from rcp_ndcg.judging.client import JudgeConfig
-    from rcp_ndcg.support.identity import FieldRole, declared_roles
+    from rcp.judging.client import JudgeConfig
+    from rcp.support.identity import FieldRole, declared_roles
 
     content = {name for name, role in declared_roles(JudgeConfig).items() if role is FieldRole.CONTENT}
     overridden = sorted(set(engine.config) & content)
@@ -593,7 +593,7 @@ def build_serve(
 
     Inputs: the scenario, the recipe roots, ``port_offset`` (the identity rerun's shift), and the judge
     candidate the T0 smoke chose (default: the primary).  Output: the
-    :class:`~rcp_ndcg.support.serve.ServeByRole` the run config is materialized with.
+    :class:`~rcp.support.serve.ServeByRole` the run config is materialized with.
     """
     scratch = Path(f"/tmp/rcp-e2e-{scenario.id}")
     engines: dict[str, ServeConfig] = {}
@@ -649,7 +649,7 @@ def _check_slot_gpus(recipe_id: str, slot: EngineSlot, recipe: Recipe) -> None:
 
 
 def _serve_config(command: Sequence[str], slot: EngineSlot, scratch: Path, *, patches: Sequence[str]) -> ServeConfig:
-    """One engine's :class:`~rcp_ndcg.support.serve.ServeConfig` on the node (no image: the command runs
+    """One engine's :class:`~rcp.support.serve.ServeConfig` on the node (no image: the command runs
     as a process of the node, which is the pod's one container).
 
     ``patches`` is the recipe's declared ``serve.patches``: the engine's environment carries exactly that
@@ -680,14 +680,14 @@ def build_run_config(
 
     Inputs: the scenario, the recipe roots, ``port_offset``, and the judge candidate the T0 smoke chose
     (its pinned checkpoint enters the judgement family).  Output: the validated product
-    :class:`~rcp_ndcg.runs.config.RunConfig` -- every role config is a recipe's product endpoint dump (the
+    :class:`~rcp.runs.config.RunConfig` -- every role config is a recipe's product endpoint dump (the
     judge's too: its recipe's client block plus the scenario's runtime fields), and the ``serve:`` block is
-    built by :func:`build_serve`.  Raises the product's :class:`~rcp_ndcg.errors.ConfigError` for a
+    built by :func:`build_serve`.  Raises the product's :class:`~rcp.errors.ConfigError` for a
     scenario whose run would be refused (the product's messages).  In ``outage`` mode the judge config's
     URL is the driver-managed judge's (no ``serve.judge``: the supervision script must not watch an engine
     the driver restarts).
     """
-    from rcp_ndcg.judging.client import JudgeConfig
+    from rcp.judging.client import JudgeConfig
 
     candidate = judge_choice or judge_candidates(scenario.judge, recipes_root)[0]
     judge_data = judge_client_data(
@@ -732,7 +732,7 @@ def build_run_config(
 
 
 def stage_run_dir(pipeline: Any) -> None:
-    """Create the run directory ``pipeline`` will run, as :func:`~rcp_ndcg.runs.execution.submit_run`
+    """Create the run directory ``pipeline`` will run, as :func:`~rcp.runs.execution.submit_run`
     stages it before it hands a job to a runner.
 
     The driver runs the job itself (the phased script, in this pod) instead of submitting to a scheduler,
@@ -757,7 +757,7 @@ def render_phased_script(
     Inputs: a prepared pipeline (its ``serve:`` plan), the runner options (``log_dir``, ``workdir``, the
     coordinator's ``resources`` and the probe's ``env``), and the install source: the staged wheelhouse
     and constraints file every phase's coordinator installs the release from through
-    :func:`~rcp_ndcg.runners.script.install_argv` (node-runtime item 2; the pod's engine environment is
+    :func:`~rcp.runners.script.install_argv` (node-runtime item 2; the pod's engine environment is
     never asked).  ``run_dir`` points the phases at another run directory than the pipeline's own (the
     identity rerun drives an existing run again, on new ports).  Output: the rendered script (one
     supervision block per phase).  This exact text is the golden file the tests pin and the byte stream
@@ -857,11 +857,11 @@ def resume_run(
 ) -> int:
     """Resume a run directory the way a submitted job would: the run's own phased script again, engines and all.
 
-    A submitted ``rcp-ndcg run resume --run <dir> --runner slurm`` reopens the run's *recorded* config and
+    A submitted ``rcp run resume --run <dir> --runner slurm`` reopens the run's *recorded* config and
     renders its phased script (``reopen`` then the product's renderer): every phase starts its engines,
     hands their URLs to its coordinator in ``RCP_NDCG_ENGINES``, and skips the steps still current.  The
     driver runs exactly that script in this pod (:func:`run_job_script`: the ``srun`` shim, the probe), so
-    a resume that has to re-run a served step has an engine to talk to.  A bare ``rcp-ndcg run resume``
+    a resume that has to re-run a served step has an engine to talk to.  A bare ``rcp run resume``
     carries no engines overlay: a step it must re-run refuses with "the served encoder has no base_url"
     (the T4's second run: the outage scenario's earlier phases had failed before the judge went down, and
     the resume could not finish the run it was there to finish).
@@ -870,7 +870,7 @@ def resume_run(
     the output directory (the rendered ``job.sh``, its ``job.log`` and the probe's files land there).
     Output: the script's exit status.
     """
-    from rcp_ndcg.runs.run import reopen
+    from rcp.runs.run import reopen
 
     pipeline = reopen(run_dir, engines={})  # the recorded config; the driver's own env carries no overlay
     write_probe(out)  # the phases' workers put it on PYTHONPATH (:func:`render_options`): without the file,
@@ -910,7 +910,7 @@ def _wait_http(url: str, timeout_s: float, *, process: subprocess.Popen[bytes] |
 class ManagedEngine:
     """A run-scoped judge engine the driver owns: started beside the job, killed on command, restarted.
 
-    The product's model (see :func:`~rcp_ndcg.runners.script.supervise`): engines the supervision script
+    The product's model (see :func:`~rcp.runners.script.supervise`): engines the supervision script
     started end the job when they exit, while replicas that live elsewhere are "restarted by whatever runs
     them, and the judge bounds the outage instead" (``wait_on_outage_s``).  The outage scenario's judge
     lives here so a killed engine is an outage the run parks through, not a job failure.
@@ -1071,8 +1071,8 @@ def check_process_boundary(
     for row in coordinators:
         if row.get("sys_prefix") == engine_prefix or row.get("executable") == engine_executable:
             problems.append(f"the coordinator ran the engine environment's interpreter: {row}")
-        if version is not None and row.get("versions", {}).get("rcp-ndcg") != version:
-            problems.append(f"the coordinator saw rcp-ndcg {row.get('versions', {}).get('rcp-ndcg')}, staged {version}")
+        if version is not None and row.get("versions", {}).get("rcp") != version:
+            problems.append(f"the coordinator saw rcp {row.get('versions', {}).get('rcp')}, staged {version}")
     return {
         "name": "process boundaries",
         "ok": not problems,
@@ -1120,7 +1120,7 @@ def _ranking_facts(layout: RunLayout, ref: ArtifactRef) -> dict[str, Any]:
     ``rows``, ``keys_sha256``, ``scores``).  Raises the product's ``DataError``/``MissingInputError``
     when the recorded artifact is not a rankings file (the product's contract for these steps).
     """
-    from rcp_ndcg.data import load_rankings
+    from rcp.data import load_rankings
 
     frame = load_rankings(layout.resolve(ref.path)).to_pandas()
     scores = {
@@ -1403,7 +1403,7 @@ class ScenarioResultBuilder:
 def _phase_facts(job_text_pipeline: Any) -> list[dict[str, Any]]:
     """What the run's phases are, engines per phase, from the product's own phase plan (records the
     manifest's per-phase engine block against it)."""
-    from rcp_ndcg.support.serve import ServeByRole, plan_phases
+    from rcp.support.serve import ServeByRole, plan_phases
 
     config = job_text_pipeline.config
     serve = config.serve or ServeByRole()
@@ -1590,7 +1590,7 @@ def render_options(out: Path, workdir: Path, *, pipeline: Any) -> dict[str, Any]
     """The runner options every driven render uses -- the golden file pins this exact set (the tests and
     :func:`_prepare_run` share it, so the golden is the byte stream the run executes).
 
-    The setup brings uv to an image that lacks it (:func:`~rcp_ndcg.runners.script.bootstrap_uv`) and
+    The setup brings uv to an image that lacks it (:func:`~rcp.runners.script.bootstrap_uv`) and
     creates each engine slot's ``TMPDIR`` (node-runtime item 7 -- without the directory Python's
     ``tempfile`` silently falls back to the shared ``/tmp`` and ``mktemp`` fails).
     """
@@ -1766,10 +1766,10 @@ def _run_outage(
 
     * **recovers** -- the killed judge restarts after a short outage; the run parks through it and finishes;
     * **expires** -- the killed judge stays down past the role's ``wait_on_outage_s``; the run fails with
-      :class:`~rcp_ndcg.errors.BackendUnavailableError`, and after the engine returns a ``run resume``
+      :class:`~rcp.errors.BackendUnavailableError`, and after the engine returns a ``run resume``
       finishes it (the T4 criterion "resume after a killed engine parks and recovers").
     """
-    from rcp_ndcg.judging.client import JudgeConfig
+    from rcp.judging.client import JudgeConfig
 
     assert judge is not None  # the outage scenario's judge is the driver's own
     assert judge_choice is not None  # run_scenario refused a scenario without a booted judge

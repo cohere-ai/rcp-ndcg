@@ -11,9 +11,9 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from rcp_ndcg import storage
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.runs.run import Run
+from rcp import storage
+from rcp.cli.main import cli
+from rcp.runs.run import Run
 from tests.runs.conftest import tiny_config
 
 
@@ -77,7 +77,7 @@ class _TypedScheduler(_Scheduler):
     """
 
     def __init__(self, **options) -> None:
-        from rcp_ndcg.runners.slurm import SlurmOptions
+        from rcp.runners.slurm import SlurmOptions
 
         self.options = SlurmOptions(**options)
         _Scheduler.options_seen.append(dict(options))
@@ -94,7 +94,7 @@ def scheduler(monkeypatch: pytest.MonkeyPatch) -> type[_Scheduler]:
     def get_runner(name, **options):
         return runners[name](**options)
 
-    monkeypatch.setattr("rcp_ndcg.runs.execution.get_runner", get_runner)
+    monkeypatch.setattr("rcp.runs.execution.get_runner", get_runner)
     return _Scheduler
 
 
@@ -133,7 +133,7 @@ class TestPaths:
     ) -> None:
         """From another directory `run status` said 'unknown', `run logs` failed, and `run cancel` killed nothing
         but still recorded the run as cancelled."""
-        monkeypatch.setattr("rcp_ndcg.runs.execution.run_argv", lambda *args, **kwargs: ("sleep", "30"))
+        monkeypatch.setattr("rcp.runs.execution.run_argv", lambda *args, **kwargs: ("sleep", "30"))
         monkeypatch.chdir(tmp_path)
         started = _ok("run", "start", str(_config(data, tmp_path)), "--runs-dir", "runs", "--detach")
         record = Run(started["run_dir"]).jobs()
@@ -165,7 +165,7 @@ class TestPaths:
     def test_a_job_the_runner_cannot_find_is_not_recorded_cancelled(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("rcp_ndcg.runs.execution.run_argv", lambda *args, **kwargs: ("sleep", "30"))
+        monkeypatch.setattr("rcp.runs.execution.run_argv", lambda *args, **kwargs: ("sleep", "30"))
         started = _ok("run", "start", str(_config(data, tmp_path)), "--runs-dir", str(tmp_path / "runs"), "--detach")
         record = Run(started["run_dir"]).jobs()
         name = record["jobs"][0]["name"]
@@ -188,9 +188,9 @@ def _pod_sigterm_error() -> str:
     """
     import signal
 
-    from rcp_ndcg.errors import Interrupted
-    from rcp_ndcg.runs.mirror import _on_sigterm
-    from rcp_ndcg.runs.pipeline import _describe
+    from rcp.errors import Interrupted
+    from rcp.runs.mirror import _on_sigterm
+    from rcp.runs.pipeline import _describe
 
     previous = _on_sigterm()
     assert previous is not None, "the mirror installs its SIGTERM handler in the main thread"
@@ -215,8 +215,8 @@ class TestStatus:
         """
         from datetime import UTC, datetime, timedelta
 
-        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
-        from rcp_ndcg.runs.pipeline import INTERRUPT_ERROR
+        from rcp.runs.manifest import RunStatus, StepStatus
+        from rcp.runs.pipeline import INTERRUPT_ERROR
 
         remote = "memory://mirror/cancelled-run"
         started = _submit(_config(data, tmp_path, mirror=remote, runner={"name": "pod"}), tmp_path)
@@ -273,12 +273,12 @@ class TestStatus:
     def test_the_library_hands_a_local_config_with_options_to_the_local_runner(
         self, data: Path, tmp_path: Path
     ) -> None:
-        """`rcp_ndcg.run` dropped a configured local runner's options like the CLI did; it now hands them over."""
-        import rcp_ndcg
+        """`rcp.run` dropped a configured local runner's options like the CLI did; it now hands them over."""
+        import rcp
 
         logs = tmp_path / "api-logs"
         config = tiny_config(data, runner={"name": "local", "options": {"log_dir": str(logs)}})
-        run = rcp_ndcg.run(config, runs_dir=str(tmp_path / "runs"))
+        run = rcp.run(config, runs_dir=str(tmp_path / "runs"))
         record = Run(run.dir).jobs()
         assert record is not None and record["runner"] == "local"
         name = record["jobs"][0]["name"]
@@ -329,11 +329,9 @@ class TestStatus:
     ) -> None:
         """runs-11: a local-runner job that ran and failed recorded no handle, so `run logs` printed nothing
         and `run status` said the submission failed."""
-        from rcp_ndcg.runs.execution import logs
+        from rcp.runs.execution import logs
 
-        monkeypatch.setattr(
-            "rcp_ndcg.runs.execution.run_argv", lambda *args, **kwargs: ("bash", "-c", "echo boom; exit 1")
-        )
+        monkeypatch.setattr("rcp.runs.execution.run_argv", lambda *args, **kwargs: ("bash", "-c", "echo boom; exit 1"))
         config = _config(data, tmp_path, runner={"name": "local", "options": {"log_dir": str(tmp_path / "local-logs")}})
         code, error = _invoke("run", "start", str(config), "--runs-dir", str(tmp_path / "runs"), "--runner", "local")
         assert code == 1 and "exited 1" in error["message"]
@@ -368,7 +366,7 @@ class TestStatus:
     def test_a_live_job_keeps_the_run_not_done_between_phases(self, data: Path, tmp_path: Path, scheduler) -> None:
         """A job's phases run ``run resume --only <steps>``; after phase 1 the manifest is ``partial``
         (terminal), so a poller read ``done=true`` while the job still ran the next phase."""
-        from rcp_ndcg.runs.manifest import RunStatus
+        from rcp.runs.manifest import RunStatus
 
         started = _submit(_config(data, tmp_path), tmp_path)
         run = Run(started["run_dir"])
@@ -393,7 +391,7 @@ class TestStatus:
     ) -> None:
         """A missing accounting CLI (``sacct``) once aborted ``run status`` with a provider error instead of
         reporting the job it cannot ask about."""
-        from rcp_ndcg.runners import RunnerError
+        from rcp.runners import RunnerError
 
         started = _submit(_config(data, tmp_path), tmp_path)
 
@@ -425,7 +423,7 @@ class TestStatus:
         handler and made ``run status`` abort instead of reporting the local state. The mirror is the
         in-memory scheme: the object store's own credential refresh would resolve a name, and the error
         under test is the read's."""
-        from rcp_ndcg.runs.mirror import Mirror
+        from rcp.runs.mirror import Mirror
 
         started = _submit(_config(data, tmp_path, mirror="memory://mirror/run", runner={"name": "sched"}), tmp_path)
 
@@ -439,7 +437,7 @@ class TestStatus:
     def test_a_partial_manifest_with_an_unknown_job_is_not_done(self, data: Path, tmp_path: Path, scheduler) -> None:
         """A phase boundary leaves the manifest ``partial``; when the runner cannot say whether the job ended
         (a missing accounting CLI, a TTL-deleted Job), ``done`` must not be true while the next phase may run."""
-        from rcp_ndcg.runs.manifest import RunStatus
+        from rcp.runs.manifest import RunStatus
 
         started = _submit(_config(data, tmp_path), tmp_path)
         run = Run(started["run_dir"])
@@ -458,7 +456,7 @@ class TestStatus:
         run's id, status and metrics, while ``restore`` refused the same mirror."""
         from datetime import UTC, datetime, timedelta
 
-        from rcp_ndcg.runs.manifest import RunManifest
+        from rcp.runs.manifest import RunManifest
 
         remote = "memory://mirror/foreign"
         started = _submit(_config(data, tmp_path, mirror=remote, runner={"name": "sched"}), tmp_path)
@@ -505,7 +503,7 @@ class TestJobRecord:
             published.append(str(target))
             real(target, payload, mode=mode)
 
-        monkeypatch.setattr("rcp_ndcg.runs.execution.publish_bytes", record)
+        monkeypatch.setattr("rcp.runs.execution.publish_bytes", record)
         started = _submit(_config(data, tmp_path), tmp_path)
         assert str(Run(started["run_dir"]).layout.jobs) in published
 
@@ -560,7 +558,7 @@ class TestResubmission:
     def test_a_default_valued_option_the_set_names_is_a_declaration(self) -> None:
         """runs-2: the filter drops a resolved default, but a key the resume's ``--set`` names is a declaration
         whatever its value (the local runner's ``detach`` is the documented case)."""
-        from rcp_ndcg.runs.execution import _declared_runner_options
+        from rcp.runs.execution import _declared_runner_options
 
         assert _declared_runner_options("local", {"detach": False, "log_dir": None, "cwd": None}) == {}
         assert _declared_runner_options(
@@ -571,7 +569,7 @@ class TestResubmission:
         self, data: Path, tmp_path: Path, scheduler
     ) -> None:
         """`run resume` only ran in this process (no engine), and rcp.run(dir, runner=...) was refused."""
-        import rcp_ndcg
+        import rcp
 
         started = _submit(_config(data, tmp_path, runner={"name": "sched", "options": {"queue": "a"}}), tmp_path)
         running = _invoke("run", "resume", "--run", started["run_dir"], "--runner", "sched")
@@ -587,7 +585,7 @@ class TestResubmission:
         assert Run(started["run_dir"]).manifest.status.value == "submitted"
 
         scheduler.state = "failed"
-        assert rcp_ndcg.run(started["run_dir"], runner="sched").manifest.status.value == "submitted"
+        assert rcp.run(started["run_dir"], runner="sched").manifest.status.value == "submitted"
         assert len(scheduler.submitted) == 3
 
     def test_a_null_handle_blocks_a_resubmission(self, data: Path, tmp_path: Path, scheduler) -> None:
@@ -648,7 +646,7 @@ class TestCancel:
     def test_cancelling_a_detached_run_inside_a_step_records_it_cancelled(self, data: Path, tmp_path: Path) -> None:
         """runs-7: the coordinator handled SIGTERM first and recorded the run failed, so `run cancel` reported
         'failed' for a run the user stopped (every detached local run, and the MCP run_cancel path)."""
-        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
+        from rcp.runs.manifest import RunStatus, StepStatus
 
         config = _config(
             data,
@@ -678,8 +676,8 @@ class TestCancel:
         """runs-7: the cancel intent was marked in the manifest before the stop, so a ``backend.cancel`` that
         raised (a scheduler that refused, a process group that survived SIGKILL) left a live job recorded
         cancelled, and ``run status`` reported a stopped run that was not stopped."""
-        from rcp_ndcg.runners.base import RunnerError
-        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
+        from rcp.runners.base import RunnerError
+        from rcp.runs.manifest import RunStatus, StepStatus
 
         started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
         run = Run(started["run_dir"])
@@ -705,9 +703,9 @@ class TestCancel:
     ) -> None:
         """runs-7: taking the pre-signal mark back must not clobber the coordinator's own record of the
         interrupt when it saw the mark and stopped itself before the runner's cancel failed."""
-        from rcp_ndcg.runners.base import RunnerError
-        from rcp_ndcg.runs.manifest import RunStatus, StepStatus
-        from rcp_ndcg.runs.pipeline import INTERRUPT_ERROR
+        from rcp.runners.base import RunnerError
+        from rcp.runs.manifest import RunStatus, StepStatus
+        from rcp.runs.pipeline import INTERRUPT_ERROR
 
         started = _submit(_config(data, tmp_path, runner={"name": "sched"}), tmp_path)
         run = Run(started["run_dir"])
@@ -796,9 +794,9 @@ class TestCancel:
 def test_stage_run_writes_the_run_directory_a_runner_is_handed(data: Path, tmp_path: Path) -> None:
     """The one staging of a run directory before a job runs it (``submit_run`` and any driver that runs the
     job itself): the layout, the resolved ``run.yaml`` and the manifest in status ``submitted``."""
-    from rcp_ndcg.runs.execution import stage_run
-    from rcp_ndcg.runs.manifest import RunStatus
-    from rcp_ndcg.runs.run import prepare
+    from rcp.runs.execution import stage_run
+    from rcp.runs.manifest import RunStatus
+    from rcp.runs.run import prepare
 
     pipeline = prepare(tiny_config(data), runs_dir=str(tmp_path))
     layout = stage_run(pipeline)
@@ -810,9 +808,9 @@ def test_stage_run_writes_the_run_directory_a_runner_is_handed(data: Path, tmp_p
 def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tmp_path: Path, scheduler) -> None:
     """A config that names ``local`` and sets ``env``/``resources``, handed to ``slurm``, lost them silently:
     the job asked for no GPUs, no time limit and no environment."""
-    from rcp_ndcg.errors import ConfigError
-    from rcp_ndcg.runs.execution import job_for
-    from rcp_ndcg.runs.run import prepare
+    from rcp.errors import ConfigError
+    from rcp.runs.execution import job_for
+    from rcp.runs.run import prepare
 
     config = tiny_config(
         data,
@@ -829,7 +827,7 @@ def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tm
     _, plain_job, _ = job_for(prepare(plain, runs_dir=str(tmp_path / "runs")), "sched")
     assert dict(plain_job.env) == {} and plain_job.resources.gpus == 0
     # All three fields are named, and the check covers every one of them (a fourth would need this list).
-    from rcp_ndcg.runs.execution import JOB_OPTIONS
+    from rcp.runs.execution import JOB_OPTIONS
 
     assert set(JOB_OPTIONS) == {"resources", "image", "env"}
     slurm = tiny_config(
@@ -851,7 +849,7 @@ def test_the_job_fields_of_another_runner_are_refused_not_dropped(data: Path, tm
     with pytest.raises(ConfigError, match="resources"):
         job_for(prepare(bad, runs_dir=str(tmp_path / "runs")), "sched")
     # An in-memory default Resources() instance is no more a declaration than its dumped {"gpus": 0}.
-    from rcp_ndcg.runners import Resources
+    from rcp.runners import Resources
 
     default_instance = tiny_config(data, runner={"name": "mine", "options": {"resources": Resources()}})
     _, default_job, _ = job_for(prepare(default_instance, runs_dir=str(tmp_path / "runs")), "sched")
@@ -863,7 +861,7 @@ def test_a_submission_error_is_recorded_with_url_credentials_redacted(
 ) -> None:
     """A scheduler error names the request's URL; a credential in it must not reach ``logs/jobs.json`` (host-local,
     never mirrored) or ``run status``'s note."""
-    from rcp_ndcg.runners.base import RunnerError
+    from rcp.runners.base import RunnerError
 
     class _Refusing:
         def __init__(self, **options) -> None:
@@ -872,7 +870,7 @@ def test_a_submission_error_is_recorded_with_url_credentials_redacted(
         def submit(self, jobs):
             raise RunnerError("the store refused s3://key:secret@bucket/runs/x")
 
-    monkeypatch.setattr("rcp_ndcg.runs.execution.get_runner", lambda name, **options: _Refusing(**options))
+    monkeypatch.setattr("rcp.runs.execution.get_runner", lambda name, **options: _Refusing(**options))
     code, error = _invoke(
         "run", "start", str(_config(data, tmp_path)), "--runs-dir", str(tmp_path / "runs"), "--runner", "sched"
     )

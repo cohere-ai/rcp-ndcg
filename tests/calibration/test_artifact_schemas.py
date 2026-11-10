@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg import schemas
-from rcp_ndcg.calibration.fit import Calibration
-from rcp_ndcg.errors import DataError
-from rcp_ndcg.judging.client import EngineInfo
-from rcp_ndcg.judging.store import JudgementStore
-from rcp_ndcg.testing import TinyWorld
+from rcp import schemas
+from rcp.calibration.fit import Calibration
+from rcp.errors import DataError
+from rcp.judging.client import EngineInfo
+from rcp.judging.store import JudgementStore
+from rcp.testing import TinyWorld
 from tests._jsonschema import problems
 
 
@@ -144,7 +144,7 @@ def test_a_refused_save_leaves_the_previous_calibration_intact(
 ) -> None:
     """A save that refuses partway (a non-finite payload, a crash) must not leave a mixed calibration that
     loads cleanly: every payload is built and validated first and the layout lands as a whole."""
-    from rcp_ndcg.calibration import fit as fit_module
+    from rcp.calibration import fit as fit_module
 
     before = Calibration.load(world.calibration)
     target = tmp_path / "calibration"
@@ -167,7 +167,7 @@ def test_a_refused_save_leaves_the_previous_calibration_intact(
 
 
 def test_every_line_of_extensions_jsonl_matches_the_extension_record_schema(world: TinyWorld, tmp_path: Path) -> None:
-    from rcp_ndcg.calibration import read_judgements, score_documents
+    from rcp.calibration import read_judgements, score_documents
 
     calibration = Calibration.load(world.calibration)
     extended = calibration.extended(score_documents(calibration, read_judgements(world.judgements)))

@@ -24,7 +24,7 @@ from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
-from rcp_ndcg.data.templates import TemplateSpec
+from rcp.data.templates import TemplateSpec
 
 from ._contract import assert_recipe_contract
 
@@ -125,7 +125,7 @@ EXPECTED_TOP = {
 def tokenizer():
     """The recipe's own tokenizer, from the cache or the Hub; skipped when offline."""
     try:
-        from rcp_ndcg.data.tokenizer import load_tokenizer
+        from rcp.data.tokenizer import load_tokenizer
 
         return load_tokenizer(TOKENIZER_SPEC)
     except Exception as error:  # noqa: BLE001  (any Hub/transport failure means offline)

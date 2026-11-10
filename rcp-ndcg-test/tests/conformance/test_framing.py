@@ -18,7 +18,7 @@ import pytest
 from rcp_ndcg_test.engines import Exchange, compare_exchange
 from tests._engines import emulator_for
 
-from rcp_ndcg.errors import DataError
+from rcp.errors import DataError
 
 JSON = {"content-type": "application/json", "server": "uvicorn"}
 

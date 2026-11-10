@@ -15,8 +15,8 @@ from rcp_core.schemas import (
     judgement_record_id,
 )
 
-from rcp_ndcg.calibration import Calibration, read_judgements
-from rcp_ndcg.testing import TinyWorld, build_tiny_world
+from rcp.calibration import Calibration, read_judgements
+from rcp.testing import TinyWorld, build_tiny_world
 
 RUBRIC_FAMILY = JudgementFamily(
     stage="rubric", judge_model="hand", prompt_hash="0" * 64, criteria=criterion_labels(5), parse_version=1

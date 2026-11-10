@@ -3,7 +3,7 @@
 An earlier generator ran for 40+ minutes at 100% CPU on long BRIGHT documents: it grew a padded text toward
 its target length by re-tokenizing the whole candidate string at every step.  The bounds here count the
 work the tokenizer does -- the characters every ``encode`` call reads, through the backend the product's
-:class:`~rcp_ndcg.data.tokenizer.TextTokenizer` funnels every count, id and offset through -- so they are
+:class:`~rcp.data.tokenizer.TextTokenizer` funnels every count, id and offset through -- so they are
 deterministic (no wall clock) and fail on any growth loop: a quadratic pad reads the padded text once per
 step, thousands of times its length.  The harness sampler's over-length padding
 (``equivalence.stages._over_length``) has its own bound, in ``tests/test_equivalence.py``.

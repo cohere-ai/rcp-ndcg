@@ -164,7 +164,7 @@ _PAIRS: list[tuple[str, str]] = [
 def tokenizer(hub_cache, variant_id: str):
     """The variant's tokenizer (the product's loader, its Hub cache); skip when it cannot be fetched."""
     try:
-        from rcp_ndcg.data.tokenizer import load_tokenizer
+        from rcp.data.tokenizer import load_tokenizer
 
         return load_tokenizer(_tokenizer_spec(variant_id))
     except Exception as error:  # offline CI, or the hub extra is not installed

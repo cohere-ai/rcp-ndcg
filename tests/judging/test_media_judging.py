@@ -16,17 +16,17 @@ import pytest
 from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 from rcp_core.records import RankingExample
 
-from rcp_ndcg.data.prepare import prepare_content
-from rcp_ndcg.data.preprocess import Preprocessing
-from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.errors import CapabilityError, ConfigError, DataError
-from rcp_ndcg.inference.adapters.chat import build_messages, media_counts
-from rcp_ndcg.judging import RubricSchedule, TournamentSchedule, judge, load_prompt
-from rcp_ndcg.judging._templates import MEDIA_MARKER, collect_media, split_media, wrap_xml
-from rcp_ndcg.judging.client import Completion, CompletionInput
-from rcp_ndcg.judging.judging import media_marker_tokens, prompt_overhead_tokens, window_tokens
-from rcp_ndcg.testing import FakeJudge
+from rcp.data.prepare import prepare_content
+from rcp.data.preprocess import Preprocessing
+from rcp.data.resolution import ImagePolicy, content_media_tokens
+from rcp.data.tokenizer import load_tokenizer
+from rcp.errors import CapabilityError, ConfigError, DataError
+from rcp.inference.adapters.chat import build_messages, media_counts
+from rcp.judging import RubricSchedule, TournamentSchedule, judge, load_prompt
+from rcp.judging._templates import MEDIA_MARKER, collect_media, split_media, wrap_xml
+from rcp.judging.client import Completion, CompletionInput
+from rcp.judging.judging import media_marker_tokens, prompt_overhead_tokens, window_tokens
+from rcp.testing import FakeJudge
 
 
 def _png(path: Path, shade: int = 0) -> MediaRef:
@@ -95,8 +95,8 @@ class TestThePayload:
     def test_the_judge_wire_is_the_one_lowering_plus_its_guards(self, pages: list[MediaRef]) -> None:
         """The judge's blocks ARE the served roles' blocks: the same content lowers identically through the
         judge's ``_blocks`` and the one ``content_parts_payload``; the judge only adds its two guards."""
-        from rcp_ndcg.data.media import content_parts_payload
-        from rcp_ndcg.inference.adapters.chat import _blocks
+        from rcp.data.media import content_parts_payload
+        from rcp.inference.adapters.chat import _blocks
 
         content = prepare_content(
             Content.from_parts([TextPart(text="caption"), ImagePart(ref=pages[0])]), None, None
@@ -131,7 +131,7 @@ class TestThePayload:
     ) -> None:
         clip = tmp_path / "clip.mp4"
         clip.write_bytes(b"\x00" * 64)
-        monkeypatch.setattr("rcp_ndcg.inference.adapters.chat.MAX_VIDEO_BYTES", 10)
+        monkeypatch.setattr("rcp.inference.adapters.chat.MAX_VIDEO_BYTES", 10)
         big = Content.from_parts([VideoPart(ref=MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64))])
         with pytest.raises(DataError, match="RCP_NDCG_MAX_VIDEO_BYTES"):
             build_messages(CompletionInput(user_prompt="x", user_content=big))
@@ -385,8 +385,8 @@ class TestJudgingPages:
     def test_the_store_records_the_engine_media_check_outcome(self, tmp_path: Path, pages) -> None:
         """The check's outcome is store provenance: the client's census writes into the pass's
         ``preprocessing.jsonl``, so a ``not_checked`` (or ``ok``) row survives beside the media rows."""
-        from rcp_ndcg.judging._fake import _answer_text, _prompt_text
-        from rcp_ndcg.judging.client import JudgeClient, JudgeConfig
+        from rcp.judging._fake import _answer_text, _prompt_text
+        from rcp.judging.client import JudgeClient, JudgeConfig
 
         class _NoUsageEngine:
             """A served engine whose replies carry no usage: the media delta cannot be taken."""
@@ -449,7 +449,7 @@ class TestVideoContainers:
         be counted honestly. The count refuses it, but a pass with no ``context_tokens`` or no tokenizer
         never reaches that count -- it swallowed the refusal and sent the container while the store recorded
         ``num_frames: 8`` -- so the plan refuses it now, before any request."""
-        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp.data.resolution import VideoPolicy
 
         clip = tmp_path / "clip.mp4"
         clip.write_bytes(b"\x00" * 64)
@@ -481,7 +481,7 @@ class TestVideoContainers:
     def test_an_fps_qwen2_container_is_refused_before_the_pass(self, tmp_path: Path) -> None:
         """The engine's fps rule is ported for the qwen3_vl family only: a judge whose processor resolves to
         a qwen2 family is refused before any request, whatever the budget settings."""
-        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp.data.resolution import VideoPolicy
 
         clip = tmp_path / "clip.mp4"
         clip.write_bytes(b"\x00" * 64)
@@ -516,7 +516,7 @@ def test_a_media_pass_bounds_prepared_media_to_one_query_s_pool(tmp_path: Path, 
     query's pool, but a pass that starts every query before its first answer used to hold one pool per
     query (the window budget prepared each pool synchronously, before the first await). The pass now runs
     one media query at a time, so the prepared dict never holds more than one query's pool."""
-    from rcp_ndcg.judging.judging import _Pass
+    from rcp.judging.judging import _Pass
 
     observed: list[int] = []
     original = _Pass.ask_all
@@ -551,10 +551,10 @@ async def test_run_planned_releases_a_query_s_prepared_media(tmp_path: Path, pag
     workers do."""
     from rcp_core.schemas import JudgementFamily
 
-    from rcp_ndcg.data.census import TextTruncationCensus
-    from rcp_ndcg.data.prepare import MediaCensus
-    from rcp_ndcg.judging.judging import _Pass, _Query, run_planned
-    from rcp_ndcg.judging.store import JudgementStore
+    from rcp.data.census import TextTruncationCensus
+    from rcp.data.prepare import MediaCensus
+    from rcp.judging.judging import _Pass, _Query, run_planned
+    from rcp.judging.store import JudgementStore
 
     prompt = load_prompt("rubric_vision")
     units = [f"p{i}" for i in range(len(pages))]
@@ -596,10 +596,10 @@ async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_pat
     query and released when its run returns."""
     from rcp_core.schemas import JudgementFamily
 
-    from rcp_ndcg.data.census import TextTruncationCensus
-    from rcp_ndcg.data.prepare import MediaCensus
-    from rcp_ndcg.judging.judging import _Pass, _Query, run_rubric
-    from rcp_ndcg.judging.store import JudgementStore
+    from rcp.data.census import TextTruncationCensus
+    from rcp.data.prepare import MediaCensus
+    from rcp.judging.judging import _Pass, _Query, run_rubric
+    from rcp.judging.store import JudgementStore
 
     prompt = load_prompt("rubric_vision")
     query = _Query(
@@ -640,7 +640,7 @@ class TestTheFpsFamilyOnPreprocessing:
     and the window budget's media count uses the judge's tokenizer when it has one."""
 
     def test_a_deferred_processor_is_allowed(self) -> None:
-        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp.data.resolution import VideoPolicy
 
         preprocessing = Preprocessing(
             image=ImagePolicy(min_px=65536, max_px=131072),
@@ -651,7 +651,7 @@ class TestTheFpsFamilyOnPreprocessing:
         assert preprocessing.image.for_processor("qwen3_vl").processor == "qwen3_vl"
 
     def test_an_explicit_other_family_is_refused(self) -> None:
-        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp.data.resolution import VideoPolicy
 
         with pytest.raises(ValueError, match="qwen3_vl"):
             Preprocessing(
@@ -660,8 +660,8 @@ class TestTheFpsFamilyOnPreprocessing:
             )
 
     def test_the_window_media_count_uses_the_judges_tokenizer(self) -> None:
-        from rcp_ndcg.data.resolution import VideoPolicy
-        from rcp_ndcg.judging.judging import _media_tokens
+        from rcp.data.resolution import VideoPolicy
+        from rcp.judging.judging import _media_tokens
         from tests._tokenizers import vendored_qwen3_vl_tokenizer
 
         tokenizer = vendored_qwen3_vl_tokenizer()
@@ -679,9 +679,9 @@ class TestTheFpsFamilyOnPreprocessing:
     def test_a_deferred_form_resolved_to_another_family_is_refused(self) -> None:
         """The deferred processor is only valid when the judge resolves it to qwen3_vl: the effective
         preprocessing refuses fps beside any other resolved family, before a strict count has to."""
-        from rcp_ndcg.data.resolution import VideoPolicy
-        from rcp_ndcg.judging import JudgeConfig
-        from rcp_ndcg.judging.judging import _effective_preprocessing
+        from rcp.data.resolution import VideoPolicy
+        from rcp.judging import JudgeConfig
+        from rcp.judging.judging import _effective_preprocessing
 
         preprocessing = Preprocessing(
             image=ImagePolicy(min_px=65536, max_px=131072),

@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from rcp_ndcg.errors import ProviderError
+from rcp.errors import ProviderError
 from tests.conftest import sandbox_path
 
 JOBS = Path(__file__).resolve().parents[1] / "src" / "rcp_ndcg_test" / "jobs"
@@ -1730,7 +1730,7 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-core", "rcp-ndcg", "rcp-ndcg-vllm"], builds  # release order, by name
+    assert packages == ["rcp-core", "rcp", "rcp-ndcg-vllm"], builds  # release order, by name
     assert all("--all-packages" not in words for words in builds)
     # The wheelhouse the build stages: exactly the published wheels, never the unpublished member's.
     wheelhouse = tmp_path / "wheelhouse"
@@ -1738,7 +1738,7 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     listed = sorted(path.name for path in wheelhouse.iterdir())
     assert listed == [
         "rcp_core-0.0.1-py3-none-any.whl",
-        "rcp_ndcg-0.0.1-py3-none-any.whl",
+        "rcp-0.0.1-py3-none-any.whl",
         "rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
     ], listed
     assert not any(name.startswith("rcp_ndcg_test") for name in listed)
@@ -1756,7 +1756,7 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"], builds
+    assert packages == ["rcp-core", "rcp", "rcp-ndcg-vllm", "rcp-ndcg-test"], builds
     assert sorted(path.name for path in harness.iterdir()) == ["rcp_ndcg_test-0.0.1-py3-none-any.whl"]
     # The staged tree the real build copies it into: the script names the harness directory beside dist/.
     assert 'stage/"$RC_NAME"/harness' in RC_BUILD.read_text(encoding="utf-8")
@@ -2011,7 +2011,7 @@ def test_rc_build_downloads_each_family_lock_separately() -> None:
     script = RC_BUILD.read_text(encoding="utf-8")
     assert script.count('pip download --quiet --no-deps -r "$WORK/direct.txt"') == 2  # the exact pins
     assert script.count('pip download --quiet "$pin"') == 2  # each pin's closure, in its own resolution
-    assert script.count("hashed the local rcp-ndcg pin") == 1  # the staged lock's local pin gets a hash
+    assert script.count("hashed the local rcp pin") == 1  # the staged lock's local pin gets a hash
     assert 'lock_args+=(-r "$lock")' not in script  # the batch resolution that failed
 
 
@@ -2071,7 +2071,7 @@ def _check_pins(
 ) -> subprocess.CompletedProcess[str]:
     """Source rc_build.sh and run ``check_pins`` on a scratch checkout with the given manifests."""
     checkout = tmp_path / "checkout"
-    for member in ("rcp-ndcg", "rcp-ndcg-vllm", "rcp-core", "rcp-ndcg-test"):
+    for member in ("rcp", "rcp-ndcg-vllm", "rcp-core", "rcp-ndcg-test"):
         (checkout / member).mkdir(parents=True, exist_ok=True)
 
     def _write(path: Path, text: str) -> None:
@@ -2080,8 +2080,8 @@ def _check_pins(
             path.write_text(text, encoding="utf-8")
 
     _write(
-        checkout / "rcp-ndcg" / "pyproject.toml",
-        '[project]\nname = "rcp-ndcg"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n",
+        checkout / "rcp" / "pyproject.toml",
+        '[project]\nname = "rcp"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n",
     )
     _write(
         checkout / "rcp-ndcg-vllm" / "pyproject.toml",
@@ -2124,7 +2124,7 @@ def test_rc_build_release_check_refuses_a_stale_citation_or_manifest(tmp_path: P
 def test_rc_build_runs_the_release_checks_and_smokes_from_one_home() -> None:
     """g-rcjobs-5(b,e): the constraints check is ``.github/scripts/check_constraints.py`` (semantic, the
     one CI and the release run -- not a textual diff a newer uv re-serialisation fails), and the three
-    wheel smokes release.yml runs (core alone, vllm alone) run here too, not only the rcp-ndcg smoke."""
+    wheel smokes release.yml runs (core alone, vllm alone) run here too, not only the rcp smoke."""
     script = RC_BUILD.read_text(encoding="utf-8")
     assert ".github/scripts/check_constraints.py" in script
     assert "diff <(grep -v '^#'" not in script  # the textual diff is gone
@@ -2133,16 +2133,16 @@ def test_rc_build_runs_the_release_checks_and_smokes_from_one_home() -> None:
 
 
 def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:
-    """rcp-ndcg pins rcp-core==VERSION; the lean rcp-ndcg-vllm names NO sibling (decision 18: no
-    lockstep version pin between the two packages -- the manifest does not depend on rcp-ndcg)."""
+    """rcp pins rcp-core==VERSION; the lean rcp-ndcg-vllm names NO sibling (decision 18: no
+    lockstep version pin between the two packages -- the manifest does not depend on rcp)."""
     completed = _check_pins(tmp_path)
     assert completed.returncode == 0, completed.stderr
 
 
-@pytest.mark.parametrize("sibling", ["rcp-ndcg==0.0.1", "rcp-core==0.0.1", "rcp-ndcg-test==0.0.1"])
+@pytest.mark.parametrize("sibling", ["rcp==0.0.1", "rcp-core==0.0.1", "rcp-ndcg-test==0.0.1"])
 def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Path, sibling: str) -> None:
     """The pre-fix check asserted the opposite and aborted every build: ANY workspace sibling named in
-    the vllm manifest is refused (not only rcp-ndcg), naming decision 18."""
+    the vllm manifest is refused (not only rcp), naming decision 18."""
     completed = _check_pins(tmp_path, vllm_deps=f'  "{sibling}",\n')
     assert completed.returncode != 0
     assert "no sibling" in completed.stderr
@@ -2265,7 +2265,7 @@ def test_judgecheck_media_probe_uses_the_engines_own_stock_budget() -> None:
     config declares none."""
     from rcp_ndcg_test.jobs.judgecheck_probe import probe_policy
 
-    from rcp_ndcg.data.resolution import PROCESSORS
+    from rcp.data.resolution import PROCESSORS
 
     qwen = probe_policy("qwen3_vl")
     assert (qwen.min_px, qwen.max_px) == (PROCESSORS["qwen3_vl"].min_pixels, PROCESSORS["qwen3_vl"].max_pixels)
@@ -2280,8 +2280,8 @@ def test_judgecheck_media_report_is_the_products_verdict() -> None:
 
     from rcp_ndcg_test.jobs.judgecheck_probe import media_report
 
-    from rcp_ndcg.data.prepare import MediaCensus
-    from rcp_ndcg.judging.client import JudgeConfig
+    from rcp.data.prepare import MediaCensus
+    from rcp.judging.client import JudgeConfig
 
     class StubClient:
         """The product's client surface the report reads: the policy it was given, the census, the probe."""
@@ -2314,7 +2314,7 @@ def test_judgecheck_media_report_checks_an_engine_over_the_wire() -> None:
 
     from rcp_ndcg_test.jobs.judgecheck_probe import media_report
 
-    from rcp_ndcg.judging.client import JudgeConfig
+    from rcp.judging.client import JudgeConfig
 
     state = {"delta": 66}
 
@@ -3193,7 +3193,7 @@ def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes()
         assert f"--set judge.base_url=http://127.0.0.1:{port}/v1" in plan, plan
         assert f"modes --judge {recipe}" in plan, plan
         assert f"media --judge {recipe}" in plan, plan
-    assert plan.count("rcp-ndcg judge check") == 10, plan  # one command shape per judge, per documented mode
+    assert plan.count("rcp judge check") == 10, plan  # one command shape per judge, per documented mode
     assert "the Gemma 4 judges' two (off, on), the others'" in plan, plan
     assert "bootstrap.sh envs" in plan and "judgecheck-wave.txt" in plan
     assert "gs://YOUR-BUCKET/waves/judgecheck/" in plan
@@ -3270,7 +3270,7 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
         "    fi\n"
         '    exec python3 "$STUB_ENGINE_PY" "$port" "${3:-}"\n'
         "    ;;\n"
-        "  rcp-ndcg)\n"
+        "  rcp)\n"
         '    echo \'{"schema": "rcp-ndcg.cli.v1", "command": "judge check", "ok": true}\'\n'
         "    ;;\n"
         "  python)\n"
@@ -3618,7 +3618,7 @@ def test_submit_maxsim_probe_mounts_the_probe_and_forwards_the_operator_knobs(
 
 
 def test_the_maxsim_gate_reds_on_a_seeded_wrong_row_and_records_the_expected_rows(tmp_path: Path) -> None:
-    """W13(c)'s MaxSim gate, on CPU: the product's own MaxSim scorer (``rcp_ndcg.retrieval.maxsim``, the
+    """W13(c)'s MaxSim gate, on CPU: the product's own MaxSim scorer (``rcp.retrieval.maxsim``, the
     path stage 3 and the ``--quality`` view both consume) scores the served per-token vectors over the
     pooled pairs corpus; the expected rows are the card's MaxSim -- direct, float64 -- on the reference's
     vectors. The gate greens a matched pair of vector sets (the seeded delta inside the recipe's declared
@@ -3633,7 +3633,7 @@ def test_the_maxsim_gate_reds_on_a_seeded_wrong_row_and_records_the_expected_row
     from rcp_ndcg_test.jobs import maxsim_probe
     from rcp_ndcg_vllm.recipe import resolve_recipe
 
-    from rcp_ndcg.inference.types import Embeddings
+    from rcp.inference.types import Embeddings
 
     recipe = resolve_recipe("pplx-embed-v2-late-0.6b")
     rng = np.random.default_rng(24)

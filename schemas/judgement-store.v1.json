@@ -327,7 +327,7 @@
           "type": "object"
         },
         "package_version": {
-          "description": "The rcp-ndcg version that claimed it.",
+          "description": "The rcp version that claimed it.",
           "title": "Package Version",
           "type": "string"
         },

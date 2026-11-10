@@ -27,7 +27,7 @@ WRITTEN = (
 )
 TREE = (
     "rcp-core/src",
-    "rcp-ndcg/src",
+    "rcp/src",
     "rcp-ndcg-vllm/src",
     "rcp-ndcg-test/src",
     "rcp-ndcg-test/tests/recipes/golden",

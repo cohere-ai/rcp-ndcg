@@ -9,8 +9,8 @@
 #SBATCH --time=0-08:00:00
 set -euo pipefail
 if ! command -v uvx >/dev/null; then
-  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-ndcg-uv" uv
-  export PATH="${TMPDIR:-/tmp}/rcp-ndcg-uv/bin:$PATH"
+  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-uv" uv
+  export PATH="${TMPDIR:-/tmp}/rcp-uv/bin:$PATH"
 fi
 mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8100 /tmp/rcp-e2e-text-four-phases/tmp-8110 /tmp/rcp-e2e-text-four-phases/tmp-8120
 read -r -d '' WORKER_1 <<'RCP_NDCG_WORKER_1' || true
@@ -20,7 +20,7 @@ cd /e2e/runs/rcp-text-four-phases
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only retrieve
+exec uvx --from 'rcp[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp run resume --run /e2e/runs/rcp-text-four-phases --only retrieve
 RCP_NDCG_WORKER_1
 read -r -d '' ENGINE_ENCODER <<'RCP_NDCG_ENGINE_ENCODER' || true
 export CUDA_VISIBLE_DEVICES=0
@@ -31,11 +31,11 @@ mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8100
 exec vllm serve Qwen/Qwen3-Embedding-0.6B --revision 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3 --served-model-name qwen3-embedding-0.6b --host 0.0.0.0 --port 8100 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 32768 --hf-overrides '{"is_matryoshka": true}' --pooler-config '{}'
 RCP_NDCG_ENGINE_ENCODER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
-  echo "rcp-ndcg: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
+  echo "rcp: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
   exit 1
 fi
 if ! command -v python3 >/dev/null; then
-  echo "rcp-ndcg: this job needs python3 on PATH (the engine readiness probe uses its standard library), and there is none; use an image or node that has python3" >&2
+  echo "rcp: this job needs python3 on PATH (the engine readiness probe uses its standard library), and there is none; use an image or node that has python3" >&2
   exit 1
 fi
 rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period, and reap them
@@ -77,17 +77,17 @@ rcp_ndcg_any_ready() {  # PORT PATH HOST...
 rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
   local pid_var="$1" timeout="$2" port="$3" path="$4"; shift 4
   local deadline=$((SECONDS + timeout)) status
-  echo "rcp-ndcg: waiting up to $timeout s for an engine replica to answer $path" >&2
+  echo "rcp: waiting up to $timeout s for an engine replica to answer $path" >&2
   until rcp_ndcg_any_ready "$port" "$path" "$@"; do
     if [[ -n "${!pid_var:-}" ]] && ! kill -0 "${!pid_var}" 2>/dev/null; then
       status=0
       wait "${!pid_var}" || status=$?
       printf -v "$pid_var" ''
-      echo "rcp-ndcg: the engine exited with status $status before it answered $path; its output is above" >&2
+      echo "rcp: the engine exited with status $status before it answered $path; its output is above" >&2
       exit 1
     fi
     if ((SECONDS >= deadline)); then
-      echo "rcp-ndcg: no engine replica answered $path within $timeout s (serve.startup_timeout_s); stopping the job" >&2
+      echo "rcp: no engine replica answered $path within $timeout s (serve.startup_timeout_s); stopping the job" >&2
       exit 1
     fi
     sleep 10
@@ -98,14 +98,14 @@ rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...
   local deadline=$((SECONDS + timeout))
   while rcp_ndcg_any_ready "$port" "$path" "$@"; do
     if ((SECONDS >= deadline)); then
-      echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
+      echo "rcp: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
       return 1
     fi
     sleep 10
   done
 }
 if rcp_ndcg_any_ready 8100 /v1/models 127.0.0.1; then
-  echo "rcp-ndcg: port 8100 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
+  echo "rcp: port 8100 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
   exit 1
 fi
 srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_ENCODER" &
@@ -117,7 +117,7 @@ RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
 if kill -0 "$RCP_NDCG_COORDINATOR_PID" 2>/dev/null; then
-  echo "rcp-ndcg: the encoder engine exited with status $status while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+  echo "rcp: the encoder engine exited with status $status while the run was going; stopping the run (submit it again with rcp run resume --run <run dir> --runner <this runner>)" >&2
   exit 1
 fi
 failed=0
@@ -129,7 +129,7 @@ for pid in ${RCP_NDCG_ENGINE_PID}; do
   fi
 done
 if [ "$failed" -ne 0 ]; then
-  echo "rcp-ndcg: the encoder engine exited with status $failed while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+  echo "rcp: the encoder engine exited with status $failed while the run was going; stopping the run (submit it again with rcp run resume --run <run dir> --runner <this runner>)" >&2
   exit 1
 fi
 if [ "$status" -ne 0 ]; then
@@ -149,7 +149,7 @@ cd /e2e/runs/rcp-text-four-phases
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only rerank
+exec uvx --from 'rcp[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp run resume --run /e2e/runs/rcp-text-four-phases --only rerank
 RCP_NDCG_WORKER_2
 read -r -d '' ENGINE_RERANKER <<'RCP_NDCG_ENGINE_RERANKER' || true
 export CUDA_VISIBLE_DEVICES=0
@@ -160,11 +160,11 @@ mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8110
 exec vllm serve Qwen/Qwen3-Reranker-0.6B --revision e61197ed45024b0ed8a2d74b80b4d909f1255473 --served-model-name qwen3-reranker-0.6b --host 0.0.0.0 --port 8110 --tensor-parallel-size 1 --runner pooling --dtype bfloat16 --max-model-len 10000 --hf-overrides '{"architectures": ["Qwen3ForSequenceClassification"], "classifier_from_token": ["no", "yes"], "head_dtype": "model", "is_original_qwen3_reranker": true}' --chat-template /e2e/recipes/qwen3-reranker/template.jinja --pooler-config '{"use_activation": true}'
 RCP_NDCG_ENGINE_RERANKER
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
-  echo "rcp-ndcg: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
+  echo "rcp: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
   exit 1
 fi
 if ! command -v python3 >/dev/null; then
-  echo "rcp-ndcg: this job needs python3 on PATH (the engine readiness probe uses its standard library), and there is none; use an image or node that has python3" >&2
+  echo "rcp: this job needs python3 on PATH (the engine readiness probe uses its standard library), and there is none; use an image or node that has python3" >&2
   exit 1
 fi
 rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period, and reap them
@@ -206,17 +206,17 @@ rcp_ndcg_any_ready() {  # PORT PATH HOST...
 rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
   local pid_var="$1" timeout="$2" port="$3" path="$4"; shift 4
   local deadline=$((SECONDS + timeout)) status
-  echo "rcp-ndcg: waiting up to $timeout s for an engine replica to answer $path" >&2
+  echo "rcp: waiting up to $timeout s for an engine replica to answer $path" >&2
   until rcp_ndcg_any_ready "$port" "$path" "$@"; do
     if [[ -n "${!pid_var:-}" ]] && ! kill -0 "${!pid_var}" 2>/dev/null; then
       status=0
       wait "${!pid_var}" || status=$?
       printf -v "$pid_var" ''
-      echo "rcp-ndcg: the engine exited with status $status before it answered $path; its output is above" >&2
+      echo "rcp: the engine exited with status $status before it answered $path; its output is above" >&2
       exit 1
     fi
     if ((SECONDS >= deadline)); then
-      echo "rcp-ndcg: no engine replica answered $path within $timeout s (serve.startup_timeout_s); stopping the job" >&2
+      echo "rcp: no engine replica answered $path within $timeout s (serve.startup_timeout_s); stopping the job" >&2
       exit 1
     fi
     sleep 10
@@ -227,14 +227,14 @@ rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...
   local deadline=$((SECONDS + timeout))
   while rcp_ndcg_any_ready "$port" "$path" "$@"; do
     if ((SECONDS >= deadline)); then
-      echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
+      echo "rcp: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
       return 1
     fi
     sleep 10
   done
 }
 if rcp_ndcg_any_ready 8110 /v1/models 127.0.0.1; then
-  echo "rcp-ndcg: port 8110 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
+  echo "rcp: port 8110 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
   exit 1
 fi
 srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_RERANKER" &
@@ -246,7 +246,7 @@ RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
 if kill -0 "$RCP_NDCG_COORDINATOR_PID" 2>/dev/null; then
-  echo "rcp-ndcg: the reranker engine exited with status $status while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+  echo "rcp: the reranker engine exited with status $status while the run was going; stopping the run (submit it again with rcp run resume --run <run dir> --runner <this runner>)" >&2
   exit 1
 fi
 failed=0
@@ -258,7 +258,7 @@ for pid in ${RCP_NDCG_ENGINE_PID}; do
   fi
 done
 if [ "$failed" -ne 0 ]; then
-  echo "rcp-ndcg: the reranker engine exited with status $failed while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+  echo "rcp: the reranker engine exited with status $failed while the run was going; stopping the run (submit it again with rcp run resume --run <run dir> --runner <this runner>)" >&2
   exit 1
 fi
 if [ "$status" -ne 0 ]; then
@@ -278,7 +278,7 @@ cd /e2e/runs/rcp-text-four-phases
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only tournament --only rubric
+exec uvx --from 'rcp[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp run resume --run /e2e/runs/rcp-text-four-phases --only tournament --only rubric
 RCP_NDCG_WORKER_3
 read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true
 export CUDA_VISIBLE_DEVICES=0
@@ -289,11 +289,11 @@ mkdir -p /tmp/rcp-e2e-text-four-phases/tmp-8120
 exec vllm serve nvidia/Qwen3.8-Flash-Next-NVFP4 --revision fc694b54fb0174e0913e6adf86691ef85a4ead47 --served-model-name judge --host 0.0.0.0 --port 8120 --tensor-parallel-size 1 --runner generate --dtype auto --max-model-len 131072 --hf-overrides '{}' --pooler-config '{}' --limit-mm-per-prompt '{"image": 10}' --quantization modelopt_fp4 --reasoning-parser qwen3
 RCP_NDCG_ENGINE_JUDGE
 if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))); then
-  echo "rcp-ndcg: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
+  echo "rcp: this job needs bash 4.3 or later (for wait -n), and its bash is $BASH_VERSION; use an image or node with a newer bash" >&2
   exit 1
 fi
 if ! command -v python3 >/dev/null; then
-  echo "rcp-ndcg: this job needs python3 on PATH (the engine readiness probe uses its standard library), and there is none; use an image or node that has python3" >&2
+  echo "rcp: this job needs python3 on PATH (the engine readiness probe uses its standard library), and there is none; use an image or node that has python3" >&2
   exit 1
 fi
 rcp_ndcg_stop() {  # SIGTERM the processes, SIGKILL what is left after the grace period, and reap them
@@ -335,17 +335,17 @@ rcp_ndcg_any_ready() {  # PORT PATH HOST...
 rcp_ndcg_wait_ready() {  # PID_VAR TIMEOUT PORT PATH HOST...
   local pid_var="$1" timeout="$2" port="$3" path="$4"; shift 4
   local deadline=$((SECONDS + timeout)) status
-  echo "rcp-ndcg: waiting up to $timeout s for an engine replica to answer $path" >&2
+  echo "rcp: waiting up to $timeout s for an engine replica to answer $path" >&2
   until rcp_ndcg_any_ready "$port" "$path" "$@"; do
     if [[ -n "${!pid_var:-}" ]] && ! kill -0 "${!pid_var}" 2>/dev/null; then
       status=0
       wait "${!pid_var}" || status=$?
       printf -v "$pid_var" ''
-      echo "rcp-ndcg: the engine exited with status $status before it answered $path; its output is above" >&2
+      echo "rcp: the engine exited with status $status before it answered $path; its output is above" >&2
       exit 1
     fi
     if ((SECONDS >= deadline)); then
-      echo "rcp-ndcg: no engine replica answered $path within $timeout s (serve.startup_timeout_s); stopping the job" >&2
+      echo "rcp: no engine replica answered $path within $timeout s (serve.startup_timeout_s); stopping the job" >&2
       exit 1
     fi
     sleep 10
@@ -356,14 +356,14 @@ rcp_ndcg_wait_gone() {  # TIMEOUT PORT PATH HOST...
   local deadline=$((SECONDS + timeout))
   while rcp_ndcg_any_ready "$port" "$path" "$@"; do
     if ((SECONDS >= deadline)); then
-      echo "rcp-ndcg: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
+      echo "rcp: port $port still answers $path ${timeout} s after its engine was stopped: the next phase would talk to it" >&2
       return 1
     fi
     sleep 10
   done
 }
 if rcp_ndcg_any_ready 8120 /v1/models 127.0.0.1; then
-  echo "rcp-ndcg: port 8120 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
+  echo "rcp: port 8120 already answers /v1/models before this phase starts its engine: a process is bound to it (an engine of an earlier phase, or one started by hand); stopping the job" >&2
   exit 1
 fi
 srun --overlap --nodes=1 --ntasks-per-node=1 --kill-on-bad-exit=1 --wait=10 --gres=gpu:1 bash -c "$ENGINE_JUDGE" &
@@ -375,7 +375,7 @@ RCP_NDCG_COORDINATOR_PID=$!
 status=0
 wait -n || status=$?
 if kill -0 "$RCP_NDCG_COORDINATOR_PID" 2>/dev/null; then
-  echo "rcp-ndcg: the judge engine exited with status $status while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+  echo "rcp: the judge engine exited with status $status while the run was going; stopping the run (submit it again with rcp run resume --run <run dir> --runner <this runner>)" >&2
   exit 1
 fi
 failed=0
@@ -387,7 +387,7 @@ for pid in ${RCP_NDCG_ENGINE_PID}; do
   fi
 done
 if [ "$failed" -ne 0 ]; then
-  echo "rcp-ndcg: the judge engine exited with status $failed while the run was going; stopping the run (submit it again with rcp-ndcg run resume --run <run dir> --runner <this runner>)" >&2
+  echo "rcp: the judge engine exited with status $failed while the run was going; stopping the run (submit it again with rcp run resume --run <run dir> --runner <this runner>)" >&2
   exit 1
 fi
 if [ "$status" -ne 0 ]; then
@@ -408,6 +408,6 @@ export RCP_NDCG_ENGINES='{}'
 export CUDA_VISIBLE_DEVICES=''
 export PYTHONPATH=/e2e/out/probe-site
 export RCP_E2E_PROBE_JSONL=/e2e/out/client-probe.jsonl
-exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp-ndcg run resume --run /e2e/runs/rcp-text-four-phases --only calibrate --only evaluate
+exec uvx --from 'rcp[calibrate,hf,s3,azure]==0.0.1' --with rcp-ndcg-vllm==0.0.1 --constraints /stage/requirements-constraints.txt --find-links /stage/wheelhouse --no-index rcp run resume --run /e2e/runs/rcp-text-four-phases --only calibrate --only evaluate
 RCP_NDCG_WORKER_4
 srun --overlap --nodes=1 --ntasks=1 bash -c "$WORKER_4"

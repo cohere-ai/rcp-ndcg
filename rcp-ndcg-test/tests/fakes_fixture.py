@@ -17,8 +17,8 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_test.fakes import FakeReply
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.inference.fake import fake_uniform
+from rcp.data.tokenizer import load_tokenizer
+from rcp.inference.fake import fake_uniform
 
 _TOKENIZER_PATH = str(Path(__file__).resolve().parent / "fixtures" / "tokenizer.json")
 

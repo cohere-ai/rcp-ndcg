@@ -8,11 +8,11 @@ import pytest
 import yaml
 from pydantic import TypeAdapter
 
-from rcp_ndcg.examples import run_config_names
-from rcp_ndcg.judging import JudgeConfig
-from rcp_ndcg.judging.judges import judge_names
-from rcp_ndcg.retrieval import RerankerConfig, RetrieverConfig
-from rcp_ndcg.runs import RunConfig
+from rcp.examples import run_config_names
+from rcp.judging import JudgeConfig
+from rcp.judging.judges import judge_names
+from rcp.retrieval import RerankerConfig, RetrieverConfig
+from rcp.runs import RunConfig
 from tests.docs._markdown import ROOT
 
 PAPER = ROOT / "experiments" / "paper"
@@ -26,7 +26,7 @@ def _files(kind: str) -> list[Path]:
 def test_every_config_folder_has_a_reader() -> None:
     assert {p.name for p in PAPER.iterdir() if p.is_dir()} == {"retrieval", "rerankers"}
     assert all(_files(kind) for kind in FOLDERS)
-    assert not (ROOT / "configs").exists(), "the starter run configs ship in the package (rcp_ndcg.examples)"
+    assert not (ROOT / "configs").exists(), "the starter run configs ship in the package (rcp.examples)"
 
 
 @pytest.mark.parametrize("name", judge_names())

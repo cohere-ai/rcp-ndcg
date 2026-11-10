@@ -67,7 +67,7 @@
       "type": "integer"
     },
     "identity": {
-      "description": "The store's content identity: the retrieval identity of the full-width encoder plus a full-width marker (rcp_ndcg.retrieval.build_store). ``k`` never enters it.",
+      "description": "The store's content identity: the retrieval identity of the full-width encoder plus a full-width marker (rcp.retrieval.build_store). ``k`` never enters it.",
       "minLength": 1,
       "title": "Identity",
       "type": "string"

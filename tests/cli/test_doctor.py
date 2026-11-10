@@ -1,4 +1,4 @@
-"""``rcp-ndcg doctor``: the credential variables it reports are the ones the shipped configs and backends read."""
+"""``rcp doctor``: the credential variables it reports are the ones the shipped configs and backends read."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.doctor import doctor_cmd
+from rcp.cli.doctor import doctor_cmd
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,7 +21,7 @@ def _reported_variables() -> set[str]:
 
 
 def test_doctor_reports_the_variables_the_shipped_configs_read() -> None:
-    from rcp_ndcg.inference.adapters.embeddings import (
+    from rcp.inference.adapters.embeddings import (
         CohereEmbeddings,
         GeminiEmbeddings,
         OpenAIEmbeddings,
@@ -30,7 +30,7 @@ def test_doctor_reports_the_variables_the_shipped_configs_read() -> None:
 
     shipped = [
         *ROOT.joinpath("configs").rglob("*.yaml"),
-        *ROOT.joinpath("rcp-ndcg/src/rcp_ndcg/judging").joinpath("judges").glob("*.yaml"),
+        *ROOT.joinpath("rcp/src/rcp/judging").joinpath("judges").glob("*.yaml"),
     ]
     read = {m for path in shipped for m in re.findall(r"api_key_env:\s*([A-Z_]+)", path.read_text(encoding="utf-8"))}
     read |= {cls.API_KEY_ENV[0] for cls in (OpenAIEmbeddings, CohereEmbeddings, VoyageEmbeddings, GeminiEmbeddings)}
@@ -42,8 +42,8 @@ def test_doctor_reports_the_variables_the_shipped_configs_read() -> None:
 
 def test_doctor_checks_every_module_the_error_map_names_under_its_extra() -> None:
     """doctor builds its extras table from the one map, and the served-only package carries no engine extra."""
-    from rcp_ndcg.cli.doctor import _EXTRAS
-    from rcp_ndcg.errors import EXTRA_FOR_MODULE
+    from rcp.cli.doctor import _EXTRAS
+    from rcp.errors import EXTRA_FOR_MODULE
 
     assert {(module, extra) for extra, modules in _EXTRAS.items() for module in modules} == set(
         EXTRA_FOR_MODULE.items()
@@ -139,7 +139,7 @@ def test_doctor_reports_a_keyless_401_as_reachable(monkeypatch) -> None:
 def test_doctor_reports_the_alternative_key_variables() -> None:
     """The credential check listed one variable per vendor while the adapters accept an alternative (a
     working setup showed 'missing')."""
-    from rcp_ndcg.inference.adapters.embeddings import CohereEmbeddings, GeminiEmbeddings
+    from rcp.inference.adapters.embeddings import CohereEmbeddings, GeminiEmbeddings
 
     reported = _reported_variables()
     assert set(CohereEmbeddings.API_KEY_ENV) <= reported

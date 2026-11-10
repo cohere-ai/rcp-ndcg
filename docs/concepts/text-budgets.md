@@ -4,9 +4,9 @@ What the judge reads is a judging policy ([preprocessing and chunking](preproces
 half: what a served role -- an embedder, a multi-vector pooler, a reranker -- reads, and the one mechanism that
 fits every request into the model's input.
 
-The mechanism has one home: the declared budget and the fit live in `rcp_ndcg.data.text_budget` (the judge's side
-of the machinery is `rcp_ndcg.data.text_policy`, the cut record and census `rcp_ndcg.data.census`, the census
-files' record I/O `rcp_ndcg.storage.census`); `rcp_ndcg.data.preprocess` re-exports them, and every snippet below
+The mechanism has one home: the declared budget and the fit live in `rcp.data.text_budget` (the judge's side
+of the machinery is `rcp.data.text_policy`, the cut record and census `rcp.data.census`, the census
+files' record I/O `rcp.storage.census`); `rcp.data.preprocess` re-exports them, and every snippet below
 imports from it.
 
 ## The anchor rule
@@ -21,8 +21,8 @@ drops head anchors -- which is why no role config declares an engine-truncation 
 `--allow-auto-truncate` and their relatives are absent from the role configs by design), and why the fixed overhead
 is measured rather than guessed.
 
-One mechanism does this for every role: the declared :class:`~rcp_ndcg.data.TextBudget` and
-:func:`~rcp_ndcg.data.preprocess.fit`. The role configs carry no engine-truncation field
+One mechanism does this for every role: the declared :class:`~rcp.data.TextBudget` and
+:func:`~rcp.data.preprocess.fit`. The role configs carry no engine-truncation field
 (`truncate_prompt_tokens` and `truncation_side` are absent from them by design): the package cuts the content
 itself, and an engine-side truncation of a rendered prompt is exactly the cut this rule forbids.
 
@@ -32,7 +32,7 @@ A `TemplateSpec` declares, per request shape (an embedder's `query` and `documen
 ordered list of segments -- a fixed piece of frame text or a content span:
 
 ```python
-from rcp_ndcg.data import Segment, TemplateSpec
+from rcp.data import Segment, TemplateSpec
 
 pair = TemplateSpec(
     pair=(
@@ -132,8 +132,8 @@ per span (for routes the engine renders the template on), the output ids, and th
 ```python
 from tokenizers import Tokenizer, models, pre_tokenizers, processors
 
-from rcp_ndcg.data import Segment, TemplateSpec, TextBudget, TextTokenizer
-from rcp_ndcg.data.preprocess import fit
+from rcp.data import Segment, TemplateSpec, TextBudget, TextTokenizer
+from rcp.data.preprocess import fit
 
 backend = Tokenizer(
     models.WordLevel({"[UNK]": 0, "the": 1, "query": 2, "document": 3, "evidence": 4, "page": 5}, unk_token="[UNK]")
@@ -217,7 +217,7 @@ title), or the title as its own leading part ([data](../data.md)); the sparse (B
 it follows mteb's own BM25, `title + "\n" + body` with no task instruction ([retrieval](retrieval.md)).
 
 Media are never cut. Every served request goes through one preparation call
-(`rcp_ndcg.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image
+(`rcp.data.prepare.prepare_request`) -- the same path the judge's images take -- which sizes every image
 and video frame exactly as the declared `image_processor` would under the role's `image_policy`, counts the
 request's media tokens exactly, and reserves them whole out of `max_tokens` before the content is cut. When
 media alone fill the budget the declared `on_overflow` decides: `cut` (the default) shrinks to the policy's
@@ -238,7 +238,7 @@ recorded `not_checked`, never silent.
 The same policy objects size the media of the retrieval roles (encoders, rerankers). A role config declares
 the judge's `image_processor`, `max_images`, `max_videos` and the optional image and video policies (the same
 `ImagePolicy` / `VideoPolicy` types, content fields), and its clients prepare one request's contents with
-`rcp_ndcg.data.prepare.prepare_request`, which returns the prepared contents and the request's exact media
+`rcp.data.prepare.prepare_request`, which returns the prepared contents and the request's exact media
 token counts -- so the role's text budget can subtract them, never cut them:
 
 ```python
@@ -247,8 +247,8 @@ from pathlib import Path
 from PIL import Image
 from rcp_core.content import Content, ImagePart, MediaRef
 
-from rcp_ndcg.data import ImagePolicy
-from rcp_ndcg.data.prepare import MediaCensus, fit_media_to_budget, prepare_request
+from rcp.data import ImagePolicy
+from rcp.data.prepare import MediaCensus, fit_media_to_budget, prepare_request
 
 image_policy = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32).for_processor("qwen3_vl")
 Image.new("RGB", (2560, 2560), (30, 30, 30)).save("page.png")
@@ -264,7 +264,7 @@ print(fit.tokens, len(fit.dropped))  # 66 0: shrunk to the 65,536px floor, nothi
 MediaCensus(sink="preprocessing.jsonl").record(corpus="c", doc_id="d1", media=fit.dropped, dropped=True)
 ```
 
-Run `rcp_ndcg.data.resolution.engine_media_check` against a prepared probe whenever a serving setup changes:
+Run `rcp.data.resolution.engine_media_check` against a prepared probe whenever a serving setup changes:
 send one prepared image and the same request without its media, count the media block exactly
 (`content_media_tokens` of the prepared reference), and compare the engine's media DELTA (its
 `usage.prompt_tokens` with the image minus its report without it) against it. A returned mismatch
@@ -279,7 +279,7 @@ without usage is recorded `not_checked` (never silent).
 
 The tokenizer's name is runtime and its digest is content: `Endpoint.identity_extra()` returns the SHA-256 of the
 named `tokenizer.json` under the one key `{"tokenizer_sha256": ...}`, from the one helper in
-`rcp_ndcg.data.tokenizer`. Every role config with a `tokenizer` -- the judge's, the embedding, pooling and rerank
+`rcp.data.tokenizer`. Every role config with a `tokenizer` -- the judge's, the embedding, pooling and rerank
 configs -- carries the digest under this one key, so the `retrieve`/`rerank` step identities and the index identity
 key on it, and two passes that counted with different tokenizers never share an index or a cache.
 

@@ -1,10 +1,10 @@
-"""The T3 quality stage: the model through rcp-ndcg's served path and through ``mteb``, compared.
+"""The T3 quality stage: the model through rcp's served path and through ``mteb``, compared.
 
 docs/how-to/validate-a-recipe.md T3 ("MTEB across modalities") runs every model of the task matrix (:data:`TASK_MATRIX`)
-through **rcp-ndcg's own served path** -- ``rcp-ndcg retrieval index`` + ``search`` (embedders, the retrieval
+through **rcp's own served path** -- ``rcp retrieval index`` + ``search`` (embedders, the retrieval
 view) or ``retrieval rerank`` over the suite's released pools (rerankers, the reranking view), then
-``rcp-ndcg eval score`` -- and, on the same tasks, through the reference implementation: ``mteb`` with the
-HF/sentence-transformers model, over the product's own task definitions (:func:`rcp_ndcg.eval.mteb.get_tasks`),
+``rcp eval score`` -- and, on the same tasks, through the reference implementation: ``mteb`` with the
+HF/sentence-transformers model, over the product's own task definitions (:func:`rcp.eval.mteb.get_tasks`),
 run as a subprocess in the reference environment (``python -m rcp_ndcg_test.quality reference``).  The stage
 compares served vs reference per subset and metric (RCP-nDCG@10 and qrel-nDCG@10 within 0.5 points), and for
 paper models served vs the paper's stored per-subset numbers (also gated); published numbers are a sanity
@@ -57,7 +57,7 @@ __all__ = [
 QUALITY_TOLERANCE = 0.005
 """The T3 gate: within 0.5 points of nDCG@10 per subset (a 0-to-1 scale)."""
 
-METRICS: tuple[str, ...] = ("rcp_ndcg", "qrel_ndcg")
+METRICS: tuple[str, ...] = ("rcp", "qrel_ndcg")
 """The metrics compared at k = 10 (RCP-nDCG@10 and qrel-nDCG@10)."""
 
 TASK_MATRIX: tuple[dict[str, Any], ...] = (
@@ -239,8 +239,8 @@ def retriever_config(recipe: Recipe, engine_url: str) -> dict[str, Any]:
     ``kind: dense`` with the recipe's ``openai_embeddings`` endpoint, or ``kind: late_interaction`` with its
     ``vllm_pooling`` one.  Raises :class:`HarnessError` for a reranker recipe or a config the product refuses.
     """
-    from rcp_ndcg.errors import RcpNdcgError
-    from rcp_ndcg.retrieval.config import validate_retriever
+    from rcp.errors import RcpNdcgError
+    from rcp.retrieval.config import validate_retriever
 
     kinds = {"embed": "dense", "multi_vector": "late_interaction"}
     if recipe.role not in kinds:
@@ -255,8 +255,8 @@ def retriever_config(recipe: Recipe, engine_url: str) -> dict[str, Any]:
 
 def reranker_config(recipe: Recipe, engine_url: str) -> dict[str, Any]:
     """The reranker YAML data of a rerank recipe (its ``rerank`` endpoint), validated by the product's parser."""
-    from rcp_ndcg.errors import RcpNdcgError
-    from rcp_ndcg.retrieval.config import validate_reranker
+    from rcp.errors import RcpNdcgError
+    from rcp.retrieval.config import validate_reranker
 
     if recipe.role != "rerank":
         raise HarnessError(f"recipe {recipe.id} is a {recipe.role} recipe: the reranking view needs a reranker")
@@ -292,11 +292,11 @@ def served_commands(task: QualityTask, recipe: Recipe, engine_url: str, work_dir
         config.write_text(yaml.safe_dump(retriever_config(recipe, engine_url), sort_keys=True), encoding="utf-8")
         commands = [
             [
-                "rcp-ndcg", "retrieval", "index", *_dataset_args(task), "--retriever", str(config),
+                "rcp", "retrieval", "index", *_dataset_args(task), "--retriever", str(config),
                 "--out", str(work / "index"),
             ],
             [
-                "rcp-ndcg", "retrieval", "search", *_dataset_args(task), "--index", str(work / "index"),
+                "rcp", "retrieval", "search", *_dataset_args(task), "--index", str(work / "index"),
                 "--out", str(rankings), "--depth", str(SEARCH_DEPTH),
             ],
         ]  # fmt: skip
@@ -310,7 +310,7 @@ def served_commands(task: QualityTask, recipe: Recipe, engine_url: str, work_dir
                 "--revision", task.revision, "--out", str(pools),
             ],
             [
-                "rcp-ndcg", "retrieval", "rerank", *_dataset_args(task), "--rankings", str(pools),
+                "rcp", "retrieval", "rerank", *_dataset_args(task), "--rankings", str(pools),
                 "--reranker", str(config), "--out", str(rankings), "--depth", str(RERANK_DEPTH),
             ],
         ]  # fmt: skip
@@ -318,8 +318,8 @@ def served_commands(task: QualityTask, recipe: Recipe, engine_url: str, work_dir
         raise HarnessError(f"unknown T3 view {task.view!r}: retrieval or reranking")
     commands.append(
         [
-            "rcp-ndcg", "eval", "score", "--rankings", str(rankings), "--suite", task.suite, "--subset", task.subset,
-            "--revision", task.revision, "--metrics", "rcp_ndcg", "--metrics", "qrel_ndcg", "--k", "10",
+            "rcp", "eval", "score", "--rankings", str(rankings), "--suite", task.suite, "--subset", task.subset,
+            "--revision", task.revision, "--metrics", "rcp", "--metrics", "qrel_ndcg", "--k", "10",
             "--out", str(work / "scores.json"), "--json",
         ]
     )  # fmt: skip
@@ -337,7 +337,7 @@ def reference_argv(task: QualityTask, recipe: Recipe, work_dir: str | Path, refe
 
 def served_scores(report_path: str | Path, subset: str) -> dict[str, float]:
     """``{metric: value}`` at k = 10 for ``subset`` from an ``eval score`` report (the product's EvalReport)."""
-    from rcp_ndcg.eval.evaluate import EvalReport
+    from rcp.eval.evaluate import EvalReport
 
     try:
         report = EvalReport.model_validate_json(Path(report_path).read_text(encoding="utf-8"))
@@ -355,9 +355,9 @@ def served_scores(report_path: str | Path, subset: str) -> dict[str, float]:
     return values
 
 
-_MTEB_KEYS = {"qrel_ndcg": "ndcg_at_10", "rcp_ndcg": "ndcg_float_at_10"}
+_MTEB_KEYS = {"qrel_ndcg": "ndcg_at_10", "rcp": "ndcg_float_at_10"}
 """mteb's names of the two metrics: ``ndcg_at_10`` over the integer qrels and ``ndcg_float_at_10`` over the
-released continuous gains (``rcp_ndcg.eval.mteb``; the retrieval view reports only the integer-qrels metric)."""
+released continuous gains (``rcp.eval.mteb``; the retrieval view reports only the integer-qrels metric)."""
 
 
 def reference_scores(result: dict[str, Any]) -> dict[str, float]:
@@ -536,7 +536,7 @@ def run_quality(
     for metric in METRICS:
         if not reference.get(metric) and not served.get(metric):
             continue
-        if metric == "rcp_ndcg" and not reference.get(metric) and all(task.view == "retrieval" for task in tasks):
+        if metric == "rcp" and not reference.get(metric) and all(task.view == "retrieval" for task in tasks):
             # mteb's retrieval view reports the integer-qrels metric only (gains exist for the pooled documents):
             # the served RCP-nDCG@10 is listed, not gated -- said so in the table, never a silent pass.
             listed = comparison_rows(served.get(metric, {}), {})
@@ -544,7 +544,7 @@ def run_quality(
                 **listed,
                 "passed": True,
                 "gated": False,
-                "reason": "mteb's retrieval view reports no RCP-nDCG (rcp_ndcg.eval.mteb); served values listed",
+                "reason": "mteb's retrieval view reports no RCP-nDCG (rcp.eval.mteb); served values listed",
             }
             continue
         comparisons[metric] = comparison_rows(
@@ -712,7 +712,7 @@ class RecordingProxy:
 def _write_pools(suite: str, subset: str, revision: str, out: Path) -> int:
     """The suite subset's released pools as a rankings file (``{"query_id", "doc_ids", "dataset", "system"}``
     rows, pool order), read through the product's dataset loader.  Returns the number of queries written."""
-    from rcp_ndcg.data.dataset import load_dataset
+    from rcp.data.dataset import load_dataset
 
     dataset = load_dataset(f"suite:{suite}", subset=subset, revision=revision)
     pools = dataset.candidates or {}
@@ -733,7 +733,7 @@ def _reference(args: argparse.Namespace) -> None:
     """The mteb reference run (reference environment): the HF model on the product's task definition."""
     import mteb  # type: ignore[import-not-found]
 
-    from rcp_ndcg.eval.mteb import get_tasks
+    from rcp.eval.mteb import get_tasks
 
     tasks = get_tasks(args.suite, [args.subset], mode=args.view, revision=args.data_revision)
     model = mteb.get_model(args.model, revision=args.revision)

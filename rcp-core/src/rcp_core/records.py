@@ -3,7 +3,7 @@
 The in-memory model of the data layer: :class:`Document`, :class:`Query` and :class:`RankingExample` (with their
 bases :class:`Text` and :class:`Input`) are what a reader yields, a writer takes, and retrieval, judging, storage
 and the role clients pass around. The public path is this module, ``rcp_core.records``, re-exported by the
-``rcp_core`` and ``rcp_ndcg.data`` facades. The judgement and IRT records are in
+``rcp_core`` and ``rcp.data`` facades. The judgement and IRT records are in
 :mod:`rcp_core.schemas`.
 """
 

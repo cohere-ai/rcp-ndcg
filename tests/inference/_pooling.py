@@ -13,7 +13,7 @@ import httpx
 import numpy as np
 from rcp_core.content import Content
 
-from rcp_ndcg.inference.types import Call, EncodeRole, PoolRequest, Reply
+from rcp.inference.types import Call, EncodeRole, PoolRequest, Reply
 
 _FRAME_DTYPES = {"float16": "<f2", "float32": "<f4"}
 

@@ -1,13 +1,13 @@
 """The Octen-Embedding family's one reference -- the paper's in-process path, unchanged.
 
-This is an exact port of the rcp-ndcg paper's encoder path -- not of the model card. Line numbers
+This is an exact port of the rcp paper's encoder path -- not of the model card. Line numbers
 grep-verified against the repository 2026-10-06. One file serves every variant of the family.
 The variant travels with the invocation, in the resolved recipe the harness passes
 as ``--recipe``; :data:`MODEL` and :data:`REVISION` name the paper's 8B checkpoint as the
 standalone defaults, and the CLI reads the variant's own ``model``/``revision`` from the recipe.
 
 - ``experiments/paper/rerankers/reference/octen.py`` (the paper's encoder today; the line cites
-  below name it, with the pre-unification ``rcp-ndcg/src/rcp_ndcg/retrieval/hf_dense.py`` follows kept in
+  below name it, with the pre-unification ``rcp/src/rcp/retrieval/hf_dense.py`` follows kept in
   parentheses where useful): ``:33`` ``MAX_LENGTH = 8192`` ("longer texts are truncated on
   the right", the HF default truncation side); ``:54`` the tokenizer loads with
   ``padding_side="left"``; ``:55`` the model loads with ``dtype=torch.bfloat16``; ``:64`` per-batch
@@ -158,7 +158,7 @@ def _l2_normalize(vectors: np.ndarray) -> np.ndarray:
     """Every row scaled to unit L2 norm (a zero row stays zero), as float32.
 
     The same expression as the paper path's ``l2_normalize`` (``hf_dense.py:62`` via
-    ``rcp_ndcg.retrieval.encoder``): norms clamped at 1e-12, cast to float32.
+    ``rcp.retrieval.encoder``): norms clamped at 1e-12, cast to float32.
     """
     import numpy as np
 

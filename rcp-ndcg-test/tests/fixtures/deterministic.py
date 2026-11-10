@@ -152,7 +152,7 @@ def reserve_and_append(
 def fold(query: str, instruction: str | None) -> str:
     """The product's fold render for ``instruction: fold``: ``Task: <instruction>\nQuery: <query>``.
 
-    The same render the product's :class:`rcp_ndcg.inference.clients.RerankClient` applies to the raw query,
+    The same render the product's :class:`rcp.inference.clients.RerankClient` applies to the raw query,
     so the reference subprocess and the served engine read the same folded text.
     """
     if not instruction:

@@ -17,9 +17,9 @@ import pytest
 import yaml
 from pydantic import TypeAdapter, ValidationError
 
-from rcp_ndcg.data import Rankings
-from rcp_ndcg.errors import ConfigError, CredentialsError, DataError
-from rcp_ndcg.retrieval import (
+from rcp.data import Rankings
+from rcp.errors import ConfigError, CredentialsError, DataError
+from rcp.retrieval import (
     BM25Config,
     CohereEmbedding,
     CohereReranker,
@@ -42,8 +42,8 @@ from rcp_ndcg.retrieval import (
     validate_reranker,
     validate_retriever,
 )
-from rcp_ndcg.retrieval import _api as retrieval_api
-from rcp_ndcg.retrieval.config import _OLD_SHAPE_HINT
+from rcp.retrieval import _api as retrieval_api
+from rcp.retrieval.config import _OLD_SHAPE_HINT
 from tests.conftest import SESSION_TOKENIZER
 from tests.retrieval.conftest import DOCS
 
@@ -83,7 +83,7 @@ def hosted_wire(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
             200, json={"data": [{"index": i, "embedding": vector} for i, vector in enumerate(vectors)]}
         )
 
-    from rcp_ndcg.inference import transport as transport_module
+    from rcp.inference import transport as transport_module
 
     real = transport_module.Transport
 
@@ -96,7 +96,7 @@ def hosted_wire(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
         return real(endpoint, auth=auth, httpx_transport=httpx.MockTransport(handler))
 
     # the role clients read Transport from the client base (which builds it for a config)
-    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setattr("rcp.inference.clients._base.Transport", patched)
     monkeypatch.setenv("CO_API_KEY", "test-key")
     monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
@@ -187,7 +187,7 @@ def test_an_old_config_shape_is_refused_with_the_new_shape_hint() -> None:
 def test_the_old_shapes_load_through_the_cli_as_a_config_error(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
-    from rcp_ndcg.cli.retrieval import retrieval_group
+    from rcp.cli.retrieval import retrieval_group
 
     path = tmp_path / "old_shape.yaml"
     path.write_text(yaml.safe_dump({"kind": "dense", "encoder": {"provider": "local", "model": "m"}}))
@@ -329,7 +329,7 @@ def test_a_cached_index_is_not_reused_across_media_caps(dataset, tmp_path: Path)
 
 
 def test_a_listwise_reranker_takes_no_batch_size_and_a_hosted_one_no_engine_fields() -> None:
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     # A ConfigError with a hint escapes pydantic un-wrapped (one error shape for the config family).
     with pytest.raises(ConfigError, match="listwise"):
@@ -351,7 +351,7 @@ def test_a_listwise_reranker_takes_no_batch_size_and_a_hosted_one_no_engine_fiel
 def test_a_served_reranker_config_builds_its_client(dataset) -> None:
     """The budget is wired: a served paper-style config (budget declared) builds its client, and the config
     that omits it is refused at the config (never silently ignored)."""
-    from rcp_ndcg.inference.clients import RerankClient
+    from rcp.inference.clients import RerankClient
 
     config = validate_reranker({"api": "rerank", "model": "m", "base_url": "http://h:8000/v1", **_SERVED_RERANK_BUDGET})
     client = RerankClient(config, sender=_recording_sender())
@@ -365,7 +365,7 @@ def test_a_served_reranker_config_builds_its_client(dataset) -> None:
 
 def _recording_sender() -> Any:
     """A sender with the sync bridge, answering one score per document."""
-    from rcp_ndcg.inference.types import Reply
+    from rcp.inference.types import Reply
 
     class _Recording:
         async def send(self, calls: list[Any]) -> list[Reply]:
@@ -378,7 +378,7 @@ def _recording_sender() -> Any:
 
         @property
         def usage(self) -> Any:
-            from rcp_ndcg.inference.types import Usage
+            from rcp.inference.types import Usage
 
             return Usage()
 
@@ -581,8 +581,8 @@ def test_the_rerank_client_receives_the_raw_query_and_appends_the_per_query_inst
     the client appends it as mteb appends it -- once, never folded as a task instruction."""
     from rcp_core.records import RankingExample
 
-    from rcp_ndcg.inference.clients import RerankClient
-    from rcp_ndcg.inference.types import Reply
+    from rcp.inference.clients import RerankClient
+    from rcp.inference.types import Reply
 
     sent: list[dict] = []
 
@@ -654,14 +654,14 @@ def test_tied_candidates_reach_the_reranker_in_the_rankings_order(dataset, monke
             200, json={"results": [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]}
         )
 
-    from rcp_ndcg.inference import transport as transport_module
+    from rcp.inference import transport as transport_module
 
     real = transport_module.Transport
 
     def patched(endpoint: Any, **kwargs: Any) -> Any:
         return real(endpoint, httpx_transport=httpx.MockTransport(handler), **kwargs)
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setattr("rcp.inference.clients._base.Transport", patched)
     tied = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 1.0}}, system="bm25")
 
     rerank(

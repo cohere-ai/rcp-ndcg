@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from rcp_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
-from rcp_ndcg.calibration._projection import bradley_terry
+from rcp.calibration._projection import bradley_terry
 
 FAMILY = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)
 RECORDED_AT = datetime(2026, 1, 1, tzinfo=UTC)

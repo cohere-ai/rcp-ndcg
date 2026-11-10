@@ -1,4 +1,4 @@
-"""``evaluate``, ``compare``, ``sensitivity`` and ``explain`` through the public ``rcp_ndcg.eval`` API."""
+"""``evaluate``, ``compare``, ``sensitivity`` and ``explain`` through the public ``rcp.eval`` API."""
 
 from __future__ import annotations
 
@@ -14,10 +14,10 @@ from rcp_core import gain, ndcg
 from rcp_core.protocol import PROTOCOLS, score_query
 from scipy.stats import ttest_rel
 
-from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.eval import EvalReport, compare, evaluate, explain, sensitivity
-from rcp_ndcg.eval.evaluate import bootstrap_interval
+from rcp.data import Dataset, Rankings
+from rcp.errors import ConfigError, DataError
+from rcp.eval import EvalReport, compare, evaluate, explain, sensitivity
+from rcp.eval.evaluate import bootstrap_interval
 
 LOG2_3 = math.log2(3)
 ITEMS = {"gamma": [1.0, 1.2, 0.8, 1.1], "beta": [-1.0, -0.5, 0.0, 0.5]}
@@ -58,7 +58,7 @@ def report() -> EvalReport:
 def test_every_value_is_the_protocols_score(report: EvalReport) -> None:
     rankings, dataset = _rankings(), _dataset()
     for row in report.per_query:
-        labels = GAINS[row.query_id] if row.metric == "rcp_ndcg" else dataset.qrels[row.query_id]
+        labels = GAINS[row.query_id] if row.metric == "rcp" else dataset.qrels[row.query_id]
         expected = score_query(
             rankings.for_query(row.query_id, system=row.system),
             labels,
@@ -67,7 +67,7 @@ def test_every_value_is_the_protocols_score(report: EvalReport) -> None:
             metric=row.metric,
         )
         assert row.value == expected
-    assert report.value("good", "rcp_ndcg", k=4) == pytest.approx(1.0)
+    assert report.value("good", "rcp", k=4) == pytest.approx(1.0)
     assert report.value("bad", "qrel_ndcg", k=2) == 0.0
 
 
@@ -81,7 +81,7 @@ def test_the_summary_is_the_mean_per_dataset_then_over_datasets() -> None:
     )
     suite = Dataset(name="suite", subsets=(_dataset(gains=GAINS), small))
 
-    result = evaluate(rankings, dataset=suite, metrics=["rcp_ndcg"], k=2, bootstrap=0)
+    result = evaluate(rankings, dataset=suite, metrics=["rcp"], k=2, bootstrap=0)
 
     per_dataset = {row.dataset: row.value for row in result.per_dataset}
     toy_mean = np.mean([row.value for row in result.per_query if row.dataset == "toy"])
@@ -94,9 +94,9 @@ def test_gains_come_from_the_argument_then_a_calibration_then_the_dataset() -> N
     dataset = _dataset(gains={q: {"d4": 1.0} for q in QUERIES})
     calibration = SimpleNamespace(gains=lambda: GAINS)
 
-    passed = evaluate(_rankings(), dataset=dataset, gains=GAINS, metrics=["rcp_ndcg"], bootstrap=0)
-    calibrated = evaluate(_rankings(), dataset=dataset, gains=calibration, metrics=["rcp_ndcg"], bootstrap=0)
-    released = evaluate(_rankings(), dataset=dataset, metrics=["rcp_ndcg"], bootstrap=0)
+    passed = evaluate(_rankings(), dataset=dataset, gains=GAINS, metrics=["rcp"], bootstrap=0)
+    calibrated = evaluate(_rankings(), dataset=dataset, gains=calibration, metrics=["rcp"], bootstrap=0)
+    released = evaluate(_rankings(), dataset=dataset, metrics=["rcp"], bootstrap=0)
 
     assert (passed.gains_source, calibrated.gains_source, released.gains_source) == ("gains", "calibration", "dataset")
     assert passed.value("good") == calibrated.value("good") == pytest.approx(1.0)
@@ -104,11 +104,11 @@ def test_gains_come_from_the_argument_then_a_calibration_then_the_dataset() -> N
 
 
 def _calibration(thetas: dict[str, dict[str, dict[str, float]]]):
-    """A :class:`~rcp_ndcg.calibration.Calibration` holding ``{dataset: {query_id: {doc_id: theta}}}``."""
+    """A :class:`~rcp.calibration.Calibration` holding ``{dataset: {query_id: {doc_id: theta}}}``."""
     from rcp_core.schemas import ItemParams
 
-    from rcp_ndcg.calibration import Calibration
-    from rcp_ndcg.calibration.fit import ThetaRow
+    from rcp.calibration import Calibration
+    from rcp.calibration.fit import ThetaRow
 
     rows = tuple(
         ThetaRow(dataset=name, query_id=q, doc_id=d, theta=t, theta_se=None, source="fit")
@@ -142,7 +142,7 @@ def test_a_calibration_of_several_datasets_scores_every_part_of_a_suite() -> Non
     result = evaluate(rankings, dataset=suite, gains=_calibration({"a": THETAS, "b": THETAS}), k=4, bootstrap=0)
 
     per_dataset = {(row.dataset, row.metric): row.value for row in result.per_dataset}
-    assert per_dataset[("a", "rcp_ndcg")] == pytest.approx(1.0) and per_dataset[("b", "rcp_ndcg")] < 1.0
+    assert per_dataset[("a", "rcp")] == pytest.approx(1.0) and per_dataset[("b", "rcp")] < 1.0
     assert result.gains_source == "calibration"
     with pytest.raises(DataError, match="has none of them"):
         evaluate(rankings, dataset=suite, gains=_calibration({"c": THETAS, "d": THETAS}), k=4)
@@ -200,7 +200,7 @@ def test_a_calibration_of_one_dataset_scores_only_the_subset_of_that_name() -> N
 
     result = evaluate(_oracle(divided=True), dataset=suite, gains=_calibration({"biology": thetas}), k=1, bootstrap=0)
 
-    assert {row.dataset for row in result.per_dataset if row.metric == "rcp_ndcg"} == {"biology"}
+    assert {row.dataset for row in result.per_dataset if row.metric == "rcp"} == {"biology"}
     assert result.value("system") == 1.0
     released = evaluate(_oracle(divided=True), dataset=suite, k=1, bootstrap=0)
     same_ids = _calibration({"biology": {"0": {"earth_science-a": 2.0}}})  # a document id both subsets could hold
@@ -253,10 +253,10 @@ def test_a_gains_only_query_is_labelled_over_a_suite() -> None:
     gains = {"q1": {"d1": 0.9}, "q2": {"d1": 0.4}}
 
     report = evaluate(
-        rankings, dataset=Dataset(name="s", subsets=parts), gains=gains, metrics=["rcp_ndcg"], k=1, bootstrap=0
+        rankings, dataset=Dataset(name="s", subsets=parts), gains=gains, metrics=["rcp"], k=1, bootstrap=0
     )
 
-    scored = sorted(row.query_id for row in report.per_query if row.metric == "rcp_ndcg" and row.dataset == "a")
+    scored = sorted(row.query_id for row in report.per_query if row.metric == "rcp" and row.dataset == "a")
     assert scored == ["q1", "q2"], "the gains-only query keeps its row"
 
 
@@ -273,11 +273,11 @@ def test_one_dataset_scores_every_bare_gains_key_and_checks_its_bounds() -> None
         _rankings(),
         dataset=dataset,
         gains={**GAINS, "qX-typo": {"d1": 0.5}},
-        metrics=["rcp_ndcg"],
+        metrics=["rcp"],
         k=1,
         bootstrap=0,
     )
-    assert "qX-typo" in {row.query_id for row in scored.per_query if row.metric == "rcp_ndcg"}
+    assert "qX-typo" in {row.query_id for row in scored.per_query if row.metric == "rcp"}
 
 
 def test_count_gains_matching_no_labelled_query_are_refused() -> None:
@@ -334,8 +334,8 @@ def test_what_the_numbers_do_not_show_is_a_typed_warning() -> None:
     assert result.value("partial", "qrel_ndcg") is None
     counts = {row.metric: row.num_queries for row in result.per_dataset}
     summary = {row.metric: row.num_queries for row in result.summary}
-    assert counts == summary == {"rcp_ndcg": 6, "qrel_ndcg": 0}, "both count the queries with a defined value"
-    assert [r.value for r in result.per_query if r.metric == "rcp_ndcg" and r.query_id == "q1"] == [0.0]
+    assert counts == summary == {"rcp": 6, "qrel_ndcg": 0}, "both count the queries with a defined value"
+    assert [r.value for r in result.per_query if r.metric == "rcp" and r.query_id == "q1"] == [0.0]
 
 
 def test_the_protocol_decides_pools_and_ties() -> None:
@@ -343,9 +343,9 @@ def test_the_protocol_decides_pools_and_ties() -> None:
     no_pools = _dataset(candidates=None)
 
     by_id = PROTOCOLS["nanobeir"].model_copy(update={"name": "nanobeir-arxiv-v1", "ties": "doc_id_desc"})
-    nanobeir = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol="nanobeir", k=1, metrics=["rcp_ndcg"])
-    arxiv_v1 = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol=by_id, k=1, metrics=["rcp_ndcg"])
-    plain = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol="plain", k=1, metrics=["rcp_ndcg"])
+    nanobeir = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol="nanobeir", k=1, metrics=["rcp"])
+    arxiv_v1 = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol=by_id, k=1, metrics=["rcp"])
+    plain = evaluate(tied, dataset=_dataset(), gains=GAINS, protocol="plain", k=1, metrics=["rcp"])
 
     g1, g2 = GAINS["q0"]["d1"], GAINS["q0"]["d2"]
     assert nanobeir.value("system") == pytest.approx((g1 + g2) / 2 / g1), "pool only, group-mean ties"
@@ -378,13 +378,13 @@ def test_the_report_serialises_and_tabulates(report: EvalReport) -> None:
 
 def test_the_leaderboard_is_the_wide_table_and_its_mean_is_the_summary(report: EvalReport) -> None:
     k = report.k[0]
-    board = report.leaderboard("rcp_ndcg", k=k)
+    board = report.leaderboard("rcp", k=k)
 
     assert list(board.columns)[-1] == "mean"
     assert sorted(board.index) == sorted(report.systems)
     assert list(board["mean"]) == sorted(board["mean"], reverse=True)
     for system in report.systems:
-        assert board.loc[system, "mean"] == pytest.approx(report.value(system, "rcp_ndcg", k))
+        assert board.loc[system, "mean"] == pytest.approx(report.value(system, "rcp", k))
     assert repr(report).startswith(f"EvalReport(protocol={report.protocol.name}, {len(report.systems)} systems")
 
 
@@ -425,9 +425,7 @@ def test_evaluate_reproduces_the_papers_per_query_values() -> None:
 
         result = evaluate(rankings, dataset=dataset, protocol=protocol, k=fixture["k"], bootstrap=0)
 
-        assert result.value("system", "rcp_ndcg") == pytest.approx(
-            query["expected"]["rcp_ndcg"], abs=query["rcp_ndcg_tolerance"]
-        )
+        assert result.value("system", "rcp") == pytest.approx(query["expected"]["rcp"], abs=query["rcp_ndcg_tolerance"])
         assert result.value("system", "qrel_ndcg") == pytest.approx(query["expected"]["qrel_ndcg"], abs=1e-12)
 
 
@@ -647,8 +645,8 @@ def test_deltas_are_b_minus_a_with_the_papers_paired_t_test(report: EvalReport) 
     result = compare(report, baseline="bad", k=4, bootstrap=500)
 
     pair = next(p for p in result.pairs if p.system_b == "good")
-    good = [r.value for r in report.per_query if (r.system, r.metric, r.k) == ("good", "rcp_ndcg", 4)]
-    mixed = [r.value for r in report.per_query if (r.system, r.metric, r.k) == ("mixed", "rcp_ndcg", 4)]
+    good = [r.value for r in report.per_query if (r.system, r.metric, r.k) == ("good", "rcp", 4)]
+    mixed = [r.value for r in report.per_query if (r.system, r.metric, r.k) == ("mixed", "rcp", 4)]
     mixed_pair = next(p for p in result.pairs if p.system_b == "mixed")
     assert [(p.system_a, p.system_b) for p in result.pairs] == [("bad", "good"), ("bad", "mixed")]
     assert pair.delta == pytest.approx(report.value("good", k=4) - report.value("bad", k=4))
@@ -656,9 +654,7 @@ def test_deltas_are_b_minus_a_with_the_papers_paired_t_test(report: EvalReport) 
     assert pair.t is None and pair.p_value is None, "a constant gain on every query has no variance to test"
     assert not pair.significant, "the docstrings: a pair without variance in its differences is not separated"
     assert mixed_pair.p_value == pytest.approx(
-        ttest_rel(
-            mixed, [r.value for r in report.per_query if (r.system, r.metric, r.k) == ("bad", "rcp_ndcg", 4)]
-        ).pvalue
+        ttest_rel(mixed, [r.value for r in report.per_query if (r.system, r.metric, r.k) == ("bad", "rcp", 4)]).pvalue
     )
     assert good != mixed
 
@@ -716,11 +712,11 @@ def test_a_cutoff_the_report_never_computed_is_refused_everywhere(report: EvalRe
     """A k outside the report's cutoffs passes the metric check and used to come back as an all-NaN
     leaderboard or a misleading 'share no scored query': one refusal names it everywhere."""
     for call in (
-        lambda: report.leaderboard("rcp_ndcg", k=99),
+        lambda: report.leaderboard("rcp", k=99),
         lambda: compare(report, k=99),
         lambda: sensitivity(report, k=99),
     ):
-        with pytest.raises(DataError, match="no rcp_ndcg@99"):
+        with pytest.raises(DataError, match="no rcp@99"):
             call()
 
 
@@ -760,7 +756,7 @@ def test_sensitivity_is_the_mean_over_datasets_of_each_datasets_share_of_separat
     without two shared queries is not separated), then the mean over datasets."""
     from rcp_core.protocol import PROTOCOLS
 
-    from rcp_ndcg.eval import QueryValue, SummaryValue
+    from rcp.eval import QueryValue, SummaryValue
 
     x_a = [0.1, 0.2, 0.3, 0.4]
     per_system = {
@@ -799,8 +795,8 @@ def test_a_pair_with_zero_variance_in_its_differences_is_not_separated() -> None
     p=0.0 for constant nonzero differences, which used to count as significant with ``t`` serialised as null."""
     from rcp_core.protocol import PROTOCOLS
 
-    from rcp_ndcg.eval import QueryValue, SummaryValue
-    from rcp_ndcg.eval.compare import _paired_t
+    from rcp.eval import QueryValue, SummaryValue
+    from rcp.eval.compare import _paired_t
 
     assert _paired_t(np.array([0.25, 0.25])) == (None, None)
     assert _paired_t(np.array([0.1, 0.1, 0.1])) == (None, None)
@@ -835,7 +831,7 @@ def test_explain_shows_each_systems_top_k_with_criteria_and_splits_the_gap(repor
     first = good.top[0]
     assert (first.gain, first.grade, first.theta) == (GAINS["q1"]["d1"], 2.0, 1.5)
     assert sum(c.contribution for c in first.criteria) == pytest.approx(first.gain)
-    assert good.values["rcp_ndcg@4"] == 1.0
+    assert good.values["rcp@4"] == 1.0
     delta = next(d for d in result.deltas if d.system_b == "mixed")
     assert delta.total == pytest.approx(ndcg(["d2", "d1", "d3", "d4"], GAINS["q1"], k=2) - 1.0)
     assert delta.selection == pytest.approx(0.0) and delta.ordering == pytest.approx(delta.total)
@@ -906,7 +902,7 @@ def test_explain_computes_the_gap_under_the_protocols_own_tie_rule() -> None:
     value_b = (0.4 + 0.5 / math.log2(3)) / ideal
     (delta,) = explained.deltas
     assert delta.total == pytest.approx(value_b - value_a)
-    assert delta.total == pytest.approx(report.value("B", "rcp_ndcg", k=2) - report.value("A", "rcp_ndcg", k=2))
+    assert delta.total == pytest.approx(report.value("B", "rcp", k=2) - report.value("A", "rcp", k=2))
     assert delta.selection + delta.ordering == pytest.approx(delta.total)
     # The list-order gap is a different number (0.1 vs 0.25/0.5 class means): it is not what the report scored.
     assert delta.total != pytest.approx((0.4 + 0.1 / math.log2(3) - 0.9 - 0.1 / math.log2(3)) / ideal)
@@ -931,13 +927,13 @@ def test_explain_drops_the_query_id_from_the_ideal_when_the_protocol_says_so() -
     explained = explain(report, "q1", k=2)
 
     (delta,) = explained.deltas
-    assert delta.total == pytest.approx(report.value("B", "rcp_ndcg", k=2) - report.value("A", "rcp_ndcg", k=2))
+    assert delta.total == pytest.approx(report.value("B", "rcp", k=2) - report.value("A", "rcp", k=2))
 
 
 def test_score_delta_refuses_one_score_mapping_alone() -> None:
     """A single mapping used to silently fall back to list scoring: the mapping is the metric's tie rule, so
     half of it is a mistake, not a default."""
-    from rcp_ndcg.eval.explain import score_delta
+    from rcp.eval.explain import score_delta
 
     with pytest.raises(ValueError, match="both score mappings"):
         score_delta(["a", "b"], ["b", "a"], {"a": 1.0, "b": 0.0}, scores_a={"a": 1.0, "b": 0.0})
@@ -948,7 +944,7 @@ def test_score_delta_refuses_one_score_mapping_alone() -> None:
 def test_score_delta_does_not_depend_on_the_score_scale() -> None:
     """The mixed arrangement is built from A's order, so a B-only document's place must not depend on how
     large B's scores are: rescaling B leaves every nDCG unchanged and used to move the split."""
-    from rcp_ndcg.eval.explain import score_delta
+    from rcp.eval.explain import score_delta
 
     order_a, order_b = ["a1", "a2", "g"], ["n", "g", "a1"]
     scores_a = {"a1": 0.9, "a2": 0.8, "g": 0.7}
@@ -967,7 +963,7 @@ def test_score_delta_does_not_depend_on_the_score_scale() -> None:
 
 def test_explain_names_the_known_queries_when_it_refuses_one(report: EvalReport) -> None:
     """An unknown `--query-id` names the next step (one of the report's query ids), on both explain paths."""
-    from rcp_ndcg.eval import explain
+    from rcp.eval import explain
 
     with pytest.raises(DataError) as caught:
         explain(report, "nosuch")

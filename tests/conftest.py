@@ -18,7 +18,7 @@ from typing import Any
 # suite into a real cache -- and the media and runs directories are cleared for the same reason;
 # the tests that need them set them with monkeypatch.
 ROOT = Path(__file__).resolve().parent.parent
-_SESSION_SCRATCH = Path(tempfile.mkdtemp(prefix="rcp-ndcg-tests-"))
+_SESSION_SCRATCH = Path(tempfile.mkdtemp(prefix="rcp-tests-"))
 os.environ["RCP_NDCG_CACHE_DIR"] = str(_SESSION_SCRATCH / "cache")
 os.environ.pop("RCP_NDCG_MEDIA_CACHE", None)
 os.environ.pop("RCP_NDCG_RUNS_DIR", None)
@@ -83,7 +83,7 @@ def _tests_leave_the_checkout_clean(request: pytest.FixtureRequest) -> Any:
 def _fresh_warn_once_state(monkeypatch: pytest.MonkeyPatch) -> None:
     """The preprocess warnings fire once per (mechanism, corpus) per process; each test starts unwarned, so a
     test that asserts the warning does not depend on which tests ran before it."""
-    from rcp_ndcg.data import text_budget, text_policy
+    from rcp.data import text_budget, text_policy
 
     monkeypatch.setattr(text_policy, "_WARNED", set())
     monkeypatch.setattr(text_budget, "_VENDOR_WARNED", set())
@@ -95,7 +95,7 @@ def _hub_is_offline_and_empty(
 ):
     """No test reaches the HuggingFace Hub or reads the developer's hub cache, except those marked ``network``.
 
-    Revision resolution (``rcp_ndcg.data.revisions``) runs whenever an identity
+    Revision resolution (``rcp.data.revisions``) runs whenever an identity
     names a Hub model or dataset. Offline with an empty cache it records the
     revision as unverified; tests that need a resolved commit install a fake Hub
     or write a cache ref themselves.
@@ -104,7 +104,7 @@ def _hub_is_offline_and_empty(
     already-imported flag is set too: a network test in a worker that imported the
     library offline would otherwise stay offline.
     """
-    from rcp_ndcg.data.revisions import resolve_revision
+    from rcp.data.revisions import resolve_revision
 
     offline = request.node.get_closest_marker("network") is None
     if offline:

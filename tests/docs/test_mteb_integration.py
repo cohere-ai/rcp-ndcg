@@ -1,7 +1,7 @@
 """The MTEB page's tie claim matches the protocols it describes.
 
 ``docs/how-to/mteb-integration.md`` tells users when mteb's integer ``ndcg_at_10`` equals
-``rcp_ndcg.eval.evaluate``'s ``qrel_ndcg``.  The two break ties differently outside the ``doc_id_desc``
+``rcp.eval.evaluate``'s ``qrel_ndcg``.  The two break ties differently outside the ``doc_id_desc``
 suites, so the equality must stay scoped to those suites (or to untied scores); this test pins the sentence
 and the numbers it rests on (docs-9: the page once claimed the tie rules agree for every suite).
 """

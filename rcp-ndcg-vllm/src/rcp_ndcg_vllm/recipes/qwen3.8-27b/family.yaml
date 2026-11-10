@@ -1,7 +1,7 @@
 # The Qwen3.8-27B judge family: the T4 identity/outage judge, one variant.
 #
-# The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
-# rcp-ndcg reads `recipe: qwen3.8-27b-fp8` (this package carries no second model of a judge); the client and
+# The family's client block is rcp's judge config, validated by `rcp.judging.JudgeConfig` when
+# rcp reads `recipe: qwen3.8-27b-fp8` (this package carries no second model of a judge); the client and
 # serve blocks are the ones the T4 scenarios carry today, moved into a recipe.
 #
 # Serving shape: the weights fit one GPU of either class (B200 or H100), so TP1 and throughput by replicas.

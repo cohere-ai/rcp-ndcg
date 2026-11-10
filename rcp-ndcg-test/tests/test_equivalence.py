@@ -206,7 +206,7 @@ def test_stage1_audits_the_clients_settled_query(tmp_path: Path) -> None:
     """The settle-once rule, audited on the captured wire: one query span per row, within its declared share."""
     from rcp_ndcg_test.equivalence.wire import role_client
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe = load("fixture-rerank-pointwise")
     pairs = write_pairs(
@@ -246,7 +246,7 @@ def test_engine_tokenize_check_fails_when_the_engine_tokenizes_differently(
     """A mutant engine whose /tokenize disagrees with the recipe tokenizer fails the check (R29)."""
     import httpx
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe = load("fixture-embed")
     tokenizer = load_tokenizer(str(TOKENIZER))
@@ -511,7 +511,7 @@ def test_stage2_gates_only_under_cap_pairs_when_the_deviation_is_declared(tmp_pa
 def test_stage2_carves_a_chunked_over_cap_document_out_when_declared(tmp_path: Path) -> None:
     """A chunked over-cap document's census rows carry <original>#<chunk>: the carve-out classifies them."""
     recipe = load("fixture-rerank-pointwise")
-    from rcp_ndcg.data.preprocess import ChunkPolicy
+    from rcp.data.preprocess import ChunkPolicy
 
     chunking = recipe.model_copy(
         update={
@@ -773,9 +773,9 @@ def test_the_public_run_orchestrator_writes_the_report(tmp_path: Path) -> None:
 
 
 def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> None:
-    """Stage 3 shells out to `rcp-ndcg eval score`; identical rankings give delta 0 and a pass."""
-    pytest.importorskip("rcp_ndcg")
-    from rcp_ndcg.data import Rankings
+    """Stage 3 shells out to `rcp eval score`; identical rankings give delta 0 and a pass."""
+    pytest.importorskip("rcp")
+    from rcp.data import Rankings
 
     rankings_dir = tmp_path / "rankings"
     rankings_dir.mkdir()
@@ -817,7 +817,7 @@ def test_stage3_metrics_compares_served_against_reference(tmp_path: Path) -> Non
 
 def _stage3_rankings(tmp_path: Path, *, served: dict[str, list[str]], reference: dict[str, list[str]]) -> Path:
     """A rankings directory for stage 3: both systems' rankings and the dataset rows they were scored over."""
-    from rcp_ndcg.data import Rankings
+    from rcp.data import Rankings
 
     rankings_dir = tmp_path / "rankings"
     rankings_dir.mkdir()
@@ -860,7 +860,7 @@ def _stage3_gates() -> ResolvedGates:
 def test_stage3_fails_when_the_mean_ndcg_delta_exceeds_the_gate(tmp_path: Path) -> None:
     """A served ranking that diverges from the reference moves the mean |delta nDCG@10| over the bound:
     the gate row fails and the stage is red, so stage 3 is a check and not a report."""
-    pytest.importorskip("rcp_ndcg")
+    pytest.importorskip("rcp")
     rankings = _stage3_rankings(
         tmp_path,
         served={"q1": ["c", "b", "a"], "q2": ["c", "b", "a"]},
@@ -876,7 +876,7 @@ def test_stage3_fails_when_the_mean_ndcg_delta_exceeds_the_gate(tmp_path: Path) 
 def test_stage3_refuses_a_missing_rankings_or_dataset_file(tmp_path: Path, missing: str) -> None:
     """A missing file is a typed error naming it, never a zero: the gate must not pass on an absent
     measurement."""
-    pytest.importorskip("rcp_ndcg")
+    pytest.importorskip("rcp")
     from rcp_ndcg_test.errors import HarnessError
 
     rankings = _stage3_rankings(tmp_path, served={"q1": ["a", "b", "c"]}, reference={"q1": ["a", "b", "c"]})
@@ -980,7 +980,7 @@ def test_stage1_audits_token_ids_bodies_on_the_sent_ids(tmp_path: Path, recipe_i
     sent (they already carry the anchor edge and the post-processor's tokens) -- and a cut edge fails it."""
     from rcp_ndcg_test.equivalence import stages as stages_module
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe = _with_client(load(recipe_id), request_shape="token_ids")
     pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
@@ -1034,7 +1034,7 @@ def test_engine_tokenize_check_does_not_post_token_ids_bodies(monkeypatch: pytes
     reports ``not_run`` (never a vacuous pass)."""
     import httpx
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     def no_post(url: str, **_: Any) -> Any:
         raise AssertionError("a token_ids body has no text to /tokenize")
@@ -1053,7 +1053,7 @@ def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(t
     from rcp_ndcg_test.equivalence import stages as stages_module
     from rcp_ndcg_test.equivalence.wire import Capture
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe = _with_client(load("fixture-embed"), request_shape="messages")
     pairs = write_pairs(tmp_path / "pairs.jsonl", sample_pairs()[:1])
@@ -1123,7 +1123,7 @@ def test_stage1_head_edge_tolerates_the_join_merge_on_a_byte_level_bpe(tmp_path:
     passes, and a head whose own tokens changed still fails."""
     from rcp_ndcg_test.equivalence import stages as stages_module
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     bpe = _byte_level_bpe(tmp_path / "tokenizer.json")
     tokenizer = load_tokenizer(str(bpe))
@@ -1196,7 +1196,7 @@ def test_stage1_head_edge_is_the_heads_own_tokens_in_the_assembled_render(tmp_pa
     token no content can merge away changed -- the merging join itself is the render check's to compare."""
     from rcp_ndcg_test.equivalence import stages as stages_module
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     bpe = _qwen_style_bpe(tmp_path / "tokenizer.json")
     tokenizer = load_tokenizer(str(bpe))
@@ -1230,7 +1230,7 @@ def test_stage1_token_ids_head_edge_is_common_to_every_join_probe(
     EVERY join probe (their common prefix), and a token ending exactly at the head's end is inside it."""
     from rcp_ndcg_test.equivalence import stages as stages_module
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     tokenizer = load_tokenizer(str(_byte_level_bpe(tmp_path / "tokenizer.json")))
     assert stages_module._stable_head_tokens(tokenizer, "doc:") == tokenizer.ids("doc:")  # ":" ends at the end
@@ -1247,7 +1247,7 @@ def test_stage1_marker_audit_is_not_masked_by_the_post_processor() -> None:
     tokens -- a text body tokenized without them, a token_ids body with them stripped from its edges."""
     from rcp_ndcg_test.equivalence import stages as stages_module
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     tokenizer = load_tokenizer(str(TOKENIZER))
     base = load("fixture-embed-marker")

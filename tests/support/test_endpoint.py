@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from rcp_ndcg import Endpoint
-from rcp_ndcg.support.identity import check_declarations, identity_payload
+from rcp import Endpoint
+from rcp.support.identity import check_declarations, identity_payload
 
 
 def test_an_endpoint_keys_on_its_model_and_checkpoint_only() -> None:

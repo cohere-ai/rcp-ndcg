@@ -19,9 +19,9 @@ from mteb.abstasks import AbsTask  # noqa: E402
 from mteb.abstasks.retrieval import AbsTaskRetrieval  # noqa: E402
 from mteb.abstasks.task_metadata import TaskMetadata  # noqa: E402
 
-from rcp_ndcg.data import load_dataset  # noqa: E402
-from rcp_ndcg.data.io.mteb_task import MtebTaskReader  # noqa: E402
-from rcp_ndcg.errors import ConfigError  # noqa: E402
+from rcp.data import load_dataset  # noqa: E402
+from rcp.data.io.mteb_task import MtebTaskReader  # noqa: E402
+from rcp.errors import ConfigError  # noqa: E402
 
 
 def _split_data() -> dict[str, Any]:

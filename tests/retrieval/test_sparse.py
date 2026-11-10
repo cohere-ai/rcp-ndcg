@@ -6,9 +6,9 @@ import sys
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError
-from rcp_ndcg.retrieval import BM25Config, sparse
-from rcp_ndcg.retrieval import _api as retrieval_api
+from rcp.errors import ConfigError, DataError, DependencyError, MissingInputError
+from rcp.retrieval import BM25Config, sparse
+from rcp.retrieval import _api as retrieval_api
 
 
 class _FakeStemmerModule:
@@ -28,17 +28,17 @@ def test_stemming_is_part_of_the_index_identity() -> None:
 
 
 def test_a_requested_stemmer_without_pystemmer_is_a_missing_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
-    from rcp_ndcg.retrieval import sparse
+    from rcp.retrieval import sparse
 
     monkeypatch.setitem(sys.modules, "Stemmer", None)
 
     with pytest.raises(DependencyError, match="PyStemmer") as caught:
         sparse.stemmer_for("english")
-    assert "pip install --force-reinstall rcp-ndcg" in (caught.value.hint or "")
+    assert "pip install --force-reinstall rcp" in (caught.value.hint or "")
 
 
 def test_an_unknown_stemmer_language_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    from rcp_ndcg.retrieval import sparse
+    from rcp.retrieval import sparse
 
     monkeypatch.setitem(sys.modules, "Stemmer", _FakeStemmerModule().module)
 
@@ -185,4 +185,4 @@ def test_a_missing_bm25s_package_names_the_reinstall(monkeypatch: pytest.MonkeyP
     with pytest.raises(DependencyError, match="bm25s package, which is not installed") as caught:
         sparse._bm25s()
 
-    assert "pip install --force-reinstall rcp-ndcg" in (caught.value.hint or "")
+    assert "pip install --force-reinstall rcp" in (caught.value.hint or "")

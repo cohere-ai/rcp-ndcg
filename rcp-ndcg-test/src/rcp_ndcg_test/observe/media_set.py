@@ -13,7 +13,7 @@ in order) and a document with ``max_images`` images; over the capacity stays the
 MJPEG AVI (RIFF) written here from frames drawn with PIL, its frame count the recipe's declared video policy's
 ``num_frames`` when it pins one, else :data:`VIDEO_FRAMES` (an fps policy's realised count follows from the
 clip's rate and the declared fps), its header stating the size and rate so the product's
-:func:`rcp_ndcg.data.media.probe_video_header` reads it and the engine's video loader decodes it.  The
+:func:`rcp.data.media.probe_video_header` reads it and the engine's video loader decodes it.  The
 protocol edges -- more images than the recipe's ``max_images`` in one request, an undecodable image -- are
 bare requests of the corpus plan (:func:`media_edges`).  Versioned apart from the generator's sampling
 (``GENERATOR_SEED``), so adding or changing the media set never re-samples a recipe's text rows.
@@ -253,7 +253,7 @@ def video_entry(
     ``num_frames`` is the clip's real frame count -- the recipe's declared video policy's ``num_frames``
     when it pins one, else :data:`VIDEO_FRAMES` (:func:`video_plan`), so the client's policy accepts the
     container and the engine's declared rule samples it; ``width``/``height``/``fps``/``duration_s`` are what
-    :func:`rcp_ndcg.data.media.probe_video_header` reads back off the header.  ``payload`` overrides the clip
+    :func:`rcp.data.media.probe_video_header` reads back off the header.  ``payload`` overrides the clip
     the size ``name`` writes (a case's own ``media/<file>`` container, say) and ``mime`` its declared type:
     the caller then owns the container facts, which must be the ones the header states.
     """

@@ -6,8 +6,8 @@
 # longest 16 777 216 px). They differ only where the format declares per-variant facts: repo, revision,
 # quantisation, licence and the GPU class the quantisation implies.
 #
-# The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
-# rcp-ndcg reads `recipe: <variant id>` (this package carries no second model of a judge); the client and
+# The family's client block is rcp's judge config, validated by `rcp.judging.JudgeConfig` when
+# rcp reads `recipe: <variant id>` (this package carries no second model of a judge); the client and
 # serve blocks are the scenarios' candidate/fallback commands moved into a recipe.
 #
 # Serving shape: the NVFP4 release fits one B200, so it is TP1; the FP8 release does not, so it is the

@@ -34,9 +34,9 @@ from rcp_ndcg_vllm.recipe import (
     serve_argv,
 )
 
-from rcp_ndcg.data.templates import TemplateSpec
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp.data.templates import TemplateSpec
+from rcp.data.tokenizer import load_tokenizer
+from rcp.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts

@@ -1,7 +1,7 @@
 """The fixture reference, run as a subprocess in its own environment (never imported by the harness).
 
 The reference is deliberately independent: it renders the prompt from its own constants -- never through the
-product's :func:`rcp_ndcg.data.preprocess.fit`, so stage 1's render check compares two implementations, not a
+product's :func:`rcp.data.preprocess.fit`, so stage 1's render check compares two implementations, not a
 function with itself.  The vectors come from the same deterministic numbers as the stub engine
 (``tests/fixtures/deterministic.py``).  It reads the pairs file and writes the mode's JSON to ``--out``.
 
@@ -32,7 +32,7 @@ EMBED_TAG = "tok"
 
 
 def main() -> int:
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     parser = argparse.ArgumentParser(description="the fixture embed reference")
     parser.add_argument("--mode", required=True, choices=["render", "embed"])

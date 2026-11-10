@@ -2,9 +2,9 @@
 
 Derived with unchanged behaviour from the paper's exact in-process implementation,
 ``experiments/paper/rerankers/reference/contextual.py`` (``ContextualRerank``, itself moved
-unchanged from the former ``rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py`` when the
+unchanged from the former ``rcp/src/rcp/retrieval/external_rerankers.py`` when the
 package stopped carrying in-process models; the paper's numbers rest on it). The paper pipeline
-loaded it with ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp_ndcg.retrieval.cross_encoder``),
+loaded it with ``max_seq_len=8192`` (``MAX_SEQ_LENGTH``, ``rcp.retrieval.cross_encoder``),
 the config's per-model ``batch_size`` (:data:`BATCH_SIZES`, 32/16/8 — the original in-process
 forms of ``experiments/paper/rerankers/ctxl_rerank_{1b,2b,6b}.yaml``), the engine's SERVED dtype
 (the pipeline's ``DTYPE`` was bfloat16; E2 round 4's like-for-like decision makes the reference
@@ -75,7 +75,7 @@ reference declares ``attn_implementation: sdpa``. The score head is fp32 (see ab
 bf16 logit rounding is not reproduced, because the comparison's referent is the served engine's fp32
 pooling head (2026-10-10 owner decision, the like-for-like rule). ``render`` is pure
 string work (no tokenizer, no weights); ``score`` needs the weights, the transformers pin and the
-device the harness passes. No rcp-ndcg import: the reference environment is the paper's, not the
+device the harness passes. No rcp import: the reference environment is the paper's, not the
 harness's.
 """
 

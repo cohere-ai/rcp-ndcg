@@ -11,7 +11,7 @@ import pytest
 from rcp_core.irt import score_document
 from rcp_core.schemas import EstimateFlags, JudgementSet, QueryParams
 
-from rcp_ndcg.calibration import (
+from rcp.calibration import (
     Calibration,
     calibrate,
     insert_documents,
@@ -19,9 +19,9 @@ from rcp_ndcg.calibration import (
     score_documents,
     select_opponents,
 )
-from rcp_ndcg.calibration.fit import ThetaRow, population_prior
-from rcp_ndcg.errors import DataError, IdentityError, RcpNdcgWarning
-from rcp_ndcg.testing import TinyWorld
+from rcp.calibration.fit import ThetaRow, population_prior
+from rcp.errors import DataError, IdentityError, RcpNdcgWarning
+from rcp.testing import TinyWorld
 
 
 @pytest.fixture(scope="module")
@@ -79,7 +79,7 @@ class TestScoreDocuments:
         """No row of the calibration is recomputed when scoring, so there is nothing to compare."""
         import inspect
 
-        from rcp_ndcg.cli.calibration import CalibrationScoreRequest
+        from rcp.cli.calibration import CalibrationScoreRequest
 
         assert score_documents(fitted, judgements).anchor_report is None
         assert "max_gain_shift" not in inspect.signature(score_documents).parameters
@@ -231,8 +231,8 @@ class TestInsertDocuments:
 def test_insertion_refits_with_the_l2_the_calibration_was_fitted_with(tmp_path) -> None:
     from rcp_core.irt import Priors
 
-    from rcp_ndcg.judging import TournamentSchedule, judge
-    from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge, tiny_rows
+    from rcp.judging import TournamentSchedule, judge
+    from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge, tiny_rows
 
     rows, ability = tiny_rows()
     fake = FakeJudge(lambda text: ability[text.split()[-1]])
@@ -253,8 +253,8 @@ def test_insertion_refits_with_the_l2_the_calibration_was_fitted_with(tmp_path) 
 def test_a_pooled_calibration_scores_each_document_once_from_every_judge(world: TinyWorld, tmp_path) -> None:
     import shutil
 
-    from rcp_ndcg.judging import judge
-    from rcp_ndcg.testing import TINY_RUBRIC, FakeJudge
+    from rcp.judging import judge
+    from rcp.testing import TINY_RUBRIC, FakeJudge
 
     lenient_store = tmp_path / "lenient"
     shutil.copytree(world.lenient, lenient_store)
@@ -277,7 +277,7 @@ def test_a_pooled_calibration_scores_each_document_once_from_every_judge(world: 
 def test_the_record_key_digest_recipe_is_pinned(inserted: object) -> None:
     """``record_key`` names a record in the calibration's own fit evidence (it is re-checked on a refit); its
     digest recipe is pinned so it cannot drift silently under a changed payload."""
-    from rcp_ndcg.support.identity import hash_payload, short
+    from rcp.support.identity import hash_payload, short
 
     (record,) = sorted(inserted.records, key=lambda r: (r.dataset, r.query_id, r.doc_id))
     expected = short(

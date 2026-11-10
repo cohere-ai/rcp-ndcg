@@ -5,7 +5,7 @@ retrieval (ndcg_float_at_k)"), at head commit ``595c8ecccca2d5553df4652543bc4206
 Copyright the mteb contributors; attributed in NOTICE). ``_dcg`` and ``ndcg_float_scores`` are copied verbatim
 from ``mteb/_evaluators/retrieval_metrics.py``; ``load_float_gains`` is copied verbatim from the PR's
 ``mteb/tasks/reranking/eng/nano_beir_rcp_reranking.py`` (the same function in the BRIGHT and ViDoRe v3 task
-files). The tests compare ``rcp_ndcg.eval.mteb.ndcg_float_scores`` against the vendored function and load the
+files). The tests compare ``rcp.eval.mteb.ndcg_float_scores`` against the vendored function and load the
 written layout with the vendored ``load_float_gains``, so the repository's copy is checked against the PR's own
 code rather than against itself.
 

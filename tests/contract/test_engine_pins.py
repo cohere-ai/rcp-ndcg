@@ -61,10 +61,10 @@ DEFAULT_CLONE = REPO / ".deps" / "vllm"
 #: The swept surface: the three ``src`` trees (the recipes live under the serving package's), the docs, the
 #: exported schemas, and the loose files -- the root NOTICE and the four distributions' NOTICEs, plus the
 #: reproducibility record.
-SWEPT_ROOTS = ("docs", "rcp-ndcg/src", "rcp-ndcg-test/src", "rcp-ndcg-vllm/src", "schemas")
+SWEPT_ROOTS = ("docs", "rcp/src", "rcp-ndcg-test/src", "rcp-ndcg-vllm/src", "schemas")
 SWEPT_FILES = (
     "NOTICE",
-    "rcp-ndcg/NOTICE",
+    "rcp/NOTICE",
     "rcp-core/NOTICE",
     "rcp-ndcg-test/NOTICE",
     "rcp-ndcg-vllm/NOTICE",
@@ -209,8 +209,8 @@ DRIFT = frozenset(
             97: ("vllm/entrypoints/pooling/scoring/io_processor.py:460-476 NEAR",),
             129: ("vllm/model_executor/layers/pooler/activations.py:140-140 NEAR",),
         },
-        "rcp-ndcg/src/rcp_ndcg/data/resolution.py": {1473: ("vidcom2.py:19-40 MISSING",)},
-        "rcp-ndcg/src/rcp_ndcg/inference/adapters/embeddings.py": {320: ("vllm/renderers/hf.py:847-914 MISSING",)},
+        "rcp/src/rcp/data/resolution.py": {1473: ("vidcom2.py:19-40 MISSING",)},
+        "rcp/src/rcp/inference/adapters/embeddings.py": {320: ("vllm/renderers/hf.py:847-914 MISSING",)},
     }.items()
     for line, rows in rows_by_line.items()
     for row in rows

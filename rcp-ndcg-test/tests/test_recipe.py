@@ -14,8 +14,8 @@ import pytest
 from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
 from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
 
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.judging import JudgeConfig
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.judging import JudgeConfig
 
 _SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"

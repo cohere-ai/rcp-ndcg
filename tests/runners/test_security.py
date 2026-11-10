@@ -15,10 +15,10 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.runners import JobPhase, JobSpec, KubernetesRunner, ServeConfig, SlurmRunner
-from rcp_ndcg.runners.script import heredoc
-from rcp_ndcg.runs import RunConfig
+from rcp.errors import ConfigError
+from rcp.runners import JobPhase, JobSpec, KubernetesRunner, ServeConfig, SlurmRunner
+from rcp.runners.script import heredoc
+from rcp.runs import RunConfig
 from tests.runners.k8s_schema import check_objects
 
 #: A value whose second line is the fixed heredoc terminator ``RCP_NDCG_WORKER``.
@@ -39,7 +39,7 @@ def test_a_control_character_in_a_name_or_an_image_is_refused(value: str) -> Non
 def test_a_nul_in_a_free_form_value_is_refused(value: str) -> None:
     """A NUL truncates the rendered script; a newline is allowed and quoted inert."""
     with pytest.raises(ValidationError, match="NUL"):
-        JobSpec(name="j", argv=("rcp-ndcg", "run", "resume", value))
+        JobSpec(name="j", argv=("rcp", "run", "resume", value))
     with pytest.raises(ValidationError, match="NUL"):
         JobSpec(name="j", argv=("true",), env={"ODD": value})
     with pytest.raises(ValidationError, match="NUL"):

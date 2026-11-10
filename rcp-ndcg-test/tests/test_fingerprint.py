@@ -4,7 +4,7 @@
 (docs/reference/gpu-validation.md): it is the SHA-256 of everything that can change what the model returns -- model id
 and revision, the ``serve`` block, the template file's bytes, the tokenizer's ``tokenizer.json`` SHA-256 and
 the client fields that shape the request. Recipe identity and harness metadata (``id``, ``notes``,
-``status``, ``reference``, ``gates``) are out, and so are rcp-ndcg's internals: refactoring the package never
+``status``, ``reference``, ``gates``) are out, and so are rcp's internals: refactoring the package never
 needs a re-recording. :func:`fingerprint_inputs` returns the named inputs and their values, so a staleness
 failure can name what changed.
 """
@@ -196,8 +196,8 @@ def test_client_side_post_processing_never_moves_the_fingerprint(
     """Out of the replay fingerprint, in the comparison identity: a field applied to the reply after it
     arrives changes neither the request nor the engine's output, but it changes what stage 2 compares (the
     client's result), so the endpoint's identity -- the step/stored-reference key -- must carry it."""
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-    from rcp_ndcg.support.identity import identity_payload
+    from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp.support.identity import identity_payload
 
     before = load_recipe(_copy_of(source, tmp_path / "before", lambda data: data))
 
@@ -264,7 +264,7 @@ def test_every_client_config_field_is_classified() -> None:
     field that shapes the request can never be silently left out (nor a post-processing one silently in)."""
     from rcp_ndcg_test.fingerprint import CLIENT_FIELDS
 
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 
     for config in (EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint):
         missing = sorted(set(config.model_fields) - set(CLIENT_FIELDS))
@@ -452,9 +452,9 @@ def test_every_client_field_role_agrees_with_the_identity_and_the_fingerprint() 
     judge's ``allow_floating_model`` is RUNTIME: it permits an unpinned model id and shapes no request."""
     from rcp_ndcg_test.fingerprint import CLIENT_FIELDS
 
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-    from rcp_ndcg.judging import JudgeConfig
-    from rcp_ndcg.support.identity import FieldRole, declared_roles
+    from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp.judging import JudgeConfig
+    from rcp.support.identity import FieldRole, declared_roles
 
     roles: dict[str, set[FieldRole]] = {}
     for config in (EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint):
@@ -481,8 +481,8 @@ def test_the_media_caps_over_key_the_judge_role_deliberately() -> None:
     from rcp_ndcg_test import fingerprint as fingerprint_module
     from rcp_ndcg_test.fingerprint import CLIENT_FIELDS
 
-    from rcp_ndcg.judging import JudgeConfig
-    from rcp_ndcg.support.identity import FieldRole, declared_roles
+    from rcp.judging import JudgeConfig
+    from rcp.support.identity import FieldRole, declared_roles
 
     for field in ("max_images", "max_videos"):
         assert declared_roles(JudgeConfig)[field] == FieldRole.RUNTIME, field

@@ -6,7 +6,7 @@ hosted ``gpt5_hosted`` vendor profile, so a reader sent there finds no paper jud
 
 from __future__ import annotations
 
-from rcp_ndcg.judging.judges import judge_names
+from rcp.judging.judges import judge_names
 from tests.docs._markdown import ROOT
 
 PAGE = ROOT / "REPRODUCIBILITY.md"

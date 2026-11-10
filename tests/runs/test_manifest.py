@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.judging import Usage
-from rcp_ndcg.runs import RunLayout, RunManifest, RunStatus, StepStatus, discover_runs, new_run_id
-from rcp_ndcg.storage.artifacts import artifact_ref
-from rcp_ndcg.support.identity import hash_payload
+from rcp.errors import ConfigError, DataError
+from rcp.judging import Usage
+from rcp.runs import RunLayout, RunManifest, RunStatus, StepStatus, discover_runs, new_run_id
+from rcp.storage.artifacts import artifact_ref
+from rcp.support.identity import hash_payload
 
 
 @pytest.fixture
@@ -75,8 +75,8 @@ class TestSteps:
         """RunState/StepState/JobState status fields are the three vocabularies themselves (one enum each),
         `StepStatus` covers `pending` (which `run status` emits for a step not started), and a finished-OK job
         reads `completed` like a finished-OK step and run — one word per meaning."""
-        from rcp_ndcg.runners.base import JobStatus
-        from rcp_ndcg.runs.run import JobState, RunState, StepState
+        from rcp.runners.base import JobStatus
+        from rcp.runs.run import JobState, RunState, StepState
 
         assert StepState.model_fields["status"].annotation is StepStatus
         assert RunState.model_fields["status"].annotation is RunStatus

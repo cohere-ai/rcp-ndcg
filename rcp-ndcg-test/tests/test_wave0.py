@@ -234,7 +234,7 @@ def test_embed_check_fails_when_the_client_did_not_fit(tmp_path: Path, monkeypat
             def encode(self, contents, role, **kwargs):  # noqa: ARG002
                 return types.SimpleNamespace(as_matrix=lambda: np.ones((len(contents), 4), dtype="float32"))
 
-        monkeypatch.setattr("rcp_ndcg.inference.EmbeddingClient", lambda endpoint: UnfittedClient())  # noqa: ARG005
+        monkeypatch.setattr("rcp.inference.EmbeddingClient", lambda endpoint: UnfittedClient())  # noqa: ARG005
         args = argparse.Namespace(
             base_url=engine.base_url,
             served_model_name="fixture",
@@ -395,7 +395,7 @@ def _full_report(tmp_path: Path) -> Path:
         "bootstrap": {
             "engine": {"python": "3.12.9", "vllm": "0.33.0", "freeze_unchanged": True, "plugins": []},
             "client": {
-                "rcp-ndcg": "0.0.1",
+                "rcp": "0.0.1",
                 "rcp-core": "0.0.1",
                 "rcp-ndcg-vllm": "0.0.1",
                 "mechanism": "uvx",

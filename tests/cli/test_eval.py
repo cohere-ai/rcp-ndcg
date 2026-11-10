@@ -1,4 +1,4 @@
-"""``rcp-ndcg eval score|compare|explain`` over a dataset URI, a rankings file and a calibration."""
+"""``rcp eval score|compare|explain`` over a dataset URI, a rankings file and a calibration."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.eval import eval_group
-from rcp_ndcg.data import SUITES, Rankings
+from rcp.cli.eval import eval_group
+from rcp.data import SUITES, Rankings
 
 VIDORE_REPO = SUITES["vidore"].repo
 SHA = "4" * 40
@@ -144,8 +144,8 @@ def test_tied_scores_follow_the_protocols_tie_rule(tmp_path: Path, protocol: str
 @pytest.fixture
 def scored(tmp_path: Path) -> dict:
     """Two systems scored against the tiny world's calibration, with the full report written by --out."""
-    from rcp_ndcg.calibration import Calibration
-    from rcp_ndcg.testing import build_tiny_world, tiny_rows
+    from rcp.calibration import Calibration
+    from rcp.testing import build_tiny_world, tiny_rows
 
     world = build_tiny_world(tmp_path / "world")
     rows, _ = tiny_rows()
@@ -179,7 +179,7 @@ def test_a_calibration_gives_rcp_ndcg_and_a_report_to_compare(scored: dict) -> N
     scored = scored["document"]
 
     assert scored["data"]["gains_source"] == "calibration"
-    assert _summary(scored, "rcp_ndcg", 10, "reverse") > _summary(scored, "rcp_ndcg", 10, "forward")
+    assert _summary(scored, "rcp", 10, "reverse") > _summary(scored, "rcp", 10, "forward")
     assert compared["data"]["schema"] == "rcp-ndcg.comparison.v1"
     (pair,) = compared["data"]["pairs"]
     assert (pair["system_a"], pair["system_b"]) == ("forward", "reverse") and pair["delta"] > 0
@@ -239,7 +239,7 @@ def _rubric_store(tmp_path: Path, dataset: str, windows: dict[str, list[list[tup
 
     from rcp_core.schemas import Judgement, JudgementFamily, Placement, criterion_labels, judgement_record_id
 
-    from rcp_ndcg.judging.store import JudgementStore
+    from rcp.judging.store import JudgementStore
 
     family = JudgementFamily(
         stage="rubric", judge_model="m", prompt_hash="0" * 64, criteria=criterion_labels(5), parse_version=1
@@ -400,7 +400,7 @@ def test_include_reference_with_a_report_is_refused(scored: dict) -> None:
 def test_explain_report_re_scores_the_systems_the_report_scored(scored: dict) -> None:
     """`eval explain --report` defaults to the systems the report scored: a system added to the rankings file
     after scoring does not kill the explanation, and `--system` narrows the re-score."""
-    from rcp_ndcg.data import load_rankings
+    from rcp.data import load_rankings
 
     rankings = Rankings.concat(
         [
@@ -554,7 +554,7 @@ def test_score_text_prints_the_per_query_values(dataset: str, tmp_path: Path, ca
     """`--per-query` promises every per-query value: the text renderer prints them too, not only --json."""
     from click.testing import CliRunner
 
-    from rcp_ndcg.cli.main import cli
+    from rcp.cli.main import cli
 
     rankings = tmp_path / "run.parquet"
     Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)

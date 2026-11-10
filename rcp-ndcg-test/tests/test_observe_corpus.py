@@ -156,7 +156,7 @@ def test_the_standing_probes_carry_the_recipes_own_render_ids(tmp_path: Path) ->
     from rcp_ndcg_test.observe.requests import corpus_plan
     from rcp_ndcg_test.record import _bare_probes, _Collector
 
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.types import EncodeRole
 
     recipe = token_ids_recipe(tmp_path)
     tokenizer = fitting.tokenizer_of(recipe)
@@ -829,7 +829,7 @@ def test_the_equivalence_stage_must_have_seen_the_same_replies(tmp_path: Path) -
     from rcp_core.content import Content
     from rcp_ndcg_test.equivalence.wire import role_client
 
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.types import EncodeRole
 
     directory, _ = _record(tmp_path)
     recipe = load_recipe(RECIPES / "fixture-embed")

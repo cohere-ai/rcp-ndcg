@@ -1,6 +1,6 @@
 """The anchor audit of ``anchor: last_content`` (a model that pools the last real token of raw text).
 
-The product's definition (:data:`rcp_ndcg.data.templates.AnchorKind`): the anchor is the last kept *content*
+The product's definition (:data:`rcp.data.templates.AnchorKind`): the anchor is the last kept *content*
 token -- the shape ends on its content span, a cut keeps a content prefix, so that token always survives -- and the
 fixed segments (a head marker such as jina-embeddings-v5's ``Query:``) are still reserved and audited.  The audit
 asserts both on every captured body: the head marker opens the render as the engine reads it, and the render ends
@@ -18,7 +18,7 @@ from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence import stages as stages_module
 from rcp_ndcg_vllm import load_recipe
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp.data.tokenizer import load_tokenizer
 from tests.conftest import RECIPES, TOKENIZER, sample_pairs, write_pairs
 from tests.test_equivalence import REFERENCE_PYTHON, _rebased
 

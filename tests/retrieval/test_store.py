@@ -13,14 +13,14 @@ from typing import Any
 import numpy as np
 import pytest
 
-from rcp_ndcg.data.embedding_store import (
+from rcp.data.embedding_store import (
     EmbeddingStore,
     StoredVectors,
     load_embedding_store,
     save_embedding_store,
 )
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.retrieval import (
+from rcp.errors import ConfigError, DataError
+from rcp.retrieval import (
     DenseConfig,
     LateInteractionConfig,
     ServedEmbedding,
@@ -85,7 +85,7 @@ class TestStoreRoundTrip:
 
     def test_the_identity_carries_the_full_width_marker(self, dataset: Any, tmp_path: Path) -> None:
         """A full-width store's identity is not a k-index's identity: the marker is part of it."""
-        from rcp_ndcg.retrieval import index
+        from rcp.retrieval import index
 
         record = build_store(dataset, _dense(mrl_dim=2), out=tmp_path / "store")
         built = index(dataset, _dense(mrl_dim=2), out=tmp_path / "index")
@@ -102,7 +102,7 @@ class TestStoreRoundTrip:
         assert np.all(np.diff(corpus.offsets) >= 0)
 
     def test_a_bm25_retriever_has_no_vectors_to_store(self, dataset: Any, tmp_path: Path) -> None:
-        from rcp_ndcg.retrieval import BM25Config
+        from rcp.retrieval import BM25Config
 
         with pytest.raises(ConfigError, match="BM25") as caught:
             build_store(dataset, BM25Config(), out=tmp_path / "store")
@@ -214,7 +214,7 @@ class TestSweep:
         """The store must encode what index/search encode: the dataset's document- and query-side task
         instructions and the encoder's title mode. Without them the stored vectors (and every per-k ranking
         the sweep writes) come from other model inputs than a direct per-k run."""
-        from rcp_ndcg.data.templates import Segment, TemplateSpec
+        from rcp.data.templates import Segment, TemplateSpec
 
         template = TemplateSpec(
             query=(Segment(fixed="Query: "), Segment(content="query")),
@@ -346,7 +346,7 @@ class TestSweepCommand:
 
         from click.testing import CliRunner
 
-        from rcp_ndcg.cli.retrieval import retrieval_group
+        from rcp.cli.retrieval import retrieval_group
 
         store = tmp_path / "store"
         build_store(dataset, _dense(mrl_dim=2), out=store)
@@ -384,7 +384,7 @@ class TestSweepCommand:
 
         from click.testing import CliRunner
 
-        from rcp_ndcg.cli.retrieval import retrieval_group
+        from rcp.cli.retrieval import retrieval_group
 
         store = tmp_path / "store"
         build_store(dataset, _dense(mrl_dim=2), out=store)
@@ -404,7 +404,7 @@ class TestSweepCommand:
 
         from click.testing import CliRunner
 
-        from rcp_ndcg.cli.retrieval import retrieval_group
+        from rcp.cli.retrieval import retrieval_group
 
         store = tmp_path / "store"
         build_store(dataset, _dense(mrl_dim=2), out=store)
@@ -435,12 +435,12 @@ class TestSweepCommand:
 
     def test_the_sweep_defaults_to_the_metrics_the_dataset_can_score(self, dataset: Any, tmp_path: Path) -> None:
         """The documented example passes no ``--metrics``, and a BEIR dataset has no released gains: the
-        default used to include rcp_ndcg and refused after writing the per-k rankings."""
+        default used to include rcp and refused after writing the per-k rankings."""
         import json
 
         from click.testing import CliRunner
 
-        from rcp_ndcg.cli.retrieval import retrieval_group
+        from rcp.cli.retrieval import retrieval_group
 
         store = tmp_path / "store"
         build_store(dataset, _dense(mrl_dim=2), out=store)
@@ -462,7 +462,7 @@ class TestSweepCommand:
         import yaml
         from click.testing import CliRunner
 
-        from rcp_ndcg.cli.retrieval import retrieval_group
+        from rcp.cli.retrieval import retrieval_group
 
         retriever = tmp_path / "retriever.yaml"
         retriever.write_text(

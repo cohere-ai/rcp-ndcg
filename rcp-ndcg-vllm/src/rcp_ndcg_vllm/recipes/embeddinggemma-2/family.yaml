@@ -11,7 +11,7 @@
 # null-controlled gate).
 # See notes, "Engine".
 id: embeddinggemma-2
-schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp and rcp-ndcg-vllm)
 role: embed
 input: [text, image, video]     # the checkpoint's modalities (card); audio is out of scope for 0.0.1
 licence: apache-2.0
@@ -121,7 +121,7 @@ sources:
   - "vLLM commit 8cbd5d03006c33185f402249ff2b448efd594986 (the fold's source; read on the nightly): vllm/model_executor/models/registry.py:249 (EmbeddingGemma2Model -> embedding_gemma2); vllm/model_executor/models/embedding_gemma2.py:982 (@default_pooling_type MEAN + ALL), :1103 (DispatchPooler.for_embedding), :160 (AttentionType.ENCODER_ONLY: bidirectional), :423-425 (add_special_tokens True), :488 (video tokens = max_frames x (soft + 2)), :491-521 (image repl boi + n soft + eoi), :541-577 (video repl one boi/eoi block per frame); vllm/model_executor/models/config.py:293 (EmbeddingGemma2ModelConfig; an unset max_model_len caps at 8192); vllm/multimodal/video.py:422-523 (EmbeddingGemma2VideoBackend: fps/max_frames kwargs, num_sampled = max(1, int(duration x fps)) then uniform to max_frames; num_frames ignored); vllm/model_executor/models/gemma4_mm.py:285-330 (_compute_num_soft_tokens: the aspect-ratio-preserving resize to max_soft_tokens pooled patches)"
   - "transformers 5.19.0 (the first release with the checkpoint's classes; the image's 5.17.0 and 5.18.0 lack them): models/embedding_gemma2/{configuration,modeling,processing,video_processing}_embedding_gemma2.py; models/gemma4/image_processing_gemma4.py (get_aspect_ratio_preserving_size: sqrt(max_patches x patch^2 / area) then floor to patch x pooling = 48)"
   - "vllm v0.33.0 (the generic pooling head the stock image carries unchanged) vllm/pooling_params.py:246,259 (a per-request dimensions needs is_matryoshka + membership in matryoshka_dimensions) and vllm/model_executor/layers/pooler/seqwise/heads.py:85-105 (the Matryoshka slice before the pooler's L2); serve.hf_overrides declares the card's set because the checkpoint's config.json declares neither key"
-  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/resolution.py (ImagePolicy max_soft_tokens and the gemma4 processor geometry; VideoPolicy; content_media_tokens: one wrapper per frame for gemma4), rcp-ndcg/src/rcp_ndcg/inference/config.py (EmbeddingEndpoint: query_prompt/doc_prompt beside a content-only template)"
+  - "rcp: rcp/src/rcp/data/resolution.py (ImagePolicy max_soft_tokens and the gemma4 processor geometry; VideoPolicy; content_media_tokens: one wrapper per frame for gemma4), rcp/src/rcp/inference/config.py (EmbeddingEndpoint: query_prompt/doc_prompt beside a content-only template)"
 notes: >-
   Engine. The waves that verified this recipe ran the stock 0.31 image (the status block's `image`)
   with this recipe's plugin backport (the owner's 2026-10-10 decision): that image could not serve this
@@ -262,7 +262,7 @@ notes: >-
   (max_patches = 280 x 3^2 = 2,520 patches, both edges a multiple of patch x pooling = 48) -- the resize
   scales a 16x16 icon up to 768x768 and a 2480x3508 page down to 672x912 -- and the prompt gets
   boi + 280-or-fewer soft tokens + eoi. The client reproduces the resize (the gemma4 processor geometry in
-  rcp_ndcg.data.resolution) and counts the pooled patches plus the two markers. No engine pin is needed: the
+  rcp.data.resolution) and counts the pooled patches plus the two markers. No engine pin is needed: the
   checkpoint's processor_config.json carries the 280 budget, which is what the stock v0.33.0 engine loads; the
   client declares the same number. Videos: the engine samples by fps, capped at max_frames (it ignores
   num_frames: video.py:422-523), so the recipe pins 60 fps and 32 frames with --media-io-kwargs
@@ -321,7 +321,7 @@ notes: >-
   The two image rows' input difference (E2 rounds 13-14, rows 31/32, cosines 0.9956 and 0.9941 full width,
   0.994-0.998 at every declared k in round 13). The cause is measured on CPU against the checkpoint's own
   processor (transformers 5.19.0, the pinned revision): the product prepares an image at
-  `rcp_ndcg.data.resolution.gemma4_fixed_point` -- the size the processor KEEPS, so the engine's own resize
+  `rcp.data.resolution.gemma4_fixed_point` -- the size the processor KEEPS, so the engine's own resize
   is the identity -- while the card's processor resizes the RAW image in ONE step
   (`get_aspect_ratio_preserving_size`), and for these two extreme-aspect images the two differ: the shipped
   576x4096 receipt lands on 288x2160 (2,430 patches = 270 soft + the 2 markers = the 272 tokens the client

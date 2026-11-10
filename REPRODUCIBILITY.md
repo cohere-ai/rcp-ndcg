@@ -11,7 +11,7 @@ paper's leaderboards, the human contest study and the comparisons with external 
 and no credentials.
 
 ```bash
-pip install ./rcp-core ./rcp-ndcg     # or: uv sync
+pip install ./rcp-core ./rcp     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py
@@ -39,7 +39,7 @@ revisions are the datasets' release 2, which carries the numbers of arXiv v2 (se
 Each benchmark dataset holds the judged candidate pools, the human qrels and the calibrated RCP gains
 ([docs/data.md](docs/data.md)). Two routes score a system on them:
 
-- this package: `rcp-ndcg eval score --rankings <file> --suite <suite>`, or `rcp_ndcg.eval.evaluate`, with the
+- this package: `rcp eval score --rankings <file> --suite <suite>`, or `rcp.eval.evaluate`, with the
   paper's per-suite scoring protocol ([scoring protocols](docs/concepts/protocols.md));
 - stock [mteb](https://github.com/embeddings-benchmark/mteb): `ndcg_float_at_10` through the `rcp_ndcg_tasks.py`
   shipped with each dataset ([MTEB integration](docs/how-to/mteb-integration.md)).
@@ -196,7 +196,7 @@ scores and the 2PL calibration of every suite and judge, and recomputes every nu
 tables credit tied scores with their group's mean gain on every suite, where arXiv v1 broke ties by document id or
 by judge-pool order. The decoder of this release (parse version 4) makes the cut at the last reasoning tag itself,
 so on the stored paper-era answers it decodes the same JSON object as arXiv v2's rule in every window (checked on
-the stored NanoBEIR and TREC-DL answers of both stages, 577,449 windows). For Stage A, `rcp-ndcg judge reparse` of
+the stored NanoBEIR and TREC-DL answers of both stages, 577,449 windows). For Stage A, `rcp judge reparse` of
 those answers therefore reads the same observations as arXiv v2. For Stage B it does not: the paper's rubric prompt
 also asked a sixth criterion (C6), which the paper never fitted and arXiv v2 dropped before requiring C1..C5 of
 every document, while the rubric parser refuses a criterion the prompt did not ask (`schema`). The released
@@ -246,7 +246,7 @@ keeps every case.
 - Judges configured with `decoding: json_schema` receive each stage's answer schema as `response_format`, and the
   judgement family records the decoding.
 - An answer that still fails is stored as an invalid window with a category (`truncated`, `no_json`,
-  `invalid_json`, `schema`, `incomplete`, `refused`), and its raw text is kept. `rcp-ndcg judge reparse` re-reads
+  `invalid_json`, `schema`, `incomplete`, `refused`), and its raw text is kept. `rcp judge reparse` re-reads
   stored answers with the current parser without calling the judge.
 - Calibration reports invalid windows per query. It warns when a query loses more than 5% of a stage or any
   adaptive window, and refuses under `--strict`.

@@ -1,17 +1,17 @@
 """The client seam: the product's role clients, observed through one ``httpx`` transport hook.
 
 Stage 1 and stage 2 both talk to the engine through the product's role clients
-(:class:`~rcp_ndcg.inference.clients.EmbeddingClient`, :class:`~rcp_ndcg.inference.clients.PoolingClient`,
-:class:`~rcp_ndcg.inference.clients.RerankClient`), built from :func:`~rcp_ndcg_vllm.recipe.client_config` with
+(:class:`~rcp.inference.clients.EmbeddingClient`, :class:`~rcp.inference.clients.PoolingClient`,
+:class:`~rcp.inference.clients.RerankClient`), built from :func:`~rcp_ndcg_vllm.recipe.client_config` with
 the recipe's real budget: the client prompts, fits and settles exactly as the served path does. The harness
 never re-derives a render, a cut or a settlement.
 
 The observation seam is the product's own injection point: a
 :class:`~rcp_ndcg_test.equivalence.wire.CapturingTransport` is handed to the client's
-:class:`~rcp_ndcg.inference.transport.Transport` as its ``httpx_transport``, so every request the client
+:class:`~rcp.inference.transport.Transport` as its ``httpx_transport``, so every request the client
 produces crosses it once -- raw request and reply bodies for the recorder, and the request texts stage 1
 tokenizes (the engine is the tokenization truth, R29).  Without an engine the transport answers through the
-product's own offline fake (``rcp_ndcg.inference.fake``): the requests are still the client's.
+product's own offline fake (``rcp.inference.fake``): the requests are still the client's.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def _capture_base(recipe: Recipe) -> str:
 class CapturingTransport(httpx.AsyncBaseTransport):
     """An ``httpx`` transport that records every request and reply, then answers through ``delegate``.
 
-    The product's injection point: :class:`~rcp_ndcg.inference.transport.Transport` takes it as its
+    The product's injection point: :class:`~rcp.inference.transport.Transport` takes it as its
     ``httpx_transport`` and wraps it in its own client (timeouts, pool limits, routing and retries stay the
     product's).  There is no second request path: the requests are the role client's, byte for byte.
     """
@@ -246,7 +246,7 @@ def recipe_config(
     """
     from rcp_ndcg_vllm.recipe import client_config
 
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 
     data = client_config(recipe, base_url=base_url)
     if full_width:
@@ -280,8 +280,8 @@ def role_client(
     budget -- prompts, text budget, ``query_max_tokens``, the reranker's settle-once) and the
     :class:`Capture` whose ``exchanges`` carry every request and reply, in order.
     """
-    from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
-    from rcp_ndcg.inference.transport import Transport
+    from rcp.inference.clients import EmbeddingClient, PoolingClient, RerankClient
+    from rcp.inference.transport import Transport
 
     url = base_url if base_url else _capture_base(recipe)
     if base_url and recipe.role == "embed":
@@ -290,7 +290,7 @@ def role_client(
     if base_url:
         delegate: httpx.AsyncBaseTransport | httpx.BaseTransport = httpx.AsyncHTTPTransport()
     else:
-        from rcp_ndcg.inference.fake import FAKE_SCHEME, fake_transport
+        from rcp.inference.fake import FAKE_SCHEME, fake_transport
 
         # The engine-side document skip rule is a serve-side declaration the endpoint config does not carry
         # (its role gate lives in ``serve.hf_overrides.document_skip_prefix_token_id``), so the harness passes

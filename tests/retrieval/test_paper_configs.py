@@ -15,8 +15,8 @@ from typing import Any
 import pytest
 import yaml
 
-from rcp_ndcg.retrieval import validate_reranker, validate_retriever
-from rcp_ndcg.retrieval.config import (
+from rcp.retrieval import validate_reranker, validate_retriever
+from rcp.retrieval.config import (
     BM25Config,
     CohereReranker,
     DenseConfig,
@@ -153,7 +153,7 @@ def test_every_served_paper_config_builds_its_client(tokenizer_json: str) -> Non
     The configs carry their real Hub tokenizers (the recipe serves the checkpoint); the client only loads
     the tokenizer *file* to count the budget, so the build test runs against the saved offline test
     tokenizer -- same field, different file, the paper config itself untouched."""
-    from rcp_ndcg.inference.clients import RerankClient
+    from rcp.inference.clients import RerankClient
     from tests.retrieval.test_api import _recording_sender
 
     for data_path, data in _configs(PAPER / "rerankers"):
@@ -201,14 +201,14 @@ def paper_wire(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
             200, json={"data": [{"index": i, "embedding": vector} for i, vector in enumerate(vectors)]}
         )
 
-    from rcp_ndcg.inference import transport as transport_module
+    from rcp.inference import transport as transport_module
 
     real = transport_module.Transport
 
     def patched(endpoint: Any, *, auth: Any = None, httpx_transport: Any = None) -> Any:
         return real(endpoint, auth=auth, httpx_transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setattr("rcp.inference.clients._base.Transport", patched)
     monkeypatch.setenv("CO_API_KEY", "test-key")
     return sent
 
@@ -220,8 +220,8 @@ def test_the_paper_dense_configs_run_on_an_instructed_dataset(
     the declared policy means the instruction is dropped by declaration, never refused (the paper's numbers did
     not read one). The configs' real Hub tokenizers are swapped for the saved offline one (the client only
     loads the tokenizer file to count the budget; the paper config itself is untouched)."""
-    from rcp_ndcg.data import Dataset
-    from rcp_ndcg.retrieval import index, search
+    from rcp.data import Dataset
+    from rcp.retrieval import index, search
 
     dataset = Dataset.from_records(
         name="bright-like",

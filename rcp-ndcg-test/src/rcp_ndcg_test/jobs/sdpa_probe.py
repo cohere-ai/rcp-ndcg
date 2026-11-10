@@ -67,7 +67,7 @@ import numpy as np
 from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
 from rcp_ndcg_vllm.recipe import Recipe, load_recipe, serve_argv
 
-from rcp_ndcg.errors import ProviderError
+from rcp.errors import ProviderError
 from rcp_ndcg_test.errors import HarnessError
 
 SCHEMA = "rcp-sdpa-probe/1"
@@ -538,7 +538,7 @@ def texts_of(rows: list[dict[str, Any]]) -> list[tuple[str, Any, Any]]:
     """
     from rcp_core.content import Content
 
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.types import EncodeRole
     from rcp_ndcg_test.equivalence.media import side_contents
 
     items: list[tuple[str, Any, Any]] = []

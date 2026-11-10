@@ -18,7 +18,7 @@ Two subcommands, both consuming the product's own code (R30):
 
 ``media --judge <id> [--judge-model <id>] [--set judge.*] --out <file>``
     The engine media check for a judge whose family admits media: the product's own probe
-    (:meth:`~rcp_ndcg.inference.clients._base.RoleClient.check_engine_media`) sends one prepared 224x224
+    (:meth:`~rcp.inference.clients._base.RoleClient.check_engine_media`) sends one prepared 224x224
     image beside its no-media baseline and compares the engine's two ``usage.prompt_tokens`` reports' DELTA
     with the client's counted media tokens.  The probe's policy is the processor family's own stock budget
     (:func:`probe_policy`), so a stock engine keeps the prepared size and the counted tokens describe what
@@ -58,7 +58,7 @@ def judge_modes(recipe_id: str) -> list[dict[str, Any]]:
     (``off``, the shipped default, and ``on``, the recipe's declared client choice merged over its own
     ``extra_body``); every other judge's single ``default`` mode, the shipped client block unchanged.
     """
-    from rcp_ndcg.judging.judges import judge_config_data
+    from rcp.judging.judges import judge_config_data
 
     data = judge_config_data(recipe_id)
     shipped = dict(data.get("extra_body") or {})
@@ -73,14 +73,14 @@ def judge_modes(recipe_id: str) -> list[dict[str, Any]]:
 def probe_policy(processor: str | None) -> Any:
     """The media probe's declared image policy for a processor family, or ``None`` for a text-only judge.
 
-    The policy is the family's own stock budget (:data:`~rcp_ndcg.data.resolution.PROCESSORS`): a stock
+    The policy is the family's own stock budget (:data:`~rcp.data.resolution.PROCESSORS`): a stock
     engine serving the family keeps the prepared size, so the engine's media delta and the client's counted
     tokens describe the same bytes.  Raises ``KeyError`` for a processor family that declares neither a
     pixel range nor a soft-token budget here.
     """
     if processor is None:
         return None
-    from rcp_ndcg.data.resolution import PROCESSORS, ImagePolicy
+    from rcp.data.resolution import PROCESSORS, ImagePolicy
 
     geometry = PROCESSORS[processor]
     if geometry.resize == "gemma4":
@@ -105,7 +105,7 @@ def media_report(config: Any, *, client: Any = None) -> dict[str, Any]:
     """Run the product's engine media check for ``config`` and report its outcome.
 
     Inputs: the judge config, and (tests only) a client standing in for
-    :class:`~rcp_ndcg.judging.client.JudgeClient`.  Output: the report dict -- ``checked: false`` with the
+    :class:`~rcp.judging.client.JudgeClient`.  Output: the report dict -- ``checked: false`` with the
     reason for a text-only judge; else the outcome (``ok`` when the engine's media delta equals the client's
     counted tokens, ``not_checked`` when the reply reported no usage, ``mismatch`` on the product's typed
     media mismatch, ``refused`` when the engine refused the probe), the effective policy, and the two
@@ -115,12 +115,12 @@ def media_report(config: Any, *, client: Any = None) -> dict[str, Any]:
     if policy is None:
         return {"checked": False, "reason": "text-only"}
     if client is None:
-        from rcp_ndcg.judging.client import JudgeClient
+        from rcp.judging.client import JudgeClient
 
         client = JudgeClient.from_config(config)
     client.image_policy = policy.for_processor(config.image_processor)
     capture = _MediaNumbers()
-    logger = logging.getLogger("rcp_ndcg.inference.clients._base")
+    logger = logging.getLogger("rcp.inference.clients._base")
     previous_level = logger.level
     logger.setLevel(logging.INFO)  # the check's INFO line is the only place its two numbers are reported
     logger.addHandler(capture)
@@ -128,7 +128,7 @@ def media_report(config: Any, *, client: Any = None) -> dict[str, Any]:
         asyncio.run(client.check_engine_media())
         outcome, detail = "ok", ""
     except Exception as error:  # noqa: BLE001 - the typed verdicts are the report; nothing else may escape
-        from rcp_ndcg.errors import CapabilityError, ProviderError
+        from rcp.errors import CapabilityError, ProviderError
 
         if isinstance(error, ProviderError):
             outcome, detail = "mismatch", str(error)
@@ -159,7 +159,7 @@ def media_report(config: Any, *, client: Any = None) -> dict[str, Any]:
 
 def _config(args: argparse.Namespace) -> Any:
     """The judge config the CLI flags name: the same source flags the judging commands take."""
-    from rcp_ndcg.cli.judge import JudgeSource
+    from rcp.cli.judge import JudgeSource
 
     source = JudgeSource(
         judge=args.judge, judge_url=args.judge_url, judge_model=args.judge_model, set=list(args.set or [])

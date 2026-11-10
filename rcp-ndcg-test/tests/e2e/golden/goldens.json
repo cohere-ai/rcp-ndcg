@@ -8,11 +8,11 @@
     "provenance": "computed by tests/e2e/test_golden_replay.py from the release corpora's recorded exchanges (the fingerprints below pin them), replayed through the recipes' emulators: a regression pin of the replayed path, not an independent GPU-run number",
     "rerank": {
       "qrel_ndcg@10": 1.0,
-      "rcp_ndcg@10": 0.7967075809905066
+      "rcp@10": 0.7967075809905066
     },
     "retrieval": {
       "qrel_ndcg@10": 0.6309297535714575,
-      "rcp_ndcg@10": 0.7967075809905066
+      "rcp@10": 0.7967075809905066
     }
   },
   "vidore": {
@@ -23,7 +23,7 @@
     "provenance": "computed by tests/e2e/test_golden_replay.py from the release corpora's recorded exchanges (the fingerprints below pin them), replayed through the recipes' emulators: a regression pin of the replayed path, not an independent GPU-run number",
     "rerank": {
       "qrel_ndcg@10": 0.6309297535714575,
-      "rcp_ndcg@10": 1.0
+      "rcp@10": 1.0
     }
   }
 }

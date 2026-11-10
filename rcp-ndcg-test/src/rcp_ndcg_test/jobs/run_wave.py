@@ -41,7 +41,7 @@ whose model no later recipe reuses, the model's weights are evicted from the HF 
 (``wave.json`` and ``WAVE.md``: one row per recipe, the corpus fingerprints and the engine versions the
 pods reported, and the verdict -- PASS, FAIL, or SKIPPED for an all-skipped ``--changed-since`` wave),
 and with ``--upload`` copies ``<out>`` to the URI (``gcloud storage cp -r``, then a
-``gsutil -m cp -r`` fallback, then the product's own :mod:`rcp_ndcg.storage` - the stock engine image
+``gsutil -m cp -r`` fallback, then the product's own :mod:`rcp.storage` - the stock engine image
 ships neither CLI).
 
 The recording keys come from the pod, never the declared image: the corpus is keyed by the version the
@@ -1049,7 +1049,7 @@ def _row_state(
     """A recipe's end state: ``verified`` when every step its role requires passed.
 
     A judge recipe's equivalence, recorder, observation-corpus, quality and controls steps are skipped by
-    design (decision 15: a judge has no reference and no observation corpus; its conformance is ``rcp-ndcg
+    design (decision 15: a judge has no reference and no observation corpus; its conformance is ``rcp
     judge check`` and the T4 scenarios), so their skip counts as satisfied for a judge; for every other role
     a skipped equivalence or record step leaves the row unverified.  The corpus gate demands a ``passed``
     corpus step like the smoke, record, quality and controls gates: a skipped one (the missing pairs file
@@ -1102,7 +1102,7 @@ def _retire(results: dict[str, dict[str, Any]], out: Path, row: dict[str, Any], 
 def _publish_status(path: Path, document: dict[str, Any]) -> None:
     """One recipe's status file, atomically (the product's ``storage.publish_bytes`` is the one home of
     the discipline): a reader sees the previous file or the complete new one, never a half-written one."""
-    from rcp_ndcg import storage
+    from rcp import storage
 
     storage.publish_bytes(path, (json.dumps(document, indent=2) + "\n").encode("utf-8"))
 
@@ -1383,7 +1383,7 @@ def _equivalence(
         return {
             "state": "skipped",
             "reason": (
-                "a judge has no reference (decision 15); its conformance is `rcp-ndcg judge check` and the T4 scenarios"
+                "a judge has no reference (decision 15); its conformance is `rcp judge check` and the T4 scenarios"
             ),
         }
     pairs_path = _pairs_path(recipe, pairs_dir)
@@ -1804,7 +1804,7 @@ def _control_gates(
     it.  An error the served side raises (a garbled frame the client cannot decode) is the stage failing on that
     request, recorded with its text.  The reference runs on the recipe's own device (and GPU), as its gates
     above did: a control judged on the wrong device would fail for the device, not the control."""
-    from rcp_ndcg.errors import RcpNdcgError
+    from rcp.errors import RcpNdcgError
 
     try:
         document = run_equivalence(
@@ -2033,7 +2033,7 @@ def _verify_upload(source: Path, uri: str) -> str | None:
     if not expected:
         return None
     try:
-        from rcp_ndcg import storage
+        from rcp import storage
     except ImportError:
         return "the product's storage is not importable, so the upload cannot be verified"
     try:
@@ -2085,11 +2085,11 @@ def _upload_cli(source: str, target: str) -> bool:
 
 def _upload_storage(source: Path, uri: str) -> str | None:
     """The product's own storage as the last fallback: every local file under ``source`` written to
-    ``uri`` through :mod:`rcp_ndcg.storage` (the one home for gs:// paths; gcsfs via ADC).  Returns
+    ``uri`` through :mod:`rcp.storage` (the one home for gs:// paths; gcsfs via ADC).  Returns
     ``None`` on success, else the one-line error.  This path carries no transfer timeout of its own
     (fsspec's default); a stalled transfer here is a stall."""
     try:
-        from rcp_ndcg import storage
+        from rcp import storage
     except ImportError:
         return "the product's storage is not importable"
     try:

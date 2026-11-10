@@ -27,7 +27,7 @@ class TestThePublicRecordModule:
         assert ID is str
 
     def test_the_data_facade_exports_the_records(self):
-        from rcp_ndcg.data import Document, Query, RankingExample
+        from rcp.data import Document, Query, RankingExample
 
         assert Query(query_id="q", query="x").id == "q"
         assert Document(doc_id="d", text="x").id == "d"

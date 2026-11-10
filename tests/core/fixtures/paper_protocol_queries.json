@@ -43,7 +43,7 @@
 "test-politics-grcrgshwbr-pro03a"
 ],
 "expected": {
-"rcp_ndcg": 0.7822838779610906,
+"rcp": 0.7822838779610906,
 "qrel_ndcg": 0.81546
 },
 "candidates": [
@@ -117,7 +117,7 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.9394042844350838,
+"rcp": 0.9394042844350838,
 "qrel_ndcg": 1.0
 },
 "candidates": [
@@ -177,7 +177,7 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.9189039073099305,
+"rcp": 0.9189039073099305,
 "qrel_ndcg": 0.38357
 },
 "candidates": [
@@ -284,7 +284,7 @@
 "math_train_number_theory_7100"
 ],
 "expected": {
-"rcp_ndcg": 0.7371144922902809,
+"rcp": 0.7371144922902809,
 "qrel_ndcg": 0.41443
 },
 "rcp_ndcg_tolerance": 1e-08
@@ -365,7 +365,7 @@
 "camel_23242"
 ],
 "expected": {
-"rcp_ndcg": 0.943098363224884,
+"rcp": 0.943098363224884,
 "qrel_ndcg": 1.0
 },
 "rcp_ndcg_tolerance": 1e-08
@@ -419,7 +419,7 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.9832751288580229,
+"rcp": 0.9832751288580229,
 "qrel_ndcg": 0.9561788297018217
 },
 "candidates": [
@@ -487,7 +487,7 @@
 },
 "excluded": [],
 "expected": {
-"rcp_ndcg": 0.8227864051509935,
+"rcp": 0.8227864051509935,
 "qrel_ndcg": 0.4977024886349645
 },
 "candidates": [

@@ -15,7 +15,7 @@ import pytest
 from pydantic import ValidationError
 from rcp_core.protocol import Protocol
 
-from rcp_ndcg.results import (
+from rcp.results import (
     RESULT_SCHEMA,
     ResultArtifact,
     ResultDataset,

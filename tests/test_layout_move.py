@@ -170,54 +170,54 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     worktree = make_fixture(tmp_path)
     run_layout(worktree)
 
-    # The four destinations exist and carry what moved: the root package's files under rcp-ndcg/.
-    assert (worktree / "rcp-ndcg" / "pyproject.toml").is_file()
-    assert (worktree / "rcp-ndcg" / "MANIFEST.in").is_file()
-    assert (worktree / "rcp-ndcg" / "README.md").read_text(encoding="utf-8").startswith("# Fixture")
-    assert (worktree / "rcp-ndcg" / "src" / "rcp_ndcg" / "__init__.py").is_file()
+    # The four destinations exist and carry what moved: the root package's files under rcp/.
+    assert (worktree / "rcp" / "pyproject.toml").is_file()
+    assert (worktree / "rcp" / "MANIFEST.in").is_file()
+    assert (worktree / "rcp" / "README.md").read_text(encoding="utf-8").startswith("# Fixture")
+    assert (worktree / "rcp" / "src" / "rcp" / "__init__.py").is_file()
     assert (worktree / "rcp-core" / "src" / "rcp_core" / "__init__.py").is_file()
     assert (worktree / "rcp-ndcg-vllm" / "jobs" / "build.sh").is_file()
     assert not (worktree / "packages").exists()
     assert not (worktree / "src").exists()
 
-    # The pyproject split: rcp-ndcg/ carries the package tables, the root the workspace and tooling.
-    package = (worktree / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8")
+    # The pyproject split: rcp/ carries the package tables, the root the workspace and tooling.
+    package = (worktree / "rcp" / "pyproject.toml").read_text(encoding="utf-8")
     workspace = (worktree / "pyproject.toml").read_text(encoding="utf-8")
     assert "[project]" in package and "[tool.setuptools.packages.find]" in package
     assert "[tool.uv.workspace]" not in package and "[tool.ruff]" not in package
     assert "[project]" not in workspace
-    assert 'members = ["rcp-core", "rcp-ndcg", "rcp-ndcg-vllm"]' in workspace
+    assert 'members = ["rcp", "rcp-core", "rcp-ndcg-vllm"]' in workspace
     assert "[tool.uv.sources]" in workspace and "rcp-core = { workspace = true }" in workspace
-    assert 'include = ["rcp-ndcg/src", "rcp-core/src", "rcp-ndcg-vllm/src"]' in workspace
+    assert 'include = ["rcp/src", "rcp-core/src", "rcp-ndcg-vllm/src"]' in workspace
     assert 'extend-exclude = ["rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py"]' in workspace
     assert 'where = ["src"]' in package  # package-relative: unchanged
 
     # The rewrites reach CI, workflows, scripts, helpers, the lock and prose.
     ci = (worktree / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "rcp-core/src/rcp_core" in ci and "packages/" not in ci
-    assert "rcp-ndcg/pyproject.toml" in ci  # the bare manifest token in a workflow is the root package's
+    assert "rcp/pyproject.toml" in ci  # the bare manifest token in a workflow is the root package's
     build = (worktree / "rcp-ndcg-vllm" / "jobs" / "build.sh").read_text(encoding="utf-8")
-    assert "rcp-ndcg/pyproject.toml" in build and "rcp-ndcg-vllm/dist" not in build
+    assert "rcp/pyproject.toml" in build and "rcp-ndcg-vllm/dist" not in build
     helpers = (worktree / "tests" / "snap" / "helpers.py").read_text(encoding="utf-8")
-    assert 'ROOT / "rcp-ndcg" / "README.md"' in helpers
+    assert 'ROOT / "rcp" / "README.md"' in helpers
     assert 'ROOT / "rcp-core" / "README.md"' in helpers  # the split Path spelling moved too
-    assert 'parents[2] / "rcp-ndcg/src/rcp_ndcg"' in helpers  # the split Path spelling of its source
-    assert 'ROOT / "rcp-ndcg" / "src"' in helpers  # the source-folder helper points at the moved source
+    assert 'parents[2] / "rcp/src/rcp"' in helpers  # the split Path spelling of its source
+    assert 'ROOT / "rcp" / "src"' in helpers  # the source-folder helper points at the moved source
     assert 'package / "pyproject.toml"' in helpers  # a tmp fixture's own manifest: untouched
     # the workspace manifest read stays at the root: in the target layout it is the workspace's, not
     # the root package's (the root-pyproject-helper only rewrites the pre-move package spellings)
     lock = (worktree / "uv.lock").read_text(encoding="utf-8")
-    assert 'editable = "rcp-ndcg"' in lock and 'editable = "rcp-core"' in lock
+    assert 'editable = "rcp"' in lock and 'editable = "rcp-core"' in lock
     assert 'editable = "."' not in lock
     changelog = (worktree / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "rcp-ndcg/src/rcp_ndcg moved" in changelog
+    assert "src/rcp_ndcg moved" in changelog  # the entries below Unreleased keep the spelling they shipped with
 
     # Its own MANIFEST.in keeps the package-relative source spelling.
-    assert "recursive-include src/rcp_ndcg *.py" in (worktree / "rcp-ndcg" / "MANIFEST.in").read_text(encoding="utf-8")
+    assert "recursive-include src/rcp *.py" in (worktree / "rcp" / "MANIFEST.in").read_text(encoding="utf-8")
 
     # HISTORY KEPT: committing the staged result and following a moved file reaches the fixture commit.
     git(worktree, "-c", "user.name=fixture", "-c", "user.email=f@example.invalid", "commit", "-qam", "the move")
-    history = git(worktree, "log", "--follow", "--oneline", "--", "rcp-ndcg/src/rcp_ndcg/__init__.py")
+    history = git(worktree, "log", "--follow", "--oneline", "--", "rcp/src/rcp/__init__.py")
     assert "fixture" in history
 
 
@@ -259,12 +259,11 @@ def test_an_optional_source_is_skipped_and_a_conflict_is_refused(tmp_path: Path)
 
 def test_a_stale_old_path_left_behind_is_refused(tmp_path: Path) -> None:
     worktree = make_fixture(tmp_path)
-    # `src/rcp_ndcg` is package-relative exactly once: in the root package's own MANIFEST.in. Any
-    # other MANIFEST.in (core's, say) that spells it names the path the move took away -- the sweep
-    # leaves a MANIFEST's source spelling alone, and the stale scan refuses the one that cannot be
-    # right.
+    # `src/rcp` is package-relative exactly once: in the root package's own MANIFEST.in. Any other
+    # MANIFEST.in (core's, say) that spells it names the path the move took away -- the sweep leaves
+    # a MANIFEST's source spelling alone, and the stale scan refuses the one that cannot be right.
     stale = worktree / "packages" / "rcp-ndcg-core" / "MANIFEST.in"
-    stale.write_text("recursive-include src/rcp_ndcg *.py\n", encoding="utf-8")
+    stale.write_text("recursive-include src/rcp *.py\n", encoding="utf-8")
     git(worktree, "add", "packages/rcp-ndcg-core/MANIFEST.in")
     proc = subprocess.run(
         [sys.executable, "tools/layout_move.py"], cwd=worktree, capture_output=True, text=True, check=False
@@ -274,7 +273,7 @@ def test_a_stale_old_path_left_behind_is_refused(tmp_path: Path) -> None:
     assert "MANIFEST.in" in proc.stderr
 
 
-@pytest.mark.parametrize("source,destination", [("pyproject.toml", "rcp-ndcg/pyproject.toml"), ("src", "rcp-ndcg/src")])
+@pytest.mark.parametrize("source,destination", [("pyproject.toml", "rcp/pyproject.toml"), ("src", "rcp/src")])
 def test_the_move_table_names_the_root_package(source: str, destination: str) -> None:
     from importlib.util import module_from_spec, spec_from_file_location
 

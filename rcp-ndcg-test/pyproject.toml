@@ -24,16 +24,16 @@ classifiers = [
 # install it from the workspace or the staged wheelhouse. It depends on the product and the lean serving
 # package at the release's version, and never the other way round: neither published package names this one.
 dependencies = [
-  "rcp-ndcg==0.0.1",
+  "rcp==0.0.1",
   "rcp-ndcg-vllm==0.0.1",
   "numpy>=1.26",
   "pydantic>=2.11",
   "PyYAML>=6.0",
 ]
 
-[project.entry-points."rcp_ndcg.fake_transports"]
+[project.entry-points."rcp.fake_transports"]
 # The verified fake engines (the emulators of the observation corpora) live here; the product's offline
-# fake (rcp_ndcg.inference.fake) routes a fake://<engine>-<version>/<recipe> URL through this provider.
+# fake (rcp.inference.fake) routes a fake://<engine>-<version>/<recipe> URL through this provider.
 rcp-ndcg-test = "rcp_ndcg_test.engines:transport_for"
 
 [project.optional-dependencies]

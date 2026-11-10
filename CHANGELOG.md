@@ -7,20 +7,20 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
 `tests/contract/snapshots/` and `schemas/` pin (the rules are on
 [compatibility and versioning](docs/reference/versioning.md)):
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in
-  `rcp_ndcg.support.api_docs` lists (the same list generates the API pages): the facade `rcp_ndcg`; `rcp_core` with `rcp_core.gain`, `.irt`, `.metric`, `.protocol` and
-  `.records`; `rcp_ndcg.calibration`, `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.revisions`,
-  `rcp_ndcg.errors`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.examples`, `rcp_ndcg.inference`,
-  `rcp_ndcg.judging`, `rcp_ndcg.results`, `rcp_ndcg.retrieval`, `rcp_ndcg.runners`, `rcp_ndcg.runs`,
-  `rcp_ndcg.testing` and `rcp_ndcg_vllm.recipe`;
+  `rcp.support.api_docs` lists (the same list generates the API pages): the facade `rcp`; `rcp_core` with `rcp_core.gain`, `.irt`, `.metric`, `.protocol` and
+  `.records`; `rcp.calibration`, `rcp.data`, `rcp.data.preprocess`, `rcp.data.revisions`,
+  `rcp.errors`, `rcp.eval`, `rcp.eval.mteb`, `rcp.examples`, `rcp.inference`,
+  `rcp.judging`, `rcp.results`, `rcp.retrieval`, `rcp.runners`, `rcp.runs`,
+  `rcp.testing` and `rcp_ndcg_vllm.recipe`;
 - the command tree with its flags and output schemas, the exit codes, the MCP tools, the packaging (distributions,
   extras, entry points) and the JSON Schemas in `schemas/`.
 
-Every other module (for example `rcp_ndcg.cli`, `rcp_ndcg.storage`, `rcp_ndcg.support`, `rcp_ndcg.data.io` and the
+Every other module (for example `rcp.cli`, `rcp.storage`, `rcp.support`, `rcp.data.io` and the
 submodules of `retrieval`, `judging`, `calibration`, `runs` and `runners`) is internal and may change without notice. A
 pull request that changes `tests/contract/snapshots/` or `schemas/` must add an entry here; CI checks it.
 
 Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
-incompatibly, independently of the package version. All four distributions carry the tag version; `rcp-ndcg` pins
+incompatibly, independently of the package version. All four distributions carry the tag version; `rcp` pins
 `rcp-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
 
 ## Unreleased
@@ -30,6 +30,13 @@ incompatibly, independently of the package version. All four distributions carry
 - **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and
   the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
   compatibility shim — the old names are gone. The historical entries below keep the old names.
+- **The main distribution is `rcp` and its package is `rcp`**: the `rcp-ndcg` distribution, the `rcp_ndcg`
+  package and the `rcp-ndcg` command are renamed, the four entry-point groups are `rcp.runners`, `rcp.readers`,
+  `rcp.writers` and `rcp.results`, and `python -m rcp_ndcg.cli` is `python -m rcp.cli`. There is no compatibility
+  shim.
+  The artifact tags (`rcp-ndcg.<name>.v1`), the extension keys (`x-rcp-ndcg-*`), the public dataset ids, the
+  bucket prefix and the repository URL keep the spellings they shipped with, and so do the historical entries
+  below.
 
 ### Fixed
 

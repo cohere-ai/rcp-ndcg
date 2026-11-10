@@ -18,7 +18,7 @@ name -- the version gate below, not a missing feature.
 
 A verified engine URL is `fake://<engine>-<version>/<recipe>`, with `?fingerprint=<sha>` when several
 fingerprints of one recipe are registered (a migration). The routing seam is
-`rcp_ndcg.inference.fake` (a `fake://` URL whose host names an engine and a version); the emulators
+`rcp.inference.fake` (a `fake://` URL whose host names an engine and a version); the emulators
 live in `rcp_ndcg_test.engines`, and this repository's tests build them from the committed corpora:
 
 <!-- snippet: skip (the corpus paths are the repository's; run it from a checkout) -->
@@ -37,22 +37,22 @@ An emulator records the engine version and recipe revision it was verified again
 registry keys all four of them: `registry.resolve` refuses a lookup for an engine version the corpus was not
 recorded on, naming the version the recipe is registered for, and the routing seam (`transport_for`) refuses
 the same way -- a corpus recorded on another engine version is refused, never replayed. Out-of-tree models (a
-private repository's plugins) register their emulators through the `rcp_ndcg.emulators` entry-point
+private repository's plugins) register their emulators through the `rcp.emulators` entry-point
 group: each entry point resolves to a callable returning emulators, kept in the same registry.
 
 ### The two entry-point groups
 
 Two groups carry the fake engines, and different packages read them:
 
-- `rcp_ndcg.fake_transports` is the **product's** seam (`rcp_ndcg.inference.fake`): each entry point
+- `rcp.fake_transports` is the **product's** seam (`rcp.inference.fake`): each entry point
   resolves to a callable `provider(url) -> httpx.MockTransport | None`, and the product asks each one
   for a `fake://<engine>-<version>/<recipe>` URL until one answers (`None` means "not mine"). This is
   how a served-role request reaches an emulator without the product importing `rcp_ndcg_test` (which
   needs the observation corpora and the recipes). This repository's provider is `rcp_ndcg_test.engines`
   (`rcp-ndcg-test = "rcp_ndcg_test.engines:transport_for"` in its `pyproject.toml`), so installing
-  `rcp-ndcg-test` beside `rcp-ndcg` is what makes a `fake://` URL resolve at all; without it the
+  `rcp-ndcg-test` beside `rcp` is what makes a `fake://` URL resolve at all; without it the
   product raises a `ConfigError` naming that package and the group.
-- `rcp_ndcg.emulators` is the **test package's** own seam
+- `rcp.emulators` is the **test package's** own seam
   (`rcp_ndcg_test.engines.registry.load_entry_points`): each entry point resolves to an emulator or to
   a callable returning them, registered in the same `registry` `from_corpus` fills. It exists for
   emulators built outside this repository (a private model's), which have no product code to reach.
@@ -179,7 +179,7 @@ module and in the CHANGELOG; every committed corpus and every per-variant golden
 `tests/conformance/stale.json` declares the ones awaiting their recording.
 
 The golden replays (`tests/e2e/test_golden_replay.py`) run a NanoBEIR-shaped and a ViDoRe-shaped mini
-through rcp-ndcg's retrieval and rerank path against the emulators and pin nDCG@10 and RCP-nDCG@10 to
+through rcp's retrieval and rerank path against the emulators and pin nDCG@10 and RCP-nDCG@10 to
 1e-9 -- every input observed, or the run fails. The pins are **regression pins** computed by this code
 from the committed corpora (`kind: regression-pin` in `tests/e2e/golden/goldens.json`), not independent
 GPU-run numbers. The ViDoRe retrieval view is waived until a corpus observes a page image.

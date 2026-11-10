@@ -3,7 +3,7 @@
 # Every fact below was measured at the pinned revision; the anchor policy is the recipe rule of
 # docs/how-to/add-a-model.md ("Anchors").
 id: zembed-1
-schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp and rcp-ndcg-vllm)
 role: embed
 input: [text]
 licence: apache-2.0
@@ -125,7 +125,7 @@ notes: |
      anchor survives every cut (docs/how-to/add-a-model.md, "Anchors"). The engine never truncates: vLLM
      defaults to no truncation and 400s over-length inputs, so the client-side cut (the merged
      product's embedding client fitting every request to the declared budget,
-     rcp_ndcg.data.preprocess.fit) is the only one. Per-shape query caps (whether
+     rcp.data.preprocess.fit) is the only one. Per-shape query caps (whether
      query_max_tokens applies): no separate query cap exists in the referent - the reference cuts
      queries and documents alike at 32768 tokens - so query_max_tokens is not declared and both
      shapes draw on max_tokens.

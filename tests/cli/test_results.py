@@ -1,4 +1,4 @@
-"""``rcp-ndcg results``: list the registered sinks and export records to one.
+"""``rcp results``: list the registered sinks and export records to one.
 
 ``results export`` builds one ``rcp-ndcg.result-record.v1`` record per (system, dataset, metric, cutoff) from a
 run directory or a report file and hands it to the named sink. The registry's entry points are injected here
@@ -15,10 +15,10 @@ import pytest
 from click.testing import CliRunner
 from rcp_core.protocol import Protocol
 
-from rcp_ndcg.cli.results import results_group
-from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.eval import ReportInputs, evaluate
-from rcp_ndcg.results import ResultRecord
+from rcp.cli.results import results_group
+from rcp.data import Dataset, Rankings
+from rcp.eval import ReportInputs, evaluate
+from rcp.results import ResultRecord
 from tests.results._runs import build_run
 from tests.results._sinks import inject_sinks
 

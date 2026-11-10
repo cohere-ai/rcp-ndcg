@@ -1,7 +1,7 @@
 """The T4 phased supervision re-run, offline (docs/how-to/validate-a-recipe.md T4's offline counterpart).
 
 The end-to-end scenarios run the run's phased job script in the pod, engines and coordinators under one
-supervision block per phase (``rcp_ndcg.runners.script.supervise``).  This test re-runs that supervision on
+supervision block per phase (``rcp.runners.script.supervise``).  This test re-runs that supervision on
 CPU with **the verified fake engines as its engines** ("The phased job script's supervision runs with
 emulators as its engines"): :func:`fake_engines` serves the encoder and the reranker phases with the
 ``rcp_ndcg_test.engines`` emulators of recipes with a current corpus (``tests/_emulator_server.py``,
@@ -22,11 +22,11 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.runners import JobSpec, Resources, ServeConfig
-from rcp_ndcg.runners.base import JobPhase
-from rcp_ndcg.runners.script import install_argv
-from rcp_ndcg.runners.slurm import SlurmRunner
-from rcp_ndcg.runs.execution import run_argv
+from rcp.runners import JobSpec, Resources, ServeConfig
+from rcp.runners.base import JobPhase
+from rcp.runners.script import install_argv
+from rcp.runners.slurm import SlurmRunner
+from rcp.runs.execution import run_argv
 from tests._engines import ROOT, corpus_of, load_recipe
 
 ENGINE = """#!/usr/bin/env bash
@@ -152,13 +152,13 @@ def four_phase_job() -> JobSpec:
 
 @pytest.fixture
 def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setattr("rcp_ndcg.runners.script.PROBE_INTERVAL_S", 0.1)
-    monkeypatch.setattr("rcp_ndcg.runners.script.STOP_GRACE_S", 3)
+    monkeypatch.setattr("rcp.runners.script.PROBE_INTERVAL_S", 0.1)
+    monkeypatch.setattr("rcp.runners.script.STOP_GRACE_S", 3)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stubs_and_bodies = (
         ("vllm", ENGINE),
-        ("rcp-ndcg", COORDINATOR),
+        ("rcp", COORDINATOR),
         ("uvx", COORDINATOR),
         ("srun", SRUN),
         ("python3", PYTHON3),

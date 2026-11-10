@@ -3,7 +3,7 @@
 # retrieve (Qwen3-VL-Embedding-2B over page images) -> tournament + rubric (served VL judge) ->
 # calibrate + evaluate.  Media budgets on: the judge declares its image processor and per-request media
 # limits, and the preprocessing pins the page-image pixel budget within the qwen3_vl engine budget
-# (rcp_ndcg.data.resolution.PROCESSORS).
+# (rcp.data.resolution.PROCESSORS).
 #
 # Judge: the Flash-Next judge of the four-phase run (the owner named judges for the outage, identity and
 # four-phase runs; the visual run uses the same judge as the four-phase run, see the lane report's open

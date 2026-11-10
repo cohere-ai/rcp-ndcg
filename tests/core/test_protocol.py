@@ -24,7 +24,7 @@ def _v1_protocol(query: dict) -> Protocol:
 
 
 def _score_fixture(query: dict, protocol: Protocol | str, *, excluded: bool = True) -> tuple[float, float]:
-    """``(rcp_ndcg, qrel_ndcg)`` of a fixture query."""
+    """``(rcp, qrel_ndcg)`` of a fixture query."""
     common = {
         "protocol": protocol,
         "candidates": query.get("candidates"),
@@ -47,7 +47,7 @@ def test_reproduces_the_papers_per_query_values(query: dict) -> None:
     rcp, qrel = _score_fixture(query, query["suite"])
 
     # The fixture states each query's RCP tolerance (see its description); the paper's qrel-nDCG is exact.
-    assert rcp == pytest.approx(query["expected"]["rcp_ndcg"], abs=query["rcp_ndcg_tolerance"])
+    assert rcp == pytest.approx(query["expected"]["rcp"], abs=query["rcp_ndcg_tolerance"])
     assert qrel == pytest.approx(query["expected"]["qrel_ndcg"], abs=1e-12)
 
 
@@ -125,7 +125,7 @@ def test_bright_scores_unjudged_candidates_as_zero_rather_than_dropping_them() -
         excluded=query["excluded"],
     )
 
-    assert got != pytest.approx(query["expected"]["rcp_ndcg"], abs=1e-6)
+    assert got != pytest.approx(query["expected"]["rcp"], abs=1e-6)
 
 
 # ---------------------------------------------------------------------------

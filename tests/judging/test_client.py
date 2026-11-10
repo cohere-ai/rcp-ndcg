@@ -17,9 +17,9 @@ import pytest
 from pydantic import ValidationError
 from rcp_core.content import Content, MediaRef, VideoPart
 
-from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, ProviderError
-from rcp_ndcg.judging import JudgeClient, JudgeConfig, Usage
-from rcp_ndcg.judging.client import REASONING_WATCH, CompletionInput, RequestRejectedError
+from rcp.errors import CapabilityError, ConfigError, CredentialsError, ProviderError
+from rcp.judging import JudgeClient, JudgeConfig, Usage
+from rcp.judging.client import REASONING_WATCH, CompletionInput, RequestRejectedError
 
 
 def _answer(content: str = "ok") -> dict:
@@ -67,7 +67,7 @@ class TestConfig:
 
     def test_the_hosted_judges_windows_fit_its_input_limit(self) -> None:
         """GPT-5 takes at most 272,000 input tokens (its 400,000-token window includes up to 128,000 of output)."""
-        from rcp_ndcg.judging.judging import window_tokens
+        from rcp.judging.judging import window_tokens
 
         config = JudgeConfig.load("gpt5_hosted")
         per_doc = window_tokens(config, 10, overhead_tokens=5_000)
@@ -111,7 +111,7 @@ class TestConfig:
             JudgeConfig(base_url="http://a/v1", model="m").identity() == {"model": "m"}
             or "api" not in JudgeConfig(base_url="http://a/v1", model="m").identity()
         )
-        from rcp_ndcg.inference.adapters import get_adapter, known_adapters
+        from rcp.inference.adapters import get_adapter, known_adapters
 
         assert get_adapter("chat", role="judge").name == "openai_chat"
         assert {"chat", "openai_chat"} <= set(known_adapters("judge"))
@@ -151,7 +151,7 @@ class TestConfig:
     def test_an_empty_base_url_is_refused_like_any_endpoint(self) -> None:
         """The judge config's base URL rule is the Endpoint's, not a drifted copy: an empty string would be
         a config that validates and can never be sent to."""
-        from rcp_ndcg.inference.config import Endpoint as EndpointConfig
+        from rcp.inference.config import Endpoint as EndpointConfig
 
         with pytest.raises(ValidationError):
             JudgeConfig(base_url="", model="m")
@@ -168,7 +168,7 @@ class TestConfig:
     def test_an_api_of_another_role_is_refused_by_the_registry(self) -> None:
         """The judge's adapter resolves through the shared client base's role-scoped registry, at construction
         like every other role's (a wrong ``api`` never reaches the wire)."""
-        from rcp_ndcg.inference.adapters import known_adapters
+        from rcp.inference.adapters import known_adapters
 
         settings = {"base_url": "http://judge.test/v1", "model": "m", "max_retries": 0, "api": "openai_embeddings"}
         with pytest.raises(ConfigError) as caught:
@@ -198,7 +198,7 @@ class TestConfig:
         assert client.usage.failed_requests == 1, "the replaced wire's failures stay counted"
 
     def test_a_replaced_config_closes_the_transport_it_replaces(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import rcp_ndcg.inference.transport as transport_module
+        import rcp.inference.transport as transport_module
 
         closed: list[str] = []
         monkeypatch.setattr(transport_module.Transport, "close", lambda self: closed.append(self.endpoint.model))
@@ -354,14 +354,14 @@ class TestServerChecks:
         self, reasoning: str | None, warned: int, caplog: pytest.LogCaptureFixture
     ) -> None:
         client = self._reasoning_client(reasoning)
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             for _ in range(3 * REASONING_WATCH):
                 _ask(client, CompletionInput(user_prompt="judge", response_format=self.SCHEMA))
         assert sum("reasoning parser" in record.getMessage() for record in caplog.records) == warned
 
     def test_free_decoding_is_not_watched_for_reasoning(self, caplog: pytest.LogCaptureFixture) -> None:
         client = self._reasoning_client(None)
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             for _ in range(2 * REASONING_WATCH):
                 _ask(client)
         assert not any("reasoning parser" in record.getMessage() for record in caplog.records)
@@ -437,7 +437,7 @@ class TestProbe:
             JudgeConfig(base_url="http://judge.test/v1", model="m"),
             httpx_transport=httpx.MockTransport(serve),
         )
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             (engine,) = asyncio.run(client.probe())
         assert engine.model == "org/weights"
         assert any("--served-model-name m" in record.getMessage() for record in caplog.records)
@@ -463,14 +463,14 @@ class TestProbeMediaCheck:
         }
         if word_tokenizer_file is not None:
             settings["tokenizer"] = str(word_tokenizer_file)
-        from rcp_ndcg.data.resolution import ImagePolicy
+        from rcp.data.resolution import ImagePolicy
 
         client = JudgeClient(JudgeConfig(**settings), httpx_transport=httpx.MockTransport(serve))
         client.image_policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
         return client
 
     def test_a_mismatch_between_the_engine_and_the_counted_tokens_is_typed(self, tmp_path, word_tokenizer_file) -> None:
-        from rcp_ndcg.errors import ProviderError
+        from rcp.errors import ProviderError
 
         def serve(request: httpx.Request) -> httpx.Response:
             if request.url.path == "/v1/models":

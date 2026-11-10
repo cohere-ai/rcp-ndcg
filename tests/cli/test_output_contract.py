@@ -14,23 +14,23 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg import __version__
-from rcp_ndcg.cli.introspect import walk
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.cli.output import CliEnvelope, ErrorCode
-from rcp_ndcg.errors import ExitCode
+from rcp import __version__
+from rcp.cli.introspect import walk
+from rcp.cli.main import cli
+from rcp.cli.output import CliEnvelope, ErrorCode
+from rcp.errors import ExitCode
 
 
 def _leaves_with_json() -> list[str]:
     return sorted(
-        path.removeprefix("rcp-ndcg ")
+        path.removeprefix("rcp ")
         for path, cmd in walk()
         if not isinstance(cmd, click.Group) and any("--json" in param.opts for param in cmd.params)
     )
 
 
 def _declared_leaves() -> list[str]:
-    return sorted(path.removeprefix("rcp-ndcg ") for path, cmd in walk() if hasattr(cmd, "spec"))
+    return sorted(path.removeprefix("rcp ") for path, cmd in walk() if hasattr(cmd, "spec"))
 
 
 def _one_document(stdout: str) -> dict:
@@ -90,7 +90,7 @@ def test_a_typed_failure_keeps_its_exit_code(runner: CliRunner, tmp_path: Path) 
 
 def test_every_leaf_is_declared_over_a_request_model() -> None:
     """Only ``mcp serve`` (a server loop, no result) is a plain click command."""
-    leaves = {path.removeprefix("rcp-ndcg ") for path, cmd in walk() if not isinstance(cmd, click.Group)}
+    leaves = {path.removeprefix("rcp ") for path, cmd in walk() if not isinstance(cmd, click.Group)}
     assert leaves - set(_declared_leaves()) == {"mcp serve"}
 
 
@@ -111,7 +111,7 @@ def broken_schema_list(monkeypatch: pytest.MonkeyPatch) -> None:
     def explode():
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("rcp_ndcg.schemas.entries", explode)
+    monkeypatch.setattr("rcp.schemas.entries", explode)
 
 
 @pytest.mark.usefixtures("broken_schema_list")
@@ -175,7 +175,7 @@ def test_an_interrupted_command_is_exit_9_in_the_envelope(runner: CliRunner, mon
     def interrupt():
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("rcp_ndcg.schemas.entries", interrupt)
+    monkeypatch.setattr("rcp.schemas.entries", interrupt)
     result = runner.invoke(cli, ["schema", "list", "--json"])
 
     document = _one_document(result.stdout)
@@ -187,7 +187,7 @@ def test_a_failure_envelope_names_the_command_not_an_option_value(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The `command` of a failure envelope is the command path: a global option's value is not a command word."""
-    from rcp_ndcg.cli.main import _command_of
+    from rcp.cli.main import _command_of
 
     assert _command_of(None, ["--env-file", "f.env", "data", "inspect"]) == "data inspect"
     assert _command_of(None, ["--log-file=x", "-v", "schema", "list"]) == "schema list"

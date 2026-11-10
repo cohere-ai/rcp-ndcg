@@ -1,7 +1,7 @@
 # W13(c)'s gate as its own wave (the reviews' D4): the late-interaction MaxSim scoring path.  The
 # equivalence waves run stages 1-2 only (per-token cosine; run_wave.py's equivalence step passes
 # stages=[1, 2]) and stage 3 / --quality never runs, so the product's client-side MaxSim scorer
-# (rcp_ndcg.retrieval.maxsim -- the path the late_interaction retrieval view and `rcp-ndcg eval score`
+# (rcp.retrieval.maxsim -- the path the late_interaction retrieval view and `rcp eval score`
 # consume) had no wave: the release had no evidence for the late-interaction scoring path.
 #   submit.sh --script maxsim-probe <RC> <OUT> maxsim-probe   (maxsim_probe.sh -> maxsim_probe.py)
 # Per variant: one engine start, the pairs file's TEXT rows through the product's role client, the

@@ -1,6 +1,6 @@
 # Reranker configs
 
-Each YAML is a `rcp_ndcg.retrieval.RerankerConfig`; pass it to `rcp-ndcg retrieval rerank --reranker <file>`
+Each YAML is a `rcp.retrieval.RerankerConfig`; pass it to `rcp retrieval rerank --reranker <file>`
 and override a field with `--set KEY=VALUE`.
 
 The `api` says which wire the model speaks, and each one takes only its own fields:
@@ -18,7 +18,7 @@ A served reranker needs no GPU on the client:
 
 ```bash
 vllm serve <reranker-model> --runner pooling --max-model-len 32768 &
-rcp-ndcg retrieval rerank --dataset <uri> --rankings fused.parquet --reranker my_reranker.yaml \
+rcp retrieval rerank --dataset <uri> --rankings fused.parquet --reranker my_reranker.yaml \
   --out reranked.parquet
 ```
 

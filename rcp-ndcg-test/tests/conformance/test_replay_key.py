@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 from tests._engines import corpus_of, emulator_for, load_recipe
 
-from rcp_ndcg.errors import DataError
+from rcp.errors import DataError
 
 SOURCE = "x-rcp-ndcg-emulator-source"
 

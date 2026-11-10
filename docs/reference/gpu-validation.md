@@ -3,7 +3,7 @@
 Every shipped recipe is validated on GPUs before a tag: served on its declared engine image, its replies
 compared against its own reference implementation (the model card's published path or the paper's code),
 and its observation corpus recorded. Every *retrieval* variant is compared against its reference that way;
-a judge recipe carries no equivalence reference, so a judge variant is validated by `rcp-ndcg judge check`
+a judge recipe carries no equivalence reference, so a judge variant is validated by `rcp judge check`
 and the T4 scenarios instead. The corpora whose replay needs them are committed under
 `rcp-ndcg-test/corpora/`. This page is the release's record of that work — one row per variant:
 the release candidate and the wave whose evidence the row records, the date that wave finished, and the

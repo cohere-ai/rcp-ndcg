@@ -11,22 +11,22 @@ plugin seam, exactly like the dataset readers and the job runners.
 A run's manifest, report and artifacts are the export's source:
 
 ```bash
-rcp-ndcg results export --run runs/20260102-030405-tiny-ab12cd --sink jsonl --out records.jsonl
+rcp results export --run runs/20260102-030405-tiny-ab12cd --sink jsonl --out records.jsonl
 ```
 
 Every record carries the run id, the resolved dataset revision, the scoring protocol and the artifact hashes.
 The run's reference systems (`candidates`, the pool order, and `judge`, the judge's own abilities) are left
 out; `--include-reference` adds them, and `--system NAME` (repeatable) picks the systems to export.
 
-`rcp-ndcg results sinks` lists the registered sinks (`jsonl`, `parquet`, `null`).
+`rcp results sinks` lists the registered sinks (`jsonl`, `parquet`, `null`).
 
 ## From a report
 
 A report written by `eval score --out` records its inputs, so it can be exported on its own:
 
 ```bash
-rcp-ndcg eval score --rankings run.parquet --dataset hf://YOUR-ORG/your-dataset --out report.json
-rcp-ndcg results export --report report.json --sink parquet --out records.parquet
+rcp eval score --rankings run.parquet --dataset hf://YOUR-ORG/your-dataset --out report.json
+rcp results export --report report.json --sink parquet --out records.parquet
 ```
 
 A report without recorded inputs is refused: the record names the dataset it was scored on, and the export
@@ -38,9 +38,9 @@ never invents one. `--run` and `--report` may be combined: the report file overr
 `records_from_report` and `records_from_run` are the builders the command line uses:
 
 ```python
-from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.eval import evaluate
-from rcp_ndcg.results import JsonlResultSink, records_from_report
+from rcp.data import Dataset, Rankings
+from rcp.eval import evaluate
+from rcp.results import JsonlResultSink, records_from_report
 
 dataset = Dataset(
     name="toy",
@@ -81,15 +81,15 @@ tie rule (`doc_id_desc` versus `group_mean`) are different records, never the sa
 
 ## Write your own sink
 
-A sink is one class in a package that publishes it under the `rcp_ndcg.results` entry-point group:
+A sink is one class in a package that publishes it under the `rcp.results` entry-point group:
 
 ```toml
-[project.entry-points."rcp_ndcg.results"]
+[project.entry-points."rcp.results"]
 mine = "my_package.results:MySink"
 ```
 
 ```python
-from rcp_ndcg.results import ResultRecord, ResultsSink
+from rcp.results import ResultRecord, ResultsSink
 
 
 class MySink(ResultsSink):
@@ -111,7 +111,7 @@ whose `schema` is not `rcp-ndcg.result-record.v1`, and `flush` is called once af
 shared contract check from your own tests:
 
 ```python
-from rcp_ndcg.testing import results_conformance
+from rcp.testing import results_conformance
 
 sink = MySink()
 sink.emit(record)

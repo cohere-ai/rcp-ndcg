@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.runners import (
+from rcp.errors import ConfigError
+from rcp.runners import (
     COORDINATOR_IMAGE,
     JobSpec,
     JobStatus,
@@ -18,14 +18,14 @@ from rcp_ndcg.runners import (
     SlurmRunner,
     get_runner,
 )
-from rcp_ndcg.runners.base import JobPhase
-from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise
-from rcp_ndcg.runners.slurm import slurm_time
+from rcp.runners.base import JobPhase
+from rcp.runners.script import EngineStep, engines_env_value, supervise
+from rcp.runners.slurm import slurm_time
 from tests.runners.shell import assert_shellcheck_clean, heredoc_body
 
 JUDGE = JobSpec(
     name="exp-judge",
-    argv=("rcp-ndcg", "run", "start", "run.yaml"),
+    argv=("rcp", "run", "start", "run.yaml"),
     resources=Resources(gpus=8, cpus=16, memory_gb=512, time_limit_s=90061),
     env={"HF_HOME": "/cache/hf"},
 )
@@ -51,7 +51,7 @@ def test_host_script_golden() -> None:
         "set -euo pipefail\n"
         "cd /work\n"
         "export HF_HOME=/cache/hf\n"
-        "exec rcp-ndcg run start run.yaml\n"
+        "exec rcp run start run.yaml\n"
         "RCP_NDCG_WORKER\n"
         'bash -c "$WORKER"\n'
     )
@@ -72,9 +72,9 @@ def test_host_script_golden() -> None:
 )
 def test_container_runtimes(runtime: str, image: str, launcher: str) -> None:
     runner = SlurmRunner(container_runtime=runtime, image=image, container_mounts=["/data:/data"])
-    script = runner.render([JobSpec(name="j", argv=("rcp-ndcg", "--help"))])["j"]
+    script = runner.render([JobSpec(name="j", argv=("rcp", "--help"))])["j"]
     assert script.splitlines()[-1] == launcher
-    assert "exec uvx --from" in script and script.count("rcp-ndcg --help") == 1
+    assert "exec uvx --from" in script and script.count("rcp --help") == 1
 
 
 def test_a_container_runtime_defaults_to_the_stock_coordinator_image() -> None:
@@ -110,7 +110,7 @@ def test_submit_sends_each_script_to_sbatch_in_order(monkeypatch, tmp_path: Path
     ids = iter(["101", "102;cluster"])
     fake = _FakeCli({})
     monkeypatch.setattr(
-        "rcp_ndcg.runners.slurm.run_cli",
+        "rcp.runners.slurm.run_cli",
         lambda argv, input_text=None: (fake(argv, input_text=input_text), next(ids))[1],
     )
     runner = SlurmRunner(log_dir=str(tmp_path / "logs"))
@@ -138,7 +138,7 @@ def test_submit_sends_each_script_to_sbatch_in_order(monkeypatch, tmp_path: Path
 )
 def test_status_maps_scheduler_states(monkeypatch, squeue: str, sacct: str, expected: JobStatus) -> None:
     fake = _FakeCli({"squeue": squeue, "sacct": sacct})
-    monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.slurm.run_cli", fake)
     assert SlurmRunner().status("101") is expected
 
 
@@ -153,7 +153,7 @@ def test_a_failing_squeue_falls_through_to_sacct(monkeypatch) -> None:
             raise RunnerError("`squeue -h -o %i %T -j 101` exited 1: slurm_load_jobs error: Invalid job id specified")
         return "101|COMPLETED\n"
 
-    monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.slurm.run_cli", fake)
     assert SlurmRunner().status("101") is JobStatus.COMPLETED
     assert [argv[0] for argv in calls] == ["squeue", "sacct"]
 
@@ -166,7 +166,7 @@ def test_logs_and_cancel(monkeypatch, tmp_path: Path) -> None:
     with pytest.raises(RunnerError, match="no output"):
         runner.logs("999")
     fake = _FakeCli({})
-    monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.slurm.run_cli", fake)
     runner.cancel("101")
     assert fake.calls == [(["scancel", "101"], None)]
 
@@ -210,7 +210,7 @@ class TestPhases:
     def test_one_phase_golden(self) -> None:
         phase = JobPhase(
             engines={"judge": SERVE.model_copy(update={"image": None})},
-            argv=("rcp-ndcg", "run", "resume", "--run", "/shared/runs/x"),
+            argv=("rcp", "run", "resume", "--run", "/shared/runs/x"),
         )
         job = JobSpec(
             name="run",
@@ -244,7 +244,7 @@ class TestPhases:
             "#!/usr/bin/env bash\n"
             "set -euo pipefail\n"
             "export CUDA_VISIBLE_DEVICES=''\n"
-            "exec rcp-ndcg run resume --run /shared/runs/x\n"
+            "exec rcp run resume --run /shared/runs/x\n"
             "RCP_NDCG_WORKER_1\n"
             "read -r -d '' ENGINE_JUDGE <<'RCP_NDCG_ENGINE_JUDGE' || true\n"
             "export HF_HOME=/shared/hf\n"

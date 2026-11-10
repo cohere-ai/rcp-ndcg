@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from rcp_ndcg.data import load_dataset
+from rcp.data import load_dataset
 
 DOCS = {
     "d1": "tortoises move slowly across the sand",

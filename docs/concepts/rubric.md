@@ -21,12 +21,12 @@ $Y_{ijc} \in \{0, 1\}$, one per criterion. The criteria target general-purpose r
 need other criteria.
 
 The prompt is part of the judgement family. A changed prompt, or a custom one passed as `RubricSchedule(prompt=...)`,
-is a different family, and its judgements never pool with those of the shipped rubric. `rcp_ndcg.judging.load_prompt`
+is a different family, and its judgements never pool with those of the shipped rubric. `rcp.judging.load_prompt`
 returns the shipped prompts: `rubric`, `rubric_vision` and `rubric_video`, and the matching tournament prompts.
 
 ## The window schedule
 
-`rcp_ndcg.judging.RubricSchedule` holds the schedule. It is specified in placements per document: `placements_per_doc`
+`rcp.judging.RubricSchedule` holds the schedule. It is specified in placements per document: `placements_per_doc`
 ($p = 100 \cdot 10 / 150 \approx 6.67$ by default) is how often a document is shown on average. A pool of $n$
 documents gets $\max(\lceil n / w \rceil, \operatorname{round}(p\,n / w))$ windows of $w$ = `min(window, n)`
 documents (`window`, 10 by default), with no reversed copies, so every document is seen and the calls scale with the
@@ -86,7 +86,7 @@ calibration fits `K` criteria. A custom prompt must contain the `{query_placehol
 slots of the shipped prompts (a tournament prompt may also use `{num_documents_placeholder}`), or it is refused
 (`ConfigError`) when it loads. Its judgements never pool with the shipped rubric's.
 
-Judgements made elsewhere enter `rcp_ndcg.calibration.calibrate` as a `JudgementSet` whose rubric `JudgementFamily` declares
+Judgements made elsewhere enter `rcp.calibration.calibrate` as a `JudgementSet` whose rubric `JudgementFamily` declares
 its criteria, named `C1..CK` (`rcp_core.schemas.criterion_labels(K)`). Every placement must answer exactly the
 declared criteria: a missing, unknown or renamed criterion raises `DataError` naming the record, the document and
 the criteria. No verdict is ever defaulted.
@@ -95,11 +95,11 @@ the criteria. No verdict is ever defaulted.
 
 <!-- snippet: skip (needs a judge endpoint and a loaded dataset) -->
 ```python
-from rcp_ndcg.judging import JudgeConfig, RubricSchedule, judge
+from rcp.judging import JudgeConfig, RubricSchedule, judge
 
 judge_cfg = JudgeConfig.load("recipe:gpt-oss-120b")
 judge(dataset, None, judge_cfg, stage="rubric", out="judgements/", schedule=RubricSchedule(seed=7))
 ```
 
-On the command line, `rcp-ndcg judge rubric` runs this stage, with `--estimate` as for the tournament. Re-judging only some documents of a query is the same call with `docs={query_id: [doc_id, ...]}`
+On the command line, `rcp judge rubric` runs this stage, with `--estimate` as for the tournament. Re-judging only some documents of a query is the same call with `docs={query_id: [doc_id, ...]}`
 ([primitives](primitives.md)).

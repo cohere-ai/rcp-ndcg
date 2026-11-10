@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 from pathlib import Path
 
-from rcp_ndcg.data.tokenizer import TextTokenizer
+from rcp.data.tokenizer import TextTokenizer
 
 #: The words the word-level tokenizer knows; any other word or punctuation run is one ``[UNK]`` token.
 WORDS = "the a of to and in is it evidence query document passage relevant answer page one two three four five"

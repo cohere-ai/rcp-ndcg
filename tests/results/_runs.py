@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rcp_ndcg.data import Rankings
-from rcp_ndcg.runs import Pipeline
-from rcp_ndcg.testing import tiny_rows
+from rcp.data import Rankings
+from rcp.runs import Pipeline
+from rcp.testing import tiny_rows
 from tests.runs.conftest import tiny_config
 
 

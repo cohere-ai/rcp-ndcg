@@ -16,11 +16,11 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-import rcp_ndcg as rcp
-from rcp_ndcg.cli.introspect import command_specs
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.cli.output import CliEnvelope
-from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
+import rcp
+from rcp.cli.introspect import command_specs
+from rcp.cli.main import cli
+from rcp.cli.output import CliEnvelope
+from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
 
 
 @pytest.fixture(scope="module")
@@ -82,9 +82,9 @@ def test_the_cli_runs_judges_calibrates_and_evaluates(world: dict[str, Path]) ->
     assert [(step["name"], step["status"]) for step in status["steps"]] == [
         ("tournament", "completed"), ("rubric", "completed"), ("calibrate", "completed"), ("evaluate", "completed"),
     ]  # fmt: skip
-    assert status["metrics"]["candidates/rcp_ndcg@10"] > 0
+    assert status["metrics"]["candidates/rcp@10"] > 0
     assert {name for name, exists in shown["artifacts"].items() if not exists} == {"jobs"}  # it ran in-process
-    assert {row["metric"] for row in scored["summary"]} == {"rcp_ndcg", "qrel_ndcg"}
+    assert {row["metric"] for row in scored["summary"]} == {"rcp", "qrel_ndcg"}
     assert scored["gains_source"] == "calibration"
     assert calibration["mode"] == "tournament" and calibration["queries"] == 2
     assert [(pair["system_a"], pair["system_b"]) for pair in compared["pairs"]] == [("candidates", "judge")]
@@ -95,9 +95,9 @@ def test_the_cli_runs_judges_calibrates_and_evaluates(world: dict[str, Path]) ->
 def test_a_job_runner_runs_the_same_pipeline_started_over_mcp(
     world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """MCP ``run_start`` hands the run to the local job runner in the background (one job, ``rcp-ndcg run resume``
+    """MCP ``run_start`` hands the run to the local job runner in the background (one job, ``rcp run resume``
     in a subprocess) and returns its directory at once; ``run_status`` follows it and ``run logs`` reads its log."""
-    from rcp_ndcg import mcp
+    from rcp import mcp
 
     monkeypatch.setenv("PATH", f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}")
     judge = {"base_url": "fake://seed/0", "model": "fake"}
@@ -135,7 +135,7 @@ def test_the_facade_runs_the_same_flow(world: dict[str, Path], tmp_path: Path) -
     projected = rcp.estimate(dataset, None, judge, stages=("tournament",))
     rcp.judge(dataset, None, judge, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
     judged = rcp.judge(dataset, None, judge, stage="rubric", out=store, schedule=TINY_RUBRIC)
-    from rcp_ndcg.calibration import read_judgements
+    from rcp.calibration import read_judgements
 
     calibration = rcp.calibrate(read_judgements(store))
     candidates = rcp.Rankings.from_orders(dataset.candidates, system="candidates")
@@ -146,7 +146,7 @@ def test_the_facade_runs_the_same_flow(world: dict[str, Path], tmp_path: Path) -
     assert projected.calls > 0 and projected.input_tokens > 0
     assert isinstance(judged, rcp.JudgementSet) and len(judged) > 0
     assert isinstance(calibration, rcp.Calibration) and calibration.mode == "tournament"
-    assert isinstance(report, rcp.EvalReport) and report.value("candidates", "rcp_ndcg", 3) > 0
+    assert isinstance(report, rcp.EvalReport) and report.value("candidates", "rcp", 3) > 0
     assert isinstance(run, rcp.Run) and run.status().status == "completed"
     assert isinstance(estimate, rcp.CostEstimate) and estimate.calls > 0
     assert {"candidates", "calibration", "report", "log"} <= set(run.artifacts())

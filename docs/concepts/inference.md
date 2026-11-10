@@ -1,14 +1,14 @@
 # The inference layer: one transport for every role
 
 The judge, the dense encoders, the multi-vector poolers and the rerankers all send HTTP requests to a served
-model. They share one transport (`rcp_ndcg.inference`): the replica routing, the bounded concurrency, the
+model. They share one transport (`rcp.inference`): the replica routing, the bounded concurrency, the
 retries, the outage parking, the credentials, the usage and the provenance probe are written once, so every role
 gets the judge's robustness. A *wire adapter* turns a role's request into HTTP calls and reads the replies back;
 the transport does everything around that; a *role client* ties the two together for its API.
 
 ## The endpoint
 
-`rcp_ndcg.inference.Endpoint` is the one home of the fields every role shares; a role's config subclasses it and
+`rcp.inference.Endpoint` is the one home of the fields every role shares; a role's config subclasses it and
 adds only the fields its wire protocol needs (the judge: `temperature`, `decoding`, the media limits; the
 encoders: the prompts, the text budget; [judges](judges.md) describes the judge's fields). Which model, which
 checkpoint and which wire adapter decide what is computed, and do; where and how fast a model is asked are
@@ -33,7 +33,7 @@ An adapter turns one request into `Call` objects (method, path, JSON body, heade
 objects (status, decoded body, headers) back into the role's result, raising the role's typed errors. The
 transport routes the calls to one replica, retries what the status map calls unavailable, parks while every
 replica is down, and counts the calls. The shipped adapters register per role at import of
-`rcp_ndcg.inference.adapters`: the judge's `openai_chat` (the `JudgeConfig.api` default), the embed role's
+`rcp.inference.adapters`: the judge's `openai_chat` (the `JudgeConfig.api` default), the embed role's
 `openai_embeddings`, `cohere`, `voyage` and `gemini`, the rerank role's `rerank`, `cohere` and `voyage`, and the
 multi-vector role's `vllm_pooling`. The rerank role's adapters speak one Cohere-shaped wire: `POST
 {base_url}/rerank` with `model`, `query` and `documents`, and `top_n` set to the number of documents sent by the
@@ -55,14 +55,14 @@ from pathlib import Path
 
 from tokenizers import Tokenizer, models, pre_tokenizers
 
-from rcp_ndcg.inference import Call, TokenCount, Transport, register_adapter
-from rcp_ndcg.inference.adapters.base import get_adapter
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp.inference import Call, TokenCount, Transport, register_adapter
+from rcp.inference.adapters.base import get_adapter
+from rcp.inference.config import EmbeddingEndpoint
 
 
 @register_adapter
 class DemoAdapter:
-    """A minimal wire adapter, to show the pattern; the shipped ones live in rcp_ndcg.inference.adapters."""
+    """A minimal wire adapter, to show the pattern; the shipped ones live in rcp.inference.adapters."""
 
     name = "demo"
     role = "embed"
@@ -106,7 +106,7 @@ Calling `send` without `run` awaits it directly (async code); `run` is the sync 
 
 ### The status map
 
-One table, in `rcp_ndcg.errors`, shared by every role's transport:
+One table, in `rcp.errors`, shared by every role's transport:
 
 | Status or failure | What the transport does |
 |---|---|
@@ -139,19 +139,19 @@ encode.
 
 ## Third-party adapters (C2)
 
-Every role's registry accepts a third-party adapter, shipped in the `rcp_ndcg.adapters` entry-point group with
+Every role's registry accepts a third-party adapter, shipped in the `rcp.adapters` entry-point group with
 entries named `<role>.<name>` (e.g. `embed.bedrock`, one entry per role; a name may repeat across roles). A
 config selects one with `api: <name>`. The seam's contract is declared: an adapter subclasses
-`rcp_ndcg.inference.adapters.base.AdapterBase` (the credential facts with their declared defaults, and the
+`rcp.inference.adapters.base.AdapterBase` (the credential facts with their declared defaults, and the
 constructor convention -- built with the role config), registration refuses a class without the three members
 (`calls`, `interpret`, `usage`) or the five credential facts -- `HOSTED` declared by the class itself, never
 inherited from the base's `False` (what a wire is decides its published cap and its served-only refusals) --
-and `rcp_ndcg.testing.adapter_contract` checks a
+and `rcp.testing.adapter_contract` checks a
 wire adapter as one listed failure set (a third party's test suite calls it):
 
 * the retrieval roles resolve a non-shipped `api` against the role's registry where the config is read (the
   CLI's YAML loading, a run config, `validate_retriever`/`validate_reranker`): it builds the role's generic
-  endpoint config, exposed from `rcp_ndcg.retrieval` as `PluginEmbedding`, `PluginPooling` and
+  endpoint config, exposed from `rcp.retrieval` as `PluginEmbedding`, `PluginPooling` and
   `PluginReranker` (the shipped names -- `openai_embeddings`, `cohere`, `voyage`, `gemini`, `vllm_pooling`,
   `rerank` -- keep selecting their own classes). A name that is not registered for that role -- unknown, or
   registered for another role -- is refused with the registry's hint, and the adapters the retrieval steps
@@ -175,7 +175,7 @@ runs the same close synchronously, and a later `run` builds a fresh pool.
 ## The role clients
 
 One client per role (the embedder, the reranker, the multi-vector pooler and the judge),
-all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared ground once:
+all derived from `rcp.inference.clients.RoleClient`, which owns the shared ground once:
 
 - **the adapter lookup within the client's role** -- `get_adapter(config.api, role=...)`, so a config whose
   `api` names another role's adapter is refused at construction;
@@ -214,7 +214,7 @@ all derived from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared 
   does not fail a correct engine, because it cancels in the delta.
 
 The two role vocabularies meet in one written mapping, `ENGINE_ADAPTER_ROLES`
-(`rcp_ndcg.inference.adapters.base`): a `judge` engine speaks `judge` adapters, an `encoder` engine `embed` or
+(`rcp.inference.adapters.base`): a `judge` engine speaks `judge` adapters, an `encoder` engine `embed` or
 `multi_vector` ones, a `reranker` engine `rerank` ones. Where the runners resolve an engine onto a config (the
 engine overlay), `check_engine_api` refuses a config whose `api` selects an adapter of a different engine
 role.
@@ -244,7 +244,7 @@ role's wire, deterministically (every draw is a hash of the endpoint's seed and 
 | Route | Wire |
 |---|---|
 | `GET /models` | names the endpoint's model |
-| `POST /chat/completions` | the judge's fake (registered by `rcp_ndcg.judging._fake`): it reads the documents out of the real rendered prompt and answers in the JSON the real parsers read, so `JudgeConfig.fake(seed)` runs a real client over the real transport |
+| `POST /chat/completions` | the judge's fake (registered by `rcp.judging._fake`): it reads the documents out of the real rendered prompt and answers in the JSON the real parsers read, so `JudgeConfig.fake(seed)` runs a real client over the real transport |
 | `POST /embeddings` | OpenAI shape; hash-seeded unit vectors, dimension from the URL's `?dim=` query (default 64), cut to the request's `dimensions` when it carries one |
 | `POST /pooling` | vLLM `task: token_embed`; ragged per-token vectors, as floats or base64-packed in the request's `embed_dtype` (default `float16`) |
 | `POST /rerank` | Cohere shape; each document scored by the same hidden ability the fake judge reads, so a tiny run's rerank and judge agree |

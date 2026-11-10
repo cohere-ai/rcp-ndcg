@@ -20,10 +20,10 @@ from typing import Any
 import numpy as np
 import pytest
 
-from rcp_ndcg.data import load_dataset
-from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError
-from rcp_ndcg.retrieval import DenseConfig, ServedEmbedding, index, load_index, retrieve, search
-from rcp_ndcg.retrieval import _api as retrieval_api
+from rcp.data import load_dataset
+from rcp.errors import ConfigError, DataError, IdentityError, MissingInputError
+from rcp.retrieval import DenseConfig, ServedEmbedding, index, load_index, retrieve, search
+from rcp.retrieval import _api as retrieval_api
 from tests.conftest import SESSION_TOKENIZER
 
 _SERVED_BUDGET: dict[str, Any] = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
@@ -172,7 +172,7 @@ class TestTheBehaviourVersion:
     """A5: an explicit version enters the identity of each output-producing step, bumped deliberately."""
 
     def test_the_index_version_is_part_of_the_index_identity(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from rcp_ndcg.retrieval import BM25Config
+        from rcp.retrieval import BM25Config
 
         before = retrieval_api._identity(BM25Config(), ["d1"], [])
         monkeypatch.setattr(retrieval_api, "INDEX_BEHAVIOUR_VERSION", "999")
@@ -191,8 +191,8 @@ class TestTheMediaBytesInTheIdentity:
         return Content.from_parts([ImagePart(ref=MediaRef(uri=str(path), mime="image/png"))])
 
     def test_replacing_the_bytes_moves_the_identity(self, tmp_path: Path) -> None:
-        from rcp_ndcg.data import media
-        from rcp_ndcg.retrieval import BM25Config
+        from rcp.data import media
+        from rcp.retrieval import BM25Config
 
         page = tmp_path / "page.png"
         page.write_bytes(b"first")
@@ -209,7 +209,7 @@ class TestTheMediaBytesInTheIdentity:
     def test_a_hashed_reference_keys_by_its_hash(self, tmp_path: Path) -> None:
         from rcp_core.content import Content, ImagePart, MediaRef
 
-        from rcp_ndcg.retrieval import BM25Config
+        from rcp.retrieval import BM25Config
 
         page = tmp_path / "page.png"
         page.write_bytes(b"first")
@@ -226,8 +226,8 @@ class TestTheLateInteractionLayout:
     silently, and the poisoned index was then reused by identity)."""
 
     def test_index_refuses_a_single_vector_document_buffer(self, tmp_path: Path, monkeypatch) -> None:
-        from rcp_ndcg.inference.types import Embeddings
-        from rcp_ndcg.retrieval import LateInteractionConfig, ServedPooling
+        from rcp.inference.types import Embeddings
+        from rcp.retrieval import LateInteractionConfig, ServedPooling
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
         config = LateInteractionConfig(
@@ -242,7 +242,7 @@ class TestTheLateInteractionLayout:
             index(dataset, config, out=tmp_path / "idx")
 
     def test_search_refuses_a_late_interaction_record_without_offsets(self, tmp_path: Path) -> None:
-        from rcp_ndcg.retrieval import Index, LateInteractionConfig, ServedPooling
+        from rcp.retrieval import Index, LateInteractionConfig, ServedPooling
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
         config = LateInteractionConfig(
@@ -290,7 +290,7 @@ class TestTheEmptyEdges:
 
     def test_a_zero_query_dataset_is_refused_by_name(self, tmp_path: Path, dense: DenseConfig) -> None:
         """A zero-query dataset used to die inside numpy_topk with "embeddings must be aligned 2D matrices"."""
-        from rcp_ndcg.data import Dataset
+        from rcp.data import Dataset
 
         dataset = Dataset.from_records(
             name="no-queries", corpus=[{"doc_id": "d1", "text": "tortoises move slowly"}], queries=[]
@@ -305,8 +305,8 @@ class TestTheEmptyEdges:
     def test_an_empty_candidate_set_is_refused_by_name(self, tmp_path: Path, dense: DenseConfig) -> None:
         """E: ``rerank`` returned an empty Rankings (no system at all) for a system with no candidates,
         contradicting its docstring; the mismatch is refused instead."""
-        from rcp_ndcg.data import Rankings
-        from rcp_ndcg.retrieval import ServedReranker, rerank
+        from rcp.data import Rankings
+        from rcp.retrieval import ServedReranker, rerank
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly"})
         rankings = Rankings.from_records(
@@ -333,7 +333,7 @@ class TestTheEmptyEdges:
         another."""
         from rcp_core.records import RankingExample
 
-        from rcp_ndcg.retrieval import ServedReranker
+        from rcp.retrieval import ServedReranker
 
         config = ServedReranker(
             api="rerank",
@@ -397,7 +397,7 @@ class TestARebuildClearsTheOtherKindsPayload:
     model). The verifier's M7 mutation -- removing every clear -- survived the suite before this test."""
 
     def test_a_dense_rebuild_drops_a_late_interaction_build_s_offsets(self, tmp_path: Path, dense: DenseConfig) -> None:
-        from rcp_ndcg.retrieval import LateInteractionConfig, ServedPooling
+        from rcp.retrieval import LateInteractionConfig, ServedPooling
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
         late = LateInteractionConfig(
@@ -416,7 +416,7 @@ class TestARebuildClearsTheOtherKindsPayload:
         assert set(search(built, dataset, depth=2).for_query("q1")) <= {"d1", "d2"}
 
     def test_a_sparse_rebuild_drops_a_dense_build_s_vectors(self, tmp_path: Path, dense: DenseConfig) -> None:
-        from rcp_ndcg.retrieval import BM25Config
+        from rcp.retrieval import BM25Config
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
         out = tmp_path / "idx"
@@ -451,7 +451,7 @@ class TestTheResiduesOfAKilledBuild:
     lands between `retrieve`'s reuse check and the search must still rebuild instead of refusing."""
 
     def test_a_stale_sparse_temp_directory_is_not_payload(self, tmp_path: Path) -> None:
-        from rcp_ndcg.retrieval import BM25Config
+        from rcp.retrieval import BM25Config
 
         dataset = _beir(tmp_path / "ds", {"d1": "tortoises move slowly", "d2": "hares run fast"})
         out = tmp_path / "idx"

@@ -1,4 +1,4 @@
-"""``rcp-ndcg docs api``: one API page per public module, generated from the pinned surface snapshot."""
+"""``rcp docs api``: one API page per public module, generated from the pinned surface snapshot."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.docs import docs_group
-from rcp_ndcg.support.api_docs import PUBLIC_MODULES, page_name
+from rcp.cli.docs import docs_group
+from rcp.support.api_docs import PUBLIC_MODULES, page_name
 
 
 def _invoke(*args: str) -> dict:

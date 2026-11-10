@@ -39,8 +39,8 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_vllm.recipe import Recipe
 
-from rcp_ndcg.errors import RcpNdcgError
-from rcp_ndcg.support.identity import hash_payload
+from rcp.errors import RcpNdcgError
+from rcp.support.identity import hash_payload
 from rcp_ndcg_test.corpus import (
     CORPUS_SCHEMA,
     MANIFEST_FILE,
@@ -230,7 +230,7 @@ def declared_kept_counts(record: dict[str, Any], recipe_block: dict[str, Any]) -
     (``document_skip_engine_side`` + ``document_skip_token_ids``) receives only the kept vectors while the
     reply's ``usage.prompt_tokens`` counts the whole prompt, so the acceptance check must expect the KEPT
     count per item -- each document item's sent render's ids outside the skip list, through the product's one
-    home for the rule (:func:`~rcp_ndcg.data.postprocess.kept_vector_count`).  The ids are the record's
+    home for the rule (:func:`~rcp.data.postprocess.kept_vector_count`).  The ids are the record's
     ``inputs.sent_token_ids`` (the engine's own ``/tokenize`` ids of the sent render, recorded beside it) or,
     on a ``token_ids`` wire, the request body's own id lists.
 
@@ -239,7 +239,7 @@ def declared_kept_counts(record: dict[str, Any], recipe_block: dict[str, Any]) -
     the sent ids are not in the corpus -- then the adapter's full prompt-token cross-check stands, never a
     silently accepted count.  Units: none.
     """
-    from rcp_ndcg.data.postprocess import kept_vector_count
+    from rcp.data.postprocess import kept_vector_count
 
     if not recipe_block.get("document_skip_engine_side"):
         return None
@@ -310,9 +310,9 @@ def derived_vectors(
 ) -> list[np.ndarray] | None:
     """The vectors one recorded reply carries, decoded by the product's own adapters (never re-implemented).
 
-    A ``/v1/embeddings`` reply decodes through :class:`~rcp_ndcg.inference.adapters.embeddings.OpenAIEmbeddings`
+    A ``/v1/embeddings`` reply decodes through :class:`~rcp.inference.adapters.embeddings.OpenAIEmbeddings`
     (float lists or base64 float32), a ``/pooling`` reply through
-    :class:`~rcp_ndcg.inference.adapters.pooling.VllmPooling` -- float frames, base64 frames in the request's
+    :class:`~rcp.inference.adapters.pooling.VllmPooling` -- float frames, base64 frames in the request's
     ``embed_dtype`` reshaped by ``dim``, and ``bytes`` frames split by the recorded ``metadata`` header.
 
     Inputs: one record, the recipe's declared token-vector width (``client.dim``; a base64 ``/pooling``
@@ -328,9 +328,9 @@ def derived_vectors(
     """
     from rcp_core.content import Content
 
-    from rcp_ndcg.inference.adapters.embeddings import OpenAIEmbeddings
-    from rcp_ndcg.inference.adapters.pooling import VllmPooling
-    from rcp_ndcg.inference.types import EmbedRequest, EncodeRole, PoolRequest, Reply
+    from rcp.inference.adapters.embeddings import OpenAIEmbeddings
+    from rcp.inference.adapters.pooling import VllmPooling
+    from rcp.inference.types import EmbedRequest, EncodeRole, PoolRequest, Reply
 
     request, response = record.get("request") or {}, record.get("response") or {}
     path = str(request.get("path", ""))

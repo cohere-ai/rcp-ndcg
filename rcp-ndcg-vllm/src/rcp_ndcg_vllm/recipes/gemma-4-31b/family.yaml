@@ -3,8 +3,8 @@
 # Gemma 4 is an addition, not a paper judge: the serve block is the model card's own recommendation
 # translated to vLLM v0.33.0 flags and the engine's defaults, every flag checked in the vLLM v0.33.0 source.
 #
-# The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
-# rcp-ndcg reads `recipe: gemma-4-31b-it-nvfp4` (this package carries no second model of a judge).
+# The family's client block is rcp's judge config, validated by `rcp.judging.JudgeConfig` when
+# rcp reads `recipe: gemma-4-31b-it-nvfp4` (this package carries no second model of a judge).
 #
 # Serving shape: the weights fit one B200 AND one H100, so TP1 and throughput by replicas. The checkpoint's
 # own sample command (TP8 on an older vLLM) is a Hopper-era sample, not a requirement.

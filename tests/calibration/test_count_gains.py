@@ -2,7 +2,7 @@
 
 The paper's Count-nDCG gain is the share of passed criteria, ``sum_c S_c / (C * n)``, where the unit of evidence
 is the window and sibling chunks pool inside it. The helper is the one derivation: ``evaluate(count_gains=...)``
-and ``rcp-ndcg eval score --metrics count_ndcg --judgements STORE`` read it.
+and ``rcp eval score --metrics count_ndcg --judgements STORE`` read it.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 from rcp_core.schemas import JudgementFamily, criterion_labels
 
-from rcp_ndcg.calibration import count_gains
-from rcp_ndcg.errors import DataError
+from rcp.calibration import count_gains
+from rcp.errors import DataError
 
 from .conftest import rubric_set
 

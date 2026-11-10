@@ -429,16 +429,16 @@ def _media_entry(case: Case, relative: str) -> dict[str, Any]:
     The file is read from the case's own directory (the format's ``media/<file>``) and encoded by the
     media set's own builder (:func:`rcp_ndcg_test.observe.media_set.image_entry` / ``video_entry``: the
     ``data:`` URI plus its kind), so one encoder serves the synthetic media set and the cases.  The type
-    and dimensions come from the product's one home (``rcp_ndcg.data.media``: its suffix-to-MIME tables
-    and :func:`~rcp_ndcg.data.media.image_dimensions`, a clip's header through
-    :func:`~rcp_ndcg.data.media.probe_video_header`): a container whose frame count or rate the probe
+    and dimensions come from the product's one home (``rcp.data.media``: its suffix-to-MIME tables
+    and :func:`~rcp.data.media.image_dimensions`, a clip's header through
+    :func:`~rcp.data.media.probe_video_header`): a container whose frame count or rate the probe
     cannot read is refused here, never sent as a factless entry the reference would sample differently.
 
     Raises:
         CaseError: the file's type is unknown, or its dimensions or (for a container) its frame count and
             rate are unreadable.
     """
-    from rcp_ndcg.data.media import (
+    from rcp.data.media import (
         IMAGE_MIME_BY_SUFFIX,
         VIDEO_MIME_BY_SUFFIX,
         image_dimensions,
@@ -629,10 +629,10 @@ def _similarity_values(case: Case, answers: list[dict[str, Any]]) -> list[list[f
 
     The vectors are the reference's own; the matrix is computed the way the conformance runner computes
     it (``rcp_ndcg_test.conformance._similarity_matrix``): cosine of the L2-normalized single vectors,
-    the product's MaxSim (``rcp_ndcg.retrieval.maxsim``) for a late-interaction reference.
+    the product's MaxSim (``rcp.retrieval.maxsim``) for a late-interaction reference.
     """
-    from rcp_ndcg.inference.types import l2_normalize
-    from rcp_ndcg.retrieval.maxsim import maxsim_topk
+    from rcp.inference.types import l2_normalize
+    from rcp.retrieval.maxsim import maxsim_topk
 
     values: list[list[float]] = []
     for answer in answers:
@@ -672,7 +672,7 @@ def _is_multi_vector(items: list[Any]) -> bool:
 
 def _ragged(items: list[Any]) -> Any:
     """A reference's per-item vectors as the product's ragged :class:`Embeddings` (one item per row)."""
-    from rcp_ndcg.inference.types import Embeddings
+    from rcp.inference.types import Embeddings
 
     flat = [vector for item in items for vector in item]
     offsets = np.cumsum([0, *(len(item) for item in items)]).astype(np.int64)

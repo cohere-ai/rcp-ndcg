@@ -6,7 +6,7 @@ the one adapter between them (test-side): it loads the recipe through the harnes
 recipe's real tokenizer from the corpora's vendored store, picks the prompt derivation the role and
 scoring name, builds the emulator over the recipe's corpus and registers it for
 ``fake://vllm-0.33.0/<recipe>``. The wiring mirrors what a golden-replay or conformance run needs --
-and what an out-of-tree ``rcp_ndcg.emulators`` entry point would construct for its own models.
+and what an out-of-tree ``rcp.emulators`` entry point would construct for its own models.
 """
 
 from __future__ import annotations
@@ -180,8 +180,8 @@ def media_model(recipe: Any, tokenizer: Any) -> Any:
 
     from rcp_ndcg_test.equivalence.wire import recipe_config
 
-    from rcp_ndcg.data.prepare import media_policies_for
-    from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
+    from rcp.data.prepare import media_policies_for
+    from rcp.data.resolution import ImagePolicy, content_media_tokens
 
     config = recipe_config(recipe)
     image_policy, video_policy = media_policies_for(config)
@@ -242,7 +242,7 @@ def _inline_bytes(part: dict[str, Any]) -> bytes:
     from rcp_core.content import MediaRef
     from rcp_ndcg_test.errors import HarnessError
 
-    from rcp_ndcg.data.media import default_resolver
+    from rcp.data.media import default_resolver
 
     url = str(
         (part.get("image_url") or {}).get("url")

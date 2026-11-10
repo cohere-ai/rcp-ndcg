@@ -8,14 +8,14 @@ import sys
 from pathlib import Path
 
 PROBE = """
-import os, rcp_ndcg, rcp_ndcg.cli.main, rcp_ndcg.support.paths as paths
+import os, rcp, rcp.cli.main, rcp.support.paths as paths
 paths.cache_dir(); paths.runs_dir()
-print(os.environ.get("RCP_NDCG_PROBE"), rcp_ndcg.__version__)
+print(os.environ.get("RCP_NDCG_PROBE"), rcp.__version__)
 """
 
 
 def test_import_in_a_clean_directory_creates_nothing_and_reads_no_env_file(tmp_path: Path) -> None:
-    """``import rcp_ndcg`` once called ``dotenv.load_dotenv()`` and walked up from the cwd for a project root."""
+    """``import rcp`` once called ``dotenv.load_dotenv()`` and walked up from the cwd for a project root."""
     cwd = tmp_path / "cwd"
     home = tmp_path / "home"
     cwd.mkdir()
@@ -38,13 +38,13 @@ def test_import_in_a_clean_directory_creates_nothing_and_reads_no_env_file(tmp_p
 
 
 def test_a_malformed_cache_size_env_is_a_typed_config_error() -> None:
-    """``RCP_NDCG_VIDEO_CACHE_SIZE=16MB`` used to crash ``import rcp_ndcg`` (every CLI command, --help
+    """``RCP_NDCG_VIDEO_CACHE_SIZE=16MB`` used to crash ``import rcp`` (every CLI command, --help
     included) with a raw ValueError; the size is parsed through one helper that raises a ConfigError naming
     the variable."""
     env = {key: value for key, value in os.environ.items() if not key.startswith("RCP_NDCG_")}
     env.update(RCP_NDCG_VIDEO_CACHE_SIZE="16MB", PYTHONDONTWRITEBYTECODE="1")
 
-    done = subprocess.run([sys.executable, "-c", "import rcp_ndcg"], env=env, capture_output=True, text=True)
+    done = subprocess.run([sys.executable, "-c", "import rcp"], env=env, capture_output=True, text=True)
 
     assert done.returncode != 0
     assert "RCP_NDCG_VIDEO_CACHE_SIZE" in done.stderr

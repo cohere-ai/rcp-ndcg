@@ -18,7 +18,7 @@
 #             installed with --no-deps; a pip freeze before/after must differ by exactly those wheels
 #             (in wave 0: by nothing at all), or this script fails before any engine starts.
 #   client    NO separate venv: every client command runs through the product's own install mechanism
-#             (rcp_ndcg.runners.script.install_argv: uvx --find-links <wheelhouse> --no-index, held to the
+#             (rcp.runners.script.install_argv: uvx --find-links <wheelhouse> --no-index, held to the
 #             staged constraints file) plus the staged harness wheel (<stage>/harness/rcp_ndcg_test-*.whl,
 #             the unpublished rcp-ndcg-test) - the code users run, exercised by the waves.
 #   reference one venv PER FAMILY, keyed by the family's reference.lock (owner decision 35): each is a
@@ -592,7 +592,7 @@ PYEOF
 
 # --- uv, outside the engine environment --------------------------------------------------------------
 
-UV_DIR="${TMPDIR:-/tmp}/rcp-ndcg-uv"  # the product's own bootstrap_uv location (one home for uv)
+UV_DIR="${TMPDIR:-/tmp}/rcp-uv"  # the product's own bootstrap_uv location (one home for uv)
 if ! command -v uvx >/dev/null; then
   echo "bootstrap: installing uv with pip --target (never into the engine environment)" >&2
   python3 -m pip install --quiet --target "$UV_DIR" uv
@@ -619,7 +619,7 @@ echo "bootstrap: engine environment: python $ENGINE_PYTHON_VERSION, vllm $ENGINE
 # --- the client environment: the product's own install mechanism (uvx), from the staged wheelhouse ---
 
 CLIENT_SPEC="rcp-ndcg-vllm[test]==${VERSION}"
-CLIENT_WITH="rcp-ndcg[hf]==${VERSION}"
+CLIENT_WITH="rcp[hf]==${VERSION}"
 CLIENT_HARNESS="rcp-ndcg-test==${VERSION}"  # the staged harness wheel (<stage>/harness/): the wave runner and the checks live here
 CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH" --with "$CLIENT_HARNESS"
   --constraints "$STAGE_DIR/requirements-constraints.txt"
@@ -648,7 +648,7 @@ import json
 import sys
 from importlib.metadata import PackageNotFoundError, version
 
-import rcp_ndcg
+import rcp
 import rcp_core
 import rcp_ndcg_test
 import rcp_ndcg_vllm
@@ -662,7 +662,7 @@ def installed(dist):
 
 
 print(json.dumps({
-    "rcp-ndcg": rcp_ndcg.__version__,
+    "rcp": rcp.__version__,
     "rcp-core": version("rcp-core"),
     "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
     "rcp-ndcg-test": version("rcp-ndcg-test"),

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The release checklist's judge item: `rcp-ndcg judge check` against each judge recipe's served engine,
+# The release checklist's judge item: `rcp judge check` against each judge recipe's served engine,
 # in the recipe's documented thinking modes, with the engine's media token count (submitted as submit.sh
 # --script judgecheck).
 #
@@ -12,7 +12,7 @@
 #
 # In order, continuing past a failed judge (a failed judge is recorded and its neighbours still run):
 #   1. environments  bootstrap.sh envs with a wave list of the ten judges: the client environment
-#                    (rcp-ndcg + rcp-ndcg-test + rcp-ndcg-vllm from the staged wheels) every command runs in
+#                    (rcp + rcp-ndcg-test + rcp-ndcg-vllm from the staged wheels) every command runs in
 #   2. the plan      the judges packed onto the node's GPUs (RCP_JUDGECHECK_GPUS, else nvidia-smi): a judge's
 #                    slice is the `resources.gpus` its recipe declares, read from the client environment and
 #                    taken first-fit in the order below, so the release checklist's six start first.  A judge
@@ -20,7 +20,7 @@
 #   3. per judge      serve the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`) with the judge's own
 #                     CUDA_VISIBLE_DEVICES, VLLM_PORT and TMPDIR, wait for GET /v1/models within
 #                     RCP_JUDGECHECK_STARTUP_S, then, with the engine up:
-#                       thinking modes:  `rcp-ndcg judge check --judge <id> --judge-model <id>
+#                       thinking modes:  `rcp judge check --judge <id> --judge-model <id>
 #                                        --set judge.base_url=http://127.0.0.1:<N>/v1
 #                                        [--set judge.extra_body=<the mode's switch>] --json`
 #                       the media probe:      `python -m rcp_ndcg_test.jobs.judgecheck_probe media ...`
@@ -114,7 +114,7 @@ if [[ "${JUDGECHECK_DRY:-0}" == "1" ]]; then
     echo "                          TMPDIR=<state>/tmp-$recipe)"
     echo "                wait     GET http://127.0.0.1:$port/v1/models within ${STARTUP_S}s"
     echo "                modes    <state>/client python -m rcp_ndcg_test.jobs.judgecheck_probe modes --judge $recipe"
-    echo "                check    per mode: <state>/client rcp-ndcg judge check --judge $recipe --judge-model $recipe \\"
+    echo "                check    per mode: <state>/client rcp judge check --judge $recipe --judge-model $recipe \\"
     echo "                         --set judge.base_url=http://127.0.0.1:$port/v1 [--set judge.extra_body=<the mode's body>] --json"
     echo "                media    <state>/client python -m rcp_ndcg_test.jobs.judgecheck_probe media --judge $recipe \\"
     echo "                         --judge-model $recipe --set judge.base_url=http://127.0.0.1:$port/v1 --out <state>/media-$recipe.json"
@@ -418,13 +418,13 @@ PYEOF
     check_out="$STATE/check-$recipe-$mode.json"
     set +e
     if [[ -n "${body:-}" ]]; then
-      timeout "$CHECK_S" "$STATE/client" rcp-ndcg judge check \
+      timeout "$CHECK_S" "$STATE/client" rcp judge check \
         --judge "$recipe" --judge-model "$recipe" \
         --set "judge.base_url=http://127.0.0.1:$port/v1" \
         --set "judge.extra_body=$body" \
         --json >"$check_out" 2>"$STATE/check-$recipe-$mode.err"
     else
-      timeout "$CHECK_S" "$STATE/client" rcp-ndcg judge check \
+      timeout "$CHECK_S" "$STATE/client" rcp judge check \
         --judge "$recipe" --judge-model "$recipe" \
         --set "judge.base_url=http://127.0.0.1:$port/v1" \
         --json >"$check_out" 2>"$STATE/check-$recipe-$mode.err"

@@ -14,7 +14,7 @@ import inspect
 import pytest
 from rcp_core.records import Document, Query
 
-from rcp_ndcg.data import Dataset
+from rcp.data import Dataset
 
 mteb = pytest.importorskip("mteb")
 dataloaders = pytest.importorskip("mteb._create_dataloaders")

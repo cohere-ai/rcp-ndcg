@@ -22,7 +22,7 @@ FOLDED_PLUGINS = ("topk-embed-v1", "pplx-embed-v1", "pplx-embed-v2", "embeddingg
 
 def test_the_worked_example_segments_are_what_the_schema_accepts() -> None:
     """The comment's segment keys are `fixed`/`content`, and each part validates through ``Segment``."""
-    from rcp_ndcg.data.templates import Segment
+    from rcp.data.templates import Segment
 
     comment = next(
         line

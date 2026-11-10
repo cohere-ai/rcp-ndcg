@@ -1,19 +1,19 @@
 # The uv workspace root: the workspace members and the tooling config only. The distributions carry
-# their own manifests (rcp-ndcg/pyproject.toml and the project directories beside it); tools/
+# their own manifests (rcp/pyproject.toml and the project directories beside it); tools/
 # layout_move.py keeps this split and the member list current.
 
 [tool.uv.workspace]
-members = ["rcp-ndcg", "rcp-core", "rcp-ndcg-test", "rcp-ndcg-vllm"]
+members = ["rcp", "rcp-core", "rcp-ndcg-test", "rcp-ndcg-vllm"]
 
 [tool.uv.sources]
 # An inter-member requirement resolves to the checkout, never to an index.
-rcp-ndcg = { workspace = true }
+rcp = { workspace = true }
 rcp-core = { workspace = true }
 rcp-ndcg-test = { workspace = true }
 rcp-ndcg-vllm = { workspace = true }
 
 [tool.ruff.lint.isort]
-known-first-party = ["rcp_ndcg"]
+known-first-party = ["rcp"]
 
 [dependency-groups]
 dev = [
@@ -34,7 +34,7 @@ markers = [
 ]
 # A test whose code raises one of the package's warnings must assert it (pytest.warns, or a recorded set in the
 # docs snippets): an unasserted RcpNdcgWarning is an error, not a line in the warnings summary.
-filterwarnings = ["error::rcp_ndcg.errors.RcpNdcgWarning"]
+filterwarnings = ["error::rcp.errors.RcpNdcgWarning"]
 
 [tool.ruff]
 line-length = 120
@@ -65,7 +65,7 @@ exclude = ["*.md"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
-include = ["rcp-ndcg/src", "rcp-core/src", "rcp-ndcg-vllm/src", "rcp-ndcg-test/src"]
+include = ["rcp/src", "rcp-core/src", "rcp-ndcg-vllm/src", "rcp-ndcg-test/src"]
 # The recipes' reference subprocesses were outside the type-checked sources before the layout move (they
 # ran as subprocesses in their own environment, never imported); the move parked them inside a src tree,
 # and the exclusions keep the checked scope what it was. Same for the node scripts the move merged

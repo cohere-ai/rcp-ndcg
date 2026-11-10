@@ -3,7 +3,7 @@ from silently becoming one system's ranking.
 
 A system is a rankings file (a ``retrieval search`` output, another run's rankings, ...) or one system of a
 file that holds several (``<file>#<system>``). Fusion reads scores and orders only, so it is modality-free:
-a text system and a video system fuse by the same arithmetic (``rcp_ndcg.retrieval.fusion``, the one home of
+a text system and a video system fuse by the same arithmetic (``rcp.retrieval.fusion``, the one home of
 the rule; ``retrieval fuse`` calls it too).
 """
 
@@ -16,12 +16,12 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.data import Rankings, load_rankings
-from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
-from rcp_ndcg.retrieval import fuse
-from rcp_ndcg.runs import Pipeline, RunConfig, RunManifest, RunStatus
-from rcp_ndcg.testing import TINY_TOURNAMENT, tiny_rows
+from rcp.cli.main import cli
+from rcp.data import Rankings, load_rankings
+from rcp.errors import ConfigError, DataError, MissingInputError
+from rcp.retrieval import fuse
+from rcp.runs import Pipeline, RunConfig, RunManifest, RunStatus
+from rcp.testing import TINY_TOURNAMENT, tiny_rows
 from tests.conftest import SESSION_TOKENIZER
 from tests.runs.conftest import tiny_config
 
@@ -158,7 +158,7 @@ class TestTheFusedCandidates:
                     checkpoint(str(example.id), scores)
             return []
 
-        monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+        monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", score_by_position)
         systems = _orders()
         locations = _files(tmp_path, systems)
         config = tiny_config(
@@ -290,7 +290,7 @@ class TestRemoteSystems:
 
     @pytest.fixture(autouse=True)
     def _empty_memory_fs(self):
-        from rcp_ndcg import storage
+        from rcp import storage
 
         memory = storage.filesystem("memory://")
         memory.store.clear()

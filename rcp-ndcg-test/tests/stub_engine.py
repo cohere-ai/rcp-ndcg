@@ -27,7 +27,7 @@ sides) are decoded and resized as the engine's processor resizes them: ``smart_r
 checkpoint's patch factor (``--model-image-factor``) under ``--mm-processor-kwargs``'s pixel pin (nested
 ``images_kwargs`` or flat), else the checkpoint's own default budget (``--model-image-pixels MIN,MAX``) -- so
 an unpinned engine re-resizes an image whose prepared size lies outside that default.  The stub resizes with
-the PRODUCT's own ``smart_resize`` (``rcp_ndcg.data.resolution``), the function the client prepares images with:
+the PRODUCT's own ``smart_resize`` (``rcp.data.resolution``), the function the client prepares images with:
 against this stub the media stage's engine count catches a missing or different pixel pin, never a bug in the
 product's resize itself -- on CPU only the comparison with the reference's card resize can catch that, and the
 engine count is an independent check only against a real engine.  A video container is probed (the product's
@@ -217,7 +217,7 @@ def _product_tokenizer() -> Any:
     if not _PRODUCT_TOKENIZER_LOADED:
         _PRODUCT_TOKENIZER_LOADED = True
         if _ARGS.tokenizer:
-            from rcp_ndcg.data.tokenizer import load_tokenizer
+            from rcp.data.tokenizer import load_tokenizer
 
             _PRODUCT_TOKENIZER = load_tokenizer(_ARGS.tokenizer)
     return _PRODUCT_TOKENIZER
@@ -276,7 +276,7 @@ def _image(url: str) -> tuple[int, str]:
 
     from PIL import Image
 
-    from rcp_ndcg.data.resolution import smart_resize
+    from rcp.data.resolution import smart_resize
 
     if not url.startswith("data:") or "," not in url:
         raise _BadRequest("the stub reads inline data: images only")
@@ -306,8 +306,8 @@ def _video(url: str) -> int:
     accounting itself."""
     from rcp_core.content import Content, MediaRef, VideoPart
 
-    from rcp_ndcg.data.media import probe_video_header
-    from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy, content_media_tokens
+    from rcp.data.media import probe_video_header
+    from rcp.data.resolution import ImagePolicy, VideoPolicy, content_media_tokens
 
     if not url.startswith("data:") or "," not in url:
         raise _BadRequest("the stub reads inline data: videos only")

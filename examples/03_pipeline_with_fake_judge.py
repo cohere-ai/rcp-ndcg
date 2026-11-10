@@ -6,11 +6,11 @@ through the real prompts and parsers, on the tiny example dataset. Every artifac
 config's calls and tokens first.
 
     python examples/03_pipeline_with_fake_judge.py
-    rcp-ndcg run start tiny            # the same from the command line, from any directory
+    rcp run start tiny            # the same from the command line, from any directory
 """
 
-import rcp_ndcg as rcp
-from rcp_ndcg.examples import tiny
+import rcp
+from rcp.examples import tiny
 
 estimate = rcp.run("tiny", estimate=True)
 print(f"estimate: {estimate.calls} calls, ~{estimate.input_tokens} input tokens")

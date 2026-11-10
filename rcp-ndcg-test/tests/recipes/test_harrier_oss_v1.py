@@ -45,8 +45,8 @@ from rcp_ndcg_vllm.recipe import (
     serve_argv,
 )
 
-from rcp_ndcg.data.templates import Segment
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp.data.templates import Segment
+from rcp.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
@@ -128,7 +128,7 @@ def _skip_unless_hub_reachable() -> None:
     """The recipe tokenizer is a Hub spec: the tests need huggingface_hub and the tokenizer files."""
     huggingface_hub = pytest.importorskip(
         "huggingface_hub",
-        reason="huggingface_hub is not installed (the recipe tokenizer is a Hub spec; install rcp-ndcg[hf])",
+        reason="huggingface_hub is not installed (the recipe tokenizer is a Hub spec; install rcp[hf])",
     )
     if os.environ.get("HF_HUB_OFFLINE", "") not in ("", "0"):
         try:

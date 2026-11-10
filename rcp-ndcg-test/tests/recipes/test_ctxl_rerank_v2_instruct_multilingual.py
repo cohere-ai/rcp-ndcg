@@ -559,7 +559,7 @@ def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: P
     they equal the wire's spans byte for byte; on an over-share query and an over-budget document the
     wire ships the client's cut (the settle rule; the content-only cut) while the reference keeps the
     paper's uncut spans (the declared divergence row and the declared anchor_drop_over_cap row)."""
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe, tokenizer_file = _local_recipe(tmp_path, variant_id)
     tokenizer = load_tokenizer(str(tokenizer_file))
@@ -597,7 +597,7 @@ def test_the_reference_renders_the_paper_spans_never_the_clients_cut(tmp_path: P
 def test_stage1_on_cpu_passes_token_id_equality_and_the_anchor_check(tmp_path: Path, variant_id: str) -> None:
     """Stage 1 on CPU: the reference's spans and the served template over the pairs file plus the
     harness's 5 over-length samples, with the anchor audit on every sampled row."""
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe, tokenizer_file = _local_recipe(tmp_path, variant_id)
     tokenizer = load_tokenizer(str(tokenizer_file))

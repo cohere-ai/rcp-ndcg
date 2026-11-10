@@ -32,7 +32,7 @@ from rcp_ndcg_test.equivalence.fitting import load_pairs
 from rcp_ndcg_vllm import load_recipe
 from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe, serve_argv
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp.data.tokenizer import load_tokenizer
 
 from ._contract import assert_recipe_contract
 from ._served import served_rows, served_texts

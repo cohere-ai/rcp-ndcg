@@ -18,12 +18,12 @@ from unittest import mock
 import pytest
 from rcp_core.records import RankingExample
 
-from rcp_ndcg.data import media
-from rcp_ndcg.retrieval import _api as retrieval_api
-from rcp_ndcg.retrieval import rerank
-from rcp_ndcg.retrieval._api import _checkpoint_key
-from rcp_ndcg.retrieval.config import CohereReranker, ServedReranker
-from rcp_ndcg.support.identity import hash_payload, short
+from rcp.data import media
+from rcp.retrieval import _api as retrieval_api
+from rcp.retrieval import rerank
+from rcp.retrieval._api import _checkpoint_key
+from rcp.retrieval.config import CohereReranker, ServedReranker
+from rcp.support.identity import hash_payload, short
 from tests.conftest import SESSION_TOKENIZER
 
 _SERVED_BUDGET: dict[str, Any] = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
@@ -151,8 +151,8 @@ def test_rerank_carries_a_media_query_to_the_wire_and_the_key(tmp_path: Any, mon
     from PIL import Image as PILImage
     from rcp_core.content import Content
 
-    from rcp_ndcg.data import Dataset, Rankings
-    from rcp_ndcg.inference import transport as transport_module
+    from rcp.data import Dataset, Rankings
+    from rcp.inference import transport as transport_module
 
     page = tmp_path / "query.png"
     PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
@@ -171,7 +171,7 @@ def test_rerank_carries_a_media_query_to_the_wire_and_the_key(tmp_path: Any, mon
 
         return transport_module.Transport(endpoint, httpx_transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setattr("rcp.inference.clients._base.Transport", patched)
     rerank(dataset, rankings, config, depth=1, out=tmp_path / "rerank")
     assert isinstance(sent[0]["query"], dict), "the query's image part, not its '' text"
     assert [part["type"] for part in sent[0]["query"]["content"]] == ["image_url"]
@@ -338,7 +338,7 @@ def test_the_rerank_step_folds_the_instruction_exactly_once(tmp_path: Any, monke
     """The example's raw query and instruction reach the client, which folds them once: never a double fold."""
     import httpx
 
-    from rcp_ndcg.data import Rankings, load_dataset
+    from rcp.data import Rankings, load_dataset
 
     sent: list[dict] = []
 
@@ -349,14 +349,14 @@ def test_the_rerank_step_folds_the_instruction_exactly_once(tmp_path: Any, monke
             200, json={"results": [{"index": i, "relevance_score": float(i)} for i in range(len(documents))]}
         )
 
-    from rcp_ndcg.inference import transport as transport_module
+    from rcp.inference import transport as transport_module
 
     real = transport_module.Transport
 
     def patched(endpoint: Any, **kwargs: Any) -> Any:
         return real(endpoint, httpx_transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setattr("rcp.inference.clients._base.Transport", patched)
 
     root = tmp_path / "beir"
     (root / "qrels").mkdir(parents=True)
@@ -379,7 +379,7 @@ def test_the_rerank_step_folds_the_instruction_exactly_once(tmp_path: Any, monke
 
 def test_the_rerank_step_checkpoints_and_resumes(tmp_path: Any) -> None:
     """``rerank()`` writes the same records the served path did, and its resume appends nothing."""
-    from rcp_ndcg.data import Rankings, load_dataset
+    from rcp.data import Rankings, load_dataset
 
     root = tmp_path / "beir"
     (root / "qrels").mkdir(parents=True)

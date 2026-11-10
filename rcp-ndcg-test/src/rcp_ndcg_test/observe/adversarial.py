@@ -83,7 +83,7 @@ CONTENT_KINDS: tuple[str, ...] = (*SYNTHETIC_TEXTS.keys(), "special_token_spelli
 def special_token_spellings(tokenizer: Any, *, vocab_size: int | None = None) -> str:
     """The tokenizer's special tokens' literal spellings, joined as one adversarial text.
 
-    Inputs: the recipe's loaded :class:`~rcp_ndcg.data.tokenizer.TextTokenizer`, and the checkpoint's
+    Inputs: the recipe's loaded :class:`~rcp.data.tokenizer.TextTokenizer`, and the checkpoint's
     declared vocabulary size when the caller resolved it (:func:`checkpoint_vocab_size`).  Output: one
     string holding the literal spelling of every added token the tokenizer declares (the spellings are
     read from the tokenizer at generation time -- never typed into a file or a source).  An empty string

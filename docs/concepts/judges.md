@@ -1,6 +1,6 @@
 # Judges, the judgement store and estimates
 
-rcp-ndcg's contract with a judge is one OpenAI-compatible URL. Serve it with any engine and image you choose
+rcp's contract with a judge is one OpenAI-compatible URL. Serve it with any engine and image you choose
 (vLLM, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
 judging steps here or through a job runner on SLURM or Kubernetes ([runs and job runners](runs.md)). For your own
 engines and your own judge the package never builds an image, never pins an engine and never translates engine
@@ -10,12 +10,12 @@ verbatim.
 
 ## The judge config
 
-`rcp_ndcg.judging.JudgeConfig` describes one judge:
+`rcp.judging.JudgeConfig` describes one judge:
 
 | Field | Meaning |
 |---|---|
 | `base_url`, `model` | the OpenAI-compatible endpoint (`.../v1`), or a list of replica URLs of the same model, and the served model name |
-| `api` | the wire adapter that speaks the endpoint's protocol, resolved within the judge role's registry; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp_ndcg.adapters` entry-point group (entries named `judge.<name>`) enters the identity: it decides what is computed |
+| `api` | the wire adapter that speaks the endpoint's protocol, resolved within the judge role's registry; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp.adapters` entry-point group (entries named `judge.<name>`) enters the identity: it decides what is computed |
 | `revision` | the checkpoint commit; recorded in every judgement |
 | `title` | how a document's title reaches the model: `join` (the default, MTEB's `(title + " " + body).strip()`) or `separate` (the title as its own leading text part). Content: the judge reads a different string, so it enters the judgement family and the record ids |
 | `temperature` | the sampling temperature; `None` (the default) sends none, so the server's default applies |
@@ -95,7 +95,7 @@ The shipped vendor profile `gpt5_hosted` sends no temperature and constrains ans
 `response_format`; it needs `OPENAI_API_KEY` in the environment (the key is never written anywhere).
 
 ```python
-from rcp_ndcg.judging import JudgeConfig
+from rcp.judging import JudgeConfig
 
 judge_cfg = JudgeConfig(base_url="http://127.0.0.1:8000/v1", model="my-model", context_tokens=131072)
 assert judge_cfg.temperature is None  # no temperature is sent: the server's default sampling
@@ -157,7 +157,7 @@ this release serves the same checkpoints on vLLM v0.33.0.
 
 ### Checking an endpoint before a long run
 
-`rcp-ndcg judge check --judge <recipe|config|fake>` probes an endpoint with two fixed windows (the shipped
+`rcp judge check --judge <recipe|config|fake>` probes an endpoint with two fixed windows (the shipped
 tournament and rubric prompts over one query and two documents) and reports, per stage: whether the answer schema
 was accepted, whether the answer parsed with the stage's own parser, and whether the endpoint reported a
 reasoning channel beside the answer (`separated`) or none (`absent` — with `decoding: json_schema` that can mean
@@ -165,11 +165,11 @@ the engine runs without the model's reasoning parser, or that the model does not
 calls the judge twice.
 
 ```bash
-rcp-ndcg judge check --judge recipe:gpt-oss-120b --set judge.base_url=http://127.0.0.1:8000/v1 --json
+rcp judge check --judge recipe:gpt-oss-120b --set judge.base_url=http://127.0.0.1:8000/v1 --json
 ```
 
 The report's `ok` is true when both windows were answered and parsed; a failed check prints the refusal or the
-parse failure, and the command's exit code stays 0 (like `rcp-ndcg doctor`), so a script reads the report's
+parse failure, and the command's exit code stays 0 (like `rcp doctor`), so a script reads the report's
 `ok` -- under `--json` that is `data.ok` (the envelope's own `ok` says the command ran, not that the probe
 passed). A `--set`
 of anything but `judge.<field>` is refused.
@@ -233,7 +233,7 @@ the judge is one of its roles.
 
 ## The judgement store
 
-`rcp_ndcg.judging.judge` writes one append-only store per judging pass: `tournament.jsonl` and `rubric.jsonl`, one
+`rcp.judging.judge` writes one append-only store per judging pass: `tournament.jsonl` and `rubric.jsonl`, one
 `Judgement` record per window, plus `identity.json`, `preprocessing.jsonl` and `prompts/<sha256>.txt`, the text of
 every prompt the store was judged with under the hash its judgement family records. A custom prompt thus stays
 reproducible from the store after its file moves or changes.
@@ -263,7 +263,7 @@ reproducible from the store after its file moves or changes.
   enters the identity by its name and URI and, for a Hub dataset, by the commit its revision resolved to, so a moved
   upstream is refused. A local source has no commit, so it enters by the digest of the files its reader reads
   (a file's bytes; a directory's sorted listing of names, sizes and mtimes --
-  `rcp_ndcg.data.revisions.dataset_content_digest`, the same digest the run steps' identity carries), so editing
+  `rcp.data.revisions.dataset_content_digest`, the same digest the run steps' identity carries), so editing
   the documents of a local dataset after judging it is refused as another dataset instead of pairing the stored
   answers with texts the judge never saw. Adding documents to a local source is therefore a new dataset too (its
   bytes changed). Growing a pool through `candidates=` instead redraws the whole schedule: `windows_for` and the
@@ -274,7 +274,7 @@ reproducible from the store after its file moves or changes.
 - **Concurrent writers.** The store is reader-safe by design and safe to overlap: two passes claiming two
   stages, or appending records of the same stage, serialize on an advisory lock on the store directory, and the
   identity file and each prompt's text are published through the one atomic temp-file-and-rename helper
-  (`rcp_ndcg.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
+  (`rcp.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
   or census row is skipped with a warning and asked or recorded again). A resumed pass that re-asks a refused
   window refits under the new answer: when the answer arrives, the later-phase windows its first fit selected
   are retired with an appended ``superseded`` tombstone and asked again, so the fit never reads two generations
@@ -286,18 +286,18 @@ reproducible from the store after its file moves or changes.
   retires a subset pass's windows and a subset pass never retires the full pass's; a planned pass with
   `windows=` runs no schedule and retires nothing. The calibration's coverage does not count a tombstone as an
   invalid window, and `run status` counts the live records.
-- **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.judging.reparse(store, out)`, or
-  `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
+- **Reparse.** Every record keeps the judge's raw answer. `rcp.judging.reparse(store, out)`, or
+  `rcp judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the
   judge and never writes into the source store. A source already at the current parse version has nothing to
   re-parse, and a source written by a newer checkout cannot be downgraded: both are refused before anything is
   written. The command reports per stage how many windows were recovered, stayed
-  invalid (by category), were unchanged or changed (`rcp_ndcg.judging.reparse` itself returns the new store's
+  invalid (by category), were unchanged or changed (`rcp.judging.reparse` itself returns the new store's
   :class:`~rcp_core.schemas.JudgementSet`).
 
 ## Estimating a pass
 
-`rcp_ndcg.judging.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
+`rcp.judging.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
 calls, input and output tokens and wall time of a judging pass before the judge is called. The estimate counts the
 same query text the pass sends: the judge's `title` rule and the dataset's query-side task instruction included.
 Input tokens are

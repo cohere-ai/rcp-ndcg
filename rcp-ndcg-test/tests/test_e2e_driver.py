@@ -35,9 +35,9 @@ from rcp_ndcg_test.e2e import (
 )
 from rcp_ndcg_test.errors import HarnessError
 
-from rcp_ndcg.runners import JobSpec, Resources, ServeConfig
-from rcp_ndcg.runners.base import JobPhase
-from rcp_ndcg.runners.slurm import SlurmRunner
+from rcp.runners import JobSpec, Resources, ServeConfig
+from rcp.runners.base import JobPhase
+from rcp.runners.slurm import SlurmRunner
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="the job scripts target Linux nodes")
 
@@ -78,11 +78,11 @@ PYTHON3 = (
 
 @pytest.fixture
 def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setattr("rcp_ndcg.runners.script.PROBE_INTERVAL_S", 0.1)  # the root suite's stubs fixture
-    monkeypatch.setattr("rcp_ndcg.runners.script.STOP_GRACE_S", 3)
+    monkeypatch.setattr("rcp.runners.script.PROBE_INTERVAL_S", 0.1)  # the root suite's stubs fixture
+    monkeypatch.setattr("rcp.runners.script.STOP_GRACE_S", 3)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, body in (("vllm", ENGINE), ("rcp-ndcg", COORDINATOR), ("uvx", COORDINATOR), ("python3", PYTHON3)):
+    for name, body in (("vllm", ENGINE), ("rcp", COORDINATOR), ("uvx", COORDINATOR), ("python3", PYTHON3)):
         (bin_dir / name).write_text(body, encoding="utf-8")
         (bin_dir / name).chmod(0o755)
     return tmp_path
@@ -99,7 +99,7 @@ def _serve(phase: str, port: int) -> ServeConfig:
 
 
 def _job() -> JobSpec:
-    resume = ("rcp-ndcg", "run", "resume", "--run", "/runs/x")
+    resume = ("rcp", "run", "resume", "--run", "/runs/x")
     phases = (
         JobPhase(engines={"encoder": _serve("1", 8100)}, argv=(*resume, "--only", "retrieve")),
         JobPhase(engines={"reranker": _serve("2", 8110)}, argv=(*resume, "--only", "rerank")),
@@ -165,7 +165,7 @@ def test_the_probe_records_the_coordinators_prefix_and_versions(tmp_path: Path) 
     """Node-runtime item 10: the probe records the coordinator's ``sys.prefix`` and versions, and the
     boundary check passes for an outside interpreter and fails for the engine's own."""
     site, probe_jsonl = write_probe(tmp_path)
-    fake = tmp_path / "rcp-ndcg"
+    fake = tmp_path / "rcp"
     fake.write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
     env = {
         "PATH": f"{tmp_path}:/usr/bin:/bin",
@@ -295,7 +295,7 @@ def _staged_run(tmp_path: Path) -> Path:
     from rcp_ndcg_test.e2e import Scenario, build_run_config, stage_run_dir
     from rcp_ndcg_vllm.recipe import default_recipes_root
 
-    from rcp_ndcg.runs.run import prepare
+    from rcp.runs.run import prepare
 
     rows = tmp_path / "rows.jsonl"
     rows.write_text(
@@ -354,7 +354,7 @@ def test_the_resume_is_the_runs_phased_script_with_its_engines(
     """A resume is what a submitted job would run: the run's own phased script, each phase's engines
     started and their URLs handed to the coordinator (``reopen`` -> the product's renderer).
 
-    The direct ``rcp-ndcg run resume`` this replaced carried no engines overlay, so a resume that had to
+    The direct ``rcp run resume`` this replaced carried no engines overlay, so a resume that had to
     re-run a served step refused it with "the served encoder has no base_url" -- the outage scenario's
     resume, whose earlier phases the killed judge's device had starved, ended that way in the T4's second
     run instead of finishing the run.
@@ -378,7 +378,7 @@ def test_the_resume_is_the_runs_phased_script_with_its_engines(
     assert coordinators[0]["encoder"]["urls"] == ["http://127.0.0.1:8100/v1"]  # the resume reaches its engine
     assert coordinators[2]["judge"]["urls"] == ["http://127.0.0.1:8120/v1"]
     script = (out / "job.sh").read_text(encoding="utf-8")
-    assert f"rcp-ndcg run resume --run {run_dir}" in script  # the run's own directory, the run's own phases
+    assert f"rcp run resume --run {run_dir}" in script  # the run's own directory, the run's own phases
     assert "--find-links /stage/wheelhouse" in script and "--no-index" in script
     assert "PYTHONPATH=" in script and "client-probe.jsonl" in script  # the probe rides the phases
 

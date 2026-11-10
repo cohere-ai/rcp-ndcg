@@ -12,7 +12,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "rcp-ndcg",
+    "rcp",
     "rcp-core",
     "rcp-ndcg-test",
     "rcp-ndcg-vllm",
@@ -2703,9 +2703,9 @@ wheels = [
 ]
 
 [[package]]
-name = "rcp-ndcg"
+name = "rcp"
 version = "0.0.1"
-source = { editable = "rcp-ndcg" }
+source = { editable = "rcp" }
 dependencies = [
     { name = "bm25s" },
     { name = "click" },
@@ -2796,7 +2796,7 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp-ndcg" },
+    { name = "rcp", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp" },
     { name = "rcp-core", editable = "rcp-core" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
@@ -2840,7 +2840,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
-    { name = "rcp-ndcg" },
+    { name = "rcp" },
     { name = "rcp-ndcg-vllm" },
 ]
 
@@ -2855,7 +2855,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", editable = "rcp-ndcg" },
+    { name = "rcp", editable = "rcp" },
     { name = "rcp-ndcg-vllm", editable = "rcp-ndcg-vllm" },
 ]
 provides-extras = ["test"]

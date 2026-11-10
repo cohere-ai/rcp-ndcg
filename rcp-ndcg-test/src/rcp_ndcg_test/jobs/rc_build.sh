@@ -35,7 +35,7 @@ set -euo pipefail
 # The published distributions, in release order (release.yml builds exactly these, one --package per
 # invocation; the fourth workspace member rcp-ndcg-test is unpublished and is never built -- GPU-E1:
 # an --all-packages build staged its wheel and the dist/ check then refused the extra file).
-PUBLISHED_PACKAGES=("rcp-core" "rcp-ndcg" "rcp-ndcg-vllm")
+PUBLISHED_PACKAGES=("rcp-core" "rcp" "rcp-ndcg-vllm")
 HARNESS_PACKAGE="rcp-ndcg-test"
 
 build_published() { # build_published OUT_DIR: the three published distributions, by name, as release.yml
@@ -214,8 +214,8 @@ git worktree add --detach "$WORK/checkout" "$COMMIT" >/dev/null
 SRC="$WORK/checkout"
 cd "$SRC"
 
-VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' rcp-ndcg/pyproject.toml | head -1)"
-[[ -n "$VERSION" ]] || { echo "rc_build: cannot read the version from rcp-ndcg/pyproject.toml" >&2; exit 1; }
+VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' rcp/pyproject.toml | head -1)"
+[[ -n "$VERSION" ]] || { echo "rc_build: cannot read the version from rcp/pyproject.toml" >&2; exit 1; }
 echo "rc_build: version $VERSION from $COMMIT"
 
 # --- the build and check steps of release.yml ---------------------------------------------
@@ -228,7 +228,7 @@ build_harness "$WORK/harness"
 
 echo "rc_build: checking the versions and the pins"
 expected=(
-  "dist/rcp_ndcg-${VERSION}-py3-none-any.whl" "dist/rcp_ndcg-${VERSION}.tar.gz"
+  "dist/rcp-${VERSION}-py3-none-any.whl" "dist/rcp-${VERSION}.tar.gz"
   "dist/rcp_core-${VERSION}-py3-none-any.whl" "dist/rcp_core-${VERSION}.tar.gz"
   "dist/rcp_ndcg_vllm-${VERSION}-py3-none-any.whl" "dist/rcp_ndcg_vllm-${VERSION}.tar.gz"
 )
@@ -278,7 +278,7 @@ uv pip install --python "$WORK/dl/bin/python" pip >/dev/null
 "$WORK/dl/bin/python" -m pip download --quiet \
   -r stage/"$RC_NAME"/requirements-constraints.txt \
   -c stage/"$RC_NAME"/requirements-constraints.txt \
-  "rcp-ndcg-vllm[test]==${VERSION}" "rcp-ndcg[hf]==${VERSION}" \
+  "rcp-ndcg-vllm[test]==${VERSION}" "rcp[hf]==${VERSION}" \
   --dest stage/"$RC_NAME"/wheelhouse \
   --find-links stage/"$RC_NAME"/wheelhouse \
   --only-binary :all: \
@@ -314,7 +314,7 @@ pins = re.findall(r"^([A-Za-z0-9_.\-\[\]]+==[^ \t\\]+)", open(sys.argv[1], encod
 open(sys.argv[2], "w", encoding="utf-8").write("\n".join(pins) + "\n")
 PYEOF
     # The direct pins, without hash mode: the locks are --no-deps compilations (their transitive deps
-    # are unpinned) and jina-reranker-v3 pins the not-yet-on-PyPI rcp-ndcg without a hash, so hash mode
+    # are unpinned) and jina-reranker-v3 pins the not-yet-on-PyPI rcp without a hash, so hash mode
     # is unsatisfiable here; the node's install still enforces every hash the lock carries.
     "$WORK/dl/bin/python" -m pip download --quiet --no-deps -r "$WORK/direct.txt" \
       --dest stage/"$RC_NAME"/wheelhouse \
@@ -360,7 +360,7 @@ PYEOF
   done
 fi
 
-# The jina-reranker-v3 lock pins the not-yet-on-PyPI rcp-ndcg==<version> without a hash: pip's hash mode
+# The jina-reranker-v3 lock pins the not-yet-on-PyPI rcp==<version> without a hash: pip's hash mode
 # refuses it on the node.  The STAGED lock gets the staged wheel's hash (the committed lock stays generic;
 # the staged lock is what the node installs and keys the family's environment identity on).
 python3 - "$SRC" "stage/$RC_NAME" "$VERSION" <<'PYEOF'
@@ -370,20 +370,20 @@ import re
 import sys
 
 src, stage, version = sys.argv[1:4]
-wheel = next(iter(pathlib.Path(stage, "wheelhouse").glob(f"rcp_ndcg-{version}-*.whl")), None)
+wheel = next(iter(pathlib.Path(stage, "wheelhouse").glob(f"rcp-{version}-*.whl")), None)
 if wheel is None:
-    raise SystemExit("rc_build: no staged rcp_ndcg wheel to hash for the reference locks")
+    raise SystemExit("rc_build: no staged rcp wheel to hash for the reference locks")
 digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
-pattern = re.compile(rf"^rcp-ndcg=={re.escape(version)}\s*$", re.M)
+pattern = re.compile(rf"^rcp=={re.escape(version)}\s*$", re.M)
 patched = 0
 for lock in pathlib.Path(stage, "recipes").glob("*/reference.lock"):
     text = lock.read_text(encoding="utf-8")
     if pattern.search(text):
         lock.write_text(
-            pattern.sub(f"rcp-ndcg=={version} \\\n    --hash=sha256:{digest}", text), encoding="utf-8"
+            pattern.sub(f"rcp=={version} \\\n    --hash=sha256:{digest}", text), encoding="utf-8"
         )
         patched += 1
-print(f"rc_build: hashed the local rcp-ndcg pin in {patched} staged reference lock(s)")
+print(f"rc_build: hashed the local rcp pin in {patched} staged reference lock(s)")
 PYEOF
 
 # A fresh-venv install from the wheelhouse alone: the candidate installs and answers (release smoke).
@@ -394,9 +394,9 @@ uv venv "$WORK/smoke" --python 3.12
 uv pip install --python "$WORK/smoke/bin/python" --no-index \
   --find-links stage/"$RC_NAME"/wheelhouse \
   --constraints stage/"$RC_NAME"/requirements-constraints.txt \
-  "rcp-ndcg==${VERSION}"
-"$WORK/smoke/bin/rcp-ndcg" --version
-"$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
+  "rcp==${VERSION}"
+"$WORK/smoke/bin/rcp" --version
+"$WORK/smoke/bin/rcp" --help >/dev/null
 echo "rc_build: core wheel smoke (installs alone and computes the metric)"
 uv venv "$WORK/smoke-core" --python 3.12
 uv pip install --python "$WORK/smoke-core/bin/python" stage/"$RC_NAME"/dist/rcp_core-*.whl

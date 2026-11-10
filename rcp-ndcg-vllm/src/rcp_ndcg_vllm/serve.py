@@ -24,7 +24,7 @@ environment does not carry -- judged in the interpreter the ``vllm`` executable'
 ``pip install --no-deps`` line that prepares it.
 
 The module needs only the stdlib and this package's own imports (pydantic, PyYAML): it runs inside a stock
-engine image where rcp-ndcg is absent.
+engine image where rcp is absent.
 """
 
 from __future__ import annotations

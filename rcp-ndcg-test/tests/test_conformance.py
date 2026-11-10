@@ -488,7 +488,7 @@ def test_kind_none_exercises_the_path_without_comparing() -> None:
 def test_a_chunking_recipe_runs_and_pools_through_the_client() -> None:
     """The wired client pools a chunked document's scores by max: the case runs to a real comparison
     (a regression of the bridge era, when the runner sent chunks as if they were documents)."""
-    from rcp_ndcg.data.preprocess import ChunkPolicy
+    from rcp.data.preprocess import ChunkPolicy
 
     recipe = load_recipe(RECIPES / "fake-rerank")
     chunked = recipe.model_copy(
@@ -542,7 +542,7 @@ class _SpySender:
         self.recorded: list[dict] = []
 
     async def send(self, calls):
-        from rcp_ndcg.inference.types import Reply
+        from rcp.inference.types import Reply
 
         for call in calls:
             assert call.json is not None
@@ -558,13 +558,13 @@ class _SpySender:
         raise AssertionError("the spy was called with no calls")
 
     async def probe(self):
-        from rcp_ndcg.inference.types import EngineInfo
+        from rcp.inference.types import EngineInfo
 
         return [EngineInfo(url="spy://")]
 
     @property
     def usage(self):
-        from rcp_ndcg.inference.types import Usage
+        from rcp.inference.types import Usage
 
         return Usage()
 
@@ -576,7 +576,7 @@ def test_the_rerank_client_cuts_a_long_query_to_its_declared_share() -> None:
     from rcp_ndcg_test.cases import CaseDocument, CaseInputs, CaseQuery
     from rcp_ndcg_test.cases import _recipe_fitter as recipe_fitter
 
-    from rcp_ndcg.data.preprocess import fit
+    from rcp.data.preprocess import fit
 
     recipe = load_recipe(RECIPES / "fake-rerank")
     assert recipe.client.get("query_max_tokens") is not None

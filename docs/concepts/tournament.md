@@ -51,7 +51,7 @@ first fit is retired).
 A judge configured with `decoding: json_schema` has each request carry the stage's answer schema as the
 OpenAI-standard `response_format` (`json_schema`), which vLLM and the OpenAI API enforce. The judgement
 family records this as `decoding: json_schema`, and as `decoding: free` otherwise, so the two never pool. The parse
-version is part of the family too: `rcp-ndcg judge reparse` reads a store's stored answers again with the current
+version is part of the family too: `rcp judge reparse` reads a store's stored answers again with the current
 parser, into a new store, without calling the judge ([the judgement store](judges.md#the-judgement-store)).
 
 ## The Bradley-Terry fit
@@ -67,7 +67,7 @@ uncalibrated instead ([calibration](calibration.md#documents-without-a-tournamen
 ## The window schedule
 
 The schedule has three *schedule phases* (`random`, `stratified`, `adaptive`; unrelated to the job phases of a
-run on a cluster, [runs](runs.md#phases)). `rcp_ndcg.judging.TournamentSchedule` holds it, specified in placements per document: a
+run on a cluster, [runs](runs.md#phases)). `rcp.judging.TournamentSchedule` holds it, specified in placements per document: a
 phase with $p$ placements asks $\operatorname{round}(p\,n / w)$ windows of $w$ documents of a pool of $n$ (ties to
 even), so the calls scale with the pool. The window is the effective one, $w$ = `min(window, n)`, so the
 placements per document hold for any pool: a pool of 4 gets $\operatorname{round}(3.53) = 4$ random windows of all
@@ -125,12 +125,12 @@ documents is invalid and contributes nothing. See [the judgement store](judges.m
 
 <!-- snippet: skip (needs a judge endpoint and a loaded dataset) -->
 ```python
-from rcp_ndcg.judging import JudgeConfig, TournamentSchedule, estimate, judge
+from rcp.judging import JudgeConfig, TournamentSchedule, estimate, judge
 
 judge_cfg = JudgeConfig.load("recipe:gpt-oss-120b")
 print(estimate(dataset, None, judge_cfg, stages=["tournament"]))  # calls, tokens, wall time
 judge(dataset, None, judge_cfg, stage="tournament", out="judgements/", schedule=TournamentSchedule())
 ```
 
-On the command line, `rcp-ndcg judge tournament` runs this stage, with `--estimate` to count its calls and
+On the command line, `rcp judge tournament` runs this stage, with `--estimate` to count its calls and
 tokens first. A [run](runs.md#runs-and-job-runners) runs it as its `tournament` step.

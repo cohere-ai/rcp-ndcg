@@ -1,4 +1,4 @@
-"""The error hierarchy and :func:`rcp_ndcg.errors.classify`: every failure maps to one typed, actionable error."""
+"""The error hierarchy and :func:`rcp.errors.classify`: every failure maps to one typed, actionable error."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import pytest
 import yaml
 from pydantic import BaseModel, ValidationError
 
-import rcp_ndcg
-from rcp_ndcg import errors
-from rcp_ndcg.errors import (
+import rcp
+from rcp import errors
+from rcp.errors import (
     DataError,
     ExitCode,
     MissingInputError,
@@ -48,7 +48,7 @@ def _yaml_error() -> yaml.YAMLError:
     [
         (FileNotFoundError(2, "No such file", "runs/x"), ExitCode.MISSING_INPUT),
         (ModuleNotFoundError("No module named 'torch'", name="torch"), ExitCode.DEPENDENCY),
-        (ImportError("reading the released data needs pyarrow: pip install 'rcp-ndcg[data]'"), ExitCode.DEPENDENCY),
+        (ImportError("reading the released data needs pyarrow: pip install 'rcp[data]'"), ExitCode.DEPENDENCY),
         (_validation_error(), ExitCode.CONFIG),
         (_yaml_error(), ExitCode.CONFIG),
         (json.JSONDecodeError("Expecting value", "x", 0), ExitCode.DATA),
@@ -75,7 +75,7 @@ def test_classify_maps_foreign_exceptions(exc: BaseException, code: ExitCode) ->
 def test_a_missing_extra_names_the_install_command() -> None:
     error = classify(ModuleNotFoundError("No module named 'torch'", name="torch"))
 
-    assert error.hint == 'pip install "rcp-ndcg[calibrate]"'
+    assert error.hint == 'pip install "rcp[calibrate]"'
     assert error.details == {"module": "torch", "extra": "calibrate"}
 
 
@@ -259,9 +259,9 @@ def test_sigterm_stops_a_command_with_the_interrupted_exit_code(tmp_path) -> Non
     code = (
         "import platform, sys, time\n"
         "from pathlib import Path\n"
-        "from rcp_ndcg.cli.main import cli\n"
+        "from rcp.cli.main import cli\n"
         f"platform.python_version = lambda: (Path({str(ready)!r}).touch(), time.sleep(60))[1]\n"
-        "sys.argv = ['rcp-ndcg', 'doctor', '--json']\n"
+        "sys.argv = ['rcp', 'doctor', '--json']\n"
         "cli.main()\n"
     )
     process = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -281,7 +281,7 @@ _PYTHON_WORDING = re.compile(r"(?<![\w.\-])[a-z_]+=(?!=)|\w\((\.\.\.|\))")
 def test_every_python_worded_hint_has_a_command_line_one() -> None:
     """A hint that names keyword arguments or calls (``gains=``, ``force=True``, ``index()``) also says it in flags."""
     offending = []
-    for path in sorted((Path(rcp_ndcg.__file__).parent).rglob("*.py")):
+    for path in sorted((Path(rcp.__file__).parent).rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.Call):
                 continue
@@ -301,10 +301,10 @@ def test_every_python_worded_hint_has_a_command_line_one() -> None:
 def test_the_cli_shows_the_command_line_hint_and_python_keeps_its_own(tmp_path: Path) -> None:
     from click.testing import CliRunner
 
-    from rcp_ndcg.calibration import calibrate, read_judgements
-    from rcp_ndcg.cli.main import cli
-    from rcp_ndcg.judging import judge
-    from rcp_ndcg.testing import TINY_TOURNAMENT, FakeJudge, tiny_rows
+    from rcp.calibration import calibrate, read_judgements
+    from rcp.cli.main import cli
+    from rcp.judging import judge
+    from rcp.testing import TINY_TOURNAMENT, FakeJudge, tiny_rows
 
     rows, _ = tiny_rows()
     judge(rows, None, FakeJudge(), stage="tournament", out=tmp_path / "store", schedule=TINY_TOURNAMENT)
@@ -315,7 +315,7 @@ def test_the_cli_shows_the_command_line_hint_and_python_keeps_its_own(tmp_path: 
 
     assert "stage='rubric'" in (python.value.hint or "")
     assert result.exit_code == 12
-    assert json.loads(result.stdout)["error"]["hint"] == "judge the candidates with `rcp-ndcg judge rubric` first"
+    assert json.loads(result.stdout)["error"]["hint"] == "judge the candidates with `rcp judge rubric` first"
 
 
 def test_the_success_exit_code_names_no_error_class() -> None:

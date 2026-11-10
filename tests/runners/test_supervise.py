@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.runners import JobSpec, KubernetesRunner, Resources, ServeConfig, SlurmRunner
-from rcp_ndcg.runners.base import JobPhase
+from rcp.runners import JobSpec, KubernetesRunner, Resources, ServeConfig, SlurmRunner
+from rcp.runners.base import JobPhase
 
 # The job scripts run on Linux cluster nodes: the stubs need bash >= 4.3, setsid and /proc, which macOS lacks.
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="the job scripts target Linux nodes")
@@ -30,7 +30,7 @@ SERVE = ServeConfig(
     resources=Resources(gpus=8),
     startup_timeout_s=2,
 )
-PHASE = JobPhase(engines={"judge": SERVE}, argv=("rcp-ndcg", "run", "resume", "--run", "/runs/x"))
+PHASE = JobPhase(engines={"judge": SERVE}, argv=("rcp", "run", "resume", "--run", "/runs/x"))
 JOB = JobSpec(name="run", phases=(PHASE,))
 
 #: The engine stub: records its pid and that it started, then behaves as $ENGINE_MODE says ($ENGINE_MODE_OVERRIDE
@@ -57,7 +57,7 @@ case "${ENGINE_MODE_OVERRIDE:-$ENGINE_MODE}" in
   linger) echo $$ > "$ready_file"; trap '' TERM; exec sleep 60 </dev/null >/dev/null 2>&1 ;;
 esac
 """
-#: The coordinator stub (``rcp-ndcg`` on the node, ``uvx`` in a pod): records the engines it sees, then as
+#: The coordinator stub (``rcp`` on the node, ``uvx`` in a pod): records the engines it sees, then as
 #: $COORDINATOR_MODE says.
 COORDINATOR = """#!/usr/bin/env bash
 echo "coord $RCP_NDCG_ENGINES" >> "$STUBS/order"
@@ -104,7 +104,7 @@ def _two_phase_text(phase_two_env: dict[str, str] | None = None) -> str:
         PHASE.model_copy(
             update={
                 "engines": {"judge": SERVE.model_copy(update={"image": None, "env": {"PHASE": "1", "PORT": "8000"}})},
-                "argv": ("rcp-ndcg", "run", "resume", "--only", "tournament"),
+                "argv": ("rcp", "run", "resume", "--only", "tournament"),
             }
         ),
         PHASE.model_copy(
@@ -118,7 +118,7 @@ def _two_phase_text(phase_two_env: dict[str, str] | None = None) -> str:
                         }
                     )
                 },
-                "argv": ("rcp-ndcg", "run", "resume", "--only", "rubric"),
+                "argv": ("rcp", "run", "resume", "--only", "rubric"),
             }
         ),
     )
@@ -132,14 +132,14 @@ def _two_phase_script(phase_two_env: dict[str, str] | None = None) -> list[str]:
 
 @pytest.fixture
 def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setattr("rcp_ndcg.runners.script.PROBE_INTERVAL_S", 0.1)
-    monkeypatch.setattr("rcp_ndcg.runners.script.STOP_GRACE_S", 3)
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.SCRATCH", str(tmp_path / "scratch"))  # the pod's volume
+    monkeypatch.setattr("rcp.runners.script.PROBE_INTERVAL_S", 0.1)
+    monkeypatch.setattr("rcp.runners.script.STOP_GRACE_S", 3)
+    monkeypatch.setattr("rcp.runners.kubernetes.SCRATCH", str(tmp_path / "scratch"))  # the pod's volume
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in (
         ("vllm", ENGINE),
-        ("rcp-ndcg", COORDINATOR),
+        ("rcp", COORDINATOR),
         ("uvx", COORDINATOR),
         ("srun", SRUN),
         ("python3", PYTHON3),
@@ -217,7 +217,7 @@ def test_an_engine_that_exits_while_starting_fails_the_job_at_once(platform: str
     assert done.returncode == 1
     assert time.monotonic() - started < 10
     assert "engine: CUDA out of memory" in done.stderr  # the engine's own words
-    assert "rcp-ndcg: the engine exited with status 3 before it answered /v1/models" in done.stderr
+    assert "rcp: the engine exited with status 3 before it answered /v1/models" in done.stderr
     assert not (stubs / "engines").exists()
 
 
@@ -237,7 +237,7 @@ def test_an_engine_that_never_answers_fails_the_job_after_the_startup_timeout(pl
 def test_an_engine_that_dies_mid_run_stops_the_coordinator_and_fails_the_job(platform: str, stubs: Path) -> None:
     done = _run(_script(platform), stubs, engine="dies", coordinator="runs")
     assert done.returncode == 1
-    assert "rcp-ndcg: the judge engine exited with status 7 while the run was going" in done.stderr
+    assert "rcp: the judge engine exited with status 7 while the run was going" in done.stderr
     assert "run resume" in done.stderr
     assert _gone(stubs / "engine-1.pid")
 
@@ -302,12 +302,12 @@ def _only(stubs: Path, *tools: str) -> Path:
 @PLATFORMS
 def test_a_job_without_python3_fails_before_the_engine_starts(platform: str, stubs: Path) -> None:
     """The readiness probe needs python3: without it the job would probe until the startup timeout."""
-    env = {**_env(stubs, "ready", "done"), "PATH": str(_only(stubs, "vllm", "rcp-ndcg", "uvx", "srun"))}
+    env = {**_env(stubs, "ready", "done"), "PATH": str(_only(stubs, "vllm", "rcp", "uvx", "srun"))}
     started = time.monotonic()
     done = subprocess.run(_script(platform), cwd=stubs, env=env, capture_output=True, text=True, timeout=30)
     assert done.returncode == 1
     assert time.monotonic() - started < 5
-    assert "rcp-ndcg: this job needs python3 on PATH" in done.stderr
+    assert "rcp: this job needs python3 on PATH" in done.stderr
     assert not (stubs / "engine-1.pid").exists()
 
 
@@ -372,7 +372,7 @@ def test_an_engine_free_phase_never_references_an_undefined_host_list(stubs: Pat
     """Every phase of a run without ``serve:`` is engine-free, so ``nodes`` is 0: the coordinator must not pin
     itself to ``${RCP_NDCG_HOSTS[0]}`` (the list is only read when nodes > 1), which aborted the job under
     ``set -u`` before it ran anything."""
-    job = JobSpec(name="run", phases=(JobPhase(argv=("rcp-ndcg", "run", "resume")),))
+    job = JobSpec(name="run", phases=(JobPhase(argv=("rcp", "run", "resume")),))
     script = SlurmRunner().render([job])["run"]
     assert "--nodelist" not in script
     done = _run_file(script, stubs, engine="ready", coordinator="done")
@@ -394,7 +394,7 @@ def test_an_engine_that_dies_between_readiness_and_the_wait_fails_the_job(stubs:
 def test_a_failing_phase_one_engine_ends_the_job_and_never_starts_phase_two(stubs: Path) -> None:
     done = _run(_two_phase_script(), stubs, engine="crash", coordinator="done")
     assert done.returncode == 1
-    assert "rcp-ndcg: the engine exited with status 3 before it answered /v1/models" in done.stderr
+    assert "rcp: the engine exited with status 3 before it answered /v1/models" in done.stderr
     assert "127.0.0.1:8001" not in (stubs / "order").read_text()
     assert not (stubs / "engine-2.pid").exists()
 
@@ -414,7 +414,7 @@ def test_a_failing_phase_two_engine_ends_the_job(stubs: Path) -> None:
     """Phase 2's engine crashes while it loads: the job ends with ENGINE_FAILED and its coordinator never runs."""
     done = _run(_two_phase_script({"ENGINE_MODE_OVERRIDE": "crash"}), stubs, engine="ready", coordinator="done")
     assert done.returncode == 1
-    assert "rcp-ndcg: the engine exited with status 3 before it answered /v1/models" in done.stderr
+    assert "rcp: the engine exited with status 3 before it answered /v1/models" in done.stderr
     order = (stubs / "order").read_text().splitlines()
     assert order == [
         "engine-1 start",

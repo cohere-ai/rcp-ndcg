@@ -280,7 +280,7 @@
           "type": "integer"
         },
         "metric": {
-          "description": "``\"rcp_ndcg\"``, ``\"qrel_ndcg\"``, ``\"count_ndcg\"`` or a metric an exporter owns.",
+          "description": "``\"rcp\"``, ``\"qrel_ndcg\"``, ``\"count_ndcg\"`` or a metric an exporter owns.",
           "title": "Metric",
           "type": "string"
         },
@@ -333,7 +333,7 @@
             }
           ],
           "default": null,
-          "description": "The rcp-ndcg digest of the subject's content (a rankings file's SHA-256, the run's resolved config, a family key digest), or ``None`` when the export does not know it.",
+          "description": "The rcp digest of the subject's content (a rankings file's SHA-256, the run's resolved config, a family key digest), or ``None`` when the export does not know it.",
           "title": "Identity"
         },
         "kind": {

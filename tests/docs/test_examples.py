@@ -20,11 +20,11 @@ EXAMPLES = sorted((ROOT / "examples").glob("[0-9][0-9]_*.py"))
 NETWORK = {"01_score_released_suite.py", "07_mteb.py", "09_serve_recipe_score.py"}
 PUBLIC = {
     "mteb",
-    "rcp_ndcg",
-    "rcp_ndcg.examples",
-    "rcp_ndcg.eval.mteb",
-    "rcp_ndcg.retrieval",
-    "rcp_ndcg.testing",
+    "rcp",
+    "rcp.examples",
+    "rcp.eval.mteb",
+    "rcp.retrieval",
+    "rcp.testing",
     "rcp_ndcg_vllm",
     "rcp_ndcg_vllm.recipe",
 }
@@ -38,7 +38,7 @@ def _run(example: Path, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def test_the_example_set_is_complete() -> None:
     assert [p.name[:2] for p in EXAMPLES] == ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
-    from rcp_ndcg.examples import run_config_names, tiny
+    from rcp.examples import run_config_names, tiny
 
     assert run_config_names() == ["nano_nfcorpus_gpt5", "rejudge_nfcorpus", "tiny"]
     assert {path.name for path in tiny().iterdir()} >= {"rows.jsonl", "systems.jsonl", "released.json"}
@@ -54,7 +54,7 @@ def test_examples_are_short_and_use_only_the_public_surface(example: Path) -> No
             imported |= {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
-    prefixes = {"rcp_ndcg", "rcp_core", "rcp_ndcg_vllm", "mteb"}
+    prefixes = {"rcp", "rcp_core", "rcp_ndcg_vllm", "mteb"}
     ours = {name for name in imported if name.split(".")[0] in prefixes}
     assert ours <= PUBLIC
     assert all(name.split(".")[0] in sys.stdlib_module_names for name in imported - ours)

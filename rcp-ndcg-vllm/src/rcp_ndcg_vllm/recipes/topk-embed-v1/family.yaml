@@ -9,7 +9,7 @@
 # the serving package's own folded models (rcp_ndcg_vllm.models) and installed with --no-deps;
 # nothing else enters the image.
 id: topk-embed-v1
-schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp and rcp-ndcg-vllm)
 role: multi_vector
 input: [text, image]
 licence: apache-2.0
@@ -208,7 +208,7 @@ sources:
   - "vllm v0.33.0 vllm/renderers/hf.py resolve_chat_template (2nd priority: AutoProcessor chat template) and vllm/renderers/base.py warmup -- a chat-like pooling request without any resolvable template raises ChatTemplateResolutionError per request (loud), unlike the scoring io-processor's silent pair-encode fallback (pooling/scoring/io_processor.py:791-792)"
   - "vllm v0.33.0 vllm/entrypoints/common/cli_args.py:382 enable_flash_late_interaction = True (the flag; it is mirrored into the PoolerConfig field of the same name, vllm/config/pooler.py:66, also True at the tag -- inert for this recipe, since the engine applies late_interaction_params on the scoring route only and the MaxSim here is client-side)"
   - "the pixel-pin shape, decided for the media recipes from the v0.33.0 tag (the full chain is cited in qwen3-vl-embedding-2b's sources): vllm/model_executor/models/colqwen3_5.py:58-61 (ColQwen3_5ProcessingInfo.get_hf_processor: the stock Qwen3VLProcessor), :107-111 (Qwen3VLMultiModalProcessor registered); vllm/multimodal/processing/context.py:48-120 (the image-only overlay of a nested images_kwargs dict onto the flat namespace for vLLM-side reads), :376,402 (no overlay at processor construction and HF __call__: the nested dict reaches the HF processor); vllm/model_executor/models/qwen3_vl.py:1004-1005 (_get_vision_info: the image token budget reads through the overlay); transformers 5.17.0 processing_utils.py:1513-1630 (_merge_kwargs routes the nested dict to images_kwargs) and models/qwen2_vl/image_processing_qwen2_vl.py:120-129 (min_pixels + max_pixels become the resize size)"
-  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint: query_max_tokens, document_skip_token_ids, media_sides, the media fields); rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec.normalize: per-shape content normalisation); rcp-ndcg/src/rcp_ndcg/data/preprocess.py (fit: the per-shape cuts, anchors reserved, census rows)"
+  - "rcp: rcp/src/rcp/inference/config.py (PoolingEndpoint: query_max_tokens, document_skip_token_ids, media_sides, the media fields); rcp/src/rcp/data/templates.py (TemplateSpec.normalize: per-shape content normalisation); rcp/src/rcp/data/preprocess.py (fit: the per-shape cuts, anchors reserved, census rows)"
   - "tokenizer.json at the pinned revision embeds truncation {direction: Right, max_length: 1024, strategy: LongestFirst} and no padding; transformers 5.9.0 tokenization_utils_tokenizers.py:782-820 set_truncation_and_padding resets an embedded strategy to no_truncation() on every plain encode (DO_NOT_TRUNCATE default), so the ENGINE reads full prompts -- and the product's TextTokenizer.from_json now resets the embedded caps at load the same way, so counting and the engine read the same tokens past 1024"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
 notes: |

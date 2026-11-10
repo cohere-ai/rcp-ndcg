@@ -29,7 +29,7 @@ from rcp_ndcg_test.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm import load_recipe, serve_argv
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp.data.tokenizer import load_tokenizer
 from tests.conftest import start_stub
 
 from ._contract import assert_recipe_contract

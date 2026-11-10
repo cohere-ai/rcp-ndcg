@@ -10,7 +10,7 @@ change named by its mechanism) and, under a declared over-cap deviation,
 reported in a separate non-gating table; an input the client sent uncut gates exactly.  Stage 2 sends the
 reference's pairs through the same clients and gates the answers against the reference subprocess's outputs:
 the served pass is full width (the recipe's MRL selection is stripped) and the declared Matryoshka head cuts
-both sides per declared ``k`` ex-post, one gate row per ``k``.  Stage 3 scores rankings with ``rcp-ndcg eval
+both sides per declared ``k`` ex-post, one gate row per ``k``.  Stage 3 scores rankings with ``rcp eval
 score``.  The harness never re-derives a render, a cut or a settlement.
 """
 
@@ -26,7 +26,7 @@ from typing import Any
 import numpy as np
 from rcp_ndcg_vllm.recipe import Recipe
 
-from rcp_ndcg.data.mrl import MrlHead
+from rcp.data.mrl import MrlHead
 from rcp_ndcg_test.errors import HarnessError
 
 from . import fitting
@@ -265,7 +265,7 @@ def _add_specials_flag(recipe: Recipe, shape: str) -> bool:
 
 
 def cast_shape(shape: str) -> Any:
-    """A validated shape string as the product's :data:`~rcp_ndcg.data.templates.RequestShape` literal.
+    """A validated shape string as the product's :data:`~rcp.data.templates.RequestShape` literal.
 
     The recipe's product template validated the shapes at load; the harness fits declared shapes only, so the
     string is one of the product's literals."""
@@ -289,7 +289,7 @@ def _probe(
 
     Outputs: per row, the request texts the client produced (per declared shape: the rendered prompt for the
     embed roles; the settled query span and the document spans for the rerank wire) and the client's
-    processing records of the row (:attr:`~rcp_ndcg.inference.clients._base.RoleClient.processing`, one per
+    processing records of the row (:attr:`~rcp.inference.clients._base.RoleClient.processing`, one per
     input the client changed): ``changes`` those records (each change's mechanism, the uncut and kept request
     totals, the budget), ``over_cap`` whether the row holds any.  Gating is per TEXT, never per row: each shape
     body carries which of its texts the client changed -- ``changed`` per text for the embed roles;
@@ -301,7 +301,7 @@ def _probe(
     row's conversations per shape, while the audit and the comparisons are the text rows' (the media stage
     owns the media rows).
     """
-    from rcp_ndcg.errors import RcpNdcgError
+    from rcp.errors import RcpNdcgError
 
     client, capture = role_client(recipe, base_url)
     per_row: list[dict[str, Any]] = []
@@ -400,9 +400,9 @@ def _probe_media(
     that content's text as the engine reads it (:func:`_declared_texts`) -- what the client's budget
     reserved.  A client that refuses the media (a recipe's declared gap, e.g. the topk skip rule) is left to
     the media stage's refusal report: nothing captured, nothing compared here."""
-    from rcp_ndcg.data.preprocess import rendered_request
-    from rcp_ndcg.errors import RcpNdcgError
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.data.preprocess import rendered_request
+    from rcp.errors import RcpNdcgError
+    from rcp.inference.types import EncodeRole
 
     from .media import side_contents
 
@@ -452,7 +452,7 @@ def _probe_rerank(client: Any, capture: Capture, row: dict[str, Any], entry: dic
 
     The per-exchange spans and the engine's ``usage`` report are recorded beside them: the prompt-token
     probe compares the report against the declared pair render of the same spans."""
-    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+    from rcp.inference.clients.rerank import QUERY_DOC_ID
 
     start = len(capture.exchanges)
     records_start = len(client.processing)
@@ -494,7 +494,7 @@ def _probe_vectors(
 
     On the ``messages`` route the client sends the content and the engine's chat template frames it, so the
     rendered prompt is the declared frame around the captured content -- the product's one render
-    (:func:`rcp_ndcg.data.preprocess.rendered_request`, under the client's own budget), which the template
+    (:func:`rcp.data.preprocess.rendered_request`, under the client's own budget), which the template
     check holds the served chat template to -- and the captured conversations are kept for that check.
 
     Each captured text's engine ``usage`` report is recorded beside it (``usages``): the prompt-token probe
@@ -502,8 +502,8 @@ def _probe_vectors(
     """
     from rcp_core.content import Content
 
-    from rcp_ndcg.data.preprocess import rendered_request
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.data.preprocess import rendered_request
+    from rcp.inference.types import EncodeRole
 
     budget = getattr(client, "text_budget", None)
 
@@ -863,7 +863,7 @@ def _audit_last_content(
     declared_empty: bool = False,
 ) -> int:
     """The ``anchor: last_content`` audit of one shape's captured bodies, per the product's definition
-    (:data:`rcp_ndcg.data.templates.AnchorKind`): the model reads the last kept *content* token, and the fixed
+    (:data:`rcp.data.templates.AnchorKind`): the model reads the last kept *content* token, and the fixed
     segments (a head marker) are still reserved and audited.
 
     Per body: the shape must end on its content span (a fixed tail would be the last token, not content); the
@@ -1552,7 +1552,7 @@ def _template_check(
     own jinja2 settings over one row per shape -- a media row where the pairs file carries one for that shape
     (so the frame around a media item's content is checked too, not only a text row's), else the first text
     row -- and the declared template's render
-    (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the string the client sends) must be byte-identical.
+    (:meth:`~rcp.data.templates.TemplateSpec.render`, the string the client sends) must be byte-identical.
     A ``messages`` recipe is checked on its captured conversations instead (:func:`_messages_template_check`),
     which sees the media probe's conversations per shape as well.  ``tokenizer`` renders the declared
     template's fixed segments (the frame edges a media render must keep).
@@ -2316,7 +2316,7 @@ def stage2_scores(
     """Stage 2: the served engine against the reference subprocess, under the recipe's gates.
 
     The engine is talked to through the product's role clients
-    (:class:`~rcp_ndcg.inference.clients.EmbeddingClient`, ``PoolingClient``, ``RerankClient``), built from
+    (:class:`~rcp.inference.clients.EmbeddingClient`, ``PoolingClient``, ``RerankClient``), built from
     :func:`~rcp_ndcg_vllm.recipe.client_config` with the recipe's real budget: the client prompts, fits and
     settles every request exactly as the served path does -- for a reranker, the shared query span settles
     once per call.  The harness pre-fits nothing and clears no budget field; a recorder's raw request and
@@ -2644,10 +2644,10 @@ def _reference_row(reference: dict[str, Any], row_index: int) -> dict[str, Any]:
 
 def _changed_rows(client: Any, start: int, n_documents: int) -> list[bool]:
     """Per input of one client call, whether the client changed what it sends for it -- read from its own
-    processing records since ``start`` (:attr:`~rcp_ndcg.inference.clients._base.RoleClient.processing`): a
+    processing records since ``start`` (:attr:`~rcp.inference.clients._base.RoleClient.processing`): a
     record of the input's position, or of the reranker's shared query
-    (:data:`~rcp_ndcg.inference.clients.rerank.QUERY_DOC_ID`), which changes every pair of the call."""
-    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+    (:data:`~rcp.inference.clients.rerank.QUERY_DOC_ID`), which changes every pair of the call."""
+    from rcp.inference.clients.rerank import QUERY_DOC_ID
 
     flags = [False] * n_documents
     for record in client.processing[start:]:
@@ -2806,7 +2806,7 @@ def _vector_stage2(
         selection = recipe.client.get("dimensions")
     client, capture = role_client(recipe, base_url, full_width=True, served_model_name=served_model_name)
     head, dims = _mrl_gate(client.config, selection)
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.types import EncodeRole
 
     for row_index, row in enumerate(rows):
         reference_row = _reference_row(reference, row_index)
@@ -2902,7 +2902,7 @@ def _mrl_gate(config: Any, selection: int | None) -> tuple[MrlHead | None, tuple
     The full-width row (``None``) always gates; then every declared ``mrl_dims`` member in declaration
     order, or a ``mrl_range``'s two endpoints plus ``selection`` (the run's own ``mrl_dim``/``dimensions``,
     read from the recipe before the served client strips it) when it lies outside them.  The head is built
-    from the client's public config (one head home, :class:`~rcp_ndcg.data.mrl.MrlHead`); the client was
+    from the client's public config (one head home, :class:`~rcp.data.mrl.MrlHead`); the client was
     built with its selection stripped, so the run itself is full width.
     """
     kind = getattr(config, "mrl_kind", None) or "none"

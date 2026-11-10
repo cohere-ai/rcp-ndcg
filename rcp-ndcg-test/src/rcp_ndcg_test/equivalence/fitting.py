@@ -1,10 +1,10 @@
 """The bridge to the product's text-budget mechanism: the recipe's tokenizer, its declared shapes, the pairs
 file, and the reference subprocess's tokenizer spec.
 
-The harness owns no render, cut or fold code: the recipe's ``client`` block is plain data that ``rcp-ndcg``
-validates when it resolves ``recipe: <id>``, and the product's role clients (:mod:`rcp_ndcg.inference.clients`)
+The harness owns no render, cut or fold code: the recipe's ``client`` block is plain data that ``rcp``
+validates when it resolves ``recipe: <id>``, and the product's role clients (:mod:`rcp.inference.clients`)
 make every content decision -- the prompts, the text budget, the reranker's settle-once query -- through
-:func:`rcp_ndcg.data.preprocess.fit` with the budget the config declares.  This module keeps only what the
+:func:`rcp.data.preprocess.fit` with the budget the config declares.  This module keeps only what the
 harness itself needs: loading the recipe's tokenizer, reading the pairs file, naming the declared shapes and
 the shapes' ``add_special_tokens`` flags, building the client's own token ids for the harness's requests
 (:func:`sent_ids`), and resolving the tokenizer spec the reference subprocess loads.
@@ -18,8 +18,8 @@ from typing import Any
 
 from rcp_ndcg_vllm.recipe import Recipe
 
-from rcp_ndcg.data.templates import RequestShape, TemplateSpec
-from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp.data.templates import RequestShape, TemplateSpec
+from rcp.data.tokenizer import load_tokenizer
 from rcp_ndcg_test.errors import HarnessError
 
 __all__ = [
@@ -37,10 +37,10 @@ __all__ = [
 
 
 def client_template(recipe: Recipe) -> TemplateSpec | None:
-    """The recipe's client template as the product's :class:`~rcp_ndcg.data.templates.TemplateSpec`.
+    """The recipe's client template as the product's :class:`~rcp.data.templates.TemplateSpec`.
 
     The recipe's ``client.template`` is plain data (the lean package validates no endpoint model); the product's
-    model validates it at the read, so the harness sees exactly what ``rcp-ndcg`` would construct — never a
+    model validates it at the read, so the harness sees exactly what ``rcp`` would construct — never a
     re-derived fit (R30).
     """
     data = recipe.client.get("template")
@@ -48,7 +48,7 @@ def client_template(recipe: Recipe) -> TemplateSpec | None:
 
 
 def tokenizer_of(recipe: Recipe) -> Any:
-    """The recipe's loaded :class:`~rcp_ndcg.data.tokenizer.TextTokenizer`.
+    """The recipe's loaded :class:`~rcp.data.tokenizer.TextTokenizer`.
 
     The recipe's ``client.tokenizer`` names a Hub repository id or a tokenizer file; a relative path resolves
     against the recipe directory. The harness process holds no weights: the tokenizer is the one CPU-side
@@ -64,7 +64,7 @@ def tokenizer_of(recipe: Recipe) -> Any:
     # A registered tokenizer store (rcp_ndcg_test.fingerprint.use_tokenizer_store) holds verified copies of
     # Hub tokenizers: a spec it names loads from the copy, so an offline run reads the same bytes the store's
     # SHA-256 pins instead of needing the Hub or its cache.
-    from rcp_ndcg.data.tokenizer import TextTokenizer
+    from rcp.data.tokenizer import TextTokenizer
     from rcp_ndcg_test.fingerprint import stored_tokenizer
 
     stored = stored_tokenizer(resolved)
@@ -116,9 +116,9 @@ def sent_ids(recipe: Recipe, shape: str, text: str) -> list[int]:
     The one construction for every harness caller that puts the client's own ids on a ``token_ids`` wire --
     the smoke request, the corpus's standing probes and its plan's bare rows -- and for every caller that
     compares ids against the client's (R30).  The render is the recipe's template's
-    (:meth:`~rcp_ndcg.data.templates.TemplateSpec.render`, the same text the client's fit ships); the ids
+    (:meth:`~rcp.data.templates.TemplateSpec.render`, the same text the client's fit ships); the ids
     are that render under the shape's declared parse, exactly the rule the pooling client's ``_sent_ids``
-    sends with: the query side through :meth:`~rcp_ndcg.data.templates.TemplateSpec.split_ids` when the
+    sends with: the query side through :meth:`~rcp.data.templates.TemplateSpec.split_ids` when the
     recipe declares ``query_split_special_tokens`` (the reference's prefix-plus-body construction), the
     document side with ``split_special_tokens`` when it declares ``document_split_special_tokens``, the
     file's own parse otherwise -- under the shape's declared ``add_special_tokens`` flag throughout.
@@ -148,7 +148,7 @@ def sent_ids(recipe: Recipe, shape: str, text: str) -> list[int]:
 
 
 def cast_shape(shape: str) -> RequestShape:
-    """A validated shape string as the product's :data:`~rcp_ndcg.data.templates.RequestShape` literal.
+    """A validated shape string as the product's :data:`~rcp.data.templates.RequestShape` literal.
 
     The recipe's product template validated the shapes at load; the harness names declared shapes only, so
     the string is one of the product's literals."""

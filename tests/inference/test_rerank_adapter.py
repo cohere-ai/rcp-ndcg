@@ -13,10 +13,10 @@ from typing import Any
 import pytest
 from rcp_core.content import Content
 
-from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
-from rcp_ndcg.inference.config import RerankEndpoint
-from rcp_ndcg.inference.types import Reply, RerankRequest, RerankResult, TokenCount
+from rcp.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
+from rcp.inference.adapters.rerank import CohereRerankAdapter, RerankAdapter, VoyageRerankAdapter
+from rcp.inference.config import RerankEndpoint
+from rcp.inference.types import Reply, RerankRequest, RerankResult, TokenCount
 from tests.inference import _budget
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -106,7 +106,7 @@ class TestServedBody:
     def test_a_text_query_is_a_string_and_a_media_query_the_content_parts(self, tmp_path: Any) -> None:
         import hashlib
 
-        from rcp_ndcg.data.media import content_parts_payload
+        from rcp.data.media import content_parts_payload
 
         text = RerankAdapter(_config()).calls(_request("a"), model="m")[0].json
         assert isinstance(text["query"], str)
@@ -440,7 +440,7 @@ class TestUsage:
 
 
 def test_the_rerank_adapters_register_under_their_api_names() -> None:
-    from rcp_ndcg.inference.adapters import get_adapter, known_adapters
+    from rcp.inference.adapters import get_adapter, known_adapters
 
     assert {"rerank", "cohere", "voyage"} <= set(known_adapters("rerank"))
     for name, adapter in (
@@ -460,7 +460,7 @@ def test_an_empty_candidate_set_makes_no_call() -> None:
 
 
 class TestTheServerIsNamedWithoutItsSecrets:
-    """Every rerank error names the server by its URL: as :func:`~rcp_ndcg.support.urls.safe_url` writes it,
+    """Every rerank error names the server by its URL: as :func:`~rcp.support.urls.safe_url` writes it,
     in the message and in the details -- credentials embedded in the URL never ride along."""
 
     SECRET_URL = "https://user:fake-secret-pw@gw.example/v1?key=fake-secret-q"

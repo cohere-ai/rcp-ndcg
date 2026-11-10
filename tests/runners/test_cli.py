@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from rcp_ndcg.runners._cli import run_cli
+from rcp.runners._cli import run_cli
 
 
 def test_run_cli_decodes_output_as_utf8_and_replaces_invalid_bytes() -> None:

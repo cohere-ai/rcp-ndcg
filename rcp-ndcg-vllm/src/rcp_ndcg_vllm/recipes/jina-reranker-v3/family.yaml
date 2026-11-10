@@ -7,7 +7,7 @@
 # is typed literally.  The listwise N-passage prompt is the engine's own builder too; the pair shape
 # is the per-pair frame the product's text budget reserves and cuts against.
 id: jina-reranker-v3
-schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp and rcp-ndcg-vllm)
 role: rerank
 input: [text]
 scoring: listwise
@@ -87,7 +87,7 @@ sources:
   - "experiments/paper/rerankers/jina_v3.yaml (the paper's served-path config; it carries no `recipe:` pointer and its budgets 8192/4096 differ from this recipe's 3219/512, so the paper's served jina path is a different operating point)"
   - "experiments/paper/rerankers/reference/jina.py (the paper-exact in-process reference this reference.py derives from)"
   - "experiments/paper/rerankers/reference/jina.py (the paper's JinaRerank harness, moved unchanged out of the removed pre-unification retrieval/external_rerankers.py when retrieval unified: empty docs score 0.0, index re-alignment; predict() at :65-76)"
-  - "rcp-ndcg/src/rcp_ndcg/cli/retrieval.py:132 (the paper reranks depth-150 pools -- the CLI's rerank depth default)"
+  - "rcp/src/rcp/cli/retrieval.py:132 (the paper reranks depth-150 pools -- the CLI's rerank depth default)"
 notes: >-
   Score: raw cosine similarity in [-1, 1] (float32) of the projector-transformed states at the two
   marker tokens (embed_token 151670 per document, rerank_token 151671 for the query); no sigmoid,
@@ -122,7 +122,7 @@ notes: >-
   uncut.  The client's document cut therefore binds at the 2048-token cap, below the pair budget's
   3072 - 2*q_tokens (q = the fitted query's tokens) for every query within its share.  The rerank
   client cuts client-side and never sends the engine's per-text request caps (no max_tokens_per_doc,
-  max_tokens_per_query or truncate_prompt_tokens: rcp-ndcg/src/rcp_ndcg/inference/clients/rerank.py module
+  max_tokens_per_query or truncate_prompt_tokens: rcp/src/rcp/inference/clients/rerank.py module
   docstring); the checkpoint truncates by decode-back, the client by an offset cut on the content
   span, so a document over 2048 tokens is cut by both, each its own way -- the declared
   over_cap_cut_differs: the harness reports such a pair (the client's processing record names the

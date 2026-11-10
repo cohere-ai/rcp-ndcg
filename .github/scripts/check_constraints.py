@@ -27,7 +27,7 @@ __all__ = ["EXPORT_ARGV", "pins"]
 ROOT = Path(__file__).resolve().parents[2]
 CONSTRAINTS = ROOT / "requirements-constraints.txt"
 
-#: The export the constraints file is, for the coordinator's extras (``rcp_ndcg.runners.script.COORDINATOR_EXTRAS``;
+#: The export the constraints file is, for the coordinator's extras (``rcp.runners.script.COORDINATOR_EXTRAS``;
 #: tests/docs/test_packaging.py cross-checks the two). ``uv`` records this very command in the file's header, so the
 #: header stays a truthful regeneration instruction and there is one home for the argv.
 EXPORT_ARGV = (
@@ -38,7 +38,7 @@ EXPORT_ARGV = (
     "--no-emit-workspace",
     "--no-dev",
     "--package",
-    "rcp-ndcg",
+    "rcp",
     "--extra",
     "calibrate",
     "--extra",

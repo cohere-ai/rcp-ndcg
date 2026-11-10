@@ -17,9 +17,9 @@ from typing import Any
 import httpx
 import pytest
 
-from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.errors import DataError, IdentityError
-from rcp_ndcg.retrieval import BM25Config, DenseConfig, ServedReranker, index, rerank, search
+from rcp.data import Dataset, Rankings
+from rcp.errors import DataError, IdentityError
+from rcp.retrieval import BM25Config, DenseConfig, ServedReranker, index, rerank, search
 from tests.conftest import SESSION_TOKENIZER
 
 _SERVED_BUDGET: dict[str, Any] = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
@@ -60,14 +60,14 @@ def wire(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
             200, json={"data": [{"index": i, "embedding": vector} for i, vector in enumerate(vectors)]}
         )
 
-    from rcp_ndcg.inference import transport as transport_module
+    from rcp.inference import transport as transport_module
 
     real = transport_module.Transport
 
     def patched(endpoint: Any, *, auth: Any = None, httpx_transport: Any = None) -> Any:
         return real(endpoint, auth=auth, httpx_transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setattr("rcp.inference.clients._base.Transport", patched)
     monkeypatch.setenv("CO_API_KEY", "test-key")
     return sent
 
@@ -134,7 +134,7 @@ def test_rerank_joins_the_title_and_places_both_instructions(wire: list[httpx.Re
 def test_rerank_refuses_a_document_side_task_instruction(wire: list[httpx.Request], tmp_path: Any) -> None:
     """A reranker reads a (query, document) pair: its template's instruction slot is the query's, so a
     document-side task instruction has no place on its wire -- refused, never dropped silently."""
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     dataset = _corpus().model_copy(
         update={"task_instruction": {"query": "a query instruction", "document": "a passage instruction"}}
@@ -153,7 +153,7 @@ def test_the_index_identity_covers_the_document_side_instruction(wire: list[http
     share an index identity, and an index of the other instruction is not silently reused. (A document-side
     instruction reaches the encoder through the template's ``instruction`` span: the generic default frames
     the query side only.)"""
-    from rcp_ndcg.data.templates import Segment, TemplateSpec
+    from rcp.data.templates import Segment, TemplateSpec
 
     template = TemplateSpec(
         query=(Segment(fixed="Query: "), Segment(content="query")),
@@ -197,9 +197,9 @@ def test_a_rebuild_that_pooled_to_single_vectors_is_refused(monkeypatch: pytest.
     stale offsets after the fact)."""
     import numpy as np
 
-    from rcp_ndcg.inference.types import Embeddings
-    from rcp_ndcg.retrieval import LateInteractionConfig
-    from rcp_ndcg.retrieval import _api as retrieval_api
+    from rcp.inference.types import Embeddings
+    from rcp.retrieval import LateInteractionConfig
+    from rcp.retrieval import _api as retrieval_api
 
     retriever = LateInteractionConfig.model_validate(
         {
@@ -258,7 +258,7 @@ def test_the_sparse_corpus_reads_a_content_carrying_rows_body(monkeypatch: pytes
     a caption must not vanish from the BM25 index."""
     from rcp_core.content import Content, TextPart
 
-    from rcp_ndcg.retrieval import sparse
+    from rcp.retrieval import sparse
 
     dataset = Dataset.from_records(
         name="content-rows",
@@ -276,7 +276,7 @@ def test_the_sparse_corpus_reads_a_content_carrying_rows_body(monkeypatch: pytes
         seen.append([item if isinstance(item, str) else item.text for item in corpus])
         real(corpus, dataset_dir, stemmer=stemmer)
 
-    monkeypatch.setattr("rcp_ndcg.retrieval.sparse.build_bm25_index", recording)
+    monkeypatch.setattr("rcp.retrieval.sparse.build_bm25_index", recording)
 
     index(dataset, BM25Config(), out=tmp_path / "index")
 
@@ -287,7 +287,7 @@ def test_bm25_indexes_mtebs_own_corpus_join(monkeypatch: pytest.MonkeyPatch, tmp
     """The sparse path's declared join is mteb's own BM25 one, byte for byte: ``title + "\\n" + body``, both
     as given -- not the retrieval dataloader's ``(title + " " + body).strip()`` the dense and rerank paths
     read (mteb's BM25 is not a served model and reads no dataloader)."""
-    from rcp_ndcg.retrieval import sparse
+    from rcp.retrieval import sparse
 
     seen: list[list[str]] = []
     real = sparse.build_bm25_index
@@ -296,7 +296,7 @@ def test_bm25_indexes_mtebs_own_corpus_join(monkeypatch: pytest.MonkeyPatch, tmp
         seen.append([item if isinstance(item, str) else item.text for item in corpus])
         real(corpus, dataset_dir, stemmer=stemmer)
 
-    monkeypatch.setattr("rcp_ndcg.retrieval.sparse.build_bm25_index", recording)
+    monkeypatch.setattr("rcp.retrieval.sparse.build_bm25_index", recording)
 
     index(_corpus(), BM25Config(), out=tmp_path / "index")
 
@@ -306,7 +306,7 @@ def test_bm25_indexes_mtebs_own_corpus_join(monkeypatch: pytest.MonkeyPatch, tmp
 def test_bm25_sends_no_task_instruction(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """mteb's BM25 takes no task instruction (its ``search`` only appends the per-query one): the sparse
     path sends the per-query append alone, never the ``Task:`` frame."""
-    from rcp_ndcg.retrieval import sparse
+    from rcp.retrieval import sparse
 
     seen: list[list[str]] = []
     real = sparse.search_bm25
@@ -315,7 +315,7 @@ def test_bm25_sends_no_task_instruction(monkeypatch: pytest.MonkeyPatch, tmp_pat
         seen.append(list(queries))
         return real(dataset_dir, queries, k=k)
 
-    monkeypatch.setattr("rcp_ndcg.retrieval.sparse.search_bm25", recording)
+    monkeypatch.setattr("rcp.retrieval.sparse.search_bm25", recording)
     dataset = _corpus()
     built = index(dataset, BM25Config(), out=tmp_path / "index")
 

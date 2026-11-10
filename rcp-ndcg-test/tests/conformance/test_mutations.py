@@ -177,7 +177,7 @@ def test_the_surrogate_is_one_draw_per_vector_and_pins_no_values(monkeypatch) ->
     assert first == surrogate_vector(0, "embedding", "key-a", dim=64)
     assert first != surrogate_vector(0, "embedding", "key-b", dim=64)
     assert len(first) == 64 and math.isclose(math.fsum(v * v for v in first), 1.0, rel_tol=1e-9)
-    from rcp_ndcg.inference import fake
+    from rcp.inference import fake
 
     calls = []
     scalar_draw = fake.fake_uniform

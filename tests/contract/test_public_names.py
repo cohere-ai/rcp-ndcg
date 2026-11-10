@@ -1,7 +1,7 @@
 """The public surface is documented: every pinned module has a page, and the generated pages are current.
 
 The snapshot (``snapshots/python_api.json``, the ``__all__`` of ``surface.PUBLIC_MODULES``) is the definition of
-what is public. ``rcp-ndcg docs api --out docs/reference/api`` generates one page per public module from that
+what is public. ``rcp docs api --out docs/reference/api`` generates one page per public module from that
 snapshot and the modules' docstrings (each name with its kind, signature and one-line role), so the long tail of
 the surface is documented mechanically; the curated pages under ``docs/`` carry the narrative. This module fails
 when a pinned module has no page, or when the committed pages differ from a fresh generation (so docs cannot
@@ -17,13 +17,13 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.support.api_docs import PUBLIC_MODULES, page_name, write_pages
+from rcp.support.api_docs import PUBLIC_MODULES, page_name, write_pages
 from tests.contract.surface import REPO
 
 SNAPSHOTS = Path(__file__).parent / "snapshots"
 SNAPSHOT = SNAPSHOTS / "python_api.json"
 PAGES = REPO / "docs" / "reference" / "api"
-REGENERATE = "Regenerate with `rcp-ndcg docs api --out docs/reference/api`."
+REGENERATE = "Regenerate with `rcp docs api --out docs/reference/api`."
 
 
 def _update() -> bool:

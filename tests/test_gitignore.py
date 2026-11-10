@@ -28,4 +28,4 @@ def test_a_package_build_directory_is_ignored() -> None:
 def test_scratch_directories_are_ignored_only_at_the_root(name: str) -> None:
     """Unanchored patterns also dropped same-named package directories from ``git archive``."""
     assert _ignored(f"{name}/anything.txt")
-    assert not _ignored(f"rcp-ndcg/src/rcp_ndcg/{name}/module.py")
+    assert not _ignored(f"rcp/src/rcp/{name}/module.py")

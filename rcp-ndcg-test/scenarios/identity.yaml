@@ -2,7 +2,7 @@
 # again with every engine port shifted by identity_port_offset: nothing re-runs.
 #
 # Changing engine URLs re-runs nothing because base_url and wait_on_outage_s are runtime fields (the
-# RCP_NDCG_ENGINES overlay); no identity carries them (rcp_ndcg.support.serve, rcp_ndcg.runs.pipeline).
+# RCP_NDCG_ENGINES overlay); no identity carries them (rcp.support.serve, rcp.runs.pipeline).
 # The assertion is that every step record, usage count, judgement store and output is identical after the
 # rerun (rcp_ndcg_test.e2e.full_facts).
 #

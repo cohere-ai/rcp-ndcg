@@ -7,7 +7,7 @@ can never pass the node gates with a check the tag would fail (g-rcjobs-5).  It 
 * every workspace manifest declares the version (the release builds three; a stale ``rcp-ndcg-test``
   leaves ``uv.lock`` and the stated rule disagreeing);
 * ``CITATION.cff``'s ``version:`` is the version;
-* ``rcp-ndcg`` pins ``rcp-core==<version>`` exactly, in every dependency scope;
+* ``rcp`` pins ``rcp-core==<version>`` exactly, in every dependency scope;
 * ``rcp-ndcg-vllm`` names no workspace sibling at all (decision 18; owner decision 15 settled the tag
   pipeline on the documented rule: the lean package pins no sibling, matching what ``rc_build.sh``
   already enforced);
@@ -35,17 +35,17 @@ from pathlib import Path
 __all__ = ["check_citation", "check_manifests", "check_pins", "check_wave_commits", "main"]
 
 MANIFESTS = (
-    "rcp-ndcg/pyproject.toml",
+    "rcp/pyproject.toml",
     "rcp-core/pyproject.toml",
     "rcp-ndcg-vllm/pyproject.toml",
     "rcp-ndcg-test/pyproject.toml",
 )
 """The four workspace members; all four carry the release version (AGENTS.md: versions move together)."""
 
-WORKSPACE_SIBLINGS = {"rcp-ndcg", "rcp-core", "rcp-ndcg-test"}
+WORKSPACE_SIBLINGS = {"rcp", "rcp-core", "rcp-ndcg-test"}
 """Every distribution of this workspace except ``rcp-ndcg-vllm`` itself."""
 
-# name, optional [extras], then the specifier: "rcp-ndcg[calibrate]==0.0.1" -> ("rcp-ndcg", "==0.0.1")
+# name, optional [extras], then the specifier: "rcp[calibrate]==0.0.1" -> ("rcp", "==0.0.1")
 _REQUIREMENT_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$")
 
 
@@ -96,13 +96,13 @@ def check_citation(root: Path, version: str) -> None:
 
 
 def check_pins(root: Path, version: str) -> None:
-    """The sibling pins: ``rcp-ndcg`` pins its core exactly; ``rcp-ndcg-vllm`` names no sibling at all.
+    """The sibling pins: ``rcp`` pins its core exactly; ``rcp-ndcg-vllm`` names no sibling at all.
 
     One rule for both pipelines (owner decision 15, g-rcjobs-5(d)): the documented rule governs -- the
     lean package pins no sibling -- so the tag pipeline refuses the lockstep pin exactly as ``rc_build.sh``
     and decision 18 already did.
     """
-    core_manifest = root / "rcp-ndcg/pyproject.toml"
+    core_manifest = root / "rcp/pyproject.toml"
     if not core_manifest.is_file():
         raise SystemExit(f"{core_manifest} is not in this tree: it must pin rcp-core=={version}")
     project = tomllib.loads(core_manifest.read_text(encoding="utf-8"))["project"]
@@ -110,11 +110,11 @@ def check_pins(root: Path, version: str) -> None:
     declared = _declared(project)
     expected = f"=={version}"
     if not _pins_of(runtime, "rcp-core"):
-        raise SystemExit(f"rcp-ndcg/pyproject.toml does not declare rcp-core: it must pin rcp-core{expected} exactly")
+        raise SystemExit(f"rcp/pyproject.toml does not declare rcp-core: it must pin rcp-core{expected} exactly")
     pins = _pins_of(declared, "rcp-core")
     if any(pin != expected for pin in pins):
-        raise SystemExit(f"rcp-core must be pinned {expected} exactly in rcp-ndcg/pyproject.toml; found {pins}")
-    print(f"rcp-ndcg/pyproject.toml pins rcp-core{expected}")
+        raise SystemExit(f"rcp-core must be pinned {expected} exactly in rcp/pyproject.toml; found {pins}")
+    print(f"rcp/pyproject.toml pins rcp-core{expected}")
 
     vllm_manifest = root / "rcp-ndcg-vllm/pyproject.toml"
     if not vllm_manifest.is_file():
@@ -130,7 +130,7 @@ def check_pins(root: Path, version: str) -> None:
     if siblings:
         raise SystemExit(
             "rcp-ndcg-vllm/pyproject.toml must name no sibling package (decision 18: no lockstep "
-            f"version pin between rcp-ndcg and rcp-ndcg-vllm), found {siblings}"
+            f"version pin between rcp and rcp-ndcg-vllm), found {siblings}"
         )
     print("rcp-ndcg-vllm/pyproject.toml names no sibling package")
 

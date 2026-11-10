@@ -422,7 +422,7 @@ def test_the_client_block_builds_the_product_endpoint() -> None:
     content-only template, the gemma4 soft-token policy, the pinned video policy)."""
     from rcp_ndcg_vllm.recipe import client_config
 
-    from rcp_ndcg.inference.config import EmbeddingEndpoint
+    from rcp.inference.config import EmbeddingEndpoint
 
     recipe = load_recipe(RECIPE_DIR)
     endpoint = EmbeddingEndpoint(**client_config(recipe, base_url="http://127.0.0.1:8100/v1"))
@@ -449,7 +449,7 @@ def test_the_reference_geometry_matches_the_product_over_a_size_grid() -> None:
     """The reference's Gemma 4 resize is a faithful port of the product's: over a size grid the two
     copies agree exactly. (The duplication is deliberate -- the reference environment never imports the
     product -- and this test is its cross-check.)"""
-    from rcp_ndcg.data.resolution import gemma4_resize
+    from rcp.data.resolution import gemma4_resize
 
     module = _reference_module()
     for height in range(16, 2048, 97):
@@ -506,8 +506,8 @@ def test_the_reference_embed_input_is_the_image_the_client_sends(tmp_path: Path)
     from rcp_core.content import MediaRef
     from rcp_ndcg_test.observe.media_set import image_entry
 
-    from rcp_ndcg.data.prepare import prepare_image
-    from rcp_ndcg.data.resolution import ImagePolicy
+    from rcp.data.prepare import prepare_image
+    from rcp.data.resolution import ImagePolicy
 
     module = _reference_module()
     policy = ImagePolicy(processor="gemma4", max_soft_tokens=280)
@@ -749,7 +749,7 @@ def test_the_embed_video_pin_is_the_engines_rule_not_the_generic_uniform_one(
     import numpy as np
     from rcp_ndcg_test.observe.media_set import video_entry
 
-    from rcp_ndcg.data.resolution import uniform_frame_indices
+    from rcp.data.resolution import uniform_frame_indices
 
     module = _reference_module()
 

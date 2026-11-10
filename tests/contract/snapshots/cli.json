@@ -1,5 +1,5 @@
 {
-  "rcp-ndcg": {
+  "rcp": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -100,7 +100,7 @@
       }
     }
   },
-  "rcp-ndcg calibration": {
+  "rcp calibration": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -108,7 +108,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg calibration fit": {
+  "rcp calibration fit": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -234,7 +234,7 @@
       }
     }
   },
-  "rcp-ndcg calibration insert": {
+  "rcp calibration insert": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -477,7 +477,7 @@
       }
     }
   },
-  "rcp-ndcg calibration score": {
+  "rcp calibration score": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -576,7 +576,7 @@
       }
     }
   },
-  "rcp-ndcg calibration show": {
+  "rcp calibration show": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -621,7 +621,7 @@
       }
     }
   },
-  "rcp-ndcg data": {
+  "rcp data": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -629,7 +629,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg data convert": {
+  "rcp data convert": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -804,7 +804,7 @@
       }
     }
   },
-  "rcp-ndcg data fetch": {
+  "rcp data fetch": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -903,7 +903,7 @@
       }
     }
   },
-  "rcp-ndcg data formats": {
+  "rcp data formats": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -930,7 +930,7 @@
       }
     }
   },
-  "rcp-ndcg data inspect": {
+  "rcp data inspect": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -1011,7 +1011,7 @@
       }
     }
   },
-  "rcp-ndcg data validate": {
+  "rcp data validate": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -1110,7 +1110,7 @@
       }
     }
   },
-  "rcp-ndcg docs": {
+  "rcp docs": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -1118,7 +1118,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg docs api": {
+  "rcp docs api": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -1181,7 +1181,7 @@
       }
     }
   },
-  "rcp-ndcg doctor": {
+  "rcp doctor": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -1244,7 +1244,7 @@
       }
     }
   },
-  "rcp-ndcg eval": {
+  "rcp eval": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -1252,7 +1252,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg eval compare": {
+  "rcp eval compare": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -1368,7 +1368,7 @@
         }
       },
       "metric": {
-        "default": "rcp_ndcg",
+        "default": "rcp",
         "envvar": null,
         "help": null,
         "hidden": false,
@@ -1383,7 +1383,7 @@
         "secondary_opts": [],
         "type": {
           "choices": [
-            "rcp_ndcg",
+            "rcp",
             "qrel_ndcg",
             "count_ndcg"
           ],
@@ -1446,7 +1446,7 @@
       }
     }
   },
-  "rcp-ndcg eval explain": {
+  "rcp eval explain": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -1599,7 +1599,7 @@
       }
     }
   },
-  "rcp-ndcg eval score": {
+  "rcp eval score": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -1736,7 +1736,7 @@
       },
       "metrics": {
         "default": [
-          "rcp_ndcg",
+          "rcp",
           "qrel_ndcg"
         ],
         "envvar": null,
@@ -1753,7 +1753,7 @@
         "secondary_opts": [],
         "type": {
           "choices": [
-            "rcp_ndcg",
+            "rcp",
             "qrel_ndcg",
             "count_ndcg"
           ],
@@ -1924,7 +1924,7 @@
       }
     }
   },
-  "rcp-ndcg judge": {
+  "rcp judge": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -1932,7 +1932,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg judge check": {
+  "rcp judge check": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -2031,7 +2031,7 @@
       }
     }
   },
-  "rcp-ndcg judge reparse": {
+  "rcp judge reparse": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -2094,7 +2094,7 @@
       }
     }
   },
-  "rcp-ndcg judge rubric": {
+  "rcp judge rubric": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -2445,7 +2445,7 @@
       }
     }
   },
-  "rcp-ndcg judge tournament": {
+  "rcp judge tournament": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -2814,7 +2814,7 @@
       }
     }
   },
-  "rcp-ndcg mcp": {
+  "rcp mcp": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -2822,7 +2822,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg mcp serve": {
+  "rcp mcp serve": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -2830,7 +2830,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg results": {
+  "rcp results": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -2838,7 +2838,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg results export": {
+  "rcp results export": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -2973,7 +2973,7 @@
       }
     }
   },
-  "rcp-ndcg results sinks": {
+  "rcp results sinks": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -3000,7 +3000,7 @@
       }
     }
   },
-  "rcp-ndcg retrieval": {
+  "rcp retrieval": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -3008,7 +3008,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg retrieval fuse": {
+  "rcp retrieval fuse": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -3107,7 +3107,7 @@
       }
     }
   },
-  "rcp-ndcg retrieval index": {
+  "rcp retrieval index": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -3242,7 +3242,7 @@
       }
     }
   },
-  "rcp-ndcg retrieval rerank": {
+  "rcp retrieval rerank": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -3449,7 +3449,7 @@
       }
     }
   },
-  "rcp-ndcg retrieval search": {
+  "rcp retrieval search": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -3620,7 +3620,7 @@
       }
     }
   },
-  "rcp-ndcg retrieval store": {
+  "rcp retrieval store": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -3755,7 +3755,7 @@
       }
     }
   },
-  "rcp-ndcg retrieval sweep": {
+  "rcp retrieval sweep": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -3888,7 +3888,7 @@
         "secondary_opts": [],
         "type": {
           "choices": [
-            "rcp_ndcg",
+            "rcp",
             "qrel_ndcg"
           ],
           "name": "choice"
@@ -3986,7 +3986,7 @@
       }
     }
   },
-  "rcp-ndcg run": {
+  "rcp run": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -3994,7 +3994,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg run cancel": {
+  "rcp run cancel": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4039,7 +4039,7 @@
       }
     }
   },
-  "rcp-ndcg run list": {
+  "rcp run list": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4102,7 +4102,7 @@
       }
     }
   },
-  "rcp-ndcg run logs": {
+  "rcp run logs": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4165,7 +4165,7 @@
       }
     }
   },
-  "rcp-ndcg run resume": {
+  "rcp run resume": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4419,7 +4419,7 @@
       }
     }
   },
-  "rcp-ndcg run show": {
+  "rcp run show": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4464,7 +4464,7 @@
       }
     }
   },
-  "rcp-ndcg run start": {
+  "rcp run start": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4751,7 +4751,7 @@
       }
     }
   },
-  "rcp-ndcg run status": {
+  "rcp run status": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4796,7 +4796,7 @@
       }
     }
   },
-  "rcp-ndcg schema": {
+  "rcp schema": {
     "deprecated": false,
     "group": true,
     "hidden": false,
@@ -4804,7 +4804,7 @@
     "output_schema": null,
     "params": {}
   },
-  "rcp-ndcg schema export": {
+  "rcp schema export": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4849,7 +4849,7 @@
       }
     }
   },
-  "rcp-ndcg schema list": {
+  "rcp schema list": {
     "deprecated": false,
     "group": false,
     "hidden": false,
@@ -4876,7 +4876,7 @@
       }
     }
   },
-  "rcp-ndcg schema show": {
+  "rcp schema show": {
     "deprecated": false,
     "group": false,
     "hidden": false,

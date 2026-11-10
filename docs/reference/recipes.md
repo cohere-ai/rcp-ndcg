@@ -54,7 +54,7 @@ The families whose evidence carries a recorded limit or a disposition. A family 
 | `qwen3-embedding` | the MRL-32 head had no margin; the floor is 0.9984 (the 4b keeps 0.999, with 3.5e-4 of margin) | the floor's derivation in the family notes |
 | `embeddinggemma-2` | the transformers fold is deleted (its parity is inside the measured bf16 floor); the SDPA patch stays | `DECISION-PARITY.md`, the `sdpa-probe` wave |
 
-A judge family's `client` block is `rcp_ndcg.judging.JudgeConfig` (the same config the judging commands take,
+A judge family's `client` block is `rcp.judging.JudgeConfig` (the same config the judging commands take,
 validated by the product, never a second model), its `serve` block is the engine argv, and it carries no
 equivalence reference: `--judge <id>` and `rcp-ndcg-vllm serve <id>` take the same id
 ([judges](../concepts/judges.md)).
@@ -156,7 +156,7 @@ answer; a recipe whose reference drops anchors declares `reference.known_deviati
 and the equivalence gates compare those models under the cap only. Only an over-cap document can end at a
 different place.
 
-## `recipe:` in `rcp-ndcg`
+## `recipe:` in `rcp`
 
 A role config that names `recipe: <id>` takes its whole client block (api, tokenizer, budgets, template, media,
 instruction mode) from the recipe. `base_url` and the other RUNTIME fields stay on the config; any CONTENT
@@ -171,5 +171,5 @@ On the command line `--retriever recipe:<id-or-path>` and `--reranker recipe:<id
 mapping, with the URL from `--set ...base_url=...` or a `serve:` engine; `recipe:./my-family/` and
 `recipe:/abs/path` load the family directory through the same schema (a multi-variant directory names its
 variants in the refusal). Resolution is lazy through `rcp_ndcg_vllm`, so `rcp-ndcg-vllm` must be installed
-alongside `rcp-ndcg` (there is no extra alias for it); without it the refusal is typed and its hint is the
+alongside `rcp` (there is no extra alias for it); without it the refusal is typed and its hint is the
 install line.

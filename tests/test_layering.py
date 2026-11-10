@@ -3,14 +3,14 @@
 ``AGENTS.md`` fixes the import order
 (``rcp_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs
 → results → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``results``, and
-``testing`` and ``examples`` above it). This module parses every module under ``rcp-ndcg/src/rcp_ndcg/`` and,
+``testing`` and ``examples`` above it). This module parses every module under ``rcp/src/rcp/`` and,
 because the order has an innermost end, every module under ``rcp-core/src/rcp_core/`` with :mod:`ast`,
 and fails when an import points outward in that order (toward a layer that typically imports this one). In the
 product tree an eager import -- module-level, outside ``if TYPE_CHECKING:`` -- is what counts; in the core tree
 the rule is the strict one, every scope included, because the innermost layer may import nothing from the product
 at all.
 
-An import of the facade (``rcp_ndcg``) resolves to the layer of the name it binds (``from rcp_ndcg import
+An import of the facade (``rcp``) resolves to the layer of the name it binds (``from rcp import
 storage`` is a storage import); a name the facade itself defines (``__version__``) resolves to the facade. A
 lazily imported module is exempt in the product tree: its cost is paid when it runs, not when its layer is
 imported -- which is why the serving package (``rcp_ndcg_vllm``), above the facade, is imported by the product
@@ -26,10 +26,10 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parents[1] / "rcp-ndcg/src/rcp_ndcg"
+SRC = Path(__file__).resolve().parents[1] / "rcp/src/rcp"
 #: The innermost tree: no module of the core may import the product, so the charter's order has an innermost
 #: end (``AGENTS.md``, Layout and layering).  Nothing parsed the core's own tree before, so a lazy or eager
-#: ``rcp_ndcg`` import there passed the whole suite.
+#: ``rcp`` import there passed the whole suite.
 CORE_SRC = Path(__file__).resolve().parents[1] / "rcp-core/src/rcp_core"
 
 #: The layers, from the one every module may import to the one that may import everything; the charter of
@@ -49,7 +49,7 @@ LAYERS: tuple[str, ...] = (
     "runners",
     "runs",
     "results",
-    "rcp_ndcg",  # the facade (its __init__): it re-exports everything up to results, and cli reads its __version__
+    "rcp",  # the facade (its __init__): it re-exports everything up to results, and cli reads its __version__
     "schemas",
     "mcp",
     "cli",
@@ -67,20 +67,20 @@ _ALLOW_LIST: dict[str, frozenset[str]] = {}
 
 
 def _module_layer(dotted: str) -> str:
-    """The layer of a module of ``rcp_ndcg`` (its top-level part; the facade's own ``__init__`` is the facade)."""
+    """The layer of a module of ``rcp`` (its top-level part; the facade's own ``__init__`` is the facade)."""
     parts = dotted.split(".")
-    return parts[0] if parts else "rcp_ndcg"
+    return parts[0] if parts else "rcp"
 
 
 def _targets_of_import(
-    node: ast.Import | ast.ImportFrom, *, module: str, is_package: bool, package: str = "rcp_ndcg"
+    node: ast.Import | ast.ImportFrom, *, module: str, is_package: bool, package: str = "rcp"
 ) -> Iterator[str]:
     """The layers one import statement binds, as layers of the charter.
 
     A relative import is resolved to its absolute module from the importing module's package (``module``: the
     package itself when ``is_package``, i.e. a package's ``__init__``) and ``node.level``, and then checked like
     an absolute one (``from ..retrieval import x`` in a ``data`` module is a ``retrieval`` import).  ``package``
-    is the top-level package the module belongs to: ``rcp_ndcg`` (the default) or ``rcp_core``.
+    is the top-level package the module belongs to: ``rcp`` (the default) or ``rcp_core``.
     """
     if isinstance(node, ast.ImportFrom):
         if node.level:
@@ -107,12 +107,12 @@ def _targets_of_import(
             yield "rcp_core"
         elif target == "rcp_ndcg_vllm" or target.startswith("rcp_ndcg_vllm."):
             yield "rcp_ndcg_vllm"
-        elif target == "rcp_ndcg" or target.startswith("rcp_ndcg."):
-            rest = target[len("rcp_ndcg") :].strip(".")
+        elif target == "rcp" or target.startswith("rcp."):
+            rest = target[len("rcp") :].strip(".")
             top = rest.split(".")[0] if rest else ""
-            # ``from rcp_ndcg import storage`` binds the storage package; a name the facade itself defines
+            # ``from rcp import storage`` binds the storage package; a name the facade itself defines
             # (``__version__``) binds the facade.
-            yield top if top in _LAYER else "rcp_ndcg"
+            yield top if top in _LAYER else "rcp"
 
 
 def _eager_imports(tree: ast.Module) -> Iterator[tuple[ast.Import | ast.ImportFrom, int]]:
@@ -144,7 +144,7 @@ def _every_import(tree: ast.Module) -> Iterator[tuple[ast.Import | ast.ImportFro
 
     The core's rule is stricter than the product's: no module of ``rcp_core`` may import the product at
     all, so a function-body import counts too -- it is the same dependency cycle the moment that function runs,
-    and it is exactly how a lazy ``from rcp_ndcg.storage import ...`` slipped past this test before.
+    and it is exactly how a lazy ``from rcp.storage import ...`` slipped past this test before.
     """
     for node in ast.walk(tree):
         if isinstance(node, ast.Import | ast.ImportFrom):
@@ -164,7 +164,7 @@ def _is_type_checking(statement: ast.stmt) -> bool:
 def outward_imports() -> list[str]:
     """Every outward import of the two trees the charter orders, allow-listed ones excepted.
 
-    ``rcp-ndcg/src/rcp_ndcg`` is checked for **eager** imports only (the charter exempts a lazy one: its cost
+    ``rcp/src/rcp`` is checked for **eager** imports only (the charter exempts a lazy one: its cost
     is paid when it runs, not when its layer is imported); ``rcp-core/src/rcp_core`` is checked at
     **every** scope, because the innermost layer may import nothing from the product at all.
     """
@@ -173,7 +173,7 @@ def outward_imports() -> list[str]:
         module = ".".join(path.relative_to(SRC).with_suffix("").parts)
         is_package = path.name == "__init__.py"
         if module == "__init__":
-            module = "rcp_ndcg"  # the facade itself
+            module = "rcp"  # the facade itself
         elif module.endswith(".__init__"):
             module = module[: -len(".__init__")]
         layer = _module_layer(module)
@@ -191,9 +191,9 @@ def outward_imports() -> list[str]:
                     continue
                 if target in _ALLOW_LIST.get(module, frozenset()):
                     continue
-                findings.append(f"rcp-ndcg/src/rcp_ndcg/{path.relative_to(SRC)}:{line}: {layer} -> {target} (outward)")
+                findings.append(f"rcp/src/rcp/{path.relative_to(SRC)}:{line}: {layer} -> {target} (outward)")
     # The innermost end of the order: no module of the core may import the product, so the core's own tree is
-    # walked with the same resolution at every scope -- a function-body ``from rcp_ndcg.storage import ...`` is
+    # walked with the same resolution at every scope -- a function-body ``from rcp.storage import ...`` is
     # the same cycle the moment it runs, and skipping it left the finding's own exemplar green.
     for path in sorted(CORE_SRC.rglob("*.py")):
         module = ".".join(path.relative_to(CORE_SRC).with_suffix("").parts)
@@ -233,8 +233,8 @@ def test_a_relative_import_across_layers_is_checked(tmp_path: Path, monkeypatch:
     (tmp_path / "data" / "beyond.py").write_text("from ....retrieval import anything\n", encoding="utf-8")
     monkeypatch.setattr(sys.modules[__name__], "SRC", tmp_path)
 
-    # every finding is prefixed with the checkout's own rcp-ndcg/src/rcp_ndcg, whatever SRC reads now
-    assert outward_imports() == ["rcp-ndcg/src/rcp_ndcg/data/broken.py:1: data -> retrieval (outward)"]
+    # every finding is prefixed with the checkout's own rcp/src/rcp, whatever SRC reads now
+    assert outward_imports() == ["rcp/src/rcp/data/broken.py:1: data -> retrieval (outward)"]
 
 
 def test_a_top_level_module_that_is_not_placed_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:

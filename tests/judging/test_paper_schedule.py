@@ -21,9 +21,9 @@ from rcp_core.irt._rasch import RaschEstimator
 from rcp_core.records import RankingExample
 from rcp_core.schemas import Judgement
 
-from rcp_ndcg.calibration._projection import bradley_terry, namespace
-from rcp_ndcg.judging import RubricSchedule, TournamentSchedule, judge
-from rcp_ndcg.testing import FakeJudge
+from rcp.calibration._projection import bradley_terry, namespace
+from rcp.judging import RubricSchedule, TournamentSchedule, judge
+from rcp.testing import FakeJudge
 
 N_DOCS = 150
 DOC_IDS = [f"d{index:03d}" for index in range(N_DOCS)]

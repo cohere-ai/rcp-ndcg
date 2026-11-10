@@ -1,6 +1,6 @@
 # rcp-ndcg-test
 
-The validation tooling for [rcp-ndcg](https://github.com/cohere-ai/rcp-ndcg) models served with
+The validation tooling for [rcp](https://github.com/cohere-ai/rcp-ndcg) models served with
 [vLLM](https://docs.vllm.ai): reference cases and the conformance suite (every case through the product's role
 clients, never raw HTTP and never a copy of the client), the equivalence harness, the engine recorder, the
 **verified emulators** replayed from the observation corpora, and the GPU wave runner.
@@ -16,7 +16,7 @@ pip install "rcp-ndcg-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.
 ```
 
 No published package names it, and the release workflow builds only the three published distributions by
-name, so it is never published with them. It depends on `rcp-ndcg` and `rcp-ndcg-vllm` at the release's
+name, so it is never published with them. It depends on `rcp` and `rcp-ndcg-vllm` at the release's
 version — never the other way round.
 
 ## What a case is
@@ -265,8 +265,8 @@ The equivalence harness, the engine recorder and the GPU wave jobs live under `r
   `wave0` and the T4 end-to-end driver (`python -m rcp_ndcg_test.e2e`, scenarios under `scenarios/`).
 - `rcp_ndcg_test.engines` and `rcp_ndcg_test.corpus` — the **verified emulators** (one per engine version,
   recipe and behaviour fingerprint, replayed from `corpora/`) and the corpora's one reader. The product's
-  `rcp_ndcg.inference.fake` routes `fake://<engine>-<version>/<recipe>` URLs here through the
-  `rcp_ndcg.fake_transports` entry point.
+  `rcp.inference.fake` routes `fake://<engine>-<version>/<recipe>` URLs here through the
+  `rcp.fake_transports` entry point.
 - `rcp_ndcg_test.changes` and `rcp_ndcg_test.fingerprint` — the corpora's behaviour fingerprints, the
   staleness gate and the re-record selector; the corpora to re-record are declared in
   `tests/conformance/stale.json`.

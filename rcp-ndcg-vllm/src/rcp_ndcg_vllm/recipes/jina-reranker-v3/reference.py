@@ -43,7 +43,7 @@ Tokenizer: the render mode loads the checkpoint's own ``tokenizer.json`` the way
 resolves it (``AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)`` at the pinned
 revision, whose sidecars are all carried by the file itself), with ``tokenizers`` directly -- the
 reference does not import the product (``AGENTS.md``); a CPU-only equivalence test holds this loader to
-the product's own ``rcp_ndcg.data.tokenizer`` path over an exhaustive corpus.
+the product's own ``rcp.data.tokenizer`` path over an exhaustive corpus.
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ def _checkpoint_tokenizer(spec: str):
     ``tokenizer.json`` (Qwen2 byte-level BPE, 29 added tokens, a no-op ByteLevel post-processor) plus
     the sidecars it already carries (``clean_up_tokenization_spaces: false``, the pad token and every
     added token are in the file), so this reference loads that file directly with ``tokenizers`` -- the
-    checkpoint's own tokenizer, never through the product's ``rcp_ndcg.data.tokenizer.load_tokenizer``
+    checkpoint's own tokenizer, never through the product's ``rcp.data.tokenizer.load_tokenizer``
     (the reference must not import the product, AGENTS.md).  A CPU-only equivalence test holds this
     loader to the product's own tokenizer path over an exhaustive corpus.
     """

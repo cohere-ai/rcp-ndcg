@@ -10,9 +10,9 @@ negative one. Each judge writes its own judgement store, because judgements of t
 import html
 import json
 
-import rcp_ndcg as rcp
-from rcp_ndcg.examples import tiny
-from rcp_ndcg.testing import FakeJudge
+import rcp
+from rcp.examples import tiny
+from rcp.testing import FakeJudge
 
 TINY = tiny()  # the example dataset that ships with the package
 dataset = rcp.load_dataset(f"jsonl:{TINY / 'rows.jsonl'}")

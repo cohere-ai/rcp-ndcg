@@ -15,10 +15,10 @@ from unittest import mock
 import pandas as pd
 import pytest
 
-from rcp_ndcg.data import load_dataset
-from rcp_ndcg.data.io.hub import HubReader, hub_subsets
-from rcp_ndcg.data.revisions import resolve_revision
-from rcp_ndcg.errors import ConfigError, DataError, RcpNdcgWarning
+from rcp.data import load_dataset
+from rcp.data.io.hub import HubReader, hub_subsets
+from rcp.data.revisions import resolve_revision
+from rcp.errors import ConfigError, DataError, RcpNdcgWarning
 from tests.data.hub_stubs import SHA, hub_fixture
 
 PIL = pytest.importorskip("PIL.Image")
@@ -184,7 +184,7 @@ def test_a_dataset_info_only_card_falls_back_to_the_conventional_paths(tmp_path:
     """A card that lists a config only under ``dataset_info`` (its features, no ``data_files``) names no file:
     the conventional ``{subset}/{part}.parquet`` path still serves it -- a phantom config must not shadow it
     (it would raise "the 'queries' config names no file for the split" instead of reading the table)."""
-    from rcp_ndcg.data.io import hub as hub_module
+    from rcp.data.io import hub as hub_module
     from tests.data.hub_stubs import _fake_hub_file, _fake_listing
 
     root = tmp_path / "repo"
@@ -305,7 +305,7 @@ def test_a_raw_layout_repository_is_refused_with_the_mteb_hint(hub) -> None:
 
 
 def test_the_rcp_ndcg_layout_reads_gains_thetas_and_exclusions_from_the_card(hub) -> None:
-    """rcp-ndcg's own layout is simply this reader: the qrels ``gain``/``theta`` columns and the
+    """rcp's own layout is simply this reader: the qrels ``gain``/``theta`` columns and the
     ``-excluded`` config are read where present, and everything else is mteb's layout."""
     with hub("rcp-ndcg-nanobeir"):
         dataset = load_dataset(f"{NANOBEIR}@{SHA}")
@@ -495,8 +495,8 @@ def _staged_without_card(root: Path, *, offline: bool = False):
 
 
 def test_a_card_less_repository_serves_the_path_layout(tmp_path: Path) -> None:
-    """The released rcp-ndcg layout (``{subset}/qrels.parquet`` and friends) reads without a card."""
-    from rcp_ndcg.data.io import hub as hub_module
+    """The released rcp layout (``{subset}/qrels.parquet`` and friends) reads without a card."""
+    from rcp.data.io import hub as hub_module
 
     root = Path(__file__).parent / "fixtures" / "rcp-ndcg-nanobeir"
     with mock.patch.multiple(hub_module, **_staged_without_card(root)):
@@ -506,7 +506,7 @@ def test_a_card_less_repository_serves_the_path_layout(tmp_path: Path) -> None:
 
 def test_an_uncached_card_falls_back_with_a_typed_warning(tmp_path: Path) -> None:
     """Offline without the card, the reader says it is serving the path layout -- never silently."""
-    from rcp_ndcg.data.io import hub as hub_module
+    from rcp.data.io import hub as hub_module
 
     root = Path(__file__).parent / "fixtures" / "rcp-ndcg-nanobeir"
     with mock.patch.multiple(hub_module, **_staged_without_card(root, offline=True)):
@@ -562,11 +562,11 @@ def test_a_raw_binary_media_cell_of_no_known_format_is_refused(hub) -> None:
     ],
 )
 def test_the_hub_reader_passes_the_shared_conformance(fixture: str, uri: str, tmp_path: Path) -> None:
-    """The built-in Hub reader runs through the same ``rcp_ndcg.testing.io_conformance`` a plugin does; the
+    """The built-in Hub reader runs through the same ``rcp.testing.io_conformance`` a plugin does; the
     fixture repositories' sampled rows are internally consistent (their pools and qrels name the sampled
     documents). The multilingual mirror is left out: its corpus is 32.9M rows across 28 shards, so a sampled
     corpus cannot cover the sampled qrels (its layout is covered by its own tests and the live load)."""
-    from rcp_ndcg.testing import io_conformance
+    from rcp.testing import io_conformance
 
     with hub_fixture(fixture, tmp_path):
         io_conformance(HubReader(uri, revision=SHA))
@@ -591,7 +591,7 @@ def test_a_video_cell_in_the_struct_form_keeps_its_container_mime(hub) -> None:
 def test_a_decoded_video_object_is_refused_by_name() -> None:
     """``datasets``' Video feature hands back a decoder object; this reader cannot encode one without ffmpeg,
     and says so instead of crashing with an AttributeError."""
-    from rcp_ndcg.data.io.hub import _encode_media
+    from rcp.data.io.hub import _encode_media
 
     class VideoDecoder:
         """The shape of a decoded video object: no ``save``, no bytes."""
@@ -680,7 +680,7 @@ def test_a_path_only_media_cell_is_refused_never_read(tmp_path: Path) -> None:
     """A third-party row's ``{"bytes": None, "path": ...}`` cell names a path the reader must not dereference:
     it could be any local file (an SSH key, a cloud credential file) or a credentialed remote URI, and its
     bytes would land in the media cache and from there in a judge request or a republished parquet."""
-    from rcp_ndcg.data.io.hub import _encode_media
+    from rcp.data.io.hub import _encode_media
 
     secret = tmp_path / "outside-the-repository"
     secret.write_bytes(b"LOCAL-SECRET-BYTES")
@@ -693,7 +693,7 @@ def test_a_path_only_media_cell_is_refused_never_read(tmp_path: Path) -> None:
 def test_a_struct_cell_whose_bytes_name_no_media_format_is_refused() -> None:
     """A path suffix is a claim, not a check: a suffix-less cell used to default to video/mp4 and store any
     bytes. The payload's own magic numbers must name a media type, as the raw-bytes branch requires."""
-    from rcp_ndcg.data.io.hub import _encode_media
+    from rcp.data.io.hub import _encode_media
 
     with pytest.raises(DataError, match="magic number names"):
         _encode_media({"bytes": b"NOT-A-MEDIA-PAYLOAD", "path": ""}, column="video")
@@ -719,7 +719,7 @@ def test_the_instruction_completeness_is_decided_over_the_kept_queries(tmp_path:
     """A qrels row whose query has no queries row is never kept (mteb never sees it): it must not make a
     coherent per-query instruction subset look mixed. The code's own comment says the check runs over the
     queries mteb keeps; the implementation used to run it over the qrels keys."""
-    from rcp_ndcg.data.io import hub as hub_module
+    from rcp.data.io import hub as hub_module
     from tests.data.hub_stubs import _fake_hub_file, _fake_listing
 
     root = tmp_path / "repo"
@@ -745,7 +745,7 @@ def test_the_card_data_files_forms_are_normalised(tmp_path: Path) -> None:
     """HF cards allow a bare string ``data_files`` and a dict whose ``path`` is a list of files. A string used
     to iterate characters (no entries, a silent fallback to the conventional path); a list became one
     non-string pattern and reached the download as a filename."""
-    from rcp_ndcg.data.io import hub as hub_module
+    from rcp.data.io import hub as hub_module
     from tests.data.hub_stubs import _fake_hub_file, _fake_listing
 
     root = tmp_path / "repo"

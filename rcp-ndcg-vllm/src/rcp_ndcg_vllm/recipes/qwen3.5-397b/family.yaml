@@ -1,14 +1,14 @@
 # The Qwen3.5-397B judge family: the paper's primary judge, one variant.
 #
-# The family's client block is rcp-ndcg's judge config: rcp-ndcg validates it with
-# `rcp_ndcg.judging.JudgeConfig` when it reads `recipe: qwen3.5-397b-a17b-nvfp4`, so this package carries no
+# The family's client block is rcp's judge config: rcp validates it with
+# `rcp.judging.JudgeConfig` when it reads `recipe: qwen3.5-397b-a17b-nvfp4`, so this package carries no
 # second model of a judge. The serve block is the paper's SGLang command translated to vLLM v0.33.0 flags,
 # every flag checked in the vLLM v0.33.0 source.
 #
 # Serving shape: one engine fits the smallest TP that leaves a B200 useful cache, and the H100 shape is the
 # documented `--set` override. This judge's weights do not fit one GPU of either class.
 id: qwen3.5-397b
-schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp and rcp-ndcg-vllm)
 role: judge
 input: [text, image]
 licence: apache-2.0

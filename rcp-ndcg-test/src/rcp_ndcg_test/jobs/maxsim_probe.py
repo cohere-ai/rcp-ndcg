@@ -3,10 +3,10 @@
 
 The release's equivalence waves for ``pplx-embed-v2-late`` run stages 1-2 only (``run_wave.py``'s
 equivalence step passes ``stages=[1, 2]``), whose gate for a ``multi_vector`` recipe is the per-token
-cosine floor -- stage 3 (the stage that scores rankings with ``rcp-ndcg eval score``) never runs, and the
+cosine floor -- stage 3 (the stage that scores rankings with ``rcp eval score``) never runs, and the
 opt-in ``--quality`` step (the one that exercises the product's ``kind: late_interaction`` retriever) is
 never passed.  So the release had no evidence for the product's late-interaction **scoring path** --
-``rcp_ndcg.retrieval.maxsim``, the client-side scorer the retrieval view and ``eval score`` both consume.
+``rcp.retrieval.maxsim``, the client-side scorer the retrieval view and ``eval score`` both consume.
 This probe is that gate, as its own job (the probe pattern: ``sdpa_probe.sh``/``topk_probe.sh``).
 
 Per variant, on the node (``maxsim_probe.sh`` builds the client mechanism, the plugin wheel and the
@@ -17,7 +17,7 @@ family's reference venv):
    the wire stage 2 sends), and stop the engine;
 2. run the recipe's reference subprocess (``--mode embed``) in the family's reference venv on its own
    GPU (the recipe declares ``reference.device: cuda``), for the reference's per-token vectors;
-3. score MaxSim **with the product's own scorer** (:func:`rcp_ndcg.retrieval.maxsim.maxsim_topk`, the
+3. score MaxSim **with the product's own scorer** (:func:`rcp.retrieval.maxsim.maxsim_topk`, the
    call ``score_topk`` dispatches to for a ragged index -- what a ``late_interaction`` retrieval index
    runs) over the pooled text corpus (every text row's documents, each query ranked over all of them:
    the retrieval view's own shape), and compute the **expected MaxSim rows** directly in float64 from
@@ -188,14 +188,14 @@ def plan(recipe: Recipe, *, port_base: int = 8100, gpus: str = "0", reference_gp
 def score_matrix(docs: Any, queries: Any) -> np.ndarray:
     """The product's own MaxSim scores, one row per query over the whole corpus in document order.
 
-    Inputs: the corpus and the queries as :class:`rcp_ndcg.inference.types.Embeddings` (the documents
+    Inputs: the corpus and the queries as :class:`rcp.inference.types.Embeddings` (the documents
     ragged: this is the late-interaction layout a ``late_interaction`` index stores).  The scorer is
-    :func:`rcp_ndcg.retrieval.maxsim.maxsim_topk` with ``k`` = every document -- exactly the call
-    :func:`rcp_ndcg.retrieval.topk.score_topk` dispatches to for a ragged index, with the product's tie
+    :func:`rcp.retrieval.maxsim.maxsim_topk` with ``k`` = every document -- exactly the call
+    :func:`rcp.retrieval.topk.score_topk` dispatches to for a ragged index, with the product's tie
     rule.  Output: the ``(n_queries, n_documents)`` score matrix in document order.  Units: MaxSim scores
     (sums of per-token cosines of unit vectors, in ``[-n_query_tokens, n_query_tokens]``).
     """
-    from rcp_ndcg.retrieval.maxsim import maxsim_topk
+    from rcp.retrieval.maxsim import maxsim_topk
 
     k = docs.num_items
     scores, indices = maxsim_topk(docs, queries, k=k)
@@ -647,7 +647,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # The MaxSim gate: the product's scorer on the served vectors, the card's definition on the
     # reference's, the per-pair gating mask from the client's own change records.
-    from rcp_ndcg.inference.types import Embeddings
+    from rcp.inference.types import Embeddings
 
     query_keys = [key for key, _role, _content in items if key.endswith(":query")]
     document_keys = [key for key, _role, _content in items if not key.endswith(":query")]

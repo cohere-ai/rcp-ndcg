@@ -5,7 +5,7 @@
 site_name: RCP-nDCG
 site_description: RCP-nDCG, nDCG with calibrated relevance gains from an LLM judge.
 repo_url: https://github.com/cohere-ai/rcp-ndcg
-repo_name: rcp-ndcg
+repo_name: rcp
 edit_uri: edit/main/docs/
 
 theme:
@@ -61,22 +61,22 @@ nav:
           - "rcp_core.metric": reference/api/rcp_core.metric.md
           - "rcp_core.protocol": reference/api/rcp_core.protocol.md
           - "rcp_core.records": reference/api/rcp_core.records.md
-          - "rcp_ndcg": reference/api/rcp_ndcg.md
-          - "rcp_ndcg.calibration": reference/api/rcp_ndcg.calibration.md
-          - "rcp_ndcg.data": reference/api/rcp_ndcg.data.md
-          - "rcp_ndcg.data.preprocess": reference/api/rcp_ndcg.data.preprocess.md
-          - "rcp_ndcg.data.revisions": reference/api/rcp_ndcg.data.revisions.md
-          - "rcp_ndcg.errors": reference/api/rcp_ndcg.errors.md
-          - "rcp_ndcg.eval": reference/api/rcp_ndcg.eval.md
-          - "rcp_ndcg.eval.mteb": reference/api/rcp_ndcg.eval.mteb.md
-          - "rcp_ndcg.examples": reference/api/rcp_ndcg.examples.md
-          - "rcp_ndcg.inference": reference/api/rcp_ndcg.inference.md
-          - "rcp_ndcg.judging": reference/api/rcp_ndcg.judging.md
-          - "rcp_ndcg.results": reference/api/rcp_ndcg.results.md
-          - "rcp_ndcg.retrieval": reference/api/rcp_ndcg.retrieval.md
-          - "rcp_ndcg.runners": reference/api/rcp_ndcg.runners.md
-          - "rcp_ndcg.runs": reference/api/rcp_ndcg.runs.md
-          - "rcp_ndcg.testing": reference/api/rcp_ndcg.testing.md
+          - "rcp": reference/api/rcp.md
+          - "rcp.calibration": reference/api/rcp.calibration.md
+          - "rcp.data": reference/api/rcp.data.md
+          - "rcp.data.preprocess": reference/api/rcp.data.preprocess.md
+          - "rcp.data.revisions": reference/api/rcp.data.revisions.md
+          - "rcp.errors": reference/api/rcp.errors.md
+          - "rcp.eval": reference/api/rcp.eval.md
+          - "rcp.eval.mteb": reference/api/rcp.eval.mteb.md
+          - "rcp.examples": reference/api/rcp.examples.md
+          - "rcp.inference": reference/api/rcp.inference.md
+          - "rcp.judging": reference/api/rcp.judging.md
+          - "rcp.results": reference/api/rcp.results.md
+          - "rcp.retrieval": reference/api/rcp.retrieval.md
+          - "rcp.runners": reference/api/rcp.runners.md
+          - "rcp.runs": reference/api/rcp.runs.md
+          - "rcp.testing": reference/api/rcp.testing.md
           - "rcp_ndcg_vllm.recipe": reference/api/rcp_ndcg_vllm.recipe.md
 
 # Links to files outside docs/ (experiments/, the repository root) resolve on GitHub, not in the local preview.

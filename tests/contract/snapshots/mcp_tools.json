@@ -221,10 +221,10 @@
           "title": "K"
         },
         "metric": {
-          "default": "rcp_ndcg",
+          "default": "rcp",
           "description": "The metric compared.",
           "enum": [
-            "rcp_ndcg",
+            "rcp",
             "qrel_ndcg",
             "count_ndcg"
           ],
@@ -418,7 +418,7 @@
           "description": "Metrics to compute (repeatable).",
           "items": {
             "enum": [
-              "rcp_ndcg",
+              "rcp",
               "qrel_ndcg",
               "count_ndcg"
             ],

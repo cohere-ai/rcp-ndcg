@@ -1,7 +1,7 @@
 """The vLLM pooling adapter: the wire shapes, the ragged decode and its error paths.
 
 Tested against an in-test sender over ``httpx.MockTransport`` (real request objects, canned replies), so the
-adapter's :class:`~rcp_ndcg.inference.types.Call` bodies are really serialised and its ``interpret`` reads
+adapter's :class:`~rcp.inference.types.Call` bodies are really serialised and its ``interpret`` reads
 what a server actually sends: base64 frames of the declared dtype, nested float lists, and the bytes framing
 with its ``metadata`` header.
 """
@@ -17,9 +17,9 @@ import numpy as np
 import pytest
 from rcp_core.content import Content
 
-from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.adapters.pooling import VllmPooling
-from rcp_ndcg.inference.types import EncodeRole, PoolRequest, Reply, TokenCount
+from rcp.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
+from rcp.inference.adapters.pooling import VllmPooling
+from rcp.inference.types import EncodeRole, PoolRequest, Reply, TokenCount
 from tests.inference._pooling import PoolingServer, RecordingSender, b64, request, send
 
 

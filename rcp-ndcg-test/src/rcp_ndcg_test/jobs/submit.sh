@@ -20,7 +20,7 @@
 #                  casefill (the cuda reference-case fills: casefill.sh builds the four families'
 #                  reference environments and uploads the edited case YAMLs) or judgecheck (the
 #                  release checklist's judge item: judgecheck.sh packs the judge recipes onto the
-#                  node's GPUs and runs `rcp-ndcg judge check` in the recipe's documented thinking
+#                  node's GPUs and runs `rcp judge check` in the recipe's documented thinking
 #                  modes plus the engine media probe; its own RCP_JUDGECHECK_* knobs are forwarded into
 #                  the job when the operator sets them) or
 #                  topk-probe (one family's controlled GPU probe: topk_probe.sh builds the client

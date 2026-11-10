@@ -19,7 +19,7 @@ The registry maps recipe ids to fakes. ``target='fake'`` covers the **registered
 corpora's **verified emulators** (one per engine version, recipe and behaviour fingerprint,
 :mod:`rcp_ndcg_test.engines`) are built and registered by the harness's own conformance wiring
 (``tests._engines``) and reach a run as an **engine target** through a
-``fake://vllm-0.33.0/<recipe>`` URL once registered (the product's ``rcp_ndcg.fake_transports``
+``fake://vllm-0.33.0/<recipe>`` URL once registered (the product's ``rcp.fake_transports``
 entry point routes it). What ships in this registry is one test fake for the packaged fixture recipe
 (:class:`FakeEmbedEngine`, recipe ``fake-embed``), so the runner is exercised end to end on CPU. A test
 fake is a deterministic surrogate, clearly marked -- a test that asserts numbers may only do so against
@@ -35,7 +35,7 @@ from importlib.resources import as_file, files
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from rcp_ndcg.inference.fake import fake_uniform
+from rcp.inference.fake import fake_uniform
 
 from .errors import ConformanceError
 
@@ -96,7 +96,7 @@ class _FakeHTTPTransport:
     """An ``httpx`` transport that answers from a :class:`FakeEngine` (built by
     :func:`fake_http_transport`).
 
-    The product's :class:`~rcp_ndcg.inference.transport.Transport` sends every call through it: the
+    The product's :class:`~rcp.inference.transport.Transport` sends every call through it: the
     fake sees the requests exactly as the wire adapter built them, and the adapters parse its answers
     as they parse an engine's.
     """
@@ -226,7 +226,7 @@ class FakeEmbedEngine:
     """The shipped test fake for the packaged fixture recipe (``fake-embed``, role ``embed``).
 
     A deterministic surrogate, not a verified emulator: every vector is drawn by
-    :func:`rcp_ndcg.inference.fake.fake_uniform` from the text and its component index, so the same
+    :func:`rcp.inference.fake.fake_uniform` from the text and its component index, so the same
     text always returns the same unit vector and different texts differ; ``/tokenize`` answers with the
     recipe's packaged tokenizer. A test that asserts numbers may only do so against inputs whose answer
     it recorded (the fixture cases carry theirs).
@@ -299,7 +299,7 @@ class FakeEmbedEngine:
     def _loaded_tokenizer(self) -> Any:
         """The fixture tokenizer, loaded once (through the product's loader)."""
         if self._tokenizer is None:
-            from rcp_ndcg.data.tokenizer import load_tokenizer
+            from rcp.data.tokenizer import load_tokenizer
 
             path = self._tokenizer_path if self._tokenizer_path is not None else package_tokenizer_path()
             self._tokenizer = load_tokenizer(str(path))

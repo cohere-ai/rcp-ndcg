@@ -3,7 +3,7 @@
 # The judge is a run-scoped engine the driver owns (rcp_ndcg_test.e2e.ManagedEngine): engines the
 # supervision script started would end the job when they exit, while replicas that live elsewhere are
 # "restarted by whatever runs them, and the judge bounds the outage instead"
-# (rcp_ndcg.runners.script.supervise).  Two sub-runs and a resume:
+# (rcp.runners.script.supervise).  Two sub-runs and a resume:
 #
 #   (a) the killed judge restarts after ~20 s: the run parks through the outage and finishes;
 #   (b) the killed judge stays down past wait_on_outage_s (300 s here): the run fails with

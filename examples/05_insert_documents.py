@@ -10,9 +10,9 @@ existing ability held fixed. The anchor report checks that no published gain mov
 import html
 import json
 
-import rcp_ndcg as rcp
-from rcp_ndcg.examples import tiny
-from rcp_ndcg.testing import FakeJudge
+import rcp
+from rcp.examples import tiny
+from rcp.testing import FakeJudge
 
 TINY = tiny()  # the example dataset that ships with the package
 dataset = rcp.load_dataset(f"jsonl:{TINY / 'rows.jsonl'}")
@@ -31,7 +31,7 @@ answered = rcp.judge(dataset, pools, judge, stage="rubric", out="judgements-inse
 calibration = rcp.calibrate([fitted, answered])
 
 # Two windows of the schedule's size (four), each holding the new document and three ranked opponents; in a real
-# pool `rcp_ndcg.calibration.select_opponents(calibration, "q1", new, n=..., window=4)` picks them. Exactly these
+# pool `rcp.calibration.select_opponents(calibration, "q1", new, n=..., window=4)` picks them. Exactly these
 # windows are judged (each also reversed: the schedule mirrors), into the calibration's own store.
 windows = [[new, *pools["q1"][:3]], [new, *pools["q1"][3:6]]]
 judged = rcp.judge(dataset, None, judge, stage="tournament", out="judgements-insert", schedule=tournament,

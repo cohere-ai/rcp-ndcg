@@ -7,11 +7,11 @@ import json
 
 from rcp_core.content import Content
 
-from rcp_ndcg.judging import load_prompt
-from rcp_ndcg.judging._parsing.listwise import parse_calibrated_listwise
-from rcp_ndcg.judging._parsing.rubric import parse_rubric_criteria
-from rcp_ndcg.judging.client import Completion, CompletionInput
-from rcp_ndcg.testing import FakeJudge
+from rcp.judging import load_prompt
+from rcp.judging._parsing.listwise import parse_calibrated_listwise
+from rcp.judging._parsing.rubric import parse_rubric_criteria
+from rcp.judging.client import Completion, CompletionInput
+from rcp.testing import FakeJudge
 
 ABILITY = {"low": -2.0, "mid": 0.0, "high": 2.0}
 
@@ -63,7 +63,7 @@ def test_the_answer_is_json_and_the_usage_is_counted() -> None:
 
 
 def test_the_offline_judge_of_a_config_is_a_real_client_over_the_fake_route() -> None:
-    from rcp_ndcg.judging import JudgeClient, JudgeConfig
+    from rcp.judging import JudgeClient, JudgeConfig
 
     client = JudgeClient.from_config(JudgeConfig.fake(seed=3))
     assert type(client) is JudgeClient and client.model == "fake"
@@ -74,7 +74,7 @@ def test_the_offline_judge_of_a_config_is_a_real_client_over_the_fake_route() ->
 
 
 def test_the_fake_judge_of_a_config_keeps_every_field_of_it() -> None:
-    from rcp_ndcg.judging import JudgeConfig
+    from rcp.judging import JudgeConfig
 
     config = JudgeConfig.fake(3).model_copy(
         update={
@@ -96,7 +96,7 @@ def test_a_config_without_a_url_is_refused_with_the_typed_error() -> None:
     IndexError from indexing the empty URL tuple (base_url is optional since decision 15's recipe route)."""
     import pytest
 
-    from rcp_ndcg.judging import JudgeConfig
+    from rcp.judging import JudgeConfig
 
     with pytest.raises(ValueError, match="fake://"):
         FakeJudge(ABILITY, config=JudgeConfig(model="m"))

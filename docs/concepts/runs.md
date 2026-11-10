@@ -9,8 +9,8 @@ your command on the node).
 ## Runs and job runners
 
 A run config names the dataset, the candidates, the judge and the steps (`retrieve`, `fuse`, `rerank`, `tournament`,
-`rubric`, `calibrate`, `evaluate`). `rcp-ndcg run start my_run.yaml` runs them into `runs/<run_id>/`, whose
-`manifest.json` records every step's identity, inputs, outputs and usage (judge calls and tokens). Resuming (`rcp-ndcg run resume --run
+`rubric`, `calibrate`, `evaluate`). `rcp run start my_run.yaml` runs them into `runs/<run_id>/`, whose
+`manifest.json` records every step's identity, inputs, outputs and usage (judge calls and tokens). Resuming (`rcp run resume --run
 runs/<run_id>`) reuses every step whose identity is unchanged (a judging step's identity includes the prompt's
 text hash, the tokenizer's SHA-256 and the pool selection (`candidates.source`, `.system` and `.rankings`, so a
 resume that flips the system re-judges that system's pools); the steps that read the dataset carry its resolved
@@ -21,14 +21,14 @@ dataset has no commit, so it carries the digest of the files its reader reads --
 `beir:` or `images:` directory's sorted listing -- the same digest the judgement store's dataset identity
 carries, so editing the file in place re-runs them; a judging
 step whose store holds the old identity refuses, naming the change and its way out, and `calibrate` keys on the
-judgement stores it reads, whose content already covers the formatting), and `rcp-ndcg run status` shows the
+judgement stores it reads, whose content already covers the formatting), and `rcp run status` shows the
 state of each
 step. Estimate a run with `--estimate` before you start it.
 
 A run's `fuse` step performs the fusion itself: `candidates: {from: fuse, fuse: {systems: {s1: <rankings file>,
 s2: <file>#<system>}, rrf_k: 60}}` fuses the named systems' rankings -- at least two, each a rankings file or one
-system of a file that holds several (`<file>#<system>`) -- with reciprocal rank fusion (`rcp_ndcg.retrieval.fuse`,
-the same arithmetic `rcp-ndcg retrieval fuse` calls), and the run's candidate pools are the fused order. The
+system of a file that holds several (`<file>#<system>`) -- with reciprocal rank fusion (`rcp.retrieval.fuse`,
+the same arithmetic `rcp retrieval fuse` calls), and the run's candidate pools are the fused order. The
 step's record in `manifest.json` names the systems, the constant and the depth, so a reader sees that the fusion
 happened. A declared fusion that cannot be performed is refused with a typed error -- a system's rankings file
 that is not there, a system that was not retrieved into its file, a file of several systems with no `#<system>`
@@ -48,12 +48,12 @@ run's recorded `steps`. `--only rerank` regenerates a missing first stage with t
 the `fuse` step of a fused run; a restore that left no `work/`, which the mirror skips): the documented path is
 not wedged by it, and a later resume records the retrieve step it ran on the way.
 
-The steps run on this machine by default. `rcp-ndcg run start my_run.yaml --runner slurm` (or `kubernetes`) submits
-the run as one job instead, which runs `rcp-ndcg run resume` on the scheduler (`run resume` always runs the run in
+The steps run on this machine by default. `rcp run start my_run.yaml --runner slurm` (or `kubernetes`) submits
+the run as one job instead, which runs `rcp run resume` on the scheduler (`run resume` always runs the run in
 the process that calls it); `run status`, `run logs` and `run cancel` follow it, from any process. `--detach` makes
 `run start` return at once and leaves the run to be followed with `run status`; without `--runner`, the run becomes a
 background job of the local runner. The MCP tool `run_start` always detaches: it returns the run directory, and the
-agent polls `run_status`. `rcp-ndcg run start my_run.yaml --runner slurm --dry-run` prints the step plan and the
+agent polls `run_status`. `rcp run start my_run.yaml --runner slurm --dry-run` prints the step plan and the
 sbatch script (or, for `kubernetes`, the manifests) that would be submitted, and writes nothing.
 
 The plan (``--dry-run``, ``Pipeline.plan()``) is computed from the run directory as it stands: a step that would run
@@ -63,7 +63,7 @@ stale, and a restore without `work/` prints "would run" for a rerank step that t
 current. The plan is a forecast, never a promise; ``run()`` decides from the state it actually produces.
 
 The runner's options go in the run config. Each runner validates them with its own model (`LocalOptions`,
-`SlurmOptions`, `KubernetesOptions` in `rcp_ndcg.runners`), when the config is read and before anything is written,
+`SlurmOptions`, `KubernetesOptions` in `rcp.runners`), when the config is read and before anything is written,
 so a typo leaves no run directory behind. Three of them describe the job rather than the runner: `resources`
 (`gpus`, `cpus`, `memory_gb`, `time_limit_s`), `image` and `env`:
 
@@ -140,7 +140,7 @@ variable (a job's own value would be silently overridden), and a run without `se
 
 ### The coordinator installs itself
 
-The coordinator, the process that runs `rcp-ndcg run resume`, needs no GPU and no image of its own by default:
+The coordinator, the process that runs `rcp run resume`, needs no GPU and no image of its own by default:
 the job's `resources.gpus` is 0 unless a config declares some, and the runners then reserve exactly what the
 config declares (on SLURM a `--gres` on the phase's first node, on Kubernetes a container request —
 [partitioned](#gpus-are-partitioned-per-node-not-shared) ahead of the engines' slices). In a container
@@ -148,17 +148,17 @@ it runs a stock image with uv and Python 3.12 (`ghcr.io/astral-sh/uv:python3.12-
 `image` names another), which installs the same release as the submitting host when the job starts:
 
 ```bash
-uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]==<version>' \
+uvx --from 'rcp[calibrate,hf,s3,azure]==<version>' \
   --constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v<version>/requirements-constraints.txt \
   --index https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match \
-  rcp-ndcg run resume --run <run_dir> --mirror <uri>
+  rcp run resume --run <run_dir> --mirror <uri>
 ```
 
 The constraints file, attached to each GitHub release, is the release's `uv.lock` exported, so every dependency is
 the version the release was tested with. `unsafe-best-match` lets uv consider the PyTorch CPU index next to PyPI for
 every package, so torch resolves to its CPU build at the locked version; without it uv stops at the first index that
 has a package and fails. On Kubernetes uv's cache lives on the scratch volume. Without PyPI, install from the
-repository instead: `--from 'rcp-ndcg[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'`
+repository instead: `--from 'rcp[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'`
 in the larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
 
 **Before the release is on PyPI** (a release candidate, an RC wave on a cluster), and on a node without any network
@@ -196,7 +196,7 @@ same commands are:
 # unpublished fourth workspace member rcp-ndcg-test must not be swept into the release files; the
 # pyproject.toml versions must match)
 uv build --package=rcp-core --out-dir /shared/wheelhouse/0.0.1rc1
-uv build --package=rcp-ndcg --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --package=rcp --out-dir /shared/wheelhouse/0.0.1rc1
 uv build --package=rcp-ndcg-vllm --out-dir /shared/wheelhouse/0.0.1rc1
 # the unpublished harness wheel (the node's client environment imports rcp_ndcg_test), in its own directory
 uv build --package=rcp-ndcg-test --out-dir /shared/wheelhouse/0.0.1rc1/harness
@@ -205,7 +205,7 @@ uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --
   -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
 pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
   -c /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
-  'rcp-ndcg-vllm[test]==<version>' 'rcp-ndcg[hf]==<version>' 'rcp-ndcg-test==<version>' \
+  'rcp-ndcg-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-ndcg-test==<version>' \
   $(for lock in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" || printf -- '-r %s ' "$lock";
     done) \
@@ -296,7 +296,7 @@ The run's steps run in phases -- the *job phases*, distinct from the schedule ph
 the job's GPUs are the maximum over phases instead of the sum over engines.
 Consecutive steps that call the same served engines share a phase, and steps that call no served engine (BM25
 retrieval, hosted APIs, `calibrate`, `evaluate`) form phases without one. The run above becomes four phases, each
-starting only its engines, waiting for readiness, running `rcp-ndcg run resume --run <dir> --only <steps>`, and
+starting only its engines, waiting for readiness, running `rcp run resume --run <dir> --only <steps>`, and
 stopping them before the next phase starts:
 
 1. `retrieve` — the encoder (1 GPU);
@@ -384,7 +384,7 @@ exit. The same bound applies to every job with `serve:`, so an engine that hangs
 A judge whose engine the job does not start keeps its own `wait_on_outage_s`.
 
 A failed job is not retried by default. To run it again, engine included, submit the run again with
-`rcp-ndcg run resume --run <dir> --runner slurm`: it takes the runner options of the run's last
+`rcp run resume --run <dir> --runner slurm`: it takes the runner options of the run's last
 job (a `--set runner.options.<key>=...` change wins over the record) and its `serve:` section, restores the
 directory from the mirror first when the run has one, and the new job
 resumes the run where it stopped, asking only for the windows its stores lack. `run resume` without `--runner`
@@ -423,8 +423,8 @@ judge (both paper judges are): its expert layers then synchronise every forward 
 
 ### The job interface
 
-`rcp_ndcg.runners.get_runner(name, **options)` returns the `local`, `slurm` or `kubernetes` runner, or a runner
-that another installed package registers under the `rcp_ndcg.runners` entry-point group. A job is one command line
+`rcp.runners.get_runner(name, **options)` returns the `local`, `slurm` or `kubernetes` runner, or a runner
+that another installed package registers under the `rcp.runners` entry-point group. A job is one command line
 with its image, resources and environment (`JobSpec.argv`), or the phases to run in order (`JobSpec.phases`) —
 exactly one of the two: a job without phases runs `argv`, a phased job's commands are its phases' `argv`.
 A plugin runner that renders a job's phases declares `renders_phases = True` and takes the phased job (a runner
@@ -432,14 +432,14 @@ without it is handed the whole-run command as the job's `argv`, and a job whose 
 `render` shows what would be submitted without submitting anything:
 
 ```python
-from rcp_ndcg.runners import JobPhase, JobSpec, Resources, ServeConfig, get_runner
+from rcp.runners import JobPhase, JobSpec, Resources, ServeConfig, get_runner
 
 engine = ServeConfig(
     image="vllm/vllm-openai:v0.33.0",
     command="vllm serve openai/gpt-oss-120b --served-model-name gpt-oss-120b --reasoning-parser openai_gptoss",
     resources=Resources(gpus=8),
 )
-resume = ("rcp-ndcg", "run", "resume", "--run", "/shared/runs/nano-nfcorpus")
+resume = ("rcp", "run", "resume", "--run", "/shared/runs/nano-nfcorpus")
 job = JobSpec(
     name="nano-nfcorpus",
     resources=Resources(cpus=8, memory_gb=32, time_limit_s=86400),
@@ -461,7 +461,7 @@ print(kubernetes.render([job])["nano-nfcorpus"])  # the Job: engine phases as in
 
 `runner.submit([job])` submits and returns handles; `runner.status(handle)`, `runner.logs(handle, tail=100)` and
 `runner.cancel(handle)` follow them. A name provided by more than one installed distribution is refused, so a
-plugin cannot shadow `local`, `slurm` or `kubernetes`; `rcp_ndcg.testing.runner_conformance(runner, job=...)` is
+plugin cannot shadow `local`, `slurm` or `kubernetes`; `rcp.testing.runner_conformance(runner, job=...)` is
 the seam's contract a plugin's own tests call (the four methods, the answers' shapes, and `render`,
 `renders_phases` and `run_root` when declared).
 
@@ -529,7 +529,7 @@ object (`pipe_file` on a remote target; a local or shared target publishes whole
 `storage.publish_bytes`), read an object (`cat_file`) and list a prefix (`ls`). A remote target never asks
 whether an object exists, renames or appends; a local target's whole-file write is one temp-file rename (and
 its temp files are skipped). GCS works as installed (`gcsfs` is a dependency), S3 needs `s3fs` (`pip install
-"rcp-ndcg[s3]"`) and Azure `adlfs` (`[azure]`); a protocol with no filesystem installed or registered stops the run at
+"rcp[s3]"`) and Azure `adlfs` (`[azure]`); a protocol with no filesystem installed or registered stops the run at
 start with exit 10, naming what is missing.
 `hf://` works, but every write to the Hub is a commit and its rate limits apply: publish a finished run there, and
 mirror a running one to an object store.
@@ -567,12 +567,12 @@ fsspec.register_implementation("mystore", MyStore, clobber=True)
 ```
 
 Then `--mirror mystore://team/runs/nano` (or `mirror: mystore://team/runs/nano`) mirrors to it. The same class
-serves `rcp_ndcg.runs.Mirror` directly:
+serves `rcp.runs.Mirror` directly:
 
 ```python
 from pathlib import Path
 
-from rcp_ndcg.runs import Mirror, restore
+from rcp.runs import Mirror, restore
 
 Path("run/judgements").mkdir(parents=True)
 Path("run/judgements/rubric.jsonl").write_text('{"window": 1}\n', encoding="utf-8")

@@ -192,7 +192,7 @@ def test_the_planner_reads_the_client_block_as_the_mapping_it_is() -> None:
 
 def test_the_empty_policy_follows_the_role_s_own_field() -> None:
     """``empty_query`` exists on the rerank config only, and ``empty_doc`` governs the DOCUMENT side only
-    (``rcp_ndcg.inference.clients._base``'s per-side policy, L03): the embed and pooling roles send an empty
+    (``rcp.inference.clients._base``'s per-side policy, L03): the embed and pooling roles send an empty
     query as given, so a recipe declaring a query shape plans the query-empty row under ANY ``empty_doc``
     policy, and the document side carries the anchor.  The absent reason names the field it actually read."""
     template = {
@@ -422,7 +422,7 @@ def test_length_rows_fit_the_declared_budget_uncut() -> None:
     """Every planned row fits ``client.max_tokens`` without a cut (the product's fit is the judge)."""
     from rcp_ndcg_test.equivalence.fitting import resolved_tokenizer_spec
 
-    from rcp_ndcg.data.preprocess import TextBudget, TextTruncationCensus, fit
+    from rcp.data.preprocess import TextBudget, TextTruncationCensus, fit
 
     recipe, plan = _plan()
     tokenizer = tokenizer_of(recipe)
@@ -1008,7 +1008,7 @@ def test_the_video_clips_are_structurally_sound_avis() -> None:
     from PIL import Image
     from rcp_ndcg_test.observe.media_set import VIDEO_CLIPS, VIDEO_FPS, video_entry
 
-    from rcp_ndcg.data.media import probe_video_header
+    from rcp.data.media import probe_video_header
 
     for name, width, height in VIDEO_CLIPS:
         entry = video_entry(name, width, height, num_frames=12)
@@ -1225,8 +1225,8 @@ def test_the_offline_media_probe_bounds_the_engine_side_reply_rule(tmp_path: Pat
     from rcp_ndcg_test.equivalence.media import _offline_reply_probe
     from rcp_ndcg_test.equivalence.wire import role_client
 
-    from rcp_ndcg.errors import RcpNdcgError
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.errors import RcpNdcgError
+    from rcp.inference.types import EncodeRole
 
     image = tmp_path / "page.png"
     buffer = __import__("io").BytesIO()

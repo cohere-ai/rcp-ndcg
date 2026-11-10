@@ -172,7 +172,7 @@ def test_wave_runs_a_recipe_end_to_end(tmp_path: Path) -> None:
     import subprocess
     import tomllib
 
-    version = tomllib.loads((ROOT / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    version = tomllib.loads((ROOT / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     checked = subprocess.run(
         [
             sys.executable,

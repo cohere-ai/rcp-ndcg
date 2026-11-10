@@ -109,7 +109,7 @@ MOVED_HARNESS = (
     "changes",
     "e2e",
 )
-PRE_MOVE_PREFIXES = ("rcp_ndcg_vllm.", "rcp_ndcg.testing.")
+PRE_MOVE_PREFIXES = ("rcp_ndcg_vllm.", "rcp.testing.")
 
 
 def test_the_harness_modules_are_named_at_their_shipped_home() -> None:

@@ -13,7 +13,7 @@
 #   (b) bootstrap the three environments via bootstrap.sh; the engine's pip freeze must not change
 #                 (no plugin wheel in wave 0)
 #   (c) reach     the Hub with the token secret (a metadata call), and a gs:// write/list/read/delete
-#                 round-trip through rcp_ndcg.storage from the client environment; PyPI is not required
+#                 round-trip through rcp.storage from the client environment; PyPI is not required
 #   (d) engines   two engines at once on two slots (the pinned embedding model, and any small second
 #                 model), each with its own CUDA_VISIBLE_DEVICES, port, VLLM_PORT, TMPDIR and log dir
 #   (e) embed     the texts under an explicit budget through the product's fit() and EmbeddingClient,
@@ -77,7 +77,7 @@ if [[ "${WAVE0_DRY:-0}" == "1" ]]; then
   echo "  b. bootstrap  $BOOTSTRAP_SH envs $RC_STAGE_URI --state <state>"
   echo "                (three environments; the engine's pip freeze must not change - no plugin in wave 0)"
   echo "  c. reach      the Hub metadata for $WAVE0_MODEL@$WAVE0_REVISION with HF_TOKEN, and a gs://"
-  echo "                write/list/read/delete round-trip through rcp_ndcg.storage under $OUT_URI (client env)"
+  echo "                write/list/read/delete round-trip through rcp.storage under $OUT_URI (client env)"
   echo "  d. engines    vllm serve $WAVE0_MODEL@$WAVE0_REVISION on slot 0 (port $WAVE0_PORT_BASE, VLLM_PORT"
   echo "                $WAVE0_VLLM_PORT_BASE) and $WAVE0_SECOND_MODEL on slot 1, both up at the same time"
   echo "  e. embed      product fit() + EmbeddingClient over $WAVE0_COUNT texts ($WAVE0_OVER over a"

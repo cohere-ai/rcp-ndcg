@@ -1,7 +1,7 @@
 {
   "$defs": {
     "CliError": {
-      "description": "Why a command failed and what to do next (the exit-code table of rcp_ndcg.errors).",
+      "description": "Why a command failed and what to do next (the exit-code table of rcp.errors).",
       "properties": {
         "code": {
           "enum": [
@@ -93,7 +93,7 @@
       "type": "object"
     },
     "CliWarning": {
-      "description": "A typed warning: ``code`` is from the closed list rcp_ndcg.errors.WarningCode.",
+      "description": "A typed warning: ``code`` is from the closed list rcp.errors.WarningCode.",
       "properties": {
         "code": {
           "enum": [

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg import schemas
-from rcp_ndcg.errors import UsageError
+from rcp import schemas
+from rcp.errors import UsageError
 from tests._jsonschema import problems
 
 
@@ -68,7 +68,7 @@ def test_the_shipped_run_configs_have_the_types_the_run_config_schema_declares()
     import yaml
 
     schema = schemas.show("run-config")
-    from rcp_ndcg.examples import run_config_names, run_config_path
+    from rcp.examples import run_config_names, run_config_path
 
     paths = [run_config_path(name) for name in run_config_names()]
     assert len(paths) > 1
@@ -88,11 +88,11 @@ def test_every_model_that_tags_its_payload_has_an_exported_schema() -> None:
 
     from pydantic import BaseModel
 
-    import rcp_ndcg
+    import rcp
 
     exported = {entry.schema_id for entry in schemas.entries()}
     tagged: dict[str, str] = {}
-    for info in pkgutil.walk_packages(rcp_ndcg.__path__, "rcp_ndcg."):
+    for info in pkgutil.walk_packages(rcp.__path__, "rcp."):
         if info.name.endswith("__main__"):
             continue
         try:
@@ -130,7 +130,7 @@ def _runner_sections_of_the_docs() -> list[tuple[str, dict]]:
 def test_a_written_run_config_and_the_docs_runner_examples_validate_against_the_run_config_schema() -> None:
     """Every runner section matched two branches of the schema's oneOf (a public runner's and the plugin's), so no
     written run.yaml validated; and a public runner's option typo matched the plugin's branch, so it did."""
-    from rcp_ndcg.runs import RunConfig
+    from rcp.runs import RunConfig
 
     schema = schemas.show("run-config")
     runners = [
@@ -161,7 +161,7 @@ def test_the_eval_score_schema_describes_the_results_fields() -> None:
     contract for the output of the main ``--json`` command."""
     from rcp_core.protocol import Protocol
 
-    from rcp_ndcg.cli.eval import EvalScoreResult
+    from rcp.cli.eval import EvalScoreResult
 
     schema = schemas.show("eval-score")
     assert {

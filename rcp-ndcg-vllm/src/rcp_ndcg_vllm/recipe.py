@@ -1,5 +1,5 @@
 """The recipe schema: one declarative description of how a model is served with vLLM and read back by
-``rcp-ndcg``.
+``rcp``.
 
 The shipped recipes are package data (``rcp_ndcg_vllm/recipes/<family>/``), read through
 :mod:`importlib.resources`. A **family directory** carries (one family, many sizes,
@@ -16,14 +16,14 @@ every size its own tested recipe id):
 
 Every variant resolves to a full :class:`Recipe` — exactly what a standalone recipe described before
 the families (the resolved recipe's JSON Schema is unchanged) — and every consumer (``serve``,
-``recipe: <id>`` in rcp-ndcg, the harness, the wave lists, the catalog) works on variant ids; a
+``recipe: <id>`` in rcp, the harness, the wave lists, the catalog) works on variant ids; a
 family id is never served. A single-size model is a family with one variant: there is no second,
 standalone loading path.
 
 The recipe's ``client`` block **is** the product's endpoint config for the role
-(:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`, ``PoolingEndpoint`` or ``RerankEndpoint``): it stays
+(:class:`~rcp.inference.config.EmbeddingEndpoint`, ``PoolingEndpoint`` or ``RerankEndpoint``): it stays
 **plain data here** — this package depends on pydantic and PyYAML only, so ``pip install --no-deps`` works in a
-stock engine image — and ``rcp-ndcg`` validates it with the product's own models when it reads it (a recipe
+stock engine image — and ``rcp`` validates it with the product's own models when it reads it (a recipe
 resolution through ``recipe: <id>``). The load-time checks below are the ones readable without the product: the
 role/wire matrix, the injected ids and the budget arithmetic.
 
@@ -43,7 +43,7 @@ budget; the other deployment fields are the engine's own flags, which the recipe
 defaults apply until an operator sets them).
 
 A recipe may also be **a file of the operator's own**: ``rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]``
-(and ``recipe:./family-dir`` in an rcp-ndcg config) loads a family directory through this same schema, marks it
+(and ``recipe:./family-dir`` in an rcp config) loads a family directory through this same schema, marks it
 unshipped (:attr:`Recipe.shipped`) with ``status: unverified``, and identifies it by the content hash of its
 resolved form (:attr:`Recipe.identity`) instead of a shipped id.
 
@@ -182,7 +182,7 @@ _ROLE_WIRE = {"embed": "openai_embeddings", "multi_vector": "vllm_pooling", "rer
 """The wire each role speaks (the product refuses a config whose role and wire disagree).
 
 A judge recipe declares ``client.api: chat``, the recipe-facing name of the judge role's
-``openai_chat`` wire (:data:`rcp_ndcg.inference.adapters.base._ALIASES`)."""
+``openai_chat`` wire (:data:`rcp.inference.adapters.base._ALIASES`)."""
 
 JUDGE_CAP_WITHOUT_WINDOW: tuple[str, ...] = ("qwen3.6-27b-fp8",)
 """The judge recipe variants the product declares as a cap-without-window exception, by recipe id.
@@ -335,7 +335,7 @@ class ServeConfig(BaseModel):
 
     model_config = ConfigDict(**_no_extra())
 
-    runner: Literal["pooling", "generate"] = Field(description="vLLM --runner; the rcp-ndcg routes need pooling")
+    runner: Literal["pooling", "generate"] = Field(description="vLLM --runner; the rcp routes need pooling")
     convert: Literal["embed", "classify"] | None = Field(
         default=None, description="vLLM --convert, for a decoder checkpoint turned into an embed or classify model"
     )
@@ -601,8 +601,8 @@ class StatusSpec(BaseModel):
 class RecipeFieldRole(StrEnum):
     """What a field of the recipe schema may do to a served identity.
 
-    The vocabulary is rcp-ndcg's CONTENT/RUNTIME split (``rcp_ndcg.support.identity``), re-declared here because
-    this package must not import ``rcp-ndcg``: the engine image installs it with ``--no-deps`` and rcp-ndcg is
+    The vocabulary is rcp's CONTENT/RUNTIME split (``rcp.support.identity``), re-declared here because
+    this package must not import ``rcp``: the engine image installs it with ``--no-deps`` and rcp is
     not there. The role that is new is the one that makes a field an operator's knob:
 
     ``CONTENT``
@@ -689,7 +689,7 @@ _CONTENT_HINT = "a different revision or content is a different variant: add a v
 
 
 class Recipe(BaseModel):
-    """One served model: how vLLM serves it, how ``rcp-ndcg`` reads it, and what it is checked against.
+    """One served model: how vLLM serves it, how ``rcp`` reads it, and what it is checked against.
 
     Construct it through :func:`load_recipe` (which also checks the referenced files exist, that ``id`` equals
     the directory name, and that the ``client`` block constructs the product's endpoint model); the model itself
@@ -704,7 +704,7 @@ class Recipe(BaseModel):
         revision: The exact commit of ``model`` (40 hex); serving and client cutting pin it.
         role: What the model produces: ``embed`` (one dense vector), ``multi_vector`` (one vector per token),
             ``rerank`` (query-document scores) or ``judge`` (the chat-completions judging stages; its client
-            block is rcp-ndcg's judge config, its ``serve`` block carries the reasoning parser, and it has no
+            block is rcp's judge config, its ``serve`` block carries the reasoning parser, and it has no
             ``reference``).
         input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.
         scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole
@@ -714,7 +714,7 @@ class Recipe(BaseModel):
         resources: The GPUs the engine occupies (``--tensor-parallel-size``).
         serve: Everything rendered into ``vllm serve`` argv.
         client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys
-            are injected here and refused in the YAML); ``rcp-ndcg`` validates the whole block with the
+            are injected here and refused in the YAML); ``rcp`` validates the whole block with the
             product's endpoint class when it resolves the recipe.
         reference: The subprocess reference the harness compares against; **``None`` for ``role: judge``**
             (a judge recipe has no reference -- its conformance is the judge probe and the T4
@@ -734,7 +734,7 @@ class Recipe(BaseModel):
     schema_version: str = Field(
         pattern=r"^\d+$",
         description="the recipe file format's version (the file format is the versioned contract "
-        "between rcp-ndcg and rcp-ndcg-vllm; the reader checks the versions it understands, so the two "
+        "between rcp and rcp-ndcg-vllm; the reader checks the versions it understands, so the two "
         "packages need no lockstep version pin)",
     )
     model: str = Field(min_length=1, description="Hugging Face repo id")
@@ -800,7 +800,7 @@ class Recipe(BaseModel):
     @model_validator(mode="after")
     def _recipe_rules(self) -> Recipe:
         """The rules readable without the product: the role/wire matrix, the reference rule and the budget
-        arithmetic. The product's own endpoint validations run when ``rcp-ndcg`` reads the client block."""
+        arithmetic. The product's own endpoint validations run when ``rcp`` reads the client block."""
         rerank = self.role == "rerank"
         judge = self.role == "judge"
         if rerank and self.scoring is None:
@@ -811,7 +811,7 @@ class Recipe(BaseModel):
             raise ValueError(
                 "a judge recipe has no reference: the equivalence harness compares a served "
                 "model against a reference implementation, and a judge has none -- its conformance is the judge "
-                "probe (`rcp-ndcg judge check`) and the T4 scenarios. Drop the reference block"
+                "probe (`rcp judge check`) and the T4 scenarios. Drop the reference block"
             )
         if not judge and self.reference is None:
             raise ValueError(

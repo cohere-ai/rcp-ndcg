@@ -52,7 +52,7 @@ def _rescale(theta: dict[str, float], tau: float, alpha: float) -> dict[str, flo
     return {d: tau * v + alpha for d, v in theta.items()}
 
 
-def rcp_ndcg(ranking: list[str], thetas: dict[str, float], items: dict, *, k: int) -> float:
+def rcp(ranking: list[str], thetas: dict[str, float], items: dict, *, k: int) -> float:
     return ndcg(ranking, {d: gain(t, items) for d, t in thetas.items()}, k=k)
 
 
@@ -80,9 +80,9 @@ def test_rcp_ndcg_is_not_pinned() -> None:
     top-k documents earn even though their order is fixed.
     """
     ranking = DOCS[:10]
-    base = rcp_ndcg(ranking, BASE_THETA, ITEM_PARAMS, k=10)
+    base = rcp(ranking, BASE_THETA, ITEM_PARAMS, k=10)
     moved = [
-        rcp_ndcg(ranking, _rescale(BASE_THETA, tau, alpha), ITEM_PARAMS, k=10)
+        rcp(ranking, _rescale(BASE_THETA, tau, alpha), ITEM_PARAMS, k=10)
         for tau, alpha in AFFINE_CASES
         if (tau, alpha) != (1.0, 0.0)
     ]
@@ -94,6 +94,6 @@ def test_rcp_ndcg_is_not_pinned() -> None:
 
 def test_identity_transform_changes_nothing() -> None:
     ranking = DOCS[:10]
-    assert rcp_ndcg(ranking, _rescale(BASE_THETA, 1.0, 0.0), ITEM_PARAMS, k=10) == pytest.approx(
-        rcp_ndcg(ranking, BASE_THETA, ITEM_PARAMS, k=10)
+    assert rcp(ranking, _rescale(BASE_THETA, 1.0, 0.0), ITEM_PARAMS, k=10) == pytest.approx(
+        rcp(ranking, BASE_THETA, ITEM_PARAMS, k=10)
     )

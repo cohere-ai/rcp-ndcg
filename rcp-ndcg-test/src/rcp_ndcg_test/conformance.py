@@ -7,10 +7,10 @@ Two targets:
 
 - ``target="engine"``: ``base_url`` of a live engine serving the recipe (a vLLM on a GPU slot, or any
   process speaking the role's routes). The runner's own
-  :class:`~rcp_ndcg.inference.transport.Transport` sends through real HTTP.
+  :class:`~rcp.inference.transport.Transport` sends through real HTTP.
 - ``target="fake"``: a recipe-level fake engine (:mod:`rcp_ndcg_test.fakes`), resolved through the
   registry by recipe id. The fake sits *below* the transport: the runner hands it to the product's
-  :class:`~rcp_ndcg.inference.transport.Transport` as an ``httpx`` transport, so routing, retries and
+  :class:`~rcp.inference.transport.Transport` as an ``httpx`` transport, so routing, retries and
   the adapters all run in the product's code path.
 
 The report is per case (:class:`CaseResult`: compared, passed, skipped with a reason) and per run
@@ -240,8 +240,8 @@ def _resolve(recipe: Recipe, target: Target, base_url: str | None, fake_engine: 
             )
         if fake_engine is not None:
             raise ConformanceError(f"recipe {recipe.id}: target 'engine' takes a base_url, not a fake engine")
-        from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+        from rcp.inference.transport import Transport
 
         classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
         endpoint = classes[recipe.role].model_validate({**client, **runtime, "base_url": base_url})
@@ -250,8 +250,8 @@ def _resolve(recipe: Recipe, target: Target, base_url: str | None, fake_engine: 
     if base_url is not None:
         raise ConformanceError(f"recipe {recipe.id}: target 'fake' takes a fake engine, not a base_url")
     engine = fake_engine if fake_engine is not None else _registered_fake(recipe)
-    from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-    from rcp_ndcg.inference.transport import Transport
+    from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+    from rcp.inference.transport import Transport
 
     classes = {"embed": EmbeddingEndpoint, "multi_vector": PoolingEndpoint, "rerank": RerankEndpoint}
     endpoint = classes[recipe.role].model_validate({**client, **runtime, "base_url": _FAKE_BASE_URL})
@@ -379,18 +379,18 @@ def _send(resolved: _Resolved, case: Case) -> _Sent:
     The client does every content decision -- the per-side prompts, the text budget's fit and cut, the
     instruction fold, the media preparation and the empty-document rule -- from the recipe's ``client``
     block; the runner pre-fits nothing. For ``embed`` and ``multi_vector``: the raw queries and documents
-    through :class:`~rcp_ndcg.inference.clients.EmbeddingClient` / ``PoolingClient``, as a pair of
-    :class:`~rcp_ndcg.inference.types.Embeddings`. For ``rerank``: the raw queries, documents and
-    instruction through :class:`~rcp_ndcg.inference.clients.RerankClient` (``rerank_many``), as one
-    :class:`~rcp_ndcg.inference.types.RerankResult` per query, aligned to the case's documents.
+    through :class:`~rcp.inference.clients.EmbeddingClient` / ``PoolingClient``, as a pair of
+    :class:`~rcp.inference.types.Embeddings`. For ``rerank``: the raw queries, documents and
+    instruction through :class:`~rcp.inference.clients.RerankClient` (``rerank_many``), as one
+    :class:`~rcp.inference.types.RerankResult` per query, aligned to the case's documents.
 
     The client's processing records are read beside the answer: which cells it changed relative to the raw
     input, the referent of the over-cap report-not-compare rule.
     """
     if resolved.recipe.role == "rerank":
         return _send_rerank(resolved, case)
-    from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.clients import EmbeddingClient, PoolingClient
+    from rcp.inference.types import EncodeRole
 
     client: Any = (PoolingClient if resolved.recipe.role == "multi_vector" else EmbeddingClient)(
         resolved.endpoint, sender=resolved.sender
@@ -443,7 +443,7 @@ def _send_rerank(resolved: _Resolved, case: Case) -> _Sent:
     """
     from rcp_core.records import RankingExample
 
-    from rcp_ndcg.inference.clients import RerankClient
+    from rcp.inference.clients import RerankClient
 
     client = RerankClient(resolved.endpoint, sender=resolved.sender)
     doc_ids = [document.id for document in case.inputs.documents]
@@ -491,7 +491,7 @@ def _rerank_changed(client: Any, start: int, n_documents: int) -> list[bool]:
     changes that pair; the reranker's shared query (``QUERY_DOC_ID``) or a record under no position changes
     every pair of the call.
     """
-    from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
+    from rcp.inference.clients.rerank import QUERY_DOC_ID
 
     flags = [False] * n_documents
     for record in client.processing[start:]:
@@ -558,7 +558,7 @@ def _matrix(answer: Any) -> Any:
     the matrix is computed on unit vectors either way). ``multi_vector``: MaxSim, through the product's
     exact scorer. ``rerank``: the relevance scores, aligned to the documents by position.
     """
-    from rcp_ndcg.inference.types import Embeddings, RerankResult
+    from rcp.inference.types import Embeddings, RerankResult
 
     if isinstance(answer, tuple) and len(answer) == 2 and all(isinstance(item, Embeddings) for item in answer):
         query_vectors, document_vectors = answer
@@ -574,7 +574,7 @@ def _similarity_matrix(query_vectors: Any, document_vectors: Any) -> Any:
     A single-vector pair scores cosine; a late-interaction pair scores MaxSim with the product's
     blocked scorer and its tie rule (ties toward the lower document index).
     """
-    from rcp_ndcg.inference.types import l2_normalize
+    from rcp.inference.types import l2_normalize
 
     if query_vectors.num_items == 0 or document_vectors.num_items == 0:
         raise ConformanceError("the case sent no queries or no documents; there is nothing to compare")
@@ -589,7 +589,7 @@ def _similarity_matrix(query_vectors: Any, document_vectors: Any) -> Any:
 
 def _maxsim_matrix(document_vectors: Any, query_vectors: Any) -> Any:
     """The full query x document MaxSim matrix from the product's top-k scorer (``k`` = all documents)."""
-    from rcp_ndcg.retrieval.maxsim import maxsim_topk
+    from rcp.retrieval.maxsim import maxsim_topk
 
     n_documents = document_vectors.num_items
     scores, indices = maxsim_topk(document_vectors, query_vectors, k=n_documents)

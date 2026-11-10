@@ -1,6 +1,6 @@
 """Plugin tests that need vLLM importable (the engine image's environment).
 
-These skip with a clear reason wherever vLLM cannot import on CPU (the rcp-ndcg dev
+These skip with a clear reason wherever vLLM cannot import on CPU (the rcp dev
 venv carries torch only); on the GPU wave they run against the image's vLLM 0.33.0.
 """
 
@@ -11,7 +11,7 @@ import torch
 
 pytest.importorskip(
     "vllm",
-    reason="vLLM is not importable in this environment (the rcp-ndcg dev venv carries "
+    reason="vLLM is not importable in this environment (the rcp dev venv carries "
     "torch only, by design); the wired-pooler and model-class checks run on the GPU "
     "wave, whose engine image has vLLM 0.33.0",
 )

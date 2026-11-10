@@ -447,7 +447,7 @@ def _pad_to_tokens(tokenizer: Any, seed: str, target: int) -> str:
     """Grow ``seed`` until it counts ``target`` tokens of the recipe's tokenizer (within 2 tokens).
 
     The pad is located by the tokenizer's offset mapping over ONE tokenization (the product's
-    :func:`rcp_ndcg.data.preprocess.token_prefix`), never by re-tokenizing whole candidate strings --
+    :func:`rcp.data.preprocess.token_prefix`), never by re-tokenizing whole candidate strings --
     a long seed and a long target cost one pass, bounded by a test on a long synthetic document.
 
     Inputs: the recipe's tokenizer, a seed text and the target token count (tokens of the padded
@@ -455,7 +455,7 @@ def _pad_to_tokens(tokenizer: Any, seed: str, target: int) -> str:
     seed).  Units: tokens of ``tokenizer.count(..., add_special_tokens=False)`` (the recipe's own
     tokens).
     """
-    from rcp_ndcg.data.preprocess import token_prefix
+    from rcp.data.preprocess import token_prefix
 
     seed_tokens = tokenizer.count(seed)
     if target <= seed_tokens:

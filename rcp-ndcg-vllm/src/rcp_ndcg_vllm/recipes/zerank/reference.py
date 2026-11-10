@@ -64,7 +64,7 @@ def _recipe_dir() -> Path:
 def _split_spec(spec: str) -> tuple[str, str | None, bool]:
     """A tokenizer spec into (repo-or-path, revision, is_path).
 
-    The same resolution rule as the product's ``rcp_ndcg.data.tokenizer._local_path``: a path is
+    The same resolution rule as the product's ``rcp.data.tokenizer._local_path``: a path is
     anything that exists, is absolute or relative, or ends in ``.json``."""
     if spec.startswith(("/", "./", "../", "~")) or spec.endswith(".json") or Path(spec).exists():
         return spec, None, True

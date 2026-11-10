@@ -17,14 +17,14 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.judging import JudgementStore
+from rcp.judging import JudgementStore
 
 WORKER = r"""
 import json, os, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
 from rcp_core.schemas import JudgementFamily, Judgement, Placement
-from rcp_ndcg.judging.store import JudgementStore
+from rcp.judging.store import JudgementStore
 
 root, stage, rounds, barrier = sys.argv[1], sys.argv[2], int(sys.argv[3]), Path(sys.argv[4])
 claim = len(sys.argv) < 6 or sys.argv[5] != "no-claim"
@@ -40,7 +40,7 @@ if claim:
     store.claim(stage, identity, family)
     # What a real pass writes after the claim: the endpoint's report (two identity rewrites per pass, as judge()
     # does: claim, then note_engines after the probe, then after the answers).
-    from rcp_ndcg.judging.client import EngineInfo
+    from rcp.judging.client import EngineInfo
 
     store.note_engines(stage, [EngineInfo(url="http://h:8000/v1", model="m", max_model_len=8192)])
 writer = os.getpid()

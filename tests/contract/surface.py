@@ -32,10 +32,10 @@ from typing import Any
 import pydantic
 from pydantic import BaseModel
 
-from rcp_ndcg.support import api_docs
+from rcp.support import api_docs
 
 REPO = Path(__file__).resolve().parents[2]
-PACKAGES = ("rcp_core", "rcp_ndcg", "rcp_ndcg_vllm")
+PACKAGES = ("rcp_core", "rcp", "rcp_ndcg_vllm")
 HEAVY = (
     "torch",
     "transformers",
@@ -50,7 +50,7 @@ HEAVY = (
     "matplotlib",
 )
 _ADDRESS = re.compile(r" at 0x[0-9a-fA-F]+")
-_SCRATCH = re.compile(r"<tmp>/rcp-ndcg-tests-[\w]+")
+_SCRATCH = re.compile(r"<tmp>/rcp-tests-[\w]+")
 
 
 def render(obj: Any) -> str:
@@ -65,11 +65,11 @@ def render(obj: Any) -> str:
 def _path_markers() -> list[tuple[str, str]]:
     import rcp_core
 
-    import rcp_ndcg
+    import rcp
 
     markers = [
         (tempfile.gettempdir(), "<tmp>"),
-        (str(Path(rcp_ndcg.__file__).resolve().parent), "<rcp_ndcg>"),
+        (str(Path(rcp.__file__).resolve().parent), "<rcp>"),
         (str(Path(rcp_core.__file__).resolve().parent), "<rcp_core>"),
         (str(REPO), "<repo>"),
         (str(Path.cwd()), "<cwd>"),
@@ -303,7 +303,7 @@ def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
         try:
             module = importlib.import_module(name)
         except ModuleNotFoundError as exc:
-            if exc.name and exc.name.split(".")[0] in {"rcp_ndcg", "rcp_core", "rcp_ndcg_vllm"}:
+            if exc.name and exc.name.split(".")[0] in {"rcp", "rcp_core", "rcp_ndcg_vllm"}:
                 raise
             out[name] = {"requires_extra": exc.name.split(".")[0] if exc.name else "?"}
             continue
@@ -333,8 +333,8 @@ def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
 
 
 def collect_cli() -> dict[str, Any]:
-    """The CLI tree from the package's own collector (what ``rcp-ndcg schema show commands`` prints)."""
-    from rcp_ndcg.cli.introspect import describe_commands
+    """The CLI tree from the package's own collector (what ``rcp schema show commands`` prints)."""
+    from rcp.cli.introspect import describe_commands
 
     tree = describe_commands(include_help=False).model_dump(mode="json")["commands"]
     for command in tree.values():
@@ -352,7 +352,7 @@ def collect_cli() -> dict[str, Any]:
 
 
 def collect_mcp() -> dict[str, Any]:
-    from rcp_ndcg import mcp
+    from rcp import mcp
 
     tools = {}
     for tool in mcp.tool_manifest().model_dump(mode="json", by_alias=True)["tools"]:
@@ -366,7 +366,7 @@ def collect_mcp() -> dict[str, Any]:
 
 
 def collect_exit_codes() -> dict[str, Any]:
-    from rcp_ndcg import errors
+    from rcp import errors
 
     codes = {member.name: int(member.value) for member in errors.ExitCode}
     classes = {}
@@ -490,7 +490,7 @@ def entry_point_groups(path: Path) -> set[str]:
 def collect_packaging() -> dict[str, Any]:
     projects = {}
     for pyproject in (
-        REPO / "rcp-ndcg" / "pyproject.toml",
+        REPO / "rcp" / "pyproject.toml",
         REPO / "rcp-core/pyproject.toml",
         REPO / "rcp-ndcg-vllm/pyproject.toml",
     ):
@@ -500,13 +500,13 @@ def collect_packaging() -> dict[str, Any]:
             "entry_points": {group: sorted(eps) for group, eps in data.get("entry-points", {}).items()},
         }
     read_groups = set()
-    for base in (REPO / "rcp-ndcg" / "src", REPO / "rcp-core/src", REPO / "rcp-ndcg-vllm/src"):
+    for base in (REPO / "rcp" / "src", REPO / "rcp-core/src", REPO / "rcp-ndcg-vllm/src"):
         for path in base.rglob("*.py"):
             read_groups |= entry_point_groups(path)
     return {
         "projects": projects,
         "entry_point_groups_read": sorted(read_groups),
-        "heavy_imports": {mod: _heavy_after(mod) for mod in ("rcp_core", "rcp_ndcg", "rcp_ndcg.cli.main")},
+        "heavy_imports": {mod: _heavy_after(mod) for mod in ("rcp_core", "rcp", "rcp.cli.main")},
         "pydantic_version": pydantic.VERSION,
     }
 

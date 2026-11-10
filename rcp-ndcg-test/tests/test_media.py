@@ -75,7 +75,7 @@ def stub_for(recipe: Any, *flags: str) -> Any:
     and the processor family the recipe's client declares: the stub's defaults are qwen2_vl's geometry, so a
     fixture on another family (the video fixture's qwen3_vl) would otherwise resize and count its media as
     the wrong engine."""
-    from rcp_ndcg.data.resolution import PROCESSORS
+    from rcp.data.resolution import PROCESSORS
 
     argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
     argv = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
@@ -115,7 +115,7 @@ def test_a_text_first_placement_fails_the_stage(recipe: Any, tmp_path: Path, mon
     it in place) -- the captioned page's placement differs from the card's and the stage fails on it."""
     from rcp_core.content import Content, TextPart
 
-    from rcp_ndcg.inference.clients._base import RoleClient
+    from rcp.inference.clients._base import RoleClient
 
     def text_first(content: Content, text: str) -> Content:
         parts: list[Any] = [TextPart(text=text)] if text else []
@@ -327,7 +327,7 @@ def test_an_image_whose_tokens_are_not_counted_fails(
     """A token count neither side produced is never an equality: uncounted (None) on both sides fails the item."""
     from rcp_ndcg_test.equivalence import media
 
-    from rcp_ndcg.data import resolution
+    from rcp.data import resolution
 
     def uncountable(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("no count")
@@ -493,7 +493,7 @@ def test_an_interleaved_row_pins_the_given_part_order(
     given part order) -- the interleaved row's placement differs from the card's and the stage fails on it."""
     from rcp_core.content import Content, TextPart
 
-    from rcp_ndcg.inference.clients._base import RoleClient
+    from rcp.inference.clients._base import RoleClient
 
     def media_first(content: Content, text: str) -> Content:
         parts: list[Any] = [part for part in content.parts if not isinstance(part, TextPart)]

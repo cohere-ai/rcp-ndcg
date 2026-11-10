@@ -1,4 +1,4 @@
-"""Tests for :mod:`rcp_ndcg.storage`.
+"""Tests for :mod:`rcp.storage`.
 
 ``memory://`` stands in for a real object store: fsspec's in-memory filesystem
 is a genuine non-local backend (no directories, protocol-qualified listings),
@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg import storage
-from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError, classify
+from rcp import storage
+from rcp.errors import ConfigError, DataError, DependencyError, MissingInputError, classify
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +46,7 @@ class TestUri:
     )
     def test_safe_url_strips_userinfo_query_and_fragment_only(self, url: str, safe: str) -> None:
         """The one redactor for anything a URL leaves in a log, an error or a record."""
-        from rcp_ndcg.support.urls import safe_url
+        from rcp.support.urls import safe_url
 
         assert safe_url(url) == safe
 
@@ -110,7 +110,7 @@ class TestReadWrite:
         anyway, so no locale-based case can tell the two behaviours apart: the test skips itself there."""
         import locale
 
-        from rcp_ndcg.storage.io import load_text
+        from rcp.storage.io import load_text
 
         prompt = tmp_path / "prompt.txt"
         prompt.write_text("héllo\n", encoding="utf-8")
@@ -142,7 +142,7 @@ class TestJsonl:
     def test_blank_lines_are_skipped_locally_and_remotely(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.storage.io import iter_jsonl
+        from rcp.storage.io import iter_jsonl
 
         monkeypatch.setenv("RCP_NDCG_CACHE_DIR", str(tmp_path / "cache"))
         (tmp_path / "data.jsonl").write_text(self.ROWS, encoding="utf-8")
@@ -153,7 +153,7 @@ class TestJsonl:
 
     def test_a_bad_line_is_a_data_error_that_names_it(self, tmp_path: Path) -> None:
         """A corpus fails on row 4.3 million; the line number is how you find it."""
-        from rcp_ndcg.storage.io import iter_json_lines, iter_jsonl
+        from rcp.storage.io import iter_json_lines, iter_jsonl
 
         path = tmp_path / "data.jsonl"
         path.write_text('{"query": "q1", "query_id": "1", "doc_ids": ["d1"]}\n\nBROKEN\n', encoding="utf-8")
@@ -367,7 +367,7 @@ class TestCache:
 
     def test_a_backend_without_identity_warns_and_never_reuses(self, monkeypatch: pytest.MonkeyPatch, caplog) -> None:
         # configure_logging (run by other tests) silences the package logger's propagation.
-        monkeypatch.setattr(logging.getLogger("rcp_ndcg"), "propagate", True)
+        monkeypatch.setattr(logging.getLogger("rcp"), "propagate", True)
         calls: list[str] = []
         real_get = storage.core.get
 
@@ -449,21 +449,21 @@ class TestBackendErrors:
             raise ImportError(f"no module for {protocol}")
 
         monkeypatch.setattr(fsspec, "filesystem", _raise)
-        monkeypatch.setattr("rcp_ndcg.storage.core._FS_CACHE", {})
+        monkeypatch.setattr("rcp.storage.core._FS_CACHE", {})
 
         with pytest.raises(DependencyError, match=r"s3") as missing:
             storage.filesystem("s3://bucket/key")
-        assert missing.value.hint == 'pip install "rcp-ndcg[s3]"'
+        assert missing.value.hint == 'pip install "rcp[s3]"'
 
     def test_a_missing_backend_is_a_dependency_error_not_a_bug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         pytest.importorskip("fsspec")
         if importlib.util.find_spec("s3fs") is not None:
             pytest.skip("s3fs is installed")
-        monkeypatch.setattr("rcp_ndcg.storage.core._FS_CACHE", {})
+        monkeypatch.setattr("rcp.storage.core._FS_CACHE", {})
         with pytest.raises(Exception) as raised:
             storage.exists("s3://b/k")
         error = classify(raised.value)
-        assert error.exit_code == 10 and error.hint == 'pip install "rcp-ndcg[s3]"'
+        assert error.exit_code == 10 and error.hint == 'pip install "rcp[s3]"'
 
 
 class TestPublishConcurrency:

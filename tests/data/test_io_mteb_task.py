@@ -14,9 +14,9 @@ import os
 
 import pytest
 
-from rcp_ndcg.data import load_dataset
-from rcp_ndcg.data.io.mteb_task import MtebTaskReader
-from rcp_ndcg.errors import ConfigError
+from rcp.data import load_dataset
+from rcp.data.io.mteb_task import MtebTaskReader
+from rcp.errors import ConfigError
 
 mteb = pytest.importorskip("mteb")
 
@@ -89,9 +89,9 @@ def test_an_empty_task_name_is_refused() -> None:
 
 
 def test_the_mteb_reader_passes_the_shared_conformance() -> None:
-    """The built-in ``mteb:`` reader runs through the same ``rcp_ndcg.testing.io_conformance`` a plugin does,
+    """The built-in ``mteb:`` reader runs through the same ``rcp.testing.io_conformance`` a plugin does,
     against the real task (NFCorpus's full corpus, mteb's own ids and texts)."""
-    from rcp_ndcg.testing import io_conformance
+    from rcp.testing import io_conformance
 
     io_conformance(MtebTaskReader("NFCorpus"))
 
@@ -132,7 +132,7 @@ def test_a_media_query_keeps_its_instruction() -> None:
 
 def test_an_mteb_uri_records_the_tasks_pinned_revision() -> None:
     """``dataset_uri_revision`` resolves an ``mteb:`` task's metadata revision, like an ``hf://`` URI's commit."""
-    from rcp_ndcg.data.revisions import dataset_uri_revision
+    from rcp.data.revisions import dataset_uri_revision
 
     payload = dataset_uri_revision("mteb:NFCorpus")
 

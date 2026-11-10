@@ -1,7 +1,7 @@
 """The embedding role client: prompts per side, batching, concurrency and reassembly, normalisation, and what it
 refuses.
 
-Offline: the client is exercised against a fake :class:`~rcp_ndcg.inference.transport.Sender`
+Offline: the client is exercised against a fake :class:`~rcp.inference.transport.Sender`
 (:class:`tests.inference._embed.FakeSender`) that records every call and replies with the profiles' shapes.
 """
 
@@ -16,9 +16,9 @@ import numpy as np
 import pytest
 from rcp_core.content import Content, ImagePart, MediaRef, TextPart
 
-from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, RequestRejectedError
-from rcp_ndcg.inference import EmbeddingClient, EncodeRole
-from rcp_ndcg.inference.types import Call, Embeddings, Reply
+from rcp.errors import CapabilityError, ConfigError, CredentialsError, RequestRejectedError
+from rcp.inference import EmbeddingClient, EncodeRole
+from rcp.inference.types import Call, Embeddings, Reply
 from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
 from tests.inference._embed import FakeSender, embeddings_data, vendor_payload
 
@@ -350,7 +350,7 @@ class TestConstruction:
 
     def test_an_explicit_api_key_env_that_is_unset_is_an_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The config names the variable: the transport refuses an unset one, before anything is queued."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.delenv("MISSING_KEY_ENV", raising=False)
         config = endpoint(base_url="http://127.0.0.1:8000/v1", api_key_env="MISSING_KEY_ENV")
@@ -369,8 +369,8 @@ class TestConstruction:
     def test_an_adapter_of_another_role_is_refused(self) -> None:
         """A registered adapter of the wrong role (a judge's, say, selected by typo) is unknown in the embed
         registry, and the error names where the name does live."""
-        from rcp_ndcg.inference import adapters as registry
-        from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+        from rcp.inference import adapters as registry
+        from rcp.inference.adapters.base import AdapterRole, register_adapter
 
         class _JudgeAdapter:
             """A minimal adapter of another role, registered for this test."""
@@ -450,7 +450,7 @@ class TestRequestShapes:
         """The order of an item's parts is information the model reads (a page before its caption is another
         input than the caption before the page, and the vision-language cards put the media first): the fit
         replaces the text in place, so a media-first item goes out media-first -- cut or not."""
-        from rcp_ndcg.data.templates import Segment, TemplateSpec
+        from rcp.data.templates import Segment, TemplateSpec
 
         template = TemplateSpec(document=(Segment(fixed="doc: "), Segment(content="document")))
         sender = FakeSender(handler("openai_embeddings", {}))
@@ -530,7 +530,7 @@ class TestRequestShapes:
         engine would frame it a second time. The engine's frame (here the declared template's own head and
         tail around the user turn, as the served chat template renders them) then equals the declared render
         exactly once; the declared ``add_special_tokens`` rides along (the chat route's default is false)."""
-        from rcp_ndcg.data.templates import Segment, TemplateSpec
+        from rcp.data.templates import Segment, TemplateSpec
 
         template = TemplateSpec(
             query=(Segment(fixed="query turn: "), Segment(content="query"), Segment(fixed=" end of turn")),
@@ -573,7 +573,7 @@ class TestRequestShapes:
         """The flag frames a chat render, so a route that renders no chat template would carry it inertly:
         refused on the text route and on the pooling role (whose media lowering sends no such field); ``false``
         is the engine's own default, stored as ``None``, so it never re-keys an identity."""
-        from rcp_ndcg.inference.config import PoolingEndpoint
+        from rcp.inference.config import PoolingEndpoint
         from tests.inference import _budget
 
         budget = {"tokenizer": _budget.DEFAULT_TOKENIZER, "max_tokens": 64}
@@ -585,7 +585,7 @@ class TestRequestShapes:
             )
         declared = endpoint("openai_embeddings", request_shape="messages", add_generation_prompt=False, **budget)
         undeclared = endpoint("openai_embeddings", request_shape="messages", **budget)
-        from rcp_ndcg.support.identity import identity_payload
+        from rcp.support.identity import identity_payload
 
         assert declared.add_generation_prompt is None
         assert identity_payload(declared) == identity_payload(undeclared)
@@ -627,7 +627,7 @@ class TestEndpoints:
     def test_the_transport_sees_the_api_key_env(self) -> None:
         """The key decision is the transport's (R6): the config's variable reaches it un-cleared, and the
         client points an injected transport at the profile's facts."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         config = endpoint(api_key_env="MY_KEY_ENV", base_url="http://127.0.0.1:9000/v1")
         client = EmbeddingClient(config, sender=Transport(config, httpx_transport=_null_httpx()))
@@ -655,7 +655,7 @@ class TestCredentials:
     ) -> None:
         """Through a real transport at the vendor's own root: a missing required key is refused before
         anything is queued."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.delenv("CO_API_KEY", raising=False)
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
@@ -676,7 +676,7 @@ class TestCredentials:
         third party): the request goes out unauthenticated and the 401 is what refuses it."""
         import httpx
 
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("CO_API_KEY", "co-secret-key")
         seen: list[httpx.Request] = []
@@ -697,7 +697,7 @@ class TestCredentials:
         """One header per profile, resolved by the transport from the profile's own variables."""
         import httpx
 
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("CO_API_KEY", "test-fake-cohere")
         seen: list[httpx.Request] = []

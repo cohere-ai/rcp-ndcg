@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from rcp_core.schemas import Judgement, JudgementFamily, Placement
 
-from rcp_ndcg.errors import DataError
-from rcp_ndcg.judging import JudgementStore
+from rcp.errors import DataError
+from rcp.judging import JudgementStore
 
 RECORDED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -46,7 +46,7 @@ def test_the_store_identity_is_replaced_never_rewritten(tmp_path: Path) -> None:
 def test_a_store_read_by_another_parser_points_at_reparse_not_at_force(tmp_path: Path) -> None:
     """A pass resumed after a parser upgrade differs from its store in the parse version alone: its answers are the
     judge's and are re-read with reparse, so the refusal says so instead of offering force, which re-asks them."""
-    from rcp_ndcg.errors import IdentityError
+    from rcp.errors import IdentityError
 
     store = JudgementStore(tmp_path)
     old = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=3)
@@ -105,7 +105,7 @@ def test_a_tombstone_retires_a_record_whose_clock_ran_ahead(tmp_path: Path) -> N
     cannot leave a retired record valid, and a later valid re-ask of the window wins again."""
     from datetime import timedelta
 
-    from rcp_ndcg.judging.store import records_stored
+    from rcp.judging.store import records_stored
 
     store = JudgementStore(tmp_path)
     ahead = _window("r1").model_copy(update={"recorded_at": datetime.now(UTC) + timedelta(days=1)})

@@ -1084,7 +1084,7 @@ def test_a_recipe_declaring_the_instruction_policy_places_it_itself(tmp_path: Pa
 
 def test_a_run_level_instruction_in_the_recipe_template_query_frame_is_on_the_wire(tmp_path: Path) -> None:
     """The query side's text prefix has one home per recipe: ``query_prompt`` OR the template's query frame
-    (``rcp_ndcg.inference.config``). A recipe whose declared query shape carries the instruction in a fixed
+    (``rcp.inference.config``). A recipe whose declared query shape carries the instruction in a fixed
     segment (qwen3-embedding-0.6b's ``Instruct: ...\\nQuery:`` frame) sends it on every query, so a case
     declaring that instruction is not refused; the same case against a frame without it still is."""
     import shutil

@@ -1,8 +1,8 @@
 """Octen-Embedding-8B, in process: HuggingFace ``AutoModel`` weights, last-token pooling, L2, the ``"- "``
 document prefix, and 8192-token right truncation: the paper's exact implementation.
 
-Assembled unchanged in behaviour from the deleted ``rcp-ndcg/src/rcp_ndcg/retrieval/hf_dense.py`` (loading,
-tokenizing, batched encoding) and ``rcp-ndcg/src/rcp_ndcg/retrieval/encoders/torch_dense.py`` (the encoder
+Assembled unchanged in behaviour from the deleted ``rcp/src/rcp/retrieval/hf_dense.py`` (loading,
+tokenizing, batched encoding) and ``rcp/src/rcp/retrieval/encoders/torch_dense.py`` (the encoder
 with the role-dependent document prefix) when the package stopped carrying in-process models
 (the unified-inference change). The scoring is what the paper ran: bfloat16 weights, left padding so the
 last position of every row is a real token, an 8192-token right truncation, and documents encoded
@@ -22,7 +22,7 @@ from tqdm import tqdm
 def _l2_normalize(vectors: np.ndarray) -> np.ndarray:
     """Every row scaled to unit L2 norm (a zero row stays zero), in float32, returned as float32.
 
-    The float32 path of the deleted ``rcp_ndcg.inference.types.l2_normalize``, with the same formula (the
+    The float32 path of the deleted ``rcp.inference.types.l2_normalize``, with the same formula (the
     module's callers pass float32, so the helper's float16 branch is unused here): the vectors are bit for bit
     what the package's encoders computed."""
     source = np.asarray(vectors, dtype=np.float32)
@@ -79,7 +79,7 @@ def encode_text_batches(
     """Encode ``texts`` into L2-normalised ``(N, D)`` float32 embeddings with last-token pooling.
 
     The role-dependent document prefix is not applied here: that belongs to
-    :class:`~rcp_ndcg.retrieval.encoders.torch_dense.TorchDenseEncoder`, which knows the role.
+    :class:`~rcp.retrieval.encoders.torch_dense.TorchDenseEncoder`, which knows the role.
 
     Args:
         model: The HuggingFace model (already on ``device``).

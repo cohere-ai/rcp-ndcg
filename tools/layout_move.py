@@ -4,7 +4,7 @@
 Moves this repository to the four-distribution tree:
 
     rcp-core/   (was packages/rcp-ndcg-core)
-    rcp-ndcg/        (was the root package: pyproject.toml, MANIFEST.in, README.md, src/)
+    rcp/             (was the root package: pyproject.toml, MANIFEST.in, README.md, src/)
     rcp-ndcg-vllm/   (was packages/rcp-ndcg-vllm)
     rcp-ndcg-test/   (was packages/rcp-ndcg-test, when that exists on the tip)
     pyproject.toml   the uv workspace only (members, tooling config)
@@ -38,16 +38,18 @@ from pathlib import Path
 __all__ = ["MOVES", "REWRITES", "STALE", "main", "run"]
 
 MOVES: tuple[tuple[str, str], ...] = (
-    # The root package into rcp-ndcg/ (the files its distribution needs beside src/).
-    ("pyproject.toml", "rcp-ndcg/pyproject.toml"),
-    ("MANIFEST.in", "rcp-ndcg/MANIFEST.in"),
-    ("README.md", "rcp-ndcg/README.md"),
-    ("src", "rcp-ndcg/src"),
+    # The root package into rcp/ (the files its distribution needs beside src/).
+    ("pyproject.toml", "rcp/pyproject.toml"),
+    ("MANIFEST.in", "rcp/MANIFEST.in"),
+    ("README.md", "rcp/README.md"),
+    ("src", "rcp/src"),
     # The package directories one level up. An optional source (a package a tip does not carry)
     # is skipped; a source next to an existing destination is refused.
     ("packages/rcp-ndcg-core", "rcp-core"),
     # The core's import package follows its distribution's name (`rcp_ndcg_core` -> `rcp_core`).
     ("rcp-core/src/rcp_ndcg_core", "rcp-core/src/rcp_core"),
+    # So does the main package's (`rcp_ndcg` -> `rcp`), once the root source is in its new home.
+    ("rcp/src/rcp_ndcg", "rcp/src/rcp"),
     ("packages/rcp-ndcg-vllm", "rcp-ndcg-vllm"),
     ("packages/rcp-ndcg-test", "rcp-ndcg-test"),
 )
@@ -57,7 +59,7 @@ OPTIONAL_SOURCES: frozenset[str] = frozenset({"packages/rcp-ndcg-test"})
 
 LANDED_CARD_SOURCES: frozenset[str] = frozenset({"README.md"})
 """A move source the landing-card design replaced (docs-release Q1): the full README moved into
-rcp-ndcg/, and a NEW root README -- the short landing card -- was added at the old path on purpose.
+rcp/, and a NEW root README -- the short landing card -- was added at the old path on purpose.
 Source beside destination is the target state for these, never a conflict."""
 
 SPLIT_REGENERATED: frozenset[str] = frozenset({"pyproject.toml"})
@@ -68,9 +70,23 @@ EXEMPT: frozenset[str] = frozenset({"tools/layout_move.py", "tests/test_layout_m
 """Files the rewrite sweep and the stale scan skip: this transform and its test declare the old
 paths in their tables and fixtures."""
 
-EXEMPT_PREFIXES: tuple[str, ...] = ("handover/",)
+EXEMPT_PREFIXES: tuple[str, ...] = (
+    "handover/",
+    "rcp-ndcg-test/corpora/",
+    "rcp-ndcg-test/src/rcp_ndcg_test/fixtures/cases/",
+    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/",
+    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/patches/",
+)
 """Path prefixes the sweep and the stale scan skip: handover/ is temporary scaffolding (deleted in one
-commit before the release), and its workstream reports describe the tree as it was when written."""
+commit before the release), and its workstream reports describe the tree as it was when written; the
+observation corpora are the GPU waves' records, keyed by the tree that recorded them (PLAN section 8);
+a case's expected values are derived from its input texts, so a renamed text there re-records evidence;
+and the engine-side plugin modules under models/ and patches/ are hashed by the behaviour fingerprint,
+so a cosmetic rename in one of them would cost a GPU re-record."""
+
+EXEMPT_SUFFIXES: tuple[str, ...] = (".jinja",)
+"""File suffixes the sweep and the stale scan skip: a recipe template's bytes are a behaviour-fingerprint
+input (`template_file`), so renaming inside one would cost a GPU re-record."""
 
 # The rewrite rules, applied in order to the text of every tracked file outside EXEMPT. A rule is
 # (name, pattern, replacement, files): ``files`` restricts the rule to paths matching any of its
@@ -78,54 +94,68 @@ commit before the release), and its workstream reports describe the tree as it w
 # ``pyproject.toml`` names every package's manifest) the rule is scoped to the contexts where the
 # token is executable path syntax, and the bare spelling in prose is left to the owning page.
 REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
-    # The rename on top of the move: the core's distribution and import names drop `ndcg`
-    # (`rcp-ndcg-core` -> `rcp-core`, `rcp_ndcg_core` -> `rcp_core`). The bare names are names, not
-    # paths, so they rewrite wherever they are live -- the CHANGELOG's entries below Unreleased and
-    # the ledger's historical source list keep the spellings they shipped with (skipped below).
+    # The rename on top of the move: the distributions' and import names drop `ndcg`
+    # (`rcp-ndcg-core` -> `rcp-core`, `rcp_ndcg_core` -> `rcp_core`, `rcp-ndcg` -> `rcp`,
+    # `rcp_ndcg` -> `rcp`). The bare names are names, not paths, so they rewrite wherever they are
+    # live -- the CHANGELOG's entries below Unreleased and the ledger's historical source list keep
+    # the spellings they shipped with (skipped below).
     ("core-name", r"(?<![\w-])rcp-ndcg-core\b", "rcp-core", None),
     ("core-module", r"(?<![\w])rcp_ndcg_core\b", "rcp_core", None),
+    # The main distribution's own scratch names carry a suffix the generic rule must not touch.
+    ("main-scratch", r"rcp-ndcg-(uv|tests-|validate-)", r"rcp-\1", None),
+    # The release pipeline's job and artifact names are built from the distribution's name.
+    ("main-artifacts", r"(?<![\w-])(dist|publish)-rcp-ndcg(?![\w-])", r"\1-rcp", None),
+    # The main name, whole-token: never a sibling distribution (`-vllm`, `-test`), never an artifact
+    # tag or a `$id` (`rcp-ndcg.<name>.v1`), never the extension keys (`x-rcp-ndcg-*`), never the
+    # public dataset ids (`rcp-ndcg-nanobeir`, ...) or the bucket (`rcp-ndcg-rfc`), and never the
+    # repository URL (`cohere-ai/rcp-ndcg`), which is the operator's and redirects.
+    ("main-name", r"(?<![\w./-])rcp-ndcg(?![-.\w])", "rcp", None),
+    # The main module, whole-token; a JSON or Python string escape is a word boundary, not an
+    # identifier (`\nrcp_ndcg` is the module, `delta_rcp_ndcg` and `rcp_ndcg10` are the metric's).
+    ("main-module", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg(?!\w)", "rcp", None),
     # The package directories, in one string or split the way a test spells a Path. The core-name
     # rule above has already mapped the core's directory to `rcp-core`; `\1` keeps the others.
     ("packages", r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))\b", r"\1", None),
     ("packages-split", r"""(["'])packages\1\s*/\s*(['"])(rcp-(?:ndcg-)?(?:core|vllm|test))\2""", r"\2\3\2", None),
-    # The root package's source: `src/rcp_ndcg` (never `src/rcp_ndcg_*` -- \b does not match before _),
-    # in one string or split the way a test spells a Path. A MANIFEST.in spells its own source
-    # relative to its directory and keeps it.
-    ("root-src", r"(?<![\w./-])src/rcp_ndcg\b", "rcp-ndcg/src/rcp_ndcg", None),
+    # The root package's source: `src/rcp` (never `src/rcp_*` -- \b does not match before _), in one
+    # string or split the way a test spells a Path. A MANIFEST.in spells its own source relative to
+    # its directory and keeps it.
+    ("root-src", r"(?<![\w./-])src/rcp(?![\w-])", "rcp/src/rcp", None),
     (
         "root-src-split",
-        r"""(["'])src\1\s*/\s*(['"])rcp_ndcg\2""",
-        r"\1rcp-ndcg/src/rcp_ndcg\1",
+        r"""(["'])src\1\s*/\s*(['"])rcp\2""",
+        r"\1rcp/src/rcp\1",
         None,
     ),
     # A bare `pyproject.toml` in a script or workflow is executable path syntax: the one root-level
-    # manifest is now rcp-ndcg/pyproject.toml. (`x/pyproject.toml` is a package's own manifest.)
-    ("bare-pyproject", r"(?<![\w./-])pyproject\.toml\b", "rcp-ndcg/pyproject.toml", (".github/**", "**/*.sh")),
+    # manifest is now rcp/pyproject.toml. (`x/pyproject.toml` is a package's own manifest.)
+    ("bare-pyproject", r"(?<![\w./-])pyproject\.toml\b", "rcp/pyproject.toml", (".github/**", "**/*.sh")),
     # The root-file helpers in the tests point at the moved distribution files (the long README and
     # the package manifest are PyPI's now).
-    ("root-readme-helper", r'(?<![\w./-])ROOT / "README\.md"', 'ROOT / "rcp-ndcg" / "README.md"', None),
-    ("root-readme-helper-repo", r'(?<![\w./-])REPO / "README\.md"', 'REPO / "rcp-ndcg" / "README.md"', None),
+    ("root-readme-helper", r'(?<![\w./-])ROOT / "README\.md"', 'ROOT / "rcp" / "README.md"', None),
+    ("root-readme-helper-repo", r'(?<![\w./-])REPO / "README\.md"', 'REPO / "rcp" / "README.md"', None),
     (
         "root-pyproject-helper",
         r'(?<![\w./-])(ROOT|REPO) / "pyproject\.toml"',
-        r'\1 / "rcp-ndcg" / "pyproject.toml"',
+        r'\1 / "rcp" / "pyproject.toml"',
         ("tests/docs/**",),
     ),
-    ("root-src-helper", r'(?<![\w./-])(ROOT|REPO) / "src"(?![\w.-])', r'\1 / "rcp-ndcg" / "src"', ("tests/**",)),
-    ("readme-pages", r'\["README\.md", "docs/', '["rcp-ndcg/README.md", "docs/', ("tests/**",)),
+    ("root-src-helper", r'(?<![\w./-])(ROOT|REPO) / "src"(?![\w.-])', r'\1 / "rcp" / "src"', ("tests/**",)),
+    ("readme-pages", r'\["README\.md", "docs/', '["rcp/README.md", "docs/', ("tests/**",)),
     (
         "source-folders",
         r'\("src", "packages", "experiments"',
-        '("rcp-ndcg/src", "rcp-core", "rcp-ndcg-vllm", "experiments"',
+        '("rcp/src", "rcp-core", "rcp-ndcg-vllm", "experiments"',
         ("tests/**",),
     ),
     # basedpyright's include lists the root package's source as a bare "src".
-    ("basedpyright-include", r'include = \["src", ', 'include = ["rcp-ndcg/src", ', ("*.toml",)),
+    ("basedpyright-include", r'include = \["src", ', 'include = ["rcp/src", ', ("*.toml",)),
     # The lock records every workspace member by editable path; the root package's was ".".
-    ("lock-editable", r'editable = "\."', 'editable = "rcp-ndcg"', ("uv.lock",)),
+    ("lock-editable", r'editable = "\."', 'editable = "rcp"', ("uv.lock",)),
     # The build directories follow their distribution: the one glob that named the old packages/
-    # tree names the four distributions (the gitignore follows the four-distribution layout).
-    ("gitignore-build", r"/packages/\*/build/", "/rcp-*/build/", (".gitignore",)),
+    # tree names the four distributions (the main one carries no hyphen, so the glob cannot require
+    # one; `/rcp*/build/` is a superset of `/rcp-*/build/`).
+    ("gitignore-build", r"/packages/\*/build/", "/rcp*/build/", (".gitignore",)),
 )
 
 STALE: tuple[tuple[str, ...], ...] = (
@@ -133,8 +163,8 @@ STALE: tuple[tuple[str, ...], ...] = (
     (r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))",),
     (r"""(["'])packages\1\s*/\s*['"]rcp-(?:ndcg-)?(?:core|vllm|test)""",),
     # The root package's source outside its one new home (its MANIFEST.in spells it relative).
-    (r"(?<![\w./-])src/rcp_ndcg\b", "rcp-ndcg/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),
-    (r"""(["'])src\1\s*/\s*['"]rcp_ndcg["']""",),
+    (r"(?<![\w./-])src/rcp(?![\w-])", "rcp/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),
+    (r"""(["'])src\1\s*/\s*['"]rcp["']""",),
 )
 """What must be gone after the sweep: patterns that can only mean a path the move took away. Each
 entry is (pattern, exempt paths...).  A bare ``pyproject.toml`` in prose (CHANGELOG history, a
@@ -189,12 +219,12 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
     for rule, pattern, replacement, files in REWRITES:
         if not _matches_files(name, files):
             continue
-        if rule in ("core-name", "core-module") and name.as_posix() == "CHANGELOG.md":
+        if rule.startswith(("core-", "main-")) and name.as_posix() == "CHANGELOG.md":
             continue  # the entries below Unreleased are history: they keep the names they shipped with
-        if rule == "core-name" and name.as_posix() == "rcp-ndcg-test/src/rcp_ndcg_test/jobs/ledger.py":
-            continue  # its source list names a pre-rename tree's layout as data, never a live path
+        if rule in ("core-name", "main-name") and name.as_posix() == "rcp-ndcg-test/src/rcp_ndcg_test/jobs/ledger.py":
+            continue  # its source list names pre-rename trees' layouts as data, never a live path
         if rule == "root-src" and name.name == "MANIFEST.in":
-            continue  # `recursive-include src/rcp_ndcg ...` is relative to its own directory
+            continue  # `recursive-include src/rcp ...` is relative to its own directory
         if rule == "root-src" and name.as_posix() == "tests/docs/test_packaging.py":
             continue  # its NOTICE-path pattern lists the old spelling as data to recognise, never a live path
         if rule == "bare-pyproject":
@@ -275,6 +305,8 @@ def run(root: Path, *, check: bool = False) -> int:
         path = root / name
         if name.as_posix() in EXEMPT or name.as_posix().startswith(EXEMPT_PREFIXES):
             continue
+        if name.suffix in EXEMPT_SUFFIXES:
+            continue
         if not path.is_file() or not _is_text(path):
             continue
         text = path.read_text(encoding="utf-8")
@@ -289,24 +321,24 @@ def run(root: Path, *, check: bool = False) -> int:
             touched.append(name.as_posix())
 
     # 3. The root pyproject's split: its package tables travel with the root package into
-    #    rcp-ndcg/pyproject.toml; the workspace and tooling tables stay at the root, and the
+    #    rcp/pyproject.toml; the workspace and tooling tables stay at the root, and the
     #    workspace tables are regenerated from the move table's destinations that exist.
-    package_manifest = root / "rcp-ndcg" / "pyproject.toml"
+    package_manifest = root / "rcp" / "pyproject.toml"
     workspace_manifest = root / "pyproject.toml"
     if package_manifest.is_file():
         workspace_text = workspace_manifest.read_text(encoding="utf-8") if workspace_manifest.is_file() else ""
         if re.search(r"^\[project\]\s*$", workspace_text, re.M) or not workspace_manifest.is_file():
             if check:
-                problems.append("the root pyproject is not split (its package tables belong in rcp-ndcg/)")
+                problems.append("the root pyproject is not split (its package tables belong in rcp/)")
             else:
                 package_text, workspace_text = _split_pyproject(
                     package_manifest.read_text(encoding="utf-8"), members=_members(root)
                 )
                 package_manifest.write_text(package_text, encoding="utf-8")
                 workspace_manifest.write_text(workspace_text, encoding="utf-8")
-                touched.extend(["pyproject.toml", "rcp-ndcg/pyproject.toml"])
+                touched.extend(["pyproject.toml", "rcp/pyproject.toml"])
                 done_work = True
-                print("rewrote pyproject.toml: split (package -> rcp-ndcg/pyproject.toml, workspace stays)")
+                print("rewrote pyproject.toml: split (package -> rcp/pyproject.toml, workspace stays)")
 
     # 4. Stage only what the tool moved or rewrote, never the whole worktree: `git add -A` would
     #    stage an unrelated contributor's untracked files alongside the move.
@@ -324,7 +356,7 @@ def run(root: Path, *, check: bool = False) -> int:
         for name in _tracked_files(root):
             if name.as_posix() in exempt or name.as_posix() in EXEMPT:
                 continue
-            if name.as_posix().startswith(EXEMPT_PREFIXES):
+            if name.as_posix().startswith(EXEMPT_PREFIXES) or name.suffix in EXEMPT_SUFFIXES:
                 continue
             path = root / name
             if not path.is_file() or not _is_text(path):
@@ -376,7 +408,7 @@ _WORKSPACE_TABLES = ("tool.uv", "tool.pytest", "tool.ruff", "tool.basedpyright",
 
 _WORKSPACE_HEADER = """\
 # The uv workspace root: the workspace members and the tooling config only. The distributions carry
-# their own manifests (rcp-ndcg/pyproject.toml and the project directories beside it); tools/
+# their own manifests (rcp/pyproject.toml and the project directories beside it); tools/
 # layout_move.py keeps this split and the member list current.
 """
 
@@ -443,7 +475,7 @@ def _sections(text: str) -> tuple[str, dict[str, str], list[str]]:
 def _workspace_tables(members: list[str]) -> str:
     """The ``tool.uv.workspace`` / ``tool.uv.sources`` / ``tool.ruff.lint.isort`` tables: the members
     (the package name of a member directory is its directory name) and the imports classification the
-    move forces (``src/rcp_ndcg`` was first-party in the old src layout by ruff's inference; the
+    move forces (``src/rcp`` was first-party in the old src layout by ruff's inference; the
     sibling tops never were -- the pin keeps every import block byte-for-byte as before)."""
     listed = ", ".join(f'"{member}"' for member in members)
     sources = "\n".join(f"{member} = {{ workspace = true }}" for member in members)
@@ -456,7 +488,7 @@ members = [{listed}]
 {sources}
 
 [tool.ruff.lint.isort]
-known-first-party = ["rcp_ndcg"]
+known-first-party = ["rcp"]
 """
 
 

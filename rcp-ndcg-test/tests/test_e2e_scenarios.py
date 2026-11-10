@@ -48,7 +48,7 @@ def _names() -> list[str]:
 
 def _prepared(name: str):
     """The product's prepared pipeline of one scenario (nothing written beside the run directory)."""
-    from rcp_ndcg.runs.run import prepare
+    from rcp.runs.run import prepare
 
     scenario = load_scenario(SCENARIOS / f"{name}.yaml")
     config = build_run_config(scenario, recipes_root=[RECIPES])
@@ -143,13 +143,13 @@ def test_the_identity_rerun_moves_no_identity_field(monkeypatch: pytest.MonkeyPa
     """
     import hashlib
 
-    import rcp_ndcg.data.tokenizer
-    from rcp_ndcg.runs.pipeline import Pipeline
-    from rcp_ndcg.runs.run import prepare
-    from rcp_ndcg.support.identity import hash_payload
+    import rcp.data.tokenizer
+    from rcp.runs.pipeline import Pipeline
+    from rcp.runs.run import prepare
+    from rcp.support.identity import hash_payload
 
     monkeypatch.setattr(
-        rcp_ndcg.data.tokenizer,
+        rcp.data.tokenizer,
         "tokenizer_identity",
         lambda spec: {"tokenizer_sha256": hashlib.sha256(spec.encode()).hexdigest()},
     )
@@ -196,13 +196,13 @@ def test_the_script_installs_every_coordinator_from_the_staged_wheelhouse() -> N
     (``--find-links`` + ``--no-index`` + the staged constraints), and the engine commands run as-is."""
     _, pipeline = _prepared("text-four-phases")
     script = render_phased_script(pipeline, options=FIXED_OPTIONS, run_dir=FIXED_RUNS, **INSTALL)
-    coordinators = [line for line in script.splitlines() if line.startswith("exec ") and " rcp-ndcg run resume" in line]
+    coordinators = [line for line in script.splitlines() if line.startswith("exec ") and " rcp run resume" in line]
     assert coordinators  # one per phase
     for line in coordinators:
         assert "--find-links /stage/wheelhouse" in line
         assert "--no-index" in line
         assert "--constraints /stage/requirements-constraints.txt" in line
-        assert "rcp-ndcg[calibrate,hf,s3,azure]==0.0.1" in line  # the client mechanism's own spec
+        assert "rcp[calibrate,hf,s3,azure]==0.0.1" in line  # the client mechanism's own spec
     assert any("vllm serve" in line for line in script.splitlines())  # the engines run as-is
     assert "PYTHONPATH=/e2e/out/probe-site" in script  # the probe rides the phase workers, not the engines
 
@@ -230,7 +230,7 @@ def test_the_identity_rerun_moves_every_port_together() -> None:
         assert f"tmp-{engine.port}" in engine.env["TMPDIR"], role
     assert config.judge_config().base_url == f"http://127.0.0.1:{serve.judge.port}/v1"
 
-    from rcp_ndcg.runs.run import prepare as prepare_run
+    from rcp.runs.run import prepare as prepare_run
 
     moved = build_run_config(scenario, recipes_root=[RECIPES], port_offset=offset)
     rerun_pipeline = prepare_run(moved, runs_dir="/e2e/runs", label=scenario.id)
@@ -279,10 +279,10 @@ def test_the_two_identical_runs_comparison_states_what_it_compares() -> None:
 
 def _ranking_run(root: Path, table: dict[str, dict[str, float]]) -> Path:
     """A run directory whose retrieve and rerank steps recorded ``table`` as their rankings artifacts."""
-    from rcp_ndcg.data import Rankings
-    from rcp_ndcg.runs.layout import RunLayout
-    from rcp_ndcg.runs.manifest import RunManifest, RunStatus, StepRecord, StepStatus
-    from rcp_ndcg.storage.artifacts import artifact_ref
+    from rcp.data import Rankings
+    from rcp.runs.layout import RunLayout
+    from rcp.runs.manifest import RunManifest, RunStatus, StepRecord, StepStatus
+    from rcp.storage.artifacts import artifact_ref
 
     root.mkdir()
     layout = RunLayout.at(root)

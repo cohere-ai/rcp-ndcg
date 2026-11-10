@@ -1,21 +1,21 @@
 {
   "entry_point_groups_read": [
-    "rcp_ndcg.adapters",
-    "rcp_ndcg.fake_transports",
-    "rcp_ndcg.readers",
-    "rcp_ndcg.results",
-    "rcp_ndcg.runners",
-    "rcp_ndcg.writers"
+    "rcp.adapters",
+    "rcp.fake_transports",
+    "rcp.readers",
+    "rcp.results",
+    "rcp.runners",
+    "rcp.writers"
   ],
   "heavy_imports": {
-    "rcp_ndcg": [],
-    "rcp_ndcg.cli.main": [],
+    "rcp": [],
+    "rcp.cli.main": [],
     "rcp_core": []
   },
   "projects": {
-    "rcp-ndcg": {
+    "rcp": {
       "entry_points": {
-        "rcp_ndcg.readers": [
+        "rcp.readers": [
           "beir",
           "frames",
           "hf",
@@ -25,24 +25,24 @@
           "pdf",
           "videos"
         ],
-        "rcp_ndcg.results": [
+        "rcp.results": [
           "jsonl",
           "null",
           "parquet"
         ],
-        "rcp_ndcg.runners": [
+        "rcp.runners": [
           "kubernetes",
           "local",
           "slurm"
         ],
-        "rcp_ndcg.writers": [
+        "rcp.writers": [
           "beir",
           "jsonl",
           "mteb"
         ]
       },
       "scripts": {
-        "rcp-ndcg": "rcp_ndcg.cli.main:main"
+        "rcp": "rcp.cli.main:main"
       }
     },
     "rcp-core": {

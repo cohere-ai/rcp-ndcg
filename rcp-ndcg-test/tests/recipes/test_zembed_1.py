@@ -33,9 +33,9 @@ from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_vllm import Recipe, load_recipe
 from rcp_ndcg_vllm.recipe import default_recipes_root
 
-from rcp_ndcg.data.preprocess import TextBudget, fit
-from rcp_ndcg.data.templates import TemplateSpec
-from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
+from rcp.data.preprocess import TextBudget, fit
+from rcp.data.templates import TemplateSpec
+from rcp.data.tokenizer import TextTokenizer, load_tokenizer
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, stage1_facts, tokenizer_cache
@@ -643,7 +643,7 @@ def test_the_declared_projection_chain_is_the_checkpoints_own_file(monkeypatch: 
     used to clear ``HF_HUB_OFFLINE`` and skip with a fetch-failure reason instead."""
     import numpy as np
 
-    from rcp_ndcg.data.mrl import MrlHead, MrlProjection, projection_tensors
+    from rcp.data.mrl import MrlHead, MrlProjection, projection_tensors
 
     recipe = load_recipe(RECIPE_DIR)
     projection = MrlProjection(**recipe.client["mrl_projection"])

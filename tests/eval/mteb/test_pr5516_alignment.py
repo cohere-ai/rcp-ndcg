@@ -11,8 +11,8 @@ import math
 
 import pytest
 
-from rcp_ndcg.errors import DataError
-from rcp_ndcg.eval.mteb import ndcg_float_scores
+from rcp.errors import DataError
+from rcp.eval.mteb import ndcg_float_scores
 
 from ._pr5516 import ndcg_float_scores as pr_ndcg_float_scores
 

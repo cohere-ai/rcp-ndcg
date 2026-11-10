@@ -19,10 +19,10 @@ import pytest
 from rcp_core.content import Content, ImagePart, MediaRef
 from rcp_core.records import RankingExample
 
-from rcp_ndcg.data.io import available_readers, available_writers, get_reader, get_writer
-from rcp_ndcg.data.io.base import SourceReader
-from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
-from rcp_ndcg.testing import io_conformance
+from rcp.data.io import available_readers, available_writers, get_reader, get_writer
+from rcp.data.io.base import SourceReader
+from rcp.errors import ConfigError, DataError, MissingInputError
+from rcp.testing import io_conformance
 from tests.data.hub_stubs import hub_fixture
 
 PIL = pytest.importorskip("PIL.Image")
@@ -191,7 +191,7 @@ def reader(request) -> SourceReader:
 class TestReaderContract:
     """Invariants every registered reader must satisfy.
 
-    One definition, one home: :func:`rcp_ndcg.testing.io_conformance` is what a plugin author calls; these
+    One definition, one home: :func:`rcp.testing.io_conformance` is what a plugin author calls; these
     tests run every built-in reader through it and keep the granular invariants readable when one fails.
     """
 
@@ -272,7 +272,7 @@ class TestReaderContract:
             assert len(contents) == len(example.doc_ids)
 
     def test_media_refs_are_resolvable(self, reader, tmp_path):
-        from rcp_ndcg.data.media import MediaResolver, probe_video_header
+        from rcp.data.media import MediaResolver, probe_video_header
 
         resolver = MediaResolver()
         for doc in reader.documents():
@@ -447,8 +447,8 @@ def test_a_reader_that_implements_nothing_fails_at_definition():
     shape's default is written in terms of the other: left to run, the two derive
     from each other until the stack ends.
     """
-    from rcp_ndcg.data.io.base import DataShape as Shape
-    from rcp_ndcg.data.io.base import SourceReader as Base
+    from rcp.data.io.base import DataShape as Shape
+    from rcp.data.io.base import SourceReader as Base
 
     with pytest.raises(TypeError, match="overrides neither"):
 
@@ -459,7 +459,7 @@ def test_a_reader_that_implements_nothing_fails_at_definition():
 
 def test_encoded_image_bytes_are_stable(tmp_path):
     """The same page must hash the same way twice, or caching is pointless."""
-    from rcp_ndcg.data.media import sha256_of
+    from rcp.data.media import sha256_of
 
     buffer = io.BytesIO()
     PIL.new("RGB", (16, 16), color=(1, 2, 3)).save(buffer, format="PNG")
@@ -511,7 +511,7 @@ def test_a_non_numeric_qrels_label_is_a_data_error(beir_dir) -> None:
 def test_hub_qrels_keep_fractional_labels(tmp_path: Path) -> None:
     """Hub qrels are floats: a 0.5 label once raised (and before that was floored to 0). The Hub reader
     keeps float grades end to end; mteb's own loader casts them to int32, ours never does."""
-    from rcp_ndcg.data.io.hub import HubReader
+    from rcp.data.io.hub import HubReader
 
     with hub_fixture("mteb-nfcorpus", tmp_path) as root:
         qrels = root / "qrels/test.jsonl"
@@ -600,7 +600,7 @@ def test_a_qrels_row_naming_an_unknown_document_is_not_dropped(beir_dir, tmp_pat
     """A judged document the corpus lacks vanished from the derived ranking shape -- the query kept its
     surviving documents, with no message -- while ``Dataset.from_records`` refuses the same dataset. The drop
     is a typed refusal naming the query, the document and the source, in both file readers that derive it."""
-    from rcp_ndcg.data.io.hub import HubReader
+    from rcp.data.io.hub import HubReader
 
     qrels = Path(beir_dir) / "qrels" / "test.tsv"
     qrels.write_text("query-id\tcorpus-id\tscore\nq1\td1\t2\nq1\td_missing\t1\n")
@@ -642,7 +642,7 @@ def test_a_sidecar_qrels_shape_error_names_the_row(image_dir) -> None:
 def test_a_rankings_file_that_is_one_json_array_is_a_data_error(tmp_path) -> None:
     """A single-line JSON array of otherwise-valid rows fell into the per-row branch of the
     rankings loader and raised a raw AttributeError past load_rankings' promised DataError."""
-    from rcp_ndcg.data import load_rankings
+    from rcp.data import load_rankings
 
     path = tmp_path / "runs.json"
     path.write_text(json.dumps([{"query_id": "q1", "doc_id": "d1", "score": 1.0}]))
@@ -686,7 +686,7 @@ def test_frame_indices_record_the_source_frames(frame_dir) -> None:
 def test_a_frame_number_is_the_last_number_in_the_name() -> None:
     """The first digit run is often part of the clip name (``clip1_frame_0001``), so every frame recorded
     the same index; the frame's number is the last run in its file name."""
-    from rcp_ndcg.data.io.frame_dir import _frame_number
+    from rcp.data.io.frame_dir import _frame_number
 
     assert [_frame_number(name) for name in ("a/clip1_frame_0001.jpg", "a/clip1_frame_0002.jpg")] == [1, 2]
     assert _frame_number("a/img_1080p_000123.png") == 123

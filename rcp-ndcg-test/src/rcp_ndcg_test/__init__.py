@@ -1,7 +1,7 @@
-"""Reference cases and one conformance suite for rcp-ndcg recipes.
+"""Reference cases and one conformance suite for rcp recipes.
 
 Every case runs through the **product's** role clients
-(:class:`rcp_ndcg.inference.clients.EmbeddingClient`, ``PoolingClient``, ``RerankClient``) built from the
+(:class:`rcp.inference.clients.EmbeddingClient`, ``PoolingClient``, ``RerankClient``) built from the
 recipe's ``client`` block -- never raw HTTP, never a copy of the client. Two targets: a live engine
 (``base_url`` of a serving vLLM) or a recipe-level fake engine (:mod:`rcp_ndcg_test.fakes`).
 

@@ -3,7 +3,7 @@
 # rcp-ndcg-vllm (rcp_ndcg_vllm.models). Sources are
 # revision-pinned.
 id: pplx-embed-v2-context
-schema_version: "1"   # the recipe file format version (the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (the contract between rcp and rcp-ndcg-vllm)
 role: multi_vector  # one 2048-d int8-valued vector per document chunk; the query is one vector
 input: [text]  # the checkpoint ships a vision tower, but the embedding code is text-only
 licence: MIT
@@ -140,10 +140,10 @@ sources:
   - "vllm v0.33.0: vllm/model_executor/models/colqwen3_5.py:133 (is_pooling_model on an out-of-tree pooling precedent)"
   - "vllm v0.33.0, the GDN dtype floors (why serve.dtype is bfloat16): vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:148-186 (_resolve_gdn_prefill_backend: flashinfer on Hopper/Blackwell CUDA, else Triton/FLA) and :374 (ChunkGatedDeltaRule binds the chosen kernel); the flashinfer path raises at flashinfer/gdn_kernels/blackwell/gdn_prefill.py:140 (_cutlass_io_dtype: 'Unsupported dtype torch.float32, expected bfloat16 or float16' -- raised both at kernel warmup and on the first forward when the checkpoint was served in float32 on the stock v0.33.0 image) and the Triton/FLA fallback refuses fp32 with 'ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.' (vllm/third_party/flash_linear_attention/ops/chunk.py:213-215 at the tag). mamba_ssm_dtype: float32 (config.json) sets only the SSM cache dtype (vllm/model_executor/models/config.py:958-975 at the tag), whose values include float32 (FUSED_GDN_STATE_DTYPES)"
   # The product this client block constructs.
-  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/inference/config.py (PoolingEndpoint: api, request_shape, embed_dtype, dim, outputs, budget fields)"
-  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens)"
-  - "rcp-ndcg: rcp-ndcg/src/rcp_ndcg/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)"
-  - "rcp-ndcg: transformers 5.x tokenization_utils_tokenizers.py:466 and :1055-1060 (split_special_tokens is the raw tokenizers encode_special_tokens toggle: added SPECIAL tokens textify, non-special added tokens like the boundary marker keep their one id) -- behind the measured 27-vs-26 id render the token-ids contract rests on"
+  - "rcp: rcp/src/rcp/inference/config.py (PoolingEndpoint: api, request_shape, embed_dtype, dim, outputs, budget fields)"
+  - "rcp: rcp/src/rcp/data/templates.py (TemplateSpec: segments, specials by name with whitespace kept, anchor, add_special_tokens)"
+  - "rcp: rcp/src/rcp/data/preprocess.py (TextBudget/fit: content-only cuts, anchors reserved, census)"
+  - "rcp: transformers 5.x tokenization_utils_tokenizers.py:466 and :1055-1060 (split_special_tokens is the raw tokenizers encode_special_tokens toggle: added SPECIAL tokens textify, non-special added tokens like the boundary marker keep their one id) -- behind the measured 27-vs-26 id render the token-ids contract rests on"
   - "docs/how-to/add-a-model.md (the anchor rule: cuts touch content spans only, never the fixed tokens a model reads its output from)"
 notes: |-
   Serving: rcp-ndcg-vllm's folded model plugin (the one vllm.general_plugins entry point)
@@ -273,7 +273,7 @@ notes: |-
   own 262144 limit is the declared over_cap_cut_differs deviation (the client
   cuts content-only and the anchor is first, so only the cap differs). The
   pooling role client fits every request to the declared tokenizer and budget
-  before it derives the token ids (rcp-ndcg/src/rcp_ndcg/inference/clients/pool.py:
+  before it derives the token ids (rcp/src/rcp/inference/clients/pool.py:
   content-only cuts, every cut census-recorded): the cut is the declared
   policy. The model card has no over-limit output to compare with (it raises),
   so the pairs files keep every text under the limit; reference.py's render of

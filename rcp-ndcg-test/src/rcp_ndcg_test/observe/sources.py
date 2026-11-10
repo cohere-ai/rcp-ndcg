@@ -3,7 +3,7 @@
 Real items are sampled from the public suites **by id at pinned commits** (:data:`PINNED_DATASET_COMMITS`
 in :mod:`rcp_ndcg_test.observe.requests`): NanoBEIR, BRIGHT (long documents), ViDoRe v3 (pages) and
 TREC DL.  This module adapts the product's own dataset loader
-(:func:`rcp_ndcg.data.dataset.load_dataset`) into small frozen catalogs the generator samples from --
+(:func:`rcp.data.dataset.load_dataset`) into small frozen catalogs the generator samples from --
 the harness never re-implements a dataset reader (R30).
 
 Public surface:
@@ -87,7 +87,7 @@ class SourceMedia:
 
     The pairs file records media by **source coordinates** (suite, subset, document id, part) plus the
     content-addressed descriptors; the bytes are resolved through the product's dataset loader and
-    :class:`~rcp_ndcg.data.media.MediaResolver` (never re-fetched by the harness).  A machine-local
+    :class:`~rcp.data.media.MediaResolver` (never re-fetched by the harness).  A machine-local
     cache path is deliberately not recorded: it would not resolve on any other machine.
 
     Attributes:
@@ -159,7 +159,7 @@ def load_corpora(suite: str, subsets: tuple[str, ...], commits: dict[str, str]) 
     :class:`SourceCorpus` per subset, sorted by subset name.  Needs network access to the Hub (or a
     populated cache); generation-time only -- tests build catalogs inline and never call this.
     """
-    from rcp_ndcg.data.dataset import load_dataset
+    from rcp.data.dataset import load_dataset
 
     pinned = commits[SUITE_REPOS[suite]]
     corpora: list[SourceCorpus] = []

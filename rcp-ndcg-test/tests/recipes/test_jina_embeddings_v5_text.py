@@ -2,7 +2,7 @@
 (decision 34: one family module, parametrized over its variant ids; every field pinned per variant).
 
 The recipe validates offline (the client block constructs the product's
-:class:`~rcp_ndcg.inference.config.EmbeddingEndpoint`). Stage 1 needs only the tokenizer file,
+:class:`~rcp.inference.config.EmbeddingEndpoint`). Stage 1 needs only the tokenizer file,
 downloaded once through the shared ``_served.fetch_tokenizer`` (into
 ``RCP_NDCG_VLLM_TOKENIZER_CACHE`` when set, else ``tmp_path``) and verified against its pinned
 sha256 — the model weights are never needed on CPU; the reference's ``render`` mode is pure string
@@ -33,8 +33,8 @@ from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.reference import run_reference
 from rcp_ndcg_vllm.recipe import Recipe, client_config, default_recipes_root, resolve_recipe
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp.data.tokenizer import load_tokenizer
+from rcp.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts

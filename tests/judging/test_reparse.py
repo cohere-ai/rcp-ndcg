@@ -1,4 +1,4 @@
-"""``reparse`` and ``rcp-ndcg judge reparse``: stored answers read again by the current parser, into a new store.
+"""``reparse`` and ``rcp judge reparse``: stored answers read again by the current parser, into a new store.
 
 The source store is written by a stand-in for an older parser that decoded the whole answer strictly, as the
 paper-era extraction did, so a valid object followed by a stray ``}`` was recorded invalid. The fake judge
@@ -13,14 +13,14 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.judge import judge_group
-from rcp_ndcg.errors import IdentityError
-from rcp_ndcg.judging import JudgementStore, judge, reparse
-from rcp_ndcg.judging._fake import _uniform
-from rcp_ndcg.judging._parsing import listwise
-from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer, strip_code_fence, strip_reasoning
-from rcp_ndcg.judging.client import Completion, CompletionInput
-from rcp_ndcg.testing import TINY_TOURNAMENT, FakeJudge, tiny_rows
+from rcp.cli.judge import judge_group
+from rcp.errors import IdentityError
+from rcp.judging import JudgementStore, judge, reparse
+from rcp.judging._fake import _uniform
+from rcp.judging._parsing import listwise
+from rcp.judging._parsing.common import PARSE_VERSION, UnparseableAnswer, strip_code_fence, strip_reasoning
+from rcp.judging.client import Completion, CompletionInput
+from rcp.testing import TINY_TOURNAMENT, FakeJudge, tiny_rows
 
 ROWS, ABILITY = tiny_rows()
 
@@ -55,7 +55,7 @@ def old_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     store = tmp_path / "v1"
     with monkeypatch.context() as patch:
         patch.setattr(listwise, "decode_answer", _strict_decode)
-        patch.setattr("rcp_ndcg.judging.judging.PARSE_VERSION", 1)
+        patch.setattr("rcp.judging.judging.PARSE_VERSION", 1)
         judge(ROWS, None, _Sloppy(), stage="tournament", out=store, schedule=TINY_TOURNAMENT)
     return store
 
@@ -129,7 +129,7 @@ def test_reparse_never_writes_into_its_source_or_over_a_store(old_store: Path, t
 def test_a_remote_store_is_refused_as_the_target(
     old_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     monkeypatch.chdir(tmp_path)  # a regression must not write a store into the checkout
     with pytest.raises(ConfigError, match="local") as refused:
@@ -151,7 +151,7 @@ def test_reparse_never_downgrades_a_newer_parser(tmp_path: Path, monkeypatch: py
     with the current parser's version would pool two decoding regimes under one family key."""
     store = tmp_path / "newer"
     with monkeypatch.context() as patch:
-        patch.setattr("rcp_ndcg.judging.judging.PARSE_VERSION", PARSE_VERSION + 1)
+        patch.setattr("rcp.judging.judging.PARSE_VERSION", PARSE_VERSION + 1)
         judge(ROWS, None, FakeJudge(lambda text: 0.0), stage="tournament", out=store, schedule=TINY_TOURNAMENT)
     with pytest.raises(IdentityError, match="newer"):
         reparse(store, tmp_path / "out")

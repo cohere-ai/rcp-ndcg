@@ -32,14 +32,14 @@ LLM judges, with every prompt and answer.
 
 ## Loading a dataset
 
-`rcp_ndcg.data.load_dataset` reads the released layout from a `hf://` URI and knows the protocol of each suite. It
+`rcp.data.load_dataset` reads the released layout from a `hf://` URI and knows the protocol of each suite. It
 needs the `hf` extra (`huggingface-hub`). The example below scores a toy system, which ranks each pool in its pool
 order, on one NanoBEIR task:
 
 <!-- snippet: network -->
 ```python
-from rcp_ndcg.data import Rankings, load_dataset
-from rcp_ndcg.eval import evaluate
+from rcp.data import Rankings, load_dataset
+from rcp.eval import evaluate
 
 dataset = load_dataset("hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval")
 print(dataset.name, dataset.protocol, len(dataset.candidates), "queries")
@@ -48,13 +48,13 @@ print(dataset.subset, dataset.split, dataset.provenance.revision[:8])
 scores = {query_id: {doc_id: -rank for rank, doc_id in enumerate(pool)}
           for query_id, pool in dataset.candidates.items()}
 report = evaluate(Rankings.from_scores(scores, system="pool-order"), dataset=dataset)
-print(report.value("pool-order", "rcp_ndcg"), report.value("pool-order", "qrel_ndcg"))
+print(report.value("pool-order", "rcp"), report.value("pool-order", "qrel_ndcg"))
 ```
 
 `load_dataset("suite:nanobeir")` loads every task of a suite, and `evaluate(rankings, suite="nanobeir")` scores
 rankings against it with the paper's protocol ([scoring protocols](concepts/protocols.md)). A revision pins the
 data: `load_dataset(uri, revision="<commit>")`. Your own rankings load from a Parquet, CSV, TREC run or JSONL file
-with `rcp_ndcg.data.load_rankings(path)`.
+with `rcp.data.load_rankings(path)`.
 
 A dataset records where its data came from: `subset` and `split` (the source's, `"default"`/`"test"` when it has
 none), the optional mteb `task` the data realises, the `task_instruction` (one instruction for the whole task, as a
@@ -69,7 +69,7 @@ instruction (BRIGHT's per-domain instructions), a differing one stays per query 
 and a subset that instructs only some of its queries is refused.
 
 In memory, a query is a `rcp_core.records.Query` and a document a `rcp_core.records.Document` (both
-re-exported by `rcp_ndcg.data`): the records a reader yields and `Dataset.queries`/`Dataset.corpus` hold.
+re-exported by `rcp.data`): the records a reader yields and `Dataset.queries`/`Dataset.corpus` hold.
 `Dataset.from_records` takes those records, or plain dicts with their field names and aliases (`query_id`/`id`,
 `doc_id`/`docno`, `title`, `text`, `content`, `instruction`); an unknown key is refused. The records are the
 pipeline's working objects, not frozen copies: `Dataset.queries`/`Dataset.corpus` hold the instances, so a
@@ -88,35 +88,35 @@ Three places take a Hugging Face address, each in its own form:
 
 | Where | Form | Example |
 |---|---|---|
-| `load_dataset`, `--dataset` | `hf://<owner>/<repo>[/<subset>][@<revision>]`: a dataset whose layout the dataset card declares (mteb's rules: `{s-}corpus`, `{s-}queries`, a `default`/`{s-}qrels` labels table, `{s-}top_ranked` pools, an `{s-}instruction` config, and rcp-ndcg's `{s-}excluded` and qrels `gain`/`theta` columns) | `hf://mteb/nfcorpus`, `hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval` |
+| `load_dataset`, `--dataset` | `hf://<owner>/<repo>[/<subset>][@<revision>]`: a dataset whose layout the dataset card declares (mteb's rules: `{s-}corpus`, `{s-}queries`, a `default`/`{s-}qrels` labels table, `{s-}top_ranked` pools, an `{s-}instruction` config, and rcp's `{s-}excluded` and qrels `gain`/`theta` columns) | `hf://mteb/nfcorpus`, `hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval` |
 | `load_dataset`, `--dataset` | `mteb:<Task>[/<subset>][@<split>]`: one of the 113 tasks whose data only the task's own loader knows (ViDoRe v1's id prefixes, BRIGHT's exclusions); the `[mteb]` extra | `mteb:BrightBiologyRetrieval` |
 | `load_rankings`, `--rankings`, any file path | `hf://datasets/<owner>/<repo>/<path>`: one file, through `fsspec` | `hf://datasets/fabianschmidt-cohere/rcp-ndcg-nanobeir/provenance/runs/NanoFiQA2018Retrieval.parquet` |
-| `rcp-ndcg data fetch --dataset` | a suite name, or `hf://<owner>/<repo>`: the whole repository, downloaded | `hf://fabianschmidt-cohere/rcp-ndcg-bright` |
+| `rcp data fetch --dataset` | a suite name, or `hf://<owner>/<repo>`: the whole repository, downloaded | `hf://fabianschmidt-cohere/rcp-ndcg-bright` |
 
 A repository with exactly one subset loads it without being named; a repository whose card declares none (a raw
 layout such as BRIGHT's) is refused with the `mteb:<Task>` hint. The reader follows mteb's own resolution — the
 `query` config wins over `{s-}queries`, the `default`-then-`qrels` fallback for the labels, the requested split
 when the config declares it else the config's only split — and needs neither `datasets` nor `mteb`. The same
 datasets also run through stock `mteb`, with the `rcp_ndcg_tasks.py` file each dataset ships, or through
-`rcp_ndcg.eval.mteb` ([the MTEB tutorial](how-to/mteb-integration.md)).
+`rcp.eval.mteb` ([the MTEB tutorial](how-to/mteb-integration.md)).
 
 ## Other formats, and adding one
 
-The readers and writers are entry points of the `rcp_ndcg.readers` and `rcp_ndcg.writers` groups — the same seam
+The readers and writers are entry points of the `rcp.readers` and `rcp.writers` groups — the same seam
 as the job runners. The built-ins (`beir`, `jsonl`, `hf`, `mteb`, `images`, `videos`, `frames`, `pdf`) are
 declared there; a third-party format is one class in its own package:
 
 ```toml
-[project.entry-points."rcp_ndcg.readers"]
+[project.entry-points."rcp.readers"]
 my-format = "my_package.io:MyReader"
 ```
 
-A reader implements `rcp_ndcg.data.io.SourceReader` (its first constructor parameter is named `uri`), may serve
+A reader implements `rcp.data.io.SourceReader` (its first constructor parameter is named `uri`), may serve
 the pools (`candidates`), exclusions (`excluded`) and released gains (`gains`/`thetas`) besides the queries,
 corpus and qrels, narrows the `provenance` to what it knows, and must pass the shared conformance suite
-(`rcp_ndcg.testing.io_conformance`) — the one definition of what a reader must do, the same one the built-ins
+(`rcp.testing.io_conformance`) — the one definition of what a reader must do, the same one the built-ins
 run through in the project's own tests. Its name is then the URI scheme of `load_dataset` (and the `--format` of
-`rcp-ndcg data convert`), except `hf` (the Hub layout is `hf://`) and `pdf` (a PDF has no queries).
+`rcp data convert`), except `hf` (the Hub layout is `hf://`) and `pdf` (a PDF has no queries).
 
 ## Duplicates
 
@@ -133,7 +133,7 @@ exact or not (the in-memory path validates, it does not ingest).
 
 ## Revisions and identities
 
-A revision such as `main` is a moving pointer, so identities record the commit it resolved to. `rcp_ndcg.data.revisions`
+A revision such as `main` is a moving pointer, so identities record the commit it resolved to. `rcp.data.revisions`
 is the public module for that: `resolve_revision(repo_id, revision)` resolves a revision to the exact commit (the
 Hub once per process, then the local cache when offline), `is_commit(revision)` says whether a revision is already
 a full 40-character lowercase hex commit (so it resolves to itself), and `dataset_uri_revision(uri, revision)`
@@ -144,7 +144,7 @@ could not find is `None` with a typed `UNPINNED_REVISION` warning — never an i
 
 `load_dataset` also reads a BEIR directory (`beir:<dir>`, plain or gzip-compressed: `corpus.jsonl[.gz]`,
 `queries.jsonl[.gz]`, `qrels/<split>.tsv[.gz]`), JSONL files (`jsonl:<dir>`), and directories of page
-images, video clips or pre-extracted frames. `rcp-ndcg data convert` ingests such a source, or PDFs rendered to page
+images, video clips or pre-extracted frames. `rcp data convert` ingests such a source, or PDFs rendered to page
 images, into JSONL (a
 directory with `corpus.jsonl`, `queries.jsonl` and `qrels.jsonl`, or with `--shape ranking` one file of queries with
 their candidates), a BEIR directory, which `load_dataset` reads back (`jsonl:<dir>`, `beir:<dir>`; the BEIR
@@ -163,4 +163,4 @@ grade with no gain, and a pair whose `theta` cell is set and whose `gain` cell i
 neither). The frames reader records each frame's number in its file name in
 `frame_indices`, so a clip sampled at real frame numbers says which frames of the source it showed. How page
 images and video are sized for a judge is a judging setting (`preprocessing` in a run config), not part of the data.
-`rcp-ndcg data inspect` summarises a dataset.
+`rcp data inspect` summarises a dataset.

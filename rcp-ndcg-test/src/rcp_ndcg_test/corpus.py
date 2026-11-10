@@ -48,8 +48,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg.errors import DataError
-from rcp_ndcg.support.identity import hash_payload
+from rcp.errors import DataError
+from rcp.support.identity import hash_payload
 from rcp_ndcg_test.errors import HarnessError
 
 __all__ = [
@@ -331,7 +331,7 @@ def _migrated(record: dict[str, Any], where: str) -> dict[str, Any]:
     if schema > RECORD_SCHEMA:
         raise DataError(
             f"{where}: record_schema {schema} was written by a newer collector; this reader knows {RECORD_SCHEMA}",
-            hint="upgrade rcp-ndcg to read this corpus",
+            hint="upgrade rcp to read this corpus",
         )
     while schema < RECORD_SCHEMA:
         migrate = _MIGRATIONS.get(schema)

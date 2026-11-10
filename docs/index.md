@@ -53,5 +53,5 @@ Start with the [quickstart](quickstart.md).
 - [The `rcp-ndcg-test` package](reference/rcp-ndcg-test.md): reference cases, conformance and the GPU job
   tooling for contributors.
 - [`rcp_core`: metric, gains and protocols](reference/api/rcp_core.md).
-- [`rcp_ndcg.eval`: evaluation](reference/api/rcp_ndcg.eval.md).
-- [`rcp_ndcg.inference`: the rerank wire and client](reference/api/rcp_ndcg.inference.md).
+- [`rcp.eval`: evaluation](reference/api/rcp.eval.md).
+- [`rcp.inference`: the rerank wire and client](reference/api/rcp.inference.md).

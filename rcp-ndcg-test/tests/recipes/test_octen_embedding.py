@@ -46,7 +46,7 @@ from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
 from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, resolve_recipe
 
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp.inference.config import EmbeddingEndpoint
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_texts, stage1_facts
@@ -442,7 +442,7 @@ def test_mutation_without_the_appended_anchor_declaration_is_refused() -> None:
     ``anchor: last`` template has no tail anchor at all: the product's validator refuses it rather
     than let the budget drop the token the model pools.
     """
-    from rcp_ndcg.data.templates import TemplateSpec
+    from rcp.data.templates import TemplateSpec
 
     template = client_template(_recipe("octen-embedding-8b"))
     assert template is not None
@@ -549,7 +549,7 @@ def test_load_takes_the_checkpoint_from_the_resolved_recipe(monkeypatch: pytest.
 def test_reference_constants_equal_the_paper_code() -> None:
     """The reference's constants are the paper path's (experiments/paper/rerankers/reference/octen.py),
     not the model card's; MODEL/REVISION name the paper's 8B checkpoint (the standalone defaults)."""
-    from rcp_ndcg.retrieval import l2_normalize
+    from rcp.retrieval import l2_normalize
 
     reference = _reference_module()
     paper = yaml.safe_load(

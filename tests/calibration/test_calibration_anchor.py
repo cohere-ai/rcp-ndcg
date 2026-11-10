@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 from rcp_core.irt import fit_calibration
 
-from rcp_ndcg.calibration import calibrate, count_gains
+from rcp.calibration import calibrate, count_gains
 
 from .conftest import rubric_set
 

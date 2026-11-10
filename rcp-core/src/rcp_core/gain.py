@@ -22,7 +22,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 type Gains = Mapping[str, Mapping[str, float]]
-"""``{query_id: {doc_id: gain}}`` with gains in ``[0, 1]``: what :func:`rcp_ndcg.eval.evaluate` scores against."""
+"""``{query_id: {doc_id: gain}}`` with gains in ``[0, 1]``: what :func:`rcp.eval.evaluate` scores against."""
 
 
 def item_arrays(items: Any, *, weighted: bool = True) -> tuple[Sequence[float], Sequence[float]]:

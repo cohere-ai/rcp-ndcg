@@ -1,7 +1,7 @@
-"""Every ``rcp-ndcg`` command in the repository's Markdown exists and parses.
+"""Every ``rcp`` command in the repository's Markdown exists and parses.
 
 A command in a fenced shell block must parse completely: its subcommand path exists, every flag belongs to it, choice
-values are valid and required options are given. A command quoted inline in prose (``rcp-ndcg judge rubric``) must
+values are valid and required options are given. A command quoted inline in prose (``rcp judge rubric``) must
 name an existing command, and the flags it quotes must belong to it.
 """
 
@@ -14,26 +14,26 @@ from pathlib import Path
 import click
 import pytest
 
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.data import SUITES, VIDORE_NATIVE_LANGUAGE
+from rcp.cli.main import cli
+from rcp.data import SUITES, VIDORE_NATIVE_LANGUAGE
 from tests.docs._markdown import ROOT, code_blocks, markdown_files, prose
 
 SHELL = {"bash", "sh", "shell", "console", "zsh"}
 _STOP = {"#", "|", "&&", "||", ";", ">", "2>", "&"}
-_INLINE = re.compile(r"`(rcp-ndcg(?: [^`]*)?)`")
+_INLINE = re.compile(r"`(rcp(?: [^`]*)?)`")
 
 
 def _commands_in_shell(text: str) -> list[list[str]]:
-    """The argument lists after ``rcp-ndcg`` in a shell block (continuation lines joined, comments dropped)."""
+    """The argument lists after ``rcp`` in a shell block (continuation lines joined, comments dropped)."""
     commands: list[list[str]] = []
     for line in text.replace("\\\n", " ").splitlines():
         try:
             tokens = shlex.split(line, comments=True)
         except ValueError:
             continue
-        if "rcp-ndcg" not in tokens:
+        if "rcp" not in tokens:
             continue
-        args = tokens[tokens.index("rcp-ndcg") + 1 :]
+        args = tokens[tokens.index("rcp") + 1 :]
         cut = next((i for i, token in enumerate(args) if token in _STOP), len(args))
         commands.append(args[:cut])
     return commands
@@ -42,7 +42,7 @@ def _commands_in_shell(text: str) -> list[list[str]]:
 def _resolve(args: list[str]) -> tuple[click.Command, list[str], str]:
     """Walk the command tree: the leaf command, its remaining arguments and its name. Raises ``LookupError``."""
     command: click.Command = cli
-    name = "rcp-ndcg"
+    name = "rcp"
     rest = list(args)
     while isinstance(command, click.Group):
         while rest and rest[0].startswith("-"):  # options of the group itself (-v, --env-file PATH, --version)
@@ -82,7 +82,7 @@ def _check_inline(args: list[str]) -> str | None:
     words = [a for a in args if not a.startswith("-") and re.fullmatch(r"[a-z][a-z-]*", a)]
     flags = [a.split("=")[0] for a in args if a.startswith("--")]
     command: click.Command = cli
-    name = "rcp-ndcg"
+    name = "rcp"
     for word in words:
         if not isinstance(command, click.Group):
             break
@@ -109,7 +109,7 @@ def _problems(path: Path) -> list[str]:
     return problems
 
 
-FILES = [f for f in markdown_files() if "rcp-ndcg" in (ROOT / f).read_text(encoding="utf-8")]
+FILES = [f for f in markdown_files() if "rcp" in (ROOT / f).read_text(encoding="utf-8")]
 
 
 @pytest.mark.parametrize("path", FILES, ids=str)

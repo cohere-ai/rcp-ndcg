@@ -26,7 +26,7 @@
 # causal). dtype bfloat16 is the checkpoints' own dtype, and v0.33.0 refuses float16 for gemma3_text
 # outright (vllm/config/model.py:2398-2403).
 id: harrier-oss-v1
-schema_version: "1" # the recipe file format's version (the contract between rcp-ndcg and rcp-ndcg-vllm)
+schema_version: "1" # the recipe file format's version (the contract between rcp and rcp-ndcg-vllm)
 role: embed
 input: [text]
 licence: mit
@@ -72,7 +72,7 @@ client:
   # transformers snippet. The cut is content-spans-only with every fixed token and the post-processor's
   # anchor reserved and re-attached (the product's fit) -- the anchor always survives. The merged
   # product's embedding client fits every request to this budget on the wire
-  # (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire; the GPU wave's
+  # (rcp.data.preprocess.fit), audited in stage 1 against the captured wire; the GPU wave's
   # /tokenize and vector gates catch drift.
   max_tokens: 32768
   template:
@@ -141,7 +141,7 @@ sources:
   - "vllm tag v0.33.0 vllm/engine/arg_utils.py:2973-2990 (default max_num_batched_tokens 16384 on >=160 GB GPUs) and vllm/config/scheduler.py:315-327 (max_num_batched_tokens < max_model_len requires chunked prefill)"
   - "vllm tag v0.33.0 vllm/renderers/params.py:199 (add_special_tokens defaults to true on the pooling routes) and vllm/entrypoints/pooling/base/io_processor.py:136-160 (no chat template is applied to string inputs)"
   - "sentence-transformers >=3.0 sentence_transformers/models/Transformer.py (the Transformer module infers max_seq_length = min(config.max_position_embeddings, tokenizer.model_max_length) when the checkpoint sets none; the post-processor appends the pooled anchor after truncation)"
-  - "rcp-ndcg/src/rcp_ndcg/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
+  - "rcp/src/rcp/inference/clients/embed.py (the wired client prepends query_prompt/doc_prompt, then the budget renders the template -- hence empty prompts here and the frame as fixed segments)"
   - "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/reference.in (the reference environment: sentence-transformers for the card's usage; render mode needs only huggingface-hub)"
 notes: >
   One family, three sizes, the evidence for one: the pipeline files agree byte for byte
@@ -192,7 +192,7 @@ notes: >
   non-gating table and under-cap rows gate byte-exactly. No separate query cap exists in the referent -- the card truncates queries and
   documents alike at 32768 -- so query_max_tokens is not declared and both shapes draw on max_tokens.
   Wiring: every request is fitted to the declared budget on the wire by the merged product's embedding
-  client (rcp_ndcg.data.preprocess.fit), audited in stage 1 against the captured wire. The 27b's
+  client (rcp.data.preprocess.fit), audited in stage 1 against the captured wire. The 27b's
   131072 max_position_embeddings is NOT served: the card declares Max Tokens 32,768 for every variant
   (its transformers snippet truncates at 32768), and serving the full context would put the GPU-E1
   32-bit element-index limits under one forward of 131072 tokens -- the MLP activation alone is

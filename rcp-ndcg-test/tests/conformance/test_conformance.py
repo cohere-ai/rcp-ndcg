@@ -325,7 +325,7 @@ def test_the_registry_resolves_by_engine_version_and_fingerprint() -> None:
     import pytest
     from rcp_ndcg_test.engines import registry
 
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     emulator = emulator_for("zerank-2-reranker")
     assert emulator.verified is not None
@@ -339,7 +339,7 @@ def test_the_registry_resolves_by_engine_version_and_fingerprint() -> None:
 def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None:
     import pytest
 
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     emulator = emulator_for("qwen3-embedding-0.6b")
     assert emulator.verified is not None
@@ -366,7 +366,7 @@ def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None
 
 def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatch: pytest.MonkeyPatch) -> None:
     """The extensibility seam (docs/reference/gpu-validation.md): a private repository's emulator registers
-    through the ``rcp_ndcg.emulators`` entry-point group."""
+    through the ``rcp.emulators`` entry-point group."""
     import importlib.metadata as metadata
 
     from rcp_ndcg_test.engines import registry
@@ -384,7 +384,7 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
     original = metadata.entry_points
 
     def fake_entry_points(**kwargs):
-        return [_Entry()] if kwargs.get("group") == "rcp_ndcg.emulators" else original(**kwargs)
+        return [_Entry()] if kwargs.get("group") == "rcp.emulators" else original(**kwargs)
 
     registry.clear()
     monkeypatch.setattr(metadata, "entry_points", fake_entry_points)
@@ -413,7 +413,7 @@ def test_the_tolerance_is_the_corpus_measured_one_and_never_invented(tmp_path: P
     exactly; a corpus without the report is refused."""
     from tests._engines import observation_corpus
 
-    from rcp_ndcg.errors import DataError
+    from rcp.errors import DataError
 
     exchange = _rerank_exchange(0, {"model": "m", "query": "q", "documents": ["d"]}, 0.5)
     unmeasured = observation_corpus(tmp_path / "none", [exchange])
@@ -449,7 +449,7 @@ def test_a_record_without_an_integer_sequence_is_refused_by_name() -> None:
     integer sequence is refused by name, never defaulted to 0."""
     from rcp_ndcg_test.engines import Exchange
 
-    from rcp_ndcg.errors import DataError
+    from rcp.errors import DataError
 
     with pytest.raises(DataError, match="integer sequence"):
         Exchange.from_record({"sequence": None, "request": {}, "response": {}})

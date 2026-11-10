@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.support.entrypoints import load_entry_point, provider_of, registered_names
+from rcp.errors import ConfigError
+from rcp.support.entrypoints import load_entry_point, provider_of, registered_names
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class FakeEntryPoint:
 
     name: str
     value: str
-    group: str = "rcp_ndcg.test"
+    group: str = "rcp.test"
     distribution: str | None = "one-dist"
     loaded: Any = None
     failure: Exception | None = None
@@ -52,19 +52,19 @@ class Impl(Base):
 
 def test_registered_names_lists_each_name_once_sorted() -> None:
     entries = [FakeEntryPoint("b", "m:B"), FakeEntryPoint("a", "m:A"), FakeEntryPoint("a", "m:A2")]
-    assert registered_names(entries, "rcp_ndcg.test") == ("a", "b")
+    assert registered_names(entries, "rcp.test") == ("a", "b")
 
 
 def test_provider_of_returns_the_entry_point_of_a_sole_provider() -> None:
     entry = FakeEntryPoint("a", "m:A")
-    assert provider_of([entry], "rcp_ndcg.test", "a", kind="thing") is entry
+    assert provider_of([entry], "rcp.test", "a", kind="thing") is entry
 
 
 def test_two_entry_points_of_one_distribution_and_target_are_one_provider() -> None:
     """A distribution declaring the same name twice with the same target is not an ambiguity (the entry
     point metadata repeats); two distributions, or two targets, are."""
     entries = [FakeEntryPoint("a", "m:A"), FakeEntryPoint("a", "m:A")]
-    assert provider_of(entries, "rcp_ndcg.test", "a", kind="thing") is entries[0]
+    assert provider_of(entries, "rcp.test", "a", kind="thing") is entries[0]
 
 
 def test_an_ambiguous_name_is_refused_naming_every_provider() -> None:
@@ -75,7 +75,7 @@ def test_an_ambiguous_name_is_refused_naming_every_provider() -> None:
         FakeEntryPoint("a", "other:A", distribution="plugin"),
     ]
     with pytest.raises(ConfigError) as raised:
-        provider_of(entries, "rcp_ndcg.test", "a", kind="runner")
+        provider_of(entries, "rcp.test", "a", kind="runner")
     message = str(raised.value)
     assert "the runner name 'a' is provided by more than one installed distribution" in message
     assert "built-in (m:A)" in message and "plugin (other:A)" in message
@@ -83,7 +83,7 @@ def test_an_ambiguous_name_is_refused_naming_every_provider() -> None:
 
 def test_a_name_that_is_not_registered_is_refused_naming_the_group() -> None:
     with pytest.raises(ConfigError, match="no dataset format named 'nope' is installed"):
-        provider_of([], "rcp_ndcg.readers", "nope", kind="dataset format")
+        provider_of([], "rcp.readers", "nope", kind="dataset format")
 
 
 def test_load_entry_point_checks_the_base_class_and_names_a_broken_plugin() -> None:

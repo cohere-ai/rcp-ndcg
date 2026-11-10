@@ -1,5 +1,5 @@
 # Octen-Embedding-8B, served: one of the paper's three first-stage retrievers: a retriever config
-# (rcp_ndcg.retrieval.RetrieverConfig) for `rcp-ndcg retrieval index|search --retriever <this file>`.
+# (rcp.retrieval.RetrieverConfig) for `rcp retrieval index|search --retriever <this file>`.
 # Served by recipe `octen-embedding-8b` (last-token pooling with L2 normalisation, the pooling
 # runner of rcp-ndcg-vllm; reference: experiments/paper/rerankers/reference/octen.py).
 # `base_url` is the placeholder the runner's engines overlay (serve.encoder) replaces. Documents are

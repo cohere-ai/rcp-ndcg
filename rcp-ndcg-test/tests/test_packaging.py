@@ -31,7 +31,7 @@ def test_the_release_workflow_never_builds_or_publishes_the_test_package() -> No
     # The guard that keeps a future workspace member from being swept into the release build: the
     # three published packages are built by name, never with --all-packages.
     assert "--all-packages" not in text
-    for package in ("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm"):
+    for package in ("rcp", "rcp-core", "rcp-ndcg-vllm"):
         assert package in text, f"the release must keep building {package}"
 
 
@@ -73,14 +73,14 @@ def test_the_lock_installs_it_into_the_dev_environment() -> None:
     assert entry is not None and entry["version"] == "0.0.1", "uv.lock pins the workspace member"
     assert entry.get("source", {}).get("editable", "").endswith("rcp-ndcg-test"), entry.get("source")
     dependency_names = {item["name"] for item in entry.get("dependencies", [])}
-    assert {"rcp-ndcg", "rcp-ndcg-vllm"} <= dependency_names
+    assert {"rcp", "rcp-ndcg-vllm"} <= dependency_names
 
 
 def test_the_package_depends_on_the_product_and_the_harness_at_the_release_version() -> None:
     data = tomllib.loads(_read(PACKAGE / "pyproject.toml"))
     assert data["project"]["name"] == "rcp-ndcg-test"
     assert data["project"]["dependencies"] == [
-        "rcp-ndcg==0.0.1",
+        "rcp==0.0.1",
         "rcp-ndcg-vllm==0.0.1",
         "numpy>=1.26",
         "pydantic>=2.11",

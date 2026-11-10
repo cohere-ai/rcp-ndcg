@@ -9,7 +9,7 @@
   tournament; ``P(C_k = 1) = sigma(gamma_k * (theta - beta_k))`` with
   ``theta ~ N(0, 1)``, fitted by marginal maximum likelihood on each document's
   placement and pass counts, and the calibrated ability is the posterior mean.
-  ``rcp_ndcg.calibration.calibrate`` resolves its ``"auto"`` from the judgements
+  ``rcp.calibration.calibrate`` resolves its ``"auto"`` from the judgements
   before calling this.
 * ``judges`` -- ``"single"``: one judge, untagged observations. ``"pooled"``:
   observations tagged ``(doc_id, criteria, judge_id)`` from two or more judges on
@@ -22,7 +22,7 @@ Both modes report item parameters in one convention: ``sum(gamma) == K`` and
 rescaled together), so :func:`rcp_core.gain.gain` applies to the
 calibrated abilities of either mode unchanged.
 
-The inputs are projected observations; ``rcp_ndcg.calibration.calibrate`` builds
+The inputs are projected observations; ``rcp.calibration.calibrate`` builds
 them from judgement records. The tournament engine needs torch (imported lazily);
 the rubric-only engine needs numpy and scipy.
 """

@@ -18,10 +18,10 @@ import numpy as np
 import pytest
 from rcp_core.content import Content
 
-from rcp_ndcg.errors import ConfigError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference.clients.pool import PoolingClient, _concat_all
-from rcp_ndcg.inference.config import PoolingEndpoint
-from rcp_ndcg.inference.types import Embeddings, EncodeRole
+from rcp.errors import ConfigError, ProviderError, RequestRejectedError
+from rcp.inference.clients.pool import PoolingClient, _concat_all
+from rcp.inference.config import PoolingEndpoint
+from rcp.inference.types import Embeddings, EncodeRole
 from tests.inference import _budget
 from tests.inference._pooling import PoolingServer, RecordingSender, server_sender
 
@@ -92,7 +92,7 @@ class TestEncode:
         """The batch cap is a HOSTED profile's fact on every role (one rule, the embed role's): a served
         /pooling engine answers its own over-count refusal, so a cap declared on a served wire refuses
         nothing client-side -- the batch goes out whole."""
-        from rcp_ndcg.inference.adapters.pooling import VllmPooling
+        from rcp.inference.adapters.pooling import VllmPooling
 
         monkeypatch.setattr(VllmPooling, "MAX_BATCH", 2)
         assert VllmPooling.HOSTED is False
@@ -400,7 +400,7 @@ class TestDocumentSkipIds:
     def test_a_count_mismatch_between_sent_ids_and_vectors_is_a_typed_error(self) -> None:
         """The engine returned five token vectors where the client sent four ids: refusing beats a silent
         misalignment (the skip positions would drop the wrong tokens)."""
-        from rcp_ndcg.errors import ProviderError
+        from rcp.errors import ProviderError
 
         sender = _GatedSender(PoolingServer({}, default=np.ones((5, 2), dtype=np.float16)))
         client = self._client(sender)
@@ -433,7 +433,7 @@ class TestDocumentSkipIds:
         """A media item routes the whole batch through the messages wire, whose positions are the engine's
         chat-template render: the text documents' skip positions cannot be found there. Refused before
         anything is sent (a media document alone, or a text-only batch, is the honest shape)."""
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
@@ -636,8 +636,8 @@ def _media_kept_count(image: Any) -> int:
     """The declared count the client checks a media reply against: the head's ids plus the prepared media
     block, built here from the product's own preparation, media count and tokenizer (the same inputs the
     client passes) rather than from the client's private helper."""
-    from rcp_ndcg.data.prepare import prepare_request
-    from rcp_ndcg.data.resolution import ImagePolicy
+    from rcp.data.prepare import prepare_request
+    from rcp.data.resolution import ImagePolicy
     from tests._tokenizers import spaced_special_tokenizer
 
     policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
@@ -650,8 +650,8 @@ def _media_kept_count(image: Any) -> int:
 def _media_patch_count(image: Any) -> int:
     """The declared kept count of a media document under the allowlist: the media block's patch run (the
     block's counted tokens minus the vision wrapper), from the product's own preparation and media count."""
-    from rcp_ndcg.data.prepare import prepare_request
-    from rcp_ndcg.data.resolution import VISION_WRAPPER_TOKENS, ImagePolicy
+    from rcp.data.prepare import prepare_request
+    from rcp.data.resolution import VISION_WRAPPER_TOKENS, ImagePolicy
 
     policy = ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
     prepared = prepare_request([Content.from_image(image.as_uri())], policy, None)
@@ -862,7 +862,7 @@ class TestMediaKeepIds:
         """The allowlist is its own gate engine-side: a text render carrying one of its ids would be treated
         as a media document and lose every other vector, so the client refuses the collision by name -- the
         word-level fixture's id 2 ('a') stands in for the image-patch token."""
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         sender = RecordingSender(_pooling_reply(rows=1, usage=1))
         client = self._client(sender, media_keep_token_ids=(2,))
@@ -884,7 +884,7 @@ class TestMediaKeepIds:
         """With the allowlist alone (no text skip rule), a batch mixing a text and a media document is still
         refused: one media item routes the whole batch through the messages wire, where the text item's
         declared count cannot be aligned."""
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
@@ -1124,8 +1124,8 @@ class TestMediaAllowance:
         fit keeps media that ``fit`` then refuses with a ``ConfigError``."""
         from rcp_core.content import ImagePart, MediaRef, TextPart
 
-        from rcp_ndcg.data.templates import Segment, TemplateSpec
-        from rcp_ndcg.data.text_budget import fixed_overhead
+        from rcp.data.templates import Segment, TemplateSpec
+        from rcp.data.text_budget import fixed_overhead
 
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())

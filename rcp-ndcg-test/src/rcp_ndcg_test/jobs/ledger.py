@@ -371,7 +371,7 @@ def rc_keys(commit: str, repo_root: str | Path) -> tuple[dict[str, str], dict[st
                 "the wave's key cannot be derived -- fetch the history or re-run the wave"
             )
         subprocess.run(["tar", "-x", "-C", str(tree)], input=archive.stdout, check=True)
-        sources = [tree / "rcp-core" / "src", tree / "rcp-ndcg-core" / "src", tree / "rcp-ndcg" / "src"]
+        sources = [tree / "rcp-core" / "src", tree / "rcp-ndcg-core" / "src", tree / "rcp" / "src"]
         sources += [tree / "rcp-ndcg-vllm" / "src", tree / "rcp-ndcg-test" / "src"]
         environment = {**os.environ, "PYTHONPATH": os.pathsep.join(str(path) for path in sources)}
         run = subprocess.run(

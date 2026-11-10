@@ -53,7 +53,7 @@ expected:
 notes: 'Generated for the stratum cell modality=text, length=long_over, batch=single. Documents are exact
   repetitions of fixed original filler sentences authored for this lane (no external text), padded with
   single-token filler words to the recorded count; built deterministically (no randomness at build or
-  test time) and measured with rcp_ndcg.data.preprocess (TextBudget/fit) in the recipe tokenizer Qwen/Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5
+  test time) and measured with rcp.data.preprocess (TextBudget/fit) in the recipe tokenizer Qwen/Qwen3-Reranker-4B@22e683669bc0f0bd69640a1354a6d0aebcfeede5
   (tokenizer.json sha256 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4); the frame
   overhead measures 73 tokens and the tokenizer''s post-processor adds none. Rendered pair-prompt tokens
   (uncut), per document: d1 10300; the query measures 16 tokens, within the recipe''s 4096-token query

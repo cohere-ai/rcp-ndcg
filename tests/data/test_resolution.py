@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
-from rcp_ndcg.data import Preprocessing
-from rcp_ndcg.data.resolution import (
+from rcp.data import Preprocessing
+from rcp.data.resolution import (
     PROCESSORS,
     VISION_WRAPPER_TOKENS,
     ImagePolicy,
@@ -21,7 +21,7 @@ from rcp_ndcg.data.resolution import (
     smart_resize,
     uniform_frame_indices,
 )
-from rcp_ndcg.errors import ConfigError, DataError, classify
+from rcp.errors import ConfigError, DataError, classify
 from tests._tokenizers import vendored_qwen3_vl_tokenizer
 
 QWEN = ImagePolicy(min_px=4 * 28 * 28, max_px=1280 * 28 * 28, processor="qwen2_vl")
@@ -63,14 +63,14 @@ class TestSmartResize:
     def test_rejects_extreme_aspect_ratios(self):
         """A typed refusal with a hint, matching its non-positive sibling -- never a bare ValueError in one
         function (one error shape per family)."""
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         with pytest.raises(DataError, match="aspect ratio") as caught:
             smart_resize(10, 5000, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)
         assert caught.value.hint, "the refusal names the next step"
 
     def test_rejects_degenerate_dimensions(self):
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         with pytest.raises(DataError, match="positive"):
             smart_resize(0, 100, factor=28, min_pixels=56 * 56, max_pixels=1280 * 28 * 28)

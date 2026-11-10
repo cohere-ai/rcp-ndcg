@@ -15,16 +15,16 @@ from typing import Any
 import httpx
 import pytest
 
-import rcp_ndcg.inference.transport as transport_module
-from rcp_ndcg.errors import (
+import rcp.inference.transport as transport_module
+from rcp.errors import (
     BackendUnavailableError,
     ConfigError,
     CredentialsError,
     ProviderError,
     RequestRejectedError,
 )
-from rcp_ndcg.inference import Call, EncodeRole, Endpoint, TokenCount, Transport
-from rcp_ndcg.inference.types import Reply
+from rcp.inference import Call, EncodeRole, Endpoint, TokenCount, Transport
+from rcp.inference.types import Reply
 
 #: A minimal JSON answer, for the 200s the scripts serve.
 _BODY = {"object": "chat.completion", "choices": [{"message": {"role": "assistant", "content": "ok"}}]}
@@ -335,7 +335,7 @@ class TestOutageBoundaries:
         monkeypatch.setattr(Transport, "BACKOFF_S", self.BACKOFF)
         monkeypatch.setattr(Transport, "MAX_BACKOFF_S", 1.0)
         # the boundary dances park in a tight loop when the code is wrong: keep the warnings off the log
-        monkeypatch.setattr(logging.getLogger("rcp_ndcg"), "disabled", True)
+        monkeypatch.setattr(logging.getLogger("rcp"), "disabled", True)
         return _transport(script, wait_on_outage_s=self.BACKOFF, **config), clock
 
     def test_a_replica_wakes_at_exactly_the_end_of_its_outage_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -442,7 +442,7 @@ class TestHeaders:
         monkeypatch.setenv("RCP_NDCG_TEST_KEY", "sekrit-key")
         script = ReplicaScript(503, 200)  # a set-aside, so the transport logs
         transport = _transport(script, api_key_env="RCP_NDCG_TEST_KEY")
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             assert _send(transport)[0].status == 200
         assert script.requests[0].headers["Authorization"] == "Bearer sekrit-key"
         assert all("sekrit-key" not in record.getMessage() for record in caplog.records)
@@ -453,7 +453,7 @@ class TestHeaders:
         monkeypatch.setenv("RCP_NDCG_TEST_GATEWAY", "sekrit-value")
         script = ReplicaScript(503, 200)
         transport = _transport(script, headers_env={"X-Gateway-Key": "RCP_NDCG_TEST_GATEWAY"})
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             assert _send(transport)[0].status == 200
         assert script.requests[0].headers["X-Gateway-Key"] == "sekrit-value"
         assert all("sekrit-value" not in record.getMessage() for record in caplog.records)
@@ -648,9 +648,9 @@ class TestAdapterAuth:
         reach (the host rule the client applies, tested below).
         """
         script = ReplicaScript()
-        from rcp_ndcg.inference import EmbeddingClient, RerankClient
-        from rcp_ndcg.inference.adapters.base import get_adapter
-        from rcp_ndcg.inference.config import EmbeddingEndpoint, RerankEndpoint
+        from rcp.inference import EmbeddingClient, RerankClient
+        from rcp.inference.adapters.base import get_adapter
+        from rcp.inference.config import EmbeddingEndpoint, RerankEndpoint
 
         def answer(request: httpx.Request) -> httpx.Response:
             script.requests.append(request)  # the recording mock answers each role's shape
@@ -691,7 +691,7 @@ class TestAdapterAuth:
     def _send(client: Any) -> None:
         from rcp_core.content import Content
 
-        from rcp_ndcg.inference import RerankClient
+        from rcp.inference import RerankClient
 
         if isinstance(client, RerankClient):
             client.rerank("q", ["a"])
@@ -778,7 +778,7 @@ class TestAdapterAuth:
         client, script = self._client(
             "cohere", tokenizer_json, base_url=None, wait_on_outage_s=0
         )  # the profile's own host, where its key resolves; a set-aside logs; no outage wait
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             self._send(client)
         assert all("fake-sekrit-value" not in record.getMessage() for record in caplog.records)
         monkeypatch.delenv("CO_API_KEY", raising=False)
@@ -851,7 +851,7 @@ class TestRetryAfterGarbage:
         assert sleeps and sleeps[-1] == Transport.RETRY_BACKOFF_S, "the doubling backoff, never the garbage"
 
     def test_a_usable_retry_after_is_still_capped(self) -> None:
-        from rcp_ndcg.inference.transport import _retry_after
+        from rcp.inference.transport import _retry_after
 
         assert _retry_after({"retry-after": "0.0005"}) == 0.0005  # below the cap: honoured
         assert _retry_after({"retry-after": "120"}) == Transport.RETRY_MAX_BACKOFF_S  # capped, whatever it says
@@ -866,7 +866,7 @@ class TestUserInfoNeverLeaks:
     def test_set_aside_and_outage_never_name_the_secret(self, caplog: pytest.LogCaptureFixture) -> None:
         script = ReplicaScript(503)
         transport = _transport(script, base_url="http://user:sekrit-value@judge.test/v1", wait_on_outage_s=0)
-        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+        with caplog.at_level(logging.WARNING, logger="rcp"):
             with pytest.raises(BackendUnavailableError) as caught:
                 asyncio.run(transport.send([Call("POST", "/a", {})]))
 
@@ -907,7 +907,7 @@ class TestUserInfoNeverLeaks:
     def test_the_retry_warning_carries_no_secret(self, caplog: pytest.LogCaptureFixture) -> None:
         script = ReplicaScript(httpx.ConnectError(f"cannot reach {self.SECRET_URL}"), 200)
         transport = _transport(script, base_url=self.SECRET_URL, max_retries=1)
-        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+        with caplog.at_level(logging.WARNING, logger="rcp"):
             asyncio.run(transport.send([Call("POST", "/a", {})]))
         messages = [record.getMessage() for record in caplog.records]
         assert any("retrying" in message for message in messages)
@@ -920,7 +920,7 @@ class TestUserInfoNeverLeaks:
         transport = Transport(
             Endpoint(base_url=self.SECRET_URL, model="m"), httpx_transport=httpx.MockTransport(models)
         )
-        with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+        with caplog.at_level(logging.WARNING, logger="rcp"):
             asyncio.run(transport.probe())
         transport.close()
         messages = [record.getMessage() for record in caplog.records]
@@ -938,7 +938,7 @@ class TestUserInfoNeverLeaks:
             assert all("fake-secret" not in str(reply.body) for reply in replies)
 
     def test_the_engine_record_strips_userinfo_and_query(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference.types import EngineInfo
+        from rcp.inference.types import EngineInfo
 
         # The redactor itself is pinned beside its home (tests/storage: support.urls.safe_url); the record calls it.
         record = EngineInfo(url="http://user:sekrit-value@judge.test/v1")

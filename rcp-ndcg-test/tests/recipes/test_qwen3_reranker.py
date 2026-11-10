@@ -34,8 +34,8 @@ from rcp_ndcg_vllm.recipe import (
     serve_argv,
 )
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.inference.config import RerankEndpoint
+from rcp.data.tokenizer import load_tokenizer
+from rcp.inference.config import RerankEndpoint
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_pair, served_rows
@@ -493,7 +493,7 @@ def test_mutation_dropping_the_trailing_anchor_segment_reddens_the_template_chec
     """Mutation: dropping the trailing anchor segment loses the assistant suffix -- the scored position --
     and the file-vs-declaration check goes red (the wire's spans, which the anchor audit reads, do not move
     on a frame change); the schema itself refuses the shape without the post-processor declaration."""
-    from rcp_ndcg.data.templates import TemplateSpec
+    from rcp.data.templates import TemplateSpec
 
     recipe = _local_recipe(tmp_path, tokenizer_dir, variant_id)
     tokenizer = load_tokenizer(str(tokenizer_dir / "tokenizer.json"))

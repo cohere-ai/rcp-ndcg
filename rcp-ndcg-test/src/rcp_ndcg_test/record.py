@@ -2,7 +2,7 @@
 fixtures.
 
 Against a served recipe it drives the product's role client
-(:class:`~rcp_ndcg.inference.clients.EmbeddingClient`, ``PoolingClient`` or ``RerankClient``) built from
+(:class:`~rcp.inference.clients.EmbeddingClient`, ``PoolingClient`` or ``RerankClient``) built from
 :func:`~rcp_ndcg_vllm.recipe.client_config` with the recipe's real budget -- the client prompts, fits and
 settles, the adapter renders, the transport sends -- and records the engine behaviour the adapters must map:
 the provenance ``GET /v1/models``, and on the role route an over-length prompt (measured against the engine's
@@ -113,7 +113,7 @@ def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str
     else:
         from rcp_core.content import Content
 
-        from rcp_ndcg.inference.types import EncodeRole
+        from rcp.inference.types import EncodeRole
 
         role = EncodeRole.QUERY if "query" in _declared(recipe) else EncodeRole.DOCUMENT
         text = _SNIPPET_TEXT if role is EncodeRole.QUERY else _SNIPPET_DOCUMENTS[0]
@@ -605,7 +605,7 @@ def _model_layer(
     """
     from rcp_core.content import Content
 
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.types import EncodeRole
 
     from .equivalence.fitting import declared_shapes
     from .equivalence.media import media_rows, side_contents
@@ -621,7 +621,7 @@ def _model_layer(
     # The media rows (the media request set's inline images): each media side alone, as the media stage
     # sends it -- one item per request, a reranker's pair per request; their texts are not /tokenize-probed
     # (the engine's chat render of media is not a text the client sends).
-    from rcp_ndcg.errors import RcpNdcgError
+    from rcp.errors import RcpNdcgError
 
     def send_side(row: dict[str, Any], item: str, side: str, call: Any) -> None:
         """One media side through the client; a client that refuses it is recorded as its refusal (nothing

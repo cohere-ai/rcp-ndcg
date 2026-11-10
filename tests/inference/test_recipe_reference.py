@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.inference.recipes import (
+from rcp.errors import ConfigError
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.inference.recipes import (
     available_recipe_ids,
     expand_role_recipe,
     recipe_client_data,
@@ -238,7 +238,7 @@ def test_a_served_wire_takes_the_recipe_and_builds() -> None:
 
 def test_the_shorthand_flows_through_the_retrieval_unions() -> None:
     """The union's mapping form and the CLI shorthand land on the same validated config."""
-    from rcp_ndcg.retrieval import validate_reranker, validate_retriever
+    from rcp.retrieval import validate_reranker, validate_retriever
 
     reranker = validate_reranker(shorthand_config(f"recipe:{RECIPE_ID}")).model_dump()
     assert reranker["model"] == RECIPE_ID and reranker["api"] == "rerank"
@@ -254,7 +254,7 @@ def test_the_shorthand_flows_through_the_retrieval_unions() -> None:
     assert late.encoder.api == "vllm_pooling"
 
     with pytest.raises(ConfigError, match="the recipe is a reranker"):
-        from rcp_ndcg.cli.retrieval import _role_config
+        from rcp.cli.retrieval import _role_config
 
         _role_config(f"recipe:{RECIPE_ID}", [], which="retriever")
 
@@ -328,7 +328,7 @@ def test_a_multi_variant_user_family_directory_names_its_variants(tmp_path: Path
 def test_an_expanded_configs_identity_pointer_passes_through(tmp_path: Path) -> None:
     """A recorded config carries the recipe's expanded client block and the identity pointer: re-reading it --
     a run config's resume, a retrieval index's reload -- must not resolve the hash as an id or a path."""
-    from rcp_ndcg.retrieval import validate_reranker
+    from rcp.retrieval import validate_reranker
 
     directory = _user_family(tmp_path)
     expanded = expand_role_recipe({"recipe": str(directory), "base_url": None}, classes=CLASSES)
@@ -351,7 +351,7 @@ def test_a_tilde_path_is_not_claimed() -> None:
 def test_a_user_recipe_round_trips_through_a_run_config(tmp_path: Path) -> None:
     """The whole point of the identity: the recorded config holds the expanded block and the pointer, and
     re-validating it (``run status``, a resume, a reopen) accepts the pointer as it stands."""
-    from rcp_ndcg.runs import RunConfig
+    from rcp.runs import RunConfig
 
     directory = _user_family(tmp_path)
     config = RunConfig.model_validate(
@@ -384,13 +384,13 @@ def test_a_user_recipe_of_an_unreadable_schema_version_is_refused(tmp_path: Path
     data["schema_version"] = "999"
     yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp-ndcg reads"):
+    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp reads"):
         expand_role_recipe({"recipe": str(directory)}, classes=CLASSES)
 
 
 def test_a_recipe_of_an_unreadable_schema_version_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Decision 18: the recipe file format is the versioned contract; a recipe whose ``schema_version`` this
-    rcp-ndcg does not read is refused naming the version and the ones it reads (a newer rcp-ndcg-vllm must
+    rcp does not read is refused naming the version and the ones it reads (a newer rcp-ndcg-vllm must
     fail here, not load with a schema surprise)."""
     import shutil
 
@@ -407,6 +407,6 @@ def test_a_recipe_of_an_unreadable_schema_version_is_refused(monkeypatch: pytest
     yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
     monkeypatch.setattr(vllm_recipe, "default_recipes_root", lambda: tmp_path)
 
-    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp-ndcg reads") as excinfo:
+    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp reads") as excinfo:
         expand_role_recipe({"recipe": RECIPE_ID, "base_url": None}, classes=CLASSES)
     assert "1" in excinfo.value.hint

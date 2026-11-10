@@ -7,8 +7,8 @@ from collections.abc import Callable
 import pytest
 from rcp_core.schemas import Judgement, JudgementSet, criterion_labels
 
-from rcp_ndcg.calibration import calibrate
-from rcp_ndcg.errors import DataError
+from rcp.calibration import calibrate
+from rcp.errors import DataError
 
 
 def _edited(judgements: JudgementSet, edit: Callable[[dict[str, int]], dict[str, int]]) -> tuple[JudgementSet, str]:

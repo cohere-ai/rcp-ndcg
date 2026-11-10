@@ -15,9 +15,9 @@ import os
 
 import pytest
 
-from rcp_ndcg.data import load_dataset
-from rcp_ndcg.data.io.hub import hub_subsets
-from rcp_ndcg.errors import ConfigError
+from rcp.data import load_dataset
+from rcp.data.io.hub import hub_subsets
+from rcp.errors import ConfigError
 
 pytestmark = [
     pytest.mark.network,
@@ -124,7 +124,7 @@ def test_the_canonical_repositories_hold_no_duplicate_labels() -> None:
     row. The labels read with ``duplicates="last"`` (mteb's behaviour), and the counts it took are recorded in
     the provenance; the corpus and query ids are counted from the raw rows (the reader folds them, so the
     folded output cannot show them)."""
-    from rcp_ndcg.data.io.hub import HubReader
+    from rcp.data.io.hub import HubReader
 
     measured: list[str] = []
     for repo, subset, corpus_too in MEASURED:

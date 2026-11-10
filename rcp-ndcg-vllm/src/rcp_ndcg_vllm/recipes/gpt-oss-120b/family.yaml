@@ -1,7 +1,7 @@
 # The gpt-oss-120b judge family: the paper's second judge, one variant.
 #
-# The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
-# rcp-ndcg reads `recipe: gpt-oss-120b` (this package carries no second model of a judge). The serve block is
+# The family's client block is rcp's judge config, validated by `rcp.judging.JudgeConfig` when
+# rcp reads `recipe: gpt-oss-120b` (this package carries no second model of a judge). The serve block is
 # the paper's SGLang command translated to vLLM v0.33.0 flags, every flag checked in the vLLM v0.33.0 source.
 # A text-only judge: the checkpoint has no vision config, so no image_processor, no max_images and no media
 # limit.

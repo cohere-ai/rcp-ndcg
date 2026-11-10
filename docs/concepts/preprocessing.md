@@ -5,17 +5,17 @@ judging pass -- text, page images and video. What a served model reads is decide
 [text budget](text-budgets.md), the other half of the same machinery. Nothing is cut silently: every cut is either
 declared policy or a per-window budget cut, and both are recorded.
 
-The machinery has one home per concept: the text policy and the chunking in `rcp_ndcg.data.text_policy`, the cut
-record and the census in `rcp_ndcg.data.census`, the served roles' fit in `rcp_ndcg.data.text_budget`, the census
-files' record I/O in `rcp_ndcg.storage.census`. `rcp_ndcg.data.preprocess` re-exports the names of those homes
+The machinery has one home per concept: the text policy and the chunking in `rcp.data.text_policy`, the cut
+record and the census in `rcp.data.census`, the served roles' fit in `rcp.data.text_budget`, the census
+files' record I/O in `rcp.storage.census`. `rcp.data.preprocess` re-exports the names of those homes
 (the module's docstring lists them exactly; the postprocess names it does not re-export come from
-`rcp_ndcg.data.postprocess` and the Matryoshka head from `rcp_ndcg.data.mrl`), and every snippet below imports
+`rcp.data.postprocess` and the Matryoshka head from `rcp.data.mrl`), and every snippet below imports
 from it.
 
 ## Text
 
 A judging pass declares what happens to a document longer than a token cap. The declaration is the `text` field of
-the pass's `preprocessing` (in a run config, or `--set preprocessing.text.on_overflow=...` on `rcp-ndcg judge`), and
+the pass's `preprocessing` (in a run config, or `--set preprocessing.text.on_overflow=...` on `rcp judge`), and
 it is the only place that decides how much of a document the judge sees at load. It is recorded in the run manifest
 and folded into the judging identity and the judgement family key. Two passes that showed the judge different text
 therefore never share cached judgements or pool observations.
@@ -38,7 +38,7 @@ tokenizer: Qwen/Qwen3.5-397B-A17B-FP8           # a Hugging Face repository id, 
 ```
 
 On the command line it is `--set judge.tokenizer=...`. The client reads the repository's `tokenizer.json` with the
-`tokenizers` library (no torch), from the `[hf]` extra (`pip install "rcp-ndcg[hf]"`), once per process. The shipped
+`tokenizers` library (no torch), from the `[hf]` extra (`pip install "rcp[hf]"`), once per process. The shipped
 configs of self-served judges name their model's repository. The hosted `gpt5_hosted` config names none, because
 OpenAI publishes no tokenizer on the Hub.
 
@@ -76,10 +76,10 @@ fits. The census records the tokens before and after each cut, and the character
 ```python
 from tokenizers import Tokenizer, models, pre_tokenizers
 
-from rcp_ndcg.data import TextTokenizer
-from rcp_ndcg.data.preprocess import token_prefix
+from rcp.data import TextTokenizer
+from rcp.data.preprocess import token_prefix
 
-# A word-level tokenizer built in memory; a judge's own comes from rcp_ndcg.data.load_tokenizer.
+# A word-level tokenizer built in memory; a judge's own comes from rcp.data.load_tokenizer.
 backend = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
 backend.pre_tokenizer = pre_tokenizers.Whitespace()
 words = TextTokenizer.from_backend(backend, name="words")
@@ -112,7 +112,7 @@ the judge.
 
 ### Estimates
 
-`rcp_ndcg.estimate` walks the same windows and budgets as the pass. With a tokenizer it counts every prompt's tokens
+`rcp.estimate` walks the same windows and budgets as the pass. With a tokenizer it counts every prompt's tokens
 exactly (plus the 256-token reserve), and the estimate says `input_token_count: exact`. Without one it approximates
 2.0 characters per token, says `input_token_count: approximate`, and lists the approximation under `assumptions`.
 Nothing is ever cut by that approximation.
@@ -161,8 +161,8 @@ documents to `n + extra` chunks gets proportionally more windows.
 ```python
 from tokenizers import Tokenizer, models, pre_tokenizers
 
-from rcp_ndcg.data import TextTokenizer
-from rcp_ndcg.data.preprocess import ChunkPolicy, split_into_chunks
+from rcp.data import TextTokenizer
+from rcp.data.preprocess import ChunkPolicy, split_into_chunks
 
 backend = Tokenizer(models.WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
 backend.pre_tokenizer = pre_tokenizers.Whitespace()
@@ -172,11 +172,11 @@ pieces = split_into_chunks("one two three four five six seven", ChunkPolicy(max_
 print(pieces)  # ['one two three', 'three four five', 'five six seven']
 ```
 
-The same policy in Python is `rcp_ndcg.Preprocessing`, which `rcp_ndcg.judge(..., preprocessing=...)` and
-`rcp_ndcg.estimate` take:
+The same policy in Python is `rcp.Preprocessing`, which `rcp.judge(..., preprocessing=...)` and
+`rcp.estimate` take:
 
 ```python
-from rcp_ndcg import Preprocessing
+from rcp import Preprocessing
 
 policy = Preprocessing.model_validate(
     {"text": {"on_overflow": "chunk", "chunk": {"max_tokens": 4000, "overlap_tokens": 250}}}
@@ -191,7 +191,7 @@ endpoint therefore only has to be OpenAI-compatible: vLLM runs stock, with no me
 receives the same bytes.
 
 How a judge sees page images and video is a judging setting, the `image` and `video` fields of the pass's
-`preprocessing` (in a run config, or `--set preprocessing.image.max_px=...` on `rcp-ndcg judge`):
+`preprocessing` (in a run config, or `--set preprocessing.image.max_px=...` on `rcp judge`):
 
 ```yaml
 preprocessing:
@@ -233,7 +233,7 @@ recorded policy says `processor: null`.
 ### One lowering, and the part order
 
 Every wire block a content becomes is built by the one lowering,
-`rcp_ndcg.data.media.content_parts_payload`: text, `image_url` and `video_url` blocks in the content's own part
+`rcp.data.media.content_parts_payload`: text, `image_url` and `video_url` blocks in the content's own part
 order, so a caption after its page stays after it -- the order of an item's parts is information the model reads.
 The judge's wire adds its two guards as hooks and changes no block: an image or frame must be prepared (the
 preparation above), and a container must be under the inlined-size cap (`RCP_NDCG_MAX_VIDEO_BYTES`, 64 MiB by
@@ -374,7 +374,7 @@ A prompt with images or video is refused (`CapabilityError`) unless the judge co
 them (`max_images`, `max_videos` above 0).
 
 ```python
-from rcp_ndcg.data import ImagePolicy
+from rcp.data import ImagePolicy
 
 policy = ImagePolicy(min_px=65536, max_px=1280 * 32 * 32).for_processor("qwen3_vl")
 print(policy.target_size(2200, 1700))  # (1280, 992): the size the judge's processor keeps
@@ -384,7 +384,7 @@ print(policy.max_image_tokens)  # 1280: the bound when a size was never recorded
 
 ## Identity
 
-`rcp_ndcg.Preprocessing` is the effective policy of one judging pass: the text policy, the chunk geometry, the
+`rcp.Preprocessing` is the effective policy of one judging pass: the text policy, the chunk geometry, the
 image policy (with the judge's processor family) and the video policy. It is part of the judging identity and of the
 judgement family key, and the judge's tokenizer is recorded beside it: its name and hash in the preprocessing
 identity, its hash in the family key. Two passes that showed the judge different text or pixels therefore never share

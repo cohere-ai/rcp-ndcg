@@ -19,7 +19,7 @@ from rcp_ndcg_test.fakes import (
     unregister_fake_engine,
 )
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp.data.tokenizer import load_tokenizer
 
 
 class _MinimalFake:

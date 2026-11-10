@@ -1,6 +1,6 @@
-"""The built-in result sinks and the ``rcp_ndcg.results`` registry.
+"""The built-in result sinks and the ``rcp.results`` registry.
 
-A sink consumes one :class:`~rcp_ndcg.results.ResultRecord` at a time: the ``jsonl`` sink writes one record per
+A sink consumes one :class:`~rcp.results.ResultRecord` at a time: the ``jsonl`` sink writes one record per
 line, the ``parquet`` sink one row per (system, dataset, metric, cutoff), and ``null`` discards (for a dry run
 and for the conformance suite). The registry resolves a name through the entry-point group, and every failure
 names the installed sinks.
@@ -17,8 +17,8 @@ import pytest
 from pydantic import ValidationError
 from rcp_core.protocol import Protocol
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.results import (
+from rcp.errors import ConfigError
+from rcp.results import (
     RESULT_SCHEMA,
     JsonlResultSink,
     NullResultSink,
@@ -41,7 +41,7 @@ def _record(metrics: list[ResultMetric] | None = None) -> ResultRecord:
     subject = ResultSubject(kind="system", name="mine", system="mine", run_id="20260101-000000-tiny-ab12cd")
     dataset = ResultDataset(name="toy", protocol="plain", protocol_spec=Protocol(name="plain", ties="group_mean"))
     if metrics is None:
-        metrics = [ResultMetric(metric="rcp_ndcg", k=10, value=0.75, num_queries=2)]
+        metrics = [ResultMetric(metric="rcp", k=10, value=0.75, num_queries=2)]
     return ResultRecord(
         record_id=record_identity(subject, dataset, metrics),
         created_at=datetime(2026, 1, 2, tzinfo=UTC),
@@ -52,8 +52,8 @@ def _record(metrics: list[ResultMetric] | None = None) -> ResultRecord:
 
 
 def test_the_manifest_declares_the_builtin_sinks() -> None:
-    data = tomllib.loads((REPO / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8"))
-    assert data["project"]["entry-points"]["rcp_ndcg.results"] == DECLARED_SINKS
+    data = tomllib.loads((REPO / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert data["project"]["entry-points"]["rcp.results"] == DECLARED_SINKS
 
 
 def test_the_registry_lists_the_installed_sinks_sorted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,18 +76,18 @@ def test_an_unknown_sink_is_a_config_error_naming_the_installed(monkeypatch: pyt
     with pytest.raises(ConfigError, match="unknown result sink 'nope'") as caught:
         result_sink_class("nope")
     assert "jsonl" in str(caught.value)
-    assert "rcp_ndcg.results" in (caught.value.hint or "")
+    assert "rcp.results" in (caught.value.hint or "")
 
 
 def test_a_sink_that_fails_to_import_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    inject_sinks(monkeypatch, EntryPoint(name="broken", value="rcp_ndcg.results:NoSuchSink", group="rcp_ndcg.results"))
+    inject_sinks(monkeypatch, EntryPoint(name="broken", value="rcp.results:NoSuchSink", group="rcp.results"))
 
     with pytest.raises(ConfigError, match="'broken' entry point .* could not be loaded"):
         result_sink_class("broken")
 
 
 def test_an_entry_point_that_is_not_a_sink_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    inject_sinks(monkeypatch, EntryPoint(name="wrong", value="rcp_ndcg.results:ResultRecord", group="rcp_ndcg.results"))
+    inject_sinks(monkeypatch, EntryPoint(name="wrong", value="rcp.results:ResultRecord", group="rcp.results"))
 
     with pytest.raises(ConfigError, match="not a ResultsSink"):
         result_sink_class("wrong")
@@ -170,7 +170,7 @@ def test_the_parquet_sink_writes_one_row_per_metric(tmp_path: Path) -> None:
     sink.emit(
         _record(
             metrics=[
-                ResultMetric(metric="rcp_ndcg", k=10, value=0.75, num_queries=2),
+                ResultMetric(metric="rcp", k=10, value=0.75, num_queries=2),
                 ResultMetric(metric="qrel_ndcg", k=5, value=0.25, num_queries=2, dataset="toy"),
             ]
         )
@@ -180,7 +180,7 @@ def test_the_parquet_sink_writes_one_row_per_metric(tmp_path: Path) -> None:
     table = pq.read_table(out)
     assert table.num_rows == 2
     rows = table.to_pylist()
-    assert [row["metric"] for row in rows] == ["rcp_ndcg", "qrel_ndcg"]
+    assert [row["metric"] for row in rows] == ["rcp", "qrel_ndcg"]
     assert [row["k"] for row in rows] == [10, 5]
     assert [row["dataset_name"] for row in rows] == ["toy", "toy"]
     assert [row["subject_name"] for row in rows] == ["mine", "mine"]
@@ -238,4 +238,4 @@ def test_a_sink_refuses_a_value_that_is_not_a_record() -> None:
 
 def test_a_metric_needs_a_non_negative_cutoff() -> None:
     with pytest.raises(ValidationError):
-        ResultMetric(metric="rcp_ndcg", k=0, value=0.5)
+        ResultMetric(metric="rcp", k=0, value=0.5)

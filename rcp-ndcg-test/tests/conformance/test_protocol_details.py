@@ -8,7 +8,7 @@ import pytest
 from rcp_ndcg_test.engines import Exchange, behaviour_diff, exchanges_of
 from tests._engines import corpus_of, emulator_for, load_recipe, observation_corpus
 
-from rcp_ndcg.errors import ConfigError
+from rcp.errors import ConfigError
 
 QUERY = {"query": "What is the capital of France?"}
 DOCUMENTS = {"documents": ["Paris is the capital of France.", "Berlin is the capital of Germany."]}
@@ -126,11 +126,11 @@ def test_a_corpus_recorded_on_another_engine_version_is_refused_by_its_host(tmp_
 
 @pytest.mark.parametrize("url", ["fake://vllm-1/qwen3-reranker-8b", "fake://vllm-0.33/qwen3-reranker-8b"])
 def test_the_engine_host_is_one_pattern(url: str) -> None:
-    """``rcp_ndcg.inference.fake`` routes a URL to the emulators exactly when the emulators read its
+    """``rcp.inference.fake`` routes a URL to the emulators exactly when the emulators read its
     host as an engine and version (one pattern, never two)."""
     from rcp_ndcg_test.engines import split_engine_host
 
-    from rcp_ndcg.inference.fake import RE_ENGINE_URL
+    from rcp.inference.fake import RE_ENGINE_URL
 
     host = url.removeprefix("fake://").split("/", 1)[0]
     try:

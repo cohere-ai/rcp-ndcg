@@ -9,7 +9,7 @@ and the architectures and patches it declares, ``mm_processor_kwargs``, ...), th
 engine-side plugin module the recipe runs, the template file's bytes, the tokenizer's ``tokenizer.json``
 SHA-256 and the client fields that change the request bytes (:data:`CLIENT_FIELDS` classifies every
 client config field; client-side post-processing of the reply is out, request packing and the media caps
-are in). rcp-ndcg's own internals are not in it: the emulators speak the wire, so
+are in). rcp's own internals are not in it: the emulators speak the wire, so
 refactoring the package never needs a re-recording. Recipe identity (``id``) and harness metadata
 (``notes``, ``status``, ``reference``, ``gates``) are out: a renamed recipe with the same behaviour keys
 the same fingerprint.
@@ -28,7 +28,7 @@ default: none resolvable is an error with a hint):
    mapping the recipe's exact spec string to a vendored copy of the ``tokenizer.json`` (optionally
    ``.gz``-compressed), whose SHA-256 is verified on every read. Observation corpora vend their tokenizers
    this way so the conformance suite recomputes fingerprints offline;
-3. the product's :func:`~rcp_ndcg.data.tokenizer.load_tokenizer` (a Hub id with its pinned revision, from
+3. the product's :func:`~rcp.data.tokenizer.load_tokenizer` (a Hub id with its pinned revision, from
    the local cache or the Hub).
 """
 
@@ -46,10 +46,10 @@ from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, PLUGIN_ENGINE_MODULES
 from rcp_ndcg_vllm.patches import PATCH_MODULES
 from rcp_ndcg_vllm.recipe import Recipe, plugin_distribution_name
 
-from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.judging.client import JudgeConfig
-from rcp_ndcg.support.identity import identity_payload
+from rcp.data.tokenizer import TextTokenizer, load_tokenizer
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.judging.client import JudgeConfig
+from rcp.support.identity import identity_payload
 from rcp_ndcg_test.equivalence.fitting import resolved_tokenizer_spec
 from rcp_ndcg_test.errors import HarnessError
 
@@ -370,7 +370,7 @@ def _load_bytes(recipe: Recipe) -> tuple[bytes, str]:
         raise HarnessError(
             f"recipe {recipe.id}: the tokenizer {spec!r} cannot be resolved ({error}); give client.tokenizer a "
             "local tokenizer.json path, vendor one in a tokenizer store registered with use_tokenizer_store, "
-            "or make it loadable through rcp_ndcg.data.tokenizer.load_tokenizer (a Hub id needs its cache)"
+            "or make it loadable through rcp.data.tokenizer.load_tokenizer (a Hub id needs its cache)"
         ) from error
     return b"", tokenizer.sha256  # the product's loader already hashed the bytes; only their hash is input
 
@@ -395,7 +395,7 @@ def load_recipe_tokenizer(recipe: Recipe) -> TextTokenizer:
     """The recipe's real tokenizer, from the same files the fingerprint hashes.
 
     One resolution, two consumers: the fingerprint reads the bytes' hash, the emulators and the golden
-    replay count tokens with the loaded :class:`~rcp_ndcg.data.tokenizer.TextTokenizer` (the recipe's real
+    replay count tokens with the loaded :class:`~rcp.data.tokenizer.TextTokenizer` (the recipe's real
     tokenizer files, on CPU). A store or cache copy is loaded through the product's own loader semantics:
     truncation and padding reset at load.
 
@@ -403,7 +403,7 @@ def load_recipe_tokenizer(recipe: Recipe) -> TextTokenizer:
         recipe: The loaded recipe.
 
     Returns:
-        The :class:`~rcp_ndcg.data.tokenizer.TextTokenizer` named by ``client.tokenizer``.
+        The :class:`~rcp.data.tokenizer.TextTokenizer` named by ``client.tokenizer``.
 
     Raises:
         HarnessError: the tokenizer cannot be resolved (same message as :func:`tokenizer_sha256`).

@@ -305,7 +305,7 @@ tags:
 - mteb
 - retrieval
 - reranking
-- rcp-ndcg
+- rcp
 - graded-relevance
 - llm-judge
 - judge-nvidia-qwen3.5-397b-a17b-nvfp4

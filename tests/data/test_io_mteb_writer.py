@@ -13,11 +13,11 @@ from unittest import mock
 import pyarrow.parquet as pq
 import pytest
 
-from rcp_ndcg.data import load_dataset
-from rcp_ndcg.data.dataset import Dataset
-from rcp_ndcg.data.io import hub as hub_module
-from rcp_ndcg.data.io.mteb import MtebWriter
-from rcp_ndcg.errors import ConfigError, DataError
+from rcp.data import load_dataset
+from rcp.data.dataset import Dataset
+from rcp.data.io import hub as hub_module
+from rcp.data.io.mteb import MtebWriter
+from rcp.errors import ConfigError, DataError
 from tests.data.hub_stubs import SHA, _fake_hub_file, _fake_listing
 
 

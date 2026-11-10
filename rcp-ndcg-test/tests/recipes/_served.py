@@ -34,12 +34,12 @@ __all__ = [
 
 
 def client_template(recipe: Any) -> Any:
-    """The recipe's client template as the product's :class:`~rcp_ndcg.data.templates.TemplateSpec`.
+    """The recipe's client template as the product's :class:`~rcp.data.templates.TemplateSpec`.
 
     The recipe's ``client.template`` is plain data (the lean package validates no endpoint model); the
-    product's model validates it at the read, so a test sees exactly what ``rcp-ndcg`` would construct (R30).
+    product's model validates it at the read, so a test sees exactly what ``rcp`` would construct (R30).
     """
-    from rcp_ndcg.data.templates import TemplateSpec
+    from rcp.data.templates import TemplateSpec
 
     data = recipe.client.get("template")
     return None if data is None else TemplateSpec.model_validate(data)
@@ -256,6 +256,6 @@ def served_pair(recipe: Any, query: str, documents: Sequence[str], *, instructio
 
 
 def _encode_role(shape: str) -> Any:
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.types import EncodeRole
 
     return EncodeRole.QUERY if shape == "query" else EncodeRole.DOCUMENT

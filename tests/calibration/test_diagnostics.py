@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from rcp_ndcg.calibration import Calibration
-from rcp_ndcg.calibration.diagnostics import reliability
+from rcp.calibration import Calibration
+from rcp.calibration.diagnostics import reliability
 
 
 def test_known_ece_and_brier() -> None:

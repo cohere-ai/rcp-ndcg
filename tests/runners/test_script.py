@@ -9,29 +9,29 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg import __version__
-from rcp_ndcg.runners import JobPhase, JobSpec
-from rcp_ndcg.runners.kubernetes import KubernetesRunner
-from rcp_ndcg.runners.local import LocalRunner
-from rcp_ndcg.runners.script import CONSTRAINTS_URL, TORCH_CPU_INDEX, install_argv, merge_phase_env, worker_script
-from rcp_ndcg.runners.slurm import SlurmOptions, SlurmRunner
+from rcp import __version__
+from rcp.runners import JobPhase, JobSpec
+from rcp.runners.kubernetes import KubernetesRunner
+from rcp.runners.local import LocalRunner
+from rcp.runners.script import CONSTRAINTS_URL, TORCH_CPU_INDEX, install_argv, merge_phase_env, worker_script
+from rcp.runners.slurm import SlurmOptions, SlurmRunner
 
 
 def test_host_script_golden() -> None:
-    spec = JobSpec(name="j", argv=("rcp-ndcg", "run", "start", "a dir"), env={"HF_HOME": "/cache"})
+    spec = JobSpec(name="j", argv=("rcp", "run", "start", "a dir"), env={"HF_HOME": "/cache"})
     assert worker_script(spec, install=False, workdir="/work") == (
-        "#!/usr/bin/env bash\nset -euo pipefail\ncd /work\nexport HF_HOME=/cache\nexec rcp-ndcg run start 'a dir'\n"
+        "#!/usr/bin/env bash\nset -euo pipefail\ncd /work\nexport HF_HOME=/cache\nexec rcp run start 'a dir'\n"
     )
 
 
 def test_in_a_stock_image_the_release_installs_itself_with_uvx() -> None:
-    spec = JobSpec(name="j", argv=("rcp-ndcg", "--help"))
+    spec = JobSpec(name="j", argv=("rcp", "--help"))
     last = worker_script(spec, install=True, workdir=None).splitlines()[-1]
     assert last == (
-        f"exec uvx --from 'rcp-ndcg[calibrate,hf,s3,azure]=={__version__}' --with rcp-ndcg-vllm=={__version__} "
+        f"exec uvx --from 'rcp[calibrate,hf,s3,azure]=={__version__}' --with rcp-ndcg-vllm=={__version__} "
         f"--constraints "
         f"{CONSTRAINTS_URL.format(version=__version__)} --index {TORCH_CPU_INDEX} --index-strategy unsafe-best-match "
-        "rcp-ndcg --help"
+        "rcp --help"
     )
     assert CONSTRAINTS_URL.startswith("https://github.com/cohere-ai/rcp-ndcg/releases/download/v")
     assert install_argv(("python3", "-V")) == ("python3", "-V")  # only the package's own command is installed
@@ -52,7 +52,7 @@ def test_hostile_argv_survives_bash_unchanged(tmp_path) -> None:
 def test_the_phase_overlay_owns_the_engines_variable() -> None:
     """A job env entry named RCP_NDCG_ENGINES once defeated every phase's own value: the worker re-exported the
     job's env inside the child, after `supervise` had exported the phase's JSON in the parent."""
-    from rcp_ndcg.support.serve import ENGINES_ENV
+    from rcp.support.serve import ENGINES_ENV
 
     job = '{"judge": {"urls": ["http://job:1/v1"]}}'
     phase = '{"judge": {"urls": ["http://phase:2/v1"]}}'
@@ -94,15 +94,13 @@ def test_an_image_without_uv_installs_it_with_pip_before_the_coordinator_starts(
     (bin_dir / "python3").chmod(0o755)
     for tool in ("bash", "mkdir", "chmod"):  # and nothing else: this host may have uv
         (bin_dir / tool).symlink_to(shutil.which(tool))
-    script = worker_script(JobSpec(name="j", argv=("rcp-ndcg", "--help")), install=True, workdir=None)
+    script = worker_script(JobSpec(name="j", argv=("rcp", "--help")), install=True, workdir=None)
     env = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path)}
     done = subprocess.run([str(bin_dir / "bash"), "-c", script], env=env, capture_output=True, text=True, check=True)
-    assert (tmp_path / "pip-args").read_text() == f"-m pip install --quiet --target {tmp_path}/rcp-ndcg-uv uv\n"
-    assert done.stdout.startswith("uvx --from") and done.stdout.rstrip().endswith("rcp-ndcg --help")
+    assert (tmp_path / "pip-args").read_text() == f"-m pip install --quiet --target {tmp_path}/rcp-uv uv\n"
+    assert done.stdout.startswith("uvx --from") and done.stdout.rstrip().endswith("rcp --help")
     # An image with uv, and a host job, install nothing.
-    assert "pip install" not in worker_script(
-        JobSpec(name="j", argv=("rcp-ndcg", "--help")), install=False, workdir=None
-    )
+    assert "pip install" not in worker_script(JobSpec(name="j", argv=("rcp", "--help")), install=False, workdir=None)
     assert "pip install" not in worker_script(JobSpec(name="j", argv=("python3", "-V")), install=True, workdir=None)
 
 
@@ -110,11 +108,11 @@ def test_an_install_source_replaces_the_release_urls_in_the_uvx_command() -> Non
     """A wheelhouse (staged wheels: a pre-release or an air-gapped node) is passed as ``--find-links`` with
     ``--no-index`` -- nothing comes from PyPI or the torch index -- and a constraints file replaces the
     release URL."""
-    argv = install_argv(("rcp-ndcg", "--help"), wheelhouse="/shared/wheelhouse", constraints="/shared/c.txt")
+    argv = install_argv(("rcp", "--help"), wheelhouse="/shared/wheelhouse", constraints="/shared/c.txt")
     assert argv == (
         "uvx",
         "--from",
-        f"rcp-ndcg[calibrate,hf,s3,azure]=={__version__}",
+        f"rcp[calibrate,hf,s3,azure]=={__version__}",
         "--with",
         f"rcp-ndcg-vllm=={__version__}",
         "--constraints",
@@ -122,15 +120,15 @@ def test_an_install_source_replaces_the_release_urls_in_the_uvx_command() -> Non
         "--find-links",
         "/shared/wheelhouse",
         "--no-index",
-        "rcp-ndcg",
+        "rcp",
         "--help",
     )
     assert TORCH_CPU_INDEX not in argv  # the wheelhouse stages the CPU torch wheels too
     # a constraints file alone replaces only the release URL; a URL wheelhouse is rendered verbatim
     assert "--constraints https://storage.example/c.txt" in " ".join(
-        install_argv(("rcp-ndcg", "--help"), constraints="https://storage.example/c.txt")
+        install_argv(("rcp", "--help"), constraints="https://storage.example/c.txt")
     )
-    https = " ".join(install_argv(("rcp-ndcg", "--help"), wheelhouse="https://storage.example/wheels"))
+    https = " ".join(install_argv(("rcp", "--help"), wheelhouse="https://storage.example/wheels"))
     assert "--find-links https://storage.example/wheels --no-index" in https
     assert "--constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v" in https  # the release URL stays
 
@@ -140,7 +138,7 @@ def test_a_wheelhouse_reaches_the_rendered_scripts_of_the_runners_that_install(t
     Kubernetes pod; shellcheck-clean, like the rest of the script."""
     from tests.runners.shell import assert_shellcheck_clean
 
-    spec = JobSpec(name="j", argv=("rcp-ndcg", "--help"))
+    spec = JobSpec(name="j", argv=("rcp", "--help"))
     slurm = SlurmRunner(
         container_runtime="pyxis", wheelhouse="/shared/wheels", constraints="/shared/wheels/c.txt"
     ).render([spec])["j"]
@@ -155,7 +153,7 @@ def test_a_wheelhouse_reaches_the_rendered_scripts_of_the_runners_that_install(t
 def test_an_install_source_is_refused_where_nothing_installs() -> None:
     """The local runner runs the coordinator in this host's environment, and SLURM without a container runtime
     runs it on the node: neither installs the release, so a wheelhouse or constraints file there is refused."""
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     with pytest.raises(ConfigError, match="installs nothing"):
         LocalRunner(wheelhouse="/shared/wheels")
@@ -173,13 +171,13 @@ def test_with_argv_refuses_an_empty_command() -> None:
     with pytest.raises(ValueError, match="argv must not be empty"):
         job.with_argv(())
     with pytest.raises(ValueError, match="a sequence of words, not a string"):
-        job.with_argv("rcp-ndcg run resume")
+        job.with_argv("rcp run resume")
 
 
 def test_a_wheelhouse_scheme_uv_cannot_read_is_refused_at_config_time() -> None:
     """uv's --find-links and --constraints read local directories and http(s) URLs: a bucket scheme would fail
     at job start, so the config refuses it and names the fix."""
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     for value in ("gs://bucket/wheels", "s3://bucket/wheels", "gcs://bucket/wheels", "gs:/bucket/wheels", "  ", " /x "):
         with pytest.raises(ConfigError, match="uv cannot read|empty or has surrounding whitespace"):
@@ -213,7 +211,7 @@ def test_an_environment_name_that_is_no_shell_identifier_is_refused_everywhere(n
     """`export HF HOME=/x` once set HOME silently, and `export A;echo INJECTED;B=1` ran echo."""
     from pydantic import ValidationError
 
-    from rcp_ndcg.runners import JobOptions, ServeConfig
+    from rcp.runners import JobOptions, ServeConfig
 
     with pytest.raises(ValidationError, match="not an environment variable name"):
         JobSpec(name="j", argv=("true",), env={name: "1"})
@@ -241,7 +239,7 @@ def test_the_uv_bootstrap_installs_from_the_wheelhouse_when_one_is_given(tmp_pat
     for tool in ("bash", "mkdir", "chmod"):
         (bin_dir / tool).symlink_to(shutil.which(tool))
     script = worker_script(
-        JobSpec(name="j", argv=("rcp-ndcg", "--help")),
+        JobSpec(name="j", argv=("rcp", "--help")),
         install=True,
         workdir=None,
         wheelhouse="/shared/wheels",

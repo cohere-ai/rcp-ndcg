@@ -1,6 +1,6 @@
 """Every documented harness command parses.
 
-``test_commands`` checks the ``rcp-ndcg`` command tree only. The pages that drive the unpublished harness
+``test_commands`` checks the ``rcp`` command tree only. The pages that drive the unpublished harness
 (``python -m rcp_ndcg_test.<tool> ...``) are shell blocks nothing validates, so this module calls each tool's
 own ``main`` with the documented argv, placeholders replaced, and the tool's run stubbed out: a documented
 command whose flags the parser refuses fails here, not at the reader's terminal.

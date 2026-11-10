@@ -205,7 +205,7 @@ def test_reference_load_takes_the_checkpoint_from_the_resolved_recipe(monkeypatc
 def test_declared_pair_shape_renders_the_engine_prompt(tmp_path: Path) -> None:
     """The declared pair shape renders the checkpoint builder's 1-vs-1 prompt byte for byte (tokenizer only)."""
     tokenizer_file = _tokenizer_file(tmp_path)
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe = load_recipe(_recipe_copy_with_local_tokenizer(tmp_path, tokenizer_file))
     tokenizer = load_tokenizer(str(tokenizer_file))
@@ -291,7 +291,7 @@ def test_mutation_dropping_the_tail_segment_breaks_the_declared_shape(tmp_path: 
     data["client"]["template"]["pair"] = data["client"]["template"]["pair"][:-1]
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     recipe = load_recipe(mutated)
     tokenizer = load_tokenizer(str(tokenizer_file))
@@ -524,7 +524,7 @@ def test_the_rewritten_reference_tokenizer_agrees_with_the_product_path(tmp_path
     would check the client against a different tokenizer, and the rewrite must not ship."""
     from huggingface_hub.errors import LocalEntryNotFoundError
 
-    from rcp_ndcg.data.tokenizer import load_tokenizer
+    from rcp.data.tokenizer import load_tokenizer
 
     module = _reference_module()
     spec = f"{REPO}@{REVISION}"

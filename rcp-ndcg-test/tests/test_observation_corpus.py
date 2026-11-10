@@ -26,7 +26,7 @@ from rcp_ndcg_test.corpus import (
     register_record_migration,
 )
 
-from rcp_ndcg.errors import DataError
+from rcp.errors import DataError
 
 FROZEN_V1 = Path(__file__).resolve().parent / "fixtures" / "observation_corpus_v1"
 

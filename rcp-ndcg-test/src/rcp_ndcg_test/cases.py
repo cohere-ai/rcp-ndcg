@@ -16,7 +16,7 @@ Two validation levels:
   modality against the recipe, the template shapes the case's sides need, the strata grid coverage of a
   recipe's case directory, and the long inputs' measured token lengths against the recipe's
   ``client.max_tokens`` with the product's tokenizer
-  (:func:`rcp_ndcg.data.tokenizer.load_tokenizer`, the recipe's own spec).
+  (:func:`rcp.data.tokenizer.load_tokenizer`, the recipe's own spec).
 
 The token lengths and the strata grid are what the GPU waves and CI lean on: a ``long_under`` case that
 measures far under the budget, or a recipe missing its ``long_over`` cell, is a case-format violation,
@@ -558,7 +558,7 @@ def _check_media(case: Case, recipe_cases_dir: Path) -> None:
     exists** (the file's bytes are later inlined into wire payloads, so an escape would leak bytes
     off-tree).
     """
-    from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, VIDEO_MIME_BY_SUFFIX
+    from rcp.data.media import IMAGE_MIME_BY_SUFFIX, VIDEO_MIME_BY_SUFFIX
 
     known = {"image": frozenset(IMAGE_MIME_BY_SUFFIX), "video": frozenset(VIDEO_MIME_BY_SUFFIX)}
     other = {"image": "video", "video": "image"}
@@ -593,7 +593,7 @@ def media_ref(case: Case, relative: str) -> Any:
     """The media reference of one case asset, resolved against the recipe's case directory.
 
     Type, dimensions and -- for a clip -- its own frame count and rate come from the product's one home
-    (``rcp_ndcg.data.media``: its suffix->MIME table and the header probes). The conformance send lowers
+    (``rcp.data.media``: its suffix->MIME table and the header probes). The conformance send lowers
     this reference onto the wire, and the length strata count the media with it, so both sides measure the
     same item. A file whose type, dimensions or frame rate the product cannot read is refused here: a bare
     :class:`~rcp_core.content.MediaRef` (no mime, no dims, no rate) would silently inflate the media
@@ -606,7 +606,7 @@ def media_ref(case: Case, relative: str) -> Any:
     """
     from rcp_core.content import MediaRef
 
-    from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, _probe_dimensions, probe_video_header
+    from rcp.data.media import IMAGE_MIME_BY_SUFFIX, _probe_dimensions, probe_video_header
 
     directory = getattr(case, "_dir", None)
     if directory is None:  # pragma: no cover - load_case always pins it
@@ -780,7 +780,7 @@ def _check_instruction_on_the_wire(recipe: Recipe, case: Case) -> None:
     (``fold``; ``none`` drops it by declaration) and there is nothing to check here. Without one, the query
     side's text prefix must carry the instruction verbatim -- the recipe's ``query_prompt`` or the fixed
     segments of its template's query shape (the product allows exactly one of the two per side,
-    ``rcp_ndcg.inference.config``) -- for ``role: embed`` and ``multi_vector``, whose clients place an
+    ``rcp.inference.config``) -- for ``role: embed`` and ``multi_vector``, whose clients place an
     instruction only when the recipe declares it (rerank folds ``instruction=`` itself and is sent as
     declared). The actionable fix without a recipe is to drop ``inputs.instruction`` (move the instruction
     text into ``inputs.queries[].text`` if the card means it literally). "Carries" means a whole delimited
@@ -882,9 +882,9 @@ def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any, Any, Any]:
     and media mechanisms.
 
     The tokenizer comes from the recipe's ``client.tokenizer`` through the harness's loader, the
-    :class:`~rcp_ndcg.data.preprocess.TextBudget` from its ``client`` block, and the effective media
+    :class:`~rcp.data.preprocess.TextBudget` from its ``client`` block, and the effective media
     policies from the client's ``image_processor``/``image_policy``/``video_policy`` through the product's
-    own rule (:func:`rcp_ndcg.data.prepare.media_policies_for`), so the length strata count the media the
+    own rule (:func:`rcp.data.prepare.media_policies_for`), so the length strata count the media the
     same way the served clients do. Cached per recipe *content* (the client block's canonical JSON), never
     by id alone: a caller may pass two different configs under one recipe id, and a budget shared between
     them would silently fit with the wrong template.
@@ -901,7 +901,7 @@ def _recipe_fitter(recipe: Recipe) -> tuple[Any, Any, Any, Any]:
     digest = hashlib.sha256(payload.encode()).hexdigest()
     cached = _FITTER_CACHE.get(digest)
     if cached is None:
-        from rcp_ndcg.data.prepare import media_policies_for
+        from rcp.data.prepare import media_policies_for
         from rcp_ndcg_test.equivalence.fitting import tokenizer_of
         from rcp_ndcg_test.equivalence.wire import role_client
 
@@ -947,8 +947,8 @@ def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
     -- the recipe's template, its specials, the content and the media together -- so this is what the
     length strata measure.
     """
-    from rcp_ndcg.data.preprocess import fit
-    from rcp_ndcg.data.templates import RequestShape
+    from rcp.data.preprocess import fit
+    from rcp.data.templates import RequestShape
 
     tokenizer, budget, _, _ = _recipe_fitter(recipe)
     query_media, document_media = _media_tokens_of(recipe, case)
@@ -1000,7 +1000,7 @@ def _fit_outcome(recipe: Recipe, case: Case) -> tuple[int, list[int]]:
 def _media_tokens_of(recipe: Recipe, case: Case) -> tuple[list[int], list[int]]:
     """Each case input's media token count, as the engine adds it to the prompt.
 
-    The product's :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the recipe client's
+    The product's :func:`~rcp.data.resolution.content_media_tokens` under the recipe client's
     effective policies -- the same instrument the served clients, the conformance send and the media stage
     count with -- over the case's own media files (``media/<file>``, sized from their probed dimensions
     and, for a container, its own frame count and rate). Returns the counts in the queries' and the
@@ -1013,7 +1013,7 @@ def _media_tokens_of(recipe: Recipe, case: Case) -> tuple[list[int], list[int]]:
     """
     from rcp_core.content import Content, ImagePart, VideoPart
 
-    from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
+    from rcp.data.resolution import ImagePolicy, content_media_tokens
 
     tokenizer, _, image, video = _recipe_fitter(recipe)
 
@@ -1043,7 +1043,7 @@ def _check_lengths(recipe: Recipe, cases: list[Case]) -> None:
     inputs measures within 5% under ``client.max_tokens`` -- the stratum is only real near the budget. A
     ``long_over`` case is cut by the fit (at least one render over the budget). A ``short`` case is sent
     whole. Media are counted, never ignored: every input's media tokens (the product's
-    :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the recipe client's policies -- what the
+    :func:`~rcp.data.resolution.content_media_tokens` under the recipe client's policies -- what the
     engine adds to the prompt) are reserved whole out of the budget in the fit and added to that input's
     measured prompt length, so a case whose image alone pushes it over the budget is not ``short``, a
     ``long_over`` whose overflow comes from the image is cut like any other, and an image batch whose

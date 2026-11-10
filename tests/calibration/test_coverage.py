@@ -16,13 +16,13 @@ import pytest
 from click.testing import CliRunner
 from rcp_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
-from rcp_ndcg.calibration import Calibration, calibrate
-from rcp_ndcg.calibration.coverage import DegenerateCounts, coverage_flags, window_coverage
-from rcp_ndcg.cli.calibration import calibration_group
-from rcp_ndcg.errors import DataError, RcpNdcgWarning
-from rcp_ndcg.eval import evaluate
-from rcp_ndcg.judging import JudgementStore
-from rcp_ndcg.testing import TinyWorld
+from rcp.calibration import Calibration, calibrate
+from rcp.calibration.coverage import DegenerateCounts, coverage_flags, window_coverage
+from rcp.cli.calibration import calibration_group
+from rcp.errors import DataError, RcpNdcgWarning
+from rcp.eval import evaluate
+from rcp.judging import JudgementStore
+from rcp.testing import TinyWorld
 
 from .conftest import rubric_set
 
@@ -295,7 +295,7 @@ def test_the_warning_reaches_the_saved_calibration_its_show_and_the_eval_report(
     text = CliRunner().invoke(calibration_group, ["show", "--calibration", str(tmp_path / "cal")]).stdout
     assert "warning INVALID_WINDOWS" in text
 
-    report = evaluate(world.rankings, dataset=world.dataset, gains=loaded, metrics=["rcp_ndcg"], bootstrap=0)
+    report = evaluate(world.rankings, dataset=world.dataset, gains=loaded, metrics=["rcp"], bootstrap=0)
     assert [w.code for w in report.warnings if w.code == "INVALID_WINDOWS"] == ["INVALID_WINDOWS"]
 
 

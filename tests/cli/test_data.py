@@ -1,4 +1,4 @@
-"""``rcp-ndcg data``: convert through the reader registry, leaving a self-describing dataset; inspect it."""
+"""``rcp data``: convert through the reader registry, leaving a self-describing dataset; inspect it."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.data import data_group
-from rcp_ndcg.examples import tiny
+from rcp.cli.data import data_group
+from rcp.examples import tiny
 
 
 @pytest.fixture
@@ -145,7 +145,7 @@ class TestIngestShapes:
 
     def test_a_jsonl_corpus_loads_back(self, runner: CliRunner, ranking_jsonl: str, tmp_path: Path) -> None:
         """The corpus layout ``--to jsonl`` writes (corpus, queries, qrels) is a dataset ``load_dataset`` reads."""
-        from rcp_ndcg.data import load_dataset
+        from rcp.data import load_dataset
 
         out = tmp_path / "corpus"
         args = ["convert", "--format", "jsonl", "--source", ranking_jsonl, "--out", str(out), "--shape", "corpus"]
@@ -210,7 +210,7 @@ class TestIngestShapes:
 
     def test_the_name_option_names_the_dataset(self, ranking_jsonl: str) -> None:
         """``name`` is a reader option like any other; it must not collide with the reader's format argument."""
-        from rcp_ndcg.data import load_dataset
+        from rcp.data import load_dataset
 
         assert load_dataset(f"jsonl:{ranking_jsonl}", name="tinyx").name == "tinyx"
 
@@ -281,7 +281,7 @@ class TestInspect:
 
 
 def _subset(**overrides):
-    from rcp_ndcg.data import Dataset
+    from rcp.data import Dataset
 
     fields = {
         "name": "NanoTiny",
@@ -298,7 +298,7 @@ class TestSuites:
     """Offline: the released subset is replaced by a small one built in the test."""
 
     def test_inspect_summarises_pools_labels_and_gains(self, runner: CliRunner, monkeypatch) -> None:
-        monkeypatch.setattr("rcp_ndcg.data.load_dataset", lambda *a, **k: _subset())
+        monkeypatch.setattr("rcp.data.load_dataset", lambda *a, **k: _subset())
 
         result = runner.invoke(data_group, ["inspect", "--dataset", "suite:nanobeir", "--subset", "NanoTiny", "--json"])
 
@@ -310,7 +310,7 @@ class TestSuites:
         assert data["pool_depth"] == {"min": 1.0, "mean": 2.0, "max": 3.0}
 
     def test_validate_reports_warnings_and_passes(self, runner: CliRunner, monkeypatch, tmp_path: Path) -> None:
-        monkeypatch.setattr("rcp_ndcg.data.load_dataset", lambda *a, **k: _subset())
+        monkeypatch.setattr("rcp.data.load_dataset", lambda *a, **k: _subset())
         rankings = tmp_path / "run.jsonl"
         rankings.write_text(json.dumps({"query_id": "q2", "doc_ids": ["d3", "d4", "d8"]}) + "\n", encoding="utf-8")
 
@@ -325,7 +325,7 @@ class TestSuites:
 
     def test_validate_refuses_data_that_would_give_wrong_numbers(self, runner: CliRunner, monkeypatch) -> None:
         broken = _subset(gains={"q1": {"d1": 1.5, "d2": 0.2}, "q2": {"d3": 0.5}}, excluded={"q1": ["d1"]})
-        monkeypatch.setattr("rcp_ndcg.data.load_dataset", lambda *a, **k: broken)
+        monkeypatch.setattr("rcp.data.load_dataset", lambda *a, **k: broken)
 
         args = ["validate", "--dataset", "suite:nanobeir", "--subset", "NanoTiny", "--json"]
         result = runner.invoke(data_group, args)
@@ -349,7 +349,7 @@ class TestSuites:
 
         error = json.loads(result.stdout)["error"]
         assert result.exit_code == 10
-        assert error["hint"] == 'pip install "rcp-ndcg[hf]"'
+        assert error["hint"] == 'pip install "rcp[hf]"'
 
 
 def test_fetch_tiny_copies_the_packaged_example(runner: CliRunner, tmp_path: Path) -> None:
@@ -407,7 +407,7 @@ def test_a_limited_corpus_conversion_trims_its_labels_and_queries(
 ) -> None:
     """``--limit`` on the corpus shape used to write every query and qrel but only N documents: the output
     names documents its corpus lacks, and ``load_dataset`` refuses it."""
-    from rcp_ndcg.data import load_dataset
+    from rcp.data import load_dataset
 
     out = tmp_path / "limited"
     result = runner.invoke(

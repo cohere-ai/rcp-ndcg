@@ -8,9 +8,9 @@ import sys
 
 import pytest
 
-import rcp_ndcg.eval.mteb as mteb_module
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.eval.mteb import get_tasks, ndcg_float_scores, task_metadata, task_subsets
+import rcp.eval.mteb as mteb_module
+from rcp.errors import ConfigError, DataError
+from rcp.eval.mteb import get_tasks, ndcg_float_scores, task_metadata, task_subsets
 
 LOG2_3 = math.log2(3)
 
@@ -154,8 +154,8 @@ def test_the_published_tasks_pin_the_pr_s_names_splits_and_prompts() -> None:
 def test_the_task_file_is_read_at_the_requested_revision(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A pinned evaluation built its task names, splits and prompt from today's main: after a re-lay, a
     pinned run silently changed its task prompt or fell back to a config's only split."""
-    from rcp_ndcg.data import SUITES
-    from rcp_ndcg.data.io import hub as hub_module
+    from rcp.data import SUITES
+    from rcp.data.io import hub as hub_module
 
     sha = "a" * 40
     source = tmp_path / "rcp_ndcg_tasks.py"

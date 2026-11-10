@@ -17,10 +17,10 @@ from uuid import uuid4
 
 import pytest
 
-from rcp_ndcg.data.revisions import resolve_revision
-from rcp_ndcg.errors import RcpNdcgWarning
-from rcp_ndcg.runs import Pipeline, RunConfig
-from rcp_ndcg.support.identity import hash_payload
+from rcp.data.revisions import resolve_revision
+from rcp.errors import RcpNdcgWarning
+from rcp.runs import Pipeline, RunConfig
+from rcp.support.identity import hash_payload
 
 SHA_A = "a" * 40
 SHA_B = "b" * 40
@@ -179,10 +179,10 @@ class TestDatasetRevision:
     def test_a_moved_upstream_is_refused_by_the_judgement_store(self, hub: FakeHub, tmp_path: Path) -> None:
         from rcp_core.records import Document, Query
 
-        from rcp_ndcg.data import Dataset
-        from rcp_ndcg.errors import IdentityError
-        from rcp_ndcg.judging import RubricSchedule, judge
-        from rcp_ndcg.testing import FakeJudge
+        from rcp.data import Dataset
+        from rcp.errors import IdentityError
+        from rcp.judging import RubricSchedule, judge
+        from rcp.testing import FakeJudge
 
         loaded = Dataset(
             name="fiqa", uri="hf://BeIR/fiqa/fiqa", qrels={"q0": {"d1": 1.0}}, candidates={"q0": ["d1", "d2"]}
@@ -228,8 +228,8 @@ def test_is_commit_is_public_and_the_private_pattern_stays_home() -> None:
     """The commit-shape check is public API (`is_commit`); no other module imports the private `_COMMIT`."""
     import inspect
 
-    import rcp_ndcg.data.dataset as dataset_module
-    from rcp_ndcg.data.revisions import is_commit
+    import rcp.data.dataset as dataset_module
+    from rcp.data.revisions import is_commit
 
     sha = "b" * 40
     assert is_commit(sha)
@@ -256,9 +256,9 @@ def test_the_mteb_identity_records_the_mteb_version_and_only_a_commit_is_verifie
 ) -> None:
     """The ``mteb:`` identity recorded the metadata revision alone: ``main`` counted as verified, and an
     mteb upgrade that changed a task's ids or texts at the same revision was invisible to a resume."""
-    from rcp_ndcg.data.io import mteb_task as mteb_task_module
-    from rcp_ndcg.data.io.mteb_task import MtebTaskReader
-    from rcp_ndcg.data.revisions import ResolvedRevision
+    from rcp.data.io import mteb_task as mteb_task_module
+    from rcp.data.io.mteb_task import MtebTaskReader
+    from rcp.data.revisions import ResolvedRevision
 
     class FakeTask:
         class metadata:
@@ -297,7 +297,7 @@ class TestTheLocalDatasetContentDigest:
     a remote location the backend cannot answer for is refused."""
 
     def test_a_file_digests_as_its_bytes_and_an_edit_moves_the_digest(self, tmp_path: Path) -> None:
-        from rcp_ndcg.data.revisions import dataset_content_digest
+        from rcp.data.revisions import dataset_content_digest
 
         rows = tmp_path / "rows.jsonl"
         rows.write_text('{"query_id": "q"}\n', encoding="utf-8")
@@ -308,7 +308,7 @@ class TestTheLocalDatasetContentDigest:
         assert dataset_content_digest(f"jsonl:{rows}") != before, "an edited file is another dataset"
 
     def test_a_directory_digests_its_sorted_listing(self, tmp_path: Path) -> None:
-        from rcp_ndcg.data.revisions import dataset_content_digest
+        from rcp.data.revisions import dataset_content_digest
 
         stamp = 1_700_000_000_000_000_000  # the same mtimes, so only the listing's own rule is compared
 
@@ -329,7 +329,7 @@ class TestTheLocalDatasetContentDigest:
         assert dataset_content_digest(f"beir:{tmp_path / 'two'}") != first, "an added file moves the digest"
 
     def test_a_remote_source_and_a_local_reader_option(self, tmp_path: Path) -> None:
-        from rcp_ndcg.data.revisions import dataset_content_digest, dataset_local_locations
+        from rcp.data.revisions import dataset_content_digest, dataset_local_locations
 
         for committed in ("hf://org/repo", "suite:bright", "mteb:NanoNFCorpus"):
             assert dataset_content_digest(committed) == {}, committed
@@ -346,7 +346,7 @@ class TestTheLocalDatasetContentDigest:
         assert set(dataset_content_digest(f"acme:{qrels}")) == {"dataset"}
         assert dataset_local_locations(f"acme:{qrels}") == {"dataset": str(qrels)}
         # ... and its remote location is fingerprinted, or refused, like a known scheme's -- never left out.
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         with pytest.raises(DataError, match="fingerprint"):
             dataset_content_digest(f"acme:memory://rev-{uuid4().hex}/missing.jsonl")
@@ -362,7 +362,7 @@ class TestTheLocalDatasetContentDigest:
         another dataset."""
         import fsspec
 
-        from rcp_ndcg.data.revisions import dataset_content_digest
+        from rcp.data.revisions import dataset_content_digest
 
         root = f"rev-{uuid4().hex}"
         fs = fsspec.filesystem("memory")
@@ -385,8 +385,8 @@ class TestTheLocalDatasetContentDigest:
     def test_a_remote_location_that_cannot_be_fingerprinted_is_refused(self) -> None:
         """An unreachable or missing remote location has no content identity to record: keying on the URI
         alone would reuse work over bytes nobody checked, so the identity refuses with a hint."""
-        from rcp_ndcg.data.revisions import dataset_content_digest
-        from rcp_ndcg.errors import DataError
+        from rcp.data.revisions import dataset_content_digest
+        from rcp.errors import DataError
 
         with pytest.raises(DataError, match="fingerprint"):
             dataset_content_digest(f"jsonl:memory://rev-{uuid4().hex}/missing.jsonl")

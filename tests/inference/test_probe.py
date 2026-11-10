@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 import pytest
 
-from rcp_ndcg.inference import Endpoint, Transport
+from rcp.inference import Endpoint, Transport
 
 
 class ReplicaScript:
@@ -83,7 +83,7 @@ def test_a_server_that_does_not_serve_the_endpoints_model_is_named(caplog: pytes
     transport = _transport(
         lambda request: httpx.Response(200, json={"object": "list", "data": [{"id": "org/weights"}]})
     )
-    with caplog.at_level("WARNING", logger="rcp_ndcg"):
+    with caplog.at_level("WARNING", logger="rcp"):
         (engine,) = asyncio.run(transport.probe())
     assert engine.model == "org/weights"
     assert any("--served-model-name m" in record.getMessage() for record in caplog.records)
@@ -95,7 +95,7 @@ def test_the_probe_sends_the_credentials_and_never_logs_their_value(
     monkeypatch.setenv("RCP_NDCG_TEST_KEY", "sekrit-key")
     script = ReplicaScript()
     transport = _transport(script, api_key_env="RCP_NDCG_TEST_KEY")
-    with caplog.at_level("WARNING", logger="rcp_ndcg"):
+    with caplog.at_level("WARNING", logger="rcp"):
         (engine,) = asyncio.run(transport.probe())
     assert engine.error is None
     assert script.requests[0].headers["Authorization"] == "Bearer sekrit-key"

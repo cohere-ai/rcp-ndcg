@@ -100,9 +100,9 @@ print(score_query(scores, gains, protocol=arxiv_v1, k=10, candidates=pool, exclu
 ```
 
 The two calls differ only in how the tie between `d1` and `d2` is resolved: the preset credits both with their
-mean gain, arXiv v1's rule ranks `d2` first by its id. `rcp_ndcg.eval.evaluate` applies the
+mean gain, arXiv v1's rule ranks `d2` first by its id. `rcp.eval.evaluate` applies the
 protocol of a suite or dataset automatically; its `protocol=` argument overrides it. On the command line the
-equivalent is `rcp-ndcg eval score --suite nanobeir --protocol <name>`.
+equivalent is `rcp eval score --suite nanobeir --protocol <name>`.
 
 ## The MTEB integration
 

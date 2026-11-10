@@ -24,8 +24,8 @@ classifiers = [
 # would fight every vLLM release. Only what the stock vLLM image ships (pydantic,
 # PyYAML): `pip install --no-deps rcp-ndcg-vllm` must work in that image, and
 # `pip freeze` must then differ by exactly this wheel (freeze contract, tested).
-# rcp-ndcg and the reference environment (torch, transformers) are NOT
-# dependencies of this package: the recipe's client block stays plain data (rcp-ndcg
+# rcp and the reference environment (torch, transformers) are NOT
+# dependencies of this package: the recipe's client block stays plain data (rcp
 # validates it when it reads it) and the reference runs as a subprocess
 # (the per-family reference.in/reference.lock, owner decision 35).
 dependencies = [

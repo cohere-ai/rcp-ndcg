@@ -5,8 +5,8 @@ until the unified-inference change removed every in-process model from it. They 
 the recipe lanes can derive each model's `reference.py` from them and the equivalence check
 (the unified-inference design's equivalence check) has the paper's exact code to compare a served recipe against.
 
-**Not part of the package. Nothing in `rcp-ndcg/src/rcp_ndcg/` imports this directory, and nothing here
-imports `rcp_ndcg`** (at most `rcp_core` content types, and today not even those). The modules
+**Not part of the package. Nothing in `rcp/src/rcp/` imports this directory, and nothing here
+imports `rcp`** (at most `rcp_core` content types, and today not even those). The modules
 import torch and transformers; install their own environment with the pinned `requirements.txt`
 (torch 2.9.1, transformers 4.57.6, accelerate — the versions the paper's former `[local]`
 extra pinned, before it left `pyproject.toml`) and then `requirements-flash-attn.txt` with
@@ -14,15 +14,15 @@ extra pinned, before it left `pyproject.toml`) and then `requirements-flash-attn
 
 | Module | Model family | Was |
 | --- | --- | --- |
-| `qwen3.py` | Qwen3-Reranker 0.6B / 4B / 8B (yes/no token log-softmax) | `rcp-ndcg/src/rcp_ndcg/retrieval/external_rerankers.py` (`QwenOGRerank`) |
+| `qwen3.py` | Qwen3-Reranker 0.6B / 4B / 8B (yes/no token log-softmax) | `rcp/src/rcp/retrieval/external_rerankers.py` (`QwenOGRerank`) |
 | `zerank.py` | ZeroEntropy ZeRank 1 / 1-small / 2 (chat template + "Yes"-logit/5) | `external_rerankers.py` (`ZerankRerank`) |
 | `contextual.py` | ContextualAI ctxl-rerank 1B / 2B / 6B (vocab-position-0 logit) | `external_rerankers.py` (`ContextualRerank`) |
 | `jina.py` | Jina reranker v3 (the checkpoint's own `model.rerank()`) | `external_rerankers.py` (`JinaRerank`) |
-| `octen.py` | Octen-Embedding-8B (HF `AutoModel`, last-token pooling, L2, `"- "` document prefix) | `rcp-ndcg/src/rcp_ndcg/retrieval/hf_dense.py` + `encoders/torch_dense.py` |
+| `octen.py` | Octen-Embedding-8B (HF `AutoModel`, last-token pooling, L2, `"- "` document prefix) | `rcp/src/rcp/retrieval/hf_dense.py` + `encoders/torch_dense.py` |
 
 Behaviour is the paper's: the same prompts, padding sides, truncation rules, dtypes and OOM
 backoff as the release code (see each module's docstring for its provenance). The only changes from
-the deleted modules are the removals that made them importable on their own: the `rcp_ndcg` logging
+the deleted modules are the removals that made them importable on their own: the `rcp` logging
 helper, the `AccelState` multi-GPU sharding (the paper's runs were single-GPU per model; a rerun
 that needs several GPUs shards the queries itself) and the `DependencyError` plumbing are gone, and
 each module is loaded with the constructor arguments the old

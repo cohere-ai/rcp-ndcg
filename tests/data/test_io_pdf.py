@@ -6,8 +6,8 @@ from unittest import mock
 
 import pytest
 
-from rcp_ndcg.data.io import get_reader, pdf
-from rcp_ndcg.errors import ConfigError
+from rcp.data.io import get_reader, pdf
+from rcp.errors import ConfigError
 
 pypdfium2 = pytest.importorskip("pypdfium2")
 PIL = pytest.importorskip("PIL.Image")
@@ -122,7 +122,7 @@ class TestPdfReader:
         assert ids == ["a#p1", "a#p2", "b#p1", "b#p2"]
 
     def test_media_is_resolvable(self, two_page_pdf, tmp_path):
-        from rcp_ndcg.data.media import MediaResolver
+        from rcp.data.media import MediaResolver
 
         resolver = MediaResolver()
         for doc in get_reader("pdf", uri=two_page_pdf, dpi=72).documents():

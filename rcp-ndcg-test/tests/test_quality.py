@@ -43,14 +43,14 @@ def _task(view: str, *, golden: bool = False, subset: str = "NanoNQRetrieval") -
 
 
 def _parse_with_the_product_cli(argv: list[str]) -> None:
-    """Resolve ``rcp-ndcg <group> <command> <options>`` through the product's click tree; unknown flags fail."""
+    """Resolve ``rcp <group> <command> <options>`` through the product's click tree; unknown flags fail."""
     import click
 
-    from rcp_ndcg.cli.main import cli
+    from rcp.cli.main import cli
 
     command: click.Command = cli
     args = argv[1:]
-    name = "rcp-ndcg"
+    name = "rcp"
     while isinstance(command, click.Group):
         context = command.make_context(name, list(args), resilient_parsing=False)
         # The served argv carry no group option, so the remaining tokens start with the subcommand's name.
@@ -69,9 +69,9 @@ def test_every_served_command_is_a_valid_product_command_line(tmp_path: Path, re
     ``--rerank-url`` and a ``jsonl:`` dataset no step wrote -- none of which the CLI has)."""
     recipe = load_recipe(RECIPES / recipe_id)
     commands = served_commands(_task(view), recipe, "http://127.0.0.1:9", tmp_path)
-    assert commands[-1][:3] == ["rcp-ndcg", "eval", "score"]
+    assert commands[-1][:3] == ["rcp", "eval", "score"]
     for argv in commands:
-        if argv[0] == "rcp-ndcg":
+        if argv[0] == "rcp":
             _parse_with_the_product_cli(argv)
         else:
             assert argv[1:3] == ["-m", "rcp_ndcg_test.quality"]
@@ -105,7 +105,7 @@ def test_the_task_matrix_covers_every_recipe_once_per_view() -> None:
         if load_family(directory).role == "judge"
     )
     assert sorted(set(listed)) == recipe_ids
-    # A judge has no reference and no T3 quality task: its conformance is `rcp-ndcg judge check` and the T4
+    # A judge has no reference and no T3 quality task: its conformance is `rcp judge check` and the T4
     # scenarios, so the matrix covers exactly the embed/rerank/multi_vector recipes, and the judge recipes
     # are exactly the ten it leaves out.
     assert judged == [
@@ -158,7 +158,7 @@ def test_the_reference_scores_are_read_from_an_mteb_task_result() -> None:
         "task_name": "NanoNQ",
         "scores": {"test": [{"hf_subset": "default", "ndcg_at_10": 0.51, "ndcg_float_at_10": 0.47}]},
     }
-    assert reference_scores(result) == {"qrel_ndcg": 0.51, "rcp_ndcg": 0.47}
+    assert reference_scores(result) == {"qrel_ndcg": 0.51, "rcp": 0.47}
     retrieval_view = {"task_name": "NanoNQ", "scores": {"test": [{"ndcg_at_10": 0.51}]}}
     assert reference_scores(retrieval_view) == {"qrel_ndcg": 0.51}
 
@@ -193,17 +193,17 @@ class FakeRunner:
         self.calls.append(argv)
         if self.fail and self.fail in argv:
             return subprocess.CompletedProcess(argv, 3, "", "boom")
-        if argv[:3] == ["rcp-ndcg", "retrieval", "index"]:
+        if argv[:3] == ["rcp", "retrieval", "index"]:
             config = yaml.safe_load(Path(argv[argv.index("--retriever") + 1]).read_text(encoding="utf-8"))
             base = config["encoder"]["base_url"]
             httpx.post(f"{base}/embeddings", json={"model": "fixture-embed", "input": ["doc: x [END]"]}, timeout=30)
-        if argv[:3] == ["rcp-ndcg", "eval", "score"]:
+        if argv[:3] == ["rcp", "eval", "score"]:
             subset = argv[argv.index("--subset") + 1]
             out = Path(argv[argv.index("--out") + 1])
             out.write_text(json.dumps(_eval_report(subset, self.served)), encoding="utf-8")
         if "reference" in argv:
             out = Path(argv[argv.index("--out") + 1])
-            row = {"ndcg_at_10": self.reference["qrel_ndcg"], "ndcg_float_at_10": self.reference.get("rcp_ndcg")}
+            row = {"ndcg_at_10": self.reference["qrel_ndcg"], "ndcg_float_at_10": self.reference.get("rcp")}
             out.write_text(json.dumps({"task_name": "t", "scores": {"test": [row]}}), encoding="utf-8")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
@@ -217,7 +217,7 @@ def test_the_stage_runs_every_task_gates_it_and_captures_the_golden_replay(tmp_p
     engine = start_stub("--tokenizer", str(TOKENIZER))
     try:
         tasks = [_task("retrieval", golden=True), _task("retrieval", subset="NanoFEVERRetrieval")]
-        runner = FakeRunner({"qrel_ndcg": 0.51, "rcp_ndcg": 0.47}, {"qrel_ndcg": 0.512})
+        runner = FakeRunner({"qrel_ndcg": 0.51, "rcp": 0.47}, {"qrel_ndcg": 0.512})
         document = run_quality(
             recipe,
             engine_url=engine.base_url,
@@ -229,7 +229,7 @@ def test_the_stage_runs_every_task_gates_it_and_captures_the_golden_replay(tmp_p
     finally:
         engine.stop()
     assert document["passed"] is True, document
-    assert document["comparisons"]["rcp_ndcg"]["gated"] is False, "mteb's retrieval view reports no RCP-nDCG"
+    assert document["comparisons"]["rcp"]["gated"] is False, "mteb's retrieval view reports no RCP-nDCG"
     assert document["comparisons"]["qrel_ndcg"]["n_subsets"] == 2
     golden = load_corpus(document["golden_replay"][0])
     assert integrity_mismatches(golden) == [] and len(golden.records) == 1
@@ -238,7 +238,7 @@ def test_the_stage_runs_every_task_gates_it_and_captures_the_golden_replay(tmp_p
     report = (tmp_path / "q" / "QUALITY.md").read_text(encoding="utf-8")
     assert report.count("Verdict:") == 2
     # The ungated metric's PASS says why: its reference column is absent by construction, never a silent gate.
-    ungated = report.split("## rcp_ndcg@10", 1)[1].split("## qrel_ndcg@10", 1)[0]
+    ungated = report.split("## rcp@10", 1)[1].split("## qrel_ndcg@10", 1)[0]
     assert "not gated" in ungated and "mteb's retrieval view" in ungated, ungated
 
 
@@ -251,9 +251,9 @@ def test_the_stage_fails_a_deviation_and_a_failing_command(tmp_path: Path) -> No
         tasks=tasks,
         work_dir=tmp_path / "off",
         reference_python="py",
-        runner=FakeRunner({"qrel_ndcg": 0.51, "rcp_ndcg": 0.47}, {"qrel_ndcg": 0.51, "rcp_ndcg": 0.46}),
+        runner=FakeRunner({"qrel_ndcg": 0.51, "rcp": 0.47}, {"qrel_ndcg": 0.51, "rcp": 0.46}),
     )
-    assert off["passed"] is False and off["comparisons"]["rcp_ndcg"]["passed"] is False
+    assert off["passed"] is False and off["comparisons"]["rcp"]["passed"] is False
     broken = run_quality(
         recipe,
         engine_url="http://127.0.0.1:9",

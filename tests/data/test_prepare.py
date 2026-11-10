@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
-from rcp_ndcg.data import Preprocessing
-from rcp_ndcg.data.prepare import (
+from rcp.data import Preprocessing
+from rcp.data.prepare import (
     MediaCensus,
     MediaFit,
     PreparedMedia,
@@ -25,7 +25,7 @@ from rcp_ndcg.data.prepare import (
     prepare_image,
     prepare_request,
 )
-from rcp_ndcg.data.resolution import (
+from rcp.data.resolution import (
     PROCESSORS,
     ImagePolicy,
     VideoPolicy,
@@ -33,9 +33,9 @@ from rcp_ndcg.data.resolution import (
     smart_resize,
     uniform_frame_indices,
 )
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.inference.adapters.chat import build_messages
-from rcp_ndcg.judging.client import CompletionInput
+from rcp.errors import ConfigError, DataError
+from rcp.inference.adapters.chat import build_messages
+from rcp.judging.client import CompletionInput
 from tests.data import _media_reference as ref
 
 EDGES = [1, 7, 27, 28, 29, 31, 33, 100, 333, 480, 512, 640, 719, 1000, 1080, 1414, 1920, 2200, 3000, 4000, 7000]
@@ -654,7 +654,7 @@ class TestCensusReader:
         """The readers' definition of unfinished matches the cutter's: an unterminated last row (parseable or
         not) is skipped and recorded again -- the next append can never silently delete a row this read
         counted as on record."""
-        from rcp_ndcg.data.preprocess import read_census_rows
+        from rcp.data.preprocess import read_census_rows
 
         sink = tmp_path / "preprocessing.jsonl"
         sink.write_text('{"mechanism": "doc_policy", "corpus": "c"}\n{"mechanism": "doc_policy", "corpus": "d"}')
@@ -662,7 +662,7 @@ class TestCensusReader:
         assert [row["corpus"] for row in rows] == ["c"], "the unterminated row is a torn write: absent"
         # And a complete line that is not a census row is refused with the typed error.
         sink.write_text('{"mechanism": "doc_policy", "corpus": "c"}\n{"foo": 1}\n')
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         with pytest.raises(DataError, match="census row"):
             list(read_census_rows(sink))

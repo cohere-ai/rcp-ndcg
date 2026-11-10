@@ -1,8 +1,8 @@
 """The lean vLLM serving package: the GPU-validated serving recipes (package data) and
 ``rcp-ndcg-vllm serve <recipe-id>``.
 
-The shipped recipes declare how each model is served and how ``rcp-ndcg`` reads it back; their ``client``
-block is the product's endpoint config, kept as plain data here and validated by ``rcp-ndcg`` when it reads it
+The shipped recipes declare how each model is served and how ``rcp`` reads it back; their ``client``
+block is the product's endpoint config, kept as plain data here and validated by ``rcp`` when it reads it
 (a resolution through ``recipe: <id>``). The folded model plugins (``rcp_ndcg_vllm.models``) register their
 architectures with vLLM lazily through the one ``vllm.general_plugins`` entry point.
 

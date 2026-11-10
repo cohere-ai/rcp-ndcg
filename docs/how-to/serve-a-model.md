@@ -8,7 +8,7 @@ and a recipe returns to `verified` only from a wave that re-recorded its corpus 
 these 34 are verified there today, and the two `topk-embed-v1` variants are the owner-disposed `failed` rows
 (42 verified today across all 44 recipes, none `unverified`; the
 [GPU validation ledger](../reference/gpu-validation.md) states the rule and records every row). This walk-through
-serves one, points `rcp-ndcg` at it and scores what it retrieves. The rules of the
+serves one, points `rcp` at it and scores what it retrieves. The rules of the
 recipes are in [recipes and serving models](../reference/recipes.md); hosted APIs (Cohere, Voyage, Gemini)
 need none of this -- [embedding endpoints](../concepts/embeddings.md) covers them.
 
@@ -137,11 +137,11 @@ encoder:
 `--retriever recipe:./my-family/` / `--reranker recipe:./my-family/` expands to it. A multi-variant family
 directory names its variants in the refusal: point `recipe:` at a single-variant directory, or serve the
 variant with `--variant` and use the served URL. The `schema_version` check applies to a file of your own
-exactly as it does to a shipped one: a version this `rcp-ndcg` does not read is refused, naming both.
+exactly as it does to a shipped one: a version this `rcp` does not read is refused, naming both.
 
 ## 4. The client host: `recipe:` in the retriever config
 
-The client side needs `rcp-ndcg` with `rcp-ndcg-vllm` installed alongside it (no extra alias): a role config
+The client side needs `rcp` with `rcp-ndcg-vllm` installed alongside it (no extra alias): a role config
 naming `recipe: <id>` takes its whole client block -- api, tokenizer, budgets, template, media, instruction
 mode -- from the recipe, and `base_url` (and the other run-time fields) stays on the config. Any content field
 set explicitly must equal the recipe's, or the config is refused with an error naming both values.
@@ -159,14 +159,14 @@ template's anchors preserved, and every cut is recorded -- never an engine-side 
 ([text budgets](../concepts/text-budgets.md)).
 
 ```bash
-rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out index/
-rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out rankings.parquet
-rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir --subset NanoSciFactRetrieval
+rcp retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out index/
+rcp retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out rankings.parquet
+rcp eval score --rankings rankings.parquet --suite nanobeir --subset NanoSciFactRetrieval
 ```
 
 The command line also takes the shorthand `--retriever recipe:qwen3-embedding-0.6b` (and `--reranker
 recipe:<id>`), which expands to the mapping above with the URL from `--set retriever.encoder.base_url=...` or
-from a `serve:` engine. `rcp-ndcg retrieval rerank` re-scores the pool with a `recipe:` reranker the same way
+from a `serve:` engine. `rcp retrieval rerank` re-scores the pool with a `recipe:` reranker the same way
 ([retrieval and reranking](../concepts/retrieval.md)), and a run's `retrieve`, `rerank` steps carry the same
 configs.
 

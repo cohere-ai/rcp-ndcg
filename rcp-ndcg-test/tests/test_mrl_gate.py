@@ -19,7 +19,7 @@ from rcp_ndcg_test.equivalence import run, stage2_scores
 from rcp_ndcg_test.equivalence.stages import MRL_GATE_VERSION
 from rcp_ndcg_vllm.recipe import load_recipe
 
-from rcp_ndcg.errors import ConfigError
+from rcp.errors import ConfigError
 from tests.conftest import RECIPES, TOKENIZER, sample_pairs, start_stub, write_pairs
 
 REFERENCE_PYTHON = sys.executable
@@ -220,8 +220,8 @@ def test_mrl_gate_builds_the_product_head_from_the_projection_declaration() -> N
     harness never slices a projection-kind checkpoint)."""
     from rcp_ndcg_test.equivalence.stages import _mrl_gate
 
-    from rcp_ndcg.data.mrl import MrlProjection
-    from rcp_ndcg.inference.config import EmbeddingEndpoint
+    from rcp.data.mrl import MrlProjection
+    from rcp.inference.config import EmbeddingEndpoint
 
     config = EmbeddingEndpoint(
         base_url="http://127.0.0.1:8100/v1",

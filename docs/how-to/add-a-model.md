@@ -1,6 +1,6 @@
 # Add a model: serving recipes for vLLM
 
-A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back.
+A recipe is one declarative description of how a model is served with vLLM and how `rcp` reads it back.
 Recipes are grouped into **families**: one directory per model family holds the shared
 serving contract and a `variants` table with only the per-size facts, so adding a size is adding a variant row,
 while every size stays its own tested recipe id (served, contract-tested, stage-1-tested and GPU-validated on
@@ -32,7 +32,7 @@ recipes/<family>/
 
 `family.id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is never served. Each row of the
 `variants` table is a full recipe id (`^[a-z0-9][a-z0-9.-]*$`, the lowercased canonical Hub repo name), the
-`--served-model-name` the engine serves, and what `recipe: <variant id>` in `rcp-ndcg` resolves. A single-size
+`--served-model-name` the engine serves, and what `recipe: <variant id>` in `rcp` resolves. A single-size
 model is a family with one variant (one loader path for both). The schema is closed (`extra="forbid"`) and
 role-aware: a field that only makes sense for one role is refused for the others, so a typo cannot silently
 change what is served.
@@ -291,7 +291,7 @@ modules the harness cannot resolve (a third party's wheel) is refused at fingerp
 A last-token-pooling embedder's anchor is its trailing end token: the wrapper renders `prefix + text + suffix`
 and the naive fix — truncating the whole string on the right — drops the token the model was trained to read
 out of. The correct cut reserves the suffix, cuts only the text, and re-attaches the template. The mechanism in
-ten dependency-free lines (the real implementation is the product's `fit` in `rcp_ndcg.data.preprocess` — the
+ten dependency-free lines (the real implementation is the product's `fit` in `rcp.data.preprocess` — the
 same call the role clients make, with the recipe's real budget — audited against the captured wire in stage 1):
 
 ```python
@@ -379,8 +379,8 @@ a declared over-cap deviation, the inputs the client changed (decided on the cli
 their `cause`; a reranker's query settlement changes every pair of its call) are reported in a separate,
 non-gating table — in stage 2 for every role — and the gates run on the inputs sent uncut only.
 
-Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
-on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
+Stage 3 (optional) scores rankings per subset with `rcp eval score` as a subprocess (the package depends
+on `rcp`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
 
 ```bash
 python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.0.0.1:8100 \

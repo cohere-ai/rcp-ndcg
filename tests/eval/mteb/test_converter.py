@@ -18,7 +18,7 @@ TOOLS = Path(__file__).resolve().parents[3] / "tools" / "republish_mteb.py"
 
 
 def a_subset(name: str, query: str, corpus: list[dict[str, Any]], qrels: list[dict[str, Any]], **extra: Any) -> Any:
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     return Dataset.from_records(
         name=name,
@@ -31,7 +31,7 @@ def a_subset(name: str, query: str, corpus: list[dict[str, Any]], qrels: list[di
 
 
 def a_suite(*, split: str = "test") -> Any:
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     def subset(name: str, query: str, corpus: list[dict[str, Any]], qrels: list[dict[str, Any]], **extra: Any) -> Any:
         return a_subset(name, query, corpus, qrels, **extra).model_copy(update={"split": split})
@@ -189,7 +189,7 @@ def test_the_converter_writes_every_subset_the_task_file_defines(
 ) -> None:
     """ViDoRe v3's task file defines 48 language subsets; the converter must write all of them, not only the
     eight native-language ones `SUITES` scores (the verifier's blocker)."""
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     names = ["computer_science__english", "computer_science__french", "computer_science__german"]
     parts = tuple(
@@ -219,7 +219,7 @@ def test_a_shared_corpus_is_written_once_and_read_by_every_language(
     holding six copies, and every language's `-corpus` config still reads the shared rows."""
     from datasets import load_dataset
 
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     names = ["computer_science__english", "computer_science__french"]
     parts = tuple(
@@ -296,7 +296,7 @@ def test_the_converter_checks_every_task_definition_of_a_subset(
 ) -> None:
     """ViDoRe v3 maps one subset to two tasks (the page-image one and its OCR view): a split mismatch on either
     is refused, not only on the first match."""
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     part = a_subset(
         "computer_science__english",
@@ -343,7 +343,7 @@ def test_a_second_run_validates_its_own_layout_not_the_first_run_s_cache(
 ) -> None:
     """`datasets` keys a local build by the directory basename, so a second republish into the same
     `out/<repo>` must not validate against the first run's cached build (the unique symlink view)."""
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     monkeypatch.setattr(
         module, "_task_source", lambda repo, owner=None, revision=None: a_task_source({"NanoArguAnaRetrieval": "test"})
@@ -375,8 +375,8 @@ def test_the_converter_validates_media_bytes(tmp_path: Path, module: Any, monkey
     from PIL import Image
     from rcp_core.content import Content, ImagePart, TextPart
 
-    from rcp_ndcg.data.dataset import Dataset
-    from rcp_ndcg.data.media import store_media
+    from rcp.data.dataset import Dataset
+    from rcp.data.media import store_media
 
     buffer = io.BytesIO()
     Image.new("RGB", (2, 3), "red").save(buffer, "PNG")
@@ -424,7 +424,7 @@ def test_trec_dl_s_two_subsets_share_their_corpus(tmp_path: Path, module: Any, m
     the same corpus once."""
     from datasets import load_dataset
 
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     names = ["trec_dl_2019", "trec_dl_2020"]
     parts = tuple(
@@ -450,7 +450,7 @@ def test_trec_dl_s_two_subsets_share_their_corpus(tmp_path: Path, module: Any, m
 def test_repo_subsets_reads_the_card_not_the_paper_view(monkeypatch: pytest.MonkeyPatch, module: Any) -> None:
     """The converter's subset set is the card's (48 for ViDoRe v3), never `SUITES`' eight native-language
     subsets: `_repo_subsets` delegates to the product's card parsing."""
-    import rcp_ndcg.data.io.hub as hub
+    import rcp.data.io.hub as hub
 
     seen: dict[str, Any] = {}
 

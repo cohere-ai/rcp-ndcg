@@ -63,7 +63,7 @@ def reference_of(recipe: Recipe) -> ReferenceSpec:
     """The recipe's reference; a judge recipe is refused by name (decision 15: a judge has no reference).
 
     The equivalence harness runs the recipes with a reference (embed, multi_vector, rerank); a judge's
-    conformance is ``rcp-ndcg judge check`` and the T4 scenarios, never a reference implementation.
+    conformance is ``rcp judge check`` and the T4 scenarios, never a reference implementation.
 
     Raises:
         HarnessError: ``recipe`` is a judge recipe.
@@ -71,7 +71,7 @@ def reference_of(recipe: Recipe) -> ReferenceSpec:
     if recipe.reference is None:
         raise HarnessError(
             f"recipe {recipe.id}: a judge recipe has no reference (decision 15); the equivalence harness runs "
-            "embed/rerank recipes -- a judge's conformance is `rcp-ndcg judge check` and the T4 scenarios"
+            "embed/rerank recipes -- a judge's conformance is `rcp judge check` and the T4 scenarios"
         )
     return recipe.reference
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # W13(c)'s gate: the late-interaction MaxSim scoring path, as its own wave (the reviews' D4: the
 # equivalence waves run stages 1-2 only, and stage 3 / --quality never runs, so the product's
-# client-side MaxSim scorer -- the path the retrieval view and `rcp-ndcg eval score` consume -- had
+# client-side MaxSim scorer -- the path the retrieval view and `rcp eval score` consume -- had
 # no wave).  The node wrapper for the probe module rcp_ndcg_test/jobs/maxsim_probe.py (mounted beside
 # this script by submit.sh).
 #

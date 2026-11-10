@@ -52,7 +52,7 @@ class Modality(StrEnum):
 class MediaRef(BaseModel):
     """A reference to one media asset.
 
-    ``uri`` goes through :mod:`rcp_ndcg.storage`, so a local path, a
+    ``uri`` goes through :mod:`rcp.storage`, so a local path, a
     ``gs://`` object, an ``s3://`` object and an ``hf://`` file are all valid
     and interchangeable.
 
@@ -278,7 +278,7 @@ class Content(RootModel[list[Part]]):
         shorter document, it is a different one. So an image window that does not
         fit has to be made to fit by sending fewer documents or fewer pixels, and
         this method deliberately cannot do it -- which is why
-        :func:`rcp_ndcg.judging.judging.window_tokens` raises instead of
+        :func:`rcp.judging.judging.window_tokens` raises instead of
         returning a smaller number.
 
         The budget is per document, so it is applied to the joined text rather than

@@ -16,12 +16,12 @@ import pytest
 from PIL import Image as PILImage
 from rcp_core.content import Content, TextPart
 
-from rcp_ndcg.data.prepare import prepare_request
-from rcp_ndcg.data.resolution import ImagePolicy
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.inference import EmbeddingClient, PoolingClient, RerankClient
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.inference.types import EncodeRole, Reply
+from rcp.data.prepare import prepare_request
+from rcp.data.resolution import ImagePolicy
+from rcp.errors import ConfigError, DataError
+from rcp.inference import EmbeddingClient, PoolingClient, RerankClient
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.inference.types import EncodeRole, Reply
 from tests.conftest import SESSION_TOKENIZER
 
 IMAGE_POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
@@ -220,7 +220,7 @@ def test_a_normalising_pair_template_refuses_a_multipart_media_document(tmp_path
 def test_a_pair_fit_refuses_a_non_string_part(tmp_path: Path) -> None:
     """The pair shape's ``parts`` validation is as strict as the single shapes': a non-string part is a
     typed refusal, never coerced."""
-    from rcp_ndcg.data.preprocess import TextBudget, fit
+    from rcp.data.preprocess import TextBudget, fit
 
     with pytest.raises(DataError, match="text-part lists"):
         fit(

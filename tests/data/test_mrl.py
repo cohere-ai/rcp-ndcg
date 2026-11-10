@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from rcp_ndcg.data.mrl import (
+from rcp.data.mrl import (
     MrlHead,
     MrlProjection,
     _read_safetensors,
@@ -23,8 +23,8 @@ from rcp_ndcg.data.mrl import (
     mrl_cut,
     projection_tensors,
 )
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.support.identity import hash_payload, identity_payload
+from rcp.errors import ConfigError, DataError
+from rcp.support.identity import hash_payload, identity_payload
 from tests._safetensors import write_safetensors
 
 

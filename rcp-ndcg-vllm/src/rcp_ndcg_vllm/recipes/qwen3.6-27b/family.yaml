@@ -1,7 +1,7 @@
 # The Qwen3.6-27B judge family: the paper's TREC-DL judge, one variant.
 #
-# The family's client block is rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when
-# rcp-ndcg reads `recipe: qwen3.6-27b-fp8` (this package carries no second model of a judge). The paper
+# The family's client block is rcp's judge config, validated by `rcp.judging.JudgeConfig` when
+# rcp reads `recipe: qwen3.6-27b-fp8` (this package carries no second model of a judge). The paper
 # recorded only this judge's served name and reasoning parser (experiments/paper/README.md:40-42); the rest of
 # the serve block is a translation of the checkpoint's own config, every flag checked in the vLLM v0.33.0
 # source.
@@ -42,7 +42,7 @@ client:
   extra_body: {top_p: 0.95, top_k: 20}
   max_output_tokens: 16384
   # No context_tokens, faithfully to the paper's preset: with no context the judge's text policy sends
-  # documents whole (rcp_ndcg.judging.judging.window_tokens returns None), and the engine's own
+  # documents whole (rcp.judging.judging.window_tokens returns None), and the engine's own
   # --max-model-len is the only bound. See the notes.
   concurrency: 256
   decoding: json_schema

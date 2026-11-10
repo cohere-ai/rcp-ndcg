@@ -4,7 +4,7 @@ How a release candidate is built, what the GPU node installs from it, and how wa
 before any recipe wave. The waves themselves and their tiers are described in [validate a recipe on
 GPUs](validate-a-recipe.md)
 and the [recipe guide](add-a-model.md); this page is the operator's procedure. Everything below uses
-`gs://YOUR-BUCKET/rcp-ndcg` as the private stage location — a tracked file never names a real one, so
+`gs://YOUR-BUCKET/rcp` as the private stage location — a tracked file never names a real one, so
 the operator passes the real prefix on the command line or as `RCP_STAGE_PREFIX`.
 
 ## Build a release candidate
@@ -63,7 +63,7 @@ environments that are never mixed. `bootstrap.sh` builds them from a staged RC:
   by exactly the installed plugin wheels (in wave 0, by nothing at all), or the bootstrap fails before any
   engine starts.
 - **client** — no separate venv: every client command runs through the product's own install mechanism
-  (`rcp_ndcg.runners.script.install_argv`: `uvx --find-links <wheelhouse> --no-index`, held to the
+  (`rcp.runners.script.install_argv`: `uvx --find-links <wheelhouse> --no-index`, held to the
   staged constraints file) plus the staged harness wheel (`--with rcp-ndcg-test==<version>` from
   `<stage>/harness/`), so the waves exercise exactly the code users run and the wave tooling itself
   (`rcp_ndcg_test`) is present; the client probe imports it and checks its version against the manifest.
@@ -145,7 +145,7 @@ staged RC, with the wave runner in the client environment the bootstrap built:
   full corpus with the `gs://YOUR-BUCKET/...` placeholder, and
   [use verified fake engines](use-verified-fake-engines.md) has the procedure.
 - **T3 quality** — `--quality --paper-numbers <file>`. Its reference subprocess needs `mteb`,
-  `rcp_ndcg[mteb]` and the harness (`rcp_ndcg_test`, the staged wheel) in the reference environment,
+  `rcp[mteb]` and the harness (`rcp_ndcg_test`, the staged wheel) in the reference environment,
   which the bootstrap does not stage today, so run it in an environment built for it (the reference venv
   plus those packages) and keep its `quality.json` beside the recipe's status.
 - **The negative controls (a)-(f)** — `--controls`, with the same client/reference environments as T2.
@@ -236,7 +236,7 @@ RC. It fails fast with a one-line reason at the first failure and writes one JSO
 3. **bootstrap** — the three environments, and the engine's `pip freeze` unchanged (no plugin in
    wave 0).
 4. **reach** — the Hub with the token secret (a metadata call; the reply's commit must be the pinned
-   revision) and a `gs://` write/list/read/delete round-trip through `rcp_ndcg.storage` from the client
+   revision) and a `gs://` write/list/read/delete round-trip through `rcp.storage` from the client
    environment. PyPI is not required.
 5. **engines** — `vllm serve Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3` on one
    slot and a small second model on another, **at the same time**, each slot with its own
@@ -300,7 +300,7 @@ schema exported at `rcp-ndcg-test/schema/wave0-report.schema.json`.
 
 ## The T4 scenario wave (`--script e2e`)
 
-The end-to-end run scenarios of the GPU validation (a full `rcp-ndcg run` with `serve:` by role, its
+The end-to-end run scenarios of the GPU validation (a full `rcp run` with `serve:` by role, its
 phases executed in the pod, engines and coordinators under one supervision block per phase) run as one
 job per wave through `e2e.sh`, which builds the three environments and drives
 `python -m rcp_ndcg_test.e2e`. The wave list names **scenario ids** (or paths), one per line:
@@ -327,7 +327,7 @@ stages them with the recipe data, copy `rcp-ndcg-test/scenarios/*.yaml` into the
 
 ## The judge-check job (`--script judgecheck`)
 
-The release checklist's judge item — `rcp-ndcg judge check` against each judge recipe's served engine,
+The release checklist's judge item — `rcp judge check` against each judge recipe's served engine,
 plus the engine's media token count — runs as one job through `judgecheck.sh`, which builds the node's
 client environment with `bootstrap.sh envs` and then serves the judges **packed onto the node's GPUs**: a
 judge's slice is the `resources.gpus` its recipe declares (the value that renders the engine's
@@ -343,7 +343,7 @@ rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script judgecheck --priority hi
 Per judge it serves the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`) with that judge's own
 `CUDA_VISIBLE_DEVICES`, `VLLM_PORT` and `TMPDIR`, waits for
 `GET /v1/models` within `RCP_JUDGECHECK_STARTUP_S` (3600 s; a dead engine fails fast), runs
-`rcp-ndcg judge check --judge <id> --judge-model <id> --set judge.base_url=http://127.0.0.1:<N>/v1 --json`
+`rcp judge check --judge <id> --judge-model <id> --set judge.base_url=http://127.0.0.1:<N>/v1 --json`
 for each **documented** thinking mode of the recipe (`jobs/judgecheck_probe.py` owns the table: the Gemma 4
 judges' `chat_template_kwargs.enable_thinking` choice merged over the recipe's own `extra_body`; the other
 recipes document none, so their single documented mode is the shipped client block), runs the engine media

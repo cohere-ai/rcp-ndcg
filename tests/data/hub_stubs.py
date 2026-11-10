@@ -1,7 +1,7 @@
 """Serving the fixture repositories as a Hub: the two boundaries the reader talks to are faked.
 
 ``_hub_file`` reads from the fixture directory (absent = the Hub's 404), ``_hub_listing`` lists it, and the
-tests pin the revision to a full commit, which :func:`~rcp_ndcg.data.revisions.resolve_revision` accepts
+tests pin the revision to a full commit, which :func:`~rcp.data.revisions.resolve_revision` accepts
 without any lookup -- so the reader's layout logic runs offline, against the real cards of the canonical
 repositories (their rows are sampled from the repositories' own files; media bytes and a corpus's placeholder OCR text
 are synthesized where the sampled row carries none -- the layout is what is under test, not the pixels).
@@ -14,8 +14,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg.data.io import hub as hub_module
-from rcp_ndcg.errors import MissingInputError
+from rcp.data.io import hub as hub_module
+from rcp.errors import MissingInputError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SHA = "c" * 40

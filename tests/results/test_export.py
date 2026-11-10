@@ -1,4 +1,4 @@
-"""Building records from rcp-ndcg's own outputs: an ``EvalReport`` and a run directory.
+"""Building records from rcp's own outputs: an ``EvalReport`` and a run directory.
 
 One record per (system, dataset, metric, cutoff) row. From a report, the subject is derived per system and the
 dataset's protocol is the report's. From a run, the subject carries the run id, the dataset carries the
@@ -14,17 +14,17 @@ from pathlib import Path
 import pytest
 from rcp_core.protocol import Protocol
 
-from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.errors import ConfigError, MissingInputError
-from rcp_ndcg.eval import EvalReport, evaluate
-from rcp_ndcg.results import (
+from rcp.data import Dataset, Rankings
+from rcp.errors import ConfigError, MissingInputError
+from rcp.eval import EvalReport, evaluate
+from rcp.results import (
     ResultDataset,
     ResultSubject,
     records_from_report,
     records_from_run,
 )
-from rcp_ndcg.runs.layout import RunLayout
-from rcp_ndcg.runs.manifest import RunManifest
+from rcp.runs.layout import RunLayout
+from rcp.runs.manifest import RunManifest
 from tests.results._runs import build_run
 
 CREATED = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -127,7 +127,7 @@ def test_a_callable_subject_is_called_per_system(report: EvalReport) -> None:
 
 
 def test_artifacts_and_provenance_travel_unchanged(report: EvalReport) -> None:
-    from rcp_ndcg.results import ResultArtifact
+    from rcp.results import ResultArtifact
 
     artifact = ResultArtifact(role="report", uri="report.json", schema_name="rcp-ndcg.eval-report.v1")
     records = records_from_report(report, artifacts=[artifact], provenance={"code": "x"}, created_at=CREATED)
@@ -216,7 +216,7 @@ def test_a_systems_subject_identity_is_the_digest_the_run_scored(tmp_path: Path)
     file regenerated in place after the run must not relabel the run's numbers."""
     import pyarrow.parquet as pq
 
-    from rcp_ndcg.testing import tiny_rows
+    from rcp.testing import tiny_rows
 
     root = tmp_path / "run"
     rankings = root / "mine.parquet"

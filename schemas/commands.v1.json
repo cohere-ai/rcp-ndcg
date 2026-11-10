@@ -172,7 +172,7 @@
   },
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/commands.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The whole CLI, keyed by command path (``\"rcp-ndcg data inspect\"``).",
+  "description": "The whole CLI, keyed by command path (``\"rcp data inspect\"``).",
   "properties": {
     "commands": {
       "additionalProperties": {

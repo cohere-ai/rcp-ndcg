@@ -12,7 +12,7 @@ $$
 That is not expressible as an inner product between two pooled vectors, which is
 why a late-interaction model needs its own wire format (one ragged buffer of
 token vectors, not one vector per text) and its own scorer
-(`rcp_ndcg.retrieval.maxsim.maxsim_topk`).
+(`rcp.retrieval.maxsim.maxsim_topk`).
 
 ## The pooling wire: `vllm_pooling`
 
@@ -69,8 +69,8 @@ typed `ProviderError`.
 ```python
 import numpy as np
 
-from rcp_ndcg.inference.adapters.pooling import VllmPooling
-from rcp_ndcg.inference.types import EncodeRole, PoolRequest, Reply
+from rcp.inference.adapters.pooling import VllmPooling
+from rcp.inference.types import EncodeRole, PoolRequest, Reply
 from rcp_core.content import Content
 
 import base64
@@ -117,7 +117,7 @@ vector per prompt token, so the decoded token counts must sum to
 ## What the client decides about content
 
 A `PoolingClient` owns the content decisions the config states, and nothing else, on the shared client base
-(`rcp_ndcg.inference.clients.RoleClient` -- the adapter lookup, the transport or an injected `Sender` with the
+(`rcp.inference.clients.RoleClient` -- the adapter lookup, the transport or an injected `Sender` with the
 sync bridge, `close()`/`await aclose()`, and the fan-out under one `asyncio.TaskGroup`):
 
 * the role's prompt (`query_prompt`/`doc_prompt`) is prepended by `_prepare`, and then -- when the config

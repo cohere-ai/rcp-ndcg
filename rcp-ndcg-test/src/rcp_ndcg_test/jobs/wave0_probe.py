@@ -3,8 +3,8 @@
 ``wave0.sh`` (the orchestrating shell script) calls this module with the interpreters it has at hand:
 ``host`` runs on the image's python3 before any environment exists (stdlib and ``nvidia-smi`` only);
 everything else runs in the client environment the bootstrap built, through the product's own machinery
-(:func:`rcp_ndcg.data.preprocess.fit`, :class:`~rcp_ndcg.inference.clients.EmbeddingClient`,
-:mod:`rcp_ndcg.storage`, and the HF-cache helpers of :mod:`rcp_ndcg_test.jobs.weights`).
+(:func:`rcp.data.preprocess.fit`, :class:`~rcp.inference.clients.EmbeddingClient`,
+:mod:`rcp.storage`, and the HF-cache helpers of :mod:`rcp_ndcg_test.jobs.weights`).
 
 Every subcommand prints one JSON object (the report fragment) and exits non-zero on failure, so the
 shell records it and fails fast with a one-line reason. No command prints a credential: the token is
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wave0_probe", description="Wave 0's step probes (one JSON fragment each).")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_gcs = sub.add_parser("gcs", help="the gs:// round-trip through rcp_ndcg.storage (write, list, read, delete)")
+    p_gcs = sub.add_parser("gcs", help="the gs:// round-trip through rcp.storage (write, list, read, delete)")
     p_gcs.add_argument("--out-uri", required=True, help="the wave's output prefix; the probe runs under it")
     p_gcs.add_argument("--report", required=True)
 
@@ -87,8 +87,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _gcs(out_uri: str, report: Path) -> dict[str, Any]:
-    """One gs:// object through :mod:`rcp_ndcg.storage`: write, list, read, delete - from the client env."""
-    from rcp_ndcg import storage
+    """One gs:// object through :mod:`rcp.storage`: write, list, read, delete - from the client env."""
+    from rcp import storage
 
     stamp = _now().replace(":", "").replace("-", "")
     prefix = f"{out_uri.rstrip('/')}/wave0/probe/{stamp}"
@@ -357,11 +357,11 @@ def _embed(args: argparse.Namespace, report: Path) -> dict[str, Any]:
     """
     import numpy as np
 
-    from rcp_ndcg.data.preprocess import TextBudget, fit
-    from rcp_ndcg.data.tokenizer import load_tokenizer
-    from rcp_ndcg.inference import EmbeddingClient
-    from rcp_ndcg.inference.config import EmbeddingEndpoint
-    from rcp_ndcg.inference.types import Content, EncodeRole
+    from rcp.data.preprocess import TextBudget, fit
+    from rcp.data.tokenizer import load_tokenizer
+    from rcp.inference import EmbeddingClient
+    from rcp.inference.config import EmbeddingEndpoint
+    from rcp.inference.types import Content, EncodeRole
 
     tokenizer = load_tokenizer(args.tokenizer)
     budget = TextBudget(tokenizer=args.tokenizer, max_tokens=args.budget, on_overflow="cut")

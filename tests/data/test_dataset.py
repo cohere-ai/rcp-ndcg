@@ -8,8 +8,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from rcp_ndcg.data import SUITES, Rankings, load_dataset, load_rankings
-from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
+from rcp.data import SUITES, Rankings, load_dataset, load_rankings
+from rcp.errors import ConfigError, DataError, MissingInputError
 
 REPO = "fabianschmidt-cohere/rcp-ndcg-nanobeir"
 SUBSET = "NanoArguAnaRetrieval"
@@ -21,7 +21,7 @@ def hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, pd.DataFra
     """A stand-in for the Hub: the repository's tables as real parquet files under tmp_path, served at the
     two boundaries the reader talks to (``_hub_file`` reads them, ``_hub_listing`` lists them); the revision
     is a full sha, which ``resolve_revision`` accepts without any lookup."""
-    from rcp_ndcg.data.io import hub as hub_module
+    from rcp.data.io import hub as hub_module
 
     tables = {
         f"{SUBSET}/qrels.parquet": pd.DataFrame(
@@ -79,7 +79,7 @@ def hub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, pd.DataFra
         ref = cache / f"datasets--{repo.replace('/', '--')}" / "refs" / "main"
         ref.parent.mkdir(parents=True, exist_ok=True)
         ref.write_text(SHA)
-    from rcp_ndcg.data.revisions import resolve_revision
+    from rcp.data.revisions import resolve_revision
 
     resolve_revision.cache_clear()
     return tables
@@ -110,8 +110,8 @@ def test_hub_data_is_read_at_the_commit_its_revision_resolves_to(hub: dict, monk
     """The files were once read at the moving branch while the identity recorded the commit resolved earlier."""
     import os
 
-    from rcp_ndcg.data.io import hub as hub_module
-    from rcp_ndcg.data.revisions import resolve_revision
+    from rcp.data.io import hub as hub_module
+    from rcp.data.revisions import resolve_revision
 
     commit = "c" * 40
     ref = Path(os.environ["HF_HUB_CACHE"]) / f"datasets--{REPO.replace('/', '--')}" / "refs" / "main"
@@ -147,7 +147,7 @@ def test_a_suite_loads_every_subset(hub: dict, monkeypatch: pytest.MonkeyPatch) 
 def test_a_vidore_domain_selects_its_native_language_subset(hub: dict) -> None:
     import pandas as pd
 
-    from rcp_ndcg.data.io import hub as hub_module
+    from rcp.data.io import hub as hub_module
 
     # The fake hub serves one staged directory whatever the repo: the ViDoRe table joins it.
     root = Path(hub_module._hub_file(REPO, f"{SUBSET}/qrels.parquet")).parent.parent

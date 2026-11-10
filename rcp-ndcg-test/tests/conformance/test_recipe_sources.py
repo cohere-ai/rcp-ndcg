@@ -78,7 +78,7 @@ def test_every_recorded_embedding_request_renders_from_the_current_recipe() -> N
     from rcp_ndcg_test.fingerprint import load_recipe_tokenizer
     from tests._engines import current_corpora, load_recipe
 
-    from rcp_ndcg.data.templates import TemplateSpec
+    from rcp.data.templates import TemplateSpec
 
     checked = 0
     skipped: list[str] = []

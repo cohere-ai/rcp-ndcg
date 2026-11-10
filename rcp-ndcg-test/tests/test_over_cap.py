@@ -19,7 +19,7 @@ from rcp_ndcg_test.equivalence import stage1_prompts, stage2_scores
 from rcp_ndcg_test.equivalence.fitting import client_template
 from rcp_ndcg_vllm import load_recipe
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
+from rcp.data.tokenizer import load_tokenizer
 from tests.conftest import RECIPES, TOKENIZER, start_stub, write_pairs
 from tests.test_equivalence import REFERENCE_PYTHON, _rebased
 
@@ -295,7 +295,7 @@ def test_a_record_under_no_position_changes_every_input_of_its_call() -> None:
 
     from rcp_ndcg_test.equivalence import stages as stages_module
 
-    from rcp_ndcg.data.preprocess import ProcessingRecord
+    from rcp.data.preprocess import ProcessingRecord
 
     record = ProcessingRecord(corpus="rerank", input_id="rerank", shape="pair", mechanisms=("media_drop",))
     client = SimpleNamespace(processing=[record])

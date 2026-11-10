@@ -10,9 +10,9 @@ then retrieves with the recipe's client block against the running engine.
 import json
 import os
 
-import rcp_ndcg as rcp
-from rcp_ndcg.examples import tiny
-from rcp_ndcg.retrieval import validate_retriever
+import rcp
+from rcp.examples import tiny
+from rcp.retrieval import validate_retriever
 
 url = os.environ.get("RCP_NDCG_ENGINE_URL")  # e.g. http://127.0.0.1:8000/v1
 if not url:

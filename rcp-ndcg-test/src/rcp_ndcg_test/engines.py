@@ -9,7 +9,7 @@ One emulator per (engine, version, recipe, behaviour fingerprint), selected as
   so an over-length request fails exactly where the engine fails (vLLM refuses at
   ``count(prompt tokens) > serve.max_model_len`` with its 400 body), and the template the engine renders
   is rendered the same way (the recipe's template, through the product's own
-  :class:`~rcp_ndcg.data.templates.TemplateSpec`);
+  :class:`~rcp.data.templates.TemplateSpec`);
 * the **model outputs** are replayed for observed inputs and come from a declared deterministic
   surrogate for unseen ones, clearly marked in the reply (``x-rcp-ndcg-emulator-source:`` ``replayed``,
   ``surrogate`` or ``mixed``) -- so a test that asserts numbers can only use observed inputs.
@@ -32,7 +32,7 @@ non-determinism the corpus stores (:func:`corpus_tolerance`), and adds what only
 manifest scan (:func:`find_corpora`) and the verification record's content (:func:`verification_record`).
 
 The registry resolves by (engine, version, fingerprint) and loads out-of-tree emulators through the
-``rcp_ndcg.emulators`` entry-point group (entry points value: a callable returning
+``rcp.emulators`` entry-point group (entry points value: a callable returning
 :class:`Emulator <VllmEmulator>` instances). Verification is recorded append-only beside the corpus
 (``verification.jsonl``, :func:`rcp_ndcg_test.corpus.append_verification`; not part of the recorded
 corpus, so no integrity hash covers it) and an emulator
@@ -53,7 +53,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 
-from rcp_ndcg.errors import ConfigError, DataError
+from rcp.errors import ConfigError, DataError
 from rcp_ndcg_test.corpus import (
     NORMALISATION_VERSION,
     VERIFICATION_SCHEMA,
@@ -1121,9 +1121,9 @@ class Verified:
 
 def surrogate_scores(seed: int, *parts: object, count: int) -> list[float]:
     """The declared deterministic surrogate: ``count`` scores in [-1, 1], hashed from ``seed`` and
-    ``parts`` (the product's scalar draw, :func:`~rcp_ndcg.inference.fake.fake_uniform`), stable on every
+    ``parts`` (the product's scalar draw, :func:`~rcp.inference.fake.fake_uniform`), stable on every
     machine and in every call order. Marked in every reply it answers (``x-rcp-ndcg-emulator-source``)."""
-    from rcp_ndcg.inference.fake import fake_uniform
+    from rcp.inference.fake import fake_uniform
 
     return [2.0 * fake_uniform(seed, "surrogate-score", *parts, index) - 1.0 for index in range(count)]
 
@@ -1236,7 +1236,7 @@ class VllmEmulator:
         Args:
             corpus: The loaded observation corpus.
             strategy: The prompts derivation matching the recipe's role and scoring.
-            tokenizer: The recipe's real :class:`~rcp_ndcg.data.tokenizer.TextTokenizer`.
+            tokenizer: The recipe's real :class:`~rcp.data.tokenizer.TextTokenizer`.
             facts: The engine facts (served name, cap).
             dim: The surrogate's vector width; ``None`` takes the width the corpus observed (64 when it
                 observed no vector), so a batch mixing replayed and surrogate vectors is never ragged.
@@ -1888,7 +1888,7 @@ class EmulatorRegistry:
     """Registered emulators by (engine, version, recipe, fingerprint), and the entry-point seam.
 
     Out-of-tree emulators (a private repository's plugins) register through the
-    ``rcp_ndcg.emulators`` entry-point group: each entry point resolves to a callable returning
+    ``rcp.emulators`` entry-point group: each entry point resolves to a callable returning
     emulators (:class:`VllmEmulator` or any of its shape), or call :meth:`register` themselves.
     """
 
@@ -1908,13 +1908,13 @@ class EmulatorRegistry:
             self._by_key[key] = emulator
 
     def load_entry_points(self) -> list[str]:
-        """Load the ``rcp_ndcg.emulators`` entry-point group once; return the loaded names."""
+        """Load the ``rcp.emulators`` entry-point group once; return the loaded names."""
         if self._entry_points_loaded:
             return []
         loaded = []
         from importlib.metadata import entry_points
 
-        for entry in entry_points(group="rcp_ndcg.emulators"):
+        for entry in entry_points(group="rcp.emulators"):
             provider = entry.load()
             built = provider() if callable(provider) else provider
             items = built if isinstance(built, Iterable) else (built,)
@@ -1976,7 +1976,7 @@ registry = EmulatorRegistry()
 
 def transport_for(url: str) -> httpx.MockTransport:
     """The in-process transport of a ``fake://<engine>-<version>/<recipe>`` URL (the routing seam
-    ``rcp_ndcg.inference.fake`` hands engine-version URLs to).
+    ``rcp.inference.fake`` hands engine-version URLs to).
 
     Args:
         url: The fake URL, e.g. ``fake://vllm-0.33.0/qwen3-embedding-0.6b``.
@@ -2003,12 +2003,12 @@ def transport_for(url: str) -> httpx.MockTransport:
 
 def split_engine_host(host: str) -> tuple[str, str]:
     """``vllm-0.33.0`` -> ``("vllm", "0.33.0")``: the engine name before its version, by the one
-    pattern :data:`rcp_ndcg.inference.fake.RE_ENGINE_URL` routes to the emulators.
+    pattern :data:`rcp.inference.fake.RE_ENGINE_URL` routes to the emulators.
 
     Raises:
         ConfigError: the host is not an engine-version host.
     """
-    from rcp_ndcg.inference.fake import RE_ENGINE_URL
+    from rcp.inference.fake import RE_ENGINE_URL
 
     if not RE_ENGINE_URL.match(f"fake://{host}/"):
         raise ConfigError(f"{host!r} is not an engine-version host (e.g. 'vllm-0.33.0')")
@@ -2044,7 +2044,7 @@ def verification_record(
     tolerance = corpus_tolerance(corpus)
     return {
         "schema": VERIFICATION_SCHEMA,
-        "emulator": f"rcp_ndcg_test.engines (rcp-ndcg {version('rcp-ndcg')})",
+        "emulator": f"rcp_ndcg_test.engines (rcp {version('rcp')})",
         "engine": {"name": corpus.manifest["engine"]["name"], "version": corpus.manifest["engine"]["version"]},
         "recipe": {
             "id": recipe["id"],

@@ -1,56 +1,56 @@
 # Command line
 
-The `rcp-ndcg` command is a tree of nouns and verbs: `rcp-ndcg <noun> <verb>`. Every leaf command is a thin
-adapter over one library function, and `rcp-ndcg <noun> <verb> --help` lists its flags.
+The `rcp` command is a tree of nouns and verbs: `rcp <noun> <verb>`. Every leaf command is a thin
+adapter over one library function, and `rcp <noun> <verb> --help` lists its flags.
 
 ```text
-rcp-ndcg data         fetch       download a public suite or a Hugging Face dataset; `tiny`: copy the packaged example
+rcp data         fetch       download a public suite or a Hugging Face dataset; `tiny`: copy the packaged example
                       inspect     queries, candidate pools, label and gain distributions, excluded ids
                       validate    check a dataset or suite subset (and rankings) against the scoring protocol
-                      convert     between dataset formats (the rcp_ndcg.readers/writers entry points), into a layout load_dataset reads
+                      convert     between dataset formats (the rcp.readers/writers entry points), into a layout load_dataset reads
                       formats     list the readers and writers
-rcp-ndcg retrieval    index       build a sparse, dense or late-interaction index of a dataset's corpus
+rcp retrieval    index       build a sparse, dense or late-interaction index of a dataset's corpus
                       search      first-stage retrieval into a rankings file
                       rerank      rescore rankings with a cross-encoder, a served /rerank endpoint or a hosted API
                       fuse        reciprocal rank fusion of rankings
                       store       encode a corpus's and its queries' vectors once at the checkpoint's full width
                       sweep       apply the declared MRL head per output dimension and score every cut
-rcp-ndcg judge        tournament  Stage A: listwise windows into the judgement store
+rcp judge        tournament  Stage A: listwise windows into the judgement store
                       rubric      Stage B: C1-C5 windows into the judgement store
                       check       probe an endpoint: schema accepted, answer parses, reasoning separated
                       reparse     read a store's stored answers again with the current parser, into a new store
-rcp-ndcg calibration  fit         judgements into a calibration (with or without the tournament; one or pooled judges)
+rcp calibration  fit         judgements into a calibration (with or without the tournament; one or pooled judges)
                       score       score documents a calibration lacks, the items frozen
                       insert      insert documents into a tournament calibration, with an insertion anchor report (the refit check); --dry-run picks opponents
                       show        items, coverage, per-judge severity, diagnostics and provenance
-rcp-ndcg eval         score       RCP-nDCG, qrel-nDCG and Count-nDCG of rankings under a protocol
+rcp eval         score       RCP-nDCG, qrel-nDCG and Count-nDCG of rankings under a protocol
                       compare     difference (B minus A), paired t-test, bootstrap interval, sign flips
                       explain     one query of a run or a saved report: each system's top k with theta, gain and
                                   pass probabilities, and the gaps split into selection and ordering
-rcp-ndcg results      sinks       list the registered result sinks
+rcp results      sinks       list the registered result sinks
                       export      one rcp-ndcg.result-record.v1 record per system x dataset x metric x cutoff, to a sink
-rcp-ndcg run          start       run a config (a YAML file or a packaged config's name) end to end, here or on a runner
+rcp run          start       run a config (a YAML file or a packaged config's name) end to end, here or on a runner
                       resume      continue a run directory; unchanged steps are skipped
                       status      every planned step with its status and judge-window progress, done, usage, jobs
                       logs        a run's log
                       cancel      cancel a run's jobs
                       list        the runs under a runs directory
                       show        one run's manifest and artifacts
-rcp-ndcg schema       list | show NAME | export --out DIR
-rcp-ndcg docs         api         one Markdown page per public module, from the pinned surface snapshot
-rcp-ndcg mcp          serve       the commands as MCP tools over stdio
-rcp-ndcg doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
-rcp-ndcg --version
+rcp schema       list | show NAME | export --out DIR
+rcp docs         api         one Markdown page per public module, from the pinned surface snapshot
+rcp mcp          serve       the commands as MCP tools over stdio
+rcp doctor       [--endpoint URL] check the environment: versions, extras, credentials present, endpoint reachable
+rcp --version
 ```
 
-`rcp-ndcg schema show commands --json` prints every command with its help, its flags (type, choices, default,
+`rcp schema show commands --json` prints every command with its help, its flags (type, choices, default,
 whether required or repeatable, help) and its output schema (`rcp-ndcg.command-index.v1`); `--full` prints the whole
 click tree instead (`rcp-ndcg.commands.v1`).
 
 `run start` takes a run config file or the name of one that ships with the package: `tiny` (the whole pipeline on
 the tiny example with the offline judge), `rejudge_nfcorpus` and `nano_nfcorpus_gpt5`. Relative paths inside a run
 config (the dataset, a rankings file, `evaluation.systems`, a judge or prompt file) are relative to the config file;
-paths given with `--set` are relative to the working directory. `rcp-ndcg data fetch --dataset tiny --out DIR`
+paths given with `--set` are relative to the working directory. `rcp data fetch --dataset tiny --out DIR`
 copies the example data.
 
 A run scores two reference systems besides the ones it is given: `candidates`, the order of the pools the judge was
@@ -59,7 +59,7 @@ shown, and `judge`, the documents ranked by their calibrated abilities (RCP-nDCG
 several, and a file of several systems without `#` adds each under its own name). `eval compare --run` compares
 your systems and leaves the reference systems out unless `--include-reference`.
 
-`rcp-ndcg retrieval index` and `search` read a retriever config (`--retriever`, e.g. `experiments/paper/retrieval/bm25s.yaml` in the repository).
+`rcp retrieval index` and `search` read a retriever config (`--retriever`, e.g. `experiments/paper/retrieval/bm25s.yaml` in the repository).
 A BM25 config's `stemmer:` names a Snowball language (`english`, `german`, ...) or `null`; stemming uses PyStemmer,
 which installs with the package, and the stemmer is part of the index identity. A served encoder's `base_url` is
 the form its wire speaks -- `.../v1` for `api: openai_embeddings`, the engine's root for the pooling wire
@@ -87,7 +87,7 @@ the form its wire speaks -- `.../v1` for `api: openai_embeddings`, the engine's 
 | `--per-query`, `--fields NAME` | `eval score --json`: add the per-query values (the text renderer prints them too); print only the named top-level fields (repeatable). The full report goes to `--out` |
 | `--include-text` | `eval explain`: add the query and document texts |
 | `--include-reference` | `eval compare --run` and `results export --run`: also include the run's reference systems `candidates` and `judge` |
-| `--sink NAME` | `results export`: the sink to write to (`jsonl`, `parquet`, `null`, or an installed `rcp_ndcg.results` entry point); see `rcp-ndcg results sinks` |
+| `--sink NAME` | `results export`: the sink to write to (`jsonl`, `parquet`, `null`, or an installed `rcp.results` entry point); see `rcp results sinks` |
 | `--depth INT`, `--limit INT` | candidate depth; the first N — queries on `judge tournament\|rubric`, records on `data convert`, runs on `run list` |
 | `--rrf-k INT` | `run start`: the fusion's RRF constant k in 1 / (k + rank) (sets `candidates.fuse.rrf_k`); the systems to fuse stay the config's ([the fuse step](../concepts/runs.md#runs-and-job-runners)) |
 | `--estimate` | print calls, tokens (input tokens exact with the judge's `tokenizer`, approximate without) and wall time (a floor); call no judge; refuse (exit 8) a window carrying more images than the judge's `max_images` |
@@ -134,7 +134,7 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
 ```
 
 The envelope's `warnings` carry the conditions raised while the command ran, with a code from
-`rcp_ndcg.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `CARD_UNCACHED`, `INVALID_WINDOWS`,
+`rcp.errors.WarningCode` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `CARD_UNCACHED`, `INVALID_WINDOWS`,
 `NO_VALID_TOURNAMENT_EVIDENCE`, `SNAPSHOT_LISTING`, `UNCALIBRATED_DOCUMENTS`, `UNPINNED_REVISION`, `UNREADABLE_RUN`);
 without `--json` the same
 warnings print on stderr. A result can carry warnings of its own: an evaluation report's `data.warnings` also use
@@ -153,9 +153,9 @@ A failure has `"ok": false` and an `error` object with `code`, `exit_code`, `mes
 and the `source`: `--set` when an override set the field, else the config file. `--set` values are YAML literals
 (`--set k=10`, `--set k=null`, `--set 'k=[1, 2]'`).
 
-`rcp-ndcg schema show commands` describes the whole command tree as JSON, and `rcp-ndcg schema list`
+`rcp schema show commands` describes the whole command tree as JSON, and `rcp schema list`
 lists every exported schema. A schema's `$id` is an identifier naming its committed copy under `schemas/`, not a URL
-to fetch; `rcp-ndcg schema show <name>` prints the schema.
+to fetch; `rcp schema show <name>` prints the schema.
 
 ## Exit codes
 

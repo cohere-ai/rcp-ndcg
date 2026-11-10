@@ -565,7 +565,7 @@ def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt
     from rcp_ndcg_test.equivalence import fitting, stages
     from rcp_ndcg_test.equivalence.wire import role_client
 
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.inference.types import EncodeRole
 
     recipe_cpu = _recipe_cpu(variant_id, _tokenizer_file(variant_id, tmp_path_factory), tmp_path)
     chat_template = _chat_template_text(variant_id, tmp_path_factory)
@@ -871,7 +871,7 @@ def test_the_reference_video_preparation_reads_the_processors_own_realisation(tm
     express the pin at all (its per-frame ceiling refused it)."""
     from rcp_ndcg_test.observe.media_set import video_entry
 
-    from rcp_ndcg.data.resolution import PROCESSORS, _clip_frame_size
+    from rcp.data.resolution import PROCESSORS, _clip_frame_size
 
     module = _reference_module()
     recipe = load_recipe("qwen3-vl-embedding-2b").model_dump(mode="json")

@@ -4,8 +4,8 @@ The serving half of RCP-nDCG: the vetted serving recipes for retrieval models an
 serve` command that turns one into a `vllm serve` command for the stock `vllm/vllm-openai` image (or a
 digest-pinned nightly when a recipe needs a commit the release lacks), and the model plugins that make the
 topk and pplx checkpoints serveable on it. The engine is reached over HTTP only; this
-package never imports `rcp-ndcg`, torch or vLLM at import time (its dependencies are pydantic and PyYAML).
-A recipe's `client` block is plain data, validated when `rcp-ndcg` reads it.
+package never imports `rcp`, torch or vLLM at import time (its dependencies are pydantic and PyYAML).
+A recipe's `client` block is plain data, validated when `rcp` reads it.
 
 ## Install
 
@@ -14,7 +14,7 @@ Three contexts, three lines:
 - **The engine environment** (the stock vLLM image): `python3 -m pip install --no-deps rcp-ndcg-vllm` -- the
   wheel's only dependencies are pydantic and PyYAML, which the image ships; a `pip freeze` before and after
   differs by exactly this wheel.
-- **The client environment**: `pip install rcp-ndcg rcp-ndcg-vllm` -- the second package resolves `recipe:<id>`
+- **The client environment**: `pip install rcp rcp-ndcg-vllm` -- the second package resolves `recipe:<id>`
   and runs `serve`.
 - **Recipe data only**: `import rcp_ndcg_vllm` reads the recipes; it never imports vLLM or torch.
 
@@ -58,13 +58,13 @@ The shipped recipes are grouped into **families**: one directory per model famil
 `recipes/<family>/family.yaml`, holds the shared serving contract and a `variants` table with only the
 per-size facts, and -- for a retrieval family -- the family's ONE `reference.py` (parameterised by the
 variant) runs every size's equivalence check. Every variant is a full recipe id -- served by
-`rcp-ndcg-vllm serve <variant-id>`, resolvable by `recipe: <variant-id>` in `rcp-ndcg`, contract-tested
+`rcp-ndcg-vllm serve <variant-id>`, resolvable by `recipe: <variant-id>` in `rcp`, contract-tested
 and GPU-validated on its own; a family id is never served.
 
 The catalog is **24 families and 44 variants**: 34 retrieval variants (16 families: embed, multi_vector and
 rerank) and 10 judge variants (8 families, `role: judge`). Every variant must pass its end-to-end GPU
 validation before the tag (equivalence, quality and end-to-end waves) -- every *retrieval* variant against
-its reference implementation, a judge variant by `rcp-ndcg judge check` and the T4 scenarios, since a judge
+its reference implementation, a judge variant by `rcp judge check` and the T4 scenarios, since a judge
 recipe carries no equivalence reference; `family.yaml` records
 each variant's model revision and `sources`, and `status.state` (`unverified`, `verified`, `failed`) records the
 outcome beside the engine `image`, the `date` and the report. The `status` column below is copied from each
@@ -120,7 +120,7 @@ variants).
 | `zerank` | `zerank-1-small-reranker` | zeroentropy/zerank-1-small-reranker | rerank | text | — | — | paper | verified |
 | `zerank` | `zerank-2-reranker` | zeroentropy/zerank-2-reranker | rerank | text | — | — | paper | verified |
 
-The `id` is the variant's lowercased canonical Hub repository name; the `role` is what `rcp-ndcg` reads through
+The `id` is the variant's lowercased canonical Hub repository name; the `role` is what `rcp` reads through
 it (`embed`, `multi_vector`, `rerank`, `judge`); the `input` is what the checkpoint reads; the `reference` column
 names where the equivalence reference comes from -- `paper` for a family whose `reference.py` is the paper's own
 code path (ported from `experiments/paper/`), `card` for the model card's published usage, and `—` for a judge
@@ -135,7 +135,7 @@ recipe: every recipe declares a tokenizer (injected as `model@revision` unless t
 `client.max_tokens` and (where the reference caps queries) `query_max_tokens`; over-budget content is cut
 client-side at token boundaries with the template's anchors preserved, and every cut is recorded.
 
-## Use a recipe from `rcp-ndcg`
+## Use a recipe from `rcp`
 
 A role config that names `recipe: <id>` takes its whole client block (api, tokenizer, budgets, template, media,
 instruction mode) from the recipe; `base_url` and the other run-time fields stay on the config, and an explicit
@@ -144,7 +144,7 @@ selection -- `mrl_dim` or the engine-side `dimensions` -- is accepted when `k` i
 `mrl_dims`/`mrl_range` (the recipe declares the kind and the set, the run selects) and refused naming the set
 otherwise. `--retriever recipe:<id>` and
 `--reranker recipe:<id>` are command-line shorthands. Recipes are resolved lazily, so `rcp-ndcg-vllm` must be
-installed beside `rcp-ndcg`; without it the refusal is typed and its hint is the install line
+installed beside `rcp`; without it the refusal is typed and its hint is the install line
 ([recipes and serving models](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md)).
 
 ## Model plugins
@@ -181,7 +181,7 @@ The equivalence harness, the recorder, the reference cases and the GPU job tooli
 `rcp-ndcg-test` package ([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-ndcg-test.md));
 authors of new recipes start at [add a serving
 recipe](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
-the metric are `rcp-ndcg` and `rcp-core`.
+the metric are `rcp` and `rcp-core`.
 
 The T4 end-to-end run scenarios (`scenarios/<id>.yaml`, schema `schema/scenario.schema.json`) and their in-pod
 driver (`python -m rcp_ndcg_test.e2e`) are described in [release candidates and the GPU

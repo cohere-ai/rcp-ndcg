@@ -4,13 +4,13 @@ Stages 1 and 2 compare texts and numbers; neither sends media, so nothing there 
 recipe's served path shows the model the same images as its reference.  This stage does, for every pairs row
 that carries media (the ``media`` field, :func:`media_rows`), side by side:
 
-- **the client** -- the recipe's role client (the product: its media preparation, ``rcp_ndcg.data.prepare``
-  under the declared policy, ``rcp_ndcg.data.resolution``, and its budget fit) sends each media side, captured
+- **the client** -- the recipe's role client (the product: its media preparation, ``rcp.data.prepare``
+  under the declared policy, ``rcp.data.resolution``, and its budget fit) sends each media side, captured
   through the product's injection point; from the captured request the stage reads what crossed the wire:
   the parts in order (the **placement**), every image's prepared **geometry** (decoded from the sent bytes),
   every video's declared **frame count** (the policy's sampling; the container's own facts are read off the
   sent bytes for the count), and the **token count** the client reserved for each item (the product's
-  :func:`~rcp_ndcg.data.resolution.content_media_tokens` under the client's effective policies; a container's
+  :func:`~rcp.data.resolution.content_media_tokens` under the client's effective policies; a container's
   count from its probed header, so it is exact);
 - **the reference** -- the recipe's reference subprocess in ``--mode media`` reports the same facts for the
   same rows as the model card consumes them (its own processor's resize, its own placement, its own count);
@@ -161,7 +161,7 @@ def _sent_bytes(url: str) -> bytes:
     form the package inlines media as), so the stage and the emulator decode it identically."""
     from rcp_core.content import MediaRef
 
-    from rcp_ndcg.data.media import default_resolver
+    from rcp.data.media import default_resolver
 
     if not url.startswith("data:"):
         raise HarnessError(
@@ -186,7 +186,7 @@ def sent_media_content(part: Mapping[str, Any]) -> tuple[str, Any]:
     """
     from rcp_core.content import Content, ImagePart, MediaRef, VideoPart
 
-    from rcp_ndcg.data.media import image_dimensions, probe_video_header
+    from rcp.data.media import image_dimensions, probe_video_header
 
     kind = "image" if part.get("type") == "image_url" else "video"
     url = str((part.get("image_url") or {}).get("url") if kind == "image" else (part.get("video_url") or {}).get("url"))
@@ -231,7 +231,7 @@ def _video_frames(video_policy: Any, num_frames: int | None, original_fps: float
     """The frames the engine shows for a sent container: the pinned count, or the declared fps rule's
     realised count from the clip's recorded frame count and rate (:func:`qwen3_vl_video_frame_indices`).
     ``None`` when the policy or the clip's metadata cannot realise one (reported as a failure)."""
-    from rcp_ndcg.data.resolution import qwen3_vl_video_frame_indices
+    from rcp.data.resolution import qwen3_vl_video_frame_indices
 
     if video_policy is None:
         return None
@@ -251,8 +251,8 @@ def _sent_side(parts: list[dict[str, Any]], client: Any, tokenizer: Any = None) 
     the raw image, whose processor resizes it once (g-ref-vl-1), so the reference's one-pass grid is
     computed here with the product's own public rule; the other families' prepared image is already the
     engine's output (its policy keeps it)."""
-    from rcp_ndcg.data.prepare import media_policies_for
-    from rcp_ndcg.data.resolution import PROCESSORS, ImagePolicy, content_media_tokens, gemma4_resize
+    from rcp.data.prepare import media_policies_for
+    from rcp.data.resolution import PROCESSORS, ImagePolicy, content_media_tokens, gemma4_resize
 
     image_policy, video_policy = media_policies_for(client.config)
 
@@ -319,8 +319,8 @@ def _client_facts(
     """Send every media side through the role client; return the sent facts per ``(row, side)``, the
     refusals, the captured media requests (each with the ``(row, side)`` keys it carries) and the recipe's
     loaded tokenizer (``None`` when it cannot be loaded: the engine check then reads no render merge)."""
-    from rcp_ndcg.errors import RcpNdcgError
-    from rcp_ndcg.inference.types import EncodeRole
+    from rcp.errors import RcpNdcgError
+    from rcp.inference.types import EncodeRole
 
     from .fitting import tokenizer_of
 
