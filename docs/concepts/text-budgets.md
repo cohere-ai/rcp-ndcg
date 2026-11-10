@@ -6,8 +6,8 @@ fits every request into the model's input.
 
 The mechanism has one home: the declared budget and the fit live in `rcp.data.text_budget` (the judge's side
 of the machinery is `rcp.data.text_policy`, the cut record and census `rcp.data.census`, the census
-files' record I/O `rcp.storage.census`); `rcp.data.preprocess` re-exports them, and every snippet below
-imports from it.
+files' record I/O `rcp.storage.census`); `rcp.data.preprocess` is the one import path for them (it re-exports
+the homes' names and defines nothing), and every snippet below imports from it.
 
 ## The anchor rule
 
@@ -282,4 +282,17 @@ named `tokenizer.json` under the one key `{"tokenizer_sha256": ...}`, from the o
 `rcp.data.tokenizer`. Every role config with a `tokenizer` -- the judge's, the embedding, pooling and rerank
 configs -- carries the digest under this one key, so the `retrieve`/`rerank` step identities and the index identity
 key on it, and two passes that counted with different tokenizers never share an index or a cache.
+
+## Why `rcp.judging.tokens` still exists beside `TextBudget`
+
+`TextBudget` (and the `fit` that applies it) is the exact mechanism: it fits a request into a declared cap with the
+declared `tokenizer`, and every number it produces is measured. An estimate is the other situation.
+`rcp.judging.cost.estimate` reports a pass's calls and tokens *before* the judge is called, and a judge may name no
+`tokenizer` at all (a hosted vendor profile, or a judge config without one), so there is nothing to measure with.
+`rcp.judging.tokens` is that second, narrower job: two characters per token for text, and
+`APPROX_TOKENS_PER_IMAGE` per image or video frame a judge sizes itself. Its numbers are labelled `approximate`
+wherever they are reported, nothing is ever cut by them, and the estimate uses them only on its `tokenizer is None`
+branch (the offline fake judge's usage counts the same way). Two modules, because one measures and the other
+estimates: routing an estimate through `TextBudget` would make an exact fit depend on a heuristic, and deleting
+the heuristic would leave a judge without a tokenizer with no estimate at all.
 

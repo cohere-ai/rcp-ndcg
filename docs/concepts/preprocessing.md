@@ -7,10 +7,11 @@ declared policy or a per-window budget cut, and both are recorded.
 
 The machinery has one home per concept: the text policy and the chunking in `rcp.data.text_policy`, the cut
 record and the census in `rcp.data.census`, the served roles' fit in `rcp.data.text_budget`, the census
-files' record I/O in `rcp.storage.census`. `rcp.data.preprocess` re-exports the names of those homes
-(the module's docstring lists them exactly; the postprocess names it does not re-export come from
-`rcp.data.postprocess` and the Matryoshka head from `rcp.data.mrl`), and every snippet below imports
-from it.
+files' record I/O in `rcp.storage.census`. `rcp.data.preprocess` is the one import path for this machinery:
+it re-exports the names of those homes (the module's docstring lists them exactly; the postprocess names it does
+not re-export come from `rcp.data.postprocess` and the Matryoshka head from `rcp.data.mrl`) and defines nothing
+of its own, so a name imported from it and from its home is the same object. Every snippet below imports from
+it.
 
 ## Text
 

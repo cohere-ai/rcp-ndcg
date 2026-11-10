@@ -51,7 +51,9 @@ with the switch.
    run supplies it (`--set judge.base_url=...`, a run's `serve:` block, or `RCP_NDCG_ENGINES`). The `recipe`
    pointer in the judgement identity is the recipe's id, so judgements record the server-side settings they
    came from. `rcp-vllm serve <id> --dry-run` prints the exact argv, and the recipe's notes carry the
-   memory arithmetic for one B200 and one H100 (the default serving environments).
+   memory arithmetic for one B200 and one H100 (the default serving environments). The recipes are an optional
+   extra of this package: `pip install "rcp[vllm]"` installs the sibling `rcp-vllm`, and a `recipe:` config on an
+   install without it is refused naming that install line (the import is lazy, so nothing else needs it).
 2. **Your own recipe directory** — `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or
    `recipe:/abs/path`: a family directory of your own loads through the same schema (families included),
    marked unshipped with `status: unverified` and identified by the content hash of its resolved form, so two

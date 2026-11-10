@@ -24,8 +24,9 @@ is re-exported (import every other name from its home):
   (:func:`append_census_rows`, :func:`census_sink_lock`, :func:`drop_torn_last_line`,
   :func:`read_census_rows`).
 
-Nothing is defined here: import from the home module in new code, or from this module for the
-documented public path (both work, and the contract snapshot pins this module's surface).
+Nothing is defined here, and this module is the one import path for the machinery: new code imports from it,
+and the homes above keep the definitions, so a name imported from here and from its home is the same object
+(the contract snapshot pins this module's surface).
 """
 
 from rcp.data.census import (

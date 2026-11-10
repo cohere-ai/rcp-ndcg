@@ -322,6 +322,8 @@ EXTRA_FOR_MODULE: dict[str, str] = {
     "s3fs": "s3",
     "adlfs": "azure",
     "aiohttp": "http",
+    # The optional sibling: a `recipe:` config (and `rcp-vllm serve`) needs it, nothing in the product does.
+    "rcp_vllm": "vllm",
 }
 
 _INSTALL_MARKER = "rcp["
