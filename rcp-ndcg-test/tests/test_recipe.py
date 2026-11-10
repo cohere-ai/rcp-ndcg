@@ -11,13 +11,13 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_vllm import RecipeError, iter_recipes, load_family, load_recipe
-from rcp_ndcg_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
+from rcp_vllm import RecipeError, iter_recipes, load_family, load_recipe
+from rcp_vllm.recipe import client_config, default_recipes_root, recipe_digest, recipe_json_schema
 
 from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
 from rcp.judging import JudgeConfig
 
-_SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
+_SCHEMA = Path(__file__).resolve().parents[2] / "rcp-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
 
 _ENDPOINTS = {
@@ -27,7 +27,7 @@ _ENDPOINTS = {
     "judge": JudgeConfig,
 }
 
-_SCHEMA = Path(__file__).resolve().parents[2] / "rcp-ndcg-vllm" / "schema" / "recipe.schema.json"
+_SCHEMA = Path(__file__).resolve().parents[2] / "rcp-vllm" / "schema" / "recipe.schema.json"
 REV = "0123456789abcdef0123456789abcdef01234567"
 
 
@@ -150,7 +150,7 @@ def test_a_variant_id_declared_by_two_families_is_refused_by_resolve_recipe(tmp_
     import shutil
 
     import yaml
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     for name in ("a-family", "b-family"):
         copied = tmp_path / name
@@ -308,7 +308,7 @@ def test_json_schema_export_is_current() -> None:
 def test_an_engine_spec_accepts_a_dev_version_floor() -> None:
     """A digest-pinned nightly carries a setuptools-scm dev version (``0.33.1.devN``); the floor a recipe
     declares for it is the dev series, and the digest in ``image`` is the real pin (decision 38)."""
-    from rcp_ndcg_vllm.recipe import EngineSpec
+    from rcp_vllm.recipe import EngineSpec
 
     digest = "sha256:" + "0" * 64
     spec = EngineSpec(
@@ -325,7 +325,7 @@ def test_an_engine_spec_accepts_a_dev_version_floor() -> None:
 
 def test_family_json_schema_export_is_current() -> None:
     """The family file format has its own exported schema (decision 34; the spec requires it)."""
-    from rcp_ndcg_vllm.recipe import family_json_schema
+    from rcp_vllm.recipe import family_json_schema
 
     family_schema = _SCHEMA.parent / "family.schema.json"
     assert json.loads(family_schema.read_text(encoding="utf-8")) == family_json_schema()
@@ -333,7 +333,7 @@ def test_family_json_schema_export_is_current() -> None:
 
 def test_serve_argv_rerank_pointwise_is_golden() -> None:
     recipe = load_recipe(recipe_dirs_path() / "fixture-rerank-pointwise")
-    from rcp_ndcg_vllm import serve_argv
+    from rcp_vllm import serve_argv
 
     argv = serve_argv(recipe, port=8100, served_model_name="fixture-rerank-pointwise")
     assert argv[:3] == ["vllm", "serve", "fixtures/PointwiseReranker"]
@@ -343,7 +343,7 @@ def test_serve_argv_rerank_pointwise_is_golden() -> None:
 
 
 def test_serve_argv_needs_the_recipe_directory_for_a_template() -> None:
-    from rcp_ndcg_vllm import serve_argv
+    from rcp_vllm import serve_argv
 
     data = load_recipe(recipe_dirs_path() / "fixture-rerank-pointwise")
     bare = data.model_copy()
@@ -587,7 +587,7 @@ def test_a_duplicate_yaml_key_is_refused(tmp_path: Path) -> None:
     recipe declares a key twice."""
     import shutil
 
-    from rcp_ndcg_vllm import RecipeError
+    from rcp_vllm import RecipeError
 
     fixtures = recipe_dirs_path()
     directory = tmp_path / "fixture-embed"

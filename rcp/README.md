@@ -20,7 +20,7 @@ are in the paper
 <p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
 This repository holds three published distributions -- `rcp` (the pipeline and the command line),
-`rcp-core` (the metric) and `rcp-ndcg-vllm` (the serving recipes) -- and the unpublished `rcp-ndcg-test`
+`rcp-core` (the metric) and `rcp-vllm` (the serving recipes) -- and the unpublished `rcp-ndcg-test`
 for contributors, the scripts that reproduce the paper's tables from the public data (`experiments/`), and
 runnable examples (`examples/`).
 
@@ -45,7 +45,7 @@ rcp-core`). A command that needs a missing extra exits with code 10 and prints t
 
 - `rcp` -- the judging pipeline, the calibration, the evaluation and the command line.
 - `rcp-core` -- the metric, the gains, the scoring protocols and the IRT estimators (numpy and pydantic only).
-- `rcp-ndcg-vllm` -- the lean serving package: the GPU-validated serving recipes and `rcp-ndcg-vllm serve
+- `rcp-vllm` -- the lean serving package: the GPU-validated serving recipes and `rcp-vllm serve
   <recipe-id>` for the stock vLLM image ([recipes and serving models](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md)).
 
 The unpublished `rcp-ndcg-test` holds the repository's reference cases, conformance suite and GPU job tooling
@@ -111,8 +111,8 @@ dataset that ships with the package (`rcp data fetch --dataset tiny --out tiny` 
 ### 2. Serve an open model and score it
 
 The retrieval commands score any served encoder and reranker. Engine side, on the stock `vllm/vllm-openai`
-image: `python3 -m pip install --no-deps rcp-ndcg-vllm` (the one change the engine environment takes), then
-`rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000` (and `rcp-ndcg-vllm serve qwen3-reranker-0.6b --port
+image: `python3 -m pip install --no-deps rcp-vllm` (the one change the engine environment takes), then
+`rcp-vllm serve qwen3-embedding-0.6b --port 8000` (and `rcp-vllm serve qwen3-reranker-0.6b --port
 8001` for the reranker). Client side, a retriever config whose encoder names the recipe -- the recipe supplies
 the client block, `base_url` and the other run-time fields stay yours:
 
@@ -149,7 +149,7 @@ register) so a preempted job resumes where it stopped; see
 [Judges](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/judges.md) gives the vLLM
 commands for each shipped judge, and a run config's `serve:` section starts one engine per role (the judge, the
 retrieval encoder, the reranker) in a SLURM or Kubernetes job -- with the recipes, the engine command is
-`rcp-ndcg-vllm serve <id>` (the quickstart's job section; [runs](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/runs.md) for depth). To rehearse offline, the same pipeline runs with a
+`rcp-vllm serve <id>` (the quickstart's job section; [runs](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/concepts/runs.md) for depth). To rehearse offline, the same pipeline runs with a
 deterministic fake judge:
 
 ```bash

@@ -6,8 +6,8 @@ serving contract and a `variants` table with only the per-size facts, so adding 
 while every size stays its own tested recipe id (served, contract-tested, stage-1-tested and GPU-validated on
 its own; a family id is never served). This guide shows the format, how to check a served recipe against its
 reference implementation, and how a wave of recipes is submitted to the GPU host. The package lives at
-`rcp-ndcg-vllm/` (installed into the engine image, which carries its own vLLM and torch). A family directory of
-your own needs none of that packaging to be *used*: `rcp-ndcg-vllm serve ./my-family/ [--variant <id>]` and
+`rcp-vllm/` (installed into the engine image, which carries its own vLLM and torch). A family directory of
+your own needs none of that packaging to be *used*: `rcp-vllm serve ./my-family/ [--variant <id>]` and
 `recipe:./my-family/` load it through this same schema, marked unshipped and `unverified`
 ([serve a retrieval model](serve-a-model.md)). The class-specific doctrine — what parity means for an
 embedding, a reranker, a late-interaction model and a judge, and what to look out for — is
@@ -15,7 +15,7 @@ embedding, a reranker, a late-interaction model and a judge, and what to look ou
 
 ## The family directory
 
-One directory per model family, `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/` (package data, shipped
+One directory per model family, `rcp-vllm/src/rcp_vllm/recipes/<family>/` (package data, shipped
 inside the wheel), with these four files (a family may also ship a vendored card script that its reference runs
 verbatim, byte-identical to the Hub file and hash-pinned by the family's test):
 
@@ -252,9 +252,9 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
 
   ```bash
   uv run --no-sync python -m rcp_ndcg_test.jobs.reference_lock build --family <family> \
-      --in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.in \
-      --out rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.lock \
-      --image-freeze rcp-ndcg-vllm/reference-image-v0.33.0.txt \
+      --in rcp-vllm/src/rcp_vllm/recipes/<family>/reference.in \
+      --out rcp-vllm/src/rcp_vllm/recipes/<family>/reference.lock \
+      --image-freeze rcp-vllm/reference-image-v0.33.0.txt \
       --image <the family's engine.image from family.yaml>
   ```
 

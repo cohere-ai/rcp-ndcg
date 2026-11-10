@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 from rcp.errors import RcpNdcgError
 from rcp.support.identity import hash_payload
@@ -271,7 +271,7 @@ def declared_chunk_counts(record: dict[str, Any], recipe_block: dict[str, Any]) 
     A recipe whose served plugin pools one vector per chunk (``client.outputs: per_chunk``) answers several
     vectors per input, so the reply's ``usage.prompt_tokens`` no longer describes them and the acceptance
     check must expect the DECLARED chunk count per item instead.  The count is the product's own rule for the
-    plugin the recipe serves (:func:`rcp_ndcg_vllm.models.pplx.chunk_rule.chunk_count`: one vector per
+    plugin the recipe serves (:func:`rcp_vllm.models.pplx.chunk_rule.chunk_count`: one vector per
     document chunk, one for a query), applied to the ids the client sent -- the record's
     ``inputs.sent_token_ids`` (the engine's own ``/tokenize`` ids of the sent render, recorded beside it) or,
     on a ``token_ids`` wire, the request body's own id lists.
@@ -281,7 +281,7 @@ def declared_chunk_counts(record: dict[str, Any], recipe_block: dict[str, Any]) 
     adapter's full prompt-token cross-check stands for a per-token recipe, and a per-chunk reply without its
     ids is a refusal named by the check, never a silently accepted count.  Units: none.
     """
-    from rcp_ndcg_vllm.models.pplx.chunk_rule import chunk_count
+    from rcp_vllm.models.pplx.chunk_rule import chunk_count
 
     if str(recipe_block.get("outputs") or "per_token") != "per_chunk":
         return None

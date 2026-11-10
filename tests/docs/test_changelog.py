@@ -14,7 +14,7 @@ import re
 from collections import Counter
 
 import pytest
-from rcp_ndcg_vllm.recipe import Recipe, iter_recipes
+from rcp_vllm.recipe import Recipe, iter_recipes
 
 from tests.docs._markdown import ROOT
 
@@ -109,7 +109,7 @@ MOVED_HARNESS = (
     "changes",
     "e2e",
 )
-PRE_MOVE_PREFIXES = ("rcp_ndcg_vllm.", "rcp.testing.")
+PRE_MOVE_PREFIXES = ("rcp_vllm.", "rcp.testing.")
 
 
 def test_the_harness_modules_are_named_at_their_shipped_home() -> None:

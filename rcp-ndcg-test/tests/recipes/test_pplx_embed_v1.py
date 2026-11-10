@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 from rcp_ndcg_test.equivalence import stage1_prompts
-from rcp_ndcg_vllm.recipe import (
+from rcp_vllm.recipe import (
     client_config,
     default_recipes_root,
     load_family,
@@ -196,7 +196,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": CONTEXT_LIMIT,
     "dtype": "bfloat16",
-    "plugin": "rcp-ndcg-vllm",
+    "plugin": "rcp-vllm",
     "plugin_architectures": ["PplxV1Config"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
@@ -299,7 +299,7 @@ def test_serve_argv_renders_the_engine_command(variant_id: str) -> None:
     assert "--convert" not in argv  # the pooling runner auto-resolves embed for this architecture
     assert "--trust-remote-code" not in argv  # the plugin registers the config class locally
     assert "--chat-template" not in argv
-    assert not any("rcp-ndcg-vllm" in argument for argument in argv)  # the plugin never reaches the argv
+    assert not any("rcp-vllm" in argument for argument in argv)  # the plugin never reaches the argv
 
 
 def test_the_family_shares_every_behavioural_block() -> None:

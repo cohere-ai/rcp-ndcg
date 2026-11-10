@@ -46,7 +46,7 @@ Start with the [quickstart](quickstart.md).
 
 - [Command line](reference/cli.md).
 - [Recipes and serving models](reference/recipes.md): the catalog of the 44 recipes (24 families) and the
-  `rcp-ndcg-vllm` surface.
+  `rcp-vllm` surface.
 - [The results record](reference/results-record.md): the versioned evaluation record and its sink contract.
 - [Compatibility and versioning](reference/versioning.md): what is public, the `0.0.x` rules, the recipe
   `schema_version`, the behaviour fingerprint and the artifact tags.

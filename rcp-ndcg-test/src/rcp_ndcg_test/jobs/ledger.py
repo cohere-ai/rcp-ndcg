@@ -57,7 +57,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from rcp_ndcg_vllm.recipe import (
+from rcp_vllm.recipe import (
     Recipe,
     RecipeFamily,
     StatusSpec,
@@ -100,10 +100,10 @@ LEDGER = Path("docs/reference/gpu-validation.md")
 GOLDENS = Path("rcp-ndcg-test/tests/recipes/golden")
 """The per-variant goldens, relative to the checkout root."""
 
-CATALOG = Path("rcp-ndcg-vllm/README.md")
+CATALOG = Path("rcp-vllm/README.md")
 """The README's rendered catalog, relative to the checkout root."""
 
-RECIPES = Path("rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes")
+RECIPES = Path("rcp-vllm/src/rcp_vllm/recipes")
 """The shipped recipes' root, relative to the checkout root."""
 
 VALIDATION_KINDS = ("equivalence", "record", "gate")
@@ -114,13 +114,18 @@ VALIDATION_KINDS = ("equivalence", "record", "gate")
 _KEYS_SCRIPT = """
 import json, sys
 from pathlib import Path
-from rcp_ndcg_vllm.recipe import iter_recipes
+
+try:  # the tree's own spelling: rcp_vllm after the rename, rcp_ndcg_vllm in the commits before it
+    from rcp_vllm.recipe import default_recipes_root, iter_recipes
+except ImportError:
+    from rcp_ndcg_vllm.recipe import default_recipes_root, iter_recipes
+
 from rcp_ndcg_test.fingerprint import behaviour_fingerprint
 
 tree = Path(sys.argv[1])
 golden = tree / "rcp-ndcg-test" / "tests" / "recipes" / "golden"
 keys, errors = {}, {}
-for recipe in iter_recipes(tree / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"):
+for recipe in iter_recipes(default_recipes_root()):
     try:
         inputs = json.loads((golden / f"{recipe.id}.json").read_text(encoding="utf-8"))["fingerprint"]["inputs"]
         keys[recipe.id] = behaviour_fingerprint(recipe, tokenizer_sha256_value=inputs["tokenizer_sha256"])
@@ -372,7 +377,13 @@ def rc_keys(commit: str, repo_root: str | Path) -> tuple[dict[str, str], dict[st
             )
         subprocess.run(["tar", "-x", "-C", str(tree)], input=archive.stdout, check=True)
         sources = [tree / "rcp-core" / "src", tree / "rcp-ndcg-core" / "src", tree / "rcp" / "src"]
-        sources += [tree / "rcp-ndcg-vllm" / "src", tree / "rcp-ndcg-test" / "src"]
+        # Both spellings of the serving package's source: the wave commits before the rename carry
+        # `rcp-ndcg-vllm`, the ones after it `rcp-vllm` (a missing entry on the path is inert).
+        sources += [
+            tree / "rcp-vllm" / "src",
+            tree / "rcp-ndcg-vllm" / "src",
+            tree / "rcp-ndcg-test" / "src",
+        ]
         environment = {**os.environ, "PYTHONPATH": os.pathsep.join(str(path) for path in sources)}
         run = subprocess.run(
             [sys.executable, "-c", _KEYS_SCRIPT, str(tree)], capture_output=True, text=True, env=environment
@@ -535,7 +546,7 @@ def plan(evidence: str | Path, repo_root: str | Path) -> list[Row]:
     Outputs: one :class:`Row` per shipped recipe, in recipe-id order -- ``verified`` only where the wave's
     evidence is complete and keys the tree's behaviour, ``failed`` only for the owner's disposition list
     beside a wave that failed, ``unverified`` otherwise.  Raises :class:`LedgerEvidenceError` (see
-    :func:`_verified`) or :class:`rcp_ndcg_vllm.errors.RecipeError` for a recipe set that does not load.
+    :func:`_verified`) or :class:`rcp_vllm.errors.RecipeError` for a recipe set that does not load.
     Units: none.
     """
     root = Path(repo_root)
@@ -841,11 +852,11 @@ def default_repo_root() -> Path:
     """The checkout the installed recipes live in (the tool's default read/write root).
 
     Walks up from the recipe package's own directory until a directory holds both workspace members the
-    ledger spans (``rcp-ndcg-vllm`` and ``rcp-ndcg-test``).  Raises :class:`LedgerEvidenceError` when no such
+    ledger spans (``rcp-vllm`` and ``rcp-ndcg-test``).  Raises :class:`LedgerEvidenceError` when no such
     directory exists (an installed wheel with no checkout: pass ``--repo-root``).  Units: none.
     """
     for parent in Path(default_recipes_root()).resolve().parents:
-        if (parent / "rcp-ndcg-vllm").is_dir() and (parent / "rcp-ndcg-test").is_dir():
+        if (parent / "rcp-vllm").is_dir() and (parent / "rcp-ndcg-test").is_dir():
             return parent
     raise LedgerEvidenceError("no checkout around the installed recipes: pass --repo-root")
 

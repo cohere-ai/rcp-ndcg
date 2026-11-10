@@ -29,8 +29,8 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import load_pairs
-from rcp_ndcg_vllm import load_recipe
-from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe, serve_argv
+from rcp_vllm import load_recipe
+from rcp_vllm.recipe import default_recipes_root, resolve_recipe, serve_argv
 
 from rcp.data.tokenizer import load_tokenizer
 
@@ -231,7 +231,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": 8448,
     "dtype": "bfloat16",
-    "plugin": "rcp-ndcg-vllm",
+    "plugin": "rcp-vllm",
     "patches": [],
     "plugin_architectures": ["TopkEmbedModel"],
     "io_processor_plugin": None,
@@ -511,7 +511,7 @@ def test_serve_argv_carries_the_serving_facts(variant_id: str) -> None:
     assert argv[argv.index("--limit-mm-per-prompt") + 1] == json.dumps({"image": 1}, sort_keys=True)
     assert argv[argv.index("--revision") + 1] == VARIANTS[variant_id]["revision"]
     assert argv[argv.index("--max-model-len") + 1] == "8448"
-    assert not any("rcp-ndcg-vllm" in argument for argument in argv)  # the plugin never reaches the argv
+    assert not any("rcp-vllm" in argument for argument in argv)  # the plugin never reaches the argv
 
 
 def test_stage1_passes_on_cpu(tmp_path: Path, tokenizer, variant_id: str) -> None:

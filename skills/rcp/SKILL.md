@@ -42,16 +42,16 @@ come from the rubric windows, so pass their store with `--judgements <store>` (r
 is refused (exit 12); score the others with `--system NAME` (repeatable; `systems=[...]` in Python).
 
 **2. Serve an open model and score it (needs a served engine).** Engine side, on the stock `vllm/vllm-openai`
-image: `python3 -m pip install --no-deps rcp-ndcg-vllm` (the one change the engine environment takes), then
-`rcp-ndcg-vllm serve <recipe-id> --port 8000` (add `--dry-run` to print the engine argv and exit). Client side:
-`rcp-ndcg-vllm` beside `rcp`, and a retriever (or reranker) config naming `recipe: <id>` with `base_url`
+image: `python3 -m pip install --no-deps rcp-vllm` (the one change the engine environment takes), then
+`rcp-vllm serve <recipe-id> --port 8000` (add `--dry-run` to print the engine argv and exit). Client side:
+`rcp-vllm` beside `rcp`, and a retriever (or reranker) config naming `recipe: <id>` with `base_url`
 on the config -- the recipe supplies the client block, run-time fields stay yours (an explicit content field
 that disagrees with the recipe is refused). `rcp retrieval index|search|rerank|fuse` produce and re-score
 rankings files (`schema show commands --json` lists the flags; `--retriever recipe:<id>` / `--reranker
 recipe:<id>` are shorthands whose URL comes from `--set ...base_url=...` or a `serve:` engine), then
 `rcp eval score`. Budgets are declared per recipe; over-budget content is cut client-side at token
 boundaries with the template's anchors preserved and every cut recorded -- never engine-side. A missing
-`rcp_ndcg_vllm` is a typed refusal (exit 10) whose hint is `pip install rcp-ndcg-vllm`. The 24 recipe families and their 44 variants are
+`rcp_vllm` is a typed refusal (exit 10) whose hint is `pip install rcp-vllm`. The 24 recipe families and their 44 variants are
 catalogued in [recipes and serving models](../../docs/reference/recipes.md).
 
 **3. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model's
@@ -157,7 +157,7 @@ local runner). Add a `serve:` section to the run config, one engine per role:
 reranker. A served `api: rerank` or `api: openai_embeddings` model without `base_url`, or a `recipe:<id>` value,
 needs no URL in the config: the job's URLs for it reach the step at runtime (a served judge names the engine's
 own loopback URL; another `base_url` is refused). With the recipes, the engine command is
-`rcp-ndcg-vllm serve <id>` (the engine image prepares `python3 -m pip install --no-deps rcp-ndcg-vllm`).
+`rcp-vllm serve <id>` (the engine image prepares `python3 -m pip install --no-deps rcp-vllm`).
 On SLURM the image needs `container_runtime: apptainer` or `pyxis`; with the default `none` the command runs on
 the node and `image` is refused. The job runs the steps in job phases, each starting only the engines its steps
 use and handing their URLs to the coordinator in `RCP_NDCG_ENGINES`; `run logs` shows both. A failed job is

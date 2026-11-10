@@ -24,8 +24,8 @@ from rcp_ndcg_test.e2e import (
     scenario_json_schema,
 )
 from rcp_ndcg_test.errors import RecipeError
-from rcp_ndcg_vllm.patches import PATCHES_ENV
-from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
+from rcp_vllm.patches import PATCHES_ENV
+from rcp_vllm.recipe import default_recipes_root, load_recipe
 
 RECIPES = default_recipes_root()
 SCENARIOS = default_scenarios_root()

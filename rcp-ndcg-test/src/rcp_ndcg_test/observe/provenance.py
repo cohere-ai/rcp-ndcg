@@ -29,8 +29,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.patches import PATCHES_ENV
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.patches import PATCHES_ENV
+from rcp_vllm.recipe import Recipe
 
 __all__ = ["collector_facts", "engine_facts", "model_facts", "recipe_facts", "unavailable"]
 
@@ -302,11 +302,11 @@ def collector_facts(
 
     env = dict(os.environ if environ is None else environ)
     try:
-        package_version: Any = version("rcp-ndcg-vllm")
+        package_version: Any = version("rcp-vllm")
     except PackageNotFoundError:
-        package_version = unavailable("rcp-ndcg-vllm is not installed as a distribution")
+        package_version = unavailable("rcp-vllm is not installed as a distribution")
     return {
-        "package": "rcp-ndcg-vllm",
+        "package": "rcp-vllm",
         "version": package_version,
         "commit": env.get("RCP_SOURCE_COMMIT")
         or unavailable("RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"),

@@ -51,7 +51,7 @@ from rcp_ndcg_test.fingerprint import (
     tokenizer_sha256,
     use_tokenizer_store,
 )
-from rcp_ndcg_vllm.recipe import (
+from rcp_vllm.recipe import (
     client_config,
     default_recipes_root,
     iter_recipes,

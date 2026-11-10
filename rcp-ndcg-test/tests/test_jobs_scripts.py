@@ -43,7 +43,7 @@ SDPA_PROBE_PY = JOBS / "sdpa_probe.py"
 MAXSIM_PROBE_SH = JOBS / "maxsim_probe.sh"
 MAXSIM_PROBE_PY = JOBS / "maxsim_probe.py"
 WAVE0_HOST = JOBS / "wave0_host.py"
-CHECK_DEPS_INSTALL = JOBS.parents[3] / "rcp-ndcg-vllm" / "tests" / "models" / "check_no_deps_install.py"
+CHECK_DEPS_INSTALL = JOBS.parents[3] / "rcp-vllm" / "tests" / "models" / "check_no_deps_install.py"
 REPO = Path(__file__).resolve().parents[2]
 
 SCRIPTS = (
@@ -281,7 +281,7 @@ def _install_plugin_wheels(
     to write under the stage (relative paths), so a test can stage several versions; ``wheel_bytes`` overrides
     a file's bytes (a forged wheel).  ``check_deps_py`` is the declared-dependency check the bootstrap runs
     (default: a stub that accepts).  ``installed`` is the version the fake engine environment reports for
-    ``rcp-ndcg-vllm`` after the install."""
+    ``rcp-vllm`` after the install."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
     for entry in extra:
@@ -318,24 +318,24 @@ def _install_plugin_wheels(
 
 
 def test_bootstrap_refuses_a_plugin_wheel_that_declares_an_unshipped_dependency(tmp_path: Path) -> None:
-    """g-rcjobs-9: decision 16's declared-dependency check runs on the node: the staged rcp-ndcg-vllm
+    """g-rcjobs-9: decision 16's declared-dependency check runs on the node: the staged rcp-vllm
     wheel passes ``check_no_deps_install.assert_pure_python`` before the install, so a wheel declaring
     torch (which ``--no-deps`` would leave missing on the stock image) is refused with its exact name."""
     import io
     import zipfile
 
-    wheel = "wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    wheel = "wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl"
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
-        archive.writestr("rcp_ndcg_vllm/__init__.py", "")
-        archive.writestr("rcp_ndcg_vllm-0.0.1.dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
+        archive.writestr("rcp_vllm/__init__.py", "")
+        archive.writestr("rcp_vllm-0.0.1.dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
         archive.writestr(
-            "rcp_ndcg_vllm-0.0.1.dist-info/METADATA",
-            "Metadata-Version: 2.1\nName: rcp-ndcg-vllm\nVersion: 0.0.1\nRequires-Dist: torch>=2.0\n",
+            "rcp_vllm-0.0.1.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: rcp-vllm\nVersion: 0.0.1\nRequires-Dist: torch>=2.0\n",
         )
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-ndcg-vllm\n",
+        "rcp-vllm\n",
         wheels=(wheel,),
         wheel_bytes={wheel: buffer.getvalue()},
         check_deps_py=CHECK_DEPS_INSTALL,
@@ -343,7 +343,7 @@ def test_bootstrap_refuses_a_plugin_wheel_that_declares_an_unshipped_dependency(
     assert completed.returncode == 0, completed.stderr  # the loop carries on; the job never dies here
     assert "declared-dependency check" in completed.stderr
     assert "torch" in completed.stderr
-    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-ndcg-vllm"
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-vllm"
     assert not (tmp_path / "engine-python.log").exists(), "the wheel was refused before any install"
 
 
@@ -353,16 +353,16 @@ def test_bootstrap_pins_the_shipped_plugin_install_to_the_staged_wheel(tmp_path:
     the engine could run a plugin build the recording's key does not cover."""
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-ndcg-vllm\n",
+        "rcp-vllm\n",
         extra=("private/wheelhouse",),
         wheels=(
-            "wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
-            "extra/private/wheelhouse/rcp_ndcg_vllm-0.0.2-py3-none-any.whl",
+            "wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl",
+            "extra/private/wheelhouse/rcp_vllm-0.0.2-py3-none-any.whl",
         ),
     )
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
-    assert "wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl" in log, log
+    assert "wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl" in log, log
     assert "0.0.2" not in log, log
 
 
@@ -374,14 +374,14 @@ def test_bootstrap_refuses_a_versioned_shipped_plugin_spec_the_staged_wheel_cann
     recipe fails instead of recording a corpus that claims code the engine did not run."""
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-ndcg-vllm==0.0.2\n",
-        wheels=("wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl",),
+        "rcp-vllm==0.0.2\n",
+        wheels=("wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl",),
         installed="0.0.2",
     )
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
-    assert "rcp-ndcg-vllm==0.0.2" in log, log  # installed as named, never silently overridden
-    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-ndcg-vllm==0.0.2"
+    assert "rcp-vllm==0.0.2" in log, log  # installed as named, never silently overridden
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-vllm==0.0.2"
     assert "staged" in completed.stderr and "0.0.1" in completed.stderr
 
 
@@ -389,12 +389,12 @@ def test_bootstrap_accepts_a_versioned_spec_the_staged_wheel_satisfies(tmp_path:
     """A versioned spec whose installed version equals the staged wheel's passes the item-9 check."""
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-ndcg-vllm==0.0.1\n",
-        wheels=("wheelhouse/rcp_ndcg_vllm-0.0.1-py3-none-any.whl",),
+        "rcp-vllm==0.0.1\n",
+        wheels=("wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl",),
         installed="0.0.1",
     )
     assert completed.returncode == 0, completed.stderr
-    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "rcp-ndcg-vllm"
+    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "rcp-vllm"
     failed = tmp_path / "failed.txt"
     assert not failed.exists() or not failed.read_text(encoding="utf-8").strip()
 
@@ -627,7 +627,7 @@ def test_bootstrap_writes_a_quoted_client_wrapper_and_refuses_a_hostile_version(
     # A hostile version string: quoted, it is inert; unquoted, bash would run the substitution when the
     # wrapper runs.  Single quotes in the test body keep the payload a literal in the sourcing shell.
     body = (
-        "CLIENT_ARGS=(uvx --from 'rcp-ndcg-vllm[test]==0.0.1$(touch " + str(pwned) + ")' "
+        "CLIENT_ARGS=(uvx --from 'rcp-vllm[test]==0.0.1$(touch " + str(pwned) + ")' "
         "--with rcp-ndcg-test==0.0.1 --find-links '" + str(tmp_path / "harness") + "' --no-index)\n"
         f'UV_CACHE_DIR="{tmp_path}/cache"\n'
         f'write_client_wrapper "{state}" "{tmp_path}/uv"\n'
@@ -650,18 +650,18 @@ def test_bootstrap_writes_a_quoted_client_wrapper_and_refuses_a_hostile_version(
 
 
 def test_bootstrap_finds_the_staged_plugin_wheel(bootstrap_functions: str, tmp_path: Path) -> None:
-    """Item 9: the wave gets the staged rcp_ndcg_vllm wheel so it can hash its modules against the
+    """Item 9: the wave gets the staged rcp_vllm wheel so it can hash its modules against the
     behaviour fingerprint's plugin inputs; a stage without the wheel passes no --plugin-wheel."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
-    wheel = stage / "wheelhouse" / "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    wheel = stage / "wheelhouse" / "rcp_vllm-0.0.1-py3-none-any.whl"
     wheel.write_bytes(b"stub wheel")
-    completed = _bash_bootstrap_function(f'STAGE_DIR="{stage}"; staged_plugin_wheel rcp-ndcg-vllm')
+    completed = _bash_bootstrap_function(f'STAGE_DIR="{stage}"; staged_plugin_wheel rcp-vllm')
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == str(wheel)
     empty = tmp_path / "empty"
     (empty / "wheelhouse").mkdir(parents=True)
-    completed = _bash_bootstrap_function(f'STAGE_DIR="{empty}"; staged_plugin_wheel rcp-ndcg-vllm')
+    completed = _bash_bootstrap_function(f'STAGE_DIR="{empty}"; staged_plugin_wheel rcp-vllm')
     assert completed.returncode != 0 and completed.stdout.strip() == ""
 
 
@@ -1578,7 +1578,7 @@ def test_casefill_pins_the_four_recipes_to_the_catalog_and_the_cases() -> None:
     values by design -- and 14 are media-bearing (fillable since the media translation landed).  A new
     case, a changed kind or a media file moving the counts must revisit the job's scope; the model-card
     cases are not counted (the card printed their values, so no fill applies)."""
-    from rcp_ndcg_vllm.recipe import load_recipe
+    from rcp_vllm.recipe import load_recipe
 
     script = CASEFILL_SH.read_text(encoding="utf-8")
     cases_root = Path(__file__).resolve().parents[1] / "cases"
@@ -1661,17 +1661,17 @@ def test_the_e2e_script_needs_a_wave_name() -> None:
 
 def test_rc_build_stages_the_recipes_from_the_package_data_path() -> None:
     """The staged recipes come from the package-data path the layout move created, through the built
-    wheel's extraction: the script stages the wheel's ``rcp_ndcg_vllm/recipes`` package data, and the
+    wheel's extraction: the script stages the wheel's ``rcp_vllm/recipes`` package data, and the
     source tree that wheel is built from exists in the checkout with its family directories.
 
-    The regression: the script copied ``rcp-ndcg-vllm/recipes`` -- a path that has not existed since the
-    layout move (the recipes are package data under ``src/rcp_ndcg_vllm/``), so under ``set -euo
+    The regression: the script copied ``rcp-vllm/recipes`` -- a path that has not existed since the
+    layout move (the recipes are package data under ``src/rcp_vllm/``), so under ``set -euo
     pipefail`` the whole RC build aborted before staging anything.
     """
     script = RC_BUILD.read_text(encoding="utf-8")
     assert "stage_recipes" in script and "python3 -m zipfile" in script, "the recipes come from the wheel"
     repo = Path(__file__).resolve().parents[2]
-    source = repo / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+    source = repo / "rcp-vllm" / "src" / "rcp_vllm" / "recipes"
     assert source.is_dir(), f"{source} does not exist in the checkout"
     assert (source / "qwen3-reranker" / "family.yaml").is_file()
 
@@ -1730,16 +1730,16 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-core", "rcp", "rcp-ndcg-vllm"], builds  # release order, by name
+    assert packages == ["rcp-core", "rcp", "rcp-vllm"], builds  # release order, by name
     assert all("--all-packages" not in words for words in builds)
     # The wheelhouse the build stages: exactly the published wheels, never the unpublished member's.
     wheelhouse = tmp_path / "wheelhouse"
     shutil.copytree(dist, wheelhouse)
     listed = sorted(path.name for path in wheelhouse.iterdir())
     assert listed == [
-        "rcp_core-0.0.1-py3-none-any.whl",
         "rcp-0.0.1-py3-none-any.whl",
-        "rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
+        "rcp_core-0.0.1-py3-none-any.whl",
+        "rcp_vllm-0.0.1-py3-none-any.whl",
     ], listed
     assert not any(name.startswith("rcp_ndcg_test") for name in listed)
     assert "uv build --all-packages" not in RC_BUILD.read_text(encoding="utf-8")  # the trap is gone from the script
@@ -1756,7 +1756,7 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-core", "rcp", "rcp-ndcg-vllm", "rcp-ndcg-test"], builds
+    assert packages == ["rcp-core", "rcp", "rcp-vllm", "rcp-ndcg-test"], builds
     assert sorted(path.name for path in harness.iterdir()) == ["rcp_ndcg_test-0.0.1-py3-none-any.whl"]
     # The staged tree the real build copies it into: the script names the harness directory beside dist/.
     assert 'stage/"$RC_NAME"/harness' in RC_BUILD.read_text(encoding="utf-8")
@@ -1776,9 +1776,9 @@ def test_rc_build_stages_pairs_from_the_packages_home(tmp_path: Path) -> None:
 
 
 def test_rc_build_refuses_a_stray_pre_layout_pairs_home(tmp_path: Path) -> None:
-    """One home: a stray <checkout-root>/pairs/ or a pre-layout <checkout>/rcp-ndcg-vllm/pairs/ is
+    """One home: a stray <checkout-root>/pairs/ or a pre-layout <checkout>/rcp-vllm/pairs/ is
     refused (never silently staged), said on stderr with the one home named."""
-    for stray in ("pairs", "rcp-ndcg-vllm/pairs"):
+    for stray in ("pairs", "rcp-vllm/pairs"):
         checkout = tmp_path / "checkout"
         (checkout / stray).mkdir(parents=True)
         (checkout / stray / "stray.jsonl").write_text('{"query": "q", "documents": ["d"]}\n', encoding="utf-8")
@@ -1853,17 +1853,17 @@ def test_rc_build_without_any_cases_stages_nothing(tmp_path: Path) -> None:
 
 
 def _fake_wheel(checkout: Path, *, with_recipes: bool = True) -> Path:
-    """A minimal rcp_ndcg_vllm wheel in <checkout>/dist, with (or without) the recipes package data."""
+    """A minimal rcp_vllm wheel in <checkout>/dist, with (or without) the recipes package data."""
     import zipfile
 
     dist = checkout / "dist"
     dist.mkdir(parents=True, exist_ok=True)
-    wheel = dist / "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    wheel = dist / "rcp_vllm-0.0.1-py3-none-any.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
-        archive.writestr("rcp_ndcg_vllm/__init__.py", "")
+        archive.writestr("rcp_vllm/__init__.py", "")
         if with_recipes:
-            archive.writestr("rcp_ndcg_vllm/recipes/fixture-embed/recipe.yaml", "id: fixture-embed\n")
-            archive.writestr("rcp_ndcg_vllm/recipes/README.md", "# recipes\n")
+            archive.writestr("rcp_vllm/recipes/fixture-embed/recipe.yaml", "id: fixture-embed\n")
+            archive.writestr("rcp_vllm/recipes/README.md", "# recipes\n")
     return wheel
 
 
@@ -1879,9 +1879,9 @@ def _stage_recipes(tmp_path: Path, checkout: Path) -> subprocess.CompletedProces
 
 
 def test_rc_build_stages_the_recipes_from_the_built_wheel(tmp_path: Path) -> None:
-    """Layout-move item 3: the recipes are the rcp-ndcg-vllm wheel's package data.  rc_build.sh stages the
-    whole ``rcp_ndcg_vllm/recipes/`` directory out of the BUILT wheel -- never a per-recipe file list and
-    never the pre-move ``rcp-ndcg-vllm/recipes`` source path -- so the node runs exactly the shipped
+    """Layout-move item 3: the recipes are the rcp-vllm wheel's package data.  rc_build.sh stages the
+    whole ``rcp_vllm/recipes/`` directory out of the BUILT wheel -- never a per-recipe file list and
+    never the pre-move ``rcp-vllm/recipes`` source path -- so the node runs exactly the shipped
     recipes (a recipe missing from the wheel fails the build, not the wave)."""
     checkout = tmp_path / "checkout"
     _fake_wheel(checkout)
@@ -1906,7 +1906,7 @@ def test_rc_build_fails_when_the_wheel_carries_no_recipes(tmp_path: Path) -> Non
     empty.mkdir()
     completed = _stage_recipes(tmp_path, empty)
     assert completed.returncode != 0
-    assert "rcp_ndcg_vllm wheel" in completed.stderr
+    assert "rcp_vllm wheel" in completed.stderr
 
 
 # --- rc_build.sh: the wave lists and the whole staged tree ------------------------------------
@@ -2022,14 +2022,14 @@ def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
     import zipfile
 
     repo = Path(__file__).resolve().parents[2]
-    recipes_src = repo / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
+    recipes_src = repo / "rcp-vllm" / "src" / "rcp_vllm" / "recipes"
     assert recipes_src.is_dir(), f"the recipe package data moved: {recipes_src}"
-    wheel = tmp_path / "dist" / "rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
+    wheel = tmp_path / "dist" / "rcp_vllm-0.0.1-py3-none-any.whl"
     wheel.parent.mkdir()
     with zipfile.ZipFile(wheel, "w") as archive:
         for path in sorted(recipes_src.rglob("*")):
             if path.is_file():
-                archive.write(path, str(Path("rcp_ndcg_vllm/recipes") / path.relative_to(recipes_src)))
+                archive.write(path, str(Path("rcp_vllm/recipes") / path.relative_to(recipes_src)))
     stage = tmp_path / "stage"
     completed = subprocess.run(
         [
@@ -2071,7 +2071,7 @@ def _check_pins(
 ) -> subprocess.CompletedProcess[str]:
     """Source rc_build.sh and run ``check_pins`` on a scratch checkout with the given manifests."""
     checkout = tmp_path / "checkout"
-    for member in ("rcp", "rcp-ndcg-vllm", "rcp-core", "rcp-ndcg-test"):
+    for member in ("rcp", "rcp-vllm", "rcp-core", "rcp-ndcg-test"):
         (checkout / member).mkdir(parents=True, exist_ok=True)
 
     def _write(path: Path, text: str) -> None:
@@ -2084,8 +2084,8 @@ def _check_pins(
         '[project]\nname = "rcp"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n",
     )
     _write(
-        checkout / "rcp-ndcg-vllm" / "pyproject.toml",
-        '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
+        checkout / "rcp-vllm" / "pyproject.toml",
+        '[project]\nname = "rcp-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
     )
     for member in ("rcp-core", "rcp-ndcg-test"):
         _write(checkout / member / "pyproject.toml", f'[project]\nname = "{member}"\nversion = "0.0.1"\n')
@@ -2133,7 +2133,7 @@ def test_rc_build_runs_the_release_checks_and_smokes_from_one_home() -> None:
 
 
 def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:
-    """rcp pins rcp-core==VERSION; the lean rcp-ndcg-vllm names NO sibling (decision 18: no
+    """rcp pins rcp-core==VERSION; the lean rcp-vllm names NO sibling (decision 18: no
     lockstep version pin between the two packages -- the manifest does not depend on rcp)."""
     completed = _check_pins(tmp_path)
     assert completed.returncode == 0, completed.stderr
@@ -2150,9 +2150,9 @@ def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Pat
 
 
 def test_rc_build_pin_check_accepts_the_package_naming_itself(tmp_path: Path) -> None:
-    """The manifest's own distribution (rcp-ndcg-vllm) is not a sibling: an entry naming it is not the
+    """The manifest's own distribution (rcp-vllm) is not a sibling: an entry naming it is not the
     workspace-sibling refusal (nothing sane names itself, but the check must not confuse the names)."""
-    completed = _check_pins(tmp_path, vllm_deps='  "rcp-ndcg-vllm==0.0.1",\n')
+    completed = _check_pins(tmp_path, vllm_deps='  "rcp-vllm==0.0.1",\n')
     assert completed.returncode == 0, completed.stderr
 
 
@@ -2191,7 +2191,7 @@ def _judgecheck_recipes() -> list[str]:
 def test_judgecheck_pins_the_ten_judges_to_the_catalog_and_the_checklists_six_first() -> None:
     """The script's ten ids are exactly the catalog's judge variants, the checklist's six first: a renamed
     recipe or a new judge fails here first (the casefill recipe/family pin's shape)."""
-    from rcp_ndcg_vllm.recipe import load_recipe
+    from rcp_vllm.recipe import load_recipe
 
     recipes = _judgecheck_recipes()
     assert recipes == list(JUDGES), recipes
@@ -2201,7 +2201,7 @@ def test_judgecheck_pins_the_ten_judges_to_the_catalog_and_the_checklists_six_fi
         assert recipe.client.get("tokenizer"), recipe_id  # a served judge declares its tokenizer
     import re
 
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     # The shipped package data, never a checkout path: a dirty worktree's stale directories are not recipes.
     judge_ids = set()
@@ -2222,7 +2222,7 @@ def test_judgecheck_runs_each_familys_documented_thinking_modes() -> None:
     `extra_body` merged in (`--set judge.extra_body` replaces the whole block).  Every other recipe
     documents none: its single `default` mode passes no toggle at all, never a guessed flag."""
     from rcp_ndcg_test.jobs.judgecheck_probe import judge_modes
-    from rcp_ndcg_vllm.recipe import load_recipe
+    from rcp_vllm.recipe import load_recipe
 
     for recipe_id in JUDGES:
         recipe = load_recipe(recipe_id)
@@ -2241,7 +2241,7 @@ def test_judgecheck_vision_toggle_is_the_gemma_recipe_s_documented_choice() -> N
     """The Gemma 4 recipe's own note documents the thinking-on toggle verbatim (`--set judge.extra_body`
     with `chat_template_kwargs.enable_thinking`); the helper's vision-family switch is that choice, so a
     changed recipe note fails here before the node runs a different instrument."""
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     notes = (default_recipes_root() / "gemma-4-12b" / "family.yaml").read_text(encoding="utf-8")
     assert '"chat_template_kwargs": {"enable_thinking": true}' in notes
@@ -3188,7 +3188,7 @@ def test_the_judgecheck_dry_plan_names_the_ten_judges_and_the_documented_modes()
     plan = completed.stdout
     for index, recipe in enumerate(JUDGES):
         port = 8100 + index
-        assert f"rcp-ndcg-vllm serve {recipe} --port {port}" in plan, plan
+        assert f"rcp-vllm serve {recipe} --port {port}" in plan, plan
         assert f"--judge {recipe} --judge-model {recipe}" in plan, plan
         assert f"--set judge.base_url=http://127.0.0.1:{port}/v1" in plan, plan
         assert f"modes --judge {recipe}" in plan, plan
@@ -3258,7 +3258,7 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
         "#!/usr/bin/env bash\n"
         'printf "%s\\n" "$*" >> "$STUB_CLIENT_LOG"\n'
         'case "$1" in\n'
-        "  rcp-ndcg-vllm)\n"
+        "  rcp-vllm)\n"
         '    port=""; prev=""\n'
         '    for arg in "$@"; do [[ "$prev" == "--port" ]] && port="$arg"; prev="$arg"; done\n'
         '    echo "$$" >> "$STUB_SERVE_PIDS"\n'
@@ -3360,7 +3360,7 @@ def test_judgecheck_end_to_end_serves_checks_media_and_uploads(tmp_path: Path, r
     # every judge served on its own port and waited for; the dead one recorded, the next still ran
     log = client_log.read_text(encoding="utf-8")
     for index, recipe in enumerate(JUDGES):
-        assert f"rcp-ndcg-vllm serve {recipe} --port {8100 + index}" in log, log
+        assert f"rcp-vllm serve {recipe} --port {8100 + index}" in log, log
     # the judges are packed onto the node's two declared devices: the slice each recipe declares, an
     # internal VLLM_PORT and a TMPDIR each, never shared (two engines on one node without them collide)
     slots = {}
@@ -3517,7 +3517,7 @@ def test_the_sdpa_probe_arms_render_one_flag_apart_and_its_gate_reds_on_a_seeded
     gate's numbers and the verdict. Mutation: widen the gate, leave the flag in the native arm, or report
     the floor-established inside-gate case as ``near``."""
     from rcp_ndcg_test.jobs import sdpa_probe
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     recipe = resolve_recipe("embeddinggemma-2")
     plan = sdpa_probe.arms(recipe)
@@ -3631,7 +3631,7 @@ def test_the_maxsim_gate_reds_on_a_seeded_wrong_row_and_records_the_expected_row
     import numpy as np
     from rcp_ndcg_test.equivalence.gates import resolve_gates
     from rcp_ndcg_test.jobs import maxsim_probe
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     from rcp.inference.types import Embeddings
 
@@ -3712,7 +3712,7 @@ def test_a_nothing_checked_gate_is_a_named_verdict_not_a_crash() -> None:
     Mutation: format the nothing_checked record as a pair failure again."""
     import numpy as np
     from rcp_ndcg_test.jobs import maxsim_probe
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     recipe = resolve_recipe("pplx-embed-v2-late-0.6b")
     report = maxsim_probe.build_report(
@@ -3782,7 +3782,7 @@ def test_a_tau_only_failure_differs_with_the_median_tau_not_nothing_checked() ->
     ``nothing_checked`` again)."""
     import numpy as np
     from rcp_ndcg_test.jobs import maxsim_probe
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     recipe = resolve_recipe("pplx-embed-v2-late-0.6b")
     # both deltas 0.13 sit inside the 1-token bound 2*sqrt(2*(1-0.99)) = 0.2828; the ranks are reversed
@@ -3806,7 +3806,7 @@ def test_the_maxsim_probe_loads_by_path_the_way_the_pod_runs_it() -> None:
     from typing import Any
 
     import numpy as np
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
     probe: dict[str, Any] = runpy.run_path(str(MAXSIM_PROBE_PY), run_name="maxsim_probe_by_path")
     assert callable(probe["main"]) and callable(probe["verdict"])

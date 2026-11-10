@@ -1,7 +1,7 @@
 """The wave runner: many recipes on one node's GPUs, one failing recipe never stops the wave.
 
 For every recipe it packs the engine onto ``resources.gpus`` GPUs (``--tensor-parallel-size`` follows the recipe),
-starts one ``vllm serve`` per slot from :func:`~rcp_ndcg_vllm.recipe.serve_argv` with its own
+starts one ``vllm serve`` per slot from :func:`~rcp_vllm.recipe.serve_argv` with its own
 ``CUDA_VISIBLE_DEVICES``, port (``--port-base`` + slot; default 8100; ``--port-base 0`` gives every engine port 0),
 ``VLLM_PORT`` and ``TMPDIR`` (one home per slot: two engines cannot collide), waits for ``GET /v1/models`` within the
 recipe's ``engine.startup_timeout_s`` (an engine that exits early fails that recipe only), then runs smoke,
@@ -80,8 +80,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.patches import PATCHES_ENV, patches_env_value
-from rcp_ndcg_vllm.recipe import Recipe, default_recipes_root, serve_argv
+from rcp_vllm.patches import PATCHES_ENV, patches_env_value
+from rcp_vllm.recipe import Recipe, default_recipes_root, serve_argv
 
 from rcp_ndcg_test.equivalence.reference import reference_of
 from rcp_ndcg_test.errors import HarnessError, RecipeError
@@ -1513,28 +1513,32 @@ def _planned_engine_version(vllm_cmd: str | None) -> str | None:
 
 
 def _staged_plugin_hashes(wheel: Path, modules: Iterable[str]) -> dict[str, str]:
-    """The SHA-256 of each plugin module's source INSIDE the staged wheel, keyed by module name.
+    """The SHA-256 of each plugin module's source INSIDE the staged wheel, keyed by canonical module name.
 
     The same canonicalisation as :func:`rcp_ndcg_test.fingerprint.plugin_module_hashes` (the module's
-    source bytes through :func:`~rcp_ndcg_test.fingerprint.sha256_digest`), read from the wheel's zip
-    members: ``<module>.py`` or, for a package, ``<module>/__init__.py``.  Raises :class:`HarnessError`
-    when the wheel is not a readable zip or does not carry a module (the caller's step fails with the
-    named reason, never an unhandled traceback).
+    source bytes with the distribution's own name in its recorded spelling, through
+    :func:`~rcp_ndcg_test.fingerprint.sha256_digest`), read from the wheel's zip members: ``<module>.py``
+    or, for a package, ``<module>/__init__.py``.  The keys are the fingerprint's canonical keys; the wheel
+    carries the current package, so each key is mapped to its current module name first
+    (:func:`~rcp_ndcg_test.fingerprint._current_plugin_module`).  Raises :class:`HarnessError` when the
+    wheel is not a readable zip or does not carry a module (the caller's step fails with the named reason,
+    never an unhandled traceback).
     """
-    from ..fingerprint import sha256_digest
+    from ..fingerprint import _canonical_plugin_source, _current_plugin_module, sha256_digest
 
     try:
         with zipfile.ZipFile(wheel) as archive:
             names = set(archive.namelist())
             hashes: dict[str, str] = {}
             for module in modules:
-                stem = module.replace(".", "/")
+                current = _current_plugin_module(module)
+                stem = current.replace(".", "/")
                 for member in (f"{stem}.py", f"{stem}/__init__.py"):
                     if member in names:
-                        hashes[module] = sha256_digest(archive.read(member))
+                        hashes[module] = sha256_digest(_canonical_plugin_source(archive.read(member)))
                         break
                 else:
-                    raise HarnessError(f"the staged wheel {wheel} does not carry the plugin module {module}")
+                    raise HarnessError(f"the staged wheel {wheel} does not carry the plugin module {current}")
     except HarnessError:
         raise
     except Exception as error:  # noqa: BLE001 - any zip-layer failure is the named step refusal
@@ -2301,7 +2305,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="the staged plugin wheel the engine environment installed; the wave hashes its modules "
         "against the behaviour fingerprint's plugin inputs and refuses to record when they differ "
-        "(the bootstrap passes the staged rcp_ndcg_vllm wheel)",
+        "(the bootstrap passes the staged rcp_vllm wheel)",
     )
     parser.add_argument(
         "--rc-name",

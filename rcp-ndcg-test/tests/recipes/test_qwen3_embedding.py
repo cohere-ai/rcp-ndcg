@@ -31,8 +31,8 @@ import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
 from rcp_ndcg_test.equivalence.reference import run_reference
-from rcp_ndcg_vllm import load_recipe, serve_argv
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm import load_recipe, serve_argv
+from rcp_vllm.recipe import default_recipes_root
 
 from rcp.data.templates import Segment
 

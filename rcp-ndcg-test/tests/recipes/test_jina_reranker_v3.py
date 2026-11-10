@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 import yaml
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
-from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
+from rcp_vllm.recipe import default_recipes_root, load_recipe
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, stage1_facts

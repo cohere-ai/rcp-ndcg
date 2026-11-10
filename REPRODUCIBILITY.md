@@ -56,15 +56,15 @@ judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-3
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
 - The first-stage retrievers and rerankers of the paper's runs are served from the shipped recipes:
-  `rcp-ndcg-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.33.0` image,
+  `rcp-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.33.0` image,
   and a run config's `recipe: <id>` reads the recipe's client block. The release ships 44 recipes in 24 families.
   On the vLLM 0.33 pin the tree records 42 verified end to end on GPU in their waves, and the `topk-embed-v1`
   variants (small and xsmall), the ones the owner's disposition names, are the 2 shipped with status failed;
   no recipe reads `status: unverified`: a row is only ever the wave that ran, so a recipe whose wave has not
   landed claims nothing rather than borrowing another image's evidence; see the
-  [`rcp-ndcg-vllm` README](rcp-ndcg-vllm/README.md).
+  [`rcp-vllm` README](rcp-vllm/README.md).
 - The paper's judges ship the same way: `--judge recipe:<id>` (or `judge: recipe:<id>` in a run config) reads
-  the recipe's client block, and `rcp-ndcg-vllm serve <id>` builds its engine command; the package itself keeps
+  the recipe's client block, and `rcp-vllm serve <id>` builds its engine command; the package itself keeps
   only the hosted `gpt5_hosted` vendor profile. The paper's
   judges ran on SGLang: the paper's submission code is the record of those engine commands, which this
   repository does not ship; this release serves the same checkpoints on vLLM v0.33.0

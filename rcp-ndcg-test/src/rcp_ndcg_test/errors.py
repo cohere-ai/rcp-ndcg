@@ -3,12 +3,12 @@
 The package raises typed errors; it never prints. Case-format problems are
 :class:`CaseError`, conformance-run problems :class:`ConformanceError`, and the moved harness raises
 :class:`HarnessError`. The recipe loader's :class:`RecipeError` keeps its home in
-:mod:`rcp_ndcg_vllm.errors` and is re-exported here so the harness's callers take both from one place.
+:mod:`rcp_vllm.errors` and is re-exported here so the harness's callers take both from one place.
 """
 
 from __future__ import annotations
 
-from rcp_ndcg_vllm.errors import RecipeError as RecipeError
+from rcp_vllm.errors import RecipeError as RecipeError
 
 __all__ = [
     "CaseError",

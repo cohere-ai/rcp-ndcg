@@ -35,7 +35,7 @@ from pydantic import BaseModel
 from rcp.support import api_docs
 
 REPO = Path(__file__).resolve().parents[2]
-PACKAGES = ("rcp_core", "rcp", "rcp_ndcg_vllm")
+PACKAGES = ("rcp_core", "rcp", "rcp_vllm")
 HEAVY = (
     "torch",
     "transformers",
@@ -171,9 +171,9 @@ def all_modules() -> list[str]:
     """Every module of the packages whose dotted name has no ``_``-prefixed part (the hygiene checks walk these).
 
     The folded model modules are the one exception: vLLM imports them lazily (the ``module:Class`` strings
-    ``rcp_ndcg_vllm.models:register`` registers), and importing them here would import torch and vLLM.
+    ``rcp_vllm.models:register`` registers), and importing them here would import torch and vLLM.
     """
-    from rcp_ndcg_vllm.models import LAZY_MODEL_MODULES
+    from rcp_vllm.models import LAZY_MODEL_MODULES
 
     names = []
     for top in PACKAGES:
@@ -295,7 +295,7 @@ def _describe(obj: Any) -> dict[str, Any]:
 def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
     """S1 over ``modules`` (default: :data:`PUBLIC_MODULES`, what the snapshot pins)."""
     out: dict[str, Any] = {}
-    from rcp_ndcg_vllm.models import LAZY_MODEL_MODULES
+    from rcp_vllm.models import LAZY_MODEL_MODULES
 
     for name in public_modules() if modules is None else modules:
         if name in LAZY_MODEL_MODULES:
@@ -303,7 +303,7 @@ def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
         try:
             module = importlib.import_module(name)
         except ModuleNotFoundError as exc:
-            if exc.name and exc.name.split(".")[0] in {"rcp", "rcp_core", "rcp_ndcg_vllm"}:
+            if exc.name and exc.name.split(".")[0] in {"rcp", "rcp_core", "rcp_vllm"}:
                 raise
             out[name] = {"requires_extra": exc.name.split(".")[0] if exc.name else "?"}
             continue
@@ -321,7 +321,7 @@ def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
             match = re.search(r"`(\w+)` extra", str(exc))
             out[name] = {"requires_extra": match.group(1) if match else "?"}
         except RuntimeError as exc:  # the engine plugin's own refusal without vLLM (models.topk)
-            if not str(exc).startswith("rcp-ndcg-vllm:"):
+            if not str(exc).startswith("rcp-vllm:"):
                 raise
             out[name] = {"requires_extra": "vllm"}
     return out
@@ -392,8 +392,8 @@ def _heavy_after(module: str) -> list[str]:
 
 
 def collect_vllm_cli() -> dict[str, Any]:
-    """The ``rcp-ndcg-vllm`` console tree from its own argparse builder (the public entry: ``serve``)."""
-    from rcp_ndcg_vllm.serve import build_parser
+    """The ``rcp-vllm`` console tree from its own argparse builder (the public entry: ``serve``)."""
+    from rcp_vllm.serve import build_parser
 
     parser = build_parser()
     tree: dict[str, Any] = {}
@@ -492,7 +492,7 @@ def collect_packaging() -> dict[str, Any]:
     for pyproject in (
         REPO / "rcp" / "pyproject.toml",
         REPO / "rcp-core/pyproject.toml",
-        REPO / "rcp-ndcg-vllm/pyproject.toml",
+        REPO / "rcp-vllm/pyproject.toml",
     ):
         data = tomllib.loads(pyproject.read_text())["project"]
         projects[data["name"]] = {
@@ -500,7 +500,7 @@ def collect_packaging() -> dict[str, Any]:
             "entry_points": {group: sorted(eps) for group, eps in data.get("entry-points", {}).items()},
         }
     read_groups = set()
-    for base in (REPO / "rcp" / "src", REPO / "rcp-core/src", REPO / "rcp-ndcg-vllm/src"):
+    for base in (REPO / "rcp" / "src", REPO / "rcp-core/src", REPO / "rcp-vllm/src"):
         for path in base.rglob("*.py"):
             read_groups |= entry_point_groups(path)
     return {

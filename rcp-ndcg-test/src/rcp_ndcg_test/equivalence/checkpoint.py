@@ -23,7 +23,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 

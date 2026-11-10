@@ -19,8 +19,8 @@ from rcp_ndcg_test.errors import HarnessError
 from rcp_ndcg_test.jobs import reference_lock as rl
 
 ROOT = Path(__file__).resolve().parents[2]
-RECIPES = ROOT / "rcp-ndcg-vllm" / "src" / "rcp_ndcg_vllm" / "recipes"
-IMAGE_STACK = ROOT / "rcp-ndcg-vllm" / "reference-image-v0.33.0.txt"
+RECIPES = ROOT / "rcp-vllm" / "src" / "rcp_vllm" / "recipes"
+IMAGE_STACK = ROOT / "rcp-vllm" / "reference-image-v0.33.0.txt"
 
 FREEZE = """\
 torch==2.13.0+cu130
@@ -193,7 +193,7 @@ def test_check_lock_refuses_a_hand_edited_pin(monkeypatch: pytest.MonkeyPatch) -
 
 def _reference_families() -> list[Path]:
     """The families with a reference (a judge recipe has none, decision 15): they ship the lock."""
-    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+    from rcp_vllm.recipe import load_family, load_recipes_of
 
     families = []
     for path in sorted(RECIPES.glob("*/family.yaml")):
@@ -246,7 +246,7 @@ def test_every_committed_lock_matches_its_inputs() -> None:
 def test_every_lock_names_its_familys_engine_image() -> None:
     """A lock's ``# image:`` header is the family's resolved ``engine.image`` (so the reference venv is
     built over the same image the job runs), including a digest-pinned nightly."""
-    from rcp_ndcg_vllm.recipe import load_family, load_recipes_of
+    from rcp_vllm.recipe import load_family, load_recipes_of
 
     for family_dir in _reference_families():
         lock = (family_dir / "reference.lock").read_text(encoding="utf-8")

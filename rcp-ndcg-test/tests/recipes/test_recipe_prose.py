@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 import yaml
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm.recipe import default_recipes_root
 
 RECIPES = default_recipes_root()
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -32,7 +32,7 @@ def _normalised(text: str) -> str:
 def test_a_recipe_that_declares_a_plugin_never_claims_an_unplugged_image() -> None:
     """The plugin wheel carries the engine patches; a recipe that declares ``serve.plugin`` does not run
     on an unplugged image, so its prose must not claim one (zembed-1's notes said "on the unmodified
-    vllm/vllm-openai:v0.31.0 image, no plugin" while its serve block declared ``plugin: rcp-ndcg-vllm``
+    vllm/vllm-openai:v0.31.0 image, no plugin" while its serve block declared ``plugin: rcp-vllm``
     without any engine patch)."""
     unplugged = re.compile(r"unmodified [^\n]*image,? no plugin", re.IGNORECASE)
     offenders = [

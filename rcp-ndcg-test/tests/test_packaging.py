@@ -31,12 +31,12 @@ def test_the_release_workflow_never_builds_or_publishes_the_test_package() -> No
     # The guard that keeps a future workspace member from being swept into the release build: the
     # three published packages are built by name, never with --all-packages.
     assert "--all-packages" not in text
-    for package in ("rcp", "rcp-core", "rcp-ndcg-vllm"):
+    for package in ("rcp", "rcp-core", "rcp-vllm"):
         assert package in text, f"the release must keep building {package}"
 
 
 def test_no_published_package_names_the_test_package() -> None:
-    for project in (ROOT, ROOT / "rcp-core", ROOT / "rcp-ndcg-vllm"):
+    for project in (ROOT, ROOT / "rcp-core", ROOT / "rcp-vllm"):
         data = tomllib.loads(_read(project / "pyproject.toml"))
         project = data.get("project", {})
         # Both channels of published metadata: the hard dependencies and every extra.
@@ -62,7 +62,7 @@ def test_the_workspace_root_reaches_it() -> None:
     is gone), and the lock resolves rcp-ndcg-test as a member."""
     workspace = tomllib.loads(_read(ROOT / "pyproject.toml"))
     members = workspace["tool"]["uv"]["workspace"]["members"]
-    assert "rcp-ndcg-test" in members and "rcp-ndcg-vllm" in members
+    assert "rcp-ndcg-test" in members and "rcp-vllm" in members
     assert workspace["tool"]["uv"]["sources"].get("rcp-ndcg-test") == {"workspace": True}
 
 
@@ -73,7 +73,7 @@ def test_the_lock_installs_it_into_the_dev_environment() -> None:
     assert entry is not None and entry["version"] == "0.0.1", "uv.lock pins the workspace member"
     assert entry.get("source", {}).get("editable", "").endswith("rcp-ndcg-test"), entry.get("source")
     dependency_names = {item["name"] for item in entry.get("dependencies", [])}
-    assert {"rcp", "rcp-ndcg-vllm"} <= dependency_names
+    assert {"rcp", "rcp-vllm"} <= dependency_names
 
 
 def test_the_package_depends_on_the_product_and_the_harness_at_the_release_version() -> None:
@@ -81,7 +81,7 @@ def test_the_package_depends_on_the_product_and_the_harness_at_the_release_versi
     assert data["project"]["name"] == "rcp-ndcg-test"
     assert data["project"]["dependencies"] == [
         "rcp==0.0.1",
-        "rcp-ndcg-vllm==0.0.1",
+        "rcp-vllm==0.0.1",
         "numpy>=1.26",
         "pydantic>=2.11",
         "PyYAML>=6.0",

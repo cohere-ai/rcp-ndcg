@@ -82,7 +82,7 @@ class TestConfig:
         (``judging._plan``). A judge that ships unpinned, without its checkpoint's tokenizer, or without a
         context outside that exception fails here.
         """
-        from rcp_ndcg_vllm.recipe import iter_recipes
+        from rcp_vllm.recipe import iter_recipes
 
         judges = sorted((recipe for recipe in iter_recipes() if recipe.role == "judge"), key=lambda item: item.id)
         assert judges, "no shipped judge recipe"

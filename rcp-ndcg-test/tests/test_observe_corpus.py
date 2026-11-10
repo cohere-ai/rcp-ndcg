@@ -25,7 +25,7 @@ from rcp_ndcg_test.observe.corpus import (
     write_corpus,
 )
 from rcp_ndcg_test.record import record_corpus
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 from tests.conftest import RECIPES, TOKENIZER, start_stub, token_ids_recipe
 
@@ -76,7 +76,7 @@ def test_the_engine_facts_record_the_patch_opt_in() -> None:
     """The engine environment block keeps the patch opt-in beside the VLLM_* knobs: the value the engine
     actually ran with is visible beside the behaviour fingerprint that keys the declared patches."""
     from rcp_ndcg_test.observe.provenance import engine_facts
-    from rcp_ndcg_vllm.patches import PATCHES_ENV
+    from rcp_vllm.patches import PATCHES_ENV
 
     facts = engine_facts(
         image="registry.example.com/stub-engine:test",
@@ -98,7 +98,7 @@ def test_the_engine_environment_drops_the_pods_service_discovery_variables() -> 
     Service names never enter a manifest. The names and the address below are the shapes' synthetic stand-ins
     (a documentation-range address), never a real Service."""
     from rcp_ndcg_test.observe.provenance import engine_facts
-    from rcp_ndcg_vllm.patches import PATCHES_ENV
+    from rcp_vllm.patches import PATCHES_ENV
 
     facts = engine_facts(
         image="registry.example.com/stub-engine:test",
@@ -563,7 +563,7 @@ def test_an_mrl_probes_reply_is_accepted_at_the_requested_width(tmp_path: Path) 
     refused."""
     from rcp_ndcg_test.equivalence.fitting import tokenizer_of
     from rcp_ndcg_test.observe.requests import plan_recipe
-    from rcp_ndcg_vllm.recipe import serve_argv
+    from rcp_vllm.recipe import serve_argv
 
     recipe = load_recipe(RECIPES / "fixture-embed-mrl")
     plan = plan_recipe(recipe, tokenizer_of(recipe), {})
@@ -728,7 +728,7 @@ def test_a_vectorless_reply_is_a_refusal_not_a_per_chunk_failure(tmp_path: Path)
     declares is then not being exercised at all, which no refusal table explains.
     """
     from rcp_ndcg_test.observe.provenance import recipe_facts
-    from rcp_ndcg_vllm.models.pplx.chunk_rule import BOUNDARY_TOKEN_ID, DOCUMENT_PREFIX_TOKEN_IDS
+    from rcp_vllm.models.pplx.chunk_rule import BOUNDARY_TOKEN_ID, DOCUMENT_PREFIX_TOKEN_IDS
 
     recipe = load_recipe(RECIPES / "fixture-multi-vector")
     block = {**recipe_facts(recipe), "outputs": "per_chunk"}
@@ -764,7 +764,7 @@ def test_a_per_chunk_reply_is_checked_against_the_declared_chunk_count(tmp_path:
     count (the engine ignored the per-chunk head) and one at a count that is neither fail, naming the
     expected count."""
     from rcp_ndcg_test.observe.provenance import recipe_facts
-    from rcp_ndcg_vllm.models.pplx.chunk_rule import BOUNDARY_TOKEN_ID, DOCUMENT_PREFIX_TOKEN_IDS
+    from rcp_vllm.models.pplx.chunk_rule import BOUNDARY_TOKEN_ID, DOCUMENT_PREFIX_TOKEN_IDS
 
     recipe = load_recipe(RECIPES / "fixture-multi-vector")
     block = {**recipe_facts(recipe), "outputs": "per_chunk"}
@@ -995,7 +995,7 @@ def test_the_media_request_set_is_recorded_with_its_media(tmp_path: Path) -> Non
     both refused by the engine."""
     from rcp_ndcg_test.equivalence.fitting import tokenizer_of
     from rcp_ndcg_test.observe.requests import plan_recipe
-    from rcp_ndcg_vllm.recipe import serve_argv
+    from rcp_vllm.recipe import serve_argv
 
     recipe = load_recipe(RECIPES / "fixture-vl-embed")
     plan = plan_recipe(recipe, tokenizer_of(recipe), {})

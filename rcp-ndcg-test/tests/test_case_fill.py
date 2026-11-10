@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 import yaml
 from rcp_ndcg_test.cases import load_case
-from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
+from rcp_vllm.recipe import default_recipes_root, load_recipe
 
 from tests.conftest import RECIPES, TOKENIZER
 

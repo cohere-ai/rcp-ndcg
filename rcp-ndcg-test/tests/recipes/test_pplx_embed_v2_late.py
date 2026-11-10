@@ -32,7 +32,7 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import load_pairs
-from rcp_ndcg_vllm.recipe import default_recipes_root, load_family, resolve_recipe, serve_argv
+from rcp_vllm.recipe import default_recipes_root, load_family, resolve_recipe, serve_argv
 
 from ._contract import assert_recipe_contract
 from ._served import served_rows, served_texts, tokenizer_cache
@@ -275,7 +275,7 @@ def _expected_serve() -> dict[str, Any]:
         "trust_remote_code": False,
         "max_model_len": 4352,
         "dtype": "bfloat16",
-        "plugin": "rcp-ndcg-vllm",
+        "plugin": "rcp-vllm",
         "patches": [],
         "plugin_architectures": ["Qwen3_5Model"],
         "io_processor_plugin": None,
@@ -495,7 +495,7 @@ def test_serve_argv_carries_the_serving_facts(variant_id: str) -> None:
     assert argv[argv.index("--pooler-config") + 1] == "{}"  # the model class builds its own pooler
     assert "--trust-remote-code" not in argv
     assert "--chat-template" not in argv  # the checkpoint's own template rides the revision
-    assert not any("rcp-ndcg-vllm" in argument for argument in argv)  # the plugin never reaches the argv
+    assert not any("rcp-vllm" in argument for argument in argv)  # the plugin never reaches the argv
 
 
 def test_the_family_shares_every_behavioural_block() -> None:

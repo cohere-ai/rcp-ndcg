@@ -22,7 +22,7 @@ import pytest
 import yaml
 from rcp_ndcg_test.errors import HarnessError
 from rcp_ndcg_test.fingerprint import behaviour_fingerprint, fingerprint_changes, fingerprint_inputs
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 RECIPES = Path(__file__).resolve().parent / "fixtures" / "recipes"
 EMBED = RECIPES / "fixture-embed"
@@ -332,7 +332,7 @@ def _plugin_recipe(tmp_path: Path, name: str, architecture: str, *, patches: tup
     """A fixture recipe declaring the shipped plugin, one architecture and (optionally) patches."""
 
     def rewrite(data: dict) -> dict:
-        data["serve"]["plugin"] = "rcp-ndcg-vllm"
+        data["serve"]["plugin"] = "rcp-vllm"
         data["serve"]["plugin_architectures"] = [architecture]
         if patches:
             data["serve"]["patches"] = list(patches)
@@ -343,12 +343,17 @@ def _plugin_recipe(tmp_path: Path, name: str, architecture: str, *, patches: tup
 
 def test_the_plugin_module_hashes_are_the_architectures_engine_modules(tmp_path: Path) -> None:
     """``plugin_sha256.<module>`` names every engine-side module the declared architecture runs: the shared
-    entry modules plus the architecture's own; a recipe without a plugin has none."""
-    from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, PLUGIN_ENGINE_MODULES
+    entry modules plus the architecture's own, in the recorded canonical spelling; a recipe without a plugin
+    has none."""
+    from rcp_ndcg_test import fingerprint
+    from rcp_vllm.models import ARCHITECTURE_MODULES, PLUGIN_ENGINE_MODULES
 
     recipe = _plugin_recipe(tmp_path, "plugin-contextual", "PplxContextualModel")
     inputs = fingerprint_inputs(recipe)
-    expected = {*PLUGIN_ENGINE_MODULES, *ARCHITECTURE_MODULES["PplxContextualModel"]}
+    expected = {
+        fingerprint._canonical_plugin_module(module)
+        for module in (*PLUGIN_ENGINE_MODULES, *ARCHITECTURE_MODULES["PplxContextualModel"])
+    }
     named = {name.removeprefix("plugin_sha256.") for name in inputs if name.startswith("plugin_sha256.")}
     assert named == expected
     assert all(inputs[f"plugin_sha256.{module}"].startswith("sha256:") for module in expected)
@@ -356,16 +361,49 @@ def test_the_plugin_module_hashes_are_the_architectures_engine_modules(tmp_path:
 
 
 def test_the_plugin_module_hash_is_the_modules_source_bytes(tmp_path: Path) -> None:
-    """The value is the SHA-256 of the module's source file, so a code move that changes no recipe field
-    still moves the fingerprint."""
+    """The value is the SHA-256 of the module's canonical source file: a code move that changes no recipe
+    field still moves the fingerprint, while a rename of the distribution's own name does not."""
     import importlib.util
 
+    from rcp_ndcg_test.fingerprint import _canonical_plugin_module, _canonical_plugin_source
+
     recipe = _plugin_recipe(tmp_path, "plugin-topk", "TopkEmbedModel")
-    module = "rcp_ndcg_vllm.models.topk.weights"
+    module = "rcp_vllm.models.topk.weights"
     spec = importlib.util.find_spec(module)
     assert spec is not None and spec.origin is not None
-    digest = hashlib.sha256(Path(spec.origin).read_bytes()).hexdigest()
-    assert fingerprint_inputs(recipe)[f"plugin_sha256.{module}"] == f"sha256:{digest}"
+    digest = hashlib.sha256(_canonical_plugin_source(Path(spec.origin).read_bytes())).hexdigest()
+    assert fingerprint_inputs(recipe)[f"plugin_sha256.{_canonical_plugin_module(module)}"] == f"sha256:{digest}"
+
+
+def test_a_plugin_rename_cannot_move_a_fingerprint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The plugin's own name is not behaviour: the same source under either spelling of the distribution's
+    package hashes to one canonical module key and value, and ``serve.plugin``'s two spellings key the same.
+    The canonical spelling is the one the recorded corpora carry, so a rename cannot move a recorded key."""
+    from rcp_ndcg_test import fingerprint
+
+    def rewrite(data: dict) -> dict:
+        data["serve"]["plugin"] = "rcp-vllm"
+        data["serve"]["plugin_architectures"] = []
+        return data
+
+    recipe = load_recipe(_copy(tmp_path, rewrite=rewrite, rename="plugin-rename"))
+    old = tmp_path / "old.py"
+    old.write_text('"""rcp-ndcg-vllm."""\nfrom rcp_ndcg_vllm.recipe import ServeConfig\n', encoding="utf-8")
+    new = tmp_path / "new.py"
+    new.write_text('"""rcp-vllm."""\nfrom rcp_vllm.recipe import ServeConfig\n', encoding="utf-8")
+    monkeypatch.setattr(fingerprint, "PLUGIN_ENGINE_MODULES", ("rcp_vllm.models",))
+    assert fingerprint._canonical_plugin_source(new.read_bytes()) == fingerprint._canonical_plugin_source(
+        old.read_bytes()
+    )
+    assert fingerprint._canonical_plugin_module("rcp_vllm.models") == "rcp_ndcg_vllm.models"
+    assert fingerprint._canonical_plugin_text("rcp-vllm") == fingerprint._canonical_plugin_text("rcp-ndcg-vllm")
+    monkeypatch.setattr(fingerprint, "_module_source", lambda module: old)
+    before = fingerprint.fingerprint_inputs(recipe, tokenizer_sha256_value="0" * 64)
+    monkeypatch.setattr(fingerprint, "_module_source", lambda module: new)
+    after = fingerprint.fingerprint_inputs(recipe, tokenizer_sha256_value="0" * 64)
+    assert before == after
+    assert before["serve.plugin"] == "rcp-ndcg-vllm"
+    assert before["plugin_sha256.rcp_ndcg_vllm.models"].startswith("sha256:")
 
 
 def test_the_plugin_module_hashes_never_import_a_package_init(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -376,14 +414,14 @@ def test_the_plugin_module_hashes_never_import_a_package_init(monkeypatch: pytes
     import sys
 
     from rcp_ndcg_test.fingerprint import plugin_module_hashes
-    from rcp_ndcg_vllm.recipe import resolve_recipe
+    from rcp_vllm.recipe import resolve_recipe
 
-    monkeypatch.delitem(sys.modules, "rcp_ndcg_vllm.models.pplx", raising=False)
+    monkeypatch.delitem(sys.modules, "rcp_vllm.models.pplx", raising=False)
 
     hashes = plugin_module_hashes(resolve_recipe("embeddinggemma-2"))
     assert "rcp_ndcg_vllm.patches.torch_sdpa_attention" in hashes
     assert "rcp_ndcg_vllm.models.embedding_gemma2.attention" in hashes
-    assert "rcp_ndcg_vllm.models.pplx" not in sys.modules
+    assert "rcp_vllm.models.pplx" not in sys.modules
 
 
 def test_editing_one_plugin_module_moves_exactly_the_recipes_that_use_it(
@@ -413,18 +451,18 @@ def test_editing_one_plugin_module_moves_exactly_the_recipes_that_use_it(
         return {recipe_id for recipe_id, digest in after.items() if digest != before[recipe_id]}
 
     before = {recipe_id: behaviour_fingerprint(recipe) for recipe_id, recipe in recipes.items()}
-    assert moved("rcp_ndcg_vllm.models.pplx.late") == {"plugin-late"}
-    assert moved("rcp_ndcg_vllm.models.topk.weights") == {"plugin-topk"}
-    assert moved("rcp_ndcg_vllm.models") == {"plugin-contextual", "plugin-late", "plugin-topk", "plugin-patched"}
-    assert moved("rcp_ndcg_vllm.models.topk.config") == {
+    assert moved("rcp_vllm.models.pplx.late") == {"plugin-late"}
+    assert moved("rcp_vllm.models.topk.weights") == {"plugin-topk"}
+    assert moved("rcp_vllm.models") == {"plugin-contextual", "plugin-late", "plugin-topk", "plugin-patched"}
+    assert moved("rcp_vllm.models.topk.config") == {
         "plugin-contextual",
         "plugin-late",
         "plugin-topk",
         "plugin-patched",
     }, "the config registrations run in every plugin engine"
-    assert moved("rcp_ndcg_vllm.patches.torch_sdpa_attention") == {"plugin-patched"}
-    assert moved("rcp_ndcg_vllm.models.embedding_gemma2.attention") == {"plugin-patched"}
-    assert moved("rcp_ndcg_vllm.models.pplx.model") == {"plugin-contextual", "plugin-patched"}
+    assert moved("rcp_vllm.patches.torch_sdpa_attention") == {"plugin-patched"}
+    assert moved("rcp_vllm.models.embedding_gemma2.attention") == {"plugin-patched"}
+    assert moved("rcp_vllm.models.pplx.model") == {"plugin-contextual", "plugin-patched"}
 
 
 def test_a_plugin_code_move_is_named_for_a_stale_declaration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -434,7 +472,7 @@ def test_a_plugin_code_move_is_named_for_a_stale_declaration(tmp_path: Path, mon
 
     recipe = _plugin_recipe(tmp_path, "plugin-late", "Qwen3_5Model")
     before = fingerprint_inputs(recipe)
-    module = "rcp_ndcg_vllm.models.pplx.late"
+    module = "rcp_vllm.models.pplx.late"
     real = fingerprint._module_sha256
     monkeypatch.setattr(
         fingerprint,
@@ -442,7 +480,7 @@ def test_a_plugin_code_move_is_named_for_a_stale_declaration(tmp_path: Path, mon
         lambda candidate: "sha256:" + "0" * 64 if candidate == module else real(candidate),
     )
     after = fingerprint_inputs(recipe)
-    assert fingerprint_changes(before, after) == [f"plugin_sha256.{module}"]
+    assert fingerprint_changes(before, after) == [f"plugin_sha256.{fingerprint._canonical_plugin_module(module)}"]
 
 
 def test_every_client_field_role_agrees_with_the_identity_and_the_fingerprint() -> None:

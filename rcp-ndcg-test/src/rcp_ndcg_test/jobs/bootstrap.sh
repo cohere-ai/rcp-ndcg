@@ -148,7 +148,7 @@ wave_command() {
     argv+=(--record-corpus)
   fi
   local plugin_wheel
-  if plugin_wheel="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+  if plugin_wheel="$(staged_plugin_wheel rcp-vllm)"; then
     argv+=(--plugin-wheel "$plugin_wheel")
   fi
   local candidate
@@ -268,7 +268,7 @@ install_plugin_wheels() {
     done
     if [[ -n "$plugin_path" ]]; then
       # The wheel the engine will run: decision 16's declared-dependency check first (g-rcjobs-9).
-      if [[ "$(freeze_name_of "$plugin")" == "rcp-ndcg-vllm" ]] && ! plugin_pure_python "$plugin_path"; then
+      if [[ "$(freeze_name_of "$plugin")" == "rcp-vllm" ]] && ! plugin_pure_python "$plugin_path"; then
         printf '%s\n' "$plugin" >>"$failed_file"
         continue
       fi
@@ -283,7 +283,7 @@ install_plugin_wheels() {
       # behaviour fingerprint (item 9): pinning the file keeps pip from picking a different version out
       # of an extra wheelhouse, so the engine runs what the recording claims.  Only the BARE name is
       # pinned: a spec that carries a version (or extras) is installed as named, as its author asked.
-      if [[ "$plugin" == "rcp-ndcg-vllm" ]] && plugin_path="$(staged_plugin_wheel rcp-ndcg-vllm)"; then
+      if [[ "$plugin" == "rcp-vllm" ]] && plugin_path="$(staged_plugin_wheel rcp-vllm)"; then
         echo "bootstrap: the recipe's plugin $plugin installs from the staged wheel $plugin_path" >&2
         # Decision 16's declared-dependency check on the exact wheel about to be installed (g-rcjobs-9).
         if ! plugin_pure_python "$plugin_path"; then
@@ -307,16 +307,16 @@ install_plugin_wheels() {
     # fingerprint.  Whatever pip resolved (a versioned spec, an extra wheelhouse with a higher version),
     # the installed version must equal the staged wheel's; a mismatch refuses the plugin with its exact
     # name instead of recording a corpus that claims code the engine did not run.
-    if [[ "$(freeze_name_of "$plugin")" == "rcp-ndcg-vllm" ]]; then
-      staged_plugin="$(staged_plugin_wheel rcp-ndcg-vllm || true)"
+    if [[ "$(freeze_name_of "$plugin")" == "rcp-vllm" ]]; then
+      staged_plugin="$(staged_plugin_wheel rcp-vllm || true)"
       if [[ -n "$staged_plugin" ]]; then
         installed_version="$(
-          "$ENGINE_PYTHON" -c "import importlib.metadata as metadata; print(metadata.version('rcp-ndcg-vllm'))" \
+          "$ENGINE_PYTHON" -c "import importlib.metadata as metadata; print(metadata.version('rcp-vllm'))" \
             2>/dev/null || true
         )"
         expected_version="$(wheel_version_of "$staged_plugin")"
         if [[ "$installed_version" != "$expected_version" ]]; then
-          echo "bootstrap: the engine installed rcp-ndcg-vllm==${installed_version:-unknown}, but the staged" \
+          echo "bootstrap: the engine installed rcp-vllm==${installed_version:-unknown}, but the staged" \
             "wheel is ${expected_version}; the recording's plugin key would not cover it. The recipes that" \
             "name $plugin will fail (with the exact name)." >&2
           printf '%s\n' "$plugin" >>"$failed_file"
@@ -618,7 +618,7 @@ echo "bootstrap: engine environment: python $ENGINE_PYTHON_VERSION, vllm $ENGINE
 
 # --- the client environment: the product's own install mechanism (uvx), from the staged wheelhouse ---
 
-CLIENT_SPEC="rcp-ndcg-vllm[test]==${VERSION}"
+CLIENT_SPEC="rcp-vllm[test]==${VERSION}"
 CLIENT_WITH="rcp[hf]==${VERSION}"
 CLIENT_HARNESS="rcp-ndcg-test==${VERSION}"  # the staged harness wheel (<stage>/harness/): the wave runner and the checks live here
 CLIENT_ARGS=(uvx --from "$CLIENT_SPEC" --with "$CLIENT_WITH" --with "$CLIENT_HARNESS"
@@ -651,7 +651,7 @@ from importlib.metadata import PackageNotFoundError, version
 import rcp
 import rcp_core
 import rcp_ndcg_test
-import rcp_ndcg_vllm
+import rcp_vllm
 
 
 def installed(dist):
@@ -664,7 +664,7 @@ def installed(dist):
 print(json.dumps({
     "rcp": rcp.__version__,
     "rcp-core": version("rcp-core"),
-    "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
+    "rcp-vllm": version("rcp-vllm"),
     "rcp-ndcg-test": version("rcp-ndcg-test"),
     "inert_present": {dist: installed(dist) for dist in sys.argv[2:]},
 }))

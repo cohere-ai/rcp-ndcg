@@ -31,7 +31,7 @@ under `<prefix>/rc0/` is what the node installs from:
 | `harness/` | the unpublished `rcp-ndcg-test` wheel (the harness), built by name into its own directory; the node's client environment installs it from here |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-ndcg-vllm wheel's package data |
+| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-vllm wheel's package data |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-ndcg-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, from `rcp-ndcg-test/pairs/` |
@@ -134,7 +134,7 @@ staged RC, with the wave runner in the client environment the bootstrap built:
   maps -- the repository corpus index is a different schema). It needs the client environment and the
   reference python a `bootstrap.sh envs` run built on the node; run the wave runner from that state's
   client wrapper with the staged recipes and pairs, and pass the staged plugin wheel
-  (`--plugin-wheel <stage>/wheelhouse/rcp_ndcg_vllm-<version>-*.whl`, the wheel the engine environment
+  (`--plugin-wheel <stage>/wheelhouse/rcp_vllm-<version>-*.whl`, the wheel the engine environment
   installed) so the corpus step cross-checks its modules against the behaviour fingerprint's
   `plugin_sha256` inputs. `--changed-since` needs the pod's engine version before engines start: the
   bootstrap exports `RCP_ENGINE_PYTHON` for it. The corpora land at
@@ -340,7 +340,7 @@ rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh --script judgecheck --priority hi
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves judgecheck
 ```
 
-Per judge it serves the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`) with that judge's own
+Per judge it serves the recipe's own argv (`rcp-vllm serve <id> --port <N>`) with that judge's own
 `CUDA_VISIBLE_DEVICES`, `VLLM_PORT` and `TMPDIR`, waits for
 `GET /v1/models` within `RCP_JUDGECHECK_STARTUP_S` (3600 s; a dead engine fails fast), runs
 `rcp judge check --judge <id> --judge-model <id> --set judge.base_url=http://127.0.0.1:<N>/v1 --json`

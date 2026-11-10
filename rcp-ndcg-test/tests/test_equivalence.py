@@ -19,7 +19,7 @@ import pytest
 from rcp_ndcg_test.equivalence import fitting, stage1_prompts, stage2_scores
 from rcp_ndcg_test.equivalence.gates import ResolvedGates
 from rcp_ndcg_test.equivalence.metrics import stage3_metrics
-from rcp_ndcg_vllm import load_recipe
+from rcp_vllm import load_recipe
 
 from tests.conftest import RECIPES, TOKENIZER, hub_cache, sample_pairs, start_stub, write_pairs
 
@@ -90,7 +90,7 @@ def test_stage1_render_check_catches_a_divergent_reference(tmp_path: Path) -> No
 
 def _stub_with_recipe(recipe: Any, *flags: str) -> Any:
     """The stub engine started with the recipe's own serve argv (its served chat template) plus flags."""
-    from rcp_ndcg_vllm.recipe import serve_argv
+    from rcp_vllm.recipe import serve_argv
 
     argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
     argv = ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]
@@ -99,7 +99,7 @@ def _stub_with_recipe(recipe: Any, *flags: str) -> Any:
 
 def _recipe_flags(recipe: Any) -> list[str]:
     """The recipe's serve argv flags (everything after the model), as the stub's own arguments."""
-    from rcp_ndcg_vllm.recipe import serve_argv
+    from rcp_vllm.recipe import serve_argv
 
     argv = serve_argv(recipe, port=0, served_model_name=recipe.id)
     return ["127.0.0.1" if value == "0.0.0.0" else value for value in argv[argv.index(recipe.model) + 1 :]]

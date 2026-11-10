@@ -10,7 +10,7 @@ the release candidate and the wave whose evidence the row records, the date that
 behaviour fingerprint the tree computes today (the key a wave's evidence must carry).
 
 The machine-readable record is each family's `status` block in
-`rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/family.yaml` (the `state`, the engine `image`, the `date`
+`rcp-vllm/src/rcp_vllm/recipes/<family>/family.yaml` (the `state`, the engine `image`, the `date`
 and the `report` pointer), and the [recipes and serving models](recipes.md) page explains the surface. A
 recipe's behaviour fingerprint keys everything that can change what the model returns — the model revision,
 the engine image and its version floor, the `serve` block, the engine-side plugin code, the tokenizer, the
@@ -128,7 +128,7 @@ disposition.
 
 ## What this page is not
 
-It is not the recipes' contract — that is `rcp-ndcg-vllm/schema/` and the goldens under
+It is not the recipes' contract — that is `rcp-vllm/schema/` and the goldens under
 `rcp-ndcg-test/tests/recipes/golden/`. It is not the observation corpora — those are committed under
 `rcp-ndcg-test/corpora/` and keyed by the same fingerprints. And it names no infrastructure: the wave
 outputs live in the release's own evidence store, referenced by the family `status` blocks.

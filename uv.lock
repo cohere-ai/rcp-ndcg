@@ -15,7 +15,7 @@ members = [
     "rcp",
     "rcp-core",
     "rcp-ndcg-test",
-    "rcp-ndcg-vllm",
+    "rcp-vllm",
 ]
 
 [manifest.dependency-groups]
@@ -2841,7 +2841,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rcp" },
-    { name = "rcp-ndcg-vllm" },
+    { name = "rcp-vllm" },
 ]
 
 [package.optional-dependencies]
@@ -2856,14 +2856,14 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rcp", editable = "rcp" },
-    { name = "rcp-ndcg-vllm", editable = "rcp-ndcg-vllm" },
+    { name = "rcp-vllm", editable = "rcp-vllm" },
 ]
 provides-extras = ["test"]
 
 [[package]]
-name = "rcp-ndcg-vllm"
+name = "rcp-vllm"
 version = "0.0.1"
-source = { editable = "rcp-ndcg-vllm" }
+source = { editable = "rcp-vllm" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },

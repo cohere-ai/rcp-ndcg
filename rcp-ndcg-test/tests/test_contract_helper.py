@@ -11,7 +11,7 @@ reviewer ran), and pins its frozen expectation of that recipe.  The family lanes
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_vllm.recipe import resolve_recipe
+from rcp_vllm.recipe import resolve_recipe
 
 from tests.recipes._contract import assert_recipe_contract
 

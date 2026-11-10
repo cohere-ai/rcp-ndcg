@@ -29,8 +29,8 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.reference import run_reference
-from rcp_ndcg_vllm import resolve_recipe, serve_argv
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm import resolve_recipe, serve_argv
+from rcp_vllm.recipe import default_recipes_root
 
 from ._contract import assert_recipe_contract
 from ._served import client_template, fetch_tokenizer, served_pair, served_rows, stage1_facts

@@ -25,7 +25,7 @@ rcp retrieval rerank --dataset <uri> --rankings fused.parquet --reranker my_rera
 ## The paper's models
 
 The paper's in-process rerankers are served now (the package carries no in-process model code). The three
-`ctxl_rerank_*` configs point at their serving recipe (`recipe:`; the recipes live in `rcp-ndcg-vllm`, with the
+`ctxl_rerank_*` configs point at their serving recipe (`recipe:`; the recipes live in `rcp-vllm`, with the
 paper's exact scoring kept under `reference/` for the equivalence check) — the id is the checkpoint's lowercased
 Hub repo name, never a short redirect (`zerank-1-reranker`, not `zerank-1`) — and the other served configs
 (`jina_v3`, the three `qwen3_reranker_*` and the three `zerank_*`) deliberately keep the paper's explicit fields

@@ -17,7 +17,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm.recipe import default_recipes_root
 
 INTERNAL_LABELS = re.compile(
     r"p1-tail|fam-(?:dense|ctxl|vl|late|zerank|qwen3)"
@@ -50,8 +50,8 @@ DESIGN_AND_LANE_IDS = re.compile(r"\bRFC[- ]?\d{3,4}\b|\blane/", re.IGNORECASE)
 INTERNAL_SPEC_IDS = re.compile(r"GPU-" r"VALIDATION")
 
 #: The internal design-id shorthand the docs wording guard forbids in Markdown, in the non-Markdown homes
-#: the release publishes: the shipped recipe files (package data of ``rcp-ndcg-vllm``) and the generated
-#: schemas (``rcp-ndcg-vllm/schema/`` and the root ``schemas/``). ``tests/docs/test_wording.py`` owns the
+#: the release publishes: the shipped recipe files (package data of ``rcp-vllm``) and the generated
+#: schemas (``rcp-vllm/schema/`` and the root ``schemas/``). ``tests/docs/test_wording.py`` owns the
 #: Markdown half; this is the same rule for the data files it cannot read. The last alternative is a plan
 #: step id (``the release plan's A1b``): an internal step label a reader of the wheel cannot resolve.
 DESIGN_IDS = re.compile(
@@ -104,7 +104,7 @@ _REAL_CLUSTER_SUBNET = re.compile(r"10\." r"156\.")
 _REAL_SERVICE_HOST = re.compile(r"(?:VLLM_SERVICE_[A-Z0-9_]+|KUBERNETES)_SERVICE_HOST=10\.")
 
 #: The trees that hold tests: a fixture is as published as the code it exercises.
-TEST_TREES = ("tests", "rcp-ndcg-test/tests", "rcp-ndcg-vllm/tests")
+TEST_TREES = ("tests", "rcp-ndcg-test/tests", "rcp-vllm/tests")
 
 
 #: The per-column media fields the harness retired in favour of one ``media`` field (W2). Every family's
@@ -312,14 +312,12 @@ def test_every_shipped_recipe_file_reads_as_a_public_statement() -> None:
 def test_every_generated_schema_reads_as_a_public_statement() -> None:
     """The generated schemas carry no internal design ids either.
 
-    ``rcp-ndcg-vllm/schema/*.schema.json`` is exported public surface of the vllm distribution (grafted
+    ``rcp-vllm/schema/*.schema.json`` is exported public surface of the vllm distribution (grafted
     into its sdist) and the root ``schemas/`` is the product's exported surface; both are generated from
     docstrings, so a design id in a docstring ships in a JSON file the wording guard cannot read.
     """
     root = _repository_root()
-    schema_files = sorted((root / "schemas").glob("*.json")) + sorted(
-        (root / "rcp-ndcg-vllm" / "schema").glob("*.json")
-    )
+    schema_files = sorted((root / "schemas").glob("*.json")) + sorted((root / "rcp-vllm" / "schema").glob("*.json"))
     hits = [
         f"{path.relative_to(root)}:{number}: {line.strip()[:140]}"
         for path in schema_files

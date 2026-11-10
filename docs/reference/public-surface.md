@@ -9,7 +9,7 @@ made, and the deprecation path -- are on
 `rcp.support.api_docs.PUBLIC_MODULES` names the public modules: `rcp_core` and its documented
 submodules, the `rcp` facade and the packages the docs present as API (`calibration`, `data`,
 `data.preprocess`, `data.revisions`, `errors`, `eval`, `eval.mteb`, `examples`, `inference`, `judging`,
-`results`, `retrieval`, `runners`, `runs`, `testing`), and `rcp_ndcg_vllm.recipe` (the serving package's
+`results`, `retrieval`, `runners`, `runs`, `testing`), and `rcp_vllm.recipe` (the serving package's
 recipe module). Every other module is internal: it may change without a CHANGELOG entry, and only the names a
 public module lists in `__all__` are part of the surface.
 

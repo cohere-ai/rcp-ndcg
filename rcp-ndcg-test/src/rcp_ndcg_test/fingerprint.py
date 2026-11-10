@@ -42,9 +42,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, PLUGIN_ENGINE_MODULES
-from rcp_ndcg_vllm.patches import PATCH_MODULES
-from rcp_ndcg_vllm.recipe import Recipe, plugin_distribution_name
+from rcp_vllm.models import ARCHITECTURE_MODULES, PLUGIN_ENGINE_MODULES
+from rcp_vllm.patches import PATCH_MODULES
+from rcp_vllm.recipe import Recipe, plugin_distribution_name
 
 from rcp.data.tokenizer import TextTokenizer, load_tokenizer
 from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
@@ -77,14 +77,42 @@ __all__ = [
 ]
 
 FINGERPRINT_SCHEMA = "rcp-fp/4"
-"""The fingerprint rule's version, part of the hashed bytes: changing the input set or their
-canonicalisation is a new schema (``rcp-fp/5``), so old and new corpora never collide in one key.
+"""The fingerprint rule's version, part of the hashed bytes: changing the input set or a canonical value is a
+new schema (``rcp-fp/5``), so old and new corpora never collide in one key.
 Version 4 keys the engine image and its version floor (``engine.image``, ``engine.min_version``), the
 plugin code the recipe's engine runs (``plugin_sha256.<module>``: the shared entry modules, every declared
 architecture's modules and every module of an opted-in patch -- the patch module and the backend it
 registers) and, as version 3 did, exactly the client fields
 that change the request bytes (:data:`CLIENT_FIELDS`): client-side post-processing of the reply is out,
-request packing (``batch_size``) and the media caps are in."""
+request packing (``batch_size``) and the media caps are in.
+
+The plugin inputs are keyed in the **recorded spelling** of the distribution's own name
+(:data:`_CANONICAL_PLUGIN_PACKAGE`): a module's key is that package plus its path below the package, and
+its source is hashed with every current spelling of the package and distribution names mapped onto the
+recorded ones. A rename of the distribution therefore adds one line to the alias map and moves no recorded
+fingerprint -- it does not change any canonical value, so the schema stays 4. A change to a module's code
+(the paths, the imports, the bodies) still moves the key."""
+
+_CANONICAL_PLUGIN_PACKAGE = "rcp_ndcg_vllm"
+"""The package spelling the committed corpora key: a plugin module's canonical name is this package plus its
+path below the package. It is the name the first recorded corpus used, not the current one; a rename maps
+the new spelling onto it, so the recorded keys stay put."""
+
+_CANONICAL_PLUGIN_DISTRIBUTION = "rcp-ndcg-vllm"
+"""The distribution spelling the recorded corpora's ``serve.plugin`` input carries (see above)."""
+
+_PLUGIN_PACKAGE_ALIASES: tuple[str, ...] = ("rcp_vllm",)
+"""Every current spelling of the package name, mapped onto :data:`_CANONICAL_PLUGIN_PACKAGE`. A rename adds
+its new spelling here (one line) and no fingerprint moves; the canonical form is what the committed
+corpora recorded."""
+
+_PLUGIN_DISTRIBUTION_ALIASES: tuple[str, ...] = ("rcp-vllm",)
+"""Every current spelling of the distribution name, mapped onto :data:`_CANONICAL_PLUGIN_DISTRIBUTION`."""
+
+_PLUGIN_ENV_ALIASES: tuple[str, ...] = ("RCP_VLLM_",)
+"""Every current spelling of the distribution's environment-variable prefix, mapped onto the recorded
+``RCP_NDCG_VLLM_``: the plugin source carries the prefix in ``patches/__init__.py`` and ``models/__init__.py``,
+so an environment-variable sweep is a name change like the package's and must not move a recorded key."""
 
 CLIENT_FIELDS: dict[str, str] = {
     # request: the field changes the bytes the client sends (and with them what the model returns)
@@ -197,6 +225,66 @@ def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def _canonical_plugin_source(data: bytes) -> bytes:
+    """The plugin module source with every current spelling of the distribution's own name mapped onto the
+    recorded one.
+
+    The canonical spelling is the one the committed corpora's ``plugin_sha256`` values were taken over, so the
+    same code under a renamed package hashes to the same value: a rename moves no recorded fingerprint. The
+    bytes are read, never imported; a code change still moves the hash.
+    """
+    for alias in _PLUGIN_PACKAGE_ALIASES:
+        data = data.replace(alias.encode(), _CANONICAL_PLUGIN_PACKAGE.encode())
+    for alias in _PLUGIN_DISTRIBUTION_ALIASES:
+        data = data.replace(alias.encode(), _CANONICAL_PLUGIN_DISTRIBUTION.encode())
+    for alias in _PLUGIN_ENV_ALIASES:
+        data = data.replace(alias.encode(), b"RCP_NDCG_VLLM_")
+    return data
+
+
+def _canonical_plugin_text(spec: str) -> str:
+    """A plugin spec with its leading distribution name in the recorded spelling; the rest is unchanged.
+
+    ``serve.plugin`` is a pip requirement spec, so only the leading name is the distribution; its extras, its
+    version specifiers and a URL are not. An unknown name (a foreign plugin, which
+    :func:`plugin_module_hashes` refuses by name) is returned as written.
+    """
+    text = spec.strip()
+    for alias in (*_PLUGIN_PACKAGE_ALIASES, *_PLUGIN_DISTRIBUTION_ALIASES):
+        if text.lower().startswith(alias):
+            return _CANONICAL_PLUGIN_DISTRIBUTION + text[len(alias) :]
+    return spec
+
+
+def _canonical_plugin_module(module: str) -> str:
+    """A plugin module's canonical key: the recorded package spelling plus its path below the package.
+
+    The path below the package is the stable part; the package name is mapped onto the spelling the recorded
+    corpora key, so a renamed package keys the same module. A package the alias map does not know is refused
+    by name: a rename must add its new spelling to :data:`_PLUGIN_PACKAGE_ALIASES` (the recorded fingerprints
+    then stay put) rather than silently moving every key.
+    """
+    top, _, path = module.partition(".")
+    if top == _CANONICAL_PLUGIN_PACKAGE:
+        return module
+    if top in _PLUGIN_PACKAGE_ALIASES:
+        return _CANONICAL_PLUGIN_PACKAGE + (f".{path}" if path else "")
+    raise HarnessError(
+        f"the plugin module {module!r} is not under a package name the canonicalisation map knows "
+        f"({_CANONICAL_PLUGIN_PACKAGE!r} or {', '.join(_PLUGIN_PACKAGE_ALIASES)}); add the distribution's new "
+        "package name to rcp_ndcg_test.fingerprint._PLUGIN_PACKAGE_ALIASES so the recorded fingerprints do not move"
+    )
+
+
+def _current_plugin_module(module: str) -> str:
+    """The current dotted module name of a canonical plugin key (the path of the staged wheel's member)."""
+    package = PLUGIN_ENGINE_MODULES[0].partition(".")[0]
+    if module == _CANONICAL_PLUGIN_PACKAGE:
+        return package
+    prefix = _CANONICAL_PLUGIN_PACKAGE + "."
+    return package + "." + module[len(prefix) :] if module.startswith(prefix) else module
+
+
 def _template_file_sha(recipe: Recipe) -> str:
     """``sha256:<hex>`` of the recipe's template file's bytes, or ``absent``. The file's *content* is input;
     the ``serve.chat_template`` field naming it is a ``serve`` input of its own."""
@@ -265,13 +353,14 @@ def _module_source(module: str) -> Path | None:
 
 
 def _module_sha256(module: str) -> str:
-    """``sha256:<hex>`` of one plugin module's source bytes, resolved without importing it.
+    """``sha256:<hex>`` of one plugin module's canonical source bytes, resolved without importing it.
 
     The model modules import vLLM/torch by design, so nothing here is imported: the source file is
     resolved by walking the top-level package's search location (:func:`_module_source`), never through
     ``importlib.util.find_spec``, whose parent-package imports would execute the embeddinggemma-2 fold's
-    ``__init__``.  The hash covers the code the engine runs, so a plugin fix that changes no recipe field
-    still moves the fingerprint (``rcp-fp/4``).
+    ``__init__``.  The bytes are canonicalised (:func:`_canonical_plugin_source`): a rename of the
+    distribution's own name does not move the hash, while a plugin fix that changes no recipe field still
+    moves the fingerprint (``rcp-fp/4``).
 
     Raises:
         HarnessError: the module cannot be resolved to a readable source file (the message names it).
@@ -282,39 +371,45 @@ def _module_sha256(module: str) -> str:
             f"the plugin module {module!r} cannot be resolved to a source file; a recipe's "
             "serve.plugin_architectures and serve.patches must name the modules the engine runs"
         )
-    return sha256_digest(source.read_bytes())
+    return sha256_digest(_canonical_plugin_source(source.read_bytes()))
 
 
 def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
-    """The plugin-code inputs of ``recipe``: ``{module: sha256:<hex>}`` for exactly the modules it runs.
+    """The plugin-code inputs of ``recipe``: ``{canonical module: sha256:<hex>}`` for exactly the modules it runs.
 
     The shipped plugin wheel's declaration is the truth: the shared engine modules every plugin recipe runs
-    (:data:`~rcp_ndcg_vllm.models.PLUGIN_ENGINE_MODULES`), the modules of each declared architecture
-    (:data:`~rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`) and every module of every opted-in patch -- its own
-    module and the modules it registers (:data:`~rcp_ndcg_vllm.patches.PATCH_MODULES`) -- deduplicated in
+    (:data:`~rcp_vllm.models.PLUGIN_ENGINE_MODULES`), the modules of each declared architecture
+    (:data:`~rcp_vllm.models.ARCHITECTURE_MODULES`) and every module of every opted-in patch -- its own
+    module and the modules it registers (:data:`~rcp_vllm.patches.PATCH_MODULES`) -- deduplicated in
     declaration order.  A recipe without a
     plugin has none.  A foreign plugin spec is refused by name: its modules cannot be resolved here, and a
     name-only key is exactly the hole ``rcp-fp/4`` closes.  The wave runner hashes the same modules inside
     the staged wheel it serves (item 9) and refuses to record when the two disagree, so this function is
     the one home of both the fingerprint inputs and the wheel cross-check's module set.
 
+    The keys are canonical (:func:`_canonical_plugin_module`): the recorded package spelling plus the
+    module's path below the package, so a rename of the distribution moves no recorded key.  The values hash
+    the source with the distribution's own name in its recorded spelling (:func:`_canonical_plugin_source`).
+    The wave runner maps a canonical key back to the current module name with
+    :func:`_current_plugin_module` to find the staged wheel's member.
+
     Raises:
         HarnessError: the recipe names a foreign plugin spec, or a declared module cannot be read.
     """
     if recipe.serve.plugin is None:
         return {}
-    if plugin_distribution_name(recipe.serve.plugin) != "rcp-ndcg-vllm":
+    if plugin_distribution_name(recipe.serve.plugin) != "rcp-vllm":
         raise HarnessError(
             f"recipe {recipe.id}: serve.plugin {recipe.serve.plugin!r} is not the shipped plugin, so the "
             "behaviour fingerprint cannot resolve the modules its engine runs; a foreign plugin needs its "
-            "own module declaration and hashes (the shipped wheel's is rcp_ndcg_vllm.models)"
+            "own module declaration and hashes (the shipped wheel's is rcp_vllm.models)"
         )
     modules = [*PLUGIN_ENGINE_MODULES]
     for architecture in recipe.serve.plugin_architectures:
         modules.extend(ARCHITECTURE_MODULES[architecture])
     for patch in recipe.serve.patches:
         modules.extend(PATCH_MODULES[patch])
-    return {module: _module_sha256(module) for module in dict.fromkeys(modules)}
+    return {_canonical_plugin_module(module): _module_sha256(module) for module in dict.fromkeys(modules)}
 
 
 def stored_tokenizer(spec: str) -> tuple[bytes, str] | None:
@@ -450,6 +545,8 @@ def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = N
     inputs["engine.image"] = recipe.engine.image
     inputs["engine.min_version"] = recipe.engine.min_version
     for field, value in sorted(recipe.serve.model_dump(mode="json").items()):
+        if field == "plugin" and isinstance(value, str):
+            value = _canonical_plugin_text(value)
         inputs[f"serve.{field}"] = _canonical(value)
     for module, digest in plugin_module_hashes(recipe).items():
         inputs[f"plugin_sha256.{module}"] = digest

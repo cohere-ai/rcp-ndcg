@@ -293,7 +293,7 @@ def _staged_run(tmp_path: Path) -> Path:
     would make this test depend on a warm Hub cache (staging records the dataset's name).
     """
     from rcp_ndcg_test.e2e import Scenario, build_run_config, stage_run_dir
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     from rcp.runs.run import prepare
 

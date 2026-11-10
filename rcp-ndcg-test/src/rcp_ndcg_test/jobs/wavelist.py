@@ -9,7 +9,7 @@ reports and skips it and the wave report marks it failed -- it never kills the j
 The committed lists' one home is ``rcp-ndcg-test/wave-lists/`` (owner decision, 2026-10-09: the wave
 lists are committed under the tooling home, decision 20); ``rc_build.sh`` stages them as
 ``<stage>/wave-lists/``.  :func:`write_wave_lists` generates them from the shipped recipes through
-:func:`rcp_ndcg_vllm.recipe.iter_recipes`, so a list cannot drift from the recipe catalog: regenerate
+:func:`rcp_vllm.recipe.iter_recipes`, so a list cannot drift from the recipe catalog: regenerate
 after a catalog change with ``python -m rcp_ndcg_test.jobs.wavelist --out rcp-ndcg-test/wave-lists``.
 """
 
@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from rcp_ndcg_vllm.recipe import (
+from rcp_vllm.recipe import (
     Recipe,
     default_recipes_root,
     iter_recipes,
@@ -104,7 +104,7 @@ def write_wave_lists(out_dir: str | Path = DEFAULT_WAVE_LISTS, recipes_root: str
     Inputs: the output directory (default: :data:`DEFAULT_WAVE_LISTS`, the lists' one home in the
     checkout) and the recipe root (default: the shipped package data).  Output: the paths written --
     :data:`ALL_RETRIEVAL`, one shipped retrieval recipe id per line (judge recipes are not wave members),
-    sorted, generated through :func:`rcp_ndcg_vllm.recipe.iter_recipes` so the list cannot drift from the
+    sorted, generated through :func:`rcp_vllm.recipe.iter_recipes` so the list cannot drift from the
     recipe catalog.  Raises :class:`RecipeError` when the recipe root holds no recipe.  Units: none.
     """
     recipes = [recipe for recipe in iter_recipes(recipes_root) if recipe.role != "judge"]

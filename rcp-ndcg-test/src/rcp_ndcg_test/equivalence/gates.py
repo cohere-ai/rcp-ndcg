@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 __all__ = ["ResolvedGates", "kendall_tau_b", "resolve_gates"]
 

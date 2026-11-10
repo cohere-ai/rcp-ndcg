@@ -3,7 +3,7 @@ fixtures.
 
 Against a served recipe it drives the product's role client
 (:class:`~rcp.inference.clients.EmbeddingClient`, ``PoolingClient`` or ``RerankClient``) built from
-:func:`~rcp_ndcg_vllm.recipe.client_config` with the recipe's real budget -- the client prompts, fits and
+:func:`~rcp_vllm.recipe.client_config` with the recipe's real budget -- the client prompts, fits and
 settles, the adapter renders, the transport sends -- and records the engine behaviour the adapters must map:
 the provenance ``GET /v1/models``, and on the role route an over-length prompt (measured against the engine's
 own ``serve.max_model_len`` cap, sent bare: the client would cut it before the engine saw it) and an unknown
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 from .equivalence import fitting
 from .equivalence.wire import role_client

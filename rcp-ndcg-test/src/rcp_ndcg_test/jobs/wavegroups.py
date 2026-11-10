@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-from rcp_ndcg_vllm.recipe import default_recipes_root, resolve_recipe
+from rcp_vllm.recipe import default_recipes_root, resolve_recipe
 
 from rcp_ndcg_test.errors import HarnessError, RecipeError
 

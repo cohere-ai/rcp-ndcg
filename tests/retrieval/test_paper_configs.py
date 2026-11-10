@@ -71,7 +71,7 @@ def test_each_served_paper_reranker_names_its_recipe_tokenizer_and_budgets(path:
 )
 def test_each_served_paper_reranker_names_the_recipe_its_header_points_at(path: Path) -> None:
     """A config without a ``recipe:`` pointer copies the served name: ``model`` is the
-    ``--served-model-name``, and ``rcp-ndcg-vllm serve <id>`` hard-codes it to the recipe id
+    ``--served-model-name``, and ``rcp-vllm serve <id>`` hard-codes it to the recipe id
     (``zerank-1-reranker``, not the short Hub redirect ``zerank-1``). The header comment names the
     recipe; a config that keeps the pointer takes the recipe's whole client block and copies nothing."""
     text = path.read_text(encoding="utf-8")
@@ -90,7 +90,7 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
     every shipped recipe is checked here, raw (no validation: a recipe's template refusal must not hide the
     canon), and every paper config that keeps a pointer names its shipped recipe."""
     import yaml as yaml_module
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     checked = 0
     for directory in sorted(default_recipes_root().iterdir()):

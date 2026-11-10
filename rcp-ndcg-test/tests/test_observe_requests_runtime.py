@@ -17,7 +17,7 @@ from typing import Any
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
 from rcp_ndcg_test.observe.requests import _pad_to_tokens, plan_recipe
 from rcp_ndcg_test.observe.sources import SourceCorpus, SourceDoc, SourceQuery
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 from tests.conftest import RECIPES
 

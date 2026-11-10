@@ -12,12 +12,12 @@
 #
 # In order, continuing past a failed judge (a failed judge is recorded and its neighbours still run):
 #   1. environments  bootstrap.sh envs with a wave list of the ten judges: the client environment
-#                    (rcp + rcp-ndcg-test + rcp-ndcg-vllm from the staged wheels) every command runs in
+#                    (rcp + rcp-ndcg-test + rcp-vllm from the staged wheels) every command runs in
 #   2. the plan      the judges packed onto the node's GPUs (RCP_JUDGECHECK_GPUS, else nvidia-smi): a judge's
 #                    slice is the `resources.gpus` its recipe declares, read from the client environment and
 #                    taken first-fit in the order below, so the release checklist's six start first.  A judge
 #                    that declares more GPUs than the node has is refused before anything is served.
-#   3. per judge      serve the recipe's own argv (`rcp-ndcg-vllm serve <id> --port <N>`) with the judge's own
+#   3. per judge      serve the recipe's own argv (`rcp-vllm serve <id> --port <N>`) with the judge's own
 #                     CUDA_VISIBLE_DEVICES, VLLM_PORT and TMPDIR, wait for GET /v1/models within
 #                     RCP_JUDGECHECK_STARTUP_S, then, with the engine up:
 #                       thinking modes:  `rcp judge check --judge <id> --judge-model <id>
@@ -109,7 +109,7 @@ if [[ "${JUDGECHECK_DRY:-0}" == "1" ]]; then
   for index in "${!RECIPES[@]}"; do
     recipe="${RECIPES[$index]}"
     port=$((PORT_BASE + index))
-    echo "                serve    <state>/client rcp-ndcg-vllm serve $recipe --port $port"
+    echo "                serve    <state>/client rcp-vllm serve $recipe --port $port"
     echo "                         (CUDA_VISIBLE_DEVICES=<the recipe's slice>, VLLM_PORT=$((VLLM_PORT_BASE + index)),"
     echo "                          TMPDIR=<state>/tmp-$recipe)"
     echo "                wait     GET http://127.0.0.1:$port/v1/models within ${STARTUP_S}s"
@@ -278,7 +278,7 @@ if ! "$STATE/client" python - "${RECIPES[@]}" >"$JUDGE_GPUS" 2>"$STATE/judge-gpu
 import json
 import sys
 
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 print(json.dumps({recipe: load_recipe(recipe).resources.gpus for recipe in sys.argv[1:]}))
 PYEOF
@@ -362,7 +362,7 @@ run_judge() {
   echo "judgecheck: serving $recipe on port $port (CUDA_VISIBLE_DEVICES=$devices, VLLM_PORT=$vllm_port)"
   export TMPDIR="$tmpdir"  # this judge's scratch: its temp files never meet another judge's
   CUDA_VISIBLE_DEVICES="$devices" VLLM_PORT="$vllm_port" \
-    setsid "$STATE/client" rcp-ndcg-vllm serve "$recipe" --port "$port" >"$engine_log" 2>&1 &
+    setsid "$STATE/client" rcp-vllm serve "$recipe" --port "$port" >"$engine_log" 2>&1 &
   engine_pid=$!
 
   set +e

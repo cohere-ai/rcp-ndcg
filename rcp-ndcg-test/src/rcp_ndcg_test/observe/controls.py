@@ -299,7 +299,7 @@ CONTROLS: tuple[ControlSpec, ...] = (
 def control_variants(recipe: Any) -> list[dict[str, Any]]:
     """Every control of ``recipe``: the broken variant or wire patch it is served with, or why it does not apply.
 
-    Input: a loaded :class:`~rcp_ndcg_vllm.recipe.Recipe` (loaded from its directory: a variant keeps its
+    Input: a loaded :class:`~rcp_vllm.recipe.Recipe` (loaded from its directory: a variant keeps its
     template and reference files).  Output: one dict per control, in (a)-(g) order: ``{"control", "name",
     "description", "kind"}`` plus, for ``kind: "recipe"``, ``recipe`` (the variant: id ``<recipe>.<name>``, which
     is also its served model name and its client's ``model``, so client and engine agree), for ``kind: "wire"``,

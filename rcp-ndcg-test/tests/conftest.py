@@ -328,7 +328,7 @@ def token_ids_recipe(tmp_path: Path, source_id: str = "fixture-multi-vector") ->
     Output: the loaded recipe.
     """
     import yaml
-    from rcp_ndcg_vllm.recipe import load_recipe
+    from rcp_vllm.recipe import load_recipe
 
     source = RECIPES / source_id
     directory = tmp_path / "recipes" / f"{source_id}-token-ids"

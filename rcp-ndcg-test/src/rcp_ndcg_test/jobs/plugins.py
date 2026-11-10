@@ -18,7 +18,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError
 

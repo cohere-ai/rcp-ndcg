@@ -2,7 +2,7 @@
 
 The lists' one home is ``rcp-ndcg-test/wave-lists/``; ``rc_build.sh`` stages them as
 ``<stage>/wave-lists/``.  ``all-retrieval.txt`` lists every shipped recipe id and is pinned to
-:func:`rcp_ndcg_vllm.recipe.iter_recipes` here, so a recipe added or removed without regenerating the
+:func:`rcp_vllm.recipe.iter_recipes` here, so a recipe added or removed without regenerating the
 list turns this file red; ``e2e.txt`` is the T4 scenario wave's list, pinned to the shipped scenarios the
 same way.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 from rcp_ndcg_test.jobs.wavelist import ALL_RETRIEVAL, DEFAULT_WAVE_LISTS, main, parse_ids, write_wave_lists
-from rcp_ndcg_vllm.recipe import iter_recipes
+from rcp_vllm.recipe import iter_recipes
 
 from tests.conftest import RECIPES
 

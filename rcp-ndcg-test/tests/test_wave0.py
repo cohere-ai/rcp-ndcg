@@ -397,7 +397,7 @@ def _full_report(tmp_path: Path) -> Path:
             "client": {
                 "rcp": "0.0.1",
                 "rcp-core": "0.0.1",
-                "rcp-ndcg-vllm": "0.0.1",
+                "rcp-vllm": "0.0.1",
                 "mechanism": "uvx",
                 "install_s": 12,
             },

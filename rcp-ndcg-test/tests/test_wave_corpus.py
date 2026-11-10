@@ -14,7 +14,7 @@ import rcp_ndcg_test.record as record_module
 from rcp_ndcg_test.fingerprint import behaviour_fingerprint
 from rcp_ndcg_test.jobs import run_wave as run_wave_module
 from rcp_ndcg_test.jobs.run_wave import run_wave
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 from tests.conftest import RECIPES, TOKENIZER, sample_pairs, write_pairs
 

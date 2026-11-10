@@ -5,7 +5,7 @@
 # registered by the tests). The fixture exists so the multi-vector path of the runner -- the per-side fit,
 # PoolingClient over /pooling in base64 float16, and the product's MaxSim scorer -- is exercised on CPU.
 id: fake-pool
-schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp and rcp-ndcg-vllm)
+schema_version: "1"   # the recipe file format version (decision 18: the contract between rcp and rcp-vllm)
 role: multi_vector
 input: [text, image]
 licence: apache-2.0

@@ -21,8 +21,8 @@ from pathlib import Path
 import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
-from rcp_ndcg_vllm import load_recipe, serve_argv
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm import load_recipe, serve_argv
+from rcp_vllm.recipe import default_recipes_root
 
 from rcp.data.templates import TemplateSpec
 
@@ -68,7 +68,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": 131072,
     "dtype": "bfloat16",
-    "plugin": "rcp-ndcg-vllm",
+    "plugin": "rcp-vllm",
     "plugin_architectures": ["PplxContextualModel"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},
@@ -491,7 +491,7 @@ def test_the_declared_document_parse_is_the_plugins_role_prefix(tokenizer) -> No
     under ``document_split_special_tokens: true`` are the plugin's document prefix, and the query's
     added-token render is its query prefix -- so the plugin's pooler accepts both legs (before the
     seam it refused every document by name, and the refusal killed the EngineCore)."""
-    from rcp_ndcg_vllm.models.pplx.pooling_core import DOCUMENT_PREFIX_TOKEN_IDS, QUERY_PREFIX_TOKEN_ID
+    from rcp_vllm.models.pplx.pooling_core import DOCUMENT_PREFIX_TOKEN_IDS, QUERY_PREFIX_TOKEN_ID
 
     query = "what drives scientific breakthroughs"
     marker = tokenizer.special_text("chunk_sep")

@@ -12,7 +12,7 @@ Two validation levels:
   files' existence, the strata labels against the case's own inputs (a ``mixed`` length needs a
   ``mixed_length`` batch, a ``modality: image`` case needs an image document), and the ``expected``
   block's shape rules. Every load applies it.
-- **Recipe level** (a loaded :class:`rcp_ndcg_vllm.recipe.Recipe` given or found): the case's role and
+- **Recipe level** (a loaded :class:`rcp_vllm.recipe.Recipe` given or found): the case's role and
   modality against the recipe, the template shapes the case's sides need, the strata grid coverage of a
   recipe's case directory, and the long inputs' measured token lengths against the recipe's
   ``client.max_tokens`` with the product's tokenizer
@@ -34,7 +34,7 @@ from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
-from rcp_ndcg_vllm.recipe import Recipe, RecipeError, load_family, load_recipes_of
+from rcp_vllm.recipe import Recipe, RecipeError, load_family, load_recipes_of
 
 from .errors import CaseError
 
@@ -57,7 +57,7 @@ __all__ = [
 ]
 
 _ID_PATTERN = r"^[a-z0-9][a-z0-9.-]*$"
-"""A recipe id, as the ``Recipe`` schema declares it (``rcp_ndcg_vllm.recipe``); a case's ``recipe``
+"""A recipe id, as the ``Recipe`` schema declares it (``rcp_vllm.recipe``); a case's ``recipe``
 field and the case directory name must match it."""
 
 _REVISION_PATTERN = r"^[0-9a-f]{40}$"
@@ -474,7 +474,7 @@ class CaseBundle:
     Attributes:
         root: The cases root the bundle was read from.
         cases: Every loaded case, sorted by id.
-        recipes: The recipe id -> the loaded :class:`rcp_ndcg_vllm.recipe.Recipe` for every case
+        recipes: The recipe id -> the loaded :class:`rcp_vllm.recipe.Recipe` for every case
             directory whose recipe exists at the recipes root (the recipe-backed checks ran on those).
         recipes_missing: The recipe ids with a case directory but no recipe at the recipes root. Their
             cases are file-validated only; the recipe-backed checks are recorded here, never silently
@@ -658,7 +658,7 @@ def load_cases(
     """Load a root of case directories, validating every rule of the case format that holds without a GPU.
 
     Inputs: ``root`` (the cases root; the package's ``cases/`` when ``None``), an optional ``recipe``
-    (a loaded :class:`rcp_ndcg_vllm.recipe.Recipe`, or its id: only that recipe's directory is loaded
+    (a loaded :class:`rcp_vllm.recipe.Recipe`, or its id: only that recipe's directory is loaded
     and the full recipe-backed validation runs against it), ``recipes_root`` (where recipe directories
     live; the serving-recipes package's ``recipes/`` when ``None``) and ``check_lengths``.
 
@@ -673,7 +673,7 @@ def load_cases(
     Raises:
         CaseError: any file-level or recipe-level rule is broken. A malformed case never loads.
     """
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     root = Path(root) if root is not None else default_cases_root()
     recipes_dir = Path(recipes_root) if recipes_root is not None else default_recipes_root()

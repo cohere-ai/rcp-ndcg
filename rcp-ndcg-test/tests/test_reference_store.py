@@ -99,7 +99,7 @@ def test_stage2_reuses_an_unchanged_stored_output(tmp_path: Path, monkeypatch: p
     import sys
 
     from rcp_ndcg_test.equivalence import stages
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     from tests.conftest import TOKENIZER, sample_pairs, start_stub
 
@@ -132,7 +132,7 @@ def test_the_reference_hash_covers_vendored_siblings(tmp_path: Path) -> None:
     """The family reference hash hashes every ``*.py`` in the family directory, so a vendored sibling the
     entry imports (qwen3-vl-embedding's card script) moves the stored output's key."""
     from rcp_ndcg_test.equivalence import stages
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     recipe = load_recipe(RECIPES / "fixture-embed")
     family = tmp_path / "family"
@@ -149,7 +149,7 @@ def test_the_store_key_ignores_the_mrl_selection(tmp_path: Path, monkeypatch: py
     the harness derives every declared k from it, so two recipes differing only in ``client.mrl_dim`` read
     the same entry and the key carries no k."""
     from rcp_ndcg_test.equivalence import stages
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     from tests.conftest import sample_pairs
 
@@ -187,7 +187,7 @@ def test_the_store_key_covers_the_client_render_block(tmp_path: Path, monkeypatc
     stored output's key, or stage 2 compares the served engine against a reference produced from the OLD
     client rendering."""
     from rcp_ndcg_test.equivalence import stages
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     from tests.conftest import sample_pairs
 
@@ -225,7 +225,7 @@ def test_the_store_key_covers_the_serve_block(tmp_path: Path, monkeypatch: pytes
     move the stored output's key, or stage 2 compares the new engine against a reference rendered under the
     old pin."""
     from rcp_ndcg_test.equivalence import stages
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     from tests.conftest import sample_pairs
 
@@ -280,7 +280,7 @@ def test_stage2_without_a_store_never_writes_one(tmp_path: Path) -> None:
     import sys
 
     from rcp_ndcg_test.equivalence import stages
-    from rcp_ndcg_vllm import load_recipe
+    from rcp_vllm import load_recipe
 
     from tests.conftest import TOKENIZER, sample_pairs, start_stub
 

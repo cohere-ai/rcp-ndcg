@@ -28,7 +28,7 @@ never sees. `SourceMedia` addresses a media item by its source (`suite`, `subset
 "image"|"video", "uri": "data:...", "sha256", "mime", "width", "height", "num_bytes", "num_frames",
 "duration_s", "fps"}` — a page drawn by the media set, or one of its MJPEG AVI clips) or `text` segments
 (`{"kind": "text", "text": ...}` — an interleaved row's part sequence, standing where they stand).
-`pairs/manifest.json` (`rcp-ndcg-vllm.pairs-manifest.v1`)
+`pairs/manifest.json` (`rcp-vllm.pairs-manifest.v1`)
 records the generator's identity, the pinned commits, every file's SHA-256 and row count, every stratum present
 or absent with the reason, the excluded source ids, the recipes that could not load (with their error) and what
 the stage-1 validation ran. `rcp-ndcg-test/pairs/` is the files' one home; `jobs/rc_build.sh` stages
@@ -117,7 +117,7 @@ width; one width per route and requested dimensions; a recipe declaring an engin
 `kept_vector_count` over the sent render's ids and the declared `document_skip_token_ids` -- because the
 served plugin drops the rule's positions from the reply while `usage.prompt_tokens` counts the whole
 prompt; a recipe declaring a per-chunk head (`outputs: per_chunk`) is checked against the DECLARED chunk
-count per item -- the served plugin's own segmentation (`rcp_ndcg_vllm.models.pplx.chunk_rule.chunk_count`)
+count per item -- the served plugin's own segmentation (`rcp_vllm.models.pplx.chunk_rule.chunk_count`)
 over the sent ids, one vector per document chunk and one for a query -- because the reply carries several
 vectors per input and `usage.prompt_tokens` describes none of them),
 `nondeterminism_report`, `provenance_complete`, `no_credentials` (every byte, a subset's `.gz` decompressed),

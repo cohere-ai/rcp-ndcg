@@ -1,7 +1,7 @@
 """The verified fake engines' test wiring: one recipe id -> its registered emulator.
 
 The emulators (``rcp_ndcg_test.engines``) are product code and know nothing of the harness; the
-recipes (``rcp-ndcg-vllm``) name the tokenizer, the template and the listwise prompt builder. This is
+recipes (``rcp-vllm``) name the tokenizer, the template and the listwise prompt builder. This is
 the one adapter between them (test-side): it loads the recipe through the harness package, resolves the
 recipe's real tokenizer from the corpora's vendored store, picks the prompt derivation the role and
 scoring name, builds the emulator over the recipe's corpus and registers it for
@@ -18,12 +18,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm.recipe import default_recipes_root
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINES_ROOT = ROOT / "corpora"
 RECIPES_ROOT = default_recipes_root()
-_VLLM_SRC = str((ROOT / ".." / "rcp-ndcg-vllm" / "src").resolve())
+_VLLM_SRC = str((ROOT / ".." / "rcp-vllm" / "src").resolve())
 STALE_FILE = ROOT / "tests" / "conformance" / "stale.json"
 """The corpora declared stale for re-recording: each entry names the recipe, the recorded fingerprint, the
 fingerprint inputs that moved, why and when it was decided (the release checklist requires it empty)."""
@@ -52,7 +52,7 @@ def current_corpora() -> list[Path]:
 
 
 def harness() -> Any:
-    """Import ``rcp_ndcg_vllm`` (outside the uv workspace: its ``src`` goes on the path) and register the
+    """Import ``rcp_vllm`` (outside the uv workspace: its ``src`` goes on the path) and register the
     vendored tokenizer and checkpoint stores, once."""
     if _VLLM_SRC not in sys.path:
         sys.path.insert(0, _VLLM_SRC)
@@ -63,7 +63,7 @@ def harness() -> Any:
         use_tokenizer_store(store)
     for store in ENGINES_ROOT.glob("*/_checkpoints"):
         use_checkpoint_store(store)
-    return __import__("rcp_ndcg_vllm.recipe", fromlist=["load_recipe"])
+    return __import__("rcp_vllm.recipe", fromlist=["load_recipe"])
 
 
 def load_recipe(recipe_id: str, root: Path | None = None) -> Any:

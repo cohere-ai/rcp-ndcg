@@ -215,7 +215,7 @@
    "max_model_len": 32768,
    "mm_processor_kwargs": {},
    "patches": [],
-   "plugin": "rcp-ndcg-vllm",
+   "plugin": "rcp-vllm",
    "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",

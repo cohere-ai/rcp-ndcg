@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from rcp_ndcg_vllm.recipe import PER_VARIANT_SERVE_FIELDS
+from rcp_vllm.recipe import PER_VARIANT_SERVE_FIELDS
 
 from tests.docs._markdown import ROOT, paragraph
 

@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
 
-from rcp_ndcg_vllm.recipe import Recipe
+from rcp_vllm.recipe import Recipe
 
 from .errors import HarnessError
 
@@ -203,7 +203,7 @@ def _endpoint(recipe: Recipe, engine_url: str) -> dict[str, Any]:
     A shipped recipe keeps its ``recipe: <id>`` pointer (the product re-resolves the block at the read, the
     versioned contract, decision 18); a fixture recipe's id names nothing shipped, so the pointer is dropped
     (it would be read as the mapping form and refused at the resolution)."""
-    from rcp_ndcg_vllm.recipe import client_config
+    from rcp_vllm.recipe import client_config
 
     from .equivalence.fitting import resolved_tokenizer_spec
     from .equivalence.wire import _openai_base
@@ -218,8 +218,8 @@ def _endpoint(recipe: Recipe, engine_url: str) -> dict[str, Any]:
 
 def _shipped_variant_ids() -> frozenset[str]:
     """The shipped recipes' variant ids (decision 34: the families' variants, never the family ids)."""
-    from rcp_ndcg_vllm.errors import RecipeError
-    from rcp_ndcg_vllm.recipe import default_recipes_root, load_family
+    from rcp_vllm.errors import RecipeError
+    from rcp_vllm.recipe import default_recipes_root, load_family
 
     root = default_recipes_root()
     ids: set[str] = set()

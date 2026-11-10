@@ -160,7 +160,7 @@ if [[ -z "$MODEL" || -z "$REVISION" ]]; then
   read -r MODEL REVISION < <("$STATE/client" python - "$STAGE/recipes/topk-embed-v1/family.yaml" "$RECIPE" <<'PY'
 import sys
 
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 recipe = load_recipe(sys.argv[1], variant=sys.argv[2])
 print(recipe.model, recipe.revision)

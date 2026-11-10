@@ -159,13 +159,13 @@ case "$(basename "$HERE")" in
   *) TOPK_PROBE_SH="$HERE/jobs/topk_probe.sh" ;;
 esac
 case "$(basename "$HERE")" in
-  jobs) check_deps_dir="$HERE/../../../../rcp-ndcg-vllm/tests/models" ;;
-  *) check_deps_dir="$HERE/../rcp-ndcg-vllm/tests/models" ;;
+  jobs) check_deps_dir="$HERE/../../../../rcp-vllm/tests/models" ;;
+  *) check_deps_dir="$HERE/../rcp-vllm/tests/models" ;;
 esac
 CHECK_DEPS_INSTALL_PY="$check_deps_dir/check_no_deps_install.py"
 [[ -f "$CHECK_DEPS_INSTALL_PY" ]] || {
   echo "submit.sh: no declared-dependency check at $CHECK_DEPS_INSTALL_PY (the checkout's" \
-    "rcp-ndcg-vllm/tests/models/check_no_deps_install.py; bootstrap.sh runs it on the staged plugin wheel)" >&2
+    "rcp-vllm/tests/models/check_no_deps_install.py; bootstrap.sh runs it on the staged plugin wheel)" >&2
   exit 2
 }
 CHECK_DEPS_INSTALL_PY="$(cd "$check_deps_dir" && pwd)/check_no_deps_install.py"

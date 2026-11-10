@@ -27,8 +27,8 @@ from typing import Any
 import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
-from rcp_ndcg_vllm import load_recipe, serve_argv
-from rcp_ndcg_vllm.recipe import default_recipes_root
+from rcp_vllm import load_recipe, serve_argv
+from rcp_vllm.recipe import default_recipes_root
 
 from ._contract import assert_recipe_contract
 from ._served import fetch_tokenizer
@@ -62,7 +62,7 @@ SERVE = {
     "trust_remote_code": False,
     "max_model_len": 8192,
     "dtype": "bfloat16",
-    "plugin": "rcp-ndcg-vllm",
+    "plugin": "rcp-vllm",
     # the plugin is a patch-only carrier now: the fold's registrations (the config hook and the folded
     # model) went with the fold, so the patch name is what keys the engine code the recipe runs.
     "plugin_architectures": [],
@@ -284,22 +284,22 @@ def test_the_fold_is_deleted_and_the_recipe_is_a_patch_only_carrier() -> None:
     patch module, the folded files, the config hook and the two registrations are gone, and the recipe
     declares the plugin as a patch-only carrier with the SDPA patch -- the one that stays (D4).  A
     half-deletion reds here: a re-declared name, a surviving registration or a resurrected file fails."""
-    from rcp_ndcg_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES, PLUGIN_ENGINE_MODULES
-    from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
+    from rcp_vllm.models import ARCHITECTURE_MODULES, LAZY_MODEL_MODULES, PLUGIN_ENGINE_MODULES
+    from rcp_vllm.patches import PATCH_MODULES, PATCH_NAMES
 
     recipe = load_recipe(RECIPE_DIR)
-    assert recipe.serve.plugin == "rcp-ndcg-vllm"
+    assert recipe.serve.plugin == "rcp-vllm"
     assert recipe.serve.plugin_architectures == ()
     assert recipe.serve.patches == ("torch-sdpa-attention",)
     assert PATCH_NAMES == ("torch-sdpa-attention",)
     assert PATCH_MODULES["torch-sdpa-attention"] == (
-        "rcp_ndcg_vllm.patches.torch_sdpa_attention",
-        "rcp_ndcg_vllm.models.embedding_gemma2.attention",
+        "rcp_vllm.patches.torch_sdpa_attention",
+        "rcp_vllm.models.embedding_gemma2.attention",
     )
     assert "EmbeddingGemma2Config" not in ARCHITECTURE_MODULES
     assert "EmbeddingGemma2Model" not in ARCHITECTURE_MODULES
-    assert "rcp_ndcg_vllm.models.embedding_gemma2.fold" not in LAZY_MODEL_MODULES
-    assert "rcp_ndcg_vllm.models.embedding_gemma2" not in PLUGIN_ENGINE_MODULES
+    assert "rcp_vllm.models.embedding_gemma2.fold" not in LAZY_MODEL_MODULES
+    assert "rcp_vllm.models.embedding_gemma2" not in PLUGIN_ENGINE_MODULES
     package = RECIPE_DIR.parents[1] / "models" / "embedding_gemma2"
     assert not (package / "fold").exists(), "the folded transformers/vLLM files are deleted with the fold"
     assert not (package / "config.py").exists(), "the folded config hook went with the fold"
@@ -384,7 +384,7 @@ def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
     that class against a fake engine interface and the lane's image read runs it against the real
     one; the wave's T0 model load confirms it on the GPU. The full rejection chain stays recorded in
     the notes, and an invalid backend still fails loudly at startup instead of silently."""
-    from rcp_ndcg_vllm.patches import PATCH_MODULES, PATCH_NAMES
+    from rcp_vllm.patches import PATCH_MODULES, PATCH_NAMES
 
     recipe = load_recipe(RECIPE_DIR)
     argv = serve_argv(recipe, port=8100, served_model_name=recipe.id)
@@ -392,8 +392,8 @@ def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
     assert "--enforce-eager" in argv
     assert "torch-sdpa-attention" in recipe.serve.patches
     assert "torch-sdpa-attention" in PATCH_NAMES
-    assert PATCH_MODULES["torch-sdpa-attention"][0] == "rcp_ndcg_vllm.patches.torch_sdpa_attention"
-    spec = importlib.util.find_spec("rcp_ndcg_vllm.models.embedding_gemma2.attention")
+    assert PATCH_MODULES["torch-sdpa-attention"][0] == "rcp_vllm.patches.torch_sdpa_attention"
+    spec = importlib.util.find_spec("rcp_vllm.models.embedding_gemma2.attention")
     assert spec is not None and spec.origin is not None, "the backend module ships with the plugin"
     source = Path(spec.origin).read_text(encoding="utf-8")
     assert "class TorchSdpaAttentionBackend" in source and "def register_torch_sdpa_backend" in source
@@ -420,7 +420,7 @@ def test_the_engine_uses_the_plugins_registered_torch_sdpa_backend() -> None:
 def test_the_client_block_builds_the_product_endpoint() -> None:
     """The client block is the product's own endpoint config: the product validates it (prompts beside a
     content-only template, the gemma4 soft-token policy, the pinned video policy)."""
-    from rcp_ndcg_vllm.recipe import client_config
+    from rcp_vllm.recipe import client_config
 
     from rcp.inference.config import EmbeddingEndpoint
 

@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
 def _vllm_src() -> str:
     """The vllm package's ``src`` (it sits outside the root uv workspace): put it on the path for the test."""
-    return str(ROOT / "rcp-ndcg-vllm" / "src")
+    return str(ROOT / "rcp-vllm" / "src")
 
 
 def _recipe_blocks(page: Path):
@@ -56,7 +56,7 @@ def test_every_recipe_snippet_loads(block: Any, tmp_path: Path) -> None:  # noqa
     import yaml
 
     sys.path.insert(0, _vllm_src())
-    from rcp_ndcg_vllm import load_family, resolve_recipe
+    from rcp_vllm import load_family, resolve_recipe
 
     data = yaml.safe_load(block.text)
     assert isinstance(data, dict), "a family snippet is a YAML mapping"
@@ -82,7 +82,7 @@ def test_the_reproducibility_page_counts_the_recipe_statuses() -> None:
     catalog's count too: a recipe added, or its budget moved to ``serve.max_model_len``, changes it."""
     from collections import Counter
 
-    from rcp_ndcg_vllm.recipe import iter_recipes, serve_argv
+    from rcp_vllm.recipe import iter_recipes, serve_argv
 
     states = Counter(recipe.status.state for recipe in iter_recipes())
     text = (ROOT / "REPRODUCIBILITY.md").read_text(encoding="utf-8")
@@ -118,7 +118,7 @@ def test_the_ledger_fingerprint_column_is_the_tree_today() -> None:
     A recipe field the key covers moving (a serve value, the image, a patch) reds its row instead of leaving
     a superseded key in the page."""
     from rcp_ndcg_test.fingerprint import behaviour_fingerprint
-    from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_vllm.recipe import iter_recipes
 
     # The tokenizer bytes are pinned by the recipe's revision: the golden records their SHA-256 (the key's
     # one input that needs a file the tree does not carry), so the key recomputes offline.

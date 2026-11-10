@@ -24,7 +24,7 @@ from rcp_ndcg_test.cases import (
 )
 from rcp_ndcg_test.errors import CaseError, RecipeError
 from rcp_ndcg_test.fakes import fixture_path
-from rcp_ndcg_vllm.recipe import load_recipe
+from rcp_vllm.recipe import load_recipe
 
 PACKAGED = fixture_path("cases")
 PACKAGED_RECIPES = fixture_path("recipes")
@@ -132,7 +132,7 @@ def test_the_shipped_cases_resolve_their_recipes() -> None:
     green.  This pins the backing: the shipped cases root has no ``recipes_missing`` and its recipes
     are exactly the case directories.
     """
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     cases_root = Path(__file__).resolve().parents[1] / "cases"
     document = load_cases(cases_root, recipes_root=default_recipes_root(), check_lengths=False)
@@ -151,7 +151,7 @@ def test_every_shipped_case_kind_matches_its_roles_stage_shape() -> None:
     and the conformance runner would have failed it on the shape.  The kind vocabulary is the case
     format's own; the role-to-shape rule is the stage contract.
     """
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     allowed = {
         "embed": {"similarity_matrix", "none"},

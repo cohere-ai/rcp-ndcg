@@ -38,7 +38,7 @@ import pytest
 import yaml
 from rcp_ndcg_test.equivalence import stage1_prompts
 from rcp_ndcg_test.equivalence.fitting import tokenizer_of
-from rcp_ndcg_vllm.recipe import (
+from rcp_vllm.recipe import (
     client_config,
     default_recipes_root,
     resolve_recipe,
@@ -186,7 +186,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "trust_remote_code": False,
             "max_model_len": 32768,
             "dtype": "bfloat16",
-            "plugin": "rcp-ndcg-vllm",
+            "plugin": "rcp-vllm",
             "plugin_architectures": [],
             "io_processor_plugin": None,
             "mm_processor_kwargs": {},

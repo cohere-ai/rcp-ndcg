@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from rcp_ndcg_test.equivalence import stage1_prompts, stage2_scores
 from rcp_ndcg_test.equivalence.fitting import client_template
-from rcp_ndcg_vllm import load_recipe
+from rcp_vllm import load_recipe
 
 from rcp.data.tokenizer import load_tokenizer
 from tests.conftest import RECIPES, TOKENIZER, start_stub, write_pairs

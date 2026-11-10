@@ -31,8 +31,8 @@ __all__ = [
 ]
 
 #: The public Python modules: the facade, the core with its documented modules, the modules the docs present
-#: as API, and ``rcp_ndcg_vllm.recipe`` -- the lean serving package's public recipe module (``Recipe``,
-#: ``load_recipe``, ``iter_recipes``, the serve-argv builder). The rest of ``rcp_ndcg_vllm`` and all of
+#: as API, and ``rcp_vllm.recipe`` -- the lean serving package's public recipe module (``Recipe``,
+#: ``load_recipe``, ``iter_recipes``, the serve-argv builder). The rest of ``rcp_vllm`` and all of
 #: ``rcp_ndcg_test`` are internal. ``tests/contract`` pins this list as the surface snapshot; a name is public
 #: only through the ``__all__`` of one of these modules.
 PUBLIC_MODULES: tuple[str, ...] = (
@@ -58,7 +58,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp.runners",
     "rcp.runs",
     "rcp.testing",
-    "rcp_ndcg_vllm.recipe",
+    "rcp_vllm.recipe",
 )
 
 #: The pinned surface snapshot, relative to the repository root: the definition of what is public.
