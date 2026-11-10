@@ -295,8 +295,32 @@ class JobOptions(BaseModel):
 class JobRunner(Protocol):
     """Where jobs run. Instantiated with the runner's options (``get_runner(name, **options)``).
 
-    A runner whose jobs do not see the submitting host's files sets ``run_root``: the directory a run is restored
-    into inside the job, from the run's mirror (:mod:`rcp.runs.mirror`). Runners without it share the files.
+    A plugin publishes its name and class in the ``rcp.runners`` entry-point group::
+
+        [project.entry-points."rcp.runners"]
+        my-scheduler = "my_package.runner:MyRunner"
+
+    :func:`~rcp.runners.registry.get_runner` loads the entry point only when the name is selected and calls
+    ``MyRunner(**options)`` with the run config's ``runner.options``; the constructor's ``TypeError`` or
+    ``ValueError`` for an unknown option is reported as :class:`~rcp.errors.ConfigError` (a plugin that validates
+    with its own model raises that error directly for the same mistake). ``name`` is the entry point's name.
+
+    ``submit`` takes the jobs in order and returns one handle per job. ``status`` is non-blocking and answers a
+    :class:`JobStatus` (``UNKNOWN`` for a handle the runner does not know). ``logs`` returns the output so far,
+    with ``tail`` keeping the last lines. ``cancel`` stops a pending or running job and leaves a finished one as
+    it is. A runner that runs jobs in this process sets ``synchronous``: its handle is the job's name, known
+    before it runs, and a job that exits non-zero raises from ``submit`` -- the error class of its exit code
+    (:func:`~rcp.errors.error_class`, e.g. :class:`~rcp.errors.MissingInputError` for 4), or
+    :class:`RunnerError` for a code no class uses. A scheduler runner's handle names the job on the scheduler;
+    its failure is reported as ``JobStatus.FAILED`` and its output through ``logs``. A runner raises
+    :class:`RunnerError` when a scheduler command fails or a job cannot be submitted as specified.
+
+    Optional members: ``render(jobs)`` returns the script or manifest per job without submitting (the run layer
+    calls it before anything is written); ``renders_phases`` declares that ``render`` and ``submit`` take a
+    phased job; ``run_root`` is the directory a run is restored into inside the job, from the run's mirror
+    (:mod:`rcp.runs.mirror`) -- a runner whose jobs do not see the submitting host's files sets it, and runners
+    without it share the files; ``note(handle)`` explains a pending job. A third-party runner's tests call
+    :func:`rcp.testing.runner_conformance` with a constructed runner and a job it can run.
     """
 
     name: str
@@ -307,19 +331,26 @@ class JobRunner(Protocol):
     synchronous: bool = False
 
     def submit(self, jobs: Sequence[JobSpec]) -> list[JobHandle]:
-        """Submit ``jobs`` in order; one handle per job."""
+        """Submit ``jobs`` in order and return one non-empty handle per job.
+
+        Raises:
+            RunnerError: the runner could not submit a job as specified.
+            :class:`~rcp.errors.RcpNdcgError`: a ``synchronous`` runner's job exited non-zero: the error class
+                of its exit code (:func:`rcp.errors.error_class`), or :class:`RunnerError` for a code no class
+                uses.
+        """
         ...
 
     def status(self, handle: JobHandle) -> JobStatus:
-        """The job's current status. Non-blocking."""
+        """The job's current state, non-blocking; ``UNKNOWN`` for a handle the runner does not know."""
         ...
 
     def logs(self, handle: JobHandle, *, tail: int | None = None) -> str:
-        """The job's output so far; ``tail`` keeps the last lines."""
+        """The job's output so far; ``tail`` keeps the last lines (all of it for ``None``)."""
         ...
 
     def cancel(self, handle: JobHandle) -> None:
-        """Stop the job; a finished job is left as it is."""
+        """Stop a pending or running job; a finished job is left as it is."""
         ...
 
 
