@@ -5,9 +5,10 @@ step finishes. Per step it records the state, the step's identity (a digest of
 everything that decides its output), the inputs and outputs with content
 hashes, the judge's usage, the timing and, for a judging step, what the judge's
 endpoints said they serve; for the run, the resolved config (the seed and the
-preprocessing included), the dataset and its revisions, the judgement families
-and the code version. A run is resumable exactly when every completed step's
-identity and inputs are unchanged.
+preprocessing included), the dataset and its revisions, the datasets and suites
+read, the run's path and row schema, the judgement families and the code
+version. A run is resumable exactly when every completed step's identity and
+inputs are unchanged.
 """
 
 from __future__ import annotations
@@ -103,8 +104,57 @@ class DatasetRef(BaseModel):
     task: str | None = None
 
 
+class _DatasetEntry(DatasetRef):
+    """One dataset a run read: the :class:`DatasetRef` provenance plus the reader's slice and its visibility.
+
+    Attributes:
+        internal: Whether the source is internal to the producer (not for publication), or ``False``.
+        args: The reader arguments that selected the slice (the options passed to
+            :func:`~rcp.data.load_dataset`); ``{}`` when none were recorded.
+    """
+
+    internal: bool = False
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class _SuiteEntry(BaseModel):
+    """A suite a run read and the entries of it the run used.
+
+    Attributes:
+        name: The suite's name (the ``suite:<name>`` it was loaded by, or the directory's name).
+        entries: The suite entries the run evaluated; empty when the suite ran whole or the entries were not
+            recorded.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    entries: list[str] = Field(default_factory=list)
+
+
+class _Rows(BaseModel):
+    """The downstream row schema a run's exported rows are written as.
+
+    Attributes:
+        schema: The row schema's name, a free string the package never interprets, or ``None``.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_by_name=True, serialize_by_alias=True)
+
+    schema_name: str | None = Field(default=None, alias="schema")
+
+
 class RunManifest(BaseModel):
-    """Everything known about one run."""
+    """Everything known about one run.
+
+    Attributes:
+        path: The run directory this manifest was last written in, or ``None`` in a manifest written before
+            the field existed. The artifact paths in ``steps`` are relative to it.
+        datasets: The datasets the run read, with the reader arguments that selected each slice and whether the
+            source is internal; empty when the producer recorded none. ``dataset`` remains the primary dataset.
+        suites: The suites the run read and the entries of each it used; empty when none were recorded.
+        rows: The downstream row schema the run's rows were written as, or ``None``.
+    """
 
     model_config = ConfigDict(extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
@@ -119,6 +169,10 @@ class RunManifest(BaseModel):
     code: CodeVersion
     config: dict[str, Any] = Field(default_factory=dict)
     dataset: DatasetRef | None = None
+    path: str | None = None
+    datasets: list[_DatasetEntry] = Field(default_factory=list)
+    suites: list[_SuiteEntry] = Field(default_factory=list)
+    rows: _Rows | None = None
     families: dict[str, JudgementFamily] = Field(default_factory=dict)
     """``{family_key: JudgementFamily}`` of the judgements the run wrote."""
     steps: list[StepRecord] = Field(default_factory=list)
@@ -195,7 +249,8 @@ class RunManifest(BaseModel):
         """Write the manifest atomically (the one storage helper: a per-process, per-call temp file and a
         rename, so a concurrent reader of a running job's manifest never sees a truncated moment, and two
         writers never share a temp file). Owner-only: the manifest carries the resolved config and the run's
-        records, and a cluster filesystem is shared."""
+        records, and a cluster filesystem is shared. The run directory is recorded in ``path``."""
+        self.path = layout.root
         self.updated_at = _now()
         payload = self.model_dump_json(indent=2)
         target = layout.manifest
