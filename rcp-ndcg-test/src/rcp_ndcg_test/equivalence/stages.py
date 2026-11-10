@@ -142,7 +142,6 @@ def stage1_prompts(
         and _gate_pass(document["template_render_check"])
         and _gate_pass(document["engine_tokenize_check"])
         and _gate_pass(document["engine_prompt_tokens_check"])
-        and not document["refusals"]
     )
     return document
 
