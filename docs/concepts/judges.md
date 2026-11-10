@@ -295,6 +295,60 @@ reproducible from the store after its file moves or changes.
   invalid (by category), were unchanged or changed (`rcp.judging.reparse` itself returns the new store's
   :class:`~rcp_core.schemas.JudgementSet`).
 
+### A store of your own: `CacheStore`
+
+The judgement store is this package's resumable per-example store. A downstream that needs the same
+resumption for artifacts of its own -- write example 4,001, resume at 4,002 after a crash -- implements
+`rcp.storage.cache.CacheStore` rather than writing a store beside the package: four methods over an opaque
+string key.
+
+| Method | The contract |
+|---|---|
+| `get(key)` | the bytes stored under the key, or `None` for a key the store does not hold. A miss is an answer, never an exception. |
+| `put(key, value)` | store the value under the key, replacing what the key held. |
+| `keys(prefix)` | every key that starts with `prefix` (`""` lists all of them). The order is not part of the contract. |
+| `delete(key)` | remove the key: a later `get` never returns it, and deleting a key that is not there is not an error. |
+
+Two implementations ship, and a downstream's own store is the third. `MemoryCacheStore` is a dictionary:
+nothing is persisted and nothing is validated. `UriCacheStore` is the URI cache itself as a store -- the same
+entry files `cache()` populates, under the same publication lock and the same freshness rule -- so a reader's
+downloads are listable (`keys("gs://YOUR-BUCKET/run-1/rows/")`) and deletable:
+
+- a **hit** is an entry whose recorded identity still equals the source's: `get` returns its bytes.
+- a **miss** is a key the cache does not hold, or one whose source has moved. `get` never fetches: a miss means
+  the caller reads through `cache()`, which downloads and publishes the entry the next `get` hits.
+- `put` writes the value into the entry and records the source's identity as it is now, so the value is served
+  until the source moves. The source object is never written, and a key whose source does not exist is a
+  `MissingInputError`: an entry with no identity to be fresh for would never be served.
+- `delete` removes the payload and both sidecars under the publication lock, so the invalidated bytes are
+  never served again; `cache()` re-fetches them from the source.
+
+A key that carries a credential -- a presigned URL's query string -- is served but never listed: the digest
+names that entry, and the cache directory is shared.
+
+`lookup(store, key)` reads any store defensively. A store that raises -- a backend outage, an expired
+credential -- is a miss, logged with the store's class and the key (redacted: a key may be a presigned URL),
+never a failed run.
+
+```python
+from rcp.storage.cache import MemoryCacheStore, cache_key, lookup
+
+store = MemoryCacheStore()
+row = cache_key("run-1", "rows", "004001")  # "run-1/rows/004001"
+store.put(row, b'{"query_id": "q1"}')
+assert lookup(store, row) == b'{"query_id": "q1"}'  # a hit
+assert lookup(store, cache_key("run-1", "rows", "004002")) is None  # a miss
+store.delete(row)
+assert lookup(store, row) is None  # an invalidated entry is never returned
+assert store.keys("run-1/rows/") == []  # ... and it is gone from the prefix
+```
+
+A key is opaque; `cache_key` is the package's convention -- `/`-separated segments, none of them empty or
+holding a `/` -- so a prefix scan names exactly one namespace: `keys(cache_key("run-1", "rows") + "/")`
+lists the run's rows and not `run-1/rows-2/1`. The conformance test is `assert_cache_store_contract` in
+`tests/storage/test_cache_store.py`: one contract, run against both shipped implementations, so a downstream's
+own store has a model to check itself against with its own keys.
+
 ## Estimating a pass
 
 `rcp.judging.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
