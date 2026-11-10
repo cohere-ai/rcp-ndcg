@@ -650,9 +650,7 @@ def stage_media(
             # card's DECLARED policy (one image beside its text), so the side is recorded and gates nothing;
             # any other refusal decides the row (the generator prunes it), whether or not the client sent it.
             if _declared_mixed_media_side(by_index.get(key[0], {}), key[1]):
-                declared_reference_refusal.append(
-                    {"row": key[0], "side": key[1], "reason": reference[key]["refused"]}
-                )
+                declared_reference_refusal.append({"row": key[0], "side": key[1], "reason": reference[key]["refused"]})
                 continue
             failures.append(
                 {"row": key[0], "side": key[1], "check": "reference_refused", "reason": reference[key]["refused"]}
