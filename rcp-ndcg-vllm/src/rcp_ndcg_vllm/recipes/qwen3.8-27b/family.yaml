@@ -68,7 +68,7 @@ sources:
   - "https://huggingface.co/Qwen/Qwen3.8-27B-FP8/raw/017b9c7af6b5689d5dd426a76e0bc077eb5ca20a/config.json (Qwen3_5ForConditionalGeneration, same shape as Qwen3.6-27B: 64 layers, hidden 5120, head_dim 256, 4 KV heads, vocab 248 320, mpe 262 144, FP8 [128,128])"
   - "vLLM v0.33.0 (image vllm/vllm-openai:v0.33.0): engine/arg_utils.py:991 (--max-model-len), :1147 (--reasoning-parser), :1500 (--limit-mm-per-prompt); model_executor/models/registry.py:617; layers/quantization/fp8.py:92,138-139"
   - "https://huggingface.co/Qwen/Qwen3.8-27B-FP8 (the model card: the checkpoint facts and the recommended engine settings the blocks above translate)"
-  - "rcp-ndcg-test/scenarios/{identity,outage,text-four-phases}.yaml at this tree's HEAD (the scenario serve command and client block this family moves into a recipe)"
+  - "rcp-test/scenarios/{identity,outage,text-four-phases}.yaml at this tree's HEAD (the scenario serve command and client block this family moves into a recipe)"
 status:
   state: verified
   image: "vllm/vllm-openai:v0.33.0"

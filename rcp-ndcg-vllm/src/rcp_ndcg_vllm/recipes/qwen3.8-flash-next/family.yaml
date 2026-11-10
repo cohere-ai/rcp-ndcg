@@ -83,7 +83,7 @@ sources:
   - "nvidia/Qwen3.8-Flash-Next-NVFP4 hf_quant_config.json (quant_algo MIXED_PRECISION, kv_cache_quant_algo null) and Qwen/Qwen3.8-Flash-Next-FP8 config.json (quant_method fp8, block [128,128], dynamic activations)"
   - "vLLM v0.33.0 (image vllm/vllm-openai:v0.33.0): engine/arg_utils.py:991 (--max-model-len), :992 (--quantization), :1147 (--reasoning-parser), :1500 (--limit-mm-per-prompt); model_executor/models/registry.py:622-624; layers/quantization/modelopt.py:729,746 and layers/quantization/fp8.py:92,138-139"
   - "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4 and https://huggingface.co/Qwen/Qwen3.8-Flash-Next-FP8 (the model cards: the checkpoint facts and the recommended engine settings the blocks above translate)"
-  - "rcp-ndcg-test/scenarios/{text-four-phases,vidore}.yaml at this tree's HEAD (the candidate and fallback commands this family moves into recipes)"
+  - "rcp-test/scenarios/{text-four-phases,vidore}.yaml at this tree's HEAD (the candidate and fallback commands this family moves into recipes)"
 status:
   state: verified
   image: "vllm/vllm-openai:v0.33.0"

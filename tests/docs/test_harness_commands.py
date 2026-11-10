@@ -1,7 +1,7 @@
 """Every documented harness command parses.
 
 ``test_commands`` checks the ``rcp`` command tree only. The pages that drive the unpublished harness
-(``python -m rcp_ndcg_test.<tool> ...``) are shell blocks nothing validates, so this module calls each tool's
+(``python -m rcp_test.<tool> ...``) are shell blocks nothing validates, so this module calls each tool's
 own ``main`` with the documented argv, placeholders replaced, and the tool's run stubbed out: a documented
 command whose flags the parser refuses fails here, not at the reader's terminal.
 """
@@ -18,7 +18,7 @@ from tests.docs._markdown import ROOT, code_blocks, markdown_files
 
 SHELL = {"bash", "sh", "shell", "console", "zsh"}
 PLACEHOLDER = re.compile(r"<[^>]*>")
-EQUIVALENCE = ["python", "-m", "rcp_ndcg_test.equivalence"]
+EQUIVALENCE = ["python", "-m", "rcp_test.equivalence"]
 
 
 def _documented_commands(prefix: list[str]) -> list[tuple[Path, int, list[str]]]:
@@ -40,8 +40,8 @@ def _documented_commands(prefix: list[str]) -> list[tuple[Path, int, list[str]]]
 
 
 def test_documented_equivalence_commands_parse(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The documented ``python -m rcp_ndcg_test.equivalence`` argv parses (stages and placeholders included)."""
-    import rcp_ndcg_test.equivalence.__main__ as equivalence
+    """The documented ``python -m rcp_test.equivalence`` argv parses (stages and placeholders included)."""
+    import rcp_test.equivalence.__main__ as equivalence
 
     monkeypatch.setattr(equivalence, "load_recipe", lambda recipe: object())
     monkeypatch.setattr(equivalence, "run", lambda *args, **kwargs: {"recipe": "dummy", "passed": True})

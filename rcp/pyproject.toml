@@ -121,9 +121,9 @@ docs = [
 [project.scripts]
 rcp = "rcp.cli.main:main"
 
-# Dependency groups are never published (unlike extras): the unpublished rcp-ndcg-test reaches the root's
+# Dependency groups are never published (unlike extras): the unpublished rcp-test reaches the root's
 # dev tooling only through this group, which uv sync installs by default. The published rcp metadata
-# must not reference rcp-ndcg-test (a test in rcp-ndcg-test pins that).
+# must not reference rcp-test (a test in rcp-test pins that).
 
 [project.entry-points."rcp.runners"]
 local = "rcp.runners.local:LocalRunner"
@@ -181,7 +181,7 @@ where = ["src"]
 # the CLI), ``rcp-core`` (the metric, the gains, the protocols,
 # the schemas and the IRT estimators; numpy + pydantic, its [irt] extra: torch,
 # scipy; released in lockstep with this package) and the unpublished
-# ``rcp-ndcg-test``, plus ``rcp-ndcg-vllm`` (the serving half).
+# ``rcp-test``, plus ``rcp-ndcg-vllm`` (the serving half).
 # ``rcp-ndcg-vllm`` depends on pydantic and PyYAML alone, so the same wheel
 # installs into an engine image that carries its own vLLM and torch; its
 # workspace lock entry is inert there.  See rcp-ndcg-vllm/README.md.

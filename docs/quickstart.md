@@ -16,8 +16,8 @@ protocols need numpy and pydantic only; the IRT estimators need its `irt` extra 
 `rcp` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The third
 distribution, `rcp-ndcg-vllm`, is the lean serving package: the GPU-validated serving recipes and
 `rcp-ndcg-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving
-models](reference/recipes.md)). `rcp-ndcg-test`, an unpublished contributor package (reference cases,
-conformance, the GPU job tooling), is never installed by users ([its page](reference/rcp-ndcg-test.md)). The
+models](reference/recipes.md)). `rcp-test`, an unpublished contributor package (reference cases,
+conformance, the GPU job tooling), is never installed by users ([its page](reference/rcp-test.md)). The
 extras:
 
 | Extra | Adds |

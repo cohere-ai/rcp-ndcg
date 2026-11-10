@@ -8,8 +8,8 @@ files**); the model outputs are **replayed** for observed inputs and come from a
 deterministic surrogate for unseen ones, marked in every reply.
 
 **The committed corpora are still the `vllm-0.31.0` recording.** An emulator registers under the engine
-version its corpus was recorded on, and `rcp-ndcg-test/corpora/vllm-0.31.0/` was recorded on the v0.31.0
-image. Re-recording on the v0.33.0 image is the GPU waves' work: `rcp-ndcg-test/corpora/vllm-0.33.0/` is
+version its corpus was recorded on, and `rcp-test/corpora/vllm-0.31.0/` was recorded on the v0.31.0
+image. Re-recording on the v0.33.0 image is the GPU waves' work: `rcp-test/corpora/vllm-0.33.0/` is
 the destination that re-record renames the directory into, and the `fake://vllm-0.33.0/...` host this page
 uses is what the corpora register under once it lands. Until then a `vllm-0.33.0` lookup is refused by
 name -- the version gate below, not a missing feature.
@@ -19,11 +19,11 @@ name -- the version gate below, not a missing feature.
 A verified engine URL is `fake://<engine>-<version>/<recipe>`, with `?fingerprint=<sha>` when several
 fingerprints of one recipe are registered (a migration). The routing seam is
 `rcp.inference.fake` (a `fake://` URL whose host names an engine and a version); the emulators
-live in `rcp_ndcg_test.engines`, and this repository's tests build them from the committed corpora:
+live in `rcp_test.engines`, and this repository's tests build them from the committed corpora:
 
 <!-- snippet: skip (the corpus paths are the repository's; run it from a checkout) -->
 ```python
-from rcp_ndcg_test.engines import registry
+from rcp_test.engines import registry
 from tests._engines import emulator_for  # the recipe wiring of this repository's tests
 
 emulator = emulator_for("qwen3-reranker-0.6b")  # builds the emulator of its corpus and registers it
@@ -47,13 +47,13 @@ Two groups carry the fake engines, and different packages read them:
 - `rcp.fake_transports` is the **product's** seam (`rcp.inference.fake`): each entry point
   resolves to a callable `provider(url) -> httpx.MockTransport | None`, and the product asks each one
   for a `fake://<engine>-<version>/<recipe>` URL until one answers (`None` means "not mine"). This is
-  how a served-role request reaches an emulator without the product importing `rcp_ndcg_test` (which
-  needs the observation corpora and the recipes). This repository's provider is `rcp_ndcg_test.engines`
-  (`rcp-ndcg-test = "rcp_ndcg_test.engines:transport_for"` in its `pyproject.toml`), so installing
-  `rcp-ndcg-test` beside `rcp` is what makes a `fake://` URL resolve at all; without it the
+  how a served-role request reaches an emulator without the product importing `rcp_test` (which
+  needs the observation corpora and the recipes). This repository's provider is `rcp_test.engines`
+  (`rcp-test = "rcp_test.engines:transport_for"` in its `pyproject.toml`), so installing
+  `rcp-test` beside `rcp` is what makes a `fake://` URL resolve at all; without it the
   product raises a `ConfigError` naming that package and the group.
 - `rcp.emulators` is the **test package's** own seam
-  (`rcp_ndcg_test.engines.registry.load_entry_points`): each entry point resolves to an emulator or to
+  (`rcp_test.engines.registry.load_entry_points`): each entry point resolves to an emulator or to
   a callable returning them, registered in the same `registry` `from_corpus` fills. It exists for
   emulators built outside this repository (a private model's), which have no product code to reach.
 
@@ -81,16 +81,16 @@ carries the list), the rest of the corpus replays, and a request for the skipped
 ## What a corpus is
 
 An observation corpus is raw-first (OBSERVATIONS-SPEC) and has one format and one reader,
-`rcp_ndcg_test.corpus`: one record per exchange (the request and the response as they crossed the
+`rcp_test.corpus`: one record per exchange (the request and the response as they crossed the
 wire, the headers that matter), `nondeterminism.json` (the measured differences between repeated
 sendings of the same request and the tolerances derived from them) and `manifest.json` (provenance --
 the engine's image, argv, `VLLM_*` environment and patch opt-in, the model's facts -- the behaviour
 fingerprint and its named inputs, integrity hashes). The `VLLM_*` environment is the engine's own knobs: the
 pod's Kubernetes Service links ride under the same prefix (the Services are named `vllm-service-...`) and are
-dropped by `rcp_ndcg_test.observe.provenance`, so no internal address or Service name enters a manifest. The
+dropped by `rcp_test.observe.provenance`, so no internal address or Service name enters a manifest. The
 repository keeps subsets
 (`records.jsonl.gz` and an `index.json` naming the full corpus) at
-`rcp-ndcg-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
+`rcp-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`, found by scanning their
 manifests (`find_corpora`), each with its append-only `verification.jsonl` beside the recorded files.
 The shared `_tokenizers/` store vends the `tokenizer.json` files whose SHA-256 the fingerprints hash,
 so the whole suite runs offline. The emulators read records through `exchanges_of`; every derived view
@@ -110,7 +110,7 @@ compares them, not the parsed bodies alone.
 The conformance suite (`tests/conformance/`) replays every recorded exchange through the emulator's
 HTTP surface and compares the status, the recorded headers, the body and, where recorded, the raw
 bytes. The staleness check recomputes each recipe's **behaviour fingerprint**
-(`rcp_ndcg_test.fingerprint.behaviour_fingerprint`, rule `rcp-fp/4`: the checkpoint id and revision, the
+(`rcp_test.fingerprint.behaviour_fingerprint`, rule `rcp-fp/4`: the checkpoint id and revision, the
 engine image and its version floor, the serve block, the source hash of every plugin module the recipe's
 engine runs (its declared architectures' modules plus its opted-in patches'), the template file's bytes,
 the tokenizer's SHA-256 and the client fields that change the request bytes) and fails **naming the
@@ -125,7 +125,7 @@ moved inputs shape none of its recorded exchanges (metadata only, such as a pool
 engine's default) is re-keyed instead: its manifest carries the current fingerprint and a `rekeyed` entry
 naming what moved and why. A re-key touches no record, by this procedure:
 
-1. Recompute the recipe's inputs with `rcp_ndcg_test.fingerprint.fingerprint_inputs` and compare them with
+1. Recompute the recipe's inputs with `rcp_test.fingerprint.fingerprint_inputs` and compare them with
    the manifest's `recipe.fingerprint_inputs` (`fingerprint_changes`); go on only when the changed names
    are exactly the ones you declare metadata-only.
 2. In `manifest.json`, set `recipe.behaviour_fingerprint` and `recipe.fingerprint_inputs` to the current
@@ -133,7 +133,7 @@ naming what moved and why. A re-key touches no record, by this procedure:
    and `from_manifest_file_sha256` (the old manifest's digest and file SHA-256: they keep the link to the full
    corpus the subset was cut from), `changed_inputs` (each name with its old and new value), `reason` and
    `date`.
-3. Recompute `integrity.manifest_sha256` with `rcp_ndcg_test.corpus.manifest_digest`, then the
+3. Recompute `integrity.manifest_sha256` with `rcp_test.corpus.manifest_digest`, then the
    corpus's `index.json` (`full_corpus.manifest_sha256` and `manifest_file_sha256`, the file's SHA-256).
 4. `git mv` the directory to the new fingerprint and move its entry in the engine's `index.json`
    (`<recipe>/<fingerprint>`, with the new `behaviour_fingerprint` and `manifest_sha256`).
@@ -153,7 +153,7 @@ directory in a `--chat-template` value, reduced to its file name as the family g
    `engine.redacted` an entry with `field_path`, what was removed, `reason`, `date`, `from_manifest_sha256`
    and `from_manifest_file_sha256` (the original manifest's digest and file SHA-256, from git: they keep the
    link to the store's file the subset was cut from).
-2. Recompute `integrity.manifest_sha256` with `rcp_ndcg_test.corpus.manifest_digest`, then the corpus's
+2. Recompute `integrity.manifest_sha256` with `rcp_test.corpus.manifest_digest`, then the corpus's
    `index.json` (`full_corpus.manifest_file_sha256` is the tracked file's SHA-256 and
    `full_corpus.manifest_sha256` its digest -- the fields the conformance suite's integrity check reads),
    then the engine's `index.json` (`write_corpus_index`). The `gs://` pointer becomes the
@@ -161,7 +161,7 @@ directory in a `--chat-template` value, reduced to its file name as the family g
    one).
 
 A recording made after the fix needs no redaction: the engine environment's own filter
-(`rcp_ndcg_test.observe.provenance`) keeps the Service links out, and
+(`rcp_test.observe.provenance`) keeps the Service links out, and
 `test_no_committed_corpus_names_private_infrastructure` holds the committed bytes to that.
 
 ### Behaviour fingerprint versions
@@ -192,7 +192,7 @@ RCP_APPEND_VERIFICATION=1 uv run --no-sync pytest tests/conformance -k verificat
 
 ## What moved between two corpora
 
-`rcp-ndcg-vllm`'s `python -m rcp_ndcg_test.changes` reports change handling (OBSERVATIONS-SPEC
+`rcp-ndcg-vllm`'s `python -m rcp_test.changes` reports change handling (OBSERVATIONS-SPEC
 section 7): `changed` is the re-record-changed-only selection (per recipe: `unchanged`, `changed`,
 `new` or `unloadable`, with the changed inputs named -- the wave runner's `--changed-since` mode
 records the `changed` and `new` ones), and `diff` writes the behaviour diff of two corpora of one
@@ -201,7 +201,7 @@ headers, framing, error bodies -- summarised by route) for review before a new c
 
 <!-- snippet: skip (a repository checkout with the corpora; the path is the v0.31.0 recording's until the re-record) -->
 ```bash
-python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
-    --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0  # renamed to vllm-0.33.0 after the re-record
-python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
+python -m rcp_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
+    --corpora-root rcp-test/corpora/vllm-0.31.0  # renamed to vllm-0.33.0 after the re-record
+python -m rcp_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

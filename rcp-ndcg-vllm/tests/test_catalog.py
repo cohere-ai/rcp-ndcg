@@ -83,7 +83,7 @@ def test_the_readme_catalog_matches_iter_recipes() -> None:
             assert mrl, f"{recipe_id}: README MRL cell is empty"
 
 
-_WORKSPACE_MODULES = frozenset({"rcp", "rcp_core", "rcp_ndcg_vllm", "rcp_ndcg_test"})
+_WORKSPACE_MODULES = frozenset({"rcp", "rcp_core", "rcp_ndcg_vllm", "rcp_test"})
 _WORKSPACE_DISTRIBUTIONS = frozenset(name.replace("_", "-") for name in _WORKSPACE_MODULES)
 
 

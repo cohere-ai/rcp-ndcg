@@ -1,7 +1,7 @@
 """Typed errors of the package.
 
 The package raises typed errors; it never prints.  Recipe problems are
-:class:`RecipeError`. Harness problems moved with the harness to `rcp_ndcg_test.errors`.
+:class:`RecipeError`. Harness problems moved with the harness to `rcp_test.errors`.
 """
 
 from __future__ import annotations

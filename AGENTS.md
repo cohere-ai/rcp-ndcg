@@ -20,7 +20,7 @@ secrets. Run the narrowest test first, then the whole suite before you finish. T
 `[mteb]` or the `mcp` SDK (the pdf and hf readers, the transformers parity check, the MCP SDK round trip) skip in a
 bare `dev` environment; CI's `gated` job installs their extras and runs the whole tree with every gate open.
 
-`uv run pytest tests/conformance` is not a root command: the conformance suite lives in `rcp-ndcg-test` and
+`uv run pytest tests/conformance` is not a root command: the conformance suite lives in `rcp-test` and
 runs per that package's README.
 
 ## Layout and layering
@@ -34,7 +34,7 @@ runs per that package's README.
   `rcp.adapters` (wire adapters, per role), `rcp.readers` and `rcp.writers` (dataset formats),
   `rcp.results` (result sinks) and `rcp.fake_transports` (the transport providers behind a `fake://`
   URL). `tests/contract/snapshots/packaging.json` records the list as data and is the authority; the test
-  package's own `rcp.emulators` group is read by `rcp_ndcg_test`, never by the product.
+  package's own `rcp.emulators` group is read by `rcp_test`, never by the product.
 - `experiments/`: paper reproduction from public data. It imports the package; the package never imports it.
 - `examples/`: runnable examples (`tests/docs` runs them). `skills/rcp/`: the skill for agents that use the
   package. `schemas/`: exported JSON Schemas, generated and committed.
@@ -59,7 +59,7 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | The role clients' one preparation pipeline (stage order, per-row records) | `rcp.inference.clients._base` (`STAGES`, the runners) |
 | Serving recipes, the recipe schema, `serve` | `rcp_ndcg_vllm` |
 | Model plugins for served checkpoints | `rcp_ndcg_vllm.models/` |
-| Reference cases, conformance, model-level fakes, equivalence/recording/GPU job tooling | `rcp_ndcg_test` |
+| Reference cases, conformance, model-level fakes, equivalence/recording/GPU job tooling | `rcp_test` |
 | Wire adapters, the transport, replicas, parking, provenance probe | `rcp.inference` |
 | Evaluation: scoring rankings, comparisons, explanations, MTEB tasks | `rcp.eval` |
 | Job execution (local, SLURM, Kubernetes, plugins) | `rcp.runners` |
@@ -111,17 +111,17 @@ returns typed results and raises typed errors from `rcp.errors`.
   `status: unverified` does not ship in a tag, and a `failed` variant ships only when the owner's explicit
   disposition list names it (for 0.0.1, exactly the two `topk-embed-v1` variants).
 - **No GPU pytests.** GPU work produces observation corpora per `OBSERVATIONS-SPEC`; verified fake engines on
-  CPU with conformance + golden replays stand in for tests. Model-level fakes live in `rcp-ndcg-test`; the
+  CPU with conformance + golden replays stand in for tests. Model-level fakes live in `rcp-test`; the
   generic `fake://` stays in the product.
 - **Versions move together.** All distributions carry the tag version; `rcp` pins
-  `rcp-core==<version>`; `rcp-ndcg-test` is never published.
+  `rcp-core==<version>`; `rcp-test` is never published.
 
 ## Releasing
 
 Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp/`,
-`rcp-core/`, `rcp-ndcg-vllm/` and the unpublished `rcp-ndcg-test/`; the root manifest is the uv workspace
+`rcp-core/`, `rcp-ndcg-vllm/` and the unpublished `rcp-test/`; the root manifest is the uv workspace
 only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
-the four-member workspace; `rcp-ndcg-test` is never built), checks each version against the
+the four-member workspace; `rcp-test` is never built), checks each version against the
 tag, that `rcp` pins `rcp-core==<version>`, and `requirements-constraints.txt` against the lock (the
 pins, semantically -- `.github/scripts/check_constraints.py`), and runs
 `twine check` on every file. Each package publishes to PyPI with trusted publishing through its own GitHub environment

@@ -42,7 +42,7 @@ transformers>=5.0.0,<6.0.0 (the checkpoint's own ``config.json``
 ``tokenizers``: it reads the pinned ``config.json``, ``tokenizer_config.json`` and
 ``tokenizer.json`` and never imports torch.
 
-Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
+Subprocess contract (``rcp_test.equivalence.reference.run_reference``):
 
     reference.py --mode <render|embed> --pairs <file> --out <file> --tokenizer <repo>@<rev> \
                  --recipe <json> [--device <d>]

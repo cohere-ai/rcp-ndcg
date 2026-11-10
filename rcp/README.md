@@ -20,7 +20,7 @@ are in the paper
 <p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
 This repository holds three published distributions -- `rcp` (the pipeline and the command line),
-`rcp-core` (the metric) and `rcp-ndcg-vllm` (the serving recipes) -- and the unpublished `rcp-ndcg-test`
+`rcp-core` (the metric) and `rcp-ndcg-vllm` (the serving recipes) -- and the unpublished `rcp-test`
 for contributors, the scripts that reproduce the paper's tables from the public data (`experiments/`), and
 runnable examples (`examples/`).
 
@@ -48,8 +48,8 @@ rcp-core`). A command that needs a missing extra exits with code 10 and prints t
 - `rcp-ndcg-vllm` -- the lean serving package: the GPU-validated serving recipes and `rcp-ndcg-vllm serve
   <recipe-id>` for the stock vLLM image ([recipes and serving models](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md)).
 
-The unpublished `rcp-ndcg-test` holds the repository's reference cases, conformance suite and GPU job tooling
-([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-ndcg-test.md)).
+The unpublished `rcp-test` holds the repository's reference cases, conformance suite and GPU job tooling
+([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-test.md)).
 
 ## Datasets
 

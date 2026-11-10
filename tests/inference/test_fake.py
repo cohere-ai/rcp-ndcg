@@ -495,12 +495,12 @@ class TestFakeWireFidelity:
 
 class TestEngineUrlsWithoutAProvider:
     """A ``fake://<engine>-<version>/<recipe>`` URL names a verified fake engine; without an emulator
-    provider (rcp-ndcg-test's ``rcp.fake_transports`` entry point) the refusal is typed and names
+    provider (rcp-test's ``rcp.fake_transports`` entry point) the refusal is typed and names
     the package (decision 20's product-side seam)."""
 
     def test_without_a_provider_the_refusal_names_the_package(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """In an environment without a provider (a plain rcp install: no dev group), the refusal names
-        the missing package and its entry-point group; the dev venv has rcp-ndcg-test, so the group is
+        the missing package and its entry-point group; the dev venv has rcp-test, so the group is
         emptied here to exercise the product's own fallback."""
         import sys
         import types
@@ -517,7 +517,7 @@ class TestEngineUrlsWithoutAProvider:
 
         with pytest.raises(ConfigError, match="no emulator provider is installed") as excinfo:
             fake_transport("fake://vllm-0.33.0/qwen3-embedding-0.6b", model="qwen3-embedding-0.6b", tokenizer=None)
-        assert "rcp-ndcg-test" in str(excinfo.value)
+        assert "rcp-test" in str(excinfo.value)
 
     def test_a_provider_is_used_when_installed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The seam resolves through the group: a registered provider's transport answers the URL, so the

@@ -4,7 +4,7 @@
 ``release.yml``'s tag pipeline and ``rc_build.sh``'s candidate build both run this script, so a candidate
 can never pass the node gates with a check the tag would fail (g-rcjobs-5).  It checks:
 
-* every workspace manifest declares the version (the release builds three; a stale ``rcp-ndcg-test``
+* every workspace manifest declares the version (the release builds three; a stale ``rcp-test``
   leaves ``uv.lock`` and the stated rule disagreeing);
 * ``CITATION.cff``'s ``version:`` is the version;
 * ``rcp`` pins ``rcp-core==<version>`` exactly, in every dependency scope;
@@ -38,11 +38,11 @@ MANIFESTS = (
     "rcp/pyproject.toml",
     "rcp-core/pyproject.toml",
     "rcp-ndcg-vllm/pyproject.toml",
-    "rcp-ndcg-test/pyproject.toml",
+    "rcp-test/pyproject.toml",
 )
 """The four workspace members; all four carry the release version (AGENTS.md: versions move together)."""
 
-WORKSPACE_SIBLINGS = {"rcp", "rcp-core", "rcp-ndcg-test"}
+WORKSPACE_SIBLINGS = {"rcp", "rcp-core", "rcp-test"}
 """Every distribution of this workspace except ``rcp-ndcg-vllm`` itself."""
 
 # name, optional [extras], then the specifier: "rcp[calibrate]==0.0.1" -> ("rcp", "==0.0.1")

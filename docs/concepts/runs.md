@@ -187,25 +187,25 @@ The local runner runs the coordinator in this host's environment and installs no
 refused); on SLURM the option applies with a container runtime — with `container_runtime: none` the node's own
 environment provides the release, and a wheelhouse is refused.
 
-`jobs/rc_build.sh` in `rcp-ndcg-test` does all of this in one command (build, checks, wheelhouse, stage,
+`jobs/rc_build.sh` in `rcp-test` does all of this in one command (build, checks, wheelhouse, stage,
 manifest) — see [Release candidates and the GPU waves](../how-to/release-candidates.md). Built by hand, the
 same commands are:
 
 ```bash
 # the three published wheels, by name, as release.yml builds them (never --all-packages: the
-# unpublished fourth workspace member rcp-ndcg-test must not be swept into the release files; the
+# unpublished fourth workspace member rcp-test must not be swept into the release files; the
 # pyproject.toml versions must match)
 uv build --package=rcp-core --out-dir /shared/wheelhouse/0.0.1rc1
 uv build --package=rcp --out-dir /shared/wheelhouse/0.0.1rc1
 uv build --package=rcp-ndcg-vllm --out-dir /shared/wheelhouse/0.0.1rc1
-# the unpublished harness wheel (the node's client environment imports rcp_ndcg_test), in its own directory
-uv build --package=rcp-ndcg-test --out-dir /shared/wheelhouse/0.0.1rc1/harness
+# the unpublished harness wheel (the node's client environment imports rcp_test), in its own directory
+uv build --package=rcp-test --out-dir /shared/wheelhouse/0.0.1rc1/harness
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
 uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
   -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
 pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
   -c /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
-  'rcp-ndcg-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-ndcg-test==<version>' \
+  'rcp-ndcg-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-test==<version>' \
   $(for lock in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" || printf -- '-r %s ' "$lock";
     done) \

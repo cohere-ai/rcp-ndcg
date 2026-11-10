@@ -127,7 +127,7 @@ def _no_dns(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> 
     keep resolving (the local test servers are on 127.0.0.1); the ``network``-marked tests and a run with
     ``RCP_NDCG_NETWORK_TESTS=1`` go without the watchdog.
 
-    The same guard as ``rcp-ndcg-test/tests/conftest.py``'s: the Hub-offline fixture above stops the Hub
+    The same guard as ``rcp-test/tests/conftest.py``'s: the Hub-offline fixture above stops the Hub
     client, and this stops everything else that would resolve a name (a raw ``httpx``/``requests`` URL, a
     bare ``socket.socket().connect``).  The two suites cannot share a conftest, so the guard is a second copy
     by intent.
@@ -370,7 +370,7 @@ def write_mjpeg_avi(path: Path, *, frames: int = 12, fps: int = 4, size: tuple[i
     samples frame *i* can be checked against it. Pillow is the only dependency.
     (Second writer by intent: this one serves the root distribution's data-I/O
     tests, which cannot import the serving package; the pairs generator's own
-    writer is ``rcp_ndcg_test.observe.media_set.mjpeg_avi`` -- keep both headers
+    writer is ``rcp_test.observe.media_set.mjpeg_avi`` -- keep both headers
     BITMAPINFOHEADER-exact (strf's 40 bytes) when changing either.)
     """
     import io

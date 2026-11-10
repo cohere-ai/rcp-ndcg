@@ -42,7 +42,7 @@ def _modules() -> list[Path]:
 #: the live module, or it sends a reader to code that is not in the tree.
 _RENAMED_CITATIONS = (
     (re.compile(r"(?<![\w.])llm\._fake\b"), "the fake judge lives in rcp.judging._fake"),
-    (re.compile(r"(?<![\w.])rcp_ndcg_vllm\.observe\b"), "the observer lives in rcp_ndcg_test.observe"),
+    (re.compile(r"(?<![\w.])rcp_ndcg_vllm\.observe\b"), "the observer lives in rcp_test.observe"),
     (re.compile(r"(?<![\w./-])llm/client\.py\b"), "the judge client lives in rcp/judging/client.py"),
 )
 
@@ -52,7 +52,7 @@ def _citation_files() -> list[Path]:
     root = Path(__file__).resolve().parents[1]
     return sorted(
         path
-        for folder in (SRC, root / "rcp-ndcg-vllm/src", root / "rcp-ndcg-test/src")
+        for folder in (SRC, root / "rcp-ndcg-vllm/src", root / "rcp-test/src")
         for path in folder.rglob("*.py")
         if "__pycache__" not in path.parts
     ) + [root / "tests/conftest.py", root / "rcp/pyproject.toml"]

@@ -23,7 +23,7 @@ versions. The normative spelling of every name below lives in the repository, no
 
 Everything else is internal and may change without notice: `rcp.cli`, `rcp.storage`,
 `rcp.support`, `rcp.data.io`, the submodules of `retrieval`, `judging`, `calibration`, `runs` and
-`runners`, the rest of `rcp_ndcg_vllm`, and all of the unpublished `rcp-ndcg-test`. A change to a public name,
+`runners`, the rest of `rcp_ndcg_vllm`, and all of the unpublished `rcp-test`. A change to a public name,
 flag, exit code or schema is a reviewed diff against the snapshot and gets a CHANGELOG entry; a pull request
 that changes either without one fails CI.
 
@@ -64,7 +64,7 @@ A `0.0.x` patch release:
   the CHANGELOG ([REPRODUCIBILITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/REPRODUCIBILITY.md)).
 
 The four distributions carry the same version; `rcp` pins `rcp-core==<version>`; `rcp-ndcg-vllm`
-carries the same version but pins no sibling; `rcp-ndcg-test` is never published.
+carries the same version but pins no sibling; `rcp-test` is never published.
 
 ### Deprecating a public name
 
@@ -89,7 +89,7 @@ recipe of the operator's own goes through the same check ([recipes and serving m
 A recipe's **behaviour fingerprint** keys everything that can change what the model returns: the model id and
 revision, the engine image and its version floor, the `serve` block, the source hash of every plugin module the
 engine runs, the template file's bytes, the tokenizer's SHA-256, and the client fields that change the request
-bytes. Its rule is versioned (`rcp-fp/4` in this release, `rcp_ndcg_test.fingerprint.FINGERPRINT_SCHEMA`):
+bytes. Its rule is versioned (`rcp-fp/4` in this release, `rcp_test.fingerprint.FINGERPRINT_SCHEMA`):
 changing the input set or their canonicalisation is a new rule (`rcp-fp/5`), so corpora keyed by different rules
 never collide. A bump is deliberate and recorded in the fingerprint module, in the
 [verified fake engines](../how-to/use-verified-fake-engines.md) page and in the CHANGELOG; every committed corpus
@@ -98,8 +98,8 @@ wave, with `tests/conformance/stale.json` naming the ones awaiting recording.
 
 ## Observation corpora and their records
 
-The GPU waves record an observation corpus per recipe; the corpus format is `rcp-ndcg-test`'s, and each of its
-pieces is versioned separately (`rcp_ndcg_test.corpus`):
+The GPU waves record an observation corpus per recipe; the corpus format is `rcp-test`'s, and each of its
+pieces is versioned separately (`rcp_test.corpus`):
 
 - the corpus manifest's `schema`: `rcp-ndcg.observation-corpus/1`;
 - a repository subset's `index.json`: `rcp-ndcg.observation-subset/1`;
@@ -110,7 +110,7 @@ pieces is versioned separately (`rcp_ndcg_test.corpus`):
   version, never a silent edit;
 - the conformance verifier's record: `rcp-ndcg.verification/1`.
 
-The format has one home and one reader (`rcp_ndcg_test.corpus`); the pairs files' generator carries its own
+The format has one home and one reader (`rcp_test.corpus`); the pairs files' generator carries its own
 `GENERATOR_VERSION` and media-set version. A change to any of these is recorded in the package's own history,
 not in `rcp`'s.
 
@@ -133,7 +133,7 @@ new tag, never a silent reinterpretation. The rule, spelled out for the exported
 |---|---|---|
 | the package version | all four `pyproject.toml` files, `rcp --version` | a public-surface change (minor) or an addition (patch), per the `0.0.x` rules above |
 | a recipe's `schema_version` | `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/*/family.yaml` | the recipe file format changes incompatibly |
-| the behaviour fingerprint rule | `rcp_ndcg_test.fingerprint.FINGERPRINT_SCHEMA` (`rcp-fp/4`) | the fingerprint's input set or canonicalisation changes |
-| the corpus schemas | `rcp_ndcg_test.corpus` (`rcp-ndcg.observation-corpus/1`, `RECORD_SCHEMA`, `NORMALISATION_VERSION`) | the corpus format, record shape or normalisation rule changes |
+| the behaviour fingerprint rule | `rcp_test.fingerprint.FINGERPRINT_SCHEMA` (`rcp-fp/4`) | the fingerprint's input set or canonicalisation changes |
+| the corpus schemas | `rcp_test.corpus` (`rcp-ndcg.observation-corpus/1`, `RECORD_SCHEMA`, `NORMALISATION_VERSION`) | the corpus format, record shape or normalisation rule changes |
 | an artifact tag | `schemas/*.v1.json` | that artifact changes incompatibly |
 | the run layout | `rcp.runs.layout.LAYOUT_VERSION` (`rcp-ndcg.run-layout.v1`) | the on-disk run layout changes incompatibly |

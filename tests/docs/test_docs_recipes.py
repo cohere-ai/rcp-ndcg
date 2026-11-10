@@ -117,12 +117,12 @@ def test_the_ledger_fingerprint_column_is_the_tree_today() -> None:
     wave's evidence must carry), so every cell is ``behaviour_fingerprint(recipe)``'s first 12 hex digits.
     A recipe field the key covers moving (a serve value, the image, a patch) reds its row instead of leaving
     a superseded key in the page."""
-    from rcp_ndcg_test.fingerprint import behaviour_fingerprint
     from rcp_ndcg_vllm.recipe import iter_recipes
+    from rcp_test.fingerprint import behaviour_fingerprint
 
     # The tokenizer bytes are pinned by the recipe's revision: the golden records their SHA-256 (the key's
     # one input that needs a file the tree does not carry), so the key recomputes offline.
-    golden = ROOT / "rcp-ndcg-test" / "tests" / "recipes" / "golden"
+    golden = ROOT / "rcp-test" / "tests" / "recipes" / "golden"
     page = (ROOT / "docs" / "reference" / "gpu-validation.md").read_text(encoding="utf-8")
     row = re.compile(r"^\| `([^`]+)` \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| `([0-9a-f]+)…` \|", re.MULTILINE)
     cells = dict(row.findall(page))

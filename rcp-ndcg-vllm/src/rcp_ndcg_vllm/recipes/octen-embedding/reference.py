@@ -219,7 +219,7 @@ def score(query: str, docs: list[str], instruction: str | None = None) -> list[f
     return (q @ d.T).reshape(-1).tolist()
 
 
-# -- the subprocess CLI the harness calls (rcp_ndcg_test.equivalence.reference) ---------------
+# -- the subprocess CLI the harness calls (rcp_test.equivalence.reference) ---------------
 
 
 def _declared_shapes(recipe_file: str) -> list[str]:

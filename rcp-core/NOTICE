@@ -15,7 +15,7 @@ against the shipped copy, and each licence read at that revision (the Hub's
 model card metadata; the LICENSE file of a GitHub repository). Each recipe's
 `sources`/`notes` record that file's exact deltas.
 Every distribution of this project (rcp, rcp-core, rcp-ndcg-vllm and the unpublished
-rcp-ndcg-test) carries this same file.
+rcp-test) carries this same file.
 
 Hugging Face transformers
   https://github.com/huggingface/transformers
@@ -34,7 +34,7 @@ Hugging Face transformers
     `card_resize` restates the same `smart_resize` (image_processing_qwen2_vl.py,
     lines 63-89, at commit 528c267), the resize the topk-embed-v1-small
     wrapper's `_image_row` calls through its image processor's module.
-  - rcp-ndcg-test/tests/fixtures/recipes/fixture-vl-embed/reference.py:
+  - rcp-test/tests/fixtures/recipes/fixture-vl-embed/reference.py:
     `card_resize` restates the same `smart_resize` (at commit 528c267) as the
     test fixture's card resize.
 
@@ -265,7 +265,7 @@ Embeddings Benchmark (mteb)
 
 Model card examples (the Apache-2.0 checkpoint repositories above, plus
 zeroentropy/zembed-1-embedding, Apache-2.0)
-  - rcp-ndcg-test/cases/<recipe-id>/card-*.yaml: each model_card case
+  - rcp-test/cases/<recipe-id>/card-*.yaml: each model_card case
     quotes its example inputs and printed outputs verbatim from the model card
     (README.md) at the revision the case pins in its `source` block:
     Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3,

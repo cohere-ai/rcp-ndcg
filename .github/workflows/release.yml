@@ -42,7 +42,7 @@ jobs:
       - name: build rcp-core, rcp and rcp-ndcg-vllm
         run: |
           # The three published distributions, one --package per invocation (uv refuses a repeated flag),
-          # so the unpublished fourth workspace member, rcp-ndcg-test, is never swept in. No plugin
+          # so the unpublished fourth workspace member, rcp-test, is never swept in. No plugin
           # wheels: the folded models ship inside rcp-ndcg-vllm (layout-move item 3).
           uv build --package rcp-core --out-dir dist
           uv build --package rcp --out-dir dist

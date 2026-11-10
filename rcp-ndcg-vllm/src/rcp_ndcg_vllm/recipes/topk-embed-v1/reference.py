@@ -40,7 +40,7 @@ their behaviour on stubs shaped like the 5.10-5.17 stack. Nothing else is patche
 remote code needs more of 5.9, or a runtime whose classes carry neither name, fails loudly at its own
 call.
 
-Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
+Subprocess contract (``rcp_test.equivalence.reference.run_reference``):
 
     reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> [--device <d>]
 

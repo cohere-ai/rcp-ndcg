@@ -263,7 +263,7 @@ class EngineSpec(BaseModel):
         min_version: The engine version the recipe is known to work with, ``MAJOR.MINOR.PATCH`` (a release
             candidate or a setuptools-scm dev series counts; for a digest-pinned nightly the image digest is
             the real pin and the version is the floor).
-        startup_timeout_s: How long :mod:`rcp_ndcg_test.jobs.run_wave` waits for ``GET /v1/models`` before it
+        startup_timeout_s: How long :mod:`rcp_test.jobs.run_wave` waits for ``GET /v1/models`` before it
             declares the recipe failed (seconds).  Large models override this per recipe.
         step_budget_s: The floor of every harness step's wall-clock budget, seconds (GPU-E1: one stuck
             request once held a node for hours).  The runner computes each step's budget from the
@@ -324,7 +324,7 @@ class ServeConfig(BaseModel):
     See :func:`serve_argv` for the exact argv.  ``plugin``, ``io_processor_plugin``, ``plugin_architectures``
     and ``patches`` never reach the argv: ``plugin`` names the ``vllm.general_plugins`` pip package the
     engine imports (the node's bootstrap collects a wave's ``serve.plugin`` wheels with
-    ``python -m rcp_ndcg_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff
+    ``python -m rcp_test.jobs.plugins`` and installs them with ``--no-deps``, under the freeze-diff
     guard); ``io_processor_plugin`` names the checkpoint's IO-processor plugin, resolved through the
     checkpoint's own config and recorded by the harness, never installed by name;
     ``plugin_architectures`` declares which of the plugin's registered architectures this recipe's
@@ -484,7 +484,7 @@ class ReferenceSpec(BaseModel):
             vector or per token).
         entry: The reference module file in the recipe directory; the harness runs it as
             ``<reference-python> <recipe-dir>/<entry> --mode <mode> --pairs <file> --out <file>`` (see
-            :mod:`rcp_ndcg_test.equivalence.reference` for the modes).  Not needed for ``stored_scores``.
+            :mod:`rcp_test.equivalence.reference` for the modes).  Not needed for ``stored_scores``.
         known_deviations: Deliberate reference deviations on over-cap inputs: ``anchor_drop_over_cap`` (the
             reference's whole-prompt right cut drops tail anchors) or ``over_cap_cut_differs`` (the reference keeps
             the anchors but cuts the content its own way, e.g. a joint ``longest_first`` truncation where the
@@ -559,7 +559,7 @@ class Gates(BaseModel):
     """Overrides of the stage-2 gate defaults for one recipe's ``reference.score_scale``.
 
     Every field defaults to ``None`` (= the published default for the scale).  The defaults, and what each field
-    means, are in :mod:`rcp_ndcg_test.equivalence.gates`; ``tau_min`` applies to every scored scale,
+    means, are in :mod:`rcp_test.equivalence.gates`; ``tau_min`` applies to every scored scale,
     ``metrics_max_abs`` to stage 3.  ``media_vec_min_cosine`` is the vector floor for the sides whose input
     carries image or video -- the declared media approximation's own measured floor; unset, ``vec_min_cosine``
     gates those vectors too.  A recipe declaring it beside ``reference.known_deviations:
