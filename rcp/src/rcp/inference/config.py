@@ -22,6 +22,7 @@ from typing import ClassVar, Literal
 from pydantic import Field, field_validator, model_validator
 
 from rcp.data.mrl import MrlKind, MrlProjection
+from rcp.data.quantize import EmbeddingType
 from rcp.data.resolution import ImagePolicy, ImageProcessor, VideoPolicy
 from rcp.data.templates import RequestShape, TemplateSpec
 from rcp.data.text_policy import ChunkPolicy
@@ -406,6 +407,12 @@ class EmbeddingEndpoint(_MediaEndpoint):
             **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's
             full-width member stays selectable; on :class:`PoolingEndpoint` a ``k`` wider than
             :attr:`PoolingEndpoint.dim` is refused.
+        embedding_types: The quantized representations the run consumes besides the float vectors
+            (``int8``, ``uint8`` or ``binary``, the three :mod:`rcp.data.quantize` produces): the consumer
+            applies that module to the truncated, normalised vector. ``None`` (the default) declares float
+            only and is omitted from every identity, so a config that does not choose keeps the identity it
+            had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty
+            list is the absence of a declaration too, so it never re-keys a run.
         batch_size: Items per request. Content: request packing, and a bf16 batch's composition can move the
             numbers, so two batch sizes never share an index or a step (the fingerprint keys it too: it
             changes the request bytes).
@@ -435,6 +442,7 @@ class EmbeddingEndpoint(_MediaEndpoint):
         "mrl_range": FieldRole.CONTENT,
         "mrl_projection": FieldRole.CONTENT,
         "mrl_dim": FieldRole.CONTENT,
+        "embedding_types": FieldRole.CONTENT,
         "batch_size": FieldRole.CONTENT,
     }
 
@@ -475,7 +483,17 @@ class EmbeddingEndpoint(_MediaEndpoint):
     mrl_range: tuple[int, int] | None = None
     mrl_projection: MrlProjection | None = None
     mrl_dim: int | None = Field(default=None, ge=1)
+    embedding_types: tuple[EmbeddingType, ...] | None = None
     batch_size: int = Field(default=32, ge=1)
+
+    @field_validator("embedding_types", mode="before")
+    @classmethod
+    def _an_empty_declaration_is_no_declaration(cls, value: object) -> object:
+        """``[]`` declares float only, exactly as the unset field does: stored as ``None``, so it never
+        re-keys a run (the same rule as ``add_generation_prompt: false``)."""
+        if isinstance(value, (list, tuple)) and not value:
+            return None
+        return value
 
     @field_validator("add_generation_prompt", mode="before")
     @classmethod

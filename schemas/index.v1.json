@@ -176,6 +176,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -701,6 +722,27 @@
           "description": "Text prepended to every document. Content.",
           "title": "Doc Prompt",
           "type": "string"
+        },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
         },
         "empty_doc": {
           "default": "send",
@@ -1317,6 +1359,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -1856,6 +1919,27 @@
           ],
           "title": "Embed Dtype",
           "type": "string"
+        },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
         },
         "empty_doc": {
           "default": "send",
@@ -2424,6 +2508,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -2964,6 +3069,27 @@
           ],
           "title": "Embed Dtype",
           "type": "string"
+        },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
         },
         "empty_doc": {
           "default": "send",
@@ -3734,6 +3860,27 @@
           "description": "Text prepended to every document. Content.",
           "title": "Doc Prompt",
           "type": "string"
+        },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
         },
         "empty_doc": {
           "default": "send",

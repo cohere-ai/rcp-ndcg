@@ -1,0 +1,48 @@
+{
+  "name": "quantize-reference-vectors",
+  "arithmetic": "widen to float64; 255 * (v - min_sq) / (max_sq - min_sq) - 128; truncate toward zero; clamp [-128, 127]; uint8 = int8 + 128; binary packs v >= 0 MSB-first",
+  "cases": [
+    {
+      "name": "unit-range-mixed",
+      "min_sq": -1.0,
+      "max_sq": 1.0,
+      "vector": [
+        -1.0,
+        1.0,
+        0.0,
+        -0.0,
+        0.1,
+        -0.1,
+        -0.001,
+        2.0,
+        -2.0,
+        0.09803921494121645,
+        0.011764705181121826,
+        0.5,
+        -0.5,
+        0.999999,
+        -0.999999
+      ],
+      "int8": "807f00000cf3007f800b003fc07e81",
+      "uint8": "00ff80808c7380ff008b80bf40fe01",
+      "binary": "7974"
+    },
+    {
+      "name": "asymmetric-range",
+      "min_sq": -0.75,
+      "max_sq": 1.25,
+      "vector": [
+        -0.75,
+        1.25,
+        0.0,
+        0.1,
+        -0.1,
+        0.25,
+        -0.25
+      ],
+      "int8": "807fe0edd300c0",
+      "uint8": "00ff606d538040",
+      "binary": "74"
+    }
+  ]
+}
