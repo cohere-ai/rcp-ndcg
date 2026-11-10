@@ -61,7 +61,7 @@ from rcp_ndcg_vllm.recipe import (
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 DELTAS_FILE = GOLDEN_DIR / "DELTAS.json"
-CORPORA_TOKENIZERS = Path(__file__).resolve().parents[2] / "corpora" / "vllm-0.31.0" / "_tokenizers"
+CORPORA_TOKENIZERS = Path(__file__).resolve().parents[2] / "corpora" / "vllm-0.33.0" / "_tokenizers"
 BASE_URL = "http://127.0.0.1:8100/v1"
 
 # The observation corpora vend their tokenizers here: the fingerprint's tokenizer input resolves

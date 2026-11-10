@@ -19,7 +19,7 @@ from rcp_ndcg_test.observe.provenance import engine_facts, recipe_facts
 from rcp_ndcg_vllm.recipe import default_recipes_root, load_recipe
 from rcp_ndcg_vllm.serve import run_console
 
-CORPORA_TOKENIZERS = Path(__file__).resolve().parents[1] / "corpora" / "vllm-0.31.0" / "_tokenizers"
+CORPORA_TOKENIZERS = Path(__file__).resolve().parents[1] / "corpora" / "vllm-0.33.0" / "_tokenizers"
 use_tokenizer_store(CORPORA_TOKENIZERS)
 """The observation corpora vend their tokenizers here: the fingerprint resolves offline (as the golden guard)."""
 

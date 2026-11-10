@@ -14,13 +14,13 @@ Two commands, one library:
   deltas, changed statuses, changed refusals and changed protocol behaviour, summarised by stratum),
   written here for review before a new corpus replaces the old in the repository.
 
-The committed corpora are still the ``vllm-0.31.0`` recording: ``rcp-ndcg-test/corpora/vllm-0.33.0/`` is
-the destination the re-record renames them into.
+The committed corpora are the ``vllm-0.33.0`` recording (``rcp-ndcg-test/corpora/vllm-0.33.0/``); a later
+re-record renames the next engine line's directory into the same place.
 
 Run from a checkout of the repository::
 
     python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
-        --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0
+        --corpora-root rcp-ndcg-test/corpora/vllm-0.33.0
     python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 """
 
@@ -67,7 +67,7 @@ def _recorded(corpora_root: str | Path, recipe_id: str) -> dict[str, tuple[Path,
     another over untouched exchanges reads ``unchanged``: the exchanges' own recorded ``engine_version`` is the
     fact that refuses it (:func:`rcp_ndcg_test.corpus.engine_version_mismatches`), by name.  An exchange that
     carries no version at all is refused too, unless the manifest claims the pre-stamp engine line
-    (:func:`rcp_ndcg_test.corpus.predates_record_stamp` -- the committed ``vllm-0.31.0`` recordings, which could
+    (:func:`rcp_ndcg_test.corpus.predates_record_stamp` -- the ``vllm-0.31.0`` line, whose recordings could
     not have carried one): an absent stamp under a 0.33 manifest is the hole this check exists to close.
     """
     from rcp_ndcg_test.corpus import (

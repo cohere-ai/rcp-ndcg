@@ -1,0 +1,335 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 2,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.33.0",
+    "version": "0.33.0",
+    "image_digest": "sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "Octen/Octen-Embedding-8B",
+      "--revision",
+      "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+      "--served-model-name",
+      "octen-embedding-8b",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8100",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "8192",
+      "--hf-overrides",
+      "{}",
+      "--pooler-config",
+      "{}",
+      "--max-num-batched-tokens",
+      "8192"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "4ba787ec9959e566d3b587a796dff07673324da5",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/9673",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.33.0",
+      "VLLM_PORT": "9100",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-11-09T19:03:06+00:00",
+    "ready_wait_s": 86.684,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.33.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "model": {
+    "id": "Octen/Octen-Embedding-8B",
+    "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+    "weights": {
+      "model-00001-of-00004.safetensors": "2603639239150d4b5833c5a66e43a5e59c2469e5298d007be5b84ca35dde5d1a",
+      "model-00002-of-00004.safetensors": "3aa2688c90b569d8e2a9c1b76726371410eeac5cb5a6e92998ae4aa200dfac82",
+      "model-00003-of-00004.safetensors": "4c89903a32d1b46aa61074d685f3d087d6d8c195c10fb218b8e060a6ed8a911b",
+      "model-00004-of-00004.safetensors": "4e353cfcd3810f98ad1b972a5749baa917863eaca3e87e23f201b7698158d377",
+      "model.safetensors.index.json": "808c37ef76f8c5cdc58bf58b07bb4b73a161916014ad0704cbc179f4ec247a44"
+    },
+    "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+    "template_sha256": {
+      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
+    },
+    "plugin": {
+      "unavailable": "the recipe installs no plugin"
+    },
+    "hf_overrides": {},
+    "pooler_config": {},
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "octen-embedding-8b",
+    "shipped": false,
+    "file_sha256": "986ba4d6503c76797c7969bb1de6ce2fca32eef715390eedcf660720895ac0e2",
+    "behaviour_fingerprint": "03027d8b6e67f4dd60cad4df9debd9b8459e058ff6dc5185acab93f838b0c006",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "Octen/Octen-Embedding-8B",
+      "revision": "5adcfa292e712091dfc30f0e97f0b2282e6cc66c",
+      "engine.image": "vllm/vllm-openai:v0.33.0",
+      "engine.min_version": "0.33.0",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "8192",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "null",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "false",
+      "template_file": "absent",
+      "tokenizer_sha256": "83cdf8c3a34f68862319cb1810ee7b1e2c0a44e0864ae930194ddb76bb7feb8d",
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
+      "client.empty_doc": "send",
+      "client.instruction": "none",
+      "client.max_images": "0",
+      "client.max_tokens": "8192",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_prompt": "",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"- \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"content\":\"query\"}]}"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 3,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 5,
+    "record_schema": 2,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-11-09T19:05:08+00:00",
+    "finished": "2026-11-09T19:06:29+00:00",
+    "host_sha256": "3dfc9218d4746d5f735428cd524ffe5b99be1133ceae827ba2d62356ffaee166",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "octen-embedding-8b@2026-11-09T19:03:06+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "octen-embedding-8b@2026-11-09T19:03:06+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "octen-embedding-8b@2026-11-09T19:06:14+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 5,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "wire:encoding_format=base64",
+      "wire:dimensions=32"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 8190
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 16370
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 81850
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl": {
+        "present": false,
+        "reason": "the recipe declares mrl_kind: none (the card has no Matryoshka head): there is no declared k"
+      },
+      "wire:encoding_format=base64": {
+        "present": true
+      },
+      "wire:dimensions=32": {
+        "present": true
+      },
+      "edge:invalid_embed_dtype": {
+        "present": false,
+        "reason": "/v1/embeddings takes no embed_dtype (the /pooling route's field)"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "cf9a5bb67a328a0469220d457dd864f9f6b0c0354e05e18a77ed44126be9dd61",
+        "bytes": 153318
+      },
+      "records.jsonl": {
+        "sha256": "6d03172f9e2df84b68b78e80d3f0443388f64204ce156140a430a948d5eef91d",
+        "bytes": 109909771
+      }
+    },
+    "records_count": 634,
+    "manifest_sha256": "5e54d5a439b3062d90f5a82e5bc1b9daa0a473cab22329b85194f37f1099a3f7"
+  }
+}

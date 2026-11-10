@@ -14,7 +14,7 @@ from rcp_ndcg_test.errors import HarnessError
 
 from tests._engines import ROOT
 
-CORPORA_CHECKPOINTS = ROOT / "corpora" / "vllm-0.31.0" / "_checkpoints"
+CORPORA_CHECKPOINTS = ROOT / "corpora" / "vllm-0.33.0" / "_checkpoints"
 """The corpora's vendored checkpoint files (registered beside the tokenizer store by ``tests._engines``)."""
 
 REPLAY_RECIPE = "qwen3-vl-embedding-2b"

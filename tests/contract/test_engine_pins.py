@@ -217,17 +217,17 @@ DRIFT = frozenset(
 )
 
 #: The files whose ``0.31`` is a record, not a claim: the release history, the GPU ledger (every row was
-#: recorded on the 0.31 image), the corpora state (the committed recordings are still ``vllm-0.31.0``), the
-#: 0.31 status table the shakedown recordings measured, the two prose mentions of the images the waves
-#: actually ran, and the fold's history comments.  A live surface -- a guard's range, a module docstring's
-#: target, a schema, a NOTICE -- is not here, and a recipe is handled by :func:`_recorded`.
+#: recorded on the 0.31 image), the pre-stamp epoch the record schema names, the 0.31 status table the
+#: shakedown recordings measured, the two prose mentions of the images the waves actually ran, and the
+#: fold's history comments.  A live surface -- a guard's range, a module docstring's target, a schema, a
+#: NOTICE -- is not here, and a recipe is handled by :func:`_recorded`.
 RECORDED_0_31 = {
     "CHANGELOG.md": "the release history",
     "docs/how-to/serve-a-model.md": "the pooling-full-context backport, a fix a 0.31 engine needed",
-    "docs/how-to/use-verified-fake-engines.md": "the committed corpora are still the vllm-0.31.0 recording",
+    "docs/how-to/use-verified-fake-engines.md": "the earlier vllm-0.31.0 recording, refused by name",
     "docs/reference/gpu-validation.md": "the GPU ledger: every row was recorded on the 0.31 image",
     "docs/reference/recipes.md": "the embeddinggemma-2 backport, in prose",
-    "rcp-ndcg-test/src/rcp_ndcg_test/changes.py": "the corpora state: still the vllm-0.31.0 recording",
+    "rcp-ndcg-test/src/rcp_ndcg_test/changes.py": "the pre-stamp epoch the stamp check names",
     "rcp-ndcg-test/src/rcp_ndcg_test/corpus.py": "the 0.31 recordings predate the record schema's version stamp",
     "rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave-cosines-topk-small.json": "the wave's own image record",
     "rcp-ndcg-test/src/rcp_ndcg_test/observe/corpus.py": "the v0.31.0 status table the shakedown measured",

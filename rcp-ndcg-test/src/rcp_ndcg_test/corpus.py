@@ -99,8 +99,8 @@ engine version to another is refused by the exchanges themselves (:func:`engine_
 version 1 record carried no such fact and is migrated with it explicitly unavailable, never given one."""
 
 RECORD_STAMP_ENGINE_VERSION = "0.32.0"
-"""The engine version line the stamped record schema starts at. Every recording before it -- the committed
-``vllm-0.31.0`` corpora -- predates :data:`RECORD_SCHEMA` 2 and can carry no ``engine_version``, so an absent
+"""The engine version line the stamped record schema starts at. Every recording before it -- the
+``vllm-0.31.0`` line -- predates :data:`RECORD_SCHEMA` 2 and can carry no ``engine_version``, so an absent
 stamp there is a fact about the epoch, not a hole; from this line on an absent stamp is a refusal
 (:func:`predates_record_stamp`)."""
 
@@ -210,8 +210,8 @@ def record_engine_version(record: dict[str, Any]) -> str | None:
 def predates_record_stamp(engine_version: str) -> bool:
     """Whether an engine version belongs to the pre-stamp epoch (below :data:`RECORD_STAMP_ENGINE_VERSION`).
 
-    The stamp arrived with :data:`RECORD_SCHEMA` 2; the committed recordings are the ``vllm-0.31.0`` line and
-    could not have carried one, so an absent ``engine_version`` there is the epoch's fact. From
+    The stamp arrived with :data:`RECORD_SCHEMA` 2; a ``vllm-0.31.0`` recording predates it and could not have
+    carried one, so an absent ``engine_version`` there is the epoch's fact. From
     :data:`RECORD_STAMP_ENGINE_VERSION` on, a recording without the stamp is refused.
 
     Args:
@@ -533,8 +533,7 @@ def write_corpus_index(corpora_root: str | Path) -> Path:
 
     Args:
         corpora_root: The engine-version directory holding the corpus directories -- the committed ones
-            are still ``corpora/vllm-0.31.0`` until the re-record renames them to ``corpora/vllm-0.33.0``;
-            the index is written beside the recipe directories.
+            are ``corpora/vllm-0.33.0``; the index is written beside the recipe directories.
 
     Returns:
         The written ``index.json``.

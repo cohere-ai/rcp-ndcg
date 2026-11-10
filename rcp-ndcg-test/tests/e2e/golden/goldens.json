@@ -1,8 +1,8 @@
 {
   "nanobeir": {
     "fingerprints": {
-      "qwen3-embedding-0.6b": "3d0c1f1f3c0f7e33d0d4122c1ab007794d5a632a2804d4f7c95c170b0c793800",
-      "zerank-2-reranker": "460fbc15e39340a015320a010b5c38b54a462da2f0c667fae08c51d931996e8b"
+      "qwen3-embedding-0.6b": "6063d7cd725e0bbe98be809f217091a85c85f5f440e9d51412d0d4e78cc90046",
+      "zerank-2-reranker": "1bb045f2f8f1445db7c866dbf10d05e359197ffd59b6ea163c3b7c1d68c51c08"
     },
     "kind": "regression-pin",
     "provenance": "computed by tests/e2e/test_golden_replay.py from the release corpora's recorded exchanges (the fingerprints below pin them), replayed through the recipes' emulators: a regression pin of the replayed path, not an independent GPU-run number",
@@ -17,7 +17,7 @@
   },
   "vidore": {
     "fingerprints": {
-      "zerank-1-small-reranker": "e13348f43de3dab2969834ee41b24287aa2340be51178d31e5436c78a45f3b98"
+      "zerank-1-small-reranker": "837099ca3304de6ad74e13a94bdbcbe64be5f780c625144bd571f7b244ce88ea"
     },
     "kind": "regression-pin",
     "provenance": "computed by tests/e2e/test_golden_replay.py from the release corpora's recorded exchanges (the fingerprints below pin them), replayed through the recipes' emulators: a regression pin of the replayed path, not an independent GPU-run number",

@@ -24,7 +24,7 @@ from rcp_ndcg_test.engines import compare_exchange, corpus_tolerance, exchanges_
 from tests._engines import ROOT, corpus_of, current_corpora, emulator_for, load_recipe, stale_corpora
 
 ENGINES_ROOT = ROOT / "corpora"
-INDEX = ENGINES_ROOT / "vllm-0.31.0" / "index.json"
+INDEX = ENGINES_ROOT / "vllm-0.33.0" / "index.json"
 WAIVERS = Path(__file__).resolve().parent / "waivers.json"
 
 
@@ -195,7 +195,7 @@ def test_staleness_passes_for_the_unmoved_recipes() -> None:
     replayable = {
         load_corpus(directory).manifest["recipe"]["id"]
         for directory in all_corpus_dirs()
-        if recipe_state(load_recipe(load_corpus(directory).manifest["recipe"]["id"]), ENGINES_ROOT / "vllm-0.31.0")[
+        if recipe_state(load_recipe(load_corpus(directory).manifest["recipe"]["id"]), ENGINES_ROOT / "vllm-0.33.0")[
             "state"
         ]
         == "unchanged"
@@ -207,7 +207,7 @@ def test_staleness_passes_for_the_unmoved_recipes() -> None:
     assert replayable or stale_corpora(), "no committed corpus at all"
     for directory in corpus_dirs():
         recipe_id = load_corpus(directory).manifest["recipe"]["id"]
-        state = recipe_state(load_recipe(recipe_id), ENGINES_ROOT / "vllm-0.31.0")
+        state = recipe_state(load_recipe(recipe_id), ENGINES_ROOT / "vllm-0.33.0")
         changed = list(state["changed_inputs"])
         if state["state"] != "unchanged" and any(
             waiver_covers(waiver, recipe_id, changed, today=today) for waiver in waivers
@@ -229,7 +229,7 @@ def test_a_declared_stale_corpus_fails_the_staleness_gate_by_name(recipe_id: str
 
     declared = stale_corpora()[recipe_id]
     recipe = load_recipe(recipe_id)
-    corpora_root = ENGINES_ROOT / "vllm-0.31.0"
+    corpora_root = ENGINES_ROOT / "vllm-0.33.0"
     with pytest.raises(StaleCorpusError) as error:
         resolve_corpus(recipe, corpora_root)
     message = str(error.value)
@@ -330,9 +330,9 @@ def test_the_registry_resolves_by_engine_version_and_fingerprint() -> None:
     emulator = emulator_for("zerank-2-reranker")
     assert emulator.verified is not None
     fingerprint = emulator.verified.behaviour_fingerprint
-    assert registry.resolve("vllm", "0.31.0", fingerprint, "zerank-2-reranker") is emulator
+    assert registry.resolve("vllm", "0.33.0", fingerprint, "zerank-2-reranker") is emulator
     with pytest.raises(ConfigError) as error:
-        registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
+        registry.resolve("vllm", "0.33.0", "f" * 64, "zerank-2-reranker")
     assert fingerprint[:12] in str(error.value)  # the message names the registered fingerprint
 
 
@@ -351,7 +351,7 @@ def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None
     )
     with pytest.raises(ConfigError) as error:
         emulator.require_verified_for(
-            "qwen3-embedding-0.6b", "f" * 40, emulator.verified.behaviour_fingerprint, "0.31.0"
+            "qwen3-embedding-0.6b", "f" * 40, emulator.verified.behaviour_fingerprint, "0.33.0"
         )
     assert "revision" in str(error.value)
     with pytest.raises(ConfigError) as error:
@@ -392,7 +392,7 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
         assert registry.load_entry_points() == ["example-out-of-tree"]
         verified = emulator_for("zerank-2-reranker").verified
         assert verified is not None
-        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [verified.behaviour_fingerprint]
+        assert registry.fingerprints("vllm", "0.33.0", "zerank-2-reranker") == [verified.behaviour_fingerprint]
     finally:
         registry.clear()
 

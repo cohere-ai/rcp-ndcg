@@ -5,11 +5,11 @@ engine per (engine, version, recipe, behaviour fingerprint). The URL host names 
 `fake://vllm-0.33.0/qwen3-embedding-0.6b`. The engine emulates the protocol: routes, request validation, error bodies, result ordering and framing, and usage counts. It also emulates token counting with the recipe's **real tokenizer files**. It **replays** model outputs for observed inputs. For unseen inputs, it uses a declared deterministic
 surrogate. Every reply marks which source it used.
 
-**The committed corpora are still the `vllm-0.31.0` recording.** An emulator registers under the version that its corpus was recorded on. `rcp-ndcg-test/corpora/vllm-0.31.0/` was recorded on the v0.31.0
-image. Re-recording on the v0.33.0 image is the GPU waves' work. `rcp-ndcg-test/corpora/vllm-0.33.0/` is the
-destination; re-record renames the directory into it. The `fake://vllm-0.33.0/...` host that this page uses is
-what the corpora register under once that recording is made. Until then, a `vllm-0.33.0` lookup is refused by
-name. This is the version gate below, not a missing feature.
+**The committed corpora are the `vllm-0.33.0` recording.** An emulator registers under the version that its
+corpus was recorded on. `rcp-ndcg-test/corpora/vllm-0.33.0/` was recorded on the v0.33.0 image.
+The `fake://vllm-0.33.0/...` host that this page uses is what the corpora register under. A `vllm-0.31.0`
+lookup is refused by name: the earlier recording is not committed. This is the version gate below, not a
+missing feature.
 
 ## Selecting an emulator
 
@@ -26,8 +26,8 @@ from tests._engines import emulator_for  # the recipe wiring of this repository'
 emulator = emulator_for("qwen3-reranker-0.6b")  # builds the emulator of its corpus and registers it
 assert emulator.verified is not None
 fingerprint = emulator.verified.behaviour_fingerprint
-# the committed corpora are the v0.31.0 recording; the re-record registers them under 0.33.0
-assert registry.resolve("vllm", "0.31.0", fingerprint, "qwen3-reranker-0.6b") is emulator
+# the committed corpora are the v0.33.0 recording, and the emulator registers under it
+assert registry.resolve("vllm", "0.33.0", fingerprint, "qwen3-reranker-0.6b") is emulator
 ```
 
 An emulator records the engine version and recipe revision that it was verified against (`Verified`). The
@@ -163,9 +163,9 @@ with the changed inputs named. The wave runner's `--changed-since` mode records 
 `diff` writes the behaviour diff of two corpora of one recipe. Per input, it gives the score or vector deltas and changed statuses. It also gives changed protocol behaviour, such as headers, framing and error bodies. It summarises them by route. Use it for
 review before a new corpus replaces the old.
 
-<!-- snippet: skip (a repository checkout with the corpora; the path is the v0.31.0 recording's until the re-record) -->
+<!-- snippet: skip (a repository checkout with the corpora; the path is the committed recording's) -->
 ```bash
 python -m rcp_ndcg_test.changes changed --recipes-root rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes \
-    --corpora-root rcp-ndcg-test/corpora/vllm-0.31.0  # renamed to vllm-0.33.0 after the re-record
+    --corpora-root rcp-ndcg-test/corpora/vllm-0.33.0
 python -m rcp_ndcg_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

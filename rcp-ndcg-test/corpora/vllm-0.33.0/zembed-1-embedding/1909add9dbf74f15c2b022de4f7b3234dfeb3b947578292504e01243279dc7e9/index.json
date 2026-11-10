@@ -1,0 +1,58 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://YOUR-BUCKET/observations/vllm-0.33.0/zembed-1-embedding",
+    "manifest_file_sha256": "02c1dcc4a8b56b5da8c29869737270e3cba032f60f805fc57bf55cb3de004662",
+    "manifest_sha256": "712e2c99da48bad983c51dbfedfb2fe63fb95002b0233765857538e16873405d"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:short",
+      "length:tiny",
+      "mrl:dimensions=1280",
+      "mrl:dimensions=160",
+      "mrl:dimensions=320",
+      "mrl:dimensions=40",
+      "mrl:dimensions=640",
+      "mrl:dimensions=80",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:encoding_format=base64"
+    ],
+    "rows": 64,
+    "of_rows": 649
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "41e9815f046d0e8f7dcf69cfda1f69207e27c13e9a71dcac63da91ac032dc535",
+      "bytes": 157630
+    },
+    "records.jsonl.gz": {
+      "sha256": "3594f9b11db5d39adf20ae1565b7d1a100a555ed0724d6b204ec22f6d66819d0",
+      "bytes": 2085560
+    }
+  }
+}

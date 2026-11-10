@@ -560,7 +560,7 @@ def test_the_tokenizer_is_the_pinned_revision_bytes() -> None:
     source) and its bytes hash to the pinned SHA-256."""
     from rcp_ndcg_test.fingerprint import stored_tokenizer, use_tokenizer_store
 
-    store = Path(__file__).resolve().parents[2] / "corpora" / "vllm-0.31.0" / "_tokenizers"
+    store = Path(__file__).resolve().parents[2] / "corpora" / "vllm-0.33.0" / "_tokenizers"
     use_tokenizer_store(store)
     found = stored_tokenizer(f"{MODEL}@{REVISION}")
     assert found is not None, f"the tokenizer store {store} does not cover {MODEL}@{REVISION}"

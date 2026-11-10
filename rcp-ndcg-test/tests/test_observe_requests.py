@@ -484,7 +484,7 @@ def test_the_committed_pairs_ladder_fits_every_declared_document_cap() -> None:
 
     # The committed bytes, not only the manifest's self-report: count the shipped jina ladder documents
     # with the recipe's own tokenizer (the counts the finding cited: 2703 and 3004 before the fix).
-    use_tokenizer_store(Path(__file__).resolve().parents[1] / "corpora" / "vllm-0.31.0" / "_tokenizers")
+    use_tokenizer_store(Path(__file__).resolve().parents[1] / "corpora" / "vllm-0.33.0" / "_tokenizers")
     jina = resolve_recipe("jina-reranker-v3")
     tokenizer = tokenizer_of(jina)
     cap = int(jina.client["document_max_tokens"])

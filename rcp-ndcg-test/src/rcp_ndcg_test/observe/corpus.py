@@ -1039,7 +1039,7 @@ def main(argv: list[str] | None = None) -> int:
     subset.add_argument("--gcs-path", required=True, help="the full corpus's immutable storage path")
     subset.add_argument("--max-bytes", type=int, default=2 * 1024 * 1024)
     index = commands.add_parser("index", help="regenerate the repository corpus index from the committed corpora")
-    index.add_argument("corpora_root", help="the engine-version directory (e.g. corpora/vllm-0.31.0)")
+    index.add_argument("corpora_root", help="the engine-version directory (e.g. corpora/vllm-0.33.0)")
     args = parser.parse_args(argv)
     if args.command == "subset":
         out = subset_for_repository(args.corpus, args.out, gcs_path=args.gcs_path, per_recipe_bytes=args.max_bytes)

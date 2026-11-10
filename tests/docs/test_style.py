@@ -99,9 +99,7 @@ def test_every_docs_sentence_is_at_most_twenty_words() -> None:
                 if any(allowed in sentence.lower() for allowed in ALLOWED):
                     continue
                 over.setdefault(str(path.relative_to(ROOT)), []).append(f"{len(words)}: {sentence}")
-    assert not over, "docs sentences over 20 words (ASD-STE100; see docs/reference/writing-style.md): " + repr(
-        over
-    )
+    assert not over, "docs sentences over 20 words (ASD-STE100; see docs/reference/writing-style.md): " + repr(over)
 
 
 def test_the_style_page_states_the_limit_and_the_check() -> None:

@@ -107,7 +107,7 @@ def test_the_shipped_zembed_over_cap_case_reports_instead_of_failing() -> None:
     from rcp_ndcg_test.fingerprint import use_tokenizer_store
 
     # The recipe's Hub tokenizer from the committed store, so the case runs offline (no Hub, no cache).
-    use_tokenizer_store(Path(__file__).resolve().parents[1] / "corpora" / "vllm-0.31.0" / "_tokenizers")
+    use_tokenizer_store(Path(__file__).resolve().parents[1] / "corpora" / "vllm-0.33.0" / "_tokenizers")
     shipped_cases = Path(__file__).resolve().parents[1] / "cases"
     recipe = load_recipe("zembed-1-embedding")
     case = load_case(shipped_cases / "zembed-1-embedding" / "long-over-uniform.yaml")

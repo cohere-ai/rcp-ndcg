@@ -250,7 +250,7 @@ def test_a_manifest_re_key_over_another_engines_exchanges_is_refused(tmp_path: P
 
 
 def test_an_unstamped_corpus_is_tolerated_only_on_the_pre_stamp_engine_line(tmp_path: Path) -> None:
-    """The committed ``vllm-0.31.0`` recordings predate the record stamp, so an absent ``engine_version`` is
+    """A ``vllm-0.31.0`` recording predates the record stamp, so an absent ``engine_version`` is
     the epoch's fact there and the corpus reads today; under a 0.33 manifest the same absent stamp is a
     refusal, named -- the hole the stamp exists to close."""
     from rcp_ndcg_test.changes import recipe_state

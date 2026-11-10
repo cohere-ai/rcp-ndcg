@@ -85,7 +85,7 @@ def corpus_of(recipe: Any) -> Any:
     harness()
     from rcp_ndcg_test.changes import resolve_corpus
 
-    return load_corpus(resolve_corpus(recipe, ENGINES_ROOT / "vllm-0.31.0"))
+    return load_corpus(resolve_corpus(recipe, ENGINES_ROOT / "vllm-0.33.0"))
 
 
 def prompt_strategy(recipe: Any, tokenizer: Any) -> Any:
