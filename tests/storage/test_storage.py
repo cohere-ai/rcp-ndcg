@@ -11,6 +11,7 @@ import fcntl
 import importlib.util
 import json
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -291,7 +292,13 @@ class TestPublish:
 
         monkeypatch.setattr(os, "umask", record)
         storage.publish_bytes(tmp_path / "out" / "f.bin", b"payload")
-        assert calls == []
+        if sys.platform.startswith("linux"):
+            assert calls == []
+        else:
+            # No /proc: the umask is read by setting it and restoring it, so the calls come in pairs and the
+            # last one restores the original mask -- the process is never left at 0.
+            assert calls, "the fallback reads the umask by setting it"
+            assert calls[0] == 0 and len(calls) % 2 == 0 and calls[-1] != 0
 
     def test_the_publish_temp_ends_in_tmp_so_a_mirror_walk_skips_it(self, tmp_path: Path) -> None:
         """The mirror's walk skips ``*.tmp``; ``publish``'s temp must be one, or a SIGKILL mid-publish leaves a
