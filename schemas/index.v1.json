@@ -4169,8 +4169,11 @@
       "title": "Retriever"
     },
     "schema": {
-      "const": "rcp-ndcg.index.v1",
-      "default": "rcp-ndcg.index.v1",
+      "default": "rcp.index.v1",
+      "enum": [
+        "rcp.index.v1",
+        "rcp-ndcg.index.v1"
+      ],
       "title": "Schema",
       "type": "string"
     }
@@ -4184,5 +4187,5 @@
   ],
   "title": "Index",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.index.v1"
+  "x-rcp-schema": "rcp.index.v1"
 }

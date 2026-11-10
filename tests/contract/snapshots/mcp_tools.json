@@ -18,7 +18,7 @@
       "type": "object"
     },
     "mirrors": "calibration show",
-    "outputSchema": "rcp-ndcg.calibration-summary.v1"
+    "outputSchema": "rcp.calibration-summary.v1"
   },
   "data_inspect": {
     "annotations": {
@@ -66,7 +66,7 @@
       "type": "object"
     },
     "mirrors": "data inspect",
-    "outputSchema": "rcp-ndcg.dataset-summary.v1"
+    "outputSchema": "rcp.dataset-summary.v1"
   },
   "describe": {
     "annotations": {
@@ -78,7 +78,7 @@
       "type": "object"
     },
     "mirrors": "schema show",
-    "outputSchema": "rcp-ndcg.command-index.v1"
+    "outputSchema": "rcp.command-index.v1"
   },
   "estimate": {
     "annotations": {
@@ -163,7 +163,7 @@
       "type": "object"
     },
     "mirrors": "run start",
-    "outputSchema": "rcp-ndcg.run-start.v1"
+    "outputSchema": "rcp.run-start.v1"
   },
   "eval_compare": {
     "annotations": {
@@ -267,7 +267,7 @@
       "type": "object"
     },
     "mirrors": "eval compare",
-    "outputSchema": "rcp-ndcg.comparison.v1"
+    "outputSchema": "rcp.comparison.v1"
   },
   "eval_explain": {
     "annotations": {
@@ -348,7 +348,7 @@
       "type": "object"
     },
     "mirrors": "eval explain",
-    "outputSchema": "rcp-ndcg.query-explanation.v1"
+    "outputSchema": "rcp.query-explanation.v1"
   },
   "eval_score": {
     "annotations": {
@@ -524,7 +524,7 @@
       "type": "object"
     },
     "mirrors": "eval score",
-    "outputSchema": "rcp-ndcg.eval-score.v1"
+    "outputSchema": "rcp.eval-score.v1"
   },
   "run_cancel": {
     "annotations": {
@@ -545,7 +545,7 @@
       "type": "object"
     },
     "mirrors": "run cancel",
-    "outputSchema": "rcp-ndcg.run-status.v1"
+    "outputSchema": "rcp.run-status.v1"
   },
   "run_list": {
     "annotations": {
@@ -578,7 +578,7 @@
       "type": "object"
     },
     "mirrors": "run list",
-    "outputSchema": "rcp-ndcg.run-list.v1"
+    "outputSchema": "rcp.run-list.v1"
   },
   "run_show": {
     "annotations": {
@@ -599,7 +599,7 @@
       "type": "object"
     },
     "mirrors": "run show",
-    "outputSchema": "rcp-ndcg.run-summary.v1"
+    "outputSchema": "rcp.run-summary.v1"
   },
   "run_start": {
     "annotations": {
@@ -750,7 +750,7 @@
       "type": "object"
     },
     "mirrors": "run start",
-    "outputSchema": "rcp-ndcg.run-start.v1"
+    "outputSchema": "rcp.run-start.v1"
   },
   "run_status": {
     "annotations": {
@@ -771,7 +771,7 @@
       "type": "object"
     },
     "mirrors": "run status",
-    "outputSchema": "rcp-ndcg.run-status.v1"
+    "outputSchema": "rcp.run-status.v1"
   },
   "schema_show": {
     "annotations": {

@@ -7554,5 +7554,5 @@
   ],
   "title": "RunConfig",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.run-config.v1"
+  "x-rcp-schema": "rcp.run-config.v1"
 }

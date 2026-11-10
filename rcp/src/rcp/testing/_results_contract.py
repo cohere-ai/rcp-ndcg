@@ -2,7 +2,7 @@
 
 Every sink -- built-in or plugin, registered through the ``rcp.results`` entry-point group -- is held to
 the same invariants: it names itself, its constructor takes ``uri`` first (what ``--out`` passes), it accepts a
-valid ``rcp-ndcg.result-record.v1`` record without mutating it, ``flush`` is idempotent, and it refuses a record
+valid ``rcp.result-record.v1`` record without mutating it, ``flush`` is idempotent, and it refuses a record
 whose schema it does not know (a v2 record written as v1 would corrupt the export). A plugin's test suite runs::
 
     from rcp.testing import results_conformance
@@ -100,14 +100,14 @@ def _emit_invariants(sink: ResultsSink) -> list[str]:
         subject=record.subject,
         dataset=record.dataset,
         metrics=record.metrics,
-        schema_name="rcp-ndcg.result-record.v2",
+        schema_name="rcp.result-record.v2",
     )
     try:
         sink.emit(foreign)
     except Exception:  # noqa: BLE001 - the refusal is the contract
         pass
     else:
-        failures.append("emit accepted a record of an unknown schema (rcp-ndcg.result-record.v2)")
+        failures.append("emit accepted a record of an unknown schema (rcp.result-record.v2)")
     return failures
 
 

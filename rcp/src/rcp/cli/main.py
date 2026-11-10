@@ -12,7 +12,7 @@
   implicitly.
 
 The guard around the whole tree keeps the output contract on every exit path: with ``--json`` a usage error
-or an unexpected failure still prints exactly one ``rcp-ndcg.cli.v1`` document, and no path prints a
+or an unexpected failure still prints exactly one ``rcp.cli.v1`` document, and no path prints a
 traceback unless ``-vv`` is given. ``--help`` and ``--version`` are the exception: they print plain text and
 exit 0, envelope or not.
 """

@@ -186,8 +186,11 @@
       "type": "array"
     },
     "schema": {
-      "const": "rcp-ndcg.comparison.v1",
-      "default": "rcp-ndcg.comparison.v1",
+      "default": "rcp.comparison.v1",
+      "enum": [
+        "rcp.comparison.v1",
+        "rcp-ndcg.comparison.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -207,5 +210,5 @@
   ],
   "title": "Comparison",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.comparison.v1"
+  "x-rcp-schema": "rcp.comparison.v1"
 }

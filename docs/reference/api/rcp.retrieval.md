@@ -349,7 +349,7 @@ class Index(pydantic.main.BaseModel)
 
 - `retriever: rcp.retrieval.config.BM25Config | rcp.retrieval.config.DenseConfig | rcp.retrieval.config.LateInteractionConfig`
 
-- `schema_name: Literal['rcp-ndcg.index.v1']` = 'rcp-ndcg.index.v1'
+- `schema_name: Literal['rcp.index.v1', 'rcp-ndcg.index.v1']` = 'rcp.index.v1'
 
 ## `LateInteractionConfig`
 

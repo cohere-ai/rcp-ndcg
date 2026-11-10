@@ -113,7 +113,7 @@ class ItemParams(pydantic.main.BaseModel)
 
 ## `Judgement`
 
-pydantic_model — One judge call's parsed observation (schema ``rcp-ndcg.judgement.v1``).
+pydantic_model — One judge call's parsed observation (schema ``rcp.judgement.v1``).
 
 ```text
 class Judgement(pydantic.main.BaseModel)
@@ -149,7 +149,7 @@ class Judgement(pydantic.main.BaseModel)
 
 - `response: str | None` = None
 
-- `schema_name: Literal['rcp-ndcg.judgement.v1']` = 'rcp-ndcg.judgement.v1'
+- `schema_name: Literal['rcp.judgement.v1', 'rcp-ndcg.judgement.v1']` = 'rcp.judgement.v1'
 
 - `stage: Literal['tournament', 'rubric']`
 

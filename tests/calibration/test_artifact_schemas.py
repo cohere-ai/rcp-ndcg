@@ -22,7 +22,7 @@ def test_a_saved_calibration_files_match_their_schemas(world: TinyWorld) -> None
     schema = schemas.show("calibration")
     items = json.loads((world.calibration / "items.json").read_text(encoding="utf-8"))
 
-    assert schema["x-rcp-ndcg-schema"] == items["schema"] == "rcp-ndcg.calibration.v1"
+    assert schema["x-rcp-schema"] == items["schema"] == "rcp.calibration.v1"
     assert problems(schema, items) == []
     assert problems(schema, {**items, "gamma": "1.0"}) != []  # the check is not vacuous
 
@@ -30,8 +30,8 @@ def test_a_saved_calibration_files_match_their_schemas(world: TinyWorld) -> None
     diagnostics_schema = schemas.show("calibration-diagnostics")
     diagnostics = json.loads((world.calibration / "diagnostics.json").read_text(encoding="utf-8"))
 
-    assert diagnostics_schema["x-rcp-ndcg-schema"] == diagnostics["schema"]
-    assert diagnostics["schema"] == "rcp-ndcg.calibration-diagnostics.v1"
+    assert diagnostics_schema["x-rcp-schema"] == diagnostics["schema"]
+    assert diagnostics["schema"] == "rcp.calibration-diagnostics.v1"
     assert problems(diagnostics_schema, diagnostics) == []
     assert problems(diagnostics_schema, {**diagnostics, "warnings": "none"}) != []
 
@@ -44,7 +44,7 @@ def test_a_judgement_store_identity_matches_the_judgement_store_schema(world: Ti
     store.note_engines("rubric", [EngineInfo(url="http://127.0.0.1:8000/v1", model="fake", owned_by="vllm")])
     identity = json.loads(store.identity_path.read_text(encoding="utf-8"))
 
-    assert schema["x-rcp-ndcg-schema"] == identity["schema"] == "rcp-ndcg.judgement-store.v1"
+    assert schema["x-rcp-schema"] == identity["schema"] == "rcp.judgement-store.v1"
     assert set(identity["stages"]) == {"tournament", "rubric"}
     assert identity["stages"]["rubric"]["engines"]
     assert problems(schema, identity) == []
@@ -175,9 +175,9 @@ def test_every_line_of_extensions_jsonl_matches_the_extension_record_schema(worl
     lines = (tmp_path / "extended" / "extensions.jsonl").read_text(encoding="utf-8").splitlines()
     schema = schemas.show("extension-record")
 
-    assert lines and schema["x-rcp-ndcg-schema"] == "rcp-ndcg.extension-record.v1"
+    assert lines and schema["x-rcp-schema"] == "rcp.extension-record.v1"
     for line in lines:
         record = json.loads(line)
-        assert record["schema"] == "rcp-ndcg.extension-record.v1"
+        assert record["schema"] == "rcp.extension-record.v1"
         assert problems(schema, record) == []
     assert problems(schema, {**json.loads(lines[0]), "source": "guessed"}) != []

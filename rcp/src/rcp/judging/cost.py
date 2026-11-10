@@ -88,7 +88,9 @@ class CostEstimate(BaseModel):
 
     model_config = ConfigDict(frozen=True, validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.cost-estimate.v1"] = Field(default="rcp-ndcg.cost-estimate.v1", alias="schema")
+    schema_name: Literal["rcp.cost-estimate.v1", "rcp-ndcg.cost-estimate.v1"] = Field(
+        default="rcp.cost-estimate.v1", alias="schema"
+    )
     calls: int
     requests_min: int
     requests_max: int

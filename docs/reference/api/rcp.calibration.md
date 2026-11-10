@@ -49,13 +49,13 @@ class Extension(pydantic.main.BaseModel)
 
 - `records: tuple[rcp.calibration.extend.ExtensionRecord, Ellipsis]`
 
-- `schema_name: Literal['rcp-ndcg.extension.v1']` = 'rcp-ndcg.extension.v1'
+- `schema_name: Literal['rcp.extension.v1', 'rcp-ndcg.extension.v1']` = 'rcp.extension.v1'
 
 - `skipped: tuple[str, Ellipsis]` = []
 
 ## `ExtensionRecord`
 
-pydantic_model — One document added to a calibration: one line of a calibration's ``extensions.jsonl`` (``rcp-ndcg.extension-record.v1``).
+pydantic_model — One document added to a calibration: one line of a calibration's ``extensions.jsonl`` (``rcp.extension-record.v1``).
 
 ```text
 class ExtensionRecord(pydantic.main.BaseModel)
@@ -77,7 +77,7 @@ class ExtensionRecord(pydantic.main.BaseModel)
 
 - `record_key: str` = ''
 
-- `schema_name: Literal['rcp-ndcg.extension-record.v1']` = 'rcp-ndcg.extension-record.v1'
+- `schema_name: Literal['rcp.extension-record.v1', 'rcp-ndcg.extension-record.v1']` = 'rcp.extension-record.v1'
 
 - `source: Literal['scored', 'inserted']`
 

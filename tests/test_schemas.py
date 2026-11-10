@@ -18,14 +18,14 @@ def test_every_schema_carries_its_id_and_url() -> None:
         schema = schemas.show(entry.name)
 
         assert schema["$id"] == f"{schemas.SCHEMA_ID_BASE}/{entry.name}.v1.json"
-        assert schema["x-rcp-ndcg-schema"] == f"rcp-ndcg.{entry.name}.v1"
+        assert schema["x-rcp-schema"] == f"rcp.{entry.name}.v1"
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
 
 
 def test_a_command_output_schema_requires_its_tag() -> None:
-    schema = schemas.show("rcp-ndcg.run-list.v1")
+    schema = schemas.show("rcp.run-list.v1")
 
-    assert schema["properties"]["schema"] == {"const": "rcp-ndcg.run-list.v1", "type": "string"}
+    assert schema["properties"]["schema"] == {"const": "rcp.run-list.v1", "type": "string"}
     assert schema["required"][0] == "schema"
 
 
@@ -42,12 +42,28 @@ def test_a_record_that_names_its_schema_names_its_entry() -> None:
     # A judgement, a manifest, an estimate and an extension carry their schema id; it must be the exported one.
     tagged = 0
     for entry in schemas.SCHEMAS:
-        const = schemas.show(entry.name).get("properties", {}).get("schema", {}).get("const")
-        if const is not None:
-            assert const == entry.schema_id, entry.name
+        field = schemas.show(entry.name).get("properties", {}).get("schema", {})
+        current = field.get("const") or (field.get("enum") or [None])[0]
+        if current is not None:
+            assert current == entry.schema_id, entry.name
             tagged += 1
     assert tagged >= 4
-    assert schemas.show("judge-config")["x-rcp-ndcg-schema"] == "rcp-ndcg.judge-config.v1"
+    assert schemas.show("judge-config")["x-rcp-schema"] == "rcp.judge-config.v1"
+
+
+def test_a_record_admits_both_spellings_and_writes_the_new_one() -> None:
+    """An artifact written before the rename carries ``rcp-ndcg.<name>.v1``: every exported record admits both
+    spellings, and its own default is the new ``rcp.<name>.v1``."""
+    records = 0
+    for entry in schemas.SCHEMAS:
+        field = schemas.show(entry.name)["properties"].get("schema", {})
+        accepted = field.get("enum") or [field.get("const")]
+        if None in accepted:
+            continue
+        assert accepted == [f"rcp.{entry.name}.v1", f"rcp-ndcg.{entry.name}.v1"], entry.name
+        assert field["default"] == f"rcp.{entry.name}.v1", entry.name
+        records += 1
+    assert records >= 4
 
 
 def test_an_unknown_name_is_a_usage_error_listing_the_known_ones() -> None:
@@ -156,7 +172,7 @@ def test_a_written_run_config_and_the_docs_runner_examples_validate_against_the_
 
 def test_the_eval_score_schema_describes_the_results_fields() -> None:
     """``EvalScoreResult``'s wrap serializer returns ``dict[str, Any]``, and pydantic takes that return type
-    for the serialization-mode schema: the exported ``rcp-ndcg.eval-score.v1`` (and the ``eval_score`` MCP
+    for the serialization-mode schema: the exported ``rcp.eval-score.v1`` (and the ``eval_score`` MCP
     tool's outputSchema) described one property, ``schema``, with ``additionalProperties: true`` -- an empty
     contract for the output of the main ``--json`` command."""
     from rcp_core.protocol import Protocol
@@ -177,7 +193,7 @@ def test_the_eval_score_schema_describes_the_results_fields() -> None:
         "out",
     } <= set(schema["properties"])
     data = {
-        "schema": "rcp-ndcg.eval-score.v1",
+        "schema": "rcp.eval-score.v1",
         **EvalScoreResult(protocol=Protocol(name="plain", ties="doc_id_desc"), k=[10]).model_dump(mode="json"),
     }
     assert problems({**schema, "additionalProperties": False}, data) == []

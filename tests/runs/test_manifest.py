@@ -138,7 +138,7 @@ class TestPersistence:
         assert loaded.status is RunStatus.RUNNING
         assert loaded.code.package_version
         payload = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
-        assert (payload["schema"], payload["layout"]) == ("rcp-ndcg.run-manifest.v1", "rcp-ndcg.run-layout.v1")
+        assert (payload["schema"], payload["layout"]) == ("rcp.run-manifest.v1", "rcp-ndcg.run-layout.v1")
         assert not list(Path(layout.root).glob("*.tmp"))
 
     def test_a_remote_run_directory_is_refused(self) -> None:
@@ -156,7 +156,7 @@ class TestPersistence:
         with pytest.raises(DataError) as caught:
             RunManifest.load(layout)
 
-        assert "rcp-ndcg.run-manifest.v1" in caught.value.message
+        assert "rcp.run-manifest.v1" in caught.value.message
         assert caught.value.hint and "run" in caught.value.hint
 
 

@@ -8,7 +8,7 @@
       "type": "string"
     },
     "schema": {
-      "const": "rcp-ndcg.run-log.v1",
+      "const": "rcp.run-log.v1",
       "type": "string"
     },
     "text": {
@@ -23,5 +23,5 @@
   ],
   "title": "RunLog",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.run-log.v1"
+  "x-rcp-schema": "rcp.run-log.v1"
 }

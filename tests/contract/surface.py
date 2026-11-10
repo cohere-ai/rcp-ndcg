@@ -358,7 +358,7 @@ def collect_mcp() -> dict[str, Any]:
     for tool in mcp.tool_manifest().model_dump(mode="json", by_alias=True)["tools"]:
         tools[tool["name"]] = {
             "inputSchema": tool["inputSchema"],
-            "outputSchema": (tool["outputSchema"] or {}).get("x-rcp-ndcg-schema"),
+            "outputSchema": (tool["outputSchema"] or {}).get("x-rcp-schema"),
             "annotations": tool["annotations"],
             "mirrors": tool["_meta"]["x-cli-command"],
         }

@@ -103,7 +103,7 @@
             }
           ],
           "default": null,
-          "description": "The artifact's schema id (e.g. ``\"rcp-ndcg.eval-report.v1\"``), or ``None``.",
+          "description": "The artifact's schema id (e.g. ``\"rcp.eval-report.v1\"``), or ``None``.",
           "title": "Schema Name"
         },
         "sha256": {
@@ -398,7 +398,7 @@
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/result-record.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "One exported row: a system's value for a dataset, metric and cutoff (``rcp-ndcg.result-record.v1``).",
+  "description": "One exported row: a system's value for a dataset, metric and cutoff (``rcp.result-record.v1``).",
   "properties": {
     "artifacts": {
       "default": [],
@@ -449,9 +449,12 @@
       "type": "string"
     },
     "schema": {
-      "const": "rcp-ndcg.result-record.v1",
-      "default": "rcp-ndcg.result-record.v1",
-      "description": "``\"rcp-ndcg.result-record.v1\"`` (serialised as ``schema``).",
+      "default": "rcp.result-record.v1",
+      "description": "``\"rcp.result-record.v1\"`` (serialised as ``schema``).",
+      "enum": [
+        "rcp.result-record.v1",
+        "rcp-ndcg.result-record.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -467,5 +470,5 @@
   ],
   "title": "ResultRecord",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.result-record.v1"
+  "x-rcp-schema": "rcp.result-record.v1"
 }

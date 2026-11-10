@@ -46,7 +46,7 @@ def test_search_retrieves_into_a_rankings_file(dataset: str, bm25: str, tmp_path
 
     assert document["exit_code"] == 0, document
     assert document["data"] == {
-        "schema": "rcp-ndcg.rankings-file.v1",
+        "schema": "rcp.rankings-file.v1",
         "out": str(out),
         "systems": ["bm25"],
         "queries": 2,

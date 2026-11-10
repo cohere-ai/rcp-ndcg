@@ -330,7 +330,7 @@ def _start_text(result: RunStartResult) -> str:
     return "\n".join(lines)
 
 
-_START = {"result": RunStartResult, "output_schema": "rcp-ndcg.run-start.v1", "text": _start_text}
+_START = {"result": RunStartResult, "output_schema": "rcp.run-start.v1", "text": _start_text}
 
 
 @command(
@@ -521,7 +521,7 @@ def _state_text(state: RunState) -> str:
     return _start_text(RunStartResult(mode="ran", run_id=state.run_id, run_dir=state.run_dir, state=state))
 
 
-@command("run status", request=RunRef, result=RunState, output_schema="rcp-ndcg.run-status.v1", text=_state_text)
+@command("run status", request=RunRef, result=RunState, output_schema="rcp.run-status.v1", text=_state_text)
 def run_status(request: RunRef) -> RunState:
     """Where a run stands: every step's status, its judge requests, and its jobs' live status on a runner."""
     from rcp.runs.execution import status
@@ -552,7 +552,7 @@ def run_logs(request: RunLogsRequest) -> RunLog:
     "run cancel",
     request=RunRef,
     result=RunState,
-    output_schema="rcp-ndcg.run-status.v1",
+    output_schema="rcp.run-status.v1",
     text=_state_text,
     read_only=False,
 )

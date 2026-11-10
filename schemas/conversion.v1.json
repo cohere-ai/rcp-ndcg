@@ -55,7 +55,7 @@
       "type": "string"
     },
     "schema": {
-      "const": "rcp-ndcg.conversion.v1",
+      "const": "rcp.conversion.v1",
       "type": "string"
     },
     "shape": {
@@ -99,5 +99,5 @@
   ],
   "title": "Conversion",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.conversion.v1"
+  "x-rcp-schema": "rcp.conversion.v1"
 }

@@ -62,11 +62,11 @@ sink is always closed with `flush()`.
 
 ## What a record holds
 
-A record (`rcp-ndcg.result-record.v1`) is frozen and one-way:
+A record (`rcp.result-record.v1`) is frozen and one-way:
 
 | Field | Meaning |
 |---|---|
-| `schema` | `rcp-ndcg.result-record.v1` |
+| `schema` | `rcp.result-record.v1` |
 | `record_id` | a digest of the subject, the dataset and the metrics: deterministic, and a protocol difference is part of it |
 | `created_at` | when the record was built (timezone-aware) |
 | `subject` | `kind` (`system`, `run` or `calibration`), `name`, the `Rankings` `system`, the `run_id`, an optional content `identity`, free-form `labels` |
@@ -107,7 +107,7 @@ class MySink(ResultsSink):
 ```
 
 The constructor's first parameter after `self` is named `uri` (what `--out` passes), `emit` refuses a record
-whose `schema` is not `rcp-ndcg.result-record.v1`, and `flush` is called once after the last record. Run the
+whose `schema` is not `rcp.result-record.v1`, and `flush` is called once after the last record. Run the
 shared contract check from your own tests:
 
 ```python

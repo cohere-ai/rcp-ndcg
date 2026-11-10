@@ -41,7 +41,7 @@ def test_the_offline_judge_fills_a_store_and_a_rerun_asks_nothing(dataset: str, 
 
     assert code == 0, first
     first_data, again_data = json.loads(first)["data"], json.loads(again)["data"]
-    assert first_data["schema"] == "rcp-ndcg.judge-report.v1" and first_data["mode"] == "judged"
+    assert first_data["schema"] == "rcp.judge-report.v1" and first_data["mode"] == "judged"
     assert first_data["judgements"] > 0 and first_data["stored"] == 0
     assert again_data["stored"] == first_data["judgements"]
     assert (store / "identity.json").is_file()
@@ -82,7 +82,7 @@ def test_a_judge_recipe_resolves_through_the_recipe_path() -> None:
         code, text = _invoke(*args)
         assert code == 0, text
         data = json.loads(text)["data"]
-        assert data["schema"] == "rcp-ndcg.judge-check-report.v1"
+        assert data["schema"] == "rcp.judge-check-report.v1"
         assert data["ok"] is True and data["recipe"] == "gpt-oss-120b"
         assert all(check["schema_sent"] and check["parsed"] for check in data["checks"])
 

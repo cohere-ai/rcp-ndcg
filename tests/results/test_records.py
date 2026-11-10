@@ -1,4 +1,4 @@
-"""The ``rcp-ndcg.result-record.v1`` record: its shape, its identity and its protocol field.
+"""The ``rcp.result-record.v1`` record: its shape, its identity and its protocol field.
 
 The record is a public contract (the compatibility page), so its field names, defaults and the digest that
 identifies it are pinned here. The protocol must be part of the identity: two records scored under different
@@ -63,7 +63,7 @@ def record(**fields: Any) -> ResultRecord:
 
 
 def test_the_schema_id_is_the_declared_constant() -> None:
-    assert RESULT_SCHEMA == "rcp-ndcg.result-record.v1"
+    assert RESULT_SCHEMA == "rcp.result-record.v1"
     assert record().schema_name == RESULT_SCHEMA
 
 

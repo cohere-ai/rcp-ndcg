@@ -25,7 +25,7 @@ class Comparison(pydantic.main.BaseModel)
 
 - `pairs: list[rcp.eval.compare.PairComparison]`
 
-- `schema_name: Literal['rcp-ndcg.comparison.v1']` = 'rcp-ndcg.comparison.v1'
+- `schema_name: Literal['rcp.comparison.v1', 'rcp-ndcg.comparison.v1']` = 'rcp.comparison.v1'
 
 - `seed: int`
 
@@ -99,7 +99,7 @@ class EvalReport(pydantic.main.BaseModel)
 
 - `protocol: rcp_core.protocol.Protocol`
 
-- `schema_name: Literal['rcp-ndcg.eval-report.v1']` = 'rcp-ndcg.eval-report.v1'
+- `schema_name: Literal['rcp.eval-report.v1', 'rcp-ndcg.eval-report.v1']` = 'rcp.eval-report.v1'
 
 - `summary: list[rcp.eval.evaluate.SummaryValue]`
 

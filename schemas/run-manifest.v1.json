@@ -670,8 +670,11 @@
       "type": "string"
     },
     "schema": {
-      "const": "rcp-ndcg.run-manifest.v1",
-      "default": "rcp-ndcg.run-manifest.v1",
+      "default": "rcp.run-manifest.v1",
+      "enum": [
+        "rcp.run-manifest.v1",
+        "rcp-ndcg.run-manifest.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -701,5 +704,5 @@
   ],
   "title": "RunManifest",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.run-manifest.v1"
+  "x-rcp-schema": "rcp.run-manifest.v1"
 }

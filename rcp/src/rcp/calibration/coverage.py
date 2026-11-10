@@ -124,8 +124,8 @@ class CalibrationCoverage(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.calibration-coverage.v1"] = Field(
-        default="rcp-ndcg.calibration-coverage.v1", alias="schema"
+    schema_name: Literal["rcp.calibration-coverage.v1", "rcp-ndcg.calibration-coverage.v1"] = Field(
+        default="rcp.calibration-coverage.v1", alias="schema"
     )
     mode: Literal["tournament", "rubric_only"]
     queries: QueryCounts

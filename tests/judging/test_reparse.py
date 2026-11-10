@@ -104,7 +104,7 @@ def test_the_command_reports_recovered_still_invalid_and_unchanged(old_store: Pa
 
     assert result.exit_code == 0, result.stdout
     data = json.loads(result.stdout)["data"]
-    assert data["schema"] == "rcp-ndcg.reparse-report.v1" and data["parse_version"] == PARSE_VERSION
+    assert data["schema"] == "rcp.reparse-report.v1" and data["parse_version"] == PARSE_VERSION
     (row,) = data["stages"]
     invalid = [j for j in before.judgements if not j.valid]
     prose = sum(1 for j in invalid if (j.response or "").startswith("Ranking"))

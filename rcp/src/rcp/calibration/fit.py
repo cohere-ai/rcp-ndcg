@@ -22,7 +22,7 @@ A :class:`Calibration` is immutable. It saves to, and loads from, one layout::
                           and category), the flagged queries, degenerate documents
       diagnostics.json    the fit summary, its reliability (ECE, Brier) per family, and the warnings
       extensions.jsonl    every scored or inserted document, with its provenance (one
-                          rcp-ndcg.extension-record.v1 object per line)
+                          rcp.extension-record.v1 object per line)
       identity.json       what was fitted: the judgements, the families, the switches and the priors
 """
 
@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from rcp_core.irt import JudgeOverlapError, Priors, fit_calibration
-from rcp_core.schemas import ItemParams, JudgementFamily, JudgementSet, QueryParams
+from rcp_core.schemas import ItemParams, JudgementFamily, JudgementSet, QueryParams, accepted_schema_ids
 
 from rcp.calibration._projection import (
     QUERY_ID_SEP,
@@ -74,7 +74,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-CALIBRATION_SCHEMA = "rcp-ndcg.calibration.v1"
+CALIBRATION_SCHEMA = "rcp.calibration.v1"
 ITEMS_FILE = "items.json"
 QUERIES_FILE = "queries.parquet"
 THETAS_FILE = "thetas.parquet"
@@ -125,8 +125,8 @@ class CalibrationIdentity(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.calibration-identity.v1"] = Field(
-        default="rcp-ndcg.calibration-identity.v1", alias="schema"
+    schema_name: Literal["rcp.calibration-identity.v1", "rcp-ndcg.calibration-identity.v1"] = Field(
+        default="rcp.calibration-identity.v1", alias="schema"
     )
     judgements: str
     families: list[str]
@@ -136,7 +136,7 @@ class CalibrationIdentity(BaseModel):
 
 
 class CalibrationItems(BaseModel):
-    """``items.json``, the file of a calibration directory that names its layout (``rcp-ndcg.calibration.v1``).
+    """``items.json``, the file of a calibration directory that names its layout (``rcp.calibration.v1``).
 
     Attributes:
         mode: ``"tournament"`` or ``"rubric_only"``.
@@ -151,7 +151,9 @@ class CalibrationItems(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.calibration.v1"] = Field(default=CALIBRATION_SCHEMA, alias="schema")
+    schema_name: Literal["rcp.calibration.v1", "rcp-ndcg.calibration.v1"] = Field(
+        default=CALIBRATION_SCHEMA, alias="schema"
+    )
     mode: Literal["tournament", "rubric_only"]
     criteria: list[str]
     gamma: list[float]
@@ -433,7 +435,7 @@ class Calibration:
                 cli_hint="point at the --out directory of `rcp calibration fit`, or a run directory",
             )
         payload = json.loads((root / ITEMS_FILE).read_text(encoding="utf-8"))
-        if not isinstance(payload, dict) or payload.get("schema") != CALIBRATION_SCHEMA:
+        if not isinstance(payload, dict) or payload.get("schema") not in accepted_schema_ids("calibration"):
             raise DataError(f"{root / ITEMS_FILE} is not a {CALIBRATION_SCHEMA} file")
         try:
             items = CalibrationItems.model_validate(payload)

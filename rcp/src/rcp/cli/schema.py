@@ -1,8 +1,8 @@
 """``rcp schema``: list, show and export the JSON Schemas (:mod:`rcp.schemas`).
 
 ``schema show commands`` prints the CLI itself: every command with its help, flags (type, default, help) and output
-schema, the same document the MCP ``describe`` tool returns (``rcp-ndcg.command-index.v1``). ``--full`` prints the
-whole click tree instead (``rcp-ndcg.commands.v1``: groups, hidden options, click's parameter details).
+schema, the same document the MCP ``describe`` tool returns (``rcp.command-index.v1``). ``--full`` prints the
+whole click tree instead (``rcp.commands.v1``: groups, hidden options, click's parameter details).
 """
 
 from __future__ import annotations
@@ -86,8 +86,8 @@ def schema_show(request: SchemaShowRequest) -> dict[str, Any]:
         from rcp.cli.introspect import command_index, describe_commands
 
         if request.full:
-            return {"schema": "rcp-ndcg.commands.v1", **describe_commands(include_help=True).model_dump(mode="json")}
-        return {"schema": "rcp-ndcg.command-index.v1", **command_index().model_dump(mode="json")}
+            return {"schema": "rcp.commands.v1", **describe_commands(include_help=True).model_dump(mode="json")}
+        return {"schema": "rcp.command-index.v1", **command_index().model_dump(mode="json")}
     if request.full:
         raise UsageError(
             "--full applies to `schema show commands` only",

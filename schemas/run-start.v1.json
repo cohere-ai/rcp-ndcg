@@ -46,8 +46,11 @@
           "type": "integer"
         },
         "schema": {
-          "const": "rcp-ndcg.cost-estimate.v1",
-          "default": "rcp-ndcg.cost-estimate.v1",
+          "default": "rcp.cost-estimate.v1",
+          "enum": [
+            "rcp.cost-estimate.v1",
+            "rcp-ndcg.cost-estimate.v1"
+          ],
           "title": "Schema",
           "type": "string"
         },
@@ -502,7 +505,7 @@
       "title": "Run Id"
     },
     "schema": {
-      "const": "rcp-ndcg.run-start.v1",
+      "const": "rcp.run-start.v1",
       "type": "string"
     },
     "state": {
@@ -525,5 +528,5 @@
   ],
   "title": "RunStartResult",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.run-start.v1"
+  "x-rcp-schema": "rcp.run-start.v1"
 }

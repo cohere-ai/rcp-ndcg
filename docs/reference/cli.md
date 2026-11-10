@@ -28,7 +28,7 @@ rcp eval         score       RCP-nDCG, qrel-nDCG and Count-nDCG of rankings unde
                       explain     one query of a run or a saved report: each system's top k with theta, gain and
                                   pass probabilities, and the gaps split into selection and ordering
 rcp results      sinks       list the registered result sinks
-                      export      one rcp-ndcg.result-record.v1 record per system x dataset x metric x cutoff, to a sink
+                      export      one rcp.result-record.v1 record per system x dataset x metric x cutoff, to a sink
 rcp run          start       run a config (a YAML file or a packaged config's name) end to end, here or on a runner
                       resume      continue a run directory; unchanged steps are skipped
                       status      every planned step with its status and judge-window progress, done, usage, jobs
@@ -44,8 +44,8 @@ rcp --version
 ```
 
 `rcp schema show commands --json` prints every command with its help, its flags (type, choices, default,
-whether required or repeatable, help) and its output schema (`rcp-ndcg.command-index.v1`); `--full` prints the whole
-click tree instead (`rcp-ndcg.commands.v1`).
+whether required or repeatable, help) and its output schema (`rcp.command-index.v1`); `--full` prints the whole
+click tree instead (`rcp.commands.v1`).
 
 `run start` takes a run config file or the name of one that ships with the package: `tiny` (the whole pipeline on
 the tiny example with the offline judge), `rejudge_nfcorpus` and `nano_nfcorpus_gpt5`. Relative paths inside a run
@@ -126,8 +126,8 @@ With `--json`, stdout carries exactly one JSON document, and logs and progress g
 `--version` are the exception: they print plain text and exit 0):
 
 ```json
-{"schema": "rcp-ndcg.cli.v1", "command": "eval score", "ok": true,
- "data": {"schema": "rcp-ndcg.eval-score.v1", "summary": [], "per_dataset": [],
+{"schema": "rcp.cli.v1", "command": "eval score", "ok": true,
+ "data": {"schema": "rcp.eval-score.v1", "summary": [], "per_dataset": [],
           "warnings": [{"code": "UNRANKED_QUERIES", "message": "..."}]},
  "warnings": [],
  "meta": {"version": "0.0.1", "elapsed_s": 1.84, "run_dir": null}}

@@ -249,7 +249,7 @@
       "type": "string"
     },
     "schema": {
-      "const": "rcp-ndcg.query-explanation.v1",
+      "const": "rcp.query-explanation.v1",
       "type": "string"
     },
     "systems": {
@@ -287,5 +287,5 @@
   ],
   "title": "ExplainedQuery",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.query-explanation.v1"
+  "x-rcp-schema": "rcp.query-explanation.v1"
 }

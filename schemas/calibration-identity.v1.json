@@ -92,8 +92,11 @@
       "description": "The priors and penalties of the fit, the Bradley-Terry refit's ``bt_l2`` included."
     },
     "schema": {
-      "const": "rcp-ndcg.calibration-identity.v1",
-      "default": "rcp-ndcg.calibration-identity.v1",
+      "default": "rcp.calibration-identity.v1",
+      "enum": [
+        "rcp.calibration-identity.v1",
+        "rcp-ndcg.calibration-identity.v1"
+      ],
       "title": "Schema",
       "type": "string"
     }
@@ -107,5 +110,5 @@
   ],
   "title": "CalibrationIdentity",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-identity.v1"
+  "x-rcp-schema": "rcp.calibration-identity.v1"
 }

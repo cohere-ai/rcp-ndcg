@@ -510,7 +510,7 @@
       "default": null
     },
     "schema": {
-      "const": "rcp-ndcg.eval-score.v1",
+      "const": "rcp.eval-score.v1",
       "type": "string"
     },
     "summary": {
@@ -549,5 +549,5 @@
   ],
   "title": "EvalScoreResult",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.eval-score.v1"
+  "x-rcp-schema": "rcp.eval-score.v1"
 }

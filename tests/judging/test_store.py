@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -198,3 +199,17 @@ def test_a_zero_byte_identity_file_is_absent_not_a_crash(tmp_path: Path) -> None
     assert store.identities() == {}, "the empty file is treated as the store's torn tail"
     store.claim("tournament", {"a": 2}, family)
     assert store.identities()["tournament"]["identity"] == {"a": 2}
+
+
+@pytest.mark.parametrize("prefix", ["rcp", "rcp-ndcg"])
+def test_a_store_reads_under_either_spelling_of_its_schema_id(tmp_path: Path, prefix: str) -> None:
+    """A store written before the rename carries ``rcp-ndcg.*`` ids and one written after carries ``rcp.*``:
+    the reader accepts both, so an existing store still reads."""
+    store = JudgementStore(tmp_path)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store.claim("tournament", {"family": family.model_dump(mode="json")}, family)
+    store.append(_window("r1").model_copy(update={"family_key": family.key}))
+    for path in (store.identity_path, store.path("tournament")):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(re.sub(r'"rcp(?:-ndcg)?\.', f'"{prefix}.', text), encoding="utf-8")
+    assert [judgement.record_id for judgement in JudgementStore(tmp_path).read().judgements] == ["r1"]

@@ -239,8 +239,11 @@
       "description": "Queries per stage, and those calibrated."
     },
     "schema": {
-      "const": "rcp-ndcg.calibration-coverage.v1",
-      "default": "rcp-ndcg.calibration-coverage.v1",
+      "default": "rcp.calibration-coverage.v1",
+      "enum": [
+        "rcp.calibration-coverage.v1",
+        "rcp-ndcg.calibration-coverage.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -283,5 +286,5 @@
   ],
   "title": "CalibrationCoverage",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-coverage.v1"
+  "x-rcp-schema": "rcp.calibration-coverage.v1"
 }

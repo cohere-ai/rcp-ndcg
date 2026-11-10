@@ -1,6 +1,6 @@
 """The run manifest: what happened in a run, to what, at what cost.
 
-One JSON file per run (schema ``rcp-ndcg.run-manifest.v1``), updated as each
+One JSON file per run (schema ``rcp.run-manifest.v1``), updated as each
 step finishes. Per step it records the state, the step's identity (a digest of
 everything that decides its output), the inputs and outputs with content
 hashes, the judge's usage, the timing and, for a judging step, what the judge's
@@ -27,7 +27,7 @@ from rcp.storage import publish
 from rcp.storage.artifacts import ArtifactRef, CodeVersion, code_version
 from rcp.support.identity import hash_payload
 
-MANIFEST_SCHEMA = "rcp-ndcg.run-manifest.v1"
+MANIFEST_SCHEMA = "rcp.run-manifest.v1"
 
 
 def _now() -> datetime:
@@ -108,7 +108,9 @@ class RunManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.run-manifest.v1"] = Field(default=MANIFEST_SCHEMA, alias="schema")
+    schema_name: Literal["rcp.run-manifest.v1", "rcp-ndcg.run-manifest.v1"] = Field(
+        default=MANIFEST_SCHEMA, alias="schema"
+    )
     layout: Literal["rcp-ndcg.run-layout.v1"] = LAYOUT_VERSION
     run_id: str
     created_at: datetime = Field(default_factory=_now)

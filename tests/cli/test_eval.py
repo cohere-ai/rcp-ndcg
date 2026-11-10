@@ -115,7 +115,7 @@ def test_float_grades_are_scored_as_floats(dataset: str, tmp_path: Path) -> None
     document = _invoke("score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg", "--k", "3")
 
     assert document["exit_code"] == 0, document
-    assert document["data"]["schema"] == "rcp-ndcg.eval-score.v1"
+    assert document["data"]["schema"] == "rcp.eval-score.v1"
     dcg = 0.4 + 0.9 / math.log2(3) + 0.1 / 2.0
     ideal = 0.9 + 0.4 / math.log2(3) + 0.1 / 2.0
     assert _summary(document, "qrel_ndcg", 3, "mine") == pytest.approx(dcg / ideal)
@@ -180,7 +180,7 @@ def test_a_calibration_gives_rcp_ndcg_and_a_report_to_compare(scored: dict) -> N
 
     assert scored["data"]["gains_source"] == "calibration"
     assert _summary(scored, "rcp", 10, "reverse") > _summary(scored, "rcp", 10, "forward")
-    assert compared["data"]["schema"] == "rcp-ndcg.comparison.v1"
+    assert compared["data"]["schema"] == "rcp.comparison.v1"
     (pair,) = compared["data"]["pairs"]
     assert (pair["system_a"], pair["system_b"]) == ("forward", "reverse") and pair["delta"] > 0
 
@@ -447,7 +447,7 @@ def test_score_json_is_lean_and_the_full_report_goes_to_out(scored: dict) -> Non
     assert "per_query" not in data
     assert {"summary", "per_dataset", "warnings", "protocol", "inputs", "out"} <= set(data)
     full = json.loads(scored["report"].read_text())
-    assert full["schema"] == "rcp-ndcg.eval-report.v1" and full["per_query"]
+    assert full["schema"] == "rcp.eval-report.v1" and full["per_query"]
     assert full["inputs"]["calibration"] == data["inputs"]["calibration"]
     assert full["inputs"]["split"] == "test" and full["inputs"]["task"] is None
 

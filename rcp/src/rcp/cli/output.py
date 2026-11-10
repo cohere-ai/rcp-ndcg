@@ -1,11 +1,11 @@
-"""The machine-output contract: the ``rcp-ndcg.cli.v1`` envelope that every ``--json`` command prints.
+"""The machine-output contract: the ``rcp.cli.v1`` envelope that every ``--json`` command prints.
 
 With ``--json``, stdout carries exactly one JSON document on every exit path, success or failure, usage errors
 included -- except ``--help`` and ``--version``, which print plain text and exit 0; logs and progress go to
 stderr. Success::
 
-    {"schema": "rcp-ndcg.cli.v1", "command": "data inspect", "ok": true,
-     "data": {"schema": "rcp-ndcg.dataset-summary.v1", ...},
+    {"schema": "rcp.cli.v1", "command": "data inspect", "ok": true,
+     "data": {"schema": "rcp.dataset-summary.v1", ...},
      "warnings": [{"code": "UNREADABLE_RUN", "message": "..."}],
      "meta": {"version": "0.0.1", "elapsed_s": 0.42, "run_dir": null}}
 
@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rcp.errors import ExitCode, RcpNdcgError, WarningCode
 
-CLI_SCHEMA = "rcp-ndcg.cli.v1"
+CLI_SCHEMA = "rcp.cli.v1"
 
 #: The ``error.code`` of a failure: the name of every exit code but success (:class:`~rcp.errors.ExitCode`),
 #: in exit-code order. Spelled out so that type checkers see it; a test keeps it equal to ``ExitCode``.
@@ -76,13 +76,13 @@ class CliEnvelope(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_id: Literal["rcp-ndcg.cli.v1"] = Field(default=CLI_SCHEMA, alias="schema")
+    schema_id: Literal["rcp.cli.v1", "rcp-ndcg.cli.v1"] = Field(default=CLI_SCHEMA, alias="schema")
     command: str = Field(description="The command path without the program name, e.g. 'data inspect'.")
     ok: bool
     data: Any = Field(
         default=None,
         description="The result, present when ok; a command with a result model tags it with its 'schema' id "
-        "(a free-form one, `schema show <name>`, names it in 'x-rcp-ndcg-schema' of its exported schema).",
+        "(a free-form one, `schema show <name>`, names it in 'x-rcp-schema' of its exported schema).",
     )
     error: CliError | None = Field(default=None, description="Present when not ok.")
     warnings: list[CliWarning] = Field(default_factory=list)

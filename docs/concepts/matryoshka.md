@@ -113,7 +113,7 @@ the checkpoint's full width (the configured selection is stripped for that pass)
 <store>/queries_offsets.npy   (query_count + 1,) for a late-interaction store
 ```
 
-The record carries the schema (`rcp-ndcg.embedding-store.v1`), the model, its revision, the recipe, the
+The record carries the schema (`rcp.embedding-store.v1`), the model, its revision, the recipe, the
 digest of the request-shaping fields (prompts, template, budget, shapes), the dataset's document- and
 query-side task instructions when it declares them (the corpus and query vectors were encoded with them,
 the same inputs `retrieval index`/`search` use), the tokenizer and its digest, the

@@ -4,7 +4,7 @@
   "description": "The registered result sinks.",
   "properties": {
     "schema": {
-      "const": "rcp-ndcg.results-sinks.v1",
+      "const": "rcp.results-sinks.v1",
       "type": "string"
     },
     "sinks": {
@@ -22,5 +22,5 @@
   ],
   "title": "ResultsSinks",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.results-sinks.v1"
+  "x-rcp-schema": "rcp.results-sinks.v1"
 }

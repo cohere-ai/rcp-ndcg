@@ -153,7 +153,7 @@
       "type": "string"
     },
     "schema": {
-      "const": "rcp-ndcg.run-list.v1",
+      "const": "rcp.run-list.v1",
       "type": "string"
     }
   },
@@ -164,5 +164,5 @@
   ],
   "title": "RunList",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.run-list.v1"
+  "x-rcp-schema": "rcp.run-list.v1"
 }

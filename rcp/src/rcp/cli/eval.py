@@ -116,7 +116,7 @@ class EvalScoreResult(BaseModel):
     def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """The validation-mode schema, not the serialization one: the wrap serializer's ``dict[str, Any]``
         return type is what pydantic takes for the serialization-mode schema, which made the exported
-        ``rcp-ndcg.eval-score.v1`` an open object with one property (``schema``) and no fields -- an empty
+        ``rcp.eval-score.v1`` an open object with one property (``schema``) and no fields -- an empty
         contract for the output of the main ``--json`` command and of the ``eval_score`` MCP tool. The
         declared fields (nullable, with their defaults) are the contract; the runtime output still drops the
         None ones (:meth:`_present_fields_only`).
@@ -265,7 +265,7 @@ def _score_text(report: EvalScoreResult) -> str:
     "eval score",
     request=EvalScoreRequest,
     result=EvalScoreResult,
-    output_schema="rcp-ndcg.eval-score.v1",
+    output_schema="rcp.eval-score.v1",
     text=_score_text,
 )
 def eval_score(request: EvalScoreRequest) -> EvalScoreResult:
@@ -357,7 +357,7 @@ def _compare_text(comparison: Comparison) -> str:
     "eval compare",
     request=EvalCompareRequest,
     result=Comparison,
-    output_schema="rcp-ndcg.comparison.v1",
+    output_schema="rcp.comparison.v1",
     text=_compare_text,
 )
 def eval_compare(request: EvalCompareRequest) -> Comparison:
@@ -505,7 +505,7 @@ def _calibration(location: str | None) -> Any:
     "eval explain",
     request=EvalExplainRequest,
     result=ExplainedQuery,
-    output_schema="rcp-ndcg.query-explanation.v1",
+    output_schema="rcp.query-explanation.v1",
     text=_explain_text,
 )
 def eval_explain(request: EvalExplainRequest) -> ExplainedQuery:

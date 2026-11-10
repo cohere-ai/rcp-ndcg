@@ -187,5 +187,5 @@
   ],
   "title": "CommandTree",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.commands.v1"
+  "x-rcp-schema": "rcp.commands.v1"
 }

@@ -57,7 +57,7 @@ MAX_GAIN_SHIFT = 0.01
 
 class ExtensionRecord(BaseModel):
     """One document added to a calibration: one line of a calibration's ``extensions.jsonl``
-    (``rcp-ndcg.extension-record.v1``).
+    (``rcp.extension-record.v1``).
 
     Attributes:
         source: ``"scored"`` (from its own rubric answers, items frozen: the posterior mean and SD) or
@@ -75,7 +75,9 @@ class ExtensionRecord(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.extension-record.v1"] = Field(default="rcp-ndcg.extension-record.v1", alias="schema")
+    schema_name: Literal["rcp.extension-record.v1", "rcp-ndcg.extension-record.v1"] = Field(
+        default="rcp.extension-record.v1", alias="schema"
+    )
     source: Literal["scored", "inserted"]
     dataset: str
     query_id: str
@@ -116,7 +118,9 @@ class Extension(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.extension.v1"] = Field(default="rcp-ndcg.extension.v1", alias="schema")
+    schema_name: Literal["rcp.extension.v1", "rcp-ndcg.extension.v1"] = Field(
+        default="rcp.extension.v1", alias="schema"
+    )
     calibration: str
     """The fingerprint of the calibration the records are anchored to."""
     records: tuple[ExtensionRecord, ...]

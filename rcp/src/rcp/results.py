@@ -1,6 +1,6 @@
 """The results-export seam: one versioned record per evaluated row, and the sink registry.
 
-A run, a report or a system's rankings is exported as ``rcp-ndcg.result-record.v1`` records: one record per
+A run, a report or a system's rankings is exported as ``rcp.result-record.v1`` records: one record per
 ``(system, dataset, metric, cutoff)`` row, carrying the run identity, the dataset revision, the scoring
 protocol (qrel gain, tie rule, the pool the ideal comes from) and the artifacts the row was computed from.
 The record is a public contract: a field's meaning or type changes only with a new schema id, and fields are
@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from rcp_core.protocol import Protocol
+from rcp_core.schemas import accepted_schema_ids
 
 from rcp import storage
 from rcp.errors import ConfigError, DataError, MissingInputError
@@ -53,7 +54,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-RESULT_SCHEMA = "rcp-ndcg.result-record.v1"
+RESULT_SCHEMA = "rcp.result-record.v1"
 """The schema id every record carries in its ``schema`` field."""
 
 RESULTS_GROUP = "rcp.results"
@@ -150,7 +151,7 @@ class ResultArtifact(BaseModel):
         role: What the artifact is: rankings, report, manifest, calibration, judgements or log.
         uri: The artifact's location, relative to the run or a URI the exporter owns.
         sha256: The file's SHA-256, or ``None`` (a directory, or a sink that records no hash).
-        schema_name: The artifact's schema id (e.g. ``"rcp-ndcg.eval-report.v1"``), or ``None``.
+        schema_name: The artifact's schema id (e.g. ``"rcp.eval-report.v1"``), or ``None``.
         media_type: The media type, or ``None``.
     """
 
@@ -164,10 +165,10 @@ class ResultArtifact(BaseModel):
 
 
 class ResultRecord(BaseModel):
-    """One exported row: a system's value for a dataset, metric and cutoff (``rcp-ndcg.result-record.v1``).
+    """One exported row: a system's value for a dataset, metric and cutoff (``rcp.result-record.v1``).
 
     Attributes:
-        schema_name: ``"rcp-ndcg.result-record.v1"`` (serialised as ``schema``).
+        schema_name: ``"rcp.result-record.v1"`` (serialised as ``schema``).
         record_id: :func:`record_identity` of the subject, the dataset and the metrics: two records with the
             same id say the same thing, and a protocol difference is part of the id.
         created_at: When the record was built (timezone-aware).
@@ -180,7 +181,9 @@ class ResultRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True, populate_by_name=True, serialize_by_alias=True, extra="forbid")
 
-    schema_name: Literal["rcp-ndcg.result-record.v1"] = Field(default=RESULT_SCHEMA, alias="schema")
+    schema_name: Literal["rcp.result-record.v1", "rcp-ndcg.result-record.v1"] = Field(
+        default=RESULT_SCHEMA, alias="schema"
+    )
     record_id: str
     created_at: datetime
     subject: ResultSubject
@@ -254,7 +257,7 @@ class ResultsSink(abc.ABC):
                 f"got {type(record).__name__}",
                 hint=f"emit a record built by rcp.results (the {RESULT_SCHEMA} schema)",
             )
-        if record.schema_name != RESULT_SCHEMA:
+        if record.schema_name not in accepted_schema_ids("result-record"):
             raise ConfigError(
                 f"the {type(self).name or type(self).__name__} sink does not know schema {record.schema_name!r}; "
                 f"it writes {RESULT_SCHEMA!r}",
@@ -785,8 +788,8 @@ def _run_artifacts(layout: Any) -> list[ResultArtifact]:
     found: list[ResultArtifact] = []
     entries: tuple[tuple[_ArtifactRole, str, str | None], ...] = (
         ("manifest", layout.manifest, MANIFEST_SCHEMA),
-        ("report", layout.metrics, "rcp-ndcg.eval-report.v1"),
-        ("report", layout.comparison, "rcp-ndcg.comparison.v1"),
+        ("report", layout.metrics, "rcp.eval-report.v1"),
+        ("report", layout.comparison, "rcp.comparison.v1"),
         ("rankings", layout.candidates, None),
         ("calibration", layout.calibration, None),
         ("judgements", layout.judgements, None),

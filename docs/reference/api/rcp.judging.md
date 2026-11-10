@@ -27,7 +27,7 @@ class CostEstimate(pydantic.main.BaseModel)
 
 - `requests_min: int`
 
-- `schema_name: Literal['rcp-ndcg.cost-estimate.v1']` = 'rcp-ndcg.cost-estimate.v1'
+- `schema_name: Literal['rcp.cost-estimate.v1', 'rcp-ndcg.cost-estimate.v1']` = 'rcp.cost-estimate.v1'
 
 - `stages: dict[str, rcp.judging.cost.StageEstimate]`
 

@@ -1,4 +1,4 @@
-"""The output contract: one ``rcp-ndcg.cli.v1`` JSON document on stdout for every ``--json`` exit path.
+"""The output contract: one ``rcp.cli.v1`` JSON document on stdout for every ``--json`` exit path.
 
 Also the exit codes of the guard, typed warnings, and where tracebacks go (``--log-file``, or stderr with
 ``-vv``; never by default).
@@ -72,8 +72,8 @@ def test_the_success_envelope_carries_data_and_meta(runner: CliRunner) -> None:
 
     document = _one_document(result.stdout)
     assert result.exit_code == 0
-    assert document["schema"] == "rcp-ndcg.cli.v1"
-    assert document["data"]["schema"] == "rcp-ndcg.schema-list.v1"
+    assert document["schema"] == "rcp.cli.v1"
+    assert document["data"]["schema"] == "rcp.schema-list.v1"
     assert document["meta"]["version"] == __version__
     assert document["meta"]["elapsed_s"] >= 0
     assert "error" not in document

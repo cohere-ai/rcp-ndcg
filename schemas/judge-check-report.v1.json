@@ -145,7 +145,7 @@
       "title": "Revision"
     },
     "schema": {
-      "const": "rcp-ndcg.judge-check-report.v1",
+      "const": "rcp.judge-check-report.v1",
       "type": "string"
     },
     "usage": {
@@ -163,5 +163,5 @@
   ],
   "title": "JudgeCheckReport",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.judge-check-report.v1"
+  "x-rcp-schema": "rcp.judge-check-report.v1"
 }

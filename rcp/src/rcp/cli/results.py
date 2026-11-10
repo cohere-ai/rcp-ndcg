@@ -1,7 +1,7 @@
 """``rcp results``: export evaluation results as versioned records to a sink.
 
 * ``sinks`` -- list the registered sinks (the ``rcp.results`` entry-point group).
-* ``export`` -- build one ``rcp-ndcg.result-record.v1`` record per (system, dataset, metric, cutoff) from a run
+* ``export`` -- build one ``rcp.result-record.v1`` record per (system, dataset, metric, cutoff) from a run
   directory (``--run``) or a report file (``--report``) and hand them to ``--sink`` (``--out`` is the sink's
   URI). A run's reference systems (``candidates``, ``judge``) are left out unless ``--include-reference`` (or
   named with ``--system``). A report file must record its inputs (``eval score --out`` does), because the
@@ -114,7 +114,7 @@ def _report_records(path: str, systems: list[str]) -> list[ResultRecord]:
             role="report",
             uri=path,
             sha256=artifact_ref(path).sha256,
-            schema_name="rcp-ndcg.eval-report.v1",
+            schema_name="rcp.eval-report.v1",
         )
     ]
     return records_from_report(report, dataset=dataset, systems=systems or None, artifacts=artifacts)

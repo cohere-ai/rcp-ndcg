@@ -36,7 +36,7 @@ LAYOUT_VERSION = 'rcp-ndcg.run-layout.v1'
 constant
 
 ```text
-MANIFEST_SCHEMA = 'rcp-ndcg.run-manifest.v1'
+MANIFEST_SCHEMA = 'rcp.run-manifest.v1'
 ```
 
 ## `Mirror`
@@ -157,7 +157,7 @@ class RunManifest(pydantic.main.BaseModel)
 
 - `run_id: str`
 
-- `schema_name: Literal['rcp-ndcg.run-manifest.v1']` = 'rcp-ndcg.run-manifest.v1'
+- `schema_name: Literal['rcp.run-manifest.v1', 'rcp-ndcg.run-manifest.v1']` = 'rcp.run-manifest.v1'
 
 - `status: rcp.runs.manifest.RunStatus` = 'running'
 

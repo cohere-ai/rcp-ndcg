@@ -83,7 +83,7 @@ class FitWarning(BaseModel):
 
 class Diagnostics(BaseModel):
     """``diagnostics.json``: what a calibration's fit reports about itself
-    (``rcp-ndcg.calibration-diagnostics.v1``).
+    (``rcp.calibration-diagnostics.v1``).
 
     Attributes:
         fit: The estimator's own summary.
@@ -93,8 +93,8 @@ class Diagnostics(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.calibration-diagnostics.v1"] = Field(
-        default="rcp-ndcg.calibration-diagnostics.v1", alias="schema"
+    schema_name: Literal["rcp.calibration-diagnostics.v1", "rcp-ndcg.calibration-diagnostics.v1"] = Field(
+        default="rcp.calibration-diagnostics.v1", alias="schema"
     )
     fit: FitDiagnostics
     reliability: FitReliability

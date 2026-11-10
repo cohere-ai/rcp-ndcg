@@ -134,8 +134,11 @@
           "type": "array"
         },
         "schema": {
-          "const": "rcp-ndcg.extension.v1",
-          "default": "rcp-ndcg.extension.v1",
+          "default": "rcp.extension.v1",
+          "enum": [
+            "rcp.extension.v1",
+            "rcp-ndcg.extension.v1"
+          ],
           "title": "Schema",
           "type": "string"
         },
@@ -157,7 +160,7 @@
     },
     "ExtensionRecord": {
       "additionalProperties": false,
-      "description": "One document added to a calibration: one line of a calibration's ``extensions.jsonl``\n(``rcp-ndcg.extension-record.v1``).",
+      "description": "One document added to a calibration: one line of a calibration's ``extensions.jsonl``\n(``rcp.extension-record.v1``).",
       "properties": {
         "calibration": {
           "description": "The fingerprint of the calibration it was computed against.",
@@ -201,8 +204,11 @@
           "type": "string"
         },
         "schema": {
-          "const": "rcp-ndcg.extension-record.v1",
-          "default": "rcp-ndcg.extension-record.v1",
+          "default": "rcp.extension-record.v1",
+          "enum": [
+            "rcp.extension-record.v1",
+            "rcp-ndcg.extension-record.v1"
+          ],
           "title": "Schema",
           "type": "string"
         },
@@ -250,7 +256,7 @@
       "title": "Out"
     },
     "schema": {
-      "const": "rcp-ndcg.extension-result.v1",
+      "const": "rcp.extension-result.v1",
       "type": "string"
     }
   },
@@ -261,5 +267,5 @@
   ],
   "title": "ExtensionResult",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.extension-result.v1"
+  "x-rcp-schema": "rcp.extension-result.v1"
 }

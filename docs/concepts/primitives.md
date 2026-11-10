@@ -164,7 +164,7 @@ refused.
 ## What is written
 
 `score_documents` and `insert_documents` never modify the calibration. They return
-an `Extension` (schema `rcp-ndcg.extension.v1`); `calibration.extended(extension)`
+an `Extension` (schema `rcp.extension.v1`); `calibration.extended(extension)`
 is a new, complete calibration that `save` writes like any other
 (`rcp eval score --calibration` reads it):
 

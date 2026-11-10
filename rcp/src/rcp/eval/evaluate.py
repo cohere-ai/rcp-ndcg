@@ -140,7 +140,7 @@ class EvalReport(BaseModel):
     """The result of :func:`evaluate`.
 
     Attributes:
-        schema_name: ``"rcp-ndcg.eval-report.v1"`` (serialised as ``schema``).
+        schema_name: ``"rcp.eval-report.v1"`` (serialised as ``schema``).
         protocol: The scoring protocol every value was computed under.
         gains_source: Where the RCP gains came from: ``"gains"`` (passed in), ``"calibration"`` (its ``gains()``),
             ``"dataset"`` (the released gains), or ``"none"`` (RCP-nDCG not computed).
@@ -155,7 +155,9 @@ class EvalReport(BaseModel):
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
-    schema_name: Literal["rcp-ndcg.eval-report.v1"] = Field(default="rcp-ndcg.eval-report.v1", alias="schema")
+    schema_name: Literal["rcp.eval-report.v1", "rcp-ndcg.eval-report.v1"] = Field(
+        default="rcp.eval-report.v1", alias="schema"
+    )
     protocol: Protocol
     gains_source: GainsSource
     metrics: list[MetricName]

@@ -21,7 +21,7 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.results-export.v1",
+      "const": "rcp.results-export.v1",
       "type": "string"
     },
     "sink": {
@@ -36,5 +36,5 @@
   ],
   "title": "ResultsExport",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.results-export.v1"
+  "x-rcp-schema": "rcp.results-export.v1"
 }

@@ -87,7 +87,9 @@ class Comparison(BaseModel):
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
-    schema_name: Literal["rcp-ndcg.comparison.v1"] = Field(default="rcp-ndcg.comparison.v1", alias="schema")
+    schema_name: Literal["rcp.comparison.v1", "rcp-ndcg.comparison.v1"] = Field(
+        default="rcp.comparison.v1", alias="schema"
+    )
     metric: MetricName
     k: int
     alpha: float

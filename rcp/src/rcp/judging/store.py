@@ -3,8 +3,8 @@
 Layout of a store directory::
 
     <out>/
-      identity.json      {"schema": "rcp-ndcg.judgement-store.v1", "stages": {stage: {...}}}
-      tournament.jsonl   one Judgement per line (schema rcp-ndcg.judgement.v1)
+      identity.json      {"schema": "rcp.judgement-store.v1", "stages": {stage: {...}}}
+      tournament.jsonl   one Judgement per line (schema rcp.judgement.v1)
       rubric.jsonl
       preprocessing.jsonl  every text cut the judging passes made: each distinct load-time cut of a
                            document (doc_policy) once, and each window presentation shortened to
@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from rcp_core.schemas import Judgement, JudgementFamily, JudgementSet, Stage, supersedes
+from rcp_core.schemas import Judgement, JudgementFamily, JudgementSet, Stage, accepted_schema_ids, supersedes
 
 from rcp.errors import DataError, IdentityError
 from rcp.judging.client import EngineInfo
@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-STORE_SCHEMA = "rcp-ndcg.judgement-store.v1"
+STORE_SCHEMA = "rcp.judgement-store.v1"
 IDENTITY_FILE = "identity.json"
 SUPERSEDED_DIR = ".superseded"
 #: The directory of the prompts' texts, by hash.
@@ -105,7 +105,7 @@ class StageEntry(BaseModel):
 
 
 class StoreIdentity(BaseModel):
-    """``identity.json`` of a judgement store (``rcp-ndcg.judgement-store.v1``): an entry per stage it holds.
+    """``identity.json`` of a judgement store (``rcp.judgement-store.v1``): an entry per stage it holds.
 
     Attributes:
         stages: ``{stage: StageEntry}`` for each stage written into the store.
@@ -113,7 +113,9 @@ class StoreIdentity(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.judgement-store.v1"] = Field(default=STORE_SCHEMA, alias="schema")
+    schema_name: Literal["rcp.judgement-store.v1", "rcp-ndcg.judgement-store.v1"] = Field(
+        default=STORE_SCHEMA, alias="schema"
+    )
     stages: dict[Stage, StageEntry]
 
 
@@ -147,7 +149,7 @@ class JudgementStore:
             return {}
         payload = json.loads(self.identity_path.read_text(encoding="utf-8"))
         tag = payload.get("schema") if isinstance(payload, dict) else None
-        if tag != STORE_SCHEMA:
+        if tag not in accepted_schema_ids("judgement-store"):
             raise DataError(
                 f"{self.identity_path} is not a judgement store identity ({tag!r})",
                 hint="point at the directory judge() wrote",

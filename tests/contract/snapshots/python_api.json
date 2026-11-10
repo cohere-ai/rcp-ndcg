@@ -273,10 +273,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.comparison.v1",
+            "default": "rcp.comparison.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.comparison.v1']"
+            "type": "Literal['rcp.comparison.v1', 'rcp-ndcg.comparison.v1']"
           },
           "seed": {
             "alias": null,
@@ -383,10 +383,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.cost-estimate.v1",
+            "default": "rcp.cost-estimate.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.cost-estimate.v1']"
+            "type": "Literal['rcp.cost-estimate.v1', 'rcp-ndcg.cost-estimate.v1']"
           },
           "stages": {
             "alias": null,
@@ -818,10 +818,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.eval-report.v1",
+            "default": "rcp.eval-report.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.eval-report.v1']"
+            "type": "Literal['rcp.eval-report.v1', 'rcp-ndcg.eval-report.v1']"
           },
           "summary": {
             "alias": null,
@@ -992,10 +992,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.extension.v1",
+            "default": "rcp.extension.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.extension.v1']"
+            "type": "Literal['rcp.extension.v1', 'rcp-ndcg.extension.v1']"
           },
           "skipped": {
             "alias": null,
@@ -2011,10 +2011,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.result-record.v1",
+            "default": "rcp.result-record.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.result-record.v1']"
+            "type": "Literal['rcp.result-record.v1', 'rcp-ndcg.result-record.v1']"
           },
           "subject": {
             "alias": null,
@@ -3903,10 +3903,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.extension.v1",
+            "default": "rcp.extension.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.extension.v1']"
+            "type": "Literal['rcp.extension.v1', 'rcp-ndcg.extension.v1']"
           },
           "skipped": {
             "alias": null,
@@ -3984,10 +3984,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.extension-record.v1",
+            "default": "rcp.extension-record.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.extension-record.v1']"
+            "type": "Literal['rcp.extension-record.v1', 'rcp-ndcg.extension-record.v1']"
           },
           "source": {
             "alias": null,
@@ -4822,10 +4822,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.embedding-store.v1",
+            "default": "rcp.embedding-store.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.embedding-store.v1']"
+            "type": "Literal['rcp.embedding-store.v1', 'rcp-ndcg.embedding-store.v1']"
           },
           "tokenizer": {
             "alias": null,
@@ -9577,10 +9577,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.comparison.v1",
+            "default": "rcp.comparison.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.comparison.v1']"
+            "type": "Literal['rcp.comparison.v1', 'rcp-ndcg.comparison.v1']"
           },
           "seed": {
             "alias": null,
@@ -9804,10 +9804,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.eval-report.v1",
+            "default": "rcp.eval-report.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.eval-report.v1']"
+            "type": "Literal['rcp.eval-report.v1', 'rcp-ndcg.eval-report.v1']"
           },
           "summary": {
             "alias": null,
@@ -14416,10 +14416,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.cost-estimate.v1",
+            "default": "rcp.cost-estimate.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.cost-estimate.v1']"
+            "type": "Literal['rcp.cost-estimate.v1', 'rcp-ndcg.cost-estimate.v1']"
           },
           "stages": {
             "alias": null,
@@ -15874,7 +15874,7 @@
       "RESULT_SCHEMA": {
         "kind": "constant",
         "type": "str",
-        "value": "rcp-ndcg.result-record.v1"
+        "value": "rcp.result-record.v1"
       },
       "ResultArtifact": {
         "bases": [
@@ -16107,10 +16107,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.result-record.v1",
+            "default": "rcp.result-record.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.result-record.v1']"
+            "type": "Literal['rcp.result-record.v1', 'rcp-ndcg.result-record.v1']"
           },
           "subject": {
             "alias": null,
@@ -17537,10 +17537,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.index.v1",
+            "default": "rcp.index.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.index.v1']"
+            "type": "Literal['rcp.index.v1', 'rcp-ndcg.index.v1']"
           }
         },
         "frozen": true,
@@ -21782,7 +21782,7 @@
       "MANIFEST_SCHEMA": {
         "kind": "constant",
         "type": "str",
-        "value": "rcp-ndcg.run-manifest.v1"
+        "value": "rcp.run-manifest.v1"
       },
       "Mirror": {
         "bases": [],
@@ -22563,10 +22563,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.run-manifest.v1",
+            "default": "rcp.run-manifest.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.run-manifest.v1']"
+            "type": "Literal['rcp.run-manifest.v1', 'rcp-ndcg.run-manifest.v1']"
           },
           "status": {
             "alias": null,
@@ -23775,10 +23775,10 @@
           },
           "schema_name": {
             "alias": "schema",
-            "default": "rcp-ndcg.judgement.v1",
+            "default": "rcp.judgement.v1",
             "frozen": false,
             "required": false,
-            "type": "Literal['rcp-ndcg.judgement.v1']"
+            "type": "Literal['rcp.judgement.v1', 'rcp-ndcg.judgement.v1']"
           },
           "stage": {
             "alias": null,

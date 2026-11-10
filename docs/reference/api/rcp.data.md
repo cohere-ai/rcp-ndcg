@@ -131,7 +131,7 @@ class EmbeddingStore(pydantic.main.BaseModel)
 
 - `revision: str | None` = None
 
-- `schema_name: Literal['rcp-ndcg.embedding-store.v1']` = 'rcp-ndcg.embedding-store.v1'
+- `schema_name: Literal['rcp.embedding-store.v1', 'rcp-ndcg.embedding-store.v1']` = 'rcp.embedding-store.v1'
 
 - `tokenizer: str | None` = None
 

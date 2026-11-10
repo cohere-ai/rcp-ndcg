@@ -304,7 +304,7 @@ class TestSuites:
 
         data = json.loads(result.stdout)["data"]
         assert result.exit_code == 0, result.output
-        assert data["schema"] == "rcp-ndcg.dataset-summary.v1"
+        assert data["schema"] == "rcp.dataset-summary.v1"
         assert (data["queries"], data["judged_documents"], data["positive_labels"], data["excluded"]) == (2, 3, 2, 1)
         assert data["labels"] == {"1": 1, "2": 1}
         assert data["pool_depth"] == {"min": 1.0, "mean": 2.0, "max": 3.0}

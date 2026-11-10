@@ -54,7 +54,7 @@ RESULTS_GROUP = 'rcp.results'
 constant — The schema id every record carries in its ``schema`` field.
 
 ```text
-RESULT_SCHEMA = 'rcp-ndcg.result-record.v1'
+RESULT_SCHEMA = 'rcp.result-record.v1'
 ```
 
 ## `ResultArtifact`
@@ -125,7 +125,7 @@ class ResultMetric(pydantic.main.BaseModel)
 
 ## `ResultRecord`
 
-pydantic_model — One exported row: a system's value for a dataset, metric and cutoff (``rcp-ndcg.result-record.v1``).
+pydantic_model — One exported row: a system's value for a dataset, metric and cutoff (``rcp.result-record.v1``).
 
 ```text
 class ResultRecord(pydantic.main.BaseModel)
@@ -143,7 +143,7 @@ class ResultRecord(pydantic.main.BaseModel)
 
 - `record_id: str`
 
-- `schema_name: Literal['rcp-ndcg.result-record.v1']` = 'rcp-ndcg.result-record.v1'
+- `schema_name: Literal['rcp.result-record.v1', 'rcp-ndcg.result-record.v1']` = 'rcp.result-record.v1'
 
 - `subject: rcp.results.ResultSubject`
 

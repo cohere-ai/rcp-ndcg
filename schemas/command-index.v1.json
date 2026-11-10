@@ -122,5 +122,5 @@
   ],
   "title": "CommandIndex",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.command-index.v1"
+  "x-rcp-schema": "rcp.command-index.v1"
 }

@@ -65,7 +65,7 @@ def test_the_read_only_tools_mirror_their_commands() -> None:
     assert tools["estimate"]["inputSchema"]["required"] == ["config"]
     assert tools["describe"]["inputSchema"]["properties"] == {}
     assert tools["run_show"]["inputSchema"]["required"] == ["run"]
-    assert tools["run_list"]["outputSchema"]["x-rcp-ndcg-schema"] == "rcp-ndcg.run-list.v1"
+    assert tools["run_list"]["outputSchema"]["x-rcp-schema"] == "rcp.run-list.v1"
 
 
 def test_eval_score_writes_out_so_it_is_not_read_only() -> None:
@@ -85,9 +85,9 @@ def test_a_call_returns_structured_content(run_dir: Path) -> None:
     assert listed["isError"] is False
     assert listed["structuredContent"]["runs"][0]["run_id"] == run_dir.name
     assert json.loads(listed["content"][0]["text"]) == listed["structuredContent"]
-    assert shown["structuredContent"]["schema"] == "rcp-ndcg.run-summary.v1"
+    assert shown["structuredContent"]["schema"] == "rcp.run-summary.v1"
     described = mcp.call_tool("describe")["structuredContent"]
-    assert described["schema"] == "rcp-ndcg.command-index.v1"
+    assert described["schema"] == "rcp.command-index.v1"
     flags = {flag["flag"]: flag for flag in described["commands"]["eval score"]["flags"]}
     assert flags["--rankings"]["required"] and flags["--rankings"]["help"]
     assert flags["--per-query"]["type"] == "boolean"

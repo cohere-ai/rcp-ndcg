@@ -466,9 +466,12 @@
       "description": "The scoring protocol every value was computed under."
     },
     "schema": {
-      "const": "rcp-ndcg.eval-report.v1",
-      "default": "rcp-ndcg.eval-report.v1",
-      "description": "``\"rcp-ndcg.eval-report.v1\"`` (serialised as ``schema``).",
+      "default": "rcp.eval-report.v1",
+      "description": "``\"rcp.eval-report.v1\"`` (serialised as ``schema``).",
+      "enum": [
+        "rcp.eval-report.v1",
+        "rcp-ndcg.eval-report.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -501,5 +504,5 @@
   ],
   "title": "EvalReport",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.eval-report.v1"
+  "x-rcp-schema": "rcp.eval-report.v1"
 }

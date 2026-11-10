@@ -37,7 +37,7 @@ class Comparison(pydantic.main.BaseModel)
 
 - `pairs: list[rcp.eval.compare.PairComparison]`
 
-- `schema_name: Literal['rcp-ndcg.comparison.v1']` = 'rcp-ndcg.comparison.v1'
+- `schema_name: Literal['rcp.comparison.v1', 'rcp-ndcg.comparison.v1']` = 'rcp.comparison.v1'
 
 - `seed: int`
 
@@ -63,7 +63,7 @@ class CostEstimate(pydantic.main.BaseModel)
 
 - `requests_min: int`
 
-- `schema_name: Literal['rcp-ndcg.cost-estimate.v1']` = 'rcp-ndcg.cost-estimate.v1'
+- `schema_name: Literal['rcp.cost-estimate.v1', 'rcp-ndcg.cost-estimate.v1']` = 'rcp.cost-estimate.v1'
 
 - `stages: dict[str, rcp.judging.cost.StageEstimate]`
 
@@ -161,7 +161,7 @@ class EvalReport(pydantic.main.BaseModel)
 
 - `protocol: rcp_core.protocol.Protocol`
 
-- `schema_name: Literal['rcp-ndcg.eval-report.v1']` = 'rcp-ndcg.eval-report.v1'
+- `schema_name: Literal['rcp.eval-report.v1', 'rcp-ndcg.eval-report.v1']` = 'rcp.eval-report.v1'
 
 - `summary: list[rcp.eval.evaluate.SummaryValue]`
 
@@ -181,7 +181,7 @@ class Extension(pydantic.main.BaseModel)
 
 - `records: tuple[rcp.calibration.extend.ExtensionRecord, Ellipsis]`
 
-- `schema_name: Literal['rcp-ndcg.extension.v1']` = 'rcp-ndcg.extension.v1'
+- `schema_name: Literal['rcp.extension.v1', 'rcp-ndcg.extension.v1']` = 'rcp.extension.v1'
 
 - `skipped: tuple[str, Ellipsis]` = []
 
@@ -383,7 +383,7 @@ class ResultMetric(pydantic.main.BaseModel)
 
 ## `ResultRecord`
 
-pydantic_model — One exported row: a system's value for a dataset, metric and cutoff (``rcp-ndcg.result-record.v1``).
+pydantic_model — One exported row: a system's value for a dataset, metric and cutoff (``rcp.result-record.v1``).
 
 ```text
 class ResultRecord(pydantic.main.BaseModel)
@@ -401,7 +401,7 @@ class ResultRecord(pydantic.main.BaseModel)
 
 - `record_id: str`
 
-- `schema_name: Literal['rcp-ndcg.result-record.v1']` = 'rcp-ndcg.result-record.v1'
+- `schema_name: Literal['rcp.result-record.v1', 'rcp-ndcg.result-record.v1']` = 'rcp.result-record.v1'
 
 - `subject: rcp.results.ResultSubject`
 

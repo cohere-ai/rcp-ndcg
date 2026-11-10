@@ -154,4 +154,4 @@ def test_the_conformance_names_the_schema_it_emits(monkeypatch: pytest.MonkeyPat
             self._known(record)
 
     results_conformance(Strict(), registered=False)
-    assert RESULT_SCHEMA == "rcp-ndcg.result-record.v1"
+    assert RESULT_SCHEMA == "rcp.result-record.v1"

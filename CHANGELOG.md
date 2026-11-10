@@ -34,9 +34,15 @@ incompatibly, independently of the package version. All four distributions carry
   package and the `rcp-ndcg` command are renamed, the four entry-point groups are `rcp.runners`, `rcp.readers`,
   `rcp.writers` and `rcp.results`, and `python -m rcp_ndcg.cli` is `python -m rcp.cli`. There is no compatibility
   shim.
-  The artifact tags (`rcp-ndcg.<name>.v1`), the extension keys (`x-rcp-ndcg-*`), the public dataset ids, the
-  bucket prefix and the repository URL keep the spellings they shipped with, and so do the historical entries
-  below.
+  The artifact tags move with it (`rcp.<name>.v1`, below); the emulator's extension keys
+  (`x-rcp-ndcg-emulator-*`), the public dataset ids, the bucket prefix and the repository URL keep the spellings
+  they shipped with, and so do the historical entries below.
+- **An artifact's schema id is `rcp.<name>.v1`**: `rcp.schemas.SchemaEntry.schema_id` returns it, a payload carries
+  it in its `schema` field, and the exported schema's header key is `x-rcp-schema` (was `x-rcp-ndcg-schema`).
+  **Every reader accepts both spellings**: each artifact written before the rename carries `rcp-ndcg.<name>.v1` --
+  every existing run manifest, judgement store, calibration directory, index and result record -- and a reader
+  that knew only the new id would reject all of them. New artifacts carry the new id only: the migration is
+  read-compatible and write-forward, so no file is rewritten and the exported schemas admit both spellings.
 - **The serving distribution is `rcp-vllm` and its package is `rcp_vllm`**: the `rcp-ndcg-vllm` distribution,
   the `rcp_ndcg_vllm` package, the `rcp-ndcg-vllm` console and the `vllm.general_plugins` entry point are renamed,
   and the recipes declare `serve.plugin: rcp-vllm`. **The behaviour fingerprint moves for every recipe that

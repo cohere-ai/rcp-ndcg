@@ -57,7 +57,7 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.store-build.v1",
+      "const": "rcp.store-build.v1",
       "type": "string"
     },
     "store": {
@@ -79,5 +79,5 @@
   ],
   "title": "StoreBuild",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.store-build.v1"
+  "x-rcp-schema": "rcp.store-build.v1"
 }

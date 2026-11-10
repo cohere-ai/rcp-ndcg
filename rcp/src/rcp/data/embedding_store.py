@@ -34,7 +34,7 @@ from rcp.data.mrl import MrlKind, MrlProjection
 from rcp.errors import DataError, MissingInputError
 from rcp.storage import exists, join, publish_bytes, read_bytes, read_text
 
-STORE_SCHEMA = "rcp-ndcg.embedding-store.v1"
+STORE_SCHEMA = "rcp.embedding-store.v1"
 """The store record's schema id (carried in its ``schema`` field)."""
 
 
@@ -85,7 +85,7 @@ class EmbeddingStore(BaseModel):
     """A full-width embedding store's record: what is stored and the provenance of the vectors.
 
     Attributes:
-        schema_name: ``rcp-ndcg.embedding-store.v1`` (the ``schema`` field).
+        schema_name: ``rcp.embedding-store.v1`` (the ``schema`` field).
         path: The store directory.
         dataset: The dataset the corpus and queries were read from (its name, as the index records it).
         document_instruction: The dataset's document-side task instruction, when it declares one (the
@@ -119,7 +119,9 @@ class EmbeddingStore(BaseModel):
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
-    schema_name: Literal["rcp-ndcg.embedding-store.v1"] = Field(default=STORE_SCHEMA, alias="schema")  # type: ignore[assignment]
+    schema_name: Literal["rcp.embedding-store.v1", "rcp-ndcg.embedding-store.v1"] = Field(
+        default=STORE_SCHEMA, alias="schema"
+    )  # type: ignore[assignment]
     path: str = Field(min_length=1)
     dataset: str
     document_instruction: str | None = None

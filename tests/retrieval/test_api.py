@@ -461,7 +461,7 @@ def test_an_index_from_the_previous_release_is_a_config_error_with_the_hint(data
     (root / "index.json").write_text(
         json.dumps(
             {
-                "schema": "rcp-ndcg.index.v1",
+                "schema": "rcp.index.v1",
                 "path": str(root),
                 "dataset": "beir",
                 "retriever": {"kind": "dense", "encoder": {"provider": "local", "model": "m", "pooling": "last"}},
@@ -484,7 +484,7 @@ def test_retrieve_rebuilds_an_index_of_an_unreadable_shape(dataset, tmp_path: Pa
     (root / "index.json").write_text(
         json.dumps(
             {
-                "schema": "rcp-ndcg.index.v1",
+                "schema": "rcp.index.v1",
                 "path": str(root),
                 "dataset": "beir",
                 "retriever": {"kind": "dense", "encoder": {"provider": "local", "model": "m", "pooling": "last"}},

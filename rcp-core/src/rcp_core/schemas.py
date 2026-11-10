@@ -29,8 +29,26 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from rcp_core._hashing import hash_payload, short
 from rcp_core.records import DocumentTitle
 
+#: The prefix of a schema id: a payload carries ``rcp.<name>.v1`` in its ``schema`` field.
+SCHEMA_ID_PREFIX = "rcp."
+
+#: The prefix of the same id before the rename, ``rcp-ndcg.<name>.v1``. Every artifact written before the rename
+#: carries it, so a reader accepts both spellings and a writer emits :data:`SCHEMA_ID_PREFIX`.
+LEGACY_SCHEMA_ID_PREFIX = "rcp-ndcg."
+
+
+def schema_id(name: str, version: str = "v1") -> str:
+    """The id of schema *name*: ``rcp.<name>.<version>``, the value a payload carries in its ``schema`` field."""
+    return f"{SCHEMA_ID_PREFIX}{name}.{version}"
+
+
+def accepted_schema_ids(name: str, version: str = "v1") -> tuple[str, str]:
+    """The two spellings a reader accepts for schema *name*: the current id, then the pre-rename one."""
+    return (schema_id(name, version), f"{LEGACY_SCHEMA_ID_PREFIX}{name}.{version}")
+
+
 #: Schema id carried by every judgement record (``"schema"`` in JSON).
-JUDGEMENT_SCHEMA = "rcp-ndcg.judgement.v1"
+JUDGEMENT_SCHEMA = "rcp.judgement.v1"  # = schema_id("judgement")
 
 #: The two judging stages: Stage A (listwise tournament) and Stage B (rubric criteria C1..C5).
 Stage = Literal["tournament", "rubric"]
@@ -390,7 +408,7 @@ def judgement_record_id(
 
 
 class Judgement(BaseModel):
-    """One judge call's parsed observation (schema ``rcp-ndcg.judgement.v1``).
+    """One judge call's parsed observation (schema ``rcp.judgement.v1``).
 
     A valid rubric judgement carries a non-empty criteria mapping, 0 or 1 per verdict, on every placement;
     that the keys are exactly the family's ``C1..C<num_criteria>`` is checked at fit time
@@ -426,7 +444,7 @@ class Judgement(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", validate_by_name=True, serialize_by_alias=True)
 
-    schema_name: Literal["rcp-ndcg.judgement.v1"] = Field(default=JUDGEMENT_SCHEMA, alias="schema")
+    schema_name: Literal["rcp.judgement.v1", "rcp-ndcg.judgement.v1"] = Field(default=JUDGEMENT_SCHEMA, alias="schema")
     record_id: str
     dataset: str
     query_id: str

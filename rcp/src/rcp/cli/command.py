@@ -9,7 +9,7 @@ A command is declared once::
 
 The decorator builds the click options from the request model's fields (a flag is a field, so the MCP input
 schema is the same model), adds ``--json``, calls the function, renders the result as text or as the
-``rcp-ndcg.cli.v1`` envelope (:mod:`rcp.cli.output`), and maps every exception through
+``rcp.cli.v1`` envelope (:mod:`rcp.cli.output`), and maps every exception through
 :func:`rcp.errors.classify` onto a typed error and its exit code. The declaration is kept as a
 :class:`CommandSpec` on the click command (``.spec``); :func:`execute` runs it for the CLI and for the MCP
 server alike, and :func:`rcp.cli.introspect.command_specs` collects them all.
@@ -54,7 +54,7 @@ class CommandSpec:
         request: The pydantic model of its inputs; its fields are the flags and the MCP input schema.
         result: The pydantic model of its output, or ``None`` for a free-form JSON document.
         handler: ``handler(request) -> result``.
-        output_schema: The id of the JSON Schema that ``data`` conforms to (``"rcp-ndcg.run-list.v1"``).
+        output_schema: The id of the JSON Schema that ``data`` conforms to (``"rcp.run-list.v1"``).
         read_only: Whether the call leaves no artifacts behind.
         summary: The one-line description (help text, MCP tool description).
     """
@@ -80,7 +80,7 @@ class Outcome:
     elapsed_s: float = 0.0
 
     def document(self) -> dict[str, Any]:
-        """The ``rcp-ndcg.cli.v1`` envelope of this outcome."""
+        """The ``rcp.cli.v1`` envelope of this outcome."""
         if self.error is not None:
             return error_document(self.command, self.error, warnings=self.warnings, elapsed_s=self.elapsed_s)
         run_dir = self.data.get("run_dir") if isinstance(self.data, dict) else None
@@ -290,7 +290,7 @@ def command(
     if output_schema is None:
         if result is None:
             raise ValueError(f"{name}: a command without a result model needs an explicit output_schema")
-        output_schema = f"rcp-ndcg.{schema_name(result)}.v1"
+        output_schema = f"rcp.{schema_name(result)}.v1"
     resolved_schema = output_schema
 
     def decorator(handler: Callable[[Any], Any]) -> click.Command:
@@ -305,7 +305,7 @@ def command(
         )
         params = _params(request, positional=positional, envvars=envvars or {}, hidden=hidden_fields)
         params.append(
-            click.Option(["--json", "as_json"], is_flag=True, help="Print one rcp-ndcg.cli.v1 JSON document on stdout.")
+            click.Option(["--json", "as_json"], is_flag=True, help="Print one rcp.cli.v1 JSON document on stdout.")
         )
 
         def callback(as_json: bool, **values: Any) -> None:

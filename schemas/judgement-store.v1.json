@@ -352,11 +352,14 @@
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judgement-store.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "``identity.json`` of a judgement store (``rcp-ndcg.judgement-store.v1``): an entry per stage it holds.",
+  "description": "``identity.json`` of a judgement store (``rcp.judgement-store.v1``): an entry per stage it holds.",
   "properties": {
     "schema": {
-      "const": "rcp-ndcg.judgement-store.v1",
-      "default": "rcp-ndcg.judgement-store.v1",
+      "default": "rcp.judgement-store.v1",
+      "enum": [
+        "rcp.judgement-store.v1",
+        "rcp-ndcg.judgement-store.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -380,5 +383,5 @@
   ],
   "title": "StoreIdentity",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.judgement-store.v1"
+  "x-rcp-schema": "rcp.judgement-store.v1"
 }

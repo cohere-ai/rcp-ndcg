@@ -92,7 +92,7 @@ class Index(BaseModel):
 
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
-    schema_name: Literal["rcp-ndcg.index.v1"] = Field(default="rcp-ndcg.index.v1", alias="schema")
+    schema_name: Literal["rcp.index.v1", "rcp-ndcg.index.v1"] = Field(default="rcp.index.v1", alias="schema")
     path: str
     dataset: str
     retriever: RetrieverConfig

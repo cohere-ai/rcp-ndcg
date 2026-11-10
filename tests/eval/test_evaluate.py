@@ -370,7 +370,7 @@ def test_bad_arguments_are_config_errors() -> None:
 def test_the_report_serialises_and_tabulates(report: EvalReport) -> None:
     payload = json.loads(report.to_json())
 
-    assert payload["schema"] == "rcp-ndcg.eval-report.v1"
+    assert payload["schema"] == "rcp.eval-report.v1"
     assert EvalReport.model_validate(payload).model_dump() == report.model_dump()
     assert len(report.to_pandas()) == 3 * 6 * 2 * 2
     assert list(report.to_pandas("summary").columns)[:4] == ["system", "metric", "k", "value"]

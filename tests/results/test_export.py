@@ -129,7 +129,7 @@ def test_a_callable_subject_is_called_per_system(report: EvalReport) -> None:
 def test_artifacts_and_provenance_travel_unchanged(report: EvalReport) -> None:
     from rcp.results import ResultArtifact
 
-    artifact = ResultArtifact(role="report", uri="report.json", schema_name="rcp-ndcg.eval-report.v1")
+    artifact = ResultArtifact(role="report", uri="report.json", schema_name="rcp.eval-report.v1")
     records = records_from_report(report, artifacts=[artifact], provenance={"code": "x"}, created_at=CREATED)
 
     assert all(record.artifacts == [artifact] for record in records)

@@ -21,7 +21,7 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.index-build.v1",
+      "const": "rcp.index-build.v1",
       "type": "string"
     }
   },
@@ -34,5 +34,5 @@
   ],
   "title": "IndexBuild",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.index-build.v1"
+  "x-rcp-schema": "rcp.index-build.v1"
 }

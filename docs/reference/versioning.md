@@ -122,8 +122,10 @@ reader refuses a tag it does not know. Within one `v1`, fields are only ever add
 reader of the first `v1` keeps reading later `v1` records; a change to an existing field's meaning or type is a
 new tag, never a silent reinterpretation. The rule, spelled out for the exported results, is on
 [the results record](results-record.md); it holds for the run manifest and layout
-(`rcp-ndcg.run-manifest.v1`, `rcp-ndcg.run-layout.v1`), the judgement store
-(`rcp-ndcg.judgement-store.v1`), the calibration (`rcp-ndcg.calibration.v1`) and every other exported schema.
+(`rcp.run-manifest.v1`, `rcp-ndcg.run-layout.v1`), the judgement store
+(`rcp.judgement-store.v1`), the calibration (`rcp.calibration.v1`) and every other exported schema. An artifact written before the rename carries the pre-rename spelling
+(`rcp-ndcg.<name>.v1`): every reader accepts both spellings, and every artifact written now carries
+`rcp.<name>.v1`.
 `rcp schema export --out DIR` writes them all; the repository's `schemas/` is that output, committed, and
 `tests/contract` pins it byte for byte.
 

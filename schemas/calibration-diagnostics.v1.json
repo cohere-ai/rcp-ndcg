@@ -380,7 +380,7 @@
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-diagnostics.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "``diagnostics.json``: what a calibration's fit reports about itself\n(``rcp-ndcg.calibration-diagnostics.v1``).",
+  "description": "``diagnostics.json``: what a calibration's fit reports about itself\n(``rcp.calibration-diagnostics.v1``).",
   "properties": {
     "fit": {
       "$ref": "#/$defs/FitDiagnostics",
@@ -391,8 +391,11 @@
       "description": "Predicted against observed verdicts."
     },
     "schema": {
-      "const": "rcp-ndcg.calibration-diagnostics.v1",
-      "default": "rcp-ndcg.calibration-diagnostics.v1",
+      "default": "rcp.calibration-diagnostics.v1",
+      "enum": [
+        "rcp.calibration-diagnostics.v1",
+        "rcp-ndcg.calibration-diagnostics.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -411,5 +414,5 @@
   ],
   "title": "Diagnostics",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-diagnostics.v1"
+  "x-rcp-schema": "rcp.calibration-diagnostics.v1"
 }

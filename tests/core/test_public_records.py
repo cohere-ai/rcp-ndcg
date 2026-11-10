@@ -202,7 +202,7 @@ def test_a_placement_carries_one_shape_not_both() -> None:
 def test_judgement_json_round_trip_carries_the_schema_id() -> None:
     judgement = _rubric()
     payload = judgement.model_dump_json()
-    assert '"schema":"rcp-ndcg.judgement.v1"' in payload
+    assert '"schema":"rcp.judgement.v1"' in payload
     assert Judgement.model_validate_json(payload) == judgement
 
 

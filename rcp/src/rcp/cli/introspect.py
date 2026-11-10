@@ -4,9 +4,9 @@ Two views of one tree:
 
 * :func:`command_index` -- the compact view ``rcp schema show commands`` prints and the MCP ``describe`` tool
   returns: each leaf command with its help, its flags (type, choices, default, whether required or repeatable,
-  help) and its output schema (schema ``rcp-ndcg.command-index.v1``).
+  help) and its output schema (schema ``rcp.command-index.v1``).
 * :func:`describe_commands` -- the full click tree (``schema show commands --full``, schema
-  ``rcp-ndcg.commands.v1``), which the public-surface snapshot test pins. Shape only there: no help prose unless
+  ``rcp.commands.v1``), which the public-surface snapshot test pins. Shape only there: no help prose unless
   asked for, so rewording a help text never changes the snapshot.
 """
 
@@ -108,7 +108,7 @@ def walk(root: click.Command | None = None) -> Iterator[tuple[str, click.Command
 
 
 def describe_commands(*, include_help: bool) -> CommandTree:
-    """The CLI tree as a :class:`CommandTree` (schema ``rcp-ndcg.commands.v1``).
+    """The CLI tree as a :class:`CommandTree` (schema ``rcp.commands.v1``).
 
     Args:
         include_help: Add each command's short help and each flag's help (left out of the snapshot, which pins
@@ -172,7 +172,7 @@ def _flag(param: click.Parameter) -> FlagInfo:
 
 
 def command_index() -> CommandIndex:
-    """The leaf commands with their help, flags and output schemas (schema ``rcp-ndcg.command-index.v1``).
+    """The leaf commands with their help, flags and output schemas (schema ``rcp.command-index.v1``).
 
     Hidden flags and ``--help`` are left out; the full click tree is :func:`describe_commands`.
     """

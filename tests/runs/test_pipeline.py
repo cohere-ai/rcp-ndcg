@@ -55,7 +55,7 @@ class TestARun:
         assert load_rankings(finished / "candidates.parquet").systems == ["candidates"]
         assert sorted(load_rankings(finished / "candidates.parquet").queries()) == ["q1", "q2"]
         report = json.loads((finished / "metrics" / "report.json").read_text(encoding="utf-8"))
-        assert report["schema"] == "rcp-ndcg.eval-report.v1"
+        assert report["schema"] == "rcp.eval-report.v1"
         candidates = {
             (row["metric"], row["k"]): row["value"] for row in report["summary"] if row["system"] == "candidates"
         }

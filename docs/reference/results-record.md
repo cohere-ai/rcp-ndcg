@@ -1,6 +1,6 @@
 # The results record: a compatibility contract
 
-`rcp-ndcg.result-record.v1` is the public, versioned record of one evaluation row: one record per **system ×
+`rcp.result-record.v1` is the public, versioned record of one evaluation row: one record per **system ×
 dataset × metric × cutoff**. It is what a consumer reads instead of the package's internal layout, and it is
 pinned like every other public surface: `schemas/result-record.v1.json` is exported from the pydantic model
 (`rcp.results.ResultRecord`), `tests/contract/snapshots/python_api.json` pins the model's fields, and a
@@ -24,7 +24,7 @@ change to either is a reviewed diff with a CHANGELOG entry. The how-to is
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema` | `"rcp-ndcg.result-record.v1"` | the version tag |
+| `schema` | `"rcp.result-record.v1"` | the version tag |
 | `record_id` | `str` | `record_identity(subject, dataset, metrics)`, a SHA-256 hex digest |
 | `created_at` | `datetime` | timezone-aware; a naive datetime is refused |
 | `subject` | `ResultSubject` | what the row is about |
