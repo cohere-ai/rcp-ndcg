@@ -1,6 +1,7 @@
 {
   "entry_point_groups_read": [
     "rcp.adapters",
+    "rcp.events",
     "rcp.fake_transports",
     "rcp.readers",
     "rcp.results",

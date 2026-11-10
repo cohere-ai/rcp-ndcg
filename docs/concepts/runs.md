@@ -465,6 +465,63 @@ plugin cannot shadow `local`, `slurm` or `kubernetes`; `rcp.testing.runner_confo
 the seam's contract a plugin's own tests call (the four methods, the answers' shapes, and `render`,
 `renders_phases` and `run_root` when declared).
 
+## Run events
+
+A run publishes what it does as data, so a dashboard, a `wandb` run or a progress line of your own can follow it
+without patching the pipeline. A subscriber is a callable that receives a `RunEvent`; it is installed as an entry
+point in the `rcp.events` group, which is optional (the product declares none):
+
+```toml
+[project.entry-points."rcp.events"]
+my-dashboard = "my_package.events:subscribe"
+```
+
+`subscribe(event)` is called once per event, synchronously, in the order the run produces them. The vocabulary is
+four phases, one event each:
+
+| `phase` | when the run emits it | `detail` |
+|---|---|---|
+| `step_started` | the step is recorded as running, before its work | `{}` |
+| `step_finished` | the step completed and its record is written | `{"status": "completed", "duration_s": <seconds>}` |
+| `step_failed` | the step raised, was interrupted or cancelled, or a judging step refused its store's identity | `{"error": "<the manifest's redacted description>"}` |
+| `usage` | a step reported judge usage, right after the event that closed it | `{}`; the counts are in `usage` |
+
+The event is `RunEvent(run_id, step, phase, at, usage, detail)`: the run's id, the step's name, the phase, when it
+happened (UTC), the step's judge counts as the manifest records them (`requests`, `failed_requests`,
+`input_tokens`, `output_tokens`, `cached_input_tokens`; `None` on every phase but `usage`), and the phase's detail.
+It is a frozen pydantic model, so `event.model_dump(mode="json")` is the JSON a dashboard stores.
+
+The ordering guarantee, in full:
+
+- a step that runs emits one `step_started`, then exactly one `step_finished` or `step_failed`;
+- a step's `usage` event, when it has one, follows the event that closed the step, so a failed judging step still
+  reports what it asked the judge before it failed;
+- the steps come in run order (the configured order, narrowed by `run resume --only`);
+- a step a resume skips emits nothing: the event stream is what this invocation did, and the manifest is what the
+  run has done;
+- delivery is synchronous: the run does not produce the next event until the subscriber returns, so a slow
+  subscriber slows the run, and no event is ever out of order;
+- a subscriber that raises, or whose entry point does not load, is logged once for the run and ignored: the run
+  completes, the other subscribers still receive every event, and the manifest records exactly what it records
+  without a subscriber.
+
+The model is `rcp.support.events.RunEvent`; a subscriber needs no import to be called (any callable taking the
+event does). To follow a run from the same process, build an emitter over your own callables:
+
+```python
+from rcp.support.events import Emitter, RunEvent
+
+
+def subscribe(event: RunEvent) -> None:
+    print(event.phase, event.step, event.detail)
+
+
+Emitter([subscribe]).emit(RunEvent(run_id="20260724-151233-nano-a1b2c3", step="retrieve", phase="step_started"))
+```
+
+`Emitter.installed()` is the emitter `Pipeline.run` builds: the group's subscribers, in entry-point name order. A
+run with no subscriber installs nothing and emits nothing.
+
 ## Durability: local runs and a mirror
 
 A run directory and a judgement store (`judge --out`) are written on a local or shared filesystem, never straight to
