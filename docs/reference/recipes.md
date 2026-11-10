@@ -118,6 +118,35 @@ the 0.31 image with the fold active against the 0.33 image with the native model
   `--attention-backend` pin of the recipe when `engine.image` moves to a new release. Delete them when the backends of
   that release clear the head dimensions of the model.
 
+## Deployment and the fallback
+
+A recipe is a declared configuration of `vllm serve`. The recipe names the image, the flags, the budgets and
+the plugin. The engine serves the checkpoint from the Hub.
+
+### The generic path
+
+Stock vLLM serves the common architectures. This command serves a checkpoint without a recipe:
+
+```
+vllm serve <hf-repo> --runner pooling
+```
+
+The topk, pplx and embeddinggemma checkpoints need the plugin. The `rcp-ndcg-vllm` wheel registers it through
+`vllm.general_plugins`.
+
+### The fallback
+
+The reference implementation is the correctness fallback. Each recipe ships a `reference.py`. It runs the
+checkpoint in process with `transformers`. Every equivalence gate compares the served engine against it.
+
+A fallback changes how the model is served. It does not change what the model computes. Two failures stay:
+
+- the `topk-embed-v1` gate: the per-token cosine floor fails on bf16 and fp16. The engine's GatedDeltaNet
+  kernels refuse fp32;
+- the pplx limits: the engine refuses an empty input. The reference refuses a mixed text+image document.
+
+A generic deployment serves the same weights with the same numerics. The gate and the limits are the same.
+
 ## The catalog's columns
 
 - `id` is the recipe id of the variant. It is the lowercased canonical Hub repository name of the model, and it is the
