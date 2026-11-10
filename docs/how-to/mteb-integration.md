@@ -1,18 +1,18 @@
 # MTEB integration
 
 The released datasets run with stock [mteb](https://github.com/embeddings-benchmark/mteb). Each task reports
-mteb's usual metrics on the integer qrels plus `ndcg_float_at_k`: nDCG over the released continuous RCP gains, with
-group-mean ties. The main score is `ndcg_float_at_10`. An integration of these tasks into mteb itself is proposed
-in embeddings-benchmark/mteb#5516.
+mteb's usual metrics on the integer qrels, plus `ndcg_float_at_k`. That metric is nDCG over the released
+continuous RCP gains, with group-mean ties. The main score is `ndcg_float_at_10`. An integration of these tasks
+into mteb itself is proposed in embeddings-benchmark/mteb#5516.
 
 There are two ways to run the tasks:
 
-- **Stock mteb.** Each dataset on the Hugging Face Hub ships a `rcp_ndcg_tasks.py` that defines its tasks for mteb
-  ≥ 2.0.1 (≥ 2.10.5 for ViDoRe v3). The dataset cards show how to use it.
+- **Stock mteb.** Each dataset on the Hugging Face Hub ships a `rcp_ndcg_tasks.py` file. The file defines its
+  tasks for mteb ≥ 2.0.1 (≥ 2.10.5 for ViDoRe v3). The dataset cards show how to use it.
 - **This package.** `rcp_ndcg.eval.mteb.get_tasks(suite)` returns the same tasks (the `mteb` extra). When the
   installed mteb already ships a task at the same data revision, `get_tasks` returns mteb's own (the reranking
-  view; the retrieval view is always built locally, as mteb ships only the reranking names). Each subset is
-  accepted under its own name and under its published task name.
+  view). The retrieval view is always built locally, because mteb ships only the reranking names. Each subset
+  is accepted under its own name and under its published task name.
 
 <!-- snippet: network -->
 ```python
@@ -25,13 +25,11 @@ results = mteb.evaluate(model, tasks=tasks)
 ```
 
 The default view reranks each query's judged pool (`{subset}-top_ranked`). `get_tasks(suite, mode="retrieval")`
-searches the full corpus instead and reports only the integer-qrels metrics, because the RCP gains cover the judged
-pools only.
+searches the full corpus instead. It reports only the integer-qrels metrics, because the RCP gains cover the
+judged pools only.
 
-mteb credits tied scores with their group's mean gain on every suite, as do this package's suite protocols and the
-paper from arXiv v2 on, so `rcp_ndcg.eval.evaluate` and mteb agree on tied scores too. arXiv v1's NanoBEIR, BRIGHT
-and TREC-DL tables broke ties by document id or pool order instead ([scoring protocols](../concepts/protocols.md)
-shows how to score that way).
+mteb credits tied scores with their group's mean gain on every suite. This package's suite protocols and the
+paper from arXiv v2 on do the same. Thus `rcp_ndcg.eval.evaluate` and mteb agree on tied scores too. arXiv v1's NanoBEIR, BRIGHT and TREC-DL tables broke ties by document id or pool order instead. [scoring protocols](../concepts/protocols.md) shows how to score that way.
 
 ## Exporting a dataset to the MTEB layout
 
@@ -49,7 +47,7 @@ dataset = Dataset.from_records(
 written = get_writer("mteb").write_dataset(dataset, "out/nanobeir", subset="NanoArguAnaRetrieval")
 ```
 
-The writer (`rcp_ndcg.data.io.mteb.MtebWriter`) writes exactly what `push_dataset_to_hub` writes, with
+The writer (`rcp_ndcg.data.io.mteb.MtebWriter`) writes exactly what `push_dataset_to_hub` writes. It adds
 rcp-ndcg's extras only where mteb ignores them:
 
 | Config | Columns |
@@ -60,32 +58,29 @@ rcp-ndcg's extras only where mteb ignores them:
 | `{s-}top_ranked` | `query-id`, `corpus-ids`; written when the data has a pool |
 | `{s-}excluded` | `query-id`, `excluded-corpus-ids`; mteb reads no such config |
 
-Each config is a parquet file at `{config}/{split}-00000-of-00001.parquet`, and the `README.md` carries the
-`configs:` front matter that `load_dataset` -- and through it mteb's `RetrievalDatasetLoader` -- reads the
-directory with. Pass `card=` (a mteb `TaskMetadata` or its fields) to render the card from mteb's own template.
+Each config is a parquet file at `{config}/{split}-00000-of-00001.parquet`. The `README.md` carries the
+`configs:` front matter. `load_dataset`, and through it mteb's `RetrievalDatasetLoader`, reads the directory
+with that front matter. Pass `card=` (a mteb `TaskMetadata` or its fields) to render the card from mteb's own
+template.
 
-A document's (or query's) media parts are written as mteb's own `image`/`video` columns -- the
-`struct<bytes, path>` cells with the parquet's `huggingface` feature metadata, exactly the shape the released
-`rcp-ndcg-vidore-v3` stores. `datasets.load_dataset` then reads them as `datasets.Image`/`Video` features and
-mteb's dataloader hands a model the decoded page image. One image and one video per row (mteb's columns hold
-one cell each); the bytes are resolved through the media resolver, so a `MediaRef` to a local path or an object
-store works the same. A document with several images, or a video of extracted frames (with or without a
-container), is refused by name: mteb's Video column holds a container, and dropping the frames would be a
-silent cut. The `jsonl` format holds what this one cannot.
+A document's (or query's) media parts are written as mteb's own `image`/`video` columns. These are the
+`struct<bytes, path>` cells with the parquet's `huggingface` feature metadata, exactly the shape that the
+released `rcp-ndcg-vidore-v3` stores. `datasets.load_dataset` then reads them as `datasets.Image`/`Video`
+features. mteb's dataloader hands a model the decoded page image. One image and one video per row: mteb's
+columns hold one cell each. The bytes are resolved through the media resolver. Thus a `MediaRef` to a local
+path or an object store works the same. A document with several images, or a video of extracted frames (with or
+without a container), is refused by name. mteb's Video column holds a container, and dropping the frames would
+be a silent cut. The `jsonl` format holds what this one cannot.
 
-A grade that is not a whole number is refused: the `score` column is written as int64 and mteb's loader casts
-it to int32 at load, where a fractional value fails -- refusing here is what loading one does, at write time
-and with the pair named. Export integer grades
-and keep the continuous signal in `gain`/`theta`, which mteb ignores. A `theta` is written with its `gain`,
-never alone: a pair carrying a theta and no gain would be a non-null theta beside a null gain cell -- the one
-qrels row the Hub reader refuses -- so the writer refuses it, naming the pair (a thetas-only layout has no such
-cell and is written as given). Exclusions travel in the `-excluded`
-config and are also folded out of `top_ranked` (out of the corpus, when the data has no pool), because
-`top_ranked` is the pool mteb does read: a model scored inside mteb never sees an excluded document.
+A grade that is not a whole number is refused. The `score` column is written as int64, and mteb's loader casts
+it to int32 at load. A fractional value fails there. Refusing here is what loading one does, at write time and
+with the pair named. Export integer grades and keep the continuous signal in `gain`/`theta`, which mteb
+ignores. A `theta` is written with its `gain`, never alone. A pair carrying a theta and no gain would be a non-null theta beside a null gain cell. That is the one qrels row that the Hub reader refuses. Thus the writer refuses
+it, naming the pair. A thetas-only layout has no such cell and is written as given. Exclusions travel in the
+`-excluded` config. They are also folded out of `top_ranked`, or out of the corpus when the data has no pool. `top_ranked` is the pool that mteb does read. Thus a model scored inside mteb never sees an excluded
+document.
 
-The layout round-trips through mteb: what mteb's `RetrievalDatasetLoader` reads from the written directory is
-the dataset we hold -- the qrels as integers, the queries cut to the qrels-bearing ones, the corpus, and the
-pool.
+The layout round-trips through mteb. mteb's `RetrievalDatasetLoader` reads the written directory as the dataset we hold. The qrels are integers, the queries are cut to the qrels-bearing ones, and the corpus and the pool are present.
 
 <!-- snippet: skip (needs the Hub and a push) -->
 ```python
@@ -96,20 +91,18 @@ pool.
 # and bumps the task file's revision to the pushed commit.
 ```
 
-The converter refuses a task definition whose subset or split does not match the data: mteb itself falls back
-to a config's only split, so a wrong split name would otherwise be a wrong result label, not an error. It
-writes every subset the definitions read -- all 48 ViDoRe v3 language subsets, not only the eight
-native-language ones `SUITES` scores -- and writes a corpus shared by several subsets once (the card's
-`-corpus` entries decide: ViDoRe v3's six languages of one domain and TREC-DL's two years read the same
-files), as the published repository stores it.
+The converter refuses a task definition whose subset or split does not match the data. mteb itself falls back
+to a config's only split. Thus a wrong split name would otherwise be a wrong result label, not an error. The converter writes every subset that the definitions read. That is all 48 ViDoRe v3 language subsets, not only the eight native-language ones that `SUITES` scores. It writes a corpus shared by several subsets once. The card's
+`-corpus` entries decide: ViDoRe v3's six languages of one domain and TREC-DL's two years read the same files.
+The converter writes the corpus as the published repository stores it.
 
 ## Scoring a stored run inside mteb
 
-Every kind of output (embedder, late interaction, reranker, LLM judge) produces `Rankings`, so one route covers
-them all: serve the stored rankings to `mteb.evaluate` as a `SearchProtocol`, and mteb scores them against its
-tasks, writes its own `{Task}_predictions.json`, and records genuine `TaskResult` files in its `ResultCache`
-layout -- ready for `ResultCache.submit_results` (the results PR) and for the leaderboard, which additionally
-needs the model's `ModelMeta` merged into mteb itself.
+Every kind of output (embedder, late interaction, reranker, LLM judge) produces `Rankings`. Thus one route
+covers them all. Serve the stored rankings to `mteb.evaluate` as a `SearchProtocol`. mteb scores them against
+its tasks and writes its own `{Task}_predictions.json`. It records genuine `TaskResult` files in its
+`ResultCache` layout. These are ready for `ResultCache.submit_results` (the results PR) and for the
+leaderboard. The leaderboard additionally needs the model's `ModelMeta` merged into mteb itself.
 
 <!-- snippet: network -->
 ```python
@@ -131,18 +124,18 @@ results = mteb.evaluate(
 )
 ```
 
-The served scores are the queries mteb asks about, and only those (mteb raises on a result for a query that
-has no qrels). A task with a `top_ranked` pool (the reranking view) receives the pool's documents only, and
-every query keeps at most `top_k` documents, ties by document id descending, the tie rule of mteb's integer
-metrics (pytrec_eval's; the retrieval stack's own selection ties toward the *lower* document id, a different,
-declared rule). A query the run did not rank scores 0, the same semantics our evaluator reports
-an unranked labelled query with. The integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s `qrel_ndcg` under
-the suite's protocol with that tie rule (`protocol=PROTOCOLS["nanobeir"].model_copy(update={"ties":
-"doc_id_desc"})`; the presets credit a tie its group's mean gain, as `ndcg_float_at_k` does, so on tied scores
-they differ). The two then differ only in how they round -- mteb rounds its mean to 5 decimals, the protocol
-rounds per query. One deliberate divergence: a query whose qrels are all zero scores 0
-in mteb's mean, while qrel-nDCG is undefined without a positive grade and drops out of our means -- every query
-of the shipped suites carries a positive label, so the two agree there.
+The served scores are the queries that mteb asks about, and only those. mteb raises on a result for a query
+that has no qrels. A task with a `top_ranked` pool (the reranking view) receives the pool's documents only.
+Every query keeps at most `top_k` documents. Ties go by document id descending, the tie rule of mteb's integer
+metrics. pytrec_eval supplies that rule. The retrieval stack's own selection ties toward the *lower* document
+id, a different, declared rule. A query that the run did not rank scores 0. Our evaluator reports an unranked
+labelled query with the same semantics. The integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s
+`qrel_ndcg` under the suite's protocol with that tie rule
+(`protocol=PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})`). The presets credit a tie its
+group's mean gain, as `ndcg_float_at_k` does. Thus on tied scores the two differ. The two then differ only in how they round. mteb rounds its mean to 5 decimals, and the protocol rounds per query. One deliberate
+divergence: a query whose qrels are all zero scores 0 in mteb's mean. qrel-nDCG is undefined without a
+positive grade and drops out of our means. Every query of the shipped suites carries a positive label, so the
+two agree there.
 
 Writing the predictions file directly, without running mteb, is `Rankings.save(format="mteb")`:
 
@@ -170,8 +163,8 @@ rankings.save(
 #    {"mteb_model_meta": {...}, subset: {split: {qid: {did: score}}}}
 ```
 
-Every query with a non-empty qrels dict must be ranked (a missing one is refused, naming it); a ranked query
-without qrels is dropped -- declared policy, because mteb raises on a result for a query that has no qrels --
-and every query keeps at most 1,000 documents, the cap mteb itself applies. An existing `{Task}_predictions.json`
-is merged the way mteb's own writer merges: the (subset, split) written replaces theirs, the file's other
-splits, subsets and its `mteb_model_meta` stay.
+Every query with a non-empty qrels dict must be ranked. A missing one is refused, naming it. A ranked query
+without qrels is dropped. This is declared policy, because mteb raises on a result for a query that has no
+qrels. Every query keeps at most 1,000 documents, the cap that mteb itself applies. An existing
+`{Task}_predictions.json` is merged the way mteb's own writer merges. The (subset, split) written replaces
+theirs. The file's other splits, subsets and its `mteb_model_meta` stay.
