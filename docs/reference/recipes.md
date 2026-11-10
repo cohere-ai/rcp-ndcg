@@ -39,6 +39,21 @@ written beside the image the recipe pins. The two `topk-embed-v1` variants are t
 failure (the stage-2 per-token cosine floor): their state returns to `failed` only from a wave that re-runs
 that gate, and they ship only when the owner's explicit disposition list names them.
 
+### Known limits, per family
+
+The families whose evidence carries a recorded limit or a disposition. A family not listed here carries none.
+
+| family | limit | evidence |
+|---|---|---|
+| `topk-embed-v1` (small, xsmall) | `failed`: the stage-2 per-token cosine floor is not met on the available engine configurations (bf16 and fp16 fail; fp32 cannot be served, the engine's GatedDeltaNet kernels refuse it) | the owner's disposition, the `gate-topk-embed-v1` wave |
+| `pplx-embed-v1` (0.6b, 4b) | the engine refuses an empty input, and the reference cannot encode a zero-length sequence: the row is recorded and pruned | `declared_unencodable`, the row's own kind |
+| `pplx-embed-v2-late` (0.6b, 9b) | the reference refuses a mixed text+image document (the card's usage note); the 9b's per-token floor is 0.9410, the 0.6b's 0.99 | `declared_reference_refusal`; the floors' derivations in the family notes |
+| `qwen3-vl-embedding` (2b, 8b) | the reference substitutes the card's `NULL` for an empty query; the media rows have their own floor (2b 0.9975, 8b 0.9966) | `declared_substituted`; `gates.media_vec_min_cosine` |
+| `ctxl-rerank-v2-instruct-multilingual-6b` | serves `float32` (the 1b/2b dtype): on bf16 one document exceeded the family's delta gate | the family notes; the `equivalence-ctxl` wave |
+| `jina-embeddings-v5-text-nano` | the at_budget row (8187 of 8192 tokens) is the minimum; the floor is 0.9964 | the floor's derivation in the family notes |
+| `qwen3-embedding` | the MRL-32 head had no margin; the floor is 0.9984 (the 4b keeps 0.999, with 3.5e-4 of margin) | the floor's derivation in the family notes |
+| `embeddinggemma-2` | the transformers fold is deleted (its parity is inside the measured bf16 floor); the SDPA patch stays | `DECISION-PARITY.md`, the `sdpa-probe` wave |
+
 A judge family's `client` block is `rcp_ndcg.judging.JudgeConfig` (the same config the judging commands take,
 validated by the product, never a second model), its `serve` block is the engine argv, and it carries no
 equivalence reference: `--judge <id>` and `rcp-ndcg-vllm serve <id>` take the same id

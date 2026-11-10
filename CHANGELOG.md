@@ -436,6 +436,15 @@ incompatibly, independently of the package version. All four distributions carry
   is refused by the reference's own declared policy and recorded as `declared_reference_refusal` in stage 2 and
   the media stage, keyed to the row's kind. Several images, interleaved text, a media query, or an undeclared
   crash or refusal still fail loudly.
+- **The equivalence report records every declared row instead of failing it** (the harness): an empty content
+  (`content:empty@<side>`, the anchor's `declared_empty`), a whitespace-only row under the client's declared
+  `normalize: [strip]` or `empty_doc: omit_zero_blank` (`declared_stripped`/`declared_blank`), the reference's
+  card `NULL` substitution (`declared_substituted`) and its declared media refusals
+  (`declared_reference_refusal`) are each recorded against the row's own planner kind. An unlabelled row still
+  fails, and every record names the row and the side.
+- **A recorded client refusal is a pruned row, not a stage failure** (the harness): the stage-1 `passed` no
+  longer includes `not refusals`, matching the code's own contract that a row the client refuses is recorded
+  with its position so the generator prunes it. The pplx-embed-v1 empty row exposed it.
 - **`pplx-embed-v2-late-9b`'s per-token floor moves to 0.9410**, derived from its own corpus: its rc9 minimum
   (0.9704628, the `tall_receipt` render's document 0 — the same document that held era A's minimum) minus the
   largest era-to-era per-vector movement (2.94e-2); 98.18% of the 24,202 referents move under 1e-3, the argmin
