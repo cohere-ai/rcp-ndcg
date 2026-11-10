@@ -269,7 +269,9 @@ jobs:
       - run: .github/scripts/cpu-env.sh dev
       # The per-test SIGALRM guard of rcp-ndcg-test/tests/conftest.py: a hang fails its own test here rather
       # than holding the job (faulthandler_timeout only dumps a traceback; it never aborts).
-      - run: uv run --no-sync pytest rcp-ndcg-test/tests -q
+      # -n 4: the tree is CPU-bound and the SIGALRM guard is per worker (conftest.py: "pytest's, and each
+      # xdist worker's"), so the parallel run keeps the hang-fails-fast property the serial one had.
+      - run: uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4
         env:
           RCP_NDCG_TEST_TIMEOUT: "300"
       - name: the tests left the checkout clean
