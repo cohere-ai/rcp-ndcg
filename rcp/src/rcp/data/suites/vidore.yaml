@@ -1,0 +1,15 @@
+kind: suite
+name: vidore
+repo: fabianschmidt-cohere/rcp-ndcg-vidore-v3
+protocol: vidore
+revision: null
+gains: true
+subsets:
+  - computer_science__english
+  - energy__french
+  - finance_en__english
+  - finance_fr__french
+  - hr__english
+  - industrial__english
+  - pharmaceuticals__english
+  - physics__french

@@ -68,6 +68,7 @@ class SchemaEntry:
 #: The schemas that are not the output of a ``--json`` command.
 SCHEMAS: tuple[SchemaEntry, ...] = (
     SchemaEntry("run-config", "config", "rcp.runs.config:RunConfig"),
+    SchemaEntry("suite", "config", "rcp.data.io.suite:SuiteSpec"),
     SchemaEntry("run-manifest", "artifact", "rcp.runs.manifest:RunManifest"),
     SchemaEntry("eval-report", "artifact", "rcp.eval:EvalReport"),
     SchemaEntry("comparison", "artifact", "rcp.eval:Comparison"),

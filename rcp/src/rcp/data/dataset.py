@@ -8,7 +8,9 @@ URIs (one resolver; the scheme picks the reader):
   qrels columns). Without a subset, a public suite's repository loads all of its subsets, and a repository with
   exactly one subset loads it. See :mod:`rcp.data.io.hub`.
 * ``suite:<name>`` -- every subset of a public suite (:data:`SUITES`: ``nanobeir``, ``bright``, ``vidore``,
-  ``trecdl``), each scored with the suite's protocol.
+  ``trecdl``), each scored with the suite's protocol. The suites are data files of the package
+  (``rcp/data/suites/<name>.yaml``), read by :class:`~rcp.data.io.suite.SuiteReader`; a downstream suite is the
+  same file in its own directory, loaded as ``suite:<path>`` (the directory with its ``suite.yaml``, or the file).
 * ``beir:<dir>``, ``jsonl:<path>``, ``mteb:<Task>[/<subset>][@split]``, ``images:<dir>``, ``videos:<dir>``,
   ``frames:<dir>`` -- the readers of :mod:`rcp.data.io` (one entry point per format; a third-party format
   is one class in its own package). A PDF has no queries or qrels to score against: convert it
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator
@@ -30,6 +33,7 @@ from rcp_core.records import Document, Query
 from rcp.data.io import READERS, Provenance, get_reader
 from rcp.data.io.base import SourceReader
 from rcp.data.io.hub import HubReader, hub_subsets
+from rcp.data.io.suite import SuiteReader, SuiteSpec, shipped_suite_names, shipped_suite_path, shipped_suite_specs
 from rcp.data.revisions import resolve_revision
 from rcp.errors import ConfigError, DataError
 from rcp.support.logging import get_logger
@@ -56,52 +60,12 @@ VIDORE_NATIVE_LANGUAGE: dict[str, str] = {
 }
 """The language each ViDoRe v3 domain was written in; the paper scores each question in it."""
 
-SUITES: dict[str, Suite] = {
-    "nanobeir": Suite(
-        "fabianschmidt-cohere/rcp-ndcg-nanobeir",
-        tuple(
-            f"Nano{name}Retrieval"
-            for name in (
-                "ArguAna",
-                "ClimateFever",
-                "DBPedia",
-                "FEVER",
-                "FiQA2018",
-                "HotpotQA",
-                "MSMARCO",
-                "NFCorpus",
-                "NQ",
-                "Quora",
-                "SCIDOCS",
-                "SciFact",
-                "Touche2020",
-            )
-        ),
-    ),
-    "bright": Suite(
-        "fabianschmidt-cohere/rcp-ndcg-bright",
-        (
-            "aops",
-            "biology",
-            "earth_science",
-            "economics",
-            "leetcode",
-            "pony",
-            "psychology",
-            "robotics",
-            "stackoverflow",
-            "sustainable_living",
-            "theoremqa_questions",
-            "theoremqa_theorems",
-        ),
-    ),
-    "vidore": Suite(
-        "fabianschmidt-cohere/rcp-ndcg-vidore-v3",
-        tuple(f"{domain}__{language}" for domain, language in VIDORE_NATIVE_LANGUAGE.items()),
-    ),
-    "trecdl": Suite("fabianschmidt-cohere/rcp-ndcg-trecdl", ("trec_dl_2019", "trec_dl_2020")),
-}
-"""The public suites; each name is also the :data:`~rcp_core.protocol.PROTOCOLS` preset they are scored with."""
+_SUITE_SPECS: dict[str, SuiteSpec] = {spec.name: spec for spec in shipped_suite_specs()}
+"""The shipped suite definitions (protocol, revision, gains), keyed as :data:`SUITES` is."""
+
+SUITES: dict[str, Suite] = {name: Suite(spec.repo, spec.subsets) for name, spec in _SUITE_SPECS.items()}
+"""The public suites, read from the shipped data files (``rcp/data/suites/<name>.yaml``); each name is also
+its :data:`~rcp_core.protocol.PROTOCOLS` preset."""
 
 
 _ROW = ConfigDict(frozen=True, extra="forbid", coerce_numbers_to_str=True)
@@ -411,7 +375,8 @@ def load_dataset(
 
     Args:
         uri: The dataset URI, e.g. ``hf://fabianschmidt-cohere/rcp-ndcg-nanobeir/NanoFiQA2018Retrieval``,
-            ``suite:bright`` or ``beir:/data/nfcorpus``.
+            ``suite:bright`` or ``suite:/data/my-suite`` (a suite directory with a ``suite.yaml``, or the file),
+            ``beir:/data/nfcorpus``.
         subset: The subset of a ``hf://`` repository or a ``suite:`` (instead of naming it in the URI). A bare
             ViDoRe v3 domain (``"energy"``) selects its native-language subset.
         revision: The Hub revision (commit, tag or branch) for ``hf://`` and ``suite:``; ``None`` is ``main``. It
@@ -437,9 +402,7 @@ def load_dataset(
             raise ConfigError(f"a Hub dataset URI starts with 'hf://', got {uri!r}")
         return _load_hub(rest[2:], subset=subset, revision=revision, split=split, options=options)
     if scheme == "suite":
-        if rest not in SUITES:
-            raise ConfigError(f"unknown suite {rest!r}", hint=f"public suites: {sorted(SUITES)}")
-        return _load_hub(SUITES[rest].repo, subset=subset, revision=revision, split=split, options=options)
+        return _load_suite_uri(rest, subset=subset, revision=revision, split=split, options=options)
     if scheme in READERS and scheme not in _NOT_DATASETS:
         if subset is not None or revision is not None:
             raise ConfigError(f"subset and revision apply to hf:// and suite: URIs, not {scheme}:")
@@ -509,6 +472,96 @@ def _from_reader(reader: SourceReader, *, uri: str, protocol: str | None = None)
 # ---------------------------------------------------------------------------
 
 
+def _load_suite_uri(
+    name_or_path: str,
+    *,
+    subset: str | None,
+    revision: str | None,
+    split: str | None,
+    options: dict[str, Any],
+) -> Dataset:
+    """``suite:<name>`` or ``suite:<path>``: a registered (shipped) suite first, then a suite directory."""
+    spec = _SUITE_SPECS.get(name_or_path)
+    suite = SUITES.get(name_or_path)
+    name = name_or_path
+    if suite is None and name_or_path in shipped_suite_names():
+        spec = SuiteReader(str(shipped_suite_path(name_or_path))).spec
+        suite, name = Suite(spec.repo, spec.subsets), spec.name
+    if suite is None:
+        path = Path(name_or_path)
+        if not path.exists() and "/" not in name_or_path and "\\" not in name_or_path:
+            raise ConfigError(f"unknown suite {name_or_path!r}", hint=f"public suites: {sorted(SUITES)}")
+        spec = SuiteReader(name_or_path).spec
+        suite, name = Suite(spec.repo, spec.subsets), spec.name
+    options = {**options}
+    if split is not None:
+        options["split"] = split
+    if subset is not None:
+        return _load_suite_part(suite, name=name, spec=spec, subset=subset, revision=revision, options=options)
+    return _load_suite(suite, name=name, spec=spec, revision=revision, options=options)
+
+
+def _load_suite(
+    suite: Suite,
+    *,
+    name: str,
+    spec: SuiteSpec | None,
+    revision: str | None,
+    options: dict[str, Any],
+) -> Dataset:
+    """Every subset of one suite at one revision, as the suite :class:`Dataset` (its parts)."""
+    repo = suite.repo
+    revision = revision or (spec.revision if spec is not None else None)
+    commit = resolve_revision(repo, revision).commit or revision
+    protocol = (spec.protocol if spec is not None else None) or name
+    parts = tuple(
+        _check_suite_revision(
+            name,
+            commit,
+            _from_reader(
+                get_reader("hf", uri=f"{repo}/{subset}", revision=revision, **options),
+                uri=f"hf://{repo}/{subset}",
+                protocol=protocol,
+            ),
+        )
+        for subset in suite.subsets
+    )
+    return Dataset(name=name, uri=f"hf://{repo}", revision=commit, protocol=protocol, subsets=parts)
+
+
+def _load_suite_part(
+    suite: Suite,
+    *,
+    name: str,
+    spec: SuiteSpec | None,
+    subset: str,
+    revision: str | None,
+    options: dict[str, Any],
+) -> Dataset:
+    """One subset of a suite (``subset=``), read at the suite's revision (or the caller's)."""
+    repo = suite.repo
+    revision = revision or (spec.revision if spec is not None else None)
+    protocol = (spec.protocol if spec is not None else None) or name
+    resolved = _subset_dir(name, subset)
+    reader = get_reader("hf", uri=f"{repo}/{resolved}", revision=revision, **options)
+    assert isinstance(reader, HubReader)
+    part = _from_reader(reader, uri=f"hf://{repo}/{reader.subset}", protocol=protocol)
+    return _check_suite_revision(name, resolve_revision(repo, revision).commit or revision, part)
+
+
+def _check_suite_revision(name: str, revision: str | None, part: Dataset) -> Dataset:
+    """Refuse a suite part read at a revision other than the suite's, naming both revisions."""
+    if part.revision != revision:
+        raise DataError(
+            f"suite {name!r}: revision {revision!r} does not match its data's revision {part.revision!r} "
+            f"(subset {part.subset!r})",
+            hint="the suite's revision pins the data: read the suite at the revision its data is at, or fix the "
+            "suite file's revision",
+            details={"suite": name, "revision": revision, "data_revision": part.revision, "subset": part.subset},
+        )
+    return part
+
+
 def _load_hub(
     path: str,
     *,
@@ -517,6 +570,7 @@ def _load_hub(
     split: str | None,
     options: dict[str, Any],
 ) -> Dataset:
+    """One ``hf://`` repository: a suite's every subset, a suite's named subset, or a plain dataset."""
     path, _, uri_revision = path.partition("@")
     if uri_revision and revision and uri_revision != revision:
         raise ConfigError(f"two revisions for one dataset: {uri_revision!r} in the URI and {revision!r}")
@@ -529,14 +583,21 @@ def _load_hub(
         if subset is not None and subset != parts[2]:
             raise ConfigError(f"two subsets for one dataset: {parts[2]!r} in the URI and {subset!r}")
         subset = parts[2]
-    suite = next((name for name, s in SUITES.items() if s.repo == repo), None)
+    suite_name = next((name for name, s in SUITES.items() if s.repo == repo), None)
+    suite = SUITES[suite_name] if suite_name is not None else None
+    spec = _SUITE_SPECS.get(suite_name) if suite_name is not None else None
     options = {**options}
     if split is not None:
         options["split"] = split
     if subset is not None:
-        reader = get_reader("hf", uri=f"{repo}/{_subset_dir(suite, subset)}", revision=revision, **options)
+        if suite is not None:
+            assert suite_name is not None
+            return _load_suite_part(
+                suite, name=suite_name, spec=spec, subset=subset, revision=revision, options=options
+            )
+        reader = get_reader("hf", uri=f"{repo}/{subset}", revision=revision, **options)
         assert isinstance(reader, HubReader)
-        return _from_reader(reader, uri=f"hf://{repo}/{reader.subset}", protocol=suite)
+        return _from_reader(reader, uri=f"hf://{repo}/{reader.subset}")
     if suite is None:
         commit = resolve_revision(repo, revision).commit or revision
         derived = hub_subsets(repo, commit)
@@ -554,17 +615,8 @@ def _load_hub(
                 "custom loader (mteb:<Task>, the [mteb] extra)"
             ),
         )
-    # Every file is read at one commit, the one the identities record, even if the branch moves meanwhile.
-    commit = resolve_revision(repo, revision).commit or revision
-    subsets = tuple(
-        _from_reader(
-            get_reader("hf", uri=f"{repo}/{name}", revision=revision, **options),
-            uri=f"hf://{repo}/{name}",
-            protocol=suite,
-        )
-        for name in SUITES[suite].subsets
-    )
-    return Dataset(name=suite, uri=f"hf://{repo}", revision=commit, protocol=suite, subsets=subsets)
+    assert suite_name is not None
+    return _load_suite(suite, name=suite_name, spec=spec, revision=revision, options=options)
 
 
 def _subset_dir(suite: str | None, subset: str) -> str:

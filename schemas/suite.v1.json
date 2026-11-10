@@ -1,0 +1,66 @@
+{
+  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/suite.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One suite definition, as a ``suite.yaml`` carries it.",
+  "properties": {
+    "gains": {
+      "default": true,
+      "description": "Whether the released data carries calibrated gains (the qrels ``gain``/``theta`` columns).",
+      "title": "Gains",
+      "type": "boolean"
+    },
+    "kind": {
+      "const": "suite",
+      "default": "suite",
+      "description": "The file's discriminator; always ``suite``.",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "description": "The suite's name: what reports call it and the key of the shipped view.",
+      "title": "Name",
+      "type": "string"
+    },
+    "protocol": {
+      "description": "The PROTOCOLS preset the subsets are scored with.",
+      "title": "Protocol",
+      "type": "string"
+    },
+    "repo": {
+      "description": "The HuggingFace dataset repository (``owner/name``) holding the subsets.",
+      "title": "Repo",
+      "type": "string"
+    },
+    "revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The Hub revision (commit, tag or branch) the data is read at; ``None`` is ``main``.",
+      "title": "Revision"
+    },
+    "subsets": {
+      "description": "The repository's subset names, in scoring order; at least one, each once.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Subsets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "repo",
+    "subsets",
+    "protocol"
+  ],
+  "title": "SuiteSpec",
+  "type": "object",
+  "x-rcp-ndcg-schema": "rcp-ndcg.suite.v1"
+}
