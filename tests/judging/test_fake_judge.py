@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.judging import load_prompt
 from rcp_ndcg.judging._parsing.listwise import parse_calibrated_listwise

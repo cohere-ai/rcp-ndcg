@@ -291,7 +291,7 @@ def test_the_data_directory_is_keyed_by_the_pinned_revision(experiment, tmp_path
 
 def test_the_two_setup_snippets_give_the_same_install_commands():
     """Experiments install the checkout's own core first (``pip install -e .`` alone would resolve
-    ``rcp-ndcg-core==0.0.1`` from PyPI): ``experiments/README.md`` and ``REPRODUCIBILITY.md`` say the same."""
+    ``rcp-core==0.0.1`` from PyPI): ``experiments/README.md`` and ``REPRODUCIBILITY.md`` say the same."""
 
     def install_commands(text: str) -> list[str]:
         return [

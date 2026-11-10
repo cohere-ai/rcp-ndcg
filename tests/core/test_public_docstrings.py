@@ -8,7 +8,7 @@ import inspect
 
 import pytest
 
-MODULES = ("rcp_ndcg_core.content", "rcp_ndcg_core.records")
+MODULES = ("rcp_core.content", "rcp_core.records")
 
 
 def _documented(obj: object) -> bool:

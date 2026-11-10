@@ -13,7 +13,7 @@ outside its stated tolerance.
 From the repository root:
 
 ```bash
-pip install ./rcp-ndcg-core ./rcp-ndcg     # or: uv sync
+pip install ./rcp-core ./rcp-ndcg     # or: uv sync
 pip install -r experiments/requirements.txt      # huggingface-hub, pyarrow
 python experiments/fetch_data.py                 # about 150 MB into experiments/data/
 python experiments/run_all.py                    # all checks, about one minute on a laptop
@@ -43,7 +43,7 @@ were selected for.
 | `external_judges.py` | Tournament-order test with GLM-5.3-flash, DeepSeek-4.1-flash and Kimi-K3 (sets S1, controls, S2, S3; per judge, by majority, S2 per suite) and Study 1 with the same three judges (NanoBEIR and BRIGHT, both reference judges, the rebuilt BRIGHT cases), without the cases flagged `excluded_under_fit` | `rcp-ndcg-external-validation` `blind_comparisons/` | all 82 values |
 
 The per-suite scoring rules (candidate set, excluded documents, tie rule, ideal ranking, rounding) and the nDCG
-come from the library: `rcp_ndcg_core.protocol` and `rcp_ndcg_core.metric`. Every preset credits tied scores with
+come from the library: `rcp_core.protocol` and `rcp_core.metric`. Every preset credits tied scores with
 their group's mean gain, for qrel-nDCG@10 and RCP-nDCG@10.
 
 The external-judge cases follow arXiv v2's exclusion rule: a case enters only if, under the v2 fit, it keeps the

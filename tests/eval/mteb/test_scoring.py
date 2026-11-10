@@ -17,7 +17,7 @@ MTEB = pytest.importorskip("mteb")
 from mteb.abstasks.retrieval import AbsTaskRetrieval  # noqa: E402
 from mteb.abstasks.task_metadata import TaskMetadata  # noqa: E402
 from mteb.cache import ResultCache  # noqa: E402
-from rcp_ndcg_core import PROTOCOLS  # noqa: E402
+from rcp_core import PROTOCOLS  # noqa: E402
 
 from rcp_ndcg.data import Rankings  # noqa: E402
 from rcp_ndcg.data.dataset import Dataset  # noqa: E402

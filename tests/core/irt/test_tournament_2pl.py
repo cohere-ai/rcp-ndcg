@@ -1,4 +1,4 @@
-"""The tournament-mode 2PL: the estimator and :func:`rcp_ndcg_core.irt.fit_calibration` over it."""
+"""The tournament-mode 2PL: the estimator and :func:`rcp_core.irt.fit_calibration` over it."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import math
 import numpy as np
 import pytest
 import torch
-from rcp_ndcg_core.irt import fit_calibration
-from rcp_ndcg_core.irt._tournament_2pl import Tournament2PLCalibrator
+from rcp_core.irt import fit_calibration
+from rcp_core.irt._tournament_2pl import Tournament2PLCalibrator
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:

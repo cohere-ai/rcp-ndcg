@@ -31,12 +31,12 @@ def test_the_release_workflow_never_builds_or_publishes_the_test_package() -> No
     # The guard that keeps a future workspace member from being swept into the release build: the
     # three published packages are built by name, never with --all-packages.
     assert "--all-packages" not in text
-    for package in ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm"):
+    for package in ("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm"):
         assert package in text, f"the release must keep building {package}"
 
 
 def test_no_published_package_names_the_test_package() -> None:
-    for project in (ROOT, ROOT / "rcp-ndcg-core", ROOT / "rcp-ndcg-vllm"):
+    for project in (ROOT, ROOT / "rcp-core", ROOT / "rcp-ndcg-vllm"):
         data = tomllib.loads(_read(project / "pyproject.toml"))
         project = data.get("project", {})
         # Both channels of published metadata: the hard dependencies and every extra.

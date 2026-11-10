@@ -500,7 +500,7 @@ def _probe_vectors(
     Each captured text's engine ``usage`` report is recorded beside it (``usages``): the prompt-token probe
     compares the engine's own count against the render the client budgeted against.
     """
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from rcp_ndcg.data.preprocess import rendered_request
     from rcp_ndcg.inference.types import EncodeRole
@@ -2623,7 +2623,7 @@ def _rerank_stage2(
 
 
 def _client_sides(row: dict[str, Any]) -> tuple[Any, list[Any]]:
-    """One pairs row's client sides: the product's :class:`~rcp_ndcg_core.content.Content` objects when
+    """One pairs row's client sides: the product's :class:`~rcp_core.content.Content` objects when
     the row carries media (the same path the media stage sends), else the plain query string and
     document strings."""
     if row.get("media"):
@@ -2821,7 +2821,7 @@ def _vector_stage2(
             if shape not in fitting.declared_shapes(recipe):
                 continue
             encode_role = EncodeRole.QUERY if role == "query" else EncodeRole.DOCUMENT
-            from rcp_ndcg_core.content import Content
+            from rcp_core.content import Content
 
             served_matrices: list[list[list[float]] | None] = []
             cut_flags: list[bool] = []

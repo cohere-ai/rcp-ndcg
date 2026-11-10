@@ -441,7 +441,7 @@ def _send_rerank(resolved: _Resolved, case: Case) -> _Sent:
     by max -- every content decision is the product's.  One call per query (the same call ``rerank_many``
     makes under its semaphore), so each query's processing records are attributable to its own row.
     """
-    from rcp_ndcg_core.records import RankingExample
+    from rcp_core.records import RankingExample
 
     from rcp_ndcg.inference.clients import RerankClient
 
@@ -520,7 +520,7 @@ def _over_cap_report(recipe: Any, changed: Any) -> tuple[str, Any] | None:
 
 def _query_contents(case: Case) -> list[Any]:
     """The case's queries as the wire contents the role clients take (text literal or text_ref)."""
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from .cases import text_of
 
@@ -533,7 +533,7 @@ def _document_contents(case: Case) -> list[Any]:
     The media references resolve against the case's recipe directory (the format's ``media/<file>``
     paths), which :func:`load_case` pins on the case; the wired clients size and prepare them.
     """
-    from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
+    from rcp_core.content import Content, ImagePart, TextPart, VideoPart
 
     from .cases import media_ref, text_of
 

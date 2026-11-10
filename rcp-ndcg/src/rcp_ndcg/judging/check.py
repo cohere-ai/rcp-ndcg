@@ -23,7 +23,7 @@ import asyncio
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, RequestRejectedError
 from rcp_ndcg.judging._parsing.schema import response_format as _response_format

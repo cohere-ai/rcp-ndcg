@@ -34,8 +34,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from rcp_ndcg_core.gain import sigmoid
-from rcp_ndcg_core.schemas import DocumentEstimate, EstimateFlags
+from rcp_core.gain import sigmoid
+from rcp_core.schemas import DocumentEstimate, EstimateFlags
 
 #: Quadrature grid for the marginal likelihood and the posterior integrals:
 #: 561 points on [-18, 10] (spacing 0.05), in units of the ability prior's sd. Every integral scales
@@ -192,7 +192,7 @@ class Criteria2PL:
         except ImportError as exc:  # pragma: no cover - exercised only without scipy
             raise ImportError(
                 "Criteria2PL.fit requires scipy (bounded L-BFGS-B). "
-                "Install it directly, or via the package extra: pip install 'rcp-ndcg-core[irt]'"
+                "Install it directly, or via the package extra: pip install 'rcp-core[irt]'"
             ) from exc
 
         prior_sd = _validate_prior_sd(prior_sd)
@@ -361,7 +361,7 @@ class Criteria2PL:
             offsets: ``(G,)`` logit offsets, one per group; ``None`` is one group without an offset.
 
         Returns:
-            The :class:`~rcp_ndcg_core.schemas.DocumentEstimate`.
+            The :class:`~rcp_core.schemas.DocumentEstimate`.
         """
         shift = np.zeros(1) if offsets is None else np.asarray(offsets, dtype=float)
         se_target = _validate_se_target(se_target)

@@ -8,7 +8,7 @@ and ``rcp-ndcg eval score --metrics count_ndcg --judgements STORE`` read it.
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_core.schemas import JudgementFamily, criterion_labels
+from rcp_core.schemas import JudgementFamily, criterion_labels
 
 from rcp_ndcg.calibration import count_gains
 from rcp_ndcg.errors import DataError

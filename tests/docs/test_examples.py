@@ -54,7 +54,7 @@ def test_examples_are_short_and_use_only_the_public_surface(example: Path) -> No
             imported |= {alias.name for alias in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.add(node.module)
-    prefixes = {"rcp_ndcg", "rcp_ndcg_core", "rcp_ndcg_vllm", "mteb"}
+    prefixes = {"rcp_ndcg", "rcp_core", "rcp_ndcg_vllm", "mteb"}
     ours = {name for name in imported if name.split(".")[0] in prefixes}
     assert ours <= PUBLIC
     assert all(name.split(".")[0] in sys.stdlib_module_names for name in imported - ours)

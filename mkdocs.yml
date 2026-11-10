@@ -55,12 +55,12 @@ nav:
       - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
       - "The public surface, frozen": reference/public-surface.md
       - "API reference (generated)":
-          - "rcp_ndcg_core": reference/api/rcp_ndcg_core.md
-          - "rcp_ndcg_core.gain": reference/api/rcp_ndcg_core.gain.md
-          - "rcp_ndcg_core.irt": reference/api/rcp_ndcg_core.irt.md
-          - "rcp_ndcg_core.metric": reference/api/rcp_ndcg_core.metric.md
-          - "rcp_ndcg_core.protocol": reference/api/rcp_ndcg_core.protocol.md
-          - "rcp_ndcg_core.records": reference/api/rcp_ndcg_core.records.md
+          - "rcp_core": reference/api/rcp_core.md
+          - "rcp_core.gain": reference/api/rcp_core.gain.md
+          - "rcp_core.irt": reference/api/rcp_core.irt.md
+          - "rcp_core.metric": reference/api/rcp_core.metric.md
+          - "rcp_core.protocol": reference/api/rcp_core.protocol.md
+          - "rcp_core.records": reference/api/rcp_core.records.md
           - "rcp_ndcg": reference/api/rcp_ndcg.md
           - "rcp_ndcg.calibration": reference/api/rcp_ndcg.calibration.md
           - "rcp_ndcg.data": reference/api/rcp_ndcg.data.md

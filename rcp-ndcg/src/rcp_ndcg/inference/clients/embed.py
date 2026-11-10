@@ -32,7 +32,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.data.mrl import MrlHead
 from rcp_ndcg.data.prepare import MediaCensus

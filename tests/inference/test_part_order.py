@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 from PIL import Image as PILImage
-from rcp_ndcg_core.content import Content, TextPart
+from rcp_core.content import Content, TextPart
 
 from rcp_ndcg.data.prepare import prepare_request
 from rcp_ndcg.data.resolution import ImagePolicy

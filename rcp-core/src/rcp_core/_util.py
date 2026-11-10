@@ -10,7 +10,7 @@ def descending_score_order(scores: list[float]) -> list[int]:
     """Indices that sort ``scores`` descending, ties keeping their original order.
 
     The one implementation of the ``"input_order"`` tie rule:
-    :func:`rcp_ndcg_core.metric.rank_by_score` (and through it ``ndcg`` and ``tie_groups``) and
+    :func:`rcp_core.metric.rank_by_score` (and through it ``ndcg`` and ``tie_groups``) and
     ``RankingExample``'s auto-sort both order by it, so the rule cannot fork into two behaviours on a tie.
 
     Raises:

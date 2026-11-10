@@ -1,6 +1,6 @@
 """``explain``: one query, side by side -- each system's top-k with gains, grades, thetas and criteria.
 
-The per-criterion view comes from :func:`rcp_ndcg_core.pass_probabilities`: at a calibrated ability ``theta``
+The per-criterion view comes from :func:`rcp_core.pass_probabilities`: at a calibrated ability ``theta``
 criterion ``c`` passes with probability ``sigmoid(gamma_c (theta - beta_c))`` and contributes
 ``gamma_c p_c / sum(gamma)`` to the gain. Between two systems the nDCG@k gap (B minus A) over the query's
 gains -- its RCP gains, or its qrel grades when it has none -- splits into **selection** (which documents
@@ -18,10 +18,10 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
-from rcp_ndcg_core import ndcg, pass_probabilities
-from rcp_ndcg_core.gain import item_arrays
-from rcp_ndcg_core.metric import TieRule, rank_by_score
-from rcp_ndcg_core.protocol import candidate_docs
+from rcp_core import ndcg, pass_probabilities
+from rcp_core.gain import item_arrays
+from rcp_core.metric import TieRule, rank_by_score
+from rcp_core.protocol import candidate_docs
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.errors import DataError

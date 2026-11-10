@@ -4,7 +4,7 @@ Frozen Bradley-Terry theta from the tournament enters the likelihood as a
 covariate, with per-query affine transforms (tau, alpha) mapping it onto the
 common scale: ``sigma(gamma_k * (tau_j * theta_bt - beta_k + alpha_j))``. The
 rubric-only calibration (no tournament) is ``Criteria2PL``; both are reached
-through :func:`rcp_ndcg_core.irt.fit_calibration`.
+through :func:`rcp_core.irt.fit_calibration`.
 
 Multi-judge: every observation may carry a
 ``judge_id``. When two or more judges are tagged, the fit gains one additive
@@ -30,7 +30,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from rcp_ndcg_core.irt._calibration import MIN_SHARED_ITEMS, JudgeOverlapError, verdicts
+from rcp_core.irt._calibration import MIN_SHARED_ITEMS, JudgeOverlapError, verdicts
 
 #: The optimiser's iteration cap.
 MAX_ITER = 500

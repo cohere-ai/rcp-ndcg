@@ -16,8 +16,8 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.content import Content, ImagePart, MediaRef
+from rcp_core.records import RankingExample
 
 from rcp_ndcg.data.io import available_readers, available_writers, get_reader, get_writer
 from rcp_ndcg.data.io.base import SourceReader
@@ -473,7 +473,7 @@ def test_encoded_image_bytes_are_stable(tmp_path):
 def test_the_beir_writer_writes_integral_grades_as_integers(tmp_path) -> None:
     """BEIR's own loader parses qrels scores with ``int(row[2])``; a float repr ('1.0') made every export,
     all-integer ones included, unreadable by BEIR itself."""
-    from rcp_ndcg_core.records import Document, Query
+    from rcp_core.records import Document, Query
 
     out = str(tmp_path / "out")
     get_writer("beir").write_corpus(

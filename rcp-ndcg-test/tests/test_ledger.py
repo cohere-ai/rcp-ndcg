@@ -26,7 +26,7 @@ WRITTEN = (
     "rcp-ndcg-vllm/README.md",
 )
 TREE = (
-    "rcp-ndcg-core/src",
+    "rcp-core/src",
     "rcp-ndcg/src",
     "rcp-ndcg-vllm/src",
     "rcp-ndcg-test/src",

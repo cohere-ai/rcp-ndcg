@@ -10,7 +10,7 @@
   "heavy_imports": {
     "rcp_ndcg": [],
     "rcp_ndcg.cli.main": [],
-    "rcp_ndcg_core": []
+    "rcp_core": []
   },
   "projects": {
     "rcp-ndcg": {
@@ -45,7 +45,7 @@
         "rcp-ndcg": "rcp_ndcg.cli.main:main"
       }
     },
-    "rcp-ndcg-core": {
+    "rcp-core": {
       "entry_points": {},
       "scripts": {}
     },

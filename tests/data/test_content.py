@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.content import (
+from rcp_core.content import (
     Content,
     ImagePart,
     MediaRef,
@@ -12,7 +12,7 @@ from rcp_ndcg_core.content import (
     TextPart,
     VideoPart,
 )
-from rcp_ndcg_core.records import Document, Query, RankingExample
+from rcp_core.records import Document, Query, RankingExample
 
 
 class TestMediaRef:
@@ -33,7 +33,7 @@ class TestContent:
         """AGENTS.md prescribes ``gs://YOUR-BUCKET/...``: a tracked file never names a real bucket."""
         import inspect
 
-        import rcp_ndcg_core.content as content_module
+        import rcp_core.content as content_module
 
         doc = inspect.getdoc(content_module) or ""
         assert "gs://YOUR-BUCKET/" in doc

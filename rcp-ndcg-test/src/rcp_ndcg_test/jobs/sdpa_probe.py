@@ -536,7 +536,7 @@ def texts_of(rows: list[dict[str, Any]]) -> list[tuple[str, Any, Any]]:
     A media row goes through the harness's own ``side_contents`` (the content stage 2 sends); a text row is
     the product's ``Content.from_text``.  One entry per text, so each client call carries exactly one text.
     """
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from rcp_ndcg.inference.types import EncodeRole
     from rcp_ndcg_test.equivalence.media import side_contents

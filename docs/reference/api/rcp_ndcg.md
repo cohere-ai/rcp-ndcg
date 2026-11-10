@@ -159,7 +159,7 @@ class EvalReport(pydantic.main.BaseModel)
 
 - `per_query: list[rcp_ndcg.eval.evaluate.QueryValue]`
 
-- `protocol: rcp_ndcg_core.protocol.Protocol`
+- `protocol: rcp_core.protocol.Protocol`
 
 - `schema_name: Literal['rcp-ndcg.eval-report.v1']` = 'rcp-ndcg.eval-report.v1'
 
@@ -255,9 +255,9 @@ pydantic_model — Judgements together with the families they reference.
 class JudgementSet(pydantic.main.BaseModel)
 ```
 
-- `families: dict[str, rcp_ndcg_core.schemas.JudgementFamily]` = '<factory dict>'
+- `families: dict[str, rcp_core.schemas.JudgementFamily]` = '<factory dict>'
 
-- `judgements: tuple[rcp_ndcg_core.schemas.Judgement, Ellipsis]` = []
+- `judgements: tuple[rcp_core.schemas.Judgement, Ellipsis]` = []
 
 ## `Preprocessing`
 
@@ -347,7 +347,7 @@ class ResultDataset(pydantic.main.BaseModel)
 
 - `protocol: str | None` = None
 
-- `protocol_spec: rcp_ndcg_core.protocol.Protocol | None` = None
+- `protocol_spec: rcp_core.protocol.Protocol | None` = None
 
 - `revision: str | None` = None
 

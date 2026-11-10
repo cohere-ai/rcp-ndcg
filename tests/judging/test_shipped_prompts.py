@@ -57,7 +57,7 @@ def test_every_shipped_prompt_text_is_pinned_by_sha256() -> None:
 def test_a_query_cannot_substitute_a_placeholder_or_forge_document_markup() -> None:
     """The query slot is interpolated inert: its placeholder tags render literally and its markup is escaped,
     so a query can never duplicate the window or forge the ``doc_N`` framing the parser relies on."""
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from rcp_ndcg.judging._templates import wrap_xml
 
@@ -96,7 +96,7 @@ def test_the_criterion_label_rule_has_one_home() -> None:
     from rcp_ndcg.judging.prompts import criterion_labels_in, load_prompt
 
     def answer(stage: str, query: str) -> str:
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         template = load_prompt(stage).template(with_num_documents=stage == "tournament")
         rendered = template.resolve(query=query, documents=[Content.from_text("text")])

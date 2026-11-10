@@ -239,7 +239,7 @@ _CORRUPT_MEDIA_REFUSALS = {
 def _inline_bytes(part: dict[str, Any]) -> bytes:
     """The bytes of one sent inline media part (the media lowering inlines every item; the product's resolver
     decodes the ``data:`` URI, one home with :func:`sent_media_content`)."""
-    from rcp_ndcg_core.content import MediaRef
+    from rcp_core.content import MediaRef
     from rcp_ndcg_test.errors import HarnessError
 
     from rcp_ndcg.data.media import default_resolver

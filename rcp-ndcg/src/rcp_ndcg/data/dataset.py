@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator
-from rcp_ndcg_core.records import Document, Query
+from rcp_core.records import Document, Query
 
 from rcp_ndcg.data.io import READERS, Provenance, get_reader
 from rcp_ndcg.data.io.base import SourceReader
@@ -101,7 +101,7 @@ SUITES: dict[str, Suite] = {
     ),
     "trecdl": Suite("fabianschmidt-cohere/rcp-ndcg-trecdl", ("trec_dl_2019", "trec_dl_2020")),
 }
-"""The public suites; each name is also the :data:`~rcp_ndcg_core.protocol.PROTOCOLS` preset they are scored with."""
+"""The public suites; each name is also the :data:`~rcp_core.protocol.PROTOCOLS` preset they are scored with."""
 
 
 _ROW = ConfigDict(frozen=True, extra="forbid", coerce_numbers_to_str=True)
@@ -143,7 +143,7 @@ class Dataset(BaseModel):
         uri: The URI it was loaded from.
         revision: The source revision: for Hub data, the commit it was read at (the revision as given when it
             could not be resolved, offline and not in the local cache).
-        protocol: The :data:`~rcp_ndcg_core.protocol.PROTOCOLS` preset the data is scored with (set for the public
+        protocol: The :data:`~rcp_core.protocol.PROTOCOLS` preset the data is scored with (set for the public
             suites).
         qrels: ``{query_id: {doc_id: grade}}``, float grades (human labels; 0 for pooled documents without one).
         gains: ``{query_id: {doc_id: gain}}``, the released calibrated gains in ``[0, 1]`` over each query's judged
@@ -258,15 +258,15 @@ class Dataset(BaseModel):
 
         Args:
             name: The dataset name (what evaluation reports and judgement stores call it).
-            queries: :class:`~rcp_ndcg_core.records.Query` records (or dicts with their field names and
+            queries: :class:`~rcp_core.records.Query` records (or dicts with their field names and
                 aliases): ``query_id``, ``text``, optional ``instruction`` and ``content``.
-            corpus: :class:`~rcp_ndcg_core.records.Document` records (or dicts with their field names and
+            corpus: :class:`~rcp_core.records.Document` records (or dicts with their field names and
                 aliases): ``doc_id``, optional ``title``, ``text``, optional ``content``.
             qrels: :class:`QrelRow` records: ``query_id``, ``doc_id``, ``grade`` (a float), optional ``gain`` in
                 ``[0, 1]`` and ``theta`` in logits (the released calibrated values).
             candidates: ``{query_id: [doc_id, ...]}``, each query's pool in pool order.
             excluded: ``{query_id: [doc_id, ...]}``, ids removed from rankings and ideals.
-            protocol: A :data:`~rcp_ndcg_core.protocol.PROTOCOLS` name the data is scored with by default.
+            protocol: A :data:`~rcp_core.protocol.PROTOCOLS` name the data is scored with by default.
             subset, split, task, task_instruction: The provenance fields of :class:`Dataset`.
 
         Returns:

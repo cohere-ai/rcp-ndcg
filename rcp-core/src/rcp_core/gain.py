@@ -1,4 +1,4 @@
-"""Relevance gains for :func:`rcp_ndcg_core.metric.ndcg` (numpy, no torch).
+"""Relevance gains for :func:`rcp_core.metric.ndcg` (numpy, no torch).
 
 * :func:`gain` -- the paper's RCP gain ``g(theta)``: the discrimination-weighted mean of the
   criterion pass probabilities at a calibrated ability.
@@ -7,7 +7,7 @@
 * :func:`qrel_gain` -- the gain of a human grade.
 
 RCP-, qrel- and Count-nDCG differ only in these gains. The item parameters ``items`` are any object with
-``gamma`` and ``beta`` sequences (:class:`~rcp_ndcg_core.schemas.ItemParams`), or a mapping with the keys
+``gamma`` and ``beta`` sequences (:class:`~rcp_core.schemas.ItemParams`), or a mapping with the keys
 ``"gamma"`` and ``"beta"`` (the ``items.json`` of a calibration). The number of criteria is ``len(gamma)``.
 """
 
@@ -30,7 +30,7 @@ def item_arrays(items: Any, *, weighted: bool = True) -> tuple[Sequence[float], 
     ``weighted`` -- every ``gamma > 0``.
 
     Args:
-        items: Item parameters: an :class:`~rcp_ndcg_core.schemas.ItemParams`, any object with ``gamma`` and
+        items: Item parameters: an :class:`~rcp_core.schemas.ItemParams`, any object with ``gamma`` and
             ``beta`` sequences, or a ``{"gamma": [...], "beta": [...]}`` mapping (discriminations, difficulties in
             logits).
         weighted: Also require every ``gamma > 0``, the rule the discrimination-weighted :func:`gain` needs:

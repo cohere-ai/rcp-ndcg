@@ -1,7 +1,7 @@
 """nDCG with float gains and explicit tie rules (pure Python, no torch).
 
 * :func:`ndcg` -- the one nDCG@k of this project. RCP-, qrel- and Count-nDCG differ only in the gains
-  (:mod:`rcp_ndcg_core.gain`).
+  (:mod:`rcp_core.gain`).
 * :func:`dcg`, :func:`ideal_dcg`, :func:`discount` -- its parts, for callers that need a DCG or the position
   discount themselves.
 * :data:`TieRule` -- how equal scores are ordered; :func:`rank_by_score` applies the two rules that give an order.
@@ -14,14 +14,14 @@ import numbers
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Literal, get_args
 
-from rcp_ndcg_core._util import descending_score_order
+from rcp_core._util import descending_score_order
 
 TieRule = Literal["doc_id_desc", "group_mean", "input_order"]
 """How documents with equal scores are ordered when a score mapping is scored.
 
 * ``"group_mean"`` -- every document of an equal-score class is credited the class's mean gain: the expected nDCG
   over all orders of the tie. It depends on the scores alone (mteb's ``ndcg_float_at_k``; the default, and the rule
-  of every :data:`~rcp_ndcg_core.protocol.PROTOCOLS` preset and of the paper's tables).
+  of every :data:`~rcp_core.protocol.PROTOCOLS` preset and of the paper's tables).
 * ``"doc_id_desc"`` -- ties broken by document id, descending (trec_eval / pytrec_eval; arXiv v1's NanoBEIR and
   BRIGHT tables).
 * ``"input_order"`` -- ties keep the order in which the scores are given (arXiv v1's TREC-DL tables pass them in

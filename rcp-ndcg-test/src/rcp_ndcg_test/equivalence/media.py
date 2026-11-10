@@ -27,7 +27,7 @@ pairs carry no media row fails the stage (it checked nothing); a recipe that dec
 media stage.
 
 The pairs file's ``media`` field: ``{"query": [entry, ...], "documents": [[entry, ...], ...]}``, each entry
-an :class:`~rcp_ndcg_core.content.MediaRef` object plus its ``kind`` (``image`` or ``video``) -- the bytes
+an :class:`~rcp_core.content.MediaRef` object plus its ``kind`` (``image`` or ``video``) -- the bytes
 inline (a ``data:`` URI) or at a resolvable URI -- or, in a part sequence, a ``text`` entry (``{"kind":
 "text", "text": ...}``): an interleaved row's text segments, standing where they stand.  A side's content
 is its entries in order, then its text when it has one (:func:`side_content`): the order the card consumes
@@ -112,7 +112,7 @@ def text_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 def _part(entry: dict[str, Any]) -> Any:
     """One pairs media entry as the product's content part: a media entry (``image``/``video``, with its
     bytes) or a text segment (``{"kind": "text", "text": ...}``), at its position in the sequence."""
-    from rcp_ndcg_core.content import ImagePart, MediaRef, TextPart, VideoPart
+    from rcp_core.content import ImagePart, MediaRef, TextPart, VideoPart
 
     kind = entry.get("kind", "image")
     if kind == "text":
@@ -129,9 +129,9 @@ def _part(entry: dict[str, Any]) -> Any:
 
 
 def side_content(text: str, entries: Sequence[dict[str, Any]]) -> Any:
-    """One side of a media row as the product's :class:`~rcp_ndcg_core.content.Content`: its entries in
+    """One side of a media row as the product's :class:`~rcp_core.content.Content`: its entries in
     order (media parts and text segments of a part sequence), then its text when it has one."""
-    from rcp_ndcg_core.content import Content, TextPart
+    from rcp_core.content import Content, TextPart
 
     parts: list[Any] = [_part(entry) for entry in entries]
     if text:
@@ -159,7 +159,7 @@ def side_contents(row: dict[str, Any]) -> tuple[Any, list[Any]]:
 def _sent_bytes(url: str) -> bytes:
     """The bytes of one sent inline media item: the product's own resolver reads the ``data:`` URI (the one
     form the package inlines media as), so the stage and the emulator decode it identically."""
-    from rcp_ndcg_core.content import MediaRef
+    from rcp_core.content import MediaRef
 
     from rcp_ndcg.data.media import default_resolver
 
@@ -184,7 +184,7 @@ def sent_media_content(part: Mapping[str, Any]) -> tuple[str, Any]:
         HarnessError: the part is not an inline media item, or its bytes state no geometry (an image whose
             header does not decode, a container the probe cannot read).
     """
-    from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
+    from rcp_core.content import Content, ImagePart, MediaRef, VideoPart
 
     from rcp_ndcg.data.media import image_dimensions, probe_video_header
 

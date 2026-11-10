@@ -13,8 +13,8 @@ from pathlib import Path
 
 import httpx
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.records import RankingExample
 
 from rcp_ndcg.data.prepare import prepare_content
 from rcp_ndcg.data.preprocess import Preprocessing
@@ -549,7 +549,7 @@ async def test_run_planned_releases_a_query_s_prepared_media(tmp_path: Path, pag
     """The ``judge(windows=...)`` path (calibration insert/rejudge) prepared every query's media and never
     released it: after the pass returned, every pool was still resident. It releases like the two stage
     workers do."""
-    from rcp_ndcg_core.schemas import JudgementFamily
+    from rcp_core.schemas import JudgementFamily
 
     from rcp_ndcg.data.census import TextTruncationCensus
     from rcp_ndcg.data.prepare import MediaCensus
@@ -594,7 +594,7 @@ async def test_a_pass_releases_a_query_s_prepared_media_when_it_finishes(tmp_pat
     """A judging pass cached every prepared page and frame of every query for the whole pass (the shared
     image LRU cannot release them while the per-pass dict holds references); the cache is now scoped to one
     query and released when its run returns."""
-    from rcp_ndcg_core.schemas import JudgementFamily
+    from rcp_core.schemas import JudgementFamily
 
     from rcp_ndcg.data.census import TextTruncationCensus
     from rcp_ndcg.data.prepare import MediaCensus

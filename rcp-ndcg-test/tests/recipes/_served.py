@@ -203,7 +203,7 @@ def served_texts(recipe: Any, texts: Iterable[str], shape: str) -> list[str]:
     One capture per input (the client fans out concurrently; per-call captures keep position
     attribution exact), read from the request bodies of the product's own client.
     """
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
     from rcp_ndcg_test.equivalence.wire import role_client
 
     if recipe.role == "rerank":

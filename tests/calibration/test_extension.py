@@ -8,8 +8,8 @@ import statistics
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.irt import score_document
-from rcp_ndcg_core.schemas import EstimateFlags, JudgementSet, QueryParams
+from rcp_core.irt import score_document
+from rcp_core.schemas import EstimateFlags, JudgementSet, QueryParams
 
 from rcp_ndcg.calibration import (
     Calibration,
@@ -229,7 +229,7 @@ class TestInsertDocuments:
 
 
 def test_insertion_refits_with_the_l2_the_calibration_was_fitted_with(tmp_path) -> None:
-    from rcp_ndcg_core.irt import Priors
+    from rcp_core.irt import Priors
 
     from rcp_ndcg.judging import TournamentSchedule, judge
     from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge, tiny_rows

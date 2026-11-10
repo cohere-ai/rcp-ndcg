@@ -43,10 +43,10 @@ try:
 except PackageNotFoundError:  # a source tree on sys.path without an install
     __version__ = "0+unknown"
 
-from rcp_ndcg_core.gain import Gains, gain  # noqa: E402
-from rcp_ndcg_core.metric import ndcg  # noqa: E402
-from rcp_ndcg_core.protocol import Protocol  # noqa: E402
-from rcp_ndcg_core.schemas import JudgementSet  # noqa: E402
+from rcp_core.gain import Gains, gain  # noqa: E402
+from rcp_core.metric import ndcg  # noqa: E402
+from rcp_core.protocol import Protocol  # noqa: E402
+from rcp_core.schemas import JudgementSet  # noqa: E402
 
 from rcp_ndcg.calibration import Calibration, Extension, calibrate, insert_documents, score_documents  # noqa: E402
 from rcp_ndcg.data import Dataset, Rankings, load_dataset, load_rankings  # noqa: E402

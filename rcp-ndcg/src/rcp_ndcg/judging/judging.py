@@ -2,7 +2,7 @@
 
 :func:`judge` is the one judging path. It schedules the windows of every query
 (:mod:`rcp_ndcg.judging.schedule`), renders each window with the stage's prompt,
-asks the judge, parses the answer into a :class:`~rcp_ndcg_core.schemas.Judgement`
+asks the judge, parses the answer into a :class:`~rcp_core.schemas.Judgement`
 and appends it to the judgement store (:mod:`rcp_ndcg.judging.store`) the moment it
 lands. Because every window has a stable ``record_id``, running :func:`judge`
 again over the same store asks only for the windows that are missing: resuming
@@ -25,10 +25,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from rcp_ndcg_core.content import Content, ImagePart, VideoPart
-from rcp_ndcg_core.irt import Priors
-from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION, DocumentTitle, RankingExample
-from rcp_ndcg_core.schemas import (
+from rcp_core.content import Content, ImagePart, VideoPart
+from rcp_core.irt import Priors
+from rcp_core.records import TEXT_FORMATTING_VERSION, DocumentTitle, RankingExample
+from rcp_core.schemas import (
     InvalidCategory,
     Judgement,
     JudgementFamily,
@@ -237,7 +237,7 @@ def _rows(
 
     A dataset's rows are its queries with their candidate pools (``candidates``, else the dataset's own pools,
     else its judged documents) and the documents' bodies from its corpus, each read as the content a model
-    reads (:meth:`~rcp_ndcg_core.records.Document.model_content`: MTEB's title join, or the title separately).
+    reads (:meth:`~rcp_core.records.Document.model_content`: MTEB's title join, or the title separately).
     """
     from rcp_ndcg.data.dataset import Dataset
 
@@ -301,7 +301,7 @@ def _dataset_identity(name: str, source: Any, rows: Any = None) -> dict[str, Any
 
     A row-sequence input (no dataset object) has no name or revision to give: it is named by the SHA-256 of
     the rows it judges, so two passes over different row corpora never share a store identity (and, through
-    :func:`~rcp_ndcg_core.schemas.judgement_record_id`, never share record ids). An in-memory dataset
+    :func:`~rcp_core.schemas.judgement_record_id`, never share record ids). An in-memory dataset
     (:meth:`~rcp_ndcg.data.Dataset.from_records`, no URI) is named by its content for the same reason.
     """
     if source is None:
@@ -1097,7 +1097,7 @@ async def run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass
 
 async def _run_tournament(query: _Query, schedule: TournamentSchedule, run: _Pass) -> None:
     """The body of :func:`run_tournament`; the public wrapper releases the query's prepared media."""
-    from rcp_ndcg_core.irt import BradleyTerryEstimator
+    from rcp_core.irt import BradleyTerryEstimator
 
     units = query.units
     n = len(units)
@@ -1163,7 +1163,7 @@ async def run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> Non
 
 async def _run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> None:
     """The body of :func:`run_rubric`; the public wrapper releases the query's prepared media."""
-    from rcp_ndcg_core.irt import RaschEstimator
+    from rcp_core.irt import RaschEstimator
 
     units = query.units
     n = len(units)

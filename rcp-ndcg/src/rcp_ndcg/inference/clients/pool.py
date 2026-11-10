@@ -1,6 +1,6 @@
 """The pooling role client: late-interaction (multi-vector) encoding with every content decision applied.
 
-A :class:`PoolingClient` turns :class:`~rcp_ndcg_core.content.Content` into the ragged
+A :class:`PoolingClient` turns :class:`~rcp_core.content.Content` into the ragged
 :class:`~rcp_ndcg.inference.types.Embeddings` of a multi-vector endpoint, one
 :class:`~rcp_ndcg.inference.types.PoolRequest` per ``batch_size`` items sent through its
 :class:`~rcp_ndcg.inference.transport.Sender`:
@@ -34,7 +34,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_core.content import Content, ImagePart, TextPart
+from rcp_core.content import Content, ImagePart, TextPart
 
 from rcp_ndcg.data.mrl import MrlHead
 from rcp_ndcg.data.postprocess import kept_vector_count, skip_keep_mask

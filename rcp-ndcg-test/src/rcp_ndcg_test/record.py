@@ -111,7 +111,7 @@ def _record_role_request(recipe: Recipe, base_url: str, exchanges: list[dict[str
     if recipe.role == "rerank":
         client.rerank(_SNIPPET_TEXT, _SNIPPET_DOCUMENTS, instruction=_snippet_instruction(recipe))
     else:
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         from rcp_ndcg.inference.types import EncodeRole
 
@@ -603,7 +603,7 @@ def _model_layer(
     omits entirely (a reranker's every document blank under ``omit_zero_blank``) is recorded as its omission
     (:func:`omission_exchange`), so the plan's request id stays accounted for.
     """
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from rcp_ndcg.inference.types import EncodeRole
 

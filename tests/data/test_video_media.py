@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.data.io import get_reader
 from rcp_ndcg.data.media import MediaResolver, content_parts_payload, probe_video_header

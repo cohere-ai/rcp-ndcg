@@ -326,7 +326,7 @@ def derived_vectors(
     for a reply that carries no vectors (another route, a refusal).  Raises :class:`HarnessError` naming the
     record when a vector reply does not decode (an undecodable body is never skipped silently).
     """
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from rcp_ndcg.inference.adapters.embeddings import OpenAIEmbeddings
     from rcp_ndcg.inference.adapters.pooling import VllmPooling

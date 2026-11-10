@@ -1,4 +1,4 @@
-"""Tournament insertion by conditional MAP (:func:`rcp_ndcg_core.irt.insert_document`).
+"""Tournament insertion by conditional MAP (:func:`rcp_core.irt.insert_document`).
 
 The flagship property -- existing thetas are bit-identical after a conditional
 insertion -- is pinned here: re-injecting a refit-all into ``insert_document``
@@ -16,8 +16,8 @@ import random
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.irt import UnidentifiableInsertion, fit_bradley_terry, insert_document
-from rcp_ndcg_core.irt._insertion import connected_components, select_opponents
+from rcp_core.irt import UnidentifiableInsertion, fit_bradley_terry, insert_document
+from rcp_core.irt._insertion import connected_components, select_opponents
 
 
 def _soft_comparison(
@@ -110,8 +110,8 @@ class TestConditionalInsertion:
         result = insert_document(
             doc, new_comparisons=new_comps, existing_thetas=thetas, existing_comparisons=existing_comps
         )
-        from rcp_ndcg_core.irt import Priors
-        from rcp_ndcg_core.irt._insertion import incident_information
+        from rcp_core.irt import Priors
+        from rcp_core.irt._insertion import incident_information
 
         # Its default ridge is the calibration's Bradley-Terry penalty, scaled by the fit's weight total.
         weight_total = sum(weight for _a, _b, weight, _sl in existing_comps + new_comps)
@@ -126,8 +126,8 @@ class TestConditionalInsertion:
 def test_inserted_se_matches_the_joint_fit_referent() -> None:
     """The inserted SE is ``1/sqrt(own Fisher information + l2*W)``, W the fit's total comparison
     weight: the same referent :class:`BradleyTerryEstimator` reports for every fitted document."""
-    from rcp_ndcg_core.gain import sigmoid
-    from rcp_ndcg_core.irt import Priors
+    from rcp_core.gain import sigmoid
+    from rcp_core.irt import Priors
 
     docs, _true, comparisons = _dense_world()
     doc = "d15"
@@ -158,7 +158,7 @@ class TestInformationReferent:
         pair (a, b) contributes nothing. With l2 = 0.3125 and W = 4 the ridge term is 1.25,
         so the total is 2.9375; the old per-document referent (+l2 alone) gave 2.0.
         """
-        from rcp_ndcg_core.irt._insertion import incident_information
+        from rcp_core.irt._insertion import incident_information
 
         theta = {"d": 0.0, "a": 0.0, "b": math.log(3.0), "c": 0.0}
         comps = [("d", "a", 2.0, 0.9), ("b", "d", 1.0, 0.8), ("c", "d", 4.0, 0.6), ("a", "b", 9.0, 0.5)]
@@ -173,7 +173,7 @@ class TestInformationReferent:
         so the returned information is ``w * 1/4 + l2*W`` = 0.5 + 0.5*4 = 2.5 -- the per-document
         referent (a dropped ``*W``) returns 1.0.
         """
-        from rcp_ndcg_core.irt._insertion import conditional_insert_theta
+        from rcp_core.irt._insertion import conditional_insert_theta
 
         theta_hat, info = conditional_insert_theta(
             "d", [("a", "d", 2.0, 0.5)], {"a": 0.0}, l2_reg=0.5, weight_total=4.0
@@ -193,7 +193,7 @@ class TestConditionalRidge:
 
     def test_the_conditional_ridge_matches_the_joint_fit(self) -> None:
         """At the joint optimum the conditional gradient is zero, so the estimates must agree."""
-        from rcp_ndcg_core.irt._insertion import conditional_insert_theta
+        from rcp_core.irt._insertion import conditional_insert_theta
 
         docs, comparisons = _paper_world()
         incident = [c for c in comparisons if "X" in c[:2]]
@@ -377,7 +377,7 @@ class TestEstimatorCorrectness:
         check and is caught only here.
         """
 
-        from rcp_ndcg_core.irt._insertion import conditional_insert_theta
+        from rcp_core.irt._insertion import conditional_insert_theta
 
         thetas = {"opp": 0.5, "d*": None}
         del thetas["d*"]

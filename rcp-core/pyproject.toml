@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rcp-ndcg-core"
+name = "rcp-core"
 version = "0.0.1"
 description = "RCP-nDCG metric, IRT estimators and canonical schemas -- the dependency-light core."
 readme = "README.md"
@@ -22,7 +22,7 @@ classifiers = [
 ]
 # The metric, interpretation and evaluation surface is numpy + pydantic only.
 # Anything heavier (torch for the IRT estimators) is an extra so that
-# `pip install rcp-ndcg-core` stays viable on any platform.
+# `pip install rcp-core` stays viable on any platform.
 dependencies = [
   "numpy>=1.26",
   "pydantic>=2.11",

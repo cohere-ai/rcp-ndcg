@@ -186,7 +186,7 @@ class TestTheMediaBytesInTheIdentity:
 
     @staticmethod
     def _content(path: Path) -> Any:
-        from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+        from rcp_core.content import Content, ImagePart, MediaRef
 
         return Content.from_parts([ImagePart(ref=MediaRef(uri=str(path), mime="image/png"))])
 
@@ -207,7 +207,7 @@ class TestTheMediaBytesInTheIdentity:
         assert retrieval_api._identity(BM25Config(), ["d1"], [content]) != before
 
     def test_a_hashed_reference_keys_by_its_hash(self, tmp_path: Path) -> None:
-        from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+        from rcp_core.content import Content, ImagePart, MediaRef
 
         from rcp_ndcg.retrieval import BM25Config
 
@@ -331,7 +331,7 @@ class TestTheEmptyEdges:
     def test_duplicate_query_ids_are_refused(self, tmp_path: Path, dense: DenseConfig) -> None:
         """A11: the checkpoint callback keys on the query id, so duplicates would be attributed to one
         another."""
-        from rcp_ndcg_core.records import RankingExample
+        from rcp_core.records import RankingExample
 
         from rcp_ndcg.retrieval import ServedReranker
 

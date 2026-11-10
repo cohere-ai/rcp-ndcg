@@ -71,7 +71,7 @@ import numpy as np
 
 from rcp_ndcg.inference.adapters.pooling import VllmPooling
 from rcp_ndcg.inference.types import EncodeRole, PoolRequest, Reply
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 import base64
 

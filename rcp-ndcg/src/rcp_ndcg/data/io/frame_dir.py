@@ -27,8 +27,8 @@ import re
 from collections.abc import Iterator
 from typing import ClassVar
 
-from rcp_ndcg_core.content import Content, Modality, VideoPart
-from rcp_ndcg_core.records import Document
+from rcp_core.content import Content, Modality, VideoPart
+from rcp_core.records import Document
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.image_dir import ImageDirReader

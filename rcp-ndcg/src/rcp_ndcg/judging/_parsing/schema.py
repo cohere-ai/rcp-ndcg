@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from rcp_ndcg_core.schemas import Stage
+from rcp_core.schemas import Stage
 
 
 def _document_keys(window_size: int) -> list[str]:

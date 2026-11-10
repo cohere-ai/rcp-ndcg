@@ -9,8 +9,8 @@ from pathlib import Path
 
 import httpx
 import pytest
-from rcp_ndcg_core.records import RankingExample
-from rcp_ndcg_core.schemas import JudgementSet
+from rcp_core.records import RankingExample
+from rcp_core.schemas import JudgementSet
 
 from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example
 from rcp_ndcg.data.tokenizer import load_tokenizer
@@ -1373,7 +1373,7 @@ class TestIdentities:
     ) -> None:
         """The text-formatting rule is code: a bump of ``TEXT_FORMATTING_VERSION`` re-keys the family and
         every record id, so judgements built from the old strings never pool with the new ones."""
-        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
+        from rcp_core.records import TEXT_FORMATTING_VERSION
 
         from rcp_ndcg.judging import judging as judging_module
 

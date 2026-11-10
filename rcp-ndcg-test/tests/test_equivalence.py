@@ -1049,7 +1049,7 @@ def test_engine_tokenize_check_does_not_post_token_ids_bodies(monkeypatch: pytes
 def test_stage1_audits_messages_bodies_and_fails_an_audit_that_checked_nothing(tmp_path: Path) -> None:
     """G2: a ``messages`` client's bodies extract as their message texts (media parts as placeholders), so the
     audit checks every captured input; an audit that checked zero inputs fails instead of passing vacuously."""
-    from rcp_ndcg_core.content import TEXT_JOIN
+    from rcp_core.content import TEXT_JOIN
     from rcp_ndcg_test.equivalence import stages as stages_module
     from rcp_ndcg_test.equivalence.wire import Capture
 

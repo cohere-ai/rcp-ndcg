@@ -561,7 +561,7 @@ def test_the_served_render_is_the_declared_frame_only_with_the_generation_prompt
     """The messages route ships the content; the engine frames it with the checkpoint's chat template. With
     the declared ``add_generation_prompt: true`` (sent) the render is the declared frame byte for byte; without
     it -- vLLM's chat default, false -- the assistant header is missing, and with it the pooled anchor."""
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
     from rcp_ndcg_test.equivalence import fitting, stages
     from rcp_ndcg_test.equivalence.wire import role_client
 

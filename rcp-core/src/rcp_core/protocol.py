@@ -10,7 +10,7 @@ A reranker's output is scored per query from plain mappings:
 * ``excluded`` -- document ids the benchmark removes for the query (HF ``excluded``:
   NanoArguAna's own argument of the query, BRIGHT's ``excluded_ids``).
 
-Every metric uses linear gains through :func:`rcp_ndcg_core.metric.ndcg`.  The ideal DCG of
+Every metric uses linear gains through :func:`rcp_core.metric.ndcg`.  The ideal DCG of
 RCP-nDCG and Count-nDCG sorts all gains of the query; qrel-nDCG's ideal DCG sorts all
 positive qrels, including positives outside the scored candidates.  Excluded documents
 leave the ranking and every ideal.  A :class:`Protocol` adds the suite rules,
@@ -46,8 +46,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rcp_ndcg_core.gain import qrel_gain
-from rcp_ndcg_core.metric import TieRule, _validate_gains, _validate_k, _validate_scores, ndcg
+from rcp_core.gain import qrel_gain
+from rcp_core.metric import TieRule, _validate_gains, _validate_k, _validate_scores, ndcg
 
 
 class Protocol(BaseModel):

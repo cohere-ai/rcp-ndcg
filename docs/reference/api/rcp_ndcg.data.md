@@ -70,10 +70,10 @@ class Dataset(pydantic.main.BaseModel)
 pydantic_model — One document: its body (``text`` or ``content``), its id, and its optional ``title``.
 
 ```text
-class Document(rcp_ndcg_core.records.Text)
+class Document(rcp_core.records.Text)
 ```
 
-- `content: rcp_ndcg_core.content.Content | None` = None
+- `content: rcp_core.content.Content | None` = None
 
 - `id: str`
 
@@ -248,10 +248,10 @@ class QrelRow(pydantic.main.BaseModel)
 pydantic_model — One query: its body (``text`` or ``content``), its id, and its optional per-query ``instruction``.
 
 ```text
-class Query(rcp_ndcg_core.records.Text)
+class Query(rcp_core.records.Text)
 ```
 
-- `content: rcp_ndcg_core.content.Content | None` = None
+- `content: rcp_core.content.Content | None` = None
 
 - `id: str`
 
@@ -264,14 +264,14 @@ class Query(rcp_ndcg_core.records.Text)
 pydantic_model — One query with its candidate documents: ids, bodies (``docs`` or ``contents``), qrels and scores.
 
 ```text
-class RankingExample(rcp_ndcg_core.records.Query)
+class RankingExample(rcp_core.records.Query)
 ```
 
 - `chunk_mapping: dict[str, str] | None` = None
 
-- `content: rcp_ndcg_core.content.Content | None` = None
+- `content: rcp_core.content.Content | None` = None
 
-- `contents: list[rcp_ndcg_core.content.Content] | None` = None
+- `contents: list[rcp_core.content.Content] | None` = None
 
 - `doc_ids: list[str]`
 
@@ -388,10 +388,10 @@ class TemplateSpec(pydantic.main.BaseModel)
 pydantic_model — A piece of content with an id.
 
 ```text
-class Text(rcp_ndcg_core.records.Input)
+class Text(rcp_core.records.Input)
 ```
 
-- `content: rcp_ndcg_core.content.Content | None` = None
+- `content: rcp_core.content.Content | None` = None
 
 - `id: str`
 

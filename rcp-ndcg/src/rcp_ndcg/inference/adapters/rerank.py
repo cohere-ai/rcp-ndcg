@@ -37,7 +37,7 @@ import re
 from collections.abc import Sequence
 from typing import Any, ClassVar, NoReturn
 
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
 from rcp_ndcg.inference.adapters.base import AdapterBase, AdapterRole, register_adapter

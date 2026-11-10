@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import math
 
-from rcp_ndcg_core.gain import sigmoid
-from rcp_ndcg_core.schemas import Judgement
+from rcp_core.gain import sigmoid
+from rcp_core.schemas import Judgement
 
 from rcp_ndcg.judging._parsing.common import UnparseableAnswer, decode_answer, document_position
 from rcp_ndcg.judging.client import Completion

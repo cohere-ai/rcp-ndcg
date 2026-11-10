@@ -17,7 +17,7 @@ from typing import Any, Literal
 import numpy as np
 from numpy.typing import DTypeLike
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.data.postprocess import l2_normalize
 from rcp_ndcg.errors import DataError

@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.errors import ConfigError, MissingInputError

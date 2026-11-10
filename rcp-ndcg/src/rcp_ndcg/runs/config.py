@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, field_validator, model_validator
-from rcp_ndcg_core.irt import Priors
+from rcp_core.irt import Priors
 
 from rcp_ndcg.data.revisions import dataset_content_digest, dataset_local_locations
 from rcp_ndcg.data.text_policy import Preprocessing

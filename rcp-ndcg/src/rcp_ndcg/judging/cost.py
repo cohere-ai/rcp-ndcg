@@ -32,7 +32,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.content import Content, VideoPart
+from rcp_core.content import Content, VideoPart
 
 from rcp_ndcg.errors import CapabilityError
 from rcp_ndcg.inference.adapters.chat import media_counts

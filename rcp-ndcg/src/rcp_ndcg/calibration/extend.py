@@ -29,7 +29,7 @@ from typing import Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.irt import (
+from rcp_core.irt import (
     DEFAULT_SE_TARGET,
     MIN_OPPONENTS,
     ScaleMovementError,
@@ -37,8 +37,8 @@ from rcp_ndcg_core.irt import (
     insert_document,
     score_document,
 )
-from rcp_ndcg_core.irt._insertion import select_opponents as _opponent_kernel
-from rcp_ndcg_core.schemas import DocumentEstimate, ItemParams, JudgementSet
+from rcp_core.irt._insertion import select_opponents as _opponent_kernel
+from rcp_core.schemas import DocumentEstimate, ItemParams, JudgementSet
 
 from rcp_ndcg.calibration._projection import (
     check_criteria,
@@ -137,7 +137,7 @@ def _keyed(record: ExtensionRecord) -> ExtensionRecord:
 
 
 def _anchor(pairs: list[tuple[float, float]], items: ItemParams, max_gain_shift: float) -> AnchorReport:
-    from rcp_ndcg_core.gain import gain
+    from rcp_core.gain import gain
 
     theta_shift = max((abs(after - before) for before, after in pairs), default=0.0)
     gain_shift = max((abs(gain(after, items) - gain(before, items)) for before, after in pairs), default=0.0)  # type: ignore[arg-type]

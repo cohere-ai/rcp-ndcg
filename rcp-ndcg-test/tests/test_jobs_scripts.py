@@ -1730,15 +1730,15 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm"], builds  # release order, by name
+    assert packages == ["rcp-core", "rcp-ndcg", "rcp-ndcg-vllm"], builds  # release order, by name
     assert all("--all-packages" not in words for words in builds)
     # The wheelhouse the build stages: exactly the published wheels, never the unpublished member's.
     wheelhouse = tmp_path / "wheelhouse"
     shutil.copytree(dist, wheelhouse)
     listed = sorted(path.name for path in wheelhouse.iterdir())
     assert listed == [
+        "rcp_core-0.0.1-py3-none-any.whl",
         "rcp_ndcg-0.0.1-py3-none-any.whl",
-        "rcp_ndcg_core-0.0.1-py3-none-any.whl",
         "rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
     ], listed
     assert not any(name.startswith("rcp_ndcg_test") for name in listed)
@@ -1756,7 +1756,7 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"], builds
+    assert packages == ["rcp-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"], builds
     assert sorted(path.name for path in harness.iterdir()) == ["rcp_ndcg_test-0.0.1-py3-none-any.whl"]
     # The staged tree the real build copies it into: the script names the harness directory beside dist/.
     assert 'stage/"$RC_NAME"/harness' in RC_BUILD.read_text(encoding="utf-8")
@@ -2067,11 +2067,11 @@ def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
 
 
 def _check_pins(
-    tmp_path: Path, *, core_pin: str = '  "rcp-ndcg-core==0.0.1",\n', vllm_deps: str = '  "pydantic>=2.0",\n'
+    tmp_path: Path, *, core_pin: str = '  "rcp-core==0.0.1",\n', vllm_deps: str = '  "pydantic>=2.0",\n'
 ) -> subprocess.CompletedProcess[str]:
     """Source rc_build.sh and run ``check_pins`` on a scratch checkout with the given manifests."""
     checkout = tmp_path / "checkout"
-    for member in ("rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-core", "rcp-ndcg-test"):
+    for member in ("rcp-ndcg", "rcp-ndcg-vllm", "rcp-core", "rcp-ndcg-test"):
         (checkout / member).mkdir(parents=True, exist_ok=True)
 
     def _write(path: Path, text: str) -> None:
@@ -2087,7 +2087,7 @@ def _check_pins(
         checkout / "rcp-ndcg-vllm" / "pyproject.toml",
         '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
     )
-    for member in ("rcp-ndcg-core", "rcp-ndcg-test"):
+    for member in ("rcp-core", "rcp-ndcg-test"):
         _write(checkout / member / "pyproject.toml", f'[project]\nname = "{member}"\nversion = "0.0.1"\n')
     _write(checkout / "CITATION.cff", "cff-version: 1.2.0\nversion: 0.0.1\n")
     scripts = checkout / ".github" / "scripts"
@@ -2133,13 +2133,13 @@ def test_rc_build_runs_the_release_checks_and_smokes_from_one_home() -> None:
 
 
 def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:
-    """rcp-ndcg pins rcp-ndcg-core==VERSION; the lean rcp-ndcg-vllm names NO sibling (decision 18: no
+    """rcp-ndcg pins rcp-core==VERSION; the lean rcp-ndcg-vllm names NO sibling (decision 18: no
     lockstep version pin between the two packages -- the manifest does not depend on rcp-ndcg)."""
     completed = _check_pins(tmp_path)
     assert completed.returncode == 0, completed.stderr
 
 
-@pytest.mark.parametrize("sibling", ["rcp-ndcg==0.0.1", "rcp-ndcg-core==0.0.1", "rcp-ndcg-test==0.0.1"])
+@pytest.mark.parametrize("sibling", ["rcp-ndcg==0.0.1", "rcp-core==0.0.1", "rcp-ndcg-test==0.0.1"])
 def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Path, sibling: str) -> None:
     """The pre-fix check asserted the opposite and aborted every build: ANY workspace sibling named in
     the vllm manifest is refused (not only rcp-ndcg), naming decision 18."""
@@ -2159,7 +2159,7 @@ def test_rc_build_pin_check_accepts_the_package_naming_itself(tmp_path: Path) ->
 def test_rc_build_pin_check_refuses_a_missing_core_pin(tmp_path: Path) -> None:
     completed = _check_pins(tmp_path, core_pin="")
     assert completed.returncode != 0
-    assert "rcp-ndcg-core==0.0.1" in completed.stderr
+    assert "rcp-core==0.0.1" in completed.stderr
 
 
 # --- judgecheck.sh: the release checklist's judge item (both thinking modes, the media probe) --------

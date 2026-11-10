@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_core.content import Content, ImagePart, MediaRef
 
 from rcp_ndcg.data import media
 from rcp_ndcg.data.media import MediaError, MediaResolver, data_uri, default_resolver, sha256_of

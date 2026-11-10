@@ -37,8 +37,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NamedTuple, Protocol, Self, TypeVar, runtime_checkable
 
-from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
-from rcp_ndcg_core.records import Query
+from rcp_core.content import Content, ImagePart, TextPart, VideoPart
+from rcp_core.records import Query
 
 from rcp_ndcg.data.prepare import (
     MediaCensus,
@@ -799,7 +799,7 @@ class RoleClient[C: Endpoint]:
         """The content with ``text`` carried by its text parts, each in its own place.
 
         A content that carries media gets the fitted CONTENT SPAN -- a prefix of its joined text, which
-        :meth:`~rcp_ndcg_core.content.Content.truncated` distributes over the parts where they stand: a
+        :meth:`~rcp_core.content.Content.truncated` distributes over the parts where they stand: a
         caption after its page stays after it, because the order of an item's parts is information the
         model reads. (A declared template normalisation makes the span a prefix of the NORMALISED joined
         text, not of the raw parts; that combination is refused up front by
@@ -1099,7 +1099,7 @@ class RoleClient[C: Endpoint]:
     @staticmethod
     def _fold_instruction(content: Content, instruction: str) -> Content:
         """The generic task-instruction frame (the one home is the core record's own
-        :meth:`~rcp_ndcg_core.records.Query.format_content`): ``Task: <instruction>\\nQuery: <text>``."""
+        :meth:`~rcp_core.records.Query.format_content`): ``Task: <instruction>\\nQuery: <text>``."""
         return Query(query_id="", query=content.text, content=content).format_content(task_instruction=instruction)
 
     def _stage_media(

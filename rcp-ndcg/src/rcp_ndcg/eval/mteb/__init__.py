@@ -28,7 +28,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from rcp_ndcg_core.metric import ndcg
+from rcp_core.metric import ndcg
 
 from rcp_ndcg.data.dataset import SUITES
 from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, MissingInputError
@@ -62,7 +62,7 @@ def ndcg_float_scores(
     Raises:
         DataError: A non-finite or negative gain, or a non-finite score. Unlike mteb PR 5516 (which ranks an
             infinity as usual), a non-finite score is refused: a model that emits one has a bug, and the rest
-            of the package refuses it the same way (``rcp_ndcg_core.metric``).
+            of the package refuses it the same way (``rcp_core.metric``).
     """
     for query_id, query_gains in gains.items():
         if any(not math.isfinite(g) or g < 0 for g in query_gains.values()):

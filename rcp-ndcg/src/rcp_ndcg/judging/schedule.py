@@ -50,8 +50,8 @@ from collections import Counter
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.gain import sigmoid
-from rcp_ndcg_core.metric import discount
+from rcp_core.gain import sigmoid
+from rcp_core.metric import discount
 
 from rcp_ndcg.support.identity import hash_payload, short
 
@@ -234,7 +234,7 @@ class RubricSchedule(BaseModel):
 def schedule_key(schedule: TournamentSchedule | RubricSchedule) -> str:
     """16-hex digest of a schedule's numbers (its prompt left out: the judgement family holds the prompt's hash).
 
-    Planned windows are keyed by it (:func:`~rcp_ndcg_core.schemas.judgement_record_id`).
+    Planned windows are keyed by it (:func:`~rcp_core.schemas.judgement_record_id`).
     """
     return short(hash_payload(schedule.model_dump(mode="json", exclude={"prompt"})), 16)
 

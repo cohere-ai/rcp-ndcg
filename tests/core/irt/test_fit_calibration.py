@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.irt import Priors, fit_calibration
+from rcp_core.irt import Priors, fit_calibration
 
 torch = pytest.importorskip("torch")
 
@@ -76,7 +76,7 @@ def test_the_rubric_only_fit_is_invariant_under_the_ability_prior_sd() -> None:
     ``gamma -> gamma*s``, ``beta -> beta/s``, so the reported items and the gains must not move when
     only ``ability_sd`` changes. The fixed absolute quadrature grid broke that (gains moved 0.02 at
     ``ability_sd=4``)."""
-    from rcp_ndcg_core.gain import gain
+    from rcp_core.gain import gain
 
     rng = np.random.default_rng(2)
     beta_true = np.linspace(-1.0, 1.0, 5)

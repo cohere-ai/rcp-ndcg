@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
-from rcp_ndcg_core.schemas import Judgement, JudgementSet, criterion_labels
+from rcp_core.schemas import Judgement, JudgementSet, criterion_labels
 
 from rcp_ndcg.calibration import calibrate
 from rcp_ndcg.errors import DataError

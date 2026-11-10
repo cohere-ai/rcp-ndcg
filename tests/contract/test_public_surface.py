@@ -98,13 +98,13 @@ def test_the_public_modules_exist() -> None:
 
 def test_the_family_classes_carry_specific_names() -> None:
     """0.0.1 names the two family concepts: the judgement family (core) and the recipe family (serving)."""
-    import rcp_ndcg_core
-    import rcp_ndcg_core.schemas
+    import rcp_core
+    import rcp_core.schemas
     import rcp_ndcg_vllm.recipe
 
-    assert rcp_ndcg_core.JudgementFamily is rcp_ndcg_core.schemas.JudgementFamily
-    assert "JudgementFamily" in rcp_ndcg_core.schemas.__all__
-    assert "Family" not in rcp_ndcg_core.schemas.__all__
+    assert rcp_core.JudgementFamily is rcp_core.schemas.JudgementFamily
+    assert "JudgementFamily" in rcp_core.schemas.__all__
+    assert "Family" not in rcp_core.schemas.__all__
     assert "RecipeFamily" in rcp_ndcg_vllm.recipe.__all__
     assert "Family" not in rcp_ndcg_vllm.recipe.__all__
 

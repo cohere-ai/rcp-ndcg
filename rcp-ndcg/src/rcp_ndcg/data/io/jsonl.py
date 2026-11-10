@@ -6,7 +6,7 @@
   lines) and ``qrels.jsonl`` (``{"query_id", "qrels": {doc_id: grade}}`` lines), what ``rcp-ndcg data convert
   --to jsonl --shape corpus`` writes.
 
-Media travels as :class:`~rcp_ndcg_core.content.MediaRef` inside the content parts, which is the whole reason the
+Media travels as :class:`~rcp_core.content.MediaRef` inside the content parts, which is the whole reason the
 wire format is references rather than bytes: a page-image dataset is still a JSONL file you can read with ``head``.
 """
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from rcp_ndcg_core.records import ID, Document, Query, RankingExample
+from rcp_core.records import ID, Document, Query, RankingExample
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SinkWriter, SourceReader, sidecar_qrels

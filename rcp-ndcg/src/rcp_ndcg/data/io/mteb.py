@@ -21,7 +21,7 @@ mteb's own template renders; without it the README is the front matter alone, so
 ``struct<bytes, path>`` cells with the parquet's ``huggingface`` feature metadata, the shape
 ``rcp-ndcg-vidore-v3`` stores: ``datasets.load_dataset`` reads them as ``datasets.Image``/``Video`` features,
 and mteb's dataloader hands a model the decoded page image.  ``path`` is null (the internal
-:class:`~rcp_ndcg_core.content.MediaRef` is content-addressed, and writing its cache URI would leak a local
+:class:`~rcp_core.content.MediaRef` is content-addressed, and writing its cache URI would leak a local
 path into the repository; mteb reads the bytes).  One image and one video per row (mteb's columns hold one
 cell each); bytes are resolved through the media resolver, so a ``MediaRef`` to a local path or an object
 store works the same.  An interleaved document (several images, or a video of extracted frames) is refused by
@@ -45,8 +45,8 @@ from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import yaml
-from rcp_ndcg_core.content import ImagePart, MediaRef, VideoPart
-from rcp_ndcg_core.records import ID, Document, Query
+from rcp_core.content import ImagePart, MediaRef, VideoPart
+from rcp_core.records import ID, Document, Query
 
 from rcp_ndcg import storage
 from rcp_ndcg.data.io.base import DataShape, SinkWriter
@@ -291,7 +291,7 @@ def _media_cells(records: list[Any], *, what: str) -> tuple[list[Any], list[Any]
     """The ``image`` and ``video`` cells of the records: one ``{"bytes", "path"}`` struct per record, or
     ``None`` where the record has no such media.
 
-    The media parts come from the record's ``content``; :class:`~rcp_ndcg_core.content.MediaRef` stays the
+    The media parts come from the record's ``content``; :class:`~rcp_core.content.MediaRef` stays the
     internal representation and the bytes are resolved here through the media resolver, so a ``gs://``
     reference works as well as a local one. mteb's columns hold one cell each: a record with two images, two
     video containers, or extracted frames and no container is refused by name rather than silently flattened.

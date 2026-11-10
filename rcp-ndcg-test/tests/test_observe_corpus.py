@@ -149,7 +149,7 @@ def test_the_standing_probes_carry_the_recipes_own_render_ids(tmp_path: Path) ->
     recipe's client is the referent: the probes' ``input`` equals the ids the client put on the wire for
     the same text (R30).  A bare text is a request the recipe's client never sends, and such an engine's
     pooler refuses it by name, which kills the EngineCore (the r2 wave's pplx-embed-v2-context failure)."""
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
     from rcp_ndcg_test.equivalence import fitting
     from rcp_ndcg_test.equivalence.wire import role_client
     from rcp_ndcg_test.observe.adversarial import special_token_spellings
@@ -826,7 +826,7 @@ def test_the_recorder_records_the_engine_ids_of_each_sent_render(tmp_path: Path)
 
 def test_the_equivalence_stage_must_have_seen_the_same_replies(tmp_path: Path) -> None:
     """Section 6: the equivalence stage's results for the same wave are consistent with the corpus."""
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
     from rcp_ndcg_test.equivalence.wire import role_client
 
     from rcp_ndcg.inference.types import EncodeRole

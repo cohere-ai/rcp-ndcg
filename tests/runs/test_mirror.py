@@ -200,7 +200,7 @@ def test_a_resumed_pass_retires_the_old_generation_with_appended_tombstones(tmp_
     import json
 
     import httpx
-    from rcp_ndcg_core.records import RankingExample
+    from rcp_core.records import RankingExample
 
     from rcp_ndcg.judging import JudgementStore, RubricSchedule, judge
     from rcp_ndcg.judging.schedule import _balanced_groups, query_rng

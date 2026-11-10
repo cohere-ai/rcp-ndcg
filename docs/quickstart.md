@@ -10,7 +10,7 @@ pip install "rcp-ndcg[hf,calibrate]" --extra-index-url https://download.pytorch.
 
 `uvx rcp-ndcg` runs the command line without installing it (`uvx --from "rcp-ndcg[hf]" rcp-ndcg ...` with extras).
 
-`rcp-ndcg-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and
+`rcp-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and
 protocols need numpy and pydantic only; the IRT estimators need its `irt` extra (torch and scipy), which the
 `calibrate` extra below brings.
 `rcp-ndcg` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The third
@@ -44,7 +44,7 @@ From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets u
 same command, because `rcp-ndcg` pins it; with uv the `rcp-ndcg` line alone suffices):
 
 ```bash
-pip install "rcp-ndcg-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-ndcg-core" \
+pip install "rcp-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-core" \
             "rcp-ndcg[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-ndcg" \
             --extra-index-url https://download.pytorch.org/whl/cpu
 ```
@@ -204,7 +204,7 @@ the depth.
 With calibrated abilities and item parameters at hand, the metric is a pure function of the core package:
 
 ```python
-from rcp_ndcg_core import gain, ndcg
+from rcp_core import gain, ndcg
 
 items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
 gains = {doc_id: gain(theta, items) for doc_id, theta in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}

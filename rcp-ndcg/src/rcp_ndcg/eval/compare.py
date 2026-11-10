@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.protocol import MetricName
+from rcp_core.protocol import MetricName
 
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.eval.evaluate import (

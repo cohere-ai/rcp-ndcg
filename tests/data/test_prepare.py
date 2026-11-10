@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.data import Preprocessing
 from rcp_ndcg.data.prepare import (

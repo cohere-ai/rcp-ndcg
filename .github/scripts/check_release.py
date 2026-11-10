@@ -7,7 +7,7 @@ can never pass the node gates with a check the tag would fail (g-rcjobs-5).  It 
 * every workspace manifest declares the version (the release builds three; a stale ``rcp-ndcg-test``
   leaves ``uv.lock`` and the stated rule disagreeing);
 * ``CITATION.cff``'s ``version:`` is the version;
-* ``rcp-ndcg`` pins ``rcp-ndcg-core==<version>`` exactly, in every dependency scope;
+* ``rcp-ndcg`` pins ``rcp-core==<version>`` exactly, in every dependency scope;
 * ``rcp-ndcg-vllm`` names no workspace sibling at all (decision 18; owner decision 15 settled the tag
   pipeline on the documented rule: the lean package pins no sibling, matching what ``rc_build.sh``
   already enforced);
@@ -36,13 +36,13 @@ __all__ = ["check_citation", "check_manifests", "check_pins", "check_wave_commit
 
 MANIFESTS = (
     "rcp-ndcg/pyproject.toml",
-    "rcp-ndcg-core/pyproject.toml",
+    "rcp-core/pyproject.toml",
     "rcp-ndcg-vllm/pyproject.toml",
     "rcp-ndcg-test/pyproject.toml",
 )
 """The four workspace members; all four carry the release version (AGENTS.md: versions move together)."""
 
-WORKSPACE_SIBLINGS = {"rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-test"}
+WORKSPACE_SIBLINGS = {"rcp-ndcg", "rcp-core", "rcp-ndcg-test"}
 """Every distribution of this workspace except ``rcp-ndcg-vllm`` itself."""
 
 # name, optional [extras], then the specifier: "rcp-ndcg[calibrate]==0.0.1" -> ("rcp-ndcg", "==0.0.1")
@@ -104,19 +104,17 @@ def check_pins(root: Path, version: str) -> None:
     """
     core_manifest = root / "rcp-ndcg/pyproject.toml"
     if not core_manifest.is_file():
-        raise SystemExit(f"{core_manifest} is not in this tree: it must pin rcp-ndcg-core=={version}")
+        raise SystemExit(f"{core_manifest} is not in this tree: it must pin rcp-core=={version}")
     project = tomllib.loads(core_manifest.read_text(encoding="utf-8"))["project"]
     runtime = list(project.get("dependencies", []))
     declared = _declared(project)
     expected = f"=={version}"
-    if not _pins_of(runtime, "rcp-ndcg-core"):
-        raise SystemExit(
-            f"rcp-ndcg/pyproject.toml does not declare rcp-ndcg-core: it must pin rcp-ndcg-core{expected} exactly"
-        )
-    pins = _pins_of(declared, "rcp-ndcg-core")
+    if not _pins_of(runtime, "rcp-core"):
+        raise SystemExit(f"rcp-ndcg/pyproject.toml does not declare rcp-core: it must pin rcp-core{expected} exactly")
+    pins = _pins_of(declared, "rcp-core")
     if any(pin != expected for pin in pins):
-        raise SystemExit(f"rcp-ndcg-core must be pinned {expected} exactly in rcp-ndcg/pyproject.toml; found {pins}")
-    print(f"rcp-ndcg/pyproject.toml pins rcp-ndcg-core{expected}")
+        raise SystemExit(f"rcp-core must be pinned {expected} exactly in rcp-ndcg/pyproject.toml; found {pins}")
+    print(f"rcp-ndcg/pyproject.toml pins rcp-core{expected}")
 
     vllm_manifest = root / "rcp-ndcg-vllm/pyproject.toml"
     if not vllm_manifest.is_file():

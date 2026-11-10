@@ -30,11 +30,11 @@ from __future__ import annotations
 import math
 from typing import cast
 
-from rcp_ndcg_core.gain import sigmoid
-from rcp_ndcg_core.irt._calibration import Priors
-from rcp_ndcg_core.irt._criteria_2pl import DEFAULT_SE_TARGET, _validate_se_target
-from rcp_ndcg_core.metric import discount
-from rcp_ndcg_core.schemas import DocumentEstimate
+from rcp_core.gain import sigmoid
+from rcp_core.irt._calibration import Priors
+from rcp_core.irt._criteria_2pl import DEFAULT_SE_TARGET, _validate_se_target
+from rcp_core.metric import discount
+from rcp_core.schemas import DocumentEstimate
 
 #: One soft pairwise comparison: ``(winner_id, loser_id, weight, soft_label)``, the
 #: grammar the Bradley-Terry estimator ingests.
@@ -155,7 +155,7 @@ def conditional_insert_theta(
     except ImportError as exc:  # pragma: no cover - exercised only without scipy
         raise ImportError(
             "conditional_insert_theta requires scipy (bounded 1-D optimisation). "
-            "Install it directly, or via the package extra: pip install 'rcp-ndcg-core[irt]'"
+            "Install it directly, or via the package extra: pip install 'rcp-core[irt]'"
         ) from exc
 
     incident = [(a, b, wt, sl) for a, b, wt, sl in comparisons if a == doc_id or b == doc_id]
@@ -284,7 +284,7 @@ def insert_document(
         min_opponents: distinct opponents required (the connectivity predicate).
 
     Returns:
-        The :class:`~rcp_ndcg_core.schemas.DocumentEstimate` of the inserted document, in the existing fit's
+        The :class:`~rcp_core.schemas.DocumentEstimate` of the inserted document, in the existing fit's
         frame (its own mean-zero anchoring, not re-anchored over the enlarged population); an insertion that
         passes every predicate has no flag set.
 

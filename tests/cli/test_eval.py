@@ -237,7 +237,7 @@ def _rubric_store(tmp_path: Path, dataset: str, windows: dict[str, list[list[tup
     """A rubric judgement store of ``dataset`` (the minimal identity entry ``read_judgements`` reads)."""
     from datetime import UTC, datetime
 
-    from rcp_ndcg_core.schemas import Judgement, JudgementFamily, Placement, criterion_labels, judgement_record_id
+    from rcp_core.schemas import Judgement, JudgementFamily, Placement, criterion_labels, judgement_record_id
 
     from rcp_ndcg.judging.store import JudgementStore
 

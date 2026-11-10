@@ -373,7 +373,7 @@ def test_the_converter_validates_media_bytes(tmp_path: Path, module: Any, monkey
     import pyarrow as pa
     import pyarrow.parquet as pq
     from PIL import Image
-    from rcp_ndcg_core.content import Content, ImagePart, TextPart
+    from rcp_core.content import Content, ImagePart, TextPart
 
     from rcp_ndcg.data.dataset import Dataset
     from rcp_ndcg.data.media import store_media

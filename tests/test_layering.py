@@ -1,10 +1,10 @@
 """The layering charter, as a test: eager imports point inward only.
 
 ``AGENTS.md`` fixes the import order
-(``rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs
+(``rcp_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs
 → results → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``results``, and
 ``testing`` and ``examples`` above it). This module parses every module under ``rcp-ndcg/src/rcp_ndcg/`` and,
-because the order has an innermost end, every module under ``rcp-ndcg-core/src/rcp_ndcg_core/`` with :mod:`ast`,
+because the order has an innermost end, every module under ``rcp-core/src/rcp_core/`` with :mod:`ast`,
 and fails when an import points outward in that order (toward a layer that typically imports this one). In the
 product tree an eager import -- module-level, outside ``if TYPE_CHECKING:`` -- is what counts; in the core tree
 the rule is the strict one, every scope included, because the innermost layer may import nothing from the product
@@ -30,13 +30,13 @@ SRC = Path(__file__).resolve().parents[1] / "rcp-ndcg/src/rcp_ndcg"
 #: The innermost tree: no module of the core may import the product, so the charter's order has an innermost
 #: end (``AGENTS.md``, Layout and layering).  Nothing parsed the core's own tree before, so a lazy or eager
 #: ``rcp_ndcg`` import there passed the whole suite.
-CORE_SRC = Path(__file__).resolve().parents[1] / "rcp-ndcg-core/src/rcp_ndcg_core"
+CORE_SRC = Path(__file__).resolve().parents[1] / "rcp-core/src/rcp_core"
 
 #: The layers, from the one every module may import to the one that may import everything; the charter of
 #: ``AGENTS.md`` (Layout and layering), with the two single-file modules it does not name placed where the
 #: current tree already satisfies them.
 LAYERS: tuple[str, ...] = (
-    "rcp_ndcg_core",
+    "rcp_core",
     "errors",
     "support",
     "storage",
@@ -80,7 +80,7 @@ def _targets_of_import(
     A relative import is resolved to its absolute module from the importing module's package (``module``: the
     package itself when ``is_package``, i.e. a package's ``__init__``) and ``node.level``, and then checked like
     an absolute one (``from ..retrieval import x`` in a ``data`` module is a ``retrieval`` import).  ``package``
-    is the top-level package the module belongs to: ``rcp_ndcg`` (the default) or ``rcp_ndcg_core``.
+    is the top-level package the module belongs to: ``rcp_ndcg`` (the default) or ``rcp_core``.
     """
     if isinstance(node, ast.ImportFrom):
         if node.level:
@@ -103,8 +103,8 @@ def _targets_of_import(
         names = [alias.name for alias in node.names]
     for name in names:
         target = f"{module}.{name}" if module else name
-        if target.startswith("rcp_ndcg_core"):
-            yield "rcp_ndcg_core"
+        if target.startswith("rcp_core"):
+            yield "rcp_core"
         elif target == "rcp_ndcg_vllm" or target.startswith("rcp_ndcg_vllm."):
             yield "rcp_ndcg_vllm"
         elif target == "rcp_ndcg" or target.startswith("rcp_ndcg."):
@@ -142,7 +142,7 @@ def _eager_imports(tree: ast.Module) -> Iterator[tuple[ast.Import | ast.ImportFr
 def _every_import(tree: ast.Module) -> Iterator[tuple[ast.Import | ast.ImportFrom, int]]:
     """Every import of a module's syntax tree, with its line, at any scope.
 
-    The core's rule is stricter than the product's: no module of ``rcp_ndcg_core`` may import the product at
+    The core's rule is stricter than the product's: no module of ``rcp_core`` may import the product at
     all, so a function-body import counts too -- it is the same dependency cycle the moment that function runs,
     and it is exactly how a lazy ``from rcp_ndcg.storage import ...`` slipped past this test before.
     """
@@ -165,7 +165,7 @@ def outward_imports() -> list[str]:
     """Every outward import of the two trees the charter orders, allow-listed ones excepted.
 
     ``rcp-ndcg/src/rcp_ndcg`` is checked for **eager** imports only (the charter exempts a lazy one: its cost
-    is paid when it runs, not when its layer is imported); ``rcp-ndcg-core/src/rcp_ndcg_core`` is checked at
+    is paid when it runs, not when its layer is imported); ``rcp-core/src/rcp_core`` is checked at
     **every** scope, because the innermost layer may import nothing from the product at all.
     """
     findings: list[str] = []
@@ -197,21 +197,18 @@ def outward_imports() -> list[str]:
     # the same cycle the moment it runs, and skipping it left the finding's own exemplar green.
     for path in sorted(CORE_SRC.rglob("*.py")):
         module = ".".join(path.relative_to(CORE_SRC).with_suffix("").parts)
-        if module in ("__init__", "rcp_ndcg_core.__init__"):
+        if module in ("__init__", "rcp_core.__init__"):
             module = ""  # the package's own __init__
         elif module.endswith(".__init__"):
             module = module[: -len(".__init__")]
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node, line in _every_import(tree):
-            targets = _targets_of_import(
-                node, module=module, is_package=path.name == "__init__.py", package="rcp_ndcg_core"
-            )
+            targets = _targets_of_import(node, module=module, is_package=path.name == "__init__.py", package="rcp_core")
             for target in targets:
-                if target == "rcp_ndcg_core":
+                if target == "rcp_core":
                     continue
                 findings.append(
-                    f"rcp-ndcg-core/src/rcp_ndcg_core/{path.relative_to(CORE_SRC)}:{line}: "
-                    f"rcp_ndcg_core -> {target} (outward)"
+                    f"rcp-core/src/rcp_core/{path.relative_to(CORE_SRC)}:{line}: rcp_core -> {target} (outward)"
                 )
     return findings
 

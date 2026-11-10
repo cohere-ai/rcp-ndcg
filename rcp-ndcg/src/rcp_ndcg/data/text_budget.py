@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from rcp_ndcg_core.content import TEXT_JOIN, split_text_across_parts
+from rcp_core.content import TEXT_JOIN, split_text_across_parts
 
 from rcp_ndcg.data.census import CUT_CAUSES, CutCause, TextCutRecord, TextTruncationCensus
 from rcp_ndcg.data.mrl import MrlKind

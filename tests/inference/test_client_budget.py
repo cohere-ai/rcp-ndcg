@@ -15,8 +15,8 @@ from typing import Any
 import numpy as np
 import pytest
 from PIL import Image as PILImage
-from rcp_ndcg_core.content import Content, ImagePart, TextPart
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.content import Content, ImagePart, TextPart
+from rcp_core.records import RankingExample
 
 from rcp_ndcg.data.prepare import apply_media_fit
 from rcp_ndcg.data.preprocess import TextBudgetExceededError, TextTruncationCensus
@@ -209,7 +209,7 @@ class TestEmbedBudget:
         """The one preparation path: a media-carrying request for the text-only embed role is refused
         before the media is fetched (the adapters' own contract, kept in front of preparation); the
         media-token reservation the fit receives is the prepared request's."""
-        from rcp_ndcg_core.content import MediaRef
+        from rcp_core.content import MediaRef
 
         client = EmbeddingClient(
             EmbeddingEndpoint(base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=64),
@@ -891,7 +891,7 @@ class TestMediaUnderTheBudget:
         are refused once the same request carries it, because the engine's prompt is frame + instruction +
         media and the text fit reserves the same term.  Without the reservation the media fit keeps what the
         text fit then refuses."""
-        from rcp_ndcg_core.content import ImagePart
+        from rcp_core.content import ImagePart
 
         from rcp_ndcg.data.prepare import prepare_image
         from rcp_ndcg.data.preprocess import rendered_pair_tokens
@@ -1276,13 +1276,13 @@ class TestMediaGates:
         PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
         content = Content.from_parts(
             [
-                __import__("rcp_ndcg_core.content", fromlist=["ImagePart"]).ImagePart(
-                    ref=__import__("rcp_ndcg_core.content", fromlist=["MediaRef"]).MediaRef(
+                __import__("rcp_core.content", fromlist=["ImagePart"]).ImagePart(
+                    ref=__import__("rcp_core.content", fromlist=["MediaRef"]).MediaRef(
                         uri=page.as_uri(), mime="image/png"
                     )
                 ),
-                __import__("rcp_ndcg_core.content", fromlist=["ImagePart"]).ImagePart(
-                    ref=__import__("rcp_ndcg_core.content", fromlist=["MediaRef"]).MediaRef(
+                __import__("rcp_core.content", fromlist=["ImagePart"]).ImagePart(
+                    ref=__import__("rcp_core.content", fromlist=["MediaRef"]).MediaRef(
                         uri=page.as_uri(), mime="image/png"
                     )
                 ),
@@ -1754,7 +1754,7 @@ class TestVideoContainerFit:
 
     @staticmethod
     def _container_content(tmp_path: Any) -> Any:
-        from rcp_ndcg_core.content import VideoPart
+        from rcp_core.content import VideoPart
 
         from rcp_ndcg.data.media import MediaRef
 
@@ -1804,7 +1804,7 @@ class TestVideoContainerFit:
         """The client passes its loaded tokenizer into the media fit: an fps container whose exact count
         (98) fits ``max_tokens: 100`` is kept, though the family's timestamp bound (130) would drop it.
         This is the wiring's own regression test (reverting `_base`'s tokenizer pass must redden it)."""
-        from rcp_ndcg_core.content import VideoPart
+        from rcp_core.content import VideoPart
 
         from rcp_ndcg.data.media import MediaRef
         from rcp_ndcg.data.resolution import VideoPolicy
@@ -1937,7 +1937,7 @@ def _words(count: int) -> str:
 
 def _image_content(tmp_path: Any, index: int, size: int) -> Any:
     """One square PNG (``size`` a multiple of the processor's patch factor, so the token count is exact)."""
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     page = tmp_path / f"page-{index}-{size}.png"
     PILImage.new("RGB", (size, size), (10, 10, 200)).save(page, format="PNG")

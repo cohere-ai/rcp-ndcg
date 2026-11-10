@@ -97,7 +97,7 @@ class CompletionInput(pydantic.main.BaseModel)
 
 - `response_format: dict[str, Any] | None` = None
 
-- `user_content: rcp_ndcg_core.content.Content | None` = None
+- `user_content: rcp_core.content.Content | None` = None
 
 - `user_prompt: str`
 

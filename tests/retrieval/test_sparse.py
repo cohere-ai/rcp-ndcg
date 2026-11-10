@@ -120,7 +120,7 @@ class TestTheIndexFormat:
         a German run dropped English-looking words and kept German function words, unlike mteb's own BM25."""
         import json
 
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         sparse.build_bm25_index(
             [Content.from_text("this ist der hund"), Content.from_text("und die katze")], tmp_path, stemmer="german"

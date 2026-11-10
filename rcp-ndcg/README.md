@@ -20,7 +20,7 @@ are in the paper
 <p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
 This repository holds three published distributions -- `rcp-ndcg` (the pipeline and the command line),
-`rcp-ndcg-core` (the metric) and `rcp-ndcg-vllm` (the serving recipes) -- and the unpublished `rcp-ndcg-test`
+`rcp-core` (the metric) and `rcp-ndcg-vllm` (the serving recipes) -- and the unpublished `rcp-ndcg-test`
 for contributors, the scripts that reproduce the paper's tables from the public data (`experiments/`), and
 runnable examples (`examples/`).
 
@@ -37,14 +37,14 @@ or, without installing anything, `uvx rcp-ndcg --version`. To work from the repo
 checkout instead: `uv sync --extra hf --extra calibrate` (the [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#install) has the git install and the full extras
 table). The extras add the Hugging Face Hub (`hf`), torch for the calibration fit (`calibrate`; the CPU build
 from the PyTorch index above is enough) and MTEB (`mteb`; the quickstart table lists all nine). Every retrieval
-model is served now, so no extra carries in-process model code. `rcp-ndcg-core`, which comes with `rcp-ndcg`, is
+model is served now, so no extra carries in-process model code. `rcp-core`, which comes with `rcp-ndcg`, is
 the metric, the gains, the scoring protocols and the IRT estimators, with numpy and pydantic only (`pip install
-rcp-ndcg-core`). A command that needs a missing extra exits with code 10 and prints the install line.
+rcp-core`). A command that needs a missing extra exits with code 10 and prints the install line.
 
 ## Distributions
 
 - `rcp-ndcg` -- the judging pipeline, the calibration, the evaluation and the command line.
-- `rcp-ndcg-core` -- the metric, the gains, the scoring protocols and the IRT estimators (numpy and pydantic only).
+- `rcp-core` -- the metric, the gains, the scoring protocols and the IRT estimators (numpy and pydantic only).
 - `rcp-ndcg-vllm` -- the lean serving package: the GPU-validated serving recipes and `rcp-ndcg-vllm serve
   <recipe-id>` for the stock vLLM image ([recipes and serving models](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md)).
 

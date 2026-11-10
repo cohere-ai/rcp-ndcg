@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 import numpy as np
 import pytest
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, ProviderError, RequestRejectedError
 from rcp_ndcg.inference.clients.pool import PoolingClient, _concat_all
@@ -456,7 +456,7 @@ class TestDocumentSkipIds:
     def test_a_captioned_media_document_is_sent_under_skip_ids(self, tmp_path: Any) -> None:
         """A media document whose text part carries a caption rides alone through the messages route (one
         item per call): its vectors are kept whole and the deviation is on the row's record."""
-        from rcp_ndcg_core.content import ImagePart, MediaRef, TextPart
+        from rcp_core.content import ImagePart, MediaRef, TextPart
 
         image = tmp_path / "page.png"
         image.write_bytes(_png_bytes())
@@ -841,7 +841,7 @@ class TestMediaKeepIds:
     def test_two_images_count_one_patch_run_each(self, tmp_path: Any) -> None:
         """The allowlist keeps each image's patches: with several media items in one content the declared
         count is their sum (each wrapper is subtracted once per item), never the whole block minus one."""
-        from rcp_ndcg_core.content import ImagePart, MediaRef
+        from rcp_core.content import ImagePart, MediaRef
 
         first = tmp_path / "one.png"
         first.write_bytes(_png_bytes())
@@ -1122,7 +1122,7 @@ class TestMediaAllowance:
         """``_fit_media_per_item``'s allowance is the threshold the text fit measures
         (``fixed_overhead(..., instruction=...)``): a framed instruction's tokens are reserved, or the media
         fit keeps media that ``fit`` then refuses with a ``ConfigError``."""
-        from rcp_ndcg_core.content import ImagePart, MediaRef, TextPart
+        from rcp_core.content import ImagePart, MediaRef, TextPart
 
         from rcp_ndcg.data.templates import Segment, TemplateSpec
         from rcp_ndcg.data.text_budget import fixed_overhead

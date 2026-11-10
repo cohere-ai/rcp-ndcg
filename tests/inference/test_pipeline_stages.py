@@ -14,7 +14,7 @@ import asyncio
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_core.content import Content, ImagePart, TextPart
+from rcp_core.content import Content, ImagePart, TextPart
 
 from rcp_ndcg.inference.clients._base import STAGES
 from rcp_ndcg.inference.clients.embed import EmbeddingClient
@@ -230,7 +230,7 @@ class TestOneFramePerRoute:
     def test_the_messages_route_frames_media_once(self, tmp_path: Any) -> None:
         """A media item's conversation carries the caption once -- the declared frame is the chat
         template's business, never the client's twice."""
-        from rcp_ndcg_core.content import MediaRef
+        from rcp_core.content import MediaRef
 
         page = tmp_path / "page.png"
         page.write_bytes(self._png())

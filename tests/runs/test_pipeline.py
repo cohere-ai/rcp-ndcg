@@ -201,7 +201,7 @@ class TestStepBudget:
     ) -> None:
         import asyncio
 
-        from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator  # noqa: F401 - warm the lazy import
+        from rcp_core.irt._bradley_terry import BradleyTerryEstimator  # noqa: F401 - warm the lazy import
 
         from rcp_ndcg.errors import StepBudgetExceededError
         from rcp_ndcg.judging.client import JudgeClient
@@ -682,7 +682,7 @@ class TestTheRetrieveAndRerankIdentities:
         """The text-formatting rule is code, not a config field: every step's identity carries its version
         (:data:`TEXT_FORMATTING_VERSION`) and the dataset's resolved task instruction, so a resume never
         reuses candidates or judgements built from other strings."""
-        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
+        from rcp_core.records import TEXT_FORMATTING_VERSION
 
         from rcp_ndcg.runs import pipeline as pipeline_module
 

@@ -69,7 +69,7 @@ class ExtensionRecord(pydantic.main.BaseModel)
 
 - `doc_id: str`
 
-- `estimate: rcp_ndcg_core.schemas.DocumentEstimate`
+- `estimate: rcp_core.schemas.DocumentEstimate`
 
 - `judgements: str`
 

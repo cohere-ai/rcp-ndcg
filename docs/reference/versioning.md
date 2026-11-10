@@ -10,7 +10,7 @@ versions. The normative spelling of every name below lives in the repository, no
 - **The Python names** in the `__all__` of the public modules. `PUBLIC_MODULES` in
   `rcp_ndcg.support.api_docs` lists them (the same list generates the API pages and the contract snapshot),
   and `tests/contract/snapshots/python_api.json` pins every name: the facade `rcp_ndcg`; the core
-  `rcp_ndcg_core` with `.gain`, `.irt`, `.metric`, `.protocol` and `.records`; `rcp_ndcg.calibration`,
+  `rcp_core` with `.gain`, `.irt`, `.metric`, `.protocol` and `.records`; `rcp_ndcg.calibration`,
   `.data`, `.data.preprocess`, `.data.revisions`, `.errors`, `.eval`, `.eval.mteb`, `.examples`, `.inference`,
   `.judging`, `.results`, `.retrieval`, `.runners`, `.runs` and `.testing`; and `rcp_ndcg_vllm.recipe` (the
   serving package's recipe module).
@@ -63,7 +63,7 @@ A `0.0.x` patch release:
   fit reproduce the paper and are pinned by anchor tests: a change to their numbers is deliberate, tested and in
   the CHANGELOG ([REPRODUCIBILITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/REPRODUCIBILITY.md)).
 
-The four distributions carry the same version; `rcp-ndcg` pins `rcp-ndcg-core==<version>`; `rcp-ndcg-vllm`
+The four distributions carry the same version; `rcp-ndcg` pins `rcp-core==<version>`; `rcp-ndcg-vllm`
 carries the same version but pins no sibling; `rcp-ndcg-test` is never published.
 
 ### Deprecating a public name

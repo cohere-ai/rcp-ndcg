@@ -23,7 +23,7 @@ import math
 
 import pytest
 import torch
-from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+from rcp_core.irt._bradley_terry import BradleyTerryEstimator
 
 torch.manual_seed(0)
 

@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Stage, supersedes
+from rcp_core.schemas import Judgement, JudgementFamily, JudgementSet, Stage, supersedes
 
 from rcp_ndcg.errors import DataError, IdentityError
 from rcp_ndcg.judging.client import EngineInfo
@@ -333,8 +333,8 @@ class JudgementStore:
     def records(self, stage: Stage) -> dict[str, Judgement]:
         """``{record_id: Judgement}`` of one stage, in file order.
 
-        Of several copies of one id, :func:`~rcp_ndcg_core.schemas.supersedes` picks the one kept, as
-        :meth:`~rcp_ndcg_core.schemas.JudgementSet.merge` does: a valid copy beats an invalid one, then the later
+        Of several copies of one id, :func:`~rcp_core.schemas.supersedes` picks the one kept, as
+        :meth:`~rcp_core.schemas.JudgementSet.merge` does: a valid copy beats an invalid one, then the later
         (a window a pass resumed asks again only while its record is invalid). One exception is resolved by the
         file's own order here, not by ``recorded_at``: when either copy is a ``superseded`` tombstone the later
         line wins, so a tombstone retires the record it follows even if that record's clock ran ahead, and a
@@ -387,7 +387,7 @@ class JudgementStore:
 
         The one writer that retires a record, and it appends: a tombstone carries the old record's id,
         placements and window (so provenance survives), ``valid=False``, ``invalid_category="superseded"``,
-        the reason, and a later ``recorded_at`` -- :func:`~rcp_ndcg_core.schemas.supersedes` lets it win over
+        the reason, and a later ``recorded_at`` -- :func:`~rcp_core.schemas.supersedes` lets it win over
         the older record, so a reader (the store's ``records``, a merge, the refit) sees one generation while
         the stage file remains append-only (the mirror uploads it in immutable parts). The window is asked
         again by the resumed pass that wrote it.

@@ -1,4 +1,4 @@
-# `rcp_ndcg_core.irt`
+# `rcp_core.irt`
 
 The IRT numerics of RCP-nDCG: Bradley-Terry, the 2PL calibration and the per-document primitives.
 
@@ -22,7 +22,7 @@ class AbilityPrior(pydantic.main.BaseModel)
 class — Bradley-Terry over weighted soft comparisons.
 
 ```text
-class BradleyTerryEstimator(rcp_ndcg_core.irt._base.BaseScoredModel)
+class BradleyTerryEstimator(rcp_core.irt._base.BaseScoredModel)
 ```
 
 ```text
@@ -57,7 +57,7 @@ pydantic_model — The fit's own summary.
 class FitDiagnostics(pydantic.main.BaseModel)
 ```
 
-- `ability_prior: rcp_ndcg_core.irt._calibration.AbilityPrior | None` = None
+- `ability_prior: rcp_core.irt._calibration.AbilityPrior | None` = None
 
 - `frac_passing_any: float | None` = None
 
@@ -132,7 +132,7 @@ class Priors(pydantic.main.BaseModel)
 class — Rasch Item Response Theory model for pointwise relevance assessment.
 
 ```text
-class RaschEstimator(rcp_ndcg_core.irt._base.BaseScoredModel)
+class RaschEstimator(rcp_core.irt._base.BaseScoredModel)
 ```
 
 ```text

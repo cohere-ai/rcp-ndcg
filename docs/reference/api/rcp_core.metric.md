@@ -1,4 +1,4 @@
-# `rcp_ndcg_core.metric`
+# `rcp_core.metric`
 
 nDCG with float gains and explicit tie rules (pure Python, no torch).
 

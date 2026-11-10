@@ -19,7 +19,7 @@
 Both modes report item parameters in one convention: ``sum(gamma) == K`` and
 ``mean(beta) == 0``. Gains are invariant to that choice
 (``gamma_k * (theta - beta_k)`` is unchanged when theta, beta and gamma are
-rescaled together), so :func:`rcp_ndcg_core.gain.gain` applies to the
+rescaled together), so :func:`rcp_core.gain.gain` applies to the
 calibrated abilities of either mode unchanged.
 
 The inputs are projected observations; ``rcp_ndcg.calibration.calibrate`` builds
@@ -36,7 +36,7 @@ from typing import Literal
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
-from rcp_ndcg_core.schemas import ItemParams, QueryParams, items_from_mapping
+from rcp_core.schemas import ItemParams, QueryParams, items_from_mapping
 
 FittedMode = Literal["tournament", "rubric_only"]
 Judges = Literal["single", "pooled"]
@@ -249,7 +249,7 @@ def _fit_tournament(
     num_criteria: int,
     priors: Priors,
 ) -> CalibrationFit:
-    from rcp_ndcg_core.irt._tournament_2pl import calibrate_2pl_from_results
+    from rcp_core.irt._tournament_2pl import calibrate_2pl_from_results
 
     engine = calibrate_2pl_from_results(
         bt_scores=bt_scores,  # type: ignore[arg-type]
@@ -327,7 +327,7 @@ def verdicts(criteria: Mapping[str, int], num_criteria: int) -> list[int]:
 def _fit_rubric_only(
     observations: Mapping[str, Sequence[Observation]], *, num_criteria: int, priors: Priors
 ) -> CalibrationFit:
-    from rcp_ndcg_core.irt._criteria_2pl import Criteria2PL
+    from rcp_core.irt._criteria_2pl import Criteria2PL
 
     keys: list[tuple[str, str]] = []
     index: dict[tuple[str, str], int] = {}

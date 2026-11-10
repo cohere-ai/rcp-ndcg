@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
+from rcp_core.records import TEXT_FORMATTING_VERSION
 
 from rcp_ndcg.data import Dataset, Rankings
 from rcp_ndcg.data.rankings import ordered_documents
@@ -315,7 +315,7 @@ class Pipeline:
 
     def _corpus_modality(self) -> ScheduleModality:
         """``"video"``, ``"image"`` or ``"text"``: what the documents carry (the choice of the paper's schedule)."""
-        from rcp_ndcg_core.content import Modality
+        from rcp_core.content import Modality
 
         modalities = {document.as_content.modality for document in self.dataset.corpus.values()}
         if Modality.VIDEO in modalities:
@@ -820,7 +820,7 @@ class Pipeline:
             if record is not None:
                 record.engines = client.engines
         for entry in JudgementStore(self.layout.judgements).identities().values():
-            from rcp_ndcg_core.schemas import JudgementFamily
+            from rcp_core.schemas import JudgementFamily
 
             family = JudgementFamily.model_validate(entry["family"])
             self.manifest.families[family.key] = family

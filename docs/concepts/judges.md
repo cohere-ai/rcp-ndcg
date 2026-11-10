@@ -293,7 +293,7 @@ reproducible from the store after its file moves or changes.
   re-parse, and a source written by a newer checkout cannot be downgraded: both are refused before anything is
   written. The command reports per stage how many windows were recovered, stayed
   invalid (by category), were unchanged or changed (`rcp_ndcg.judging.reparse` itself returns the new store's
-  :class:`~rcp_ndcg_core.schemas.JudgementSet`).
+  :class:`~rcp_core.schemas.JudgementSet`).
 
 ## Estimating a pass
 

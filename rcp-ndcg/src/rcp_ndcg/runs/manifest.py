@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.schemas import JudgementFamily
+from rcp_core.schemas import JudgementFamily
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.judging.client import EngineInfo, Usage

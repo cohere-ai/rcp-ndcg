@@ -14,7 +14,7 @@ from typing import Any, ClassVar
 import httpx
 import numpy as np
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, RequestRejectedError
 from rcp_ndcg.inference import EmbeddingClient, EncodeRole

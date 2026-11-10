@@ -21,7 +21,7 @@ def _ignored(path: str) -> bool:
 
 def test_a_package_build_directory_is_ignored() -> None:
     """Installing the core package from its directory (the core-only CI job) leaves its build/ behind."""
-    assert _ignored("rcp-ndcg-core/build/lib/rcp_ndcg_core/__init__.py")
+    assert _ignored("rcp-core/build/lib/rcp_core/__init__.py")
 
 
 @pytest.mark.parametrize("name", ["logs", ".cache", "results", "build", "dist"])

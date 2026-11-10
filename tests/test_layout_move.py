@@ -175,7 +175,7 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     assert (worktree / "rcp-ndcg" / "MANIFEST.in").is_file()
     assert (worktree / "rcp-ndcg" / "README.md").read_text(encoding="utf-8").startswith("# Fixture")
     assert (worktree / "rcp-ndcg" / "src" / "rcp_ndcg" / "__init__.py").is_file()
-    assert (worktree / "rcp-ndcg-core" / "src" / "rcp_ndcg_core" / "__init__.py").is_file()
+    assert (worktree / "rcp-core" / "src" / "rcp_core" / "__init__.py").is_file()
     assert (worktree / "rcp-ndcg-vllm" / "jobs" / "build.sh").is_file()
     assert not (worktree / "packages").exists()
     assert not (worktree / "src").exists()
@@ -186,28 +186,28 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     assert "[project]" in package and "[tool.setuptools.packages.find]" in package
     assert "[tool.uv.workspace]" not in package and "[tool.ruff]" not in package
     assert "[project]" not in workspace
-    assert 'members = ["rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm"]' in workspace
-    assert "[tool.uv.sources]" in workspace and "rcp-ndcg-core = { workspace = true }" in workspace
-    assert 'include = ["rcp-ndcg/src", "rcp-ndcg-core/src", "rcp-ndcg-vllm/src"]' in workspace
+    assert 'members = ["rcp-core", "rcp-ndcg", "rcp-ndcg-vllm"]' in workspace
+    assert "[tool.uv.sources]" in workspace and "rcp-core = { workspace = true }" in workspace
+    assert 'include = ["rcp-ndcg/src", "rcp-core/src", "rcp-ndcg-vllm/src"]' in workspace
     assert 'extend-exclude = ["rcp-ndcg-vllm/recipes/*/qwen3_vl_embedding.py"]' in workspace
     assert 'where = ["src"]' in package  # package-relative: unchanged
 
     # The rewrites reach CI, workflows, scripts, helpers, the lock and prose.
     ci = (worktree / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "rcp-ndcg-core/src/rcp_ndcg_core" in ci and "packages/" not in ci
+    assert "rcp-core/src/rcp_core" in ci and "packages/" not in ci
     assert "rcp-ndcg/pyproject.toml" in ci  # the bare manifest token in a workflow is the root package's
     build = (worktree / "rcp-ndcg-vllm" / "jobs" / "build.sh").read_text(encoding="utf-8")
     assert "rcp-ndcg/pyproject.toml" in build and "rcp-ndcg-vllm/dist" not in build
     helpers = (worktree / "tests" / "snap" / "helpers.py").read_text(encoding="utf-8")
     assert 'ROOT / "rcp-ndcg" / "README.md"' in helpers
-    assert 'ROOT / "rcp-ndcg-core" / "README.md"' in helpers  # the split Path spelling moved too
+    assert 'ROOT / "rcp-core" / "README.md"' in helpers  # the split Path spelling moved too
     assert 'parents[2] / "rcp-ndcg/src/rcp_ndcg"' in helpers  # the split Path spelling of its source
     assert 'ROOT / "rcp-ndcg" / "src"' in helpers  # the source-folder helper points at the moved source
     assert 'package / "pyproject.toml"' in helpers  # a tmp fixture's own manifest: untouched
     # the workspace manifest read stays at the root: in the target layout it is the workspace's, not
     # the root package's (the root-pyproject-helper only rewrites the pre-move package spellings)
     lock = (worktree / "uv.lock").read_text(encoding="utf-8")
-    assert 'editable = "rcp-ndcg"' in lock and 'editable = "rcp-ndcg-core"' in lock
+    assert 'editable = "rcp-ndcg"' in lock and 'editable = "rcp-core"' in lock
     assert 'editable = "."' not in lock
     changelog = (worktree / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "rcp-ndcg/src/rcp_ndcg moved" in changelog
@@ -248,13 +248,13 @@ def test_an_optional_source_is_skipped_and_a_conflict_is_refused(tmp_path: Path)
 
     # A tip that already carries the destination beside the source is refused, the conflict listed.
     second = make_fixture(tmp_path / "second")
-    (second / "rcp-ndcg-core").mkdir()
-    (second / "rcp-ndcg-core" / "stale").write_text("x", encoding="utf-8")
+    (second / "rcp-core").mkdir()
+    (second / "rcp-core" / "stale").write_text("x", encoding="utf-8")
     proc = subprocess.run(
         [sys.executable, "tools/layout_move.py"], cwd=second, capture_output=True, text=True, check=False
     )
     assert proc.returncode == 1
-    assert "packages/rcp-ndcg-core: destination rcp-ndcg-core already exists" in proc.stderr
+    assert "packages/rcp-ndcg-core: destination rcp-core already exists" in proc.stderr
 
 
 def test_a_stale_old_path_left_behind_is_refused(tmp_path: Path) -> None:

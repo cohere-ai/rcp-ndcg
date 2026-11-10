@@ -278,7 +278,7 @@ class TestTokenCounts:
         """The pooling client checks the returned vector count against the ids it sent before it drops the
         skip ids: over the fake that count is now the declared tokenizer's (it was whitespace words, a
         ProviderError for any text whose words and tokens differ)."""
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         from rcp_ndcg.inference import PoolingClient
         from rcp_ndcg.inference.config import PoolingEndpoint
@@ -301,7 +301,7 @@ class TestTokenCounts:
         config does not carry the rule's role gate), the fake answers only the kept positions under the gate,
         and the client's declared kept count accepts the reply -- while the query side, which the gate spares,
         keeps every vector."""
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         from rcp_ndcg.data.tokenizer import load_tokenizer
         from rcp_ndcg.inference import PoolingClient

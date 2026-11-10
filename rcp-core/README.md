@@ -1,4 +1,4 @@
-# rcp-ndcg-core
+# rcp-core
 
 The dependency-light core of [RCP-nDCG](https://github.com/cohere-ai/rcp-ndcg): nDCG with float gains and explicit
 tie rules, the RCP gain and the other gains, the paper's scoring protocols, the public records, and the IRT
@@ -7,14 +7,14 @@ estimators. It needs numpy and pydantic only; the `irt` extra adds torch and sci
 Install it from PyPI (Python 3.12):
 
 ```bash
-pip install rcp-ndcg-core            # metric, gains, protocols, schemas
-pip install "rcp-ndcg-core[irt]"     # + torch and scipy, for the Bradley-Terry and 2PL fits
+pip install rcp-core            # metric, gains, protocols, schemas
+pip install "rcp-core[irt]"     # + torch and scipy, for the Bradley-Terry and 2PL fits
 ```
 
-`rcp-ndcg` pins `rcp-ndcg-core==<version>`; the two release in lockstep.
+`rcp-ndcg` pins `rcp-core==<version>`; the two release in lockstep.
 
 ```python
-from rcp_ndcg_core import PROTOCOLS, count_gain, gain, ndcg, pass_probabilities, qrel_gain, score_query
+from rcp_core import PROTOCOLS, count_gain, gain, ndcg, pass_probabilities, qrel_gain, score_query
 
 items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}  # per criterion C1..C5
 thetas = {"d1": 1.4, "d2": -0.3, "d3": 0.6}  # calibrated abilities, in logits

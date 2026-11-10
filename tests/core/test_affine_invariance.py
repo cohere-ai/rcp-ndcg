@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from rcp_ndcg_core import gain, ndcg
-from rcp_ndcg_core.metric import rank_by_score
+from rcp_core import gain, ndcg
+from rcp_core.metric import rank_by_score
 from scipy import stats
 
 ITEM_PARAMS = {

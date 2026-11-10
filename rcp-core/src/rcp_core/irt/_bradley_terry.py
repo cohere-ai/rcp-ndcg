@@ -7,7 +7,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from rcp_ndcg_core.irt._base import BaseScoredModel
+from rcp_core.irt._base import BaseScoredModel
 
 
 class BradleyTerryEstimator(BaseScoredModel):

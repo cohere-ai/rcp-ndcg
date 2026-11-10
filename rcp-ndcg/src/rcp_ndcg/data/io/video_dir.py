@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from rcp_ndcg_core.content import MediaRef, Modality, Part, VideoPart
+from rcp_core.content import MediaRef, Modality, Part, VideoPart
 
 from rcp_ndcg.data.io.image_dir import ImageDirReader
 from rcp_ndcg.data.media import VIDEO_MIME_BY_SUFFIX

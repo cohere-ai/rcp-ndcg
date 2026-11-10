@@ -28,7 +28,7 @@ import re
 from collections.abc import Sequence
 from typing import Any, ClassVar, NamedTuple, Protocol
 
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, VideoPart
 
 # ``VIDEO_CACHE_SIZE`` is re-exported here for this module's public surface; its home is
 # :mod:`rcp_ndcg.data.media` (the one lowering), and no code here reads it.

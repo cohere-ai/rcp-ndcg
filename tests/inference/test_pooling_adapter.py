@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 import numpy as np
 import pytest
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, ProviderError, RequestRejectedError
 from rcp_ndcg.inference.adapters.pooling import VllmPooling

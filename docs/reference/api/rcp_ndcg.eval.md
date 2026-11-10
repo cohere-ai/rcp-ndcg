@@ -97,7 +97,7 @@ class EvalReport(pydantic.main.BaseModel)
 
 - `per_query: list[rcp_ndcg.eval.evaluate.QueryValue]`
 
-- `protocol: rcp_ndcg_core.protocol.Protocol`
+- `protocol: rcp_core.protocol.Protocol`
 
 - `schema_name: Literal['rcp-ndcg.eval-report.v1']` = 'rcp-ndcg.eval-report.v1'
 

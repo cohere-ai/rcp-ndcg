@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.irt import fit_calibration
+from rcp_core.irt import fit_calibration
 
 from rcp_ndcg.calibration import calibrate, count_gains
 

@@ -55,7 +55,7 @@ def a_png() -> bytes:
 
 def a_media_dataset(tmp_path: Path, kind: str, payload: bytes) -> Dataset:
     """One document whose content is its text plus one media part of *kind*."""
-    from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
+    from rcp_core.content import Content, ImagePart, TextPart, VideoPart
 
     from rcp_ndcg.data.media import store_media
 
@@ -355,7 +355,7 @@ def test_a_video_corpus_writes_mteb_s_video_column(tmp_path: Path) -> None:
 
 
 def test_two_images_in_one_document_are_refused_by_name(tmp_path: Path) -> None:
-    from rcp_ndcg_core.content import Content, ImagePart, TextPart
+    from rcp_core.content import Content, ImagePart, TextPart
 
     from rcp_ndcg.data.media import store_media
 
@@ -375,7 +375,7 @@ def test_two_images_in_one_document_are_refused_by_name(tmp_path: Path) -> None:
 def test_a_video_of_frames_is_refused_with_or_without_a_container(tmp_path: Path) -> None:
     """mteb's Video column holds a container; a part whose frames are extracted (with a container too -- the
     model allows both) is refused by name rather than silently dropping the frames."""
-    from rcp_ndcg_core.content import Content, TextPart, VideoPart
+    from rcp_core.content import Content, TextPart, VideoPart
 
     from rcp_ndcg.data.media import store_media
 

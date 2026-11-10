@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from rcp_ndcg_core.metric import rank_by_score
+from rcp_core.metric import rank_by_score
 
 from rcp_ndcg import storage
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
@@ -463,7 +463,7 @@ def _save_mteb_predictions(
     Every query with a non-empty qrels dict must be ranked (a missing one makes the file lie about its
     coverage and is refused); a ranked query without qrels is dropped -- mteb raises on a result for a query
     that has no qrels -- and every query keeps at most :data:`MTEB_MAX_DOCS` documents, the cap of mteb's own
-    ``top_k`` ordered by :func:`rcp_ndcg_core.metric.rank_by_score` (ties by document id descending). An
+    ``top_k`` ordered by :func:`rcp_core.metric.rank_by_score` (ties by document id descending). An
     existing file is merged the way mteb's own writer merges: the (subset, split) this table holds replaces
     theirs, the file's other splits, subsets and its model meta stay.
     """

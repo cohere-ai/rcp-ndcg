@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
 from rcp_ndcg.results import (
     RESULT_SCHEMA,

@@ -6,8 +6,8 @@ import warnings
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.records import RankingExample
 
 from rcp_ndcg.data.tokenizer import load_tokenizer
 from rcp_ndcg.errors import CapabilityError, ConfigError

@@ -21,7 +21,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg_core.schemas import InvalidCategory, Judgement, JudgementFamily, JudgementSet, Stage, judgement_record_id
+from rcp_core.schemas import InvalidCategory, Judgement, JudgementFamily, JudgementSet, Stage, judgement_record_id
 
 from rcp_ndcg.errors import DataError, IdentityError, MissingInputError
 from rcp_ndcg.judging._parsing.common import PARSE_VERSION, UnparseableAnswer

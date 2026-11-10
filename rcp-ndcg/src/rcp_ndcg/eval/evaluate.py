@@ -1,6 +1,6 @@
 """``evaluate``: RCP-nDCG, qrel-nDCG and Count-nDCG of rankings under a scoring protocol, as an :class:`EvalReport`.
 
-Every number comes from :func:`rcp_ndcg_core.protocol.score_query` (and through it :func:`rcp_ndcg_core.ndcg`);
+Every number comes from :func:`rcp_core.protocol.score_query` (and through it :func:`rcp_core.ndcg`);
 this module only chooses the gains, walks the systems, datasets and queries, and aggregates.
 
 **Gains** for RCP-nDCG are resolved in one order: the ``gains`` argument (a ``{query_id: {doc_id: gain}}`` mapping,
@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from rcp_ndcg_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, resolve_protocol, score_query
+from rcp_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, resolve_protocol, score_query
 
 from rcp_ndcg.data.dataset import Dataset, load_dataset
 from rcp_ndcg.data.rankings import Rankings, no_rankings_error
@@ -265,11 +265,11 @@ def evaluate(
             returning that (a calibration). For a suite, keys may also be ``"<subset>/<query_id>"``, and must be
             when subsets share query ids. A calibration gives each subset of a suite the gains of its dataset of
             that name (``gains(dataset=<subset>)``).
-        protocol: A :data:`~rcp_ndcg_core.protocol.PROTOCOLS` name or a :class:`~rcp_ndcg_core.protocol.Protocol`;
+        protocol: A :data:`~rcp_core.protocol.PROTOCOLS` name or a :class:`~rcp_core.protocol.Protocol`;
             defaults to the dataset's (a suite's) protocol, else ``"plain"``.
         k: One cutoff or several.
         metrics: Which of ``"rcp_ndcg"``, ``"qrel_ndcg"``, ``"count_ndcg"`` to compute.
-        count_gains: The Count-nDCG gains (:func:`rcp_ndcg_core.count_gain` per document), required for
+        count_gains: The Count-nDCG gains (:func:`rcp_core.count_gain` per document), required for
             ``"count_ndcg"``. Keys are the gains': ``{query_id: {doc_id: gain}}``, or ``"<subset>/<query_id>"``
             for a suite -- and must be when subsets share query ids.
         systems: The systems to score, in the rankings' order in the report (``None``: every system the rankings
@@ -439,7 +439,7 @@ def _selected_systems(rankings: Rankings, systems: Sequence[str] | None) -> list
 
 
 def _protocol(protocol: str | Protocol) -> Protocol:
-    """The core's resolution of a protocol name (:data:`~rcp_ndcg_core.protocol.PROTOCOLS`), as a typed error."""
+    """The core's resolution of a protocol name (:data:`~rcp_core.protocol.PROTOCOLS`), as a typed error."""
     try:
         return resolve_protocol(protocol)
     except ValueError as exc:
@@ -828,7 +828,7 @@ def _aggregate(
 
 
 def _aggregate_values(datasets: Mapping[str, Sequence[float] | np.ndarray]) -> float:
-    """:func:`~rcp_ndcg_core.protocol.aggregate` of ``{dataset: per-query values}``: it reads the values alone, so
+    """:func:`~rcp_core.protocol.aggregate` of ``{dataset: per-query values}``: it reads the values alone, so
     their positions stand in for the query ids."""
     return aggregate({name: {str(i): value for i, value in enumerate(values)} for name, values in datasets.items()})
 

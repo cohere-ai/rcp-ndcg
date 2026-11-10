@@ -87,7 +87,7 @@ slots of the shipped prompts (a tournament prompt may also use `{num_documents_p
 (`ConfigError`) when it loads. Its judgements never pool with the shipped rubric's.
 
 Judgements made elsewhere enter `rcp_ndcg.calibration.calibrate` as a `JudgementSet` whose rubric `JudgementFamily` declares
-its criteria, named `C1..CK` (`rcp_ndcg_core.schemas.criterion_labels(K)`). Every placement must answer exactly the
+its criteria, named `C1..CK` (`rcp_core.schemas.criterion_labels(K)`). Every placement must answer exactly the
 declared criteria: a missing, unknown or renamed criterion raises `DataError` naming the record, the document and
 the criteria. No verdict is ever defaulted.
 

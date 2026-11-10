@@ -3,7 +3,7 @@
 
 Moves this repository to the four-distribution tree:
 
-    rcp-ndcg-core/   (was packages/rcp-ndcg-core)
+    rcp-core/   (was packages/rcp-ndcg-core)
     rcp-ndcg/        (was the root package: pyproject.toml, MANIFEST.in, README.md, src/)
     rcp-ndcg-vllm/   (was packages/rcp-ndcg-vllm)
     rcp-ndcg-test/   (was packages/rcp-ndcg-test, when that exists on the tip)
@@ -45,7 +45,9 @@ MOVES: tuple[tuple[str, str], ...] = (
     ("src", "rcp-ndcg/src"),
     # The package directories one level up. An optional source (a package a tip does not carry)
     # is skipped; a source next to an existing destination is refused.
-    ("packages/rcp-ndcg-core", "rcp-ndcg-core"),
+    ("packages/rcp-ndcg-core", "rcp-core"),
+    # The core's import package follows its distribution's name (`rcp_ndcg_core` -> `rcp_core`).
+    ("rcp-core/src/rcp_ndcg_core", "rcp-core/src/rcp_core"),
     ("packages/rcp-ndcg-vllm", "rcp-ndcg-vllm"),
     ("packages/rcp-ndcg-test", "rcp-ndcg-test"),
 )
@@ -76,9 +78,16 @@ commit before the release), and its workstream reports describe the tree as it w
 # ``pyproject.toml`` names every package's manifest) the rule is scoped to the contexts where the
 # token is executable path syntax, and the bare spelling in prose is left to the owning page.
 REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
-    # The package directories, in one string or split the way a test spells a Path.
-    ("packages", r"packages/rcp-ndcg-(core|vllm|test)\b", r"rcp-ndcg-\1", None),
-    ("packages-split", r"""(["'])packages\1\s*/\s*(['"])rcp-ndcg-(core|vllm|test)\2""", r"\2rcp-ndcg-\3\2", None),
+    # The rename on top of the move: the core's distribution and import names drop `ndcg`
+    # (`rcp-ndcg-core` -> `rcp-core`, `rcp_ndcg_core` -> `rcp_core`). The bare names are names, not
+    # paths, so they rewrite wherever they are live -- the CHANGELOG's entries below Unreleased and
+    # the ledger's historical source list keep the spellings they shipped with (skipped below).
+    ("core-name", r"(?<![\w-])rcp-ndcg-core\b", "rcp-core", None),
+    ("core-module", r"(?<![\w])rcp_ndcg_core\b", "rcp_core", None),
+    # The package directories, in one string or split the way a test spells a Path. The core-name
+    # rule above has already mapped the core's directory to `rcp-core`; `\1` keeps the others.
+    ("packages", r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))\b", r"\1", None),
+    ("packages-split", r"""(["'])packages\1\s*/\s*(['"])(rcp-(?:ndcg-)?(?:core|vllm|test))\2""", r"\2\3\2", None),
     # The root package's source: `src/rcp_ndcg` (never `src/rcp_ndcg_*` -- \b does not match before _),
     # in one string or split the way a test spells a Path. A MANIFEST.in spells its own source
     # relative to its directory and keeps it.
@@ -107,7 +116,7 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     (
         "source-folders",
         r'\("src", "packages", "experiments"',
-        '("rcp-ndcg/src", "rcp-ndcg-core", "rcp-ndcg-vllm", "experiments"',
+        '("rcp-ndcg/src", "rcp-core", "rcp-ndcg-vllm", "experiments"',
         ("tests/**",),
     ),
     # basedpyright's include lists the root package's source as a bare "src".
@@ -116,13 +125,13 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("lock-editable", r'editable = "\."', 'editable = "rcp-ndcg"', ("uv.lock",)),
     # The build directories follow their distribution: the one glob that named the old packages/
     # tree names the four distributions (the gitignore follows the four-distribution layout).
-    ("gitignore-build", r"/packages/\*/build/", "/rcp-ndcg-*/build/", (".gitignore",)),
+    ("gitignore-build", r"/packages/\*/build/", "/rcp-*/build/", (".gitignore",)),
 )
 
 STALE: tuple[tuple[str, ...], ...] = (
-    # Any old package path left anywhere, `packages/rcp-ndcg-...` split or together.
-    (r"packages/rcp-ndcg-(core|vllm|test)",),
-    (r"""(["'])packages\1\s*/\s*['"]rcp-ndcg-""",),
+    # Any old package path left anywhere, `packages/rcp-...` split or together.
+    (r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))",),
+    (r"""(["'])packages\1\s*/\s*['"]rcp-(?:ndcg-)?(?:core|vllm|test)""",),
     # The root package's source outside its one new home (its MANIFEST.in spells it relative).
     (r"(?<![\w./-])src/rcp_ndcg\b", "rcp-ndcg/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),
     (r"""(["'])src\1\s*/\s*['"]rcp_ndcg["']""",),
@@ -180,6 +189,10 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
     for rule, pattern, replacement, files in REWRITES:
         if not _matches_files(name, files):
             continue
+        if rule in ("core-name", "core-module") and name.as_posix() == "CHANGELOG.md":
+            continue  # the entries below Unreleased are history: they keep the names they shipped with
+        if rule == "core-name" and name.as_posix() == "rcp-ndcg-test/src/rcp_ndcg_test/jobs/ledger.py":
+            continue  # its source list names a pre-rename tree's layout as data, never a live path
         if rule == "root-src" and name.name == "MANIFEST.in":
             continue  # `recursive-include src/rcp_ndcg ...` is relative to its own directory
         if rule == "root-src" and name.as_posix() == "tests/docs/test_packaging.py":
@@ -250,7 +263,9 @@ def run(root: Path, *, check: bool = False) -> int:
             continue
         done_work = True
         moved.append(f"{source} -> {destination}")
-        _drop_empty_parents(root, source)
+        if source.startswith("packages/"):
+            # The `packages/` level empties; `rcp-core/src` is the target layout's own directory.
+            _drop_empty_parents(root, source)
 
     # 2. The rewrite sweep over every tracked text file outside EXEMPT (before the split, so the
     #    moved manifest's kept sections are already clean of old paths when they reach the root).

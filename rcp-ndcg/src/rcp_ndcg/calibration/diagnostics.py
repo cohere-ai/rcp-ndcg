@@ -19,9 +19,9 @@ from typing import Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.gain import pass_probabilities
-from rcp_ndcg_core.irt import FitDiagnostics
-from rcp_ndcg_core.schemas import ItemParams
+from rcp_core.gain import pass_probabilities
+from rcp_core.irt import FitDiagnostics
+from rcp_core.schemas import ItemParams
 
 #: Bins of the reliability curve.
 DEFAULT_BINS = 10

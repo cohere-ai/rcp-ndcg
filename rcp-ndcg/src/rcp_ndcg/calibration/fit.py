@@ -39,8 +39,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from rcp_ndcg_core.irt import JudgeOverlapError, Priors, fit_calibration
-from rcp_ndcg_core.schemas import ItemParams, JudgementFamily, JudgementSet, QueryParams
+from rcp_core.irt import JudgeOverlapError, Priors, fit_calibration
+from rcp_core.schemas import ItemParams, JudgementFamily, JudgementSet, QueryParams
 
 from rcp_ndcg.calibration._projection import (
     QUERY_ID_SEP,
@@ -249,7 +249,7 @@ class Calibration:
         Raises:
             DataError: The calibration holds no dataset ``dataset``.
         """
-        from rcp_ndcg_core.gain import gain
+        from rcp_core.gain import gain
 
         return {
             key: {doc: gain(theta, self.items) for doc, theta in docs.items()}  # type: ignore[arg-type]
@@ -284,7 +284,7 @@ class Calibration:
                 mode; empty otherwise); ``"items"``: ``criterion, gamma, beta``.
         """
         import pandas as pd
-        from rcp_ndcg_core.gain import gain
+        from rcp_core.gain import gain
 
         if table == "thetas":
             columns = ["dataset", "query_id", "doc_id", "theta", "theta_se", "gain", "source"]

@@ -72,7 +72,7 @@ def test_every_runtime_dependency_is_imported_somewhere() -> None:
     """A declared dependency nothing imports is weight on every install."""
     sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for folder in ("rcp-ndcg/src", "rcp-ndcg-core", "rcp-ndcg-vllm", "experiments", "examples")
+        for folder in ("rcp-ndcg/src", "rcp-core", "rcp-ndcg-vllm", "experiments", "examples")
         for path in (ROOT / folder).rglob("*.py")
     )
     # distribution -> the module it provides, where the names differ; fsspec protocols load their backend lazily.
@@ -80,7 +80,7 @@ def test_every_runtime_dependency_is_imported_somewhere() -> None:
         "pyyaml": "yaml",
         "pillow": "PIL",
         "python-dotenv": "dotenv",
-        "rcp-ndcg-core": "rcp_ndcg_core",
+        "rcp-core": "rcp_core",
         "pystemmer": "Stemmer",
     }
     lazily_loaded = {"gcsfs"}
@@ -159,7 +159,7 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
     for package in lock["package"]:
         locked.setdefault(package["name"].lower(), set()).add(package["version"])
     pins = _check_constraints_module().pins(text)
-    assert "torch" in pins and "rcp-ndcg" not in pins and "rcp-ndcg-core" not in pins
+    assert "torch" in pins and "rcp-ndcg" not in pins and "rcp-core" not in pins
     stale = {name: pin for name, pin in pins.items() if pin not in locked.get(name, set())}
     assert not stale, f"regenerate requirements-constraints.txt with the command in its header: {stale}"
     uv = shutil.which("uv")
@@ -171,7 +171,7 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
 RELEASE_PUBLISH_JOBS = {
     # job -> (GitHub environment, PyPI project): PyPI identifies a pending trusted publisher by owner, repository,
     # workflow file and environment only, so each package publishes through its own environment.
-    "publish-core": ("pypi-core", "rcp-ndcg-core"),
+    "publish-core": ("pypi-core", "rcp-core"),
     "publish-rcp-ndcg": ("pypi", "rcp-ndcg"),
     "publish-vllm": ("pypi-vllm", "rcp-ndcg-vllm"),
 }
@@ -192,7 +192,7 @@ def _release_tree(
     tmp_path: Path,
     versions: dict[str, str],
     *,
-    core: str = '"rcp-ndcg-core==0.0.1"',
+    core: str = '"rcp-core==0.0.1"',
     vllm: str | None = '[project]\nname = "rcp-ndcg-vllm"\nversion = "0.0.1"\ndependencies = ["pydantic>=2.0"]\n',
     core_in_extras: bool = False,
     extra_core: str | None = None,
@@ -238,7 +238,7 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     assert "--all-packages" not in build, "the release builds the three published packages by name"
     # One --package per invocation (uv refuses a repeated --package): the build names the two workspace
     # members it publishes, so the unpublished test package -- also a member -- can never be swept in.
-    for name in ("rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm"):
+    for name in ("rcp-core", "rcp-ndcg", "rcp-ndcg-vllm"):
         assert f"--package {name} --out-dir dist" in build, name
     assert "twine check" in build and "requirements-constraints.txt" in build
     # One artifact per package, each holding only that package's sdist and wheel.
@@ -325,14 +325,14 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
 
     def check(
         manifest: str | None,
-        core: str = '"rcp-ndcg-core==0.0.1"',
+        core: str = '"rcp-core==0.0.1"',
         version: str = "0.0.1",
         core_in_extras: bool = False,
         extra_core: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         tree = _release_tree(
             tmp_path,
-            dict.fromkeys(("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test"), version),
+            dict.fromkeys(("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm", "rcp-ndcg-test"), version),
             core=core,
             vllm=manifest,
             core_in_extras=core_in_extras,
@@ -351,7 +351,7 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
         "RCP.NDCG==0.0.2",
         "rcp-ndcg>=0.0.1",
         "rcp-ndcg",
-        "rcp-ndcg-core==0.0.1",
+        "rcp-core==0.0.1",
         "rcp-ndcg-test==0.0.1",
     )
     for sibling in siblings:
@@ -365,29 +365,29 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
         "a manifest the release builds may not be absent"
     )
     # The root manifest pins the core the same way: exact at the tag's version, however the TOML is spelled.
-    assert check(no_sibling, core='"rcp_ndcg_core == 0.0.1"').returncode == 0, "spaced and _ spelling normalise"
+    assert check(no_sibling, core='"rcp_core == 0.0.1"').returncode == 0, "spaced and _ spelling normalise"
     assert (
         check(
             no_sibling,
-            core='"rcp-ndcg-core==0.0.1"  # a trailing comment in the list does not matter\n',
+            core='"rcp-core==0.0.1"  # a trailing comment in the list does not matter\n',
         ).returncode
         == 0
     ), "only the dependencies list is read"
     unpinned = check(no_sibling, core='"numpy"')
-    assert unpinned.returncode == 1 and "rcp-ndcg-core" in unpinned.stderr, "a root manifest must pin the core"
-    extras_only = check(no_sibling, core='"rcp-ndcg-core==0.0.1"', core_in_extras=True)
-    assert extras_only.returncode == 1 and "rcp-ndcg-core" in extras_only.stderr, (
+    assert unpinned.returncode == 1 and "rcp-core" in unpinned.stderr, "a root manifest must pin the core"
+    extras_only = check(no_sibling, core='"rcp-core==0.0.1"', core_in_extras=True)
+    assert extras_only.returncode == 1 and "rcp-core" in extras_only.stderr, (
         "the required pin must be a runtime dependency: `pip install rcp-ndcg` resolves the core unpinned otherwise"
     )
     mixed = check(
         no_sibling,
-        core='"rcp-ndcg-core==0.0.1"',
-        extra_core='"rcp-ndcg-core==0.0.2"',
+        core='"rcp-core==0.0.1"',
+        extra_core='"rcp-core==0.0.2"',
     )
     assert mixed.returncode == 1 and "==0.0.1" in mixed.stderr, (
         "an exact pin must not hide a stale one in an extra: `pip install rcp-ndcg[probe]` would not resolve"
     )
-    stale = check(no_sibling, core='"rcp-ndcg-core==0.0.2"')
+    stale = check(no_sibling, core='"rcp-core==0.0.2"')
     assert stale.returncode == 1 and "==0.0.1" in stale.stderr, "a wrong core pin must be refused"
 
 
@@ -402,7 +402,7 @@ def test_the_release_workflow_checks_every_workspace_manifests_version(tmp_path)
     steps = workflow["jobs"]["build"]["steps"]
     step = next(step for step in steps if "manifests, the citation and the pins" in str(step.get("name", "")))
     assert "check_release.py" in str(step["run"])
-    packages = ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test")
+    packages = ("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm", "rcp-ndcg-test")
 
     def check(versions: dict[str, str]) -> subprocess.CompletedProcess[str]:
         return _run_release_check(_release_tree(tmp_path, versions))
@@ -421,7 +421,7 @@ def test_the_release_check_refuses_a_tag_that_is_not_the_tested_rc_commit(tmp_pa
     takes the wave document(s) whose evidence flipped the statuses and compares their recorded
     ``rc.commit`` with the tag commit; a mismatch is refused naming both, and a wave document without the
     RC record (or of another version) is refused too."""
-    packages = ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test")
+    packages = ("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm", "rcp-ndcg-test")
     tree = _release_tree(tmp_path, dict.fromkeys(packages, "0.0.1"))
     wave = tmp_path / "wave.json"
     wave.write_text(
@@ -480,7 +480,7 @@ def test_the_release_workflow_check_fails_when_two_environments_are_swapped() ->
 def test_both_distributions_ship_the_license_and_the_notice() -> None:
     """NOTICE attributes the third-party code (Apache-2.0 section 4(d)); each distribution carries the same copy.
 
-    Four distributions (``rcp-ndcg``, ``rcp-ndcg-core``, ``rcp-ndcg-vllm`` and the unpublished
+    Four distributions (``rcp-ndcg``, ``rcp-core``, ``rcp-ndcg-vllm`` and the unpublished
     ``rcp-ndcg-test``), one merged NOTICE byte-identical in all of them (docs-release Q4); the folded model
     plugins' attributions are part of it (their distributions are gone, layout-move item 3).
 
@@ -488,7 +488,7 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
     (ContextualAI's CC-BY-NC-SA-4.0 and Jina AI's CC-BY-NC-4.0 files, Perplexity AI's MIT file), so its
     ``license-files`` carries ``LICENSES/*.txt``; the other three stay Apache-2.0 only.
     """
-    folders = [ROOT / "rcp-ndcg", ROOT / "rcp-ndcg-core", ROOT / "rcp-ndcg-vllm", ROOT / "rcp-ndcg-test"]
+    folders = [ROOT / "rcp-ndcg", ROOT / "rcp-core", ROOT / "rcp-ndcg-vllm", ROOT / "rcp-ndcg-test"]
     for folder in folders:
         project = tomllib.loads((folder / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         expected = ["LICENSE", "NOTICE"]
@@ -679,7 +679,7 @@ def test_every_ci_install_of_the_serving_recipes_package_is_local() -> None:
     assert _index_installed_spec("uv pip install rcp-ndcg-vllm") == "rcp-ndcg-vllm"
     assert _index_installed_spec("uv pip install 'rcp-ndcg-vllm[test]'") == "rcp-ndcg-vllm[test]"
     # ...and the local forms it must accept really are accepted.
-    assert _index_installed_spec("uv pip install -e rcp-ndcg-core -e rcp-ndcg -e 'rcp-ndcg-vllm[test]'") is None
+    assert _index_installed_spec("uv pip install -e rcp-core -e rcp-ndcg -e 'rcp-ndcg-vllm[test]'") is None
     assert _index_installed_spec("uv pip install mcp ./rcp-ndcg-vllm") is None
     wheel_install = "uv pip install --python v/bin/python dist/rcp_ndcg_vllm-0.0.1-py3-none-any.whl"
     assert _index_installed_spec(wheel_install) is None
@@ -732,12 +732,12 @@ def test_the_pydantic_floor_covers_the_config_keys_the_code_uses() -> None:
     """
     sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for folder in ("rcp-ndcg/src", "rcp-ndcg-core/src")
+        for folder in ("rcp-ndcg/src", "rcp-core/src")
         for path in (ROOT / folder).rglob("*.py")
     )
     used = [key for key in PYDANTIC_211_KEYS if key in sources]
     assert used, "the scan found no pydantic 2.11 config keys; update this test if the models changed"
-    for member in ("rcp-ndcg-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"):
+    for member in ("rcp-core", "rcp-ndcg", "rcp-ndcg-vllm", "rcp-ndcg-test"):
         manifest = tomllib.loads((ROOT / member / "pyproject.toml").read_text(encoding="utf-8"))
         requirements = [Requirement(spec) for spec in manifest["project"]["dependencies"]]
         pydantic = [req for req in requirements if req.name.lower() == "pydantic"]
@@ -752,7 +752,7 @@ def test_every_member_build_directory_is_ignored() -> None:
     ``/rcp-ndcg-*/build/`` covers the three hyphenated members; the main distribution's directory must be
     ignored too, or its build output shows up in ``git status`` and in ``git add -A``.
     """
-    for member in ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "rcp-ndcg-test"):
+    for member in ("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm", "rcp-ndcg-test"):
         result = subprocess.run(
             ["git", "check-ignore", "-q", f"{member}/build/lib/x.py"], cwd=ROOT, capture_output=True
         )

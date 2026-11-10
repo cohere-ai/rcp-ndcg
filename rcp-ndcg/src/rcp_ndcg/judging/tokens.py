@@ -19,7 +19,7 @@ import math
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from rcp_ndcg.data.resolution import VideoPolicy
 
@@ -61,7 +61,7 @@ def approx_media_tokens(content: Content, video: VideoPolicy | None) -> int:
         ConfigError: a video container without a frame policy (the engine's own sampling decides its frames),
             or an fps policy whose clip lacks the recorded frame count or rate the rule needs.
     """
-    from rcp_ndcg_core.content import ImagePart, VideoPart
+    from rcp_core.content import ImagePart, VideoPart
 
     from rcp_ndcg.data.resolution import qwen3_vl_video_frame_indices, sample_video_part
     from rcp_ndcg.errors import ConfigError

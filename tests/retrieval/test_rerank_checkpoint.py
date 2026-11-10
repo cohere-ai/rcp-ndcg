@@ -16,7 +16,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.records import RankingExample
 
 from rcp_ndcg.data import media
 from rcp_ndcg.retrieval import _api as retrieval_api
@@ -119,7 +119,7 @@ def test_the_key_covers_every_content_field_and_the_exact_texts() -> None:
 def test_the_key_covers_a_media_query_s_parts_not_only_its_text(tmp_path: Any) -> None:
     """Two image queries with the same (empty) text but different images are different queries, and a
     replaced image at the same URI re-keys (an unhashed reference's size and change stamp are content)."""
-    from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+    from rcp_core.content import Content, ImagePart, MediaRef
 
     def image_query(uri: str) -> RankingExample:
         fields = _examples()[0].model_dump(by_alias=True, exclude={"content"})
@@ -149,7 +149,7 @@ def test_rerank_carries_a_media_query_to_the_wire_and_the_key(tmp_path: Any, mon
     empty text instead of the image, and a replaced image at the same URI resumes the old record."""
     import httpx
     from PIL import Image as PILImage
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     from rcp_ndcg.data import Dataset, Rankings
     from rcp_ndcg.inference import transport as transport_module

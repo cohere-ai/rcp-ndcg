@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.schemas import Judgement, Placement
+from rcp_core.schemas import Judgement, Placement
 
 from rcp_ndcg.judging._parsing.common import (
     MAX_ESCAPE_REPAIRS,

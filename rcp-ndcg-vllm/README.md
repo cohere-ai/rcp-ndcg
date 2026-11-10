@@ -181,7 +181,7 @@ The equivalence harness, the recorder, the reference cases and the GPU job tooli
 `rcp-ndcg-test` package ([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-ndcg-test.md));
 authors of new recipes start at [add a serving
 recipe](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
-the metric are `rcp-ndcg` and `rcp-ndcg-core`.
+the metric are `rcp-ndcg` and `rcp-core`.
 
 The T4 end-to-end run scenarios (`scenarios/<id>.yaml`, schema `schema/scenario.schema.json`) and their in-pod
 driver (`python -m rcp_ndcg_test.e2e`) are described in [release candidates and the GPU

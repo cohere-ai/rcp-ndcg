@@ -27,7 +27,7 @@ object is the one the judge wrote. The decoder does nothing else. It never reads
 digits out of prose and never completes a missing document: every ranking,
 score and criterion of a parsed judgement is a value of the judge's own JSON
 object, and an answer without one is refused with an
-:data:`~rcp_ndcg_core.schemas.InvalidCategory`.
+:data:`~rcp_core.schemas.InvalidCategory`.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ import json
 import re
 from typing import Any
 
-from rcp_ndcg_core.schemas import InvalidCategory
+from rcp_core.schemas import InvalidCategory
 
 #: Bumped whenever parsing of judge answers changes in a way that can alter the
 #: observations read from identical text, including the JSON schemas that
@@ -68,7 +68,7 @@ class UnparseableAnswer(ValueError):
 
     Attributes:
         reason: What is wrong with the answer, in one line.
-        category: The :data:`~rcp_ndcg_core.schemas.InvalidCategory` of the reason.
+        category: The :data:`~rcp_core.schemas.InvalidCategory` of the reason.
     """
 
     def __init__(self, reason: str, category: InvalidCategory, *, context: str | None = None) -> None:

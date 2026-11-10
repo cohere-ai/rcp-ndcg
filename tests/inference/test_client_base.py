@@ -13,7 +13,7 @@ import sys
 from typing import Any, ClassVar
 
 import pytest
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, CredentialsError, RequestRejectedError
 from rcp_ndcg.inference import EncodeRole
@@ -244,7 +244,7 @@ class TestNoSiblingLeftRunning:
     """A failing request cancels its siblings (R7): TaskGroup semantics in every client's fan-out."""
 
     def _embed(self, sender: Any, tokenizer_json: str) -> EmbeddingClient:
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         return EmbeddingClient(
             EmbeddingEndpoint(
@@ -275,7 +275,7 @@ class TestNoSiblingLeftRunning:
     def test_rerank_many_cancels_its_sibling_queries_and_checkpoints_nothing_after_the_failure(
         self, tokenizer_json: str
     ) -> None:
-        from rcp_ndcg_core.records import RankingExample
+        from rcp_core.records import RankingExample
 
         sender = _FailingFanOut()
         client = RerankClient(
@@ -303,7 +303,7 @@ class TestNoSiblingLeftRunning:
         asyncio.run(run())
 
     def test_pool_cancels_its_sibling_requests(self, tokenizer_json: str) -> None:
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         sender = _FailingFanOut()
         client = PoolingClient(
@@ -1112,7 +1112,7 @@ class TestRequestGroupMediaCaps:
         """The grouping counts what the wire lowers -- a frame-sampled video as one image block per frame
         (``adapters.chat.media_counts``'s rule) -- so two 8-frame videos with ``max_images: 8`` split into
         two requests instead of one the media gate refuses with ``CapabilityError``."""
-        from rcp_ndcg_core.content import MediaRef, TextPart, VideoPart
+        from rcp_core.content import MediaRef, TextPart, VideoPart
 
         client = EmbeddingClient(
             EmbeddingEndpoint(

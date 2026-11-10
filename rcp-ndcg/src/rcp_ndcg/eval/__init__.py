@@ -8,7 +8,7 @@
 * :func:`explain` -- one query side by side: each system's top k with gains, thetas and per-criterion
   probabilities, and the selection/ordering split of the gaps, as a :class:`QueryExplanation`.
 
-All metric arithmetic is :mod:`rcp_ndcg_core`'s. The MTEB tasks of the public suites are in
+All metric arithmetic is :mod:`rcp_core`'s. The MTEB tasks of the public suites are in
 :mod:`rcp_ndcg.eval.mteb` (extra ``mteb``).
 """
 

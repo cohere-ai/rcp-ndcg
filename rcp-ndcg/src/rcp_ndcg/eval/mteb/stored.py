@@ -27,13 +27,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from rcp_ndcg_core.metric import rank_by_score
+from rcp_core.metric import rank_by_score
 
 from rcp_ndcg.data.rankings import MTEB_MAX_DOCS, Rankings
 from rcp_ndcg.errors import ConfigError
 
 if TYPE_CHECKING:
-    from rcp_ndcg_core.records import ID
+    from rcp_core.records import ID
 
 __all__ = ["StoredRankings", "model_meta", "stored_rankings_model"]
 
@@ -195,7 +195,7 @@ def _of_query(scores: dict[str, float], pool: list[ID] | None, top_k: int) -> di
     """One query's scores, inside its pool when the task carries one, capped at ``min(top_k, 1000)``: mteb's
     own ``top_k`` is 1000 for the retrieval k values, and the predictions file holds at most 1,000 documents
     per query (:data:`MTEB_MAX_DOCS`); a task declaring larger k values would need its cap raised. Ties break
-    by document id descending, the rule of :func:`rcp_ndcg_core.metric.rank_by_score` and of mteb's own
+    by document id descending, the rule of :func:`rcp_core.metric.rank_by_score` and of mteb's own
     scoring."""
     if pool is not None:
         inside = set(pool)

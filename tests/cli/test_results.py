@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
 from rcp_ndcg.cli.results import results_group
 from rcp_ndcg.data import Dataset, Rankings

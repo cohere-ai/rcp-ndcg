@@ -1221,7 +1221,7 @@ def test_the_offline_media_probe_bounds_the_engine_side_reply_rule(tmp_path: Pat
     from typing import Any
 
     from PIL import Image
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
     from rcp_ndcg_test.equivalence.media import _offline_reply_probe
     from rcp_ndcg_test.equivalence.wire import role_client
 

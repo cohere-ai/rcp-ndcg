@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.errors import CapabilityError, ProviderError, RequestRejectedError
 from rcp_ndcg.inference import Adapter, EmbedRequest, EncodeRole, get_adapter, known_adapters

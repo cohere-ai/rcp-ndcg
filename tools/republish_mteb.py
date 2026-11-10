@@ -430,7 +430,7 @@ def _written_media(loaded: dict[str, Any], column: str) -> dict[str, bytes]:
 
 def _expected_media(part: Dataset, column: str) -> dict[str, bytes]:
     """``{doc_id: bytes}`` of one media column, from the dataset's content parts (what the writer resolves)."""
-    from rcp_ndcg_core.content import ImagePart, VideoPart
+    from rcp_core.content import ImagePart, VideoPart
 
     from rcp_ndcg.data.media import default_resolver
 

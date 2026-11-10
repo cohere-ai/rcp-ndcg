@@ -11,7 +11,7 @@ paper's leaderboards, the human contest study and the comparisons with external 
 and no credentials.
 
 ```bash
-pip install ./rcp-ndcg-core ./rcp-ndcg     # or: uv sync
+pip install ./rcp-core ./rcp-ndcg     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py

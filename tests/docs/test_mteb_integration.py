@@ -9,7 +9,7 @@ and the numbers it rests on (docs-9: the page once claimed the tie rules agree f
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_core.protocol import PROTOCOLS, score_query
+from rcp_core.protocol import PROTOCOLS, score_query
 
 from tests.docs._markdown import ROOT, paragraph
 

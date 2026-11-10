@@ -149,7 +149,7 @@ class RunManifest(pydantic.main.BaseModel)
 
 - `dataset: rcp_ndcg.runs.manifest.DatasetRef | None` = None
 
-- `families: dict[str, rcp_ndcg_core.schemas.JudgementFamily]` = '<factory dict>'
+- `families: dict[str, rcp_core.schemas.JudgementFamily]` = '<factory dict>'
 
 - `layout: Literal['rcp-ndcg.run-layout.v1']` = 'rcp-ndcg.run-layout.v1'
 

@@ -39,7 +39,7 @@ from functools import lru_cache
 from typing import Any
 
 import httpx
-from rcp_ndcg_core.gain import sigmoid
+from rcp_core.gain import sigmoid
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.inference.fake import (

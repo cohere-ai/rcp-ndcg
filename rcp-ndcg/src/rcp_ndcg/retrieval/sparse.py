@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, DataError, DependencyError, MissingInputError
 

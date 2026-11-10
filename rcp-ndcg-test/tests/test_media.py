@@ -113,7 +113,7 @@ def test_the_media_stage_compares_what_the_client_sends_with_what_the_reference_
 def test_a_text_first_placement_fails_the_stage(recipe: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The mutation: the client puts the fitted text before the media (the placement it had before the fit kept
     it in place) -- the captioned page's placement differs from the card's and the stage fails on it."""
-    from rcp_ndcg_core.content import Content, TextPart
+    from rcp_core.content import Content, TextPart
 
     from rcp_ndcg.inference.clients._base import RoleClient
 
@@ -491,7 +491,7 @@ def test_an_interleaved_row_pins_the_given_part_order(
 ) -> None:
     """The mutation: the client hoists the media before the text (the lowering it had before it kept the
     given part order) -- the interleaved row's placement differs from the card's and the stage fails on it."""
-    from rcp_ndcg_core.content import Content, TextPart
+    from rcp_core.content import Content, TextPart
 
     from rcp_ndcg.inference.clients._base import RoleClient
 

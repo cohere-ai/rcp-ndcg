@@ -245,7 +245,7 @@ token counts -- so the role's text budget can subtract them, never cut them:
 from pathlib import Path
 
 from PIL import Image
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_core.content import Content, ImagePart, MediaRef
 
 from rcp_ndcg.data import ImagePolicy
 from rcp_ndcg.data.prepare import MediaCensus, fit_media_to_budget, prepare_request

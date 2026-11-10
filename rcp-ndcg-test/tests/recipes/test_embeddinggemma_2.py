@@ -503,7 +503,7 @@ def test_the_reference_embed_input_is_the_image_the_client_sends(tmp_path: Path)
     2112x288 (264 patches + 2 = 266 tokens), 3000x20 -> 48x9792 (204 + 2 = 206), 16x16 -> 768x768
     (256 + 2 = 258); the old fixed point was 2160x288 / 48x13344."""
     from PIL import Image, ImageChops
-    from rcp_ndcg_core.content import MediaRef
+    from rcp_core.content import MediaRef
     from rcp_ndcg_test.observe.media_set import image_entry
 
     from rcp_ndcg.data.prepare import prepare_image

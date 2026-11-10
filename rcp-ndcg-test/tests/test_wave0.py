@@ -396,7 +396,7 @@ def _full_report(tmp_path: Path) -> Path:
             "engine": {"python": "3.12.9", "vllm": "0.33.0", "freeze_unchanged": True, "plugins": []},
             "client": {
                 "rcp-ndcg": "0.0.1",
-                "rcp-ndcg-core": "0.0.1",
+                "rcp-core": "0.0.1",
                 "rcp-ndcg-vllm": "0.0.1",
                 "mechanism": "uvx",
                 "install_s": 12,

@@ -26,8 +26,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from rcp_ndcg_core._hashing import hash_payload, short
-from rcp_ndcg_core.records import DocumentTitle
+from rcp_core._hashing import hash_payload, short
+from rcp_core.records import DocumentTitle
 
 #: Schema id carried by every judgement record (``"schema"`` in JSON).
 JUDGEMENT_SCHEMA = "rcp-ndcg.judgement.v1"
@@ -250,7 +250,7 @@ class JudgementFamily(BaseModel):
             declares nothing keeps the key it had. The rule decides the strings the judge reads, so a pass
             that reads title-joined documents never pools with one that reads body-only.
         text_formatting: The text-formatting rule's version
-            (:data:`~rcp_ndcg_core.records.TEXT_FORMATTING_VERSION`), when the pass declared it: a changed
+            (:data:`~rcp_core.records.TEXT_FORMATTING_VERSION`), when the pass declared it: a changed
             rule shapes the strings the judge reads, so a resume across the version re-asks instead of
             reusing judgements built from the old strings.
         fake_seed: The offline fake judge's draw seed, when the pass ran one: two seeds answer differently,
@@ -394,7 +394,7 @@ class Judgement(BaseModel):
 
     A valid rubric judgement carries a non-empty criteria mapping, 0 or 1 per verdict, on every placement;
     that the keys are exactly the family's ``C1..C<num_criteria>`` is checked at fit time
-    (:func:`rcp_ndcg_core.irt.fit_calibration`, which refuses a missing or unknown criterion), not by this
+    (:func:`rcp_core.irt.fit_calibration`, which refuses a missing or unknown criterion), not by this
     record. A valid tournament judgement carries a score on every placement (and the judge's stated
     ``ranking``). An answer that could not be parsed is recorded with ``valid=False``, the reason and its
     category, never dropped and never read as a vote.

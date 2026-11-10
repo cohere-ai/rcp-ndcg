@@ -7,8 +7,8 @@ gains derived downstream are trustworthy; if they fail, nothing downstream is.
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.gain import gain
-from rcp_ndcg_core.irt._criteria_2pl import (
+from rcp_core.gain import gain
+from rcp_core.irt._criteria_2pl import (
     DEFAULT_GAMMA_BOUNDS,
     DEFAULT_MAX_ITEM_WEIGHT,
     QUAD,

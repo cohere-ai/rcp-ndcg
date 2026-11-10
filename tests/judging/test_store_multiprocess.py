@@ -23,7 +23,7 @@ WORKER = r"""
 import json, os, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
-from rcp_ndcg_core.schemas import JudgementFamily, Judgement, Placement
+from rcp_core.schemas import JudgementFamily, Judgement, Placement
 from rcp_ndcg.judging.store import JudgementStore
 
 root, stage, rounds, barrier = sys.argv[1], sys.argv[2], int(sys.argv[3]), Path(sys.argv[4])
@@ -113,7 +113,7 @@ def test_concurrent_appends_lose_no_records(tmp_path: Path) -> None:
     torn tail (the state whose repair is the race) and both workers' first appends are aligned on the barrier,
     with no claim between them to serialize the workers. The records are ~40 KB, the size at which a
     mid-transfer truncation was observed."""
-    from rcp_ndcg_core.schemas import JudgementFamily
+    from rcp_core.schemas import JudgementFamily
 
     rounds = 6
     for round_ in range(rounds):
@@ -138,7 +138,7 @@ def test_a_writer_racing_a_reader_never_sees_a_partial_identity_file(tmp_path: P
     """The store's identity file is replaced atomically under a concurrent reader (the progress reader's
     contract, now through the one storage helper)."""
     store = JudgementStore(tmp_path)
-    from rcp_ndcg_core.schemas import JudgementFamily
+    from rcp_core.schemas import JudgementFamily
 
     family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
     store.claim("tournament", {"a": 0}, family, sources={f"{i}": "x" * 200 for i in range(400)})
@@ -157,7 +157,7 @@ def test_the_append_holds_the_store_writer_lock(monkeypatch: pytest.MonkeyPatch)
     not by hoping to catch a microsecond window."""
     import tempfile
 
-    from rcp_ndcg_core.schemas import Judgement, JudgementFamily, Placement
+    from rcp_core.schemas import Judgement, JudgementFamily, Placement
 
     entered: list[str] = []
     with tempfile.TemporaryDirectory() as root:

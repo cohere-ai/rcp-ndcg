@@ -65,7 +65,7 @@ SWEPT_ROOTS = ("docs", "rcp-ndcg/src", "rcp-ndcg-test/src", "rcp-ndcg-vllm/src",
 SWEPT_FILES = (
     "NOTICE",
     "rcp-ndcg/NOTICE",
-    "rcp-ndcg-core/NOTICE",
+    "rcp-core/NOTICE",
     "rcp-ndcg-test/NOTICE",
     "rcp-ndcg-vllm/NOTICE",
     "REPRODUCIBILITY.md",

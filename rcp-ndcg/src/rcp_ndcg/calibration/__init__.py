@@ -11,7 +11,7 @@
   one is judged against.
 """
 
-from rcp_ndcg_core.irt import Priors
+from rcp_core.irt import Priors
 
 from rcp_ndcg.calibration._projection import QUERY_ID_SEP, count_gains, judged_bt_l2, read_judgements
 from rcp_ndcg.calibration.extend import (

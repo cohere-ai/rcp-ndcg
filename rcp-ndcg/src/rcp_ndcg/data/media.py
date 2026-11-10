@@ -26,7 +26,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from rcp_ndcg_core.content import Content, MediaRef, VideoPart
+from rcp_core.content import Content, MediaRef, VideoPart
 
 from rcp_ndcg import storage
 from rcp_ndcg.errors import DataError, MissingInputError, RcpNdcgError

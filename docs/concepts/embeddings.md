@@ -73,7 +73,7 @@ calls, parse the replies:
 ```python
 from rcp_ndcg.inference import EncodeRole, get_adapter
 from rcp_ndcg.inference.types import EmbedRequest
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 request = EmbedRequest(
     contents=(Content.from_text("a query about foxes"),),

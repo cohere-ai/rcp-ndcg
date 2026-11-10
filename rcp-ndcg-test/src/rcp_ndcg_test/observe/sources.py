@@ -184,7 +184,7 @@ def load_corpora(suite: str, subsets: tuple[str, ...], commits: dict[str, str]) 
 
 def _media_of(suite: str, subset: str, doc_id: str, row: Any) -> tuple[SourceMedia, ...]:
     """The document row's media as source coordinates (the resolver's cache path is never recorded)."""
-    from rcp_ndcg_core.content import ImagePart
+    from rcp_core.content import ImagePart
 
     out: list[SourceMedia] = []
     content = getattr(row, "content", None)

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from rcp_ndcg_core.irt._calibration import (
+from rcp_core.irt._calibration import (
     AbilityPrior,
     CalibrationFit,
     FitDiagnostics,
@@ -32,18 +32,18 @@ from rcp_ndcg_core.irt._calibration import (
     Priors,
     fit_calibration,
 )
-from rcp_ndcg_core.irt._criteria_2pl import DEFAULT_SE_TARGET
-from rcp_ndcg_core.irt._insertion import (
+from rcp_core.irt._criteria_2pl import DEFAULT_SE_TARGET
+from rcp_core.irt._insertion import (
     MIN_OPPONENTS,
     ScaleMovementError,
     UnidentifiableInsertion,
     insert_document,
 )
-from rcp_ndcg_core.schemas import DocumentEstimate, ItemParams
+from rcp_core.schemas import DocumentEstimate, ItemParams
 
 if TYPE_CHECKING:  # the lazy names below, for the type checkers; the runtime path is __getattr__
-    from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
-    from rcp_ndcg_core.irt._rasch import RaschEstimator
+    from rcp_core.irt._bradley_terry import BradleyTerryEstimator
+    from rcp_core.irt._rasch import RaschEstimator
 
 
 def fit_bradley_terry(
@@ -71,7 +71,7 @@ def fit_bradley_terry(
             or a comparison names a document outside ``doc_ids`` or compares a document with itself; or
             ``doc_ids`` contains a duplicate.
     """
-    from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+    from rcp_core.irt._bradley_terry import BradleyTerryEstimator
 
     rows = [tuple(c) for c in comparisons]
     ids = list(doc_ids) if doc_ids is not None else list(dict.fromkeys(d for row in rows for d in row[:2]))
@@ -108,7 +108,7 @@ def score_document(
             ``gamma_k * (theta - beta_k) - severity_j``. ``None``: one judge, no severity.
 
     Returns:
-        The :class:`~rcp_ndcg_core.schemas.DocumentEstimate`: the EAP ability and the posterior SD on
+        The :class:`~rcp_core.schemas.DocumentEstimate`: the EAP ability and the posterior SD on
         the items' scale (``prior_mean`` included), the document's own information over every judge, and
         its flags.
 
@@ -117,7 +117,7 @@ def score_document(
             the per-judge shapes disagree, ``prior_sd`` is not finite and > 0, or ``se_target`` is not
             finite and > 0.
     """
-    from rcp_ndcg_core.irt._criteria_2pl import Criteria2PL, _validate_prior_sd
+    from rcp_core.irt._criteria_2pl import Criteria2PL, _validate_prior_sd
 
     # Integrate in standardised units: the quadrature grid is fixed, so a prior whose sd is far
     # from 1 (a rubric-only fit reports N(shift, scale * ability_sd), and scale is about 6 when the
@@ -149,11 +149,11 @@ def score_document(
 def __getattr__(name: str) -> Any:
     """The torch-backed estimator classes, imported when first read (PEP 562), never at package import."""
     if name == "BradleyTerryEstimator":
-        from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+        from rcp_core.irt._bradley_terry import BradleyTerryEstimator
 
         return BradleyTerryEstimator
     if name == "RaschEstimator":
-        from rcp_ndcg_core.irt._rasch import RaschEstimator
+        from rcp_core.irt._rasch import RaschEstimator
 
         return RaschEstimator
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

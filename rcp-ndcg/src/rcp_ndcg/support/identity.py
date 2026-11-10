@@ -42,7 +42,7 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
-from rcp_ndcg_core._hashing import (
+from rcp_core._hashing import (
     UnhashableValueError,
     canonical,
     combine_digests,

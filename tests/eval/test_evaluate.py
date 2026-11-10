@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from rcp_ndcg_core import gain, ndcg
-from rcp_ndcg_core.protocol import PROTOCOLS, score_query
+from rcp_core import gain, ndcg
+from rcp_core.protocol import PROTOCOLS, score_query
 from scipy.stats import ttest_rel
 
 from rcp_ndcg.data import Dataset, Rankings
@@ -105,7 +105,7 @@ def test_gains_come_from_the_argument_then_a_calibration_then_the_dataset() -> N
 
 def _calibration(thetas: dict[str, dict[str, dict[str, float]]]):
     """A :class:`~rcp_ndcg.calibration.Calibration` holding ``{dataset: {query_id: {doc_id: theta}}}``."""
-    from rcp_ndcg_core.schemas import ItemParams
+    from rcp_core.schemas import ItemParams
 
     from rcp_ndcg.calibration import Calibration
     from rcp_ndcg.calibration.fit import ThetaRow
@@ -758,7 +758,7 @@ def test_sensitivity_is_the_share_of_pairs_a_paired_t_test_separates(report: Eva
 def test_sensitivity_is_the_mean_over_datasets_of_each_datasets_share_of_separated_pairs() -> None:
     """The paper's definition: per dataset, the share of all system pairs whose paired t-test has p < alpha (a pair
     without two shared queries is not separated), then the mean over datasets."""
-    from rcp_ndcg_core.protocol import PROTOCOLS
+    from rcp_core.protocol import PROTOCOLS
 
     from rcp_ndcg.eval import QueryValue, SummaryValue
 
@@ -797,7 +797,7 @@ def test_sensitivity_is_the_mean_over_datasets_of_each_datasets_share_of_separat
 def test_a_pair_with_zero_variance_in_its_differences_is_not_separated() -> None:
     """The docstrings say a pair whose differences have no variance is not separated; scipy returns t=inf and
     p=0.0 for constant nonzero differences, which used to count as significant with ``t`` serialised as null."""
-    from rcp_ndcg_core.protocol import PROTOCOLS
+    from rcp_core.protocol import PROTOCOLS
 
     from rcp_ndcg.eval import QueryValue, SummaryValue
     from rcp_ndcg.eval.compare import _paired_t
@@ -915,7 +915,7 @@ def test_explain_computes_the_gap_under_the_protocols_own_tie_rule() -> None:
 def test_explain_drops_the_query_id_from_the_ideal_when_the_protocol_says_so() -> None:
     """A ``drop_identical_ids`` protocol removes the query's own id from the ranking *and* the ideal; the deltas
     must be scored against the ideal the report was, or they are not the report's gap."""
-    from rcp_ndcg_core.protocol import Protocol
+    from rcp_core.protocol import Protocol
 
     dataset = Dataset(name="toy", qrels={"q1": {"q1": 2.0, "b": 1.0, "c": 0.0}}, candidates={"q1": ["q1", "b", "c"]})
     gains = {"q1": {"q1": 0.9, "b": 0.4, "c": 0.1}}

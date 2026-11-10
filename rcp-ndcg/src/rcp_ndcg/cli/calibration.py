@@ -19,8 +19,8 @@ from typing import Any, Literal
 
 import click
 from pydantic import BaseModel, Field
-from rcp_ndcg_core.irt import DEFAULT_SE_TARGET, MIN_OPPONENTS
-from rcp_ndcg_core.schemas import JudgementFamily
+from rcp_core.irt import DEFAULT_SE_TARGET, MIN_OPPONENTS
+from rcp_core.schemas import JudgementFamily
 
 from rcp_ndcg.calibration.coverage import CalibrationCoverage
 from rcp_ndcg.calibration.diagnostics import Diagnostics

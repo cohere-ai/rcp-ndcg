@@ -35,7 +35,7 @@ from pydantic import BaseModel
 from rcp_ndcg.support import api_docs
 
 REPO = Path(__file__).resolve().parents[2]
-PACKAGES = ("rcp_ndcg_core", "rcp_ndcg", "rcp_ndcg_vllm")
+PACKAGES = ("rcp_core", "rcp_ndcg", "rcp_ndcg_vllm")
 HEAVY = (
     "torch",
     "transformers",
@@ -63,14 +63,14 @@ def render(obj: Any) -> str:
 
 
 def _path_markers() -> list[tuple[str, str]]:
-    import rcp_ndcg_core
+    import rcp_core
 
     import rcp_ndcg
 
     markers = [
         (tempfile.gettempdir(), "<tmp>"),
         (str(Path(rcp_ndcg.__file__).resolve().parent), "<rcp_ndcg>"),
-        (str(Path(rcp_ndcg_core.__file__).resolve().parent), "<rcp_ndcg_core>"),
+        (str(Path(rcp_core.__file__).resolve().parent), "<rcp_core>"),
         (str(REPO), "<repo>"),
         (str(Path.cwd()), "<cwd>"),
         (str(Path.home()), "<home>"),
@@ -303,7 +303,7 @@ def collect_python(modules: list[str] | None = None) -> dict[str, Any]:
         try:
             module = importlib.import_module(name)
         except ModuleNotFoundError as exc:
-            if exc.name and exc.name.split(".")[0] in {"rcp_ndcg", "rcp_ndcg_core", "rcp_ndcg_vllm"}:
+            if exc.name and exc.name.split(".")[0] in {"rcp_ndcg", "rcp_core", "rcp_ndcg_vllm"}:
                 raise
             out[name] = {"requires_extra": exc.name.split(".")[0] if exc.name else "?"}
             continue
@@ -491,7 +491,7 @@ def collect_packaging() -> dict[str, Any]:
     projects = {}
     for pyproject in (
         REPO / "rcp-ndcg" / "pyproject.toml",
-        REPO / "rcp-ndcg-core/pyproject.toml",
+        REPO / "rcp-core/pyproject.toml",
         REPO / "rcp-ndcg-vllm/pyproject.toml",
     ):
         data = tomllib.loads(pyproject.read_text())["project"]
@@ -500,13 +500,13 @@ def collect_packaging() -> dict[str, Any]:
             "entry_points": {group: sorted(eps) for group, eps in data.get("entry-points", {}).items()},
         }
     read_groups = set()
-    for base in (REPO / "rcp-ndcg" / "src", REPO / "rcp-ndcg-core/src", REPO / "rcp-ndcg-vllm/src"):
+    for base in (REPO / "rcp-ndcg" / "src", REPO / "rcp-core/src", REPO / "rcp-ndcg-vllm/src"):
         for path in base.rglob("*.py"):
             read_groups |= entry_point_groups(path)
     return {
         "projects": projects,
         "entry_point_groups_read": sorted(read_groups),
-        "heavy_imports": {mod: _heavy_after(mod) for mod in ("rcp_ndcg_core", "rcp_ndcg", "rcp_ndcg.cli.main")},
+        "heavy_imports": {mod: _heavy_after(mod) for mod in ("rcp_core", "rcp_ndcg", "rcp_ndcg.cli.main")},
         "pydantic_version": pydantic.VERSION,
     }
 

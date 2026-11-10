@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import pytest
-from rcp_ndcg_core.schemas import (
+from rcp_core.schemas import (
     Judgement,
     JudgementFamily,
     JudgementSet,

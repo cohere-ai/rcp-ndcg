@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_core.content import Content, ImagePart, MediaRef
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, RequestRejectedError
 from rcp_ndcg.inference.adapters.chat import (

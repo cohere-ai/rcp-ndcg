@@ -159,7 +159,7 @@ def test_the_eval_score_schema_describes_the_results_fields() -> None:
     for the serialization-mode schema: the exported ``rcp-ndcg.eval-score.v1`` (and the ``eval_score`` MCP
     tool's outputSchema) described one property, ``schema``, with ``additionalProperties: true`` -- an empty
     contract for the output of the main ``--json`` command."""
-    from rcp_ndcg_core.protocol import Protocol
+    from rcp_core.protocol import Protocol
 
     from rcp_ndcg.cli.eval import EvalScoreResult
 

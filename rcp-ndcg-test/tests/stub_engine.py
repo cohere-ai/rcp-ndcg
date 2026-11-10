@@ -304,7 +304,7 @@ def _video(url: str) -> int:
     function the client counts with, with the engine's own tokenizer -- over the container's probed header,
     so the stub catches a pin that is missing or different (its argv), never a bug in the product's video
     accounting itself."""
-    from rcp_ndcg_core.content import Content, MediaRef, VideoPart
+    from rcp_core.content import Content, MediaRef, VideoPart
 
     from rcp_ndcg.data.media import probe_video_header
     from rcp_ndcg.data.resolution import ImagePolicy, VideoPolicy, content_media_tokens

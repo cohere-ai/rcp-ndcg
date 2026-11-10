@@ -35,7 +35,7 @@ set -euo pipefail
 # The published distributions, in release order (release.yml builds exactly these, one --package per
 # invocation; the fourth workspace member rcp-ndcg-test is unpublished and is never built -- GPU-E1:
 # an --all-packages build staged its wheel and the dist/ check then refused the extra file).
-PUBLISHED_PACKAGES=("rcp-ndcg-core" "rcp-ndcg" "rcp-ndcg-vllm")
+PUBLISHED_PACKAGES=("rcp-core" "rcp-ndcg" "rcp-ndcg-vllm")
 HARNESS_PACKAGE="rcp-ndcg-test"
 
 build_published() { # build_published OUT_DIR: the three published distributions, by name, as release.yml
@@ -229,7 +229,7 @@ build_harness "$WORK/harness"
 echo "rc_build: checking the versions and the pins"
 expected=(
   "dist/rcp_ndcg-${VERSION}-py3-none-any.whl" "dist/rcp_ndcg-${VERSION}.tar.gz"
-  "dist/rcp_ndcg_core-${VERSION}-py3-none-any.whl" "dist/rcp_ndcg_core-${VERSION}.tar.gz"
+  "dist/rcp_core-${VERSION}-py3-none-any.whl" "dist/rcp_core-${VERSION}.tar.gz"
   "dist/rcp_ndcg_vllm-${VERSION}-py3-none-any.whl" "dist/rcp_ndcg_vllm-${VERSION}.tar.gz"
 )
 for file in "${expected[@]}"; do
@@ -399,16 +399,16 @@ uv pip install --python "$WORK/smoke/bin/python" --no-index \
 "$WORK/smoke/bin/rcp-ndcg" --help >/dev/null
 echo "rc_build: core wheel smoke (installs alone and computes the metric)"
 uv venv "$WORK/smoke-core" --python 3.12
-uv pip install --python "$WORK/smoke-core/bin/python" stage/"$RC_NAME"/dist/rcp_ndcg_core-*.whl
+uv pip install --python "$WORK/smoke-core/bin/python" stage/"$RC_NAME"/dist/rcp_core-*.whl
 "$WORK/smoke-core/bin/python" - <<'PYEOF'
-from rcp_ndcg_core import PROTOCOLS, gain, ndcg, score_query
+from rcp_core import PROTOCOLS, gain, ndcg, score_query
 
 items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
 gains = {d: gain(t, items) for d, t in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}
 scores = {"d1": 0.9, "d2": 0.7, "d3": 0.2}
 assert abs(ndcg(scores, gains, k=10) - score_query(scores, gains, protocol=PROTOCOLS["plain"])) < 1e-12
-assert "torch" not in __import__("sys").modules, "rcp_ndcg_core imported torch"
-print("rcp_ndcg_core wheel alone:", ndcg(scores, gains, k=10))
+assert "torch" not in __import__("sys").modules, "rcp_core imported torch"
+print("rcp_core wheel alone:", ndcg(scores, gains, k=10))
 PYEOF
 echo "rc_build: vllm wheel smoke (installs alone, lists every recipe, dry-runs serve)"
 uv venv "$WORK/smoke-vllm" --python 3.12

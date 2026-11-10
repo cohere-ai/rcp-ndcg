@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
+from rcp_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
 from rcp_ndcg.calibration import Calibration, calibrate
 from rcp_ndcg.calibration.coverage import DegenerateCounts, coverage_flags, window_coverage

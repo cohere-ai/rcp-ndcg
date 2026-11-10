@@ -195,7 +195,7 @@ same commands are:
 # the three published wheels, by name, as release.yml builds them (never --all-packages: the
 # unpublished fourth workspace member rcp-ndcg-test must not be swept into the release files; the
 # pyproject.toml versions must match)
-uv build --package=rcp-ndcg-core --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --package=rcp-core --out-dir /shared/wheelhouse/0.0.1rc1
 uv build --package=rcp-ndcg --out-dir /shared/wheelhouse/0.0.1rc1
 uv build --package=rcp-ndcg-vllm --out-dir /shared/wheelhouse/0.0.1rc1
 # the unpublished harness wheel (the node's client environment imports rcp_ndcg_test), in its own directory

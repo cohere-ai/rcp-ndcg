@@ -6,7 +6,7 @@ made, and the deprecation path -- are on
 
 ## What is public
 
-`rcp_ndcg.support.api_docs.PUBLIC_MODULES` names the public modules: `rcp_ndcg_core` and its documented
+`rcp_ndcg.support.api_docs.PUBLIC_MODULES` names the public modules: `rcp_core` and its documented
 submodules, the `rcp_ndcg` facade and the packages the docs present as API (`calibration`, `data`,
 `data.preprocess`, `data.revisions`, `errors`, `eval`, `eval.mteb`, `examples`, `inference`, `judging`,
 `results`, `retrieval`, `runners`, `runs`, `testing`), and `rcp_ndcg_vllm.recipe` (the serving package's

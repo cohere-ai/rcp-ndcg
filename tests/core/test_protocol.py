@@ -1,4 +1,4 @@
-"""The paper's scoring protocol (``rcp_ndcg_core.protocol``) and the Count-nDCG baseline."""
+"""The paper's scoring protocol (``rcp_core.protocol``) and the Count-nDCG baseline."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.protocol import PROTOCOLS, Protocol, aggregate, candidate_docs, score_query
+from rcp_core.protocol import PROTOCOLS, Protocol, aggregate, candidate_docs, score_query
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "paper_protocol_queries.json").read_text())
 LOG2_3 = math.log2(3)
@@ -255,7 +255,7 @@ def test_presets_carry_the_papers_tie_rules() -> None:
 
 
 def test_a_preset_name_resolves_to_its_protocol_and_an_unknown_one_is_refused() -> None:
-    from rcp_ndcg_core.protocol import PROTOCOLS, resolve_protocol
+    from rcp_core.protocol import PROTOCOLS, resolve_protocol
 
     assert resolve_protocol("nanobeir") is PROTOCOLS["nanobeir"]
     mine = PROTOCOLS["plain"].model_copy(update={"name": "mine"})

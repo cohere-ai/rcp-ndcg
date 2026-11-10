@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.content import Content, MediaRef, VideoPart
+from rcp_core.content import Content, MediaRef, VideoPart
 
 from rcp_ndcg.errors import CapabilityError, ConfigError, CredentialsError, ProviderError
 from rcp_ndcg.judging import JudgeClient, JudgeConfig, Usage

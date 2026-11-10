@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rcp_ndcg_core.irt._base import BaseScoredModel
-from rcp_ndcg_core.irt._calibration import verdicts
+from rcp_core.irt._base import BaseScoredModel
+from rcp_core.irt._calibration import verdicts
 
 
 class RaschEstimator(BaseScoredModel):
@@ -50,7 +50,7 @@ class RaschEstimator(BaseScoredModel):
 
         Nothing is dropped: an observation the estimator cannot attach (an unknown id, an id-format
         mismatch such as a chunk id where a document id belongs) is refused, as
-        :meth:`~rcp_ndcg_core.irt._bradley_terry.BradleyTerryEstimator.add_comparison` refuses one, because
+        :meth:`~rcp_core.irt._bradley_terry.BradleyTerryEstimator.add_comparison` refuses one, because
         silently dropping it stratifies the schedule from less evidence than the judgements held.
 
         Raises:

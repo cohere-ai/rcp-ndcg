@@ -13,7 +13,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from rcp_ndcg_core.content import Content, ImagePart, Part, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, Part, TextPart, VideoPart
 
 from rcp_ndcg.errors import DataError
 

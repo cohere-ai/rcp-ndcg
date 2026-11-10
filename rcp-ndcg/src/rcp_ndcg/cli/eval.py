@@ -26,7 +26,7 @@ from typing import Any, Literal
 
 import click
 from pydantic import BaseModel, Field, model_serializer
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
 from rcp_ndcg.cli.command import command
 from rcp_ndcg.errors import DataError, MissingInputError, UsageError

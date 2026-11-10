@@ -689,7 +689,7 @@ class TestAdapterAuth:
 
     @staticmethod
     def _send(client: Any) -> None:
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         from rcp_ndcg.inference import RerankClient
 

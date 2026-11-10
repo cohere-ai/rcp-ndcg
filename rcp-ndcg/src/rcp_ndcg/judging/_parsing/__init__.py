@@ -8,5 +8,5 @@
 
 Document identifiers in prompts are 1-based (``doc_1``, ``doc_2``, ...). A parser raises
 :class:`~rcp_ndcg.judging._parsing.common.UnparseableAnswer` with an
-:data:`~rcp_ndcg_core.schemas.InvalidCategory` when an answer is not a complete observation of its window.
+:data:`~rcp_core.schemas.InvalidCategory` when an answer is not a complete observation of its window.
 """

@@ -7,7 +7,7 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
 `tests/contract/snapshots/` and `schemas/` pin (the rules are on
 [compatibility and versioning](docs/reference/versioning.md)):
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in
-  `rcp_ndcg.support.api_docs` lists (the same list generates the API pages): the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.gain`, `.irt`, `.metric`, `.protocol` and
+  `rcp_ndcg.support.api_docs` lists (the same list generates the API pages): the facade `rcp_ndcg`; `rcp_core` with `rcp_core.gain`, `.irt`, `.metric`, `.protocol` and
   `.records`; `rcp_ndcg.calibration`, `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.revisions`,
   `rcp_ndcg.errors`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.examples`, `rcp_ndcg.inference`,
   `rcp_ndcg.judging`, `rcp_ndcg.results`, `rcp_ndcg.retrieval`, `rcp_ndcg.runners`, `rcp_ndcg.runs`,
@@ -21,9 +21,15 @@ pull request that changes `tests/contract/snapshots/` or `schemas/` must add an 
 
 Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
 incompatibly, independently of the package version. All four distributions carry the tag version; `rcp-ndcg` pins
-`rcp-ndcg-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
+`rcp-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
 
 ## Unreleased
+
+### Changed
+
+- **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and
+  the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
+  compatibility shim — the old names are gone. The historical entries below keep the old names.
 
 ### Fixed
 
@@ -469,7 +475,7 @@ incompatibly, independently of the package version. All four distributions carry
   ties). The vLLM harness keeps reading release 1 (`PINNED_DATASET_COMMITS`, its e2e scenarios and quality test):
   those commits are part of its request generator's identity (`GENERATOR_VERSION` 1, the committed `pairs/`), and
   the queries and documents it samples are identical in release 2.
-- **Every scoring preset credits ties with their group's mean gain** (`rcp_ndcg_core.PROTOCOLS`): `nanobeir`
+- **Every scoring preset credits ties with their group's mean gain** (`rcp_core.PROTOCOLS`): `nanobeir`
   and `bright` broke tied scores by document id, descending, and `trecdl` by judge-pool order, as arXiv v1's tables
   did. A document id is an arbitrary order and a judged pool is often sorted by relevance, so a tie straddling the
   cutoff took credit the system did not earn. All presets now use `group_mean` (each tied document is credited

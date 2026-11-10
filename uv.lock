@@ -13,7 +13,7 @@ resolution-markers = [
 [manifest]
 members = [
     "rcp-ndcg",
-    "rcp-ndcg-core",
+    "rcp-core",
     "rcp-ndcg-test",
     "rcp-ndcg-vllm",
 ]
@@ -2720,7 +2720,7 @@ dependencies = [
     { name = "pystemmer" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "rcp-ndcg-core" },
+    { name = "rcp-core" },
     { name = "scipy" },
     { name = "tqdm" },
 ]
@@ -2797,7 +2797,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rcp-ndcg", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp-ndcg" },
-    { name = "rcp-ndcg-core", editable = "rcp-ndcg-core" },
+    { name = "rcp-core", editable = "rcp-core" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
     { name = "scipy", specifier = ">=1.15" },
@@ -2809,9 +2809,9 @@ requires-dist = [
 provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "dev", "docs"]
 
 [[package]]
-name = "rcp-ndcg-core"
+name = "rcp-core"
 version = "0.0.1"
-source = { editable = "rcp-ndcg-core" }
+source = { editable = "rcp-core" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },

@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 import numpy as np
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
 from rcp_ndcg.errors import ConfigError, RequestRejectedError
 from rcp_ndcg.inference import (

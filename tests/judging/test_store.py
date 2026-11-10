@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.schemas import Judgement, JudgementFamily, Placement
+from rcp_core.schemas import Judgement, JudgementFamily, Placement
 
 from rcp_ndcg.errors import DataError
 from rcp_ndcg.judging import JudgementStore
@@ -145,7 +145,7 @@ def test_the_store_and_merge_keep_the_same_copy_of_a_window(tmp_path: Path) -> N
     """One rule: a later recorded_at wins among valid copies, whatever order the file holds them in."""
     from datetime import timedelta
 
-    from rcp_ndcg_core.schemas import JudgementFamily, JudgementSet
+    from rcp_core.schemas import JudgementFamily, JudgementSet
 
     store = JudgementStore(tmp_path)
     later = _window("r1", response="later answer").model_copy(update={"recorded_at": RECORDED_AT + timedelta(hours=1)})

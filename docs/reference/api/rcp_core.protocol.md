@@ -1,4 +1,4 @@
-# `rcp_ndcg_core.protocol`
+# `rcp_core.protocol`
 
 The paper's scoring protocol: which candidates a query ranks, and how ties and ideals are set.
 

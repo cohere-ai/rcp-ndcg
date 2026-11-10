@@ -151,7 +151,7 @@ import sys as _sys
 _record = _os.environ.get("RCP_E2E_PROBE_JSONL")
 if _record:
     _versions = {}
-    for _dist in ("rcp-ndcg", "rcp-ndcg-core", "rcp-ndcg-vllm", "pydantic", "numpy", "tokenizers"):
+    for _dist in ("rcp-ndcg", "rcp-core", "rcp-ndcg-vllm", "pydantic", "numpy", "tokenizers"):
         try:
             _versions[_dist] = _metadata.version(_dist)
         except _metadata.PackageNotFoundError:

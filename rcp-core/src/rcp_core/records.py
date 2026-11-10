@@ -2,9 +2,9 @@
 
 The in-memory model of the data layer: :class:`Document`, :class:`Query` and :class:`RankingExample` (with their
 bases :class:`Text` and :class:`Input`) are what a reader yields, a writer takes, and retrieval, judging, storage
-and the role clients pass around. The public path is this module, ``rcp_ndcg_core.records``, re-exported by the
-``rcp_ndcg_core`` and ``rcp_ndcg.data`` facades. The judgement and IRT records are in
-:mod:`rcp_ndcg_core.schemas`.
+and the role clients pass around. The public path is this module, ``rcp_core.records``, re-exported by the
+``rcp_core`` and ``rcp_ndcg.data`` facades. The judgement and IRT records are in
+:mod:`rcp_core.schemas`.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from typing import Literal, Self
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from rcp_ndcg_core._logging import get_logger
-from rcp_ndcg_core.content import Content, MediaRef, Modality, Part, TextPart
+from rcp_core._logging import get_logger
+from rcp_core.content import Content, MediaRef, Modality, Part, TextPart
 
 # Identifiers always serialise as strings -- this keeps qrels / search-results
 # parity with BEIR / MTEB conventions and avoids float / int collisions.
@@ -284,7 +284,7 @@ class RankingExample(Query):
             self.docs = [content.text for content in self.contents]
 
         if self.scores is not None:
-            from rcp_ndcg_core._util import descending_score_order
+            from rcp_core._util import descending_score_order
 
             self._reorder(descending_score_order(self.scores))
         return self

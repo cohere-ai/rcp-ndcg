@@ -89,7 +89,7 @@ class ResultDataset(pydantic.main.BaseModel)
 
 - `protocol: str | None` = None
 
-- `protocol_spec: rcp_ndcg_core.protocol.Protocol | None` = None
+- `protocol_spec: rcp_core.protocol.Protocol | None` = None
 
 - `revision: str | None` = None
 

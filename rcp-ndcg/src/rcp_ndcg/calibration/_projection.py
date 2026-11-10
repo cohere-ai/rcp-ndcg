@@ -18,7 +18,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
-from rcp_ndcg_core.schemas import Judgement, JudgementSet
+from rcp_core.schemas import Judgement, JudgementSet
 
 from rcp_ndcg.data.postprocess import max_pool_rubric_window_by_document, max_pool_scores_by_document
 from rcp_ndcg.errors import DataError, MissingInputError
@@ -101,7 +101,7 @@ def check_criteria(judgements: JudgementSet) -> None:
             renamed criterion (the record, the document and the criteria are named in the message and
             ``details``).
     """
-    from rcp_ndcg_core.schemas import criterion_labels
+    from rcp_core.schemas import criterion_labels
 
     for key, family in judgements.families.items():
         if family.stage == "rubric" and family.criteria != criterion_labels(len(family.criteria)):
@@ -184,7 +184,7 @@ def count_gains(
     """``{query key: {doc_id: gain}}``: the Count-nDCG gain of every document with valid rubric verdicts.
 
     One gain per document per query, the paper's rubric-only baseline ``sum_c S_c / (C * n)``
-    (:func:`rcp_ndcg_core.count_gain`): ``S_c`` is the number of the document's rubric windows that passed
+    (:func:`rcp_core.count_gain`): ``S_c`` is the number of the document's rubric windows that passed
     criterion ``c`` and ``n`` its windows -- the window is the unit of evidence, so its verdicts are summed per
     document and sibling chunks pool inside a window, as the fit reads them. No tournament and no calibration is
     involved; the gains feed ``evaluate(..., count_gains=...)`` and ``rcp-ndcg eval score --metrics count_ndcg``.
@@ -205,7 +205,7 @@ def count_gains(
             different families (another prompt, parser or preprocessing), or a ``dataset`` the judgements hold no
             rubric verdicts for.
     """
-    from rcp_ndcg_core.gain import count_gain
+    from rcp_core.gain import count_gain
 
     judgement_set = JudgementSet.merge([judgements] if isinstance(judgements, JudgementSet) else judgements)
     check_criteria(judgement_set)
@@ -313,7 +313,7 @@ def bradley_terry(
     given the prior's value as if observed. A standard error the estimator cannot
     form is ``None``, never 0.0.
     """
-    from rcp_ndcg_core.irt import BradleyTerryEstimator
+    from rcp_core.irt import BradleyTerryEstimator
 
     units = _units(judgements)
     thetas: dict[str, dict[str, float]] = {}

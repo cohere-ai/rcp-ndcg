@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from rcp_ndcg_core.schemas import Judgement, Stage
+from rcp_core.schemas import Judgement, Stage
 
 from rcp_ndcg.calibration._projection import namespace
 

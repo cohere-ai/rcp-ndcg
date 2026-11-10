@@ -25,7 +25,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 from pydantic import BaseModel
-from rcp_ndcg_core._hashing import (
+from rcp_core._hashing import (
     UnhashableValueError,
     canonical,
     canonical_json,

@@ -256,7 +256,7 @@ def test_the_sparse_corpus_reads_a_content_carrying_rows_body(monkeypatch: pytes
     """A row whose ``content`` is set is authoritative (``Document.as_content``): the sparse path indexes
     the part's text, not the raw ``text`` field (which a media row leaves empty) -- the body of an OCR row or
     a caption must not vanish from the BM25 index."""
-    from rcp_ndcg_core.content import Content, TextPart
+    from rcp_core.content import Content, TextPart
 
     from rcp_ndcg.retrieval import sparse
 

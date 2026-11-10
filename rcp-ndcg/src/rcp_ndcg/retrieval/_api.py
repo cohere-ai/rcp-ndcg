@@ -29,8 +29,8 @@ from typing import Any, Literal
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from rcp_ndcg_core.content import Content
-from rcp_ndcg_core.records import DocumentTitle
+from rcp_core.content import Content
+from rcp_core.records import DocumentTitle
 
 from rcp_ndcg.data.dataset import Dataset
 from rcp_ndcg.data.media import content_identity
@@ -561,7 +561,7 @@ def rerank(
         DataError: The rankings hold no candidates for the dataset, a ranked document is not in the corpus,
             a ranked query is not in the dataset, or two candidates share a query id.
     """
-    from rcp_ndcg_core.records import RankingExample
+    from rcp_core.records import RankingExample
 
     if depth <= 0:
         raise ConfigError(f"depth must be positive, got {depth}")
@@ -642,7 +642,7 @@ def fuse(rankings: Sequence[Rankings], *, rrf_k: int = 60, depth: int = 150, sys
             different queries.
         ConfigError: ``depth`` or ``rrf_k`` is not positive.
     """
-    from rcp_ndcg_core.records import RankingExample
+    from rcp_core.records import RankingExample
 
     from rcp_ndcg.retrieval.fusion import reciprocal_rank_fusion
 
@@ -827,7 +827,7 @@ def _rerank_examples(
     """Score every example through the rerank client, checkpointing per query.
 
     Args:
-        examples: :class:`~rcp_ndcg_core.records.RankingExample` records with their documents populated.
+        examples: :class:`~rcp_core.records.RankingExample` records with their documents populated.
         config: The reranker.
         task_instruction: The run's task instruction (``Dataset.task_instruction``), placed by the config's
             ``instruction`` mode; part of the checkpoint key, because the model read it.
@@ -961,7 +961,7 @@ def _corpus(dataset: Dataset, *, title: DocumentTitle = "join") -> tuple[list[st
     The rows are in id order, so the top-k's tie-break toward the lower row
     (:func:`~rcp_ndcg.retrieval.topk.select_topk`) is a tie-break toward the lower document id, whatever order
     the dataset lists its corpus in. Each document is materialised as the content a model reads
-    (:meth:`~rcp_ndcg_core.records.Document.model_content`): MTEB's title join, or the title separately where the
+    (:meth:`~rcp_core.records.Document.model_content`): MTEB's title join, or the title separately where the
     step's config declares ``title: separate``.
     """
     corpus = dataset.corpus

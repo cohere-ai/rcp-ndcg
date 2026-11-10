@@ -20,7 +20,7 @@ hands them to the named sink; :func:`records_from_report` and :func:`records_fro
 in Python.
 
 The protocol travels in full: ``dataset.protocol`` is the preset name and ``dataset.protocol_spec`` the
-:class:`~rcp_ndcg_core.protocol.Protocol` (qrel gain, tie rule, pool restriction, rounding). The ideal DCG
+:class:`~rcp_core.protocol.Protocol` (qrel gain, tie rule, pool restriction, rounding). The ideal DCG
 follows from the metric and that protocol: qrel-nDCG sorts the query's positive qrels, RCP-nDCG and Count-nDCG
 sort all of its gains, and ``restrict_to_candidates`` decides which scored documents enter the ranking.
 Two records that differ only in the protocol are different records -- :func:`record_identity` digests the
@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
 from rcp_ndcg import storage
 from rcp_ndcg.errors import ConfigError, DataError, MissingInputError
@@ -200,7 +200,7 @@ class ResultRecord(BaseModel):
 def record_identity(subject: ResultSubject, dataset: ResultDataset | None, metrics: Sequence[ResultMetric]) -> str:
     """The deterministic id of a record: a digest of the subject, the dataset and the metrics.
 
-    The dataset's protocol (its preset name and its full :class:`~rcp_ndcg_core.protocol.Protocol`) is part of
+    The dataset's protocol (its preset name and its full :class:`~rcp_core.protocol.Protocol`) is part of
     the payload, so two rows scored under different conventions never share an id even when every number
     matches.
     """

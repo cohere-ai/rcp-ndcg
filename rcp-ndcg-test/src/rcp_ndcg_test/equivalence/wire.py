@@ -25,7 +25,7 @@ from collections.abc import Iterator, Mapping
 from typing import Any
 
 import httpx
-from rcp_ndcg_core.content import TEXT_JOIN
+from rcp_core.content import TEXT_JOIN
 from rcp_ndcg_vllm.recipe import Recipe
 
 from rcp_ndcg_test.errors import HarnessError

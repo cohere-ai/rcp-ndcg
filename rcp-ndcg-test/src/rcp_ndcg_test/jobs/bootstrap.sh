@@ -649,7 +649,7 @@ import sys
 from importlib.metadata import PackageNotFoundError, version
 
 import rcp_ndcg
-import rcp_ndcg_core
+import rcp_core
 import rcp_ndcg_test
 import rcp_ndcg_vllm
 
@@ -663,7 +663,7 @@ def installed(dist):
 
 print(json.dumps({
     "rcp-ndcg": rcp_ndcg.__version__,
-    "rcp-ndcg-core": version("rcp-ndcg-core"),
+    "rcp-core": version("rcp-core"),
     "rcp-ndcg-vllm": version("rcp-ndcg-vllm"),
     "rcp-ndcg-test": version("rcp-ndcg-test"),
     "inert_present": {dist: installed(dist) for dist in sys.argv[2:]},

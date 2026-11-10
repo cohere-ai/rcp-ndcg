@@ -220,15 +220,15 @@ def _text(report: DoctorReport) -> str:
 @command("doctor", request=DoctorRequest, result=DoctorReport, text=_text)
 def doctor(request: DoctorRequest) -> DoctorReport:
     """Check the environment: versions, installed extras, directories, credentials present, endpoint reachable."""
-    versions = {dist: _version(dist) for dist in ("rcp-ndcg", "rcp-ndcg-core", "pydantic", "click", "torch")}
+    versions = {dist: _version(dist) for dist in ("rcp-ndcg", "rcp-core", "pydantic", "click", "torch")}
     checks = []
-    if versions["rcp-ndcg"] is not None and versions["rcp-ndcg-core"] != versions["rcp-ndcg"]:
+    if versions["rcp-ndcg"] is not None and versions["rcp-core"] != versions["rcp-ndcg"]:
         checks.append(
             Check(
-                name="rcp-ndcg-core",
+                name="rcp-core",
                 status="fail",
-                detail=f"rcp-ndcg {versions['rcp-ndcg']} needs rcp-ndcg-core {versions['rcp-ndcg']}, "
-                f"found {versions['rcp-ndcg-core']}",
+                detail=f"rcp-ndcg {versions['rcp-ndcg']} needs rcp-core {versions['rcp-ndcg']}, "
+                f"found {versions['rcp-core']}",
             )
         )
     for extra, modules in _EXTRAS.items():

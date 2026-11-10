@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.irt import fit_bradley_terry
-from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
-from rcp_ndcg_core.irt._rasch import RaschEstimator
+from rcp_core.irt import fit_bradley_terry
+from rcp_core.irt._bradley_terry import BradleyTerryEstimator
+from rcp_core.irt._rasch import RaschEstimator
 
 torch = pytest.importorskip("torch")
 
@@ -24,7 +24,7 @@ def test_the_base_docstring_matches_the_rasch_raw_theta_override() -> None:
     parameters (its ``beta`` is the centred one). The base class docstring claimed every ability is
     "zero-mean"; a reader of ``RaschEstimator.theta`` was told the opposite of what the property
     returns, so the docstring must name the estimator that overrides it."""
-    from rcp_ndcg_core.irt._base import BaseScoredModel
+    from rcp_core.irt._base import BaseScoredModel
 
     doc = BaseScoredModel.__doc__ or ""
     assert "RaschEstimator" in doc, "the base docstring must name the estimator that overrides theta"
@@ -114,7 +114,7 @@ def test_the_bare_estimator_default_is_the_documented_bt_ridge() -> None:
     and ``docs/concepts/tournament.md`` say so; ``Priors.bt_l2`` is it), but the base class defaulted to
     1e-5: a direct user of the public ``BradleyTerryEstimator`` fitted a 10x weaker ridge. Every product
     call site passes an explicit value (``fit_bradley_terry`` requires one), so no shipped number moves."""
-    from rcp_ndcg_core.irt import Priors
+    from rcp_core.irt import Priors
 
     assert BradleyTerryEstimator(doc_ids=["a"]).l2_reg == Priors().bt_l2 == 1e-4
     assert RaschEstimator(doc_ids=["a"], num_criteria=2).l2_reg == 1e-4

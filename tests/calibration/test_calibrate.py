@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.schemas import JudgementSet
+from rcp_core.schemas import JudgementSet
 
 from rcp_ndcg.calibration import Calibration, calibrate, read_judgements
 from rcp_ndcg.calibration._projection import rubric_observations
@@ -204,7 +204,7 @@ class TestTheBradleyTerryPenalty:
     """The refit's L2 is a fit option; the judgement store records the one the live tournament used."""
 
     def test_the_store_records_the_live_fits_penalty_and_the_fit_its_own(self, world: TinyWorld, tmp_path) -> None:
-        from rcp_ndcg_core.irt import Priors
+        from rcp_core.irt import Priors
 
         from rcp_ndcg.judging import JudgementStore
 
@@ -221,7 +221,7 @@ class TestTheBradleyTerryPenalty:
         import json
 
         from click.testing import CliRunner
-        from rcp_ndcg_core.irt import Priors
+        from rcp_core.irt import Priors
 
         from rcp_ndcg.calibration import judged_bt_l2
         from rcp_ndcg.cli.calibration import calibration_group
@@ -254,7 +254,7 @@ def test_theta_map_and_gains_share_one_key_rule(fitted: Calibration) -> None:
 
 
 def test_the_calibration_tables_come_out_as_frames_with_gains(fitted: Calibration) -> None:
-    from rcp_ndcg_core import gain
+    from rcp_core import gain
 
     thetas = fitted.to_pandas()
     assert list(thetas.columns) == ["dataset", "query_id", "doc_id", "theta", "theta_se", "gain", "source"]
@@ -274,7 +274,7 @@ def test_a_tournament_fit_that_stops_short_of_the_map_warns(
     tiny world (a paper-sized fit reaches it on its own)."""
     import logging
 
-    from rcp_ndcg_core.irt import _tournament_2pl
+    from rcp_core.irt import _tournament_2pl
 
     monkeypatch.setattr(_tournament_2pl, "CONVERGED_GRAD_SUM", 1e-9)
     with caplog.at_level(logging.WARNING, logger="rcp_ndcg.calibration.fit"):

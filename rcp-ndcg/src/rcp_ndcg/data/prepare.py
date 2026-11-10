@@ -52,7 +52,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, VideoPart
 
 from rcp_ndcg.data.media import DEFAULT_IMAGE_MIME, data_uri, decode_rgb, default_resolver
 from rcp_ndcg.data.resolution import (

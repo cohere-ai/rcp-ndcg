@@ -596,7 +596,7 @@ def media_ref(case: Case, relative: str) -> Any:
     (``rcp_ndcg.data.media``: its suffix->MIME table and the header probes). The conformance send lowers
     this reference onto the wire, and the length strata count the media with it, so both sides measure the
     same item. A file whose type, dimensions or frame rate the product cannot read is refused here: a bare
-    :class:`~rcp_ndcg_core.content.MediaRef` (no mime, no dims, no rate) would silently inflate the media
+    :class:`~rcp_core.content.MediaRef` (no mime, no dims, no rate) would silently inflate the media
     token count at the policy's pixel ceiling, or -- under an fps video policy -- make the engine's own
     sampled frame count uncountable, a silent default this package forbids.
 
@@ -604,7 +604,7 @@ def media_ref(case: Case, relative: str) -> Any:
         CaseError: the media is not a readable image or container, or the case carries no recipe directory
             to resolve it against.
     """
-    from rcp_ndcg_core.content import MediaRef
+    from rcp_core.content import MediaRef
 
     from rcp_ndcg.data.media import IMAGE_MIME_BY_SUFFIX, _probe_dimensions, probe_video_header
 
@@ -933,7 +933,7 @@ def _pair_fold_query(recipe: Recipe, query: str, instruction: str | None) -> str
 
     if recipe.role != "rerank" or recipe.client.get("instruction") != "fold" or not instruction:
         return query
-    from rcp_ndcg_core.records import Query
+    from rcp_core.records import Query
 
     return str(Query(query_id="", query=query).format_query(task_instruction=instruction))
 
@@ -1011,7 +1011,7 @@ def _media_tokens_of(recipe: Recipe, case: Case) -> tuple[list[int], list[int]]:
             policy, or a container without a video policy). A length label is never measured over media
             nobody can count -- silently ignoring it is the mislabel this check exists to catch.
     """
-    from rcp_ndcg_core.content import Content, ImagePart, VideoPart
+    from rcp_core.content import Content, ImagePart, VideoPart
 
     from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
 

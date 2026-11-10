@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, NoReturn, Self
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
 from rcp_ndcg.errors import ConfigError, DataError
 from rcp_ndcg.support.identity import FieldRole

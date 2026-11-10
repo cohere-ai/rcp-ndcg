@@ -25,10 +25,10 @@ runs per that package's README.
 
 ## Layout and layering
 
-- `rcp-ndcg-core` (`rcp_ndcg_core`): the metric, the gains, the scoring protocols, the public records and
+- `rcp-core` (`rcp_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
 - `rcp-ndcg/src/rcp_ndcg`: the pipeline and the CLI. Imports point inward only, in this order:
-   `rcp_ndcg_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → results → schemas | mcp → cli`.
+   `rcp_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → results → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   The product reads six entry-point groups, one per extension seam: `rcp_ndcg.runners` (job execution),
   `rcp_ndcg.adapters` (wire adapters, per role), `rcp_ndcg.readers` and `rcp_ndcg.writers` (dataset formats),
@@ -45,15 +45,15 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 
 | Concept | Home |
 |---|---|
-| nDCG, tie rules, Count-nDCG, the paper's scoring protocols | `rcp_ndcg_core.metric`, `rcp_ndcg_core.protocol` |
-| The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_ndcg_core.gain`, `rcp_ndcg_core.schemas` |
-| Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_ndcg_core.irt` |
+| nDCG, tie rules, Count-nDCG, the paper's scoring protocols | `rcp_core.metric`, `rcp_core.protocol` |
+| The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_core.gain`, `rcp_core.schemas` |
+| Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp_ndcg.calibration` over `rcp_core.irt` |
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp_ndcg.judging` |
 | Prompts (tournament, rubric, vision and video variants) | `rcp-ndcg/src/rcp_ndcg/judging/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp_ndcg.data.text_policy` (the text policy, chunking, `Preprocessing`), `rcp_ndcg.data.resolution` (image and video policies), `rcp_ndcg.data.prepare` (media sent to a judge), `rcp_ndcg.data.templates` |
 | The geometry a checkpoint's processor recomputes (the smart resize, the fixed point) | `rcp_ndcg.data.resolution`. Declared exception: `rcp_ndcg_vllm/recipes/*/reference.py` are dependency-free reference subprocesses that must not import the product (no reference's `reference.in` pins a workspace distribution, so none can), so a family's reference mirrors the product's rule where the engine's own processor is the thing being checked; the mirror is a recorded copy, validated against the product on GPU (the equivalence waves) |
 | Judge/role text budgets, templates and their cut policy | `rcp_ndcg.data.text_budget` (the fit), `rcp_ndcg.data.census` (the cut record and census), `rcp_ndcg.storage.census` (the census files' record I/O), `rcp_ndcg.data.templates` |
-| What a document reads as (MTEB's title join, `title: separate`) and the two query instructions (the task instruction's placement, the per-query append) | `rcp_ndcg_core.records` (`Document.model_content`, `Query.format_query`/`format_content`) -- the rule once; the role clients' `normalise` stage applies it, and the sparse (BM25) path has its own join (`retrieval/_api._sparse_corpus`, mteb's BM25) |
+| What a document reads as (MTEB's title join, `title: separate`) and the two query instructions (the task instruction's placement, the per-query append) | `rcp_core.records` (`Document.model_content`, `Query.format_query`/`format_content`) -- the rule once; the role clients' `normalise` stage applies it, and the sparse (BM25) path has its own join (`retrieval/_api._sparse_corpus`, mteb's BM25) |
 | Postprocess of model output (L2 normalisation, chunk-score aggregation, the late-interaction skip ids) | `rcp_ndcg.data.postprocess` |
 | The MRL head (the truncation cut, the learned projection, the declared set/range) | `rcp_ndcg.data.mrl` |
 | The role clients' one preparation pipeline (stage order, per-row records) | `rcp_ndcg.inference.clients._base` (`STAGES`, the runners) |
@@ -114,15 +114,15 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
   CPU with conformance + golden replays stand in for tests. Model-level fakes live in `rcp-ndcg-test`; the
   generic `fake://` stays in the product.
 - **Versions move together.** All distributions carry the tag version; `rcp-ndcg` pins
-  `rcp-ndcg-core==<version>`; `rcp-ndcg-test` is never published.
+  `rcp-core==<version>`; `rcp-ndcg-test` is never published.
 
 ## Releasing
 
 Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp-ndcg/`,
-`rcp-ndcg-core/`, `rcp-ndcg-vllm/` and the unpublished `rcp-ndcg-test/`; the root manifest is the uv workspace
+`rcp-core/`, `rcp-ndcg-vllm/` and the unpublished `rcp-ndcg-test/`; the root manifest is the uv workspace
 only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
 the four-member workspace; `rcp-ndcg-test` is never built), checks each version against the
-tag, that `rcp-ndcg` pins `rcp-ndcg-core==<version>`, and `requirements-constraints.txt` against the lock (the
+tag, that `rcp-ndcg` pins `rcp-core==<version>`, and `requirements-constraints.txt` against the lock (the
 pins, semantically -- `.github/scripts/check_constraints.py`), and runs
 `twine check` on every file. Each package publishes to PyPI with trusted publishing through its own GitHub environment
 (one publish job per package, below), because PyPI identifies a pending trusted publisher by owner, repository,
@@ -146,7 +146,7 @@ environments, the GPU waves) are in `docs/how-to/release-candidates.md`.
 | PyPI project | GitHub environment |
 |---|---|
 | `rcp-ndcg` | `pypi` |
-| `rcp-ndcg-core` | `pypi-core` |
+| `rcp-core` | `pypi-core` |
 | `rcp-ndcg-vllm` | `pypi-vllm` |
 
 ## Where to look

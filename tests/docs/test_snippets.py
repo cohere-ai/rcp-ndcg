@@ -19,7 +19,7 @@ from tests.docs._markdown import ROOT, code_blocks
 MARKERS = {None, "skip", "network", "example"}
 PAGES = [
     *sorted((ROOT / "docs").rglob("*.md")),
-    ROOT / "rcp-ndcg-core" / "README.md",
+    ROOT / "rcp-core" / "README.md",
     # The test package's README: its snippets run too (one is marked skip: it needs a live engine URL).
     ROOT / "rcp-ndcg-test" / "README.md",
 ]

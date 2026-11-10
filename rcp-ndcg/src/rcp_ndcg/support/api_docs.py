@@ -36,12 +36,12 @@ __all__ = [
 #: ``rcp_ndcg_test`` are internal. ``tests/contract`` pins this list as the surface snapshot; a name is public
 #: only through the ``__all__`` of one of these modules.
 PUBLIC_MODULES: tuple[str, ...] = (
-    "rcp_ndcg_core",
-    "rcp_ndcg_core.gain",
-    "rcp_ndcg_core.irt",
-    "rcp_ndcg_core.metric",
-    "rcp_ndcg_core.protocol",
-    "rcp_ndcg_core.records",
+    "rcp_core",
+    "rcp_core.gain",
+    "rcp_core.irt",
+    "rcp_core.metric",
+    "rcp_core.protocol",
+    "rcp_core.records",
     "rcp_ndcg",
     "rcp_ndcg.calibration",
     "rcp_ndcg.data",
@@ -71,7 +71,7 @@ _HEADER = (
 
 
 def page_name(module: str) -> str:
-    """The page file name of *module* (``rcp_ndcg_core.metric`` -> ``rcp_ndcg_core.metric.md``)."""
+    """The page file name of *module* (``rcp_core.metric`` -> ``rcp_core.metric.md``)."""
     return f"{module}.md"
 
 

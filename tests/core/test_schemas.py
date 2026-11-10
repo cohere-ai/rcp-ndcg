@@ -1,4 +1,4 @@
-"""Tests for ``rcp_ndcg_core.records`` (the pipeline's records; the judgement records have their
+"""Tests for ``rcp_core.records`` (the pipeline's records; the judgement records have their
 own suite in ``test_public_records.py``)."""
 
 from __future__ import annotations
@@ -8,16 +8,16 @@ import json
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
-from rcp_ndcg_core.metric import rank_by_score
-from rcp_ndcg_core.records import Document, Query, RankingExample
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_core.metric import rank_by_score
+from rcp_core.records import Document, Query, RankingExample
 
 
 class TestThePublicRecordModule:
     """The records are the public in-memory model: one module, re-exported by both facades."""
 
     def test_the_core_facade_exports_the_records(self):
-        from rcp_ndcg_core import ID, Document, Input, Query, RankingExample, Text
+        from rcp_core import ID, Document, Input, Query, RankingExample, Text
 
         assert Query(query_id="q", query="x") == Query(text="x", id="q")
         assert Document(doc_id="d", text="x").id == "d"
@@ -36,7 +36,7 @@ class TestThePublicRecordModule:
     def test_the_private_module_is_gone(self):
         """The rename ships no shim: the old private path is not importable."""
         with pytest.raises(ModuleNotFoundError):
-            importlib.import_module("rcp_ndcg_core." + "_records")
+            importlib.import_module("rcp_core." + "_records")
 
     def test_the_records_refuse_unknown_keys(self):
         with pytest.raises(ValidationError, match="Extra inputs"):

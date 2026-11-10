@@ -1,7 +1,7 @@
 """Alternative gain functions for gain ablations (not part of the library).
 
 The paper uses one gain, the discrimination-weighted mean of the criterion pass probabilities
-(:func:`rcp_ndcg_core.gain.gain`). The variants below are the alternatives compared in gain ablations. They take
+(:func:`rcp_core.gain.gain`). The variants below are the alternatives compared in gain ablations. They take
 the same inputs: a calibrated ability ``theta_cal`` (logits) and the 2PL item parameters
 ``{"gamma": [...], "beta": [...]}``.
 
@@ -11,7 +11,7 @@ the same inputs: a calibrated ability ``theta_cal`` (logits) and the 2PL item pa
 
 from __future__ import annotations
 
-from rcp_ndcg_core.gain import gain, pass_probabilities
+from rcp_core.gain import gain, pass_probabilities
 
 #: Every variant name :func:`variant_gain` accepts. ``weighted_discrimination`` (alias ``weighted_criterion``) is
 #: the paper's gain.

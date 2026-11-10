@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
 from rcp_ndcg.errors import ConfigError
 from rcp_ndcg.results import (

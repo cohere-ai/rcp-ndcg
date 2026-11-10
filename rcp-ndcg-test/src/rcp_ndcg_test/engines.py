@@ -945,7 +945,7 @@ def _side(
 ) -> tuple[str, tuple[MediaIdentity, ...], int, tuple[str, ...]]:
     """One rerank side as ``(text, media identities, media tokens, placement)``: a string is its own text
     (placement ``("text",)``); a ``{"content": [parts]}`` object splits into its text parts (joined as the
-    product's :attr:`~rcp_ndcg_core.content.Content.text` joins them) and its media parts (each keyed by
+    product's :attr:`~rcp_core.content.Content.text` joins them) and its media parts (each keyed by
     ``media``), with the part kinds in their given order as the placement."""
     if isinstance(value, str):
         return value, (), 0, ("text",)
@@ -954,7 +954,7 @@ def _side(
             f"a rerank side of type {type(value).__name__} is neither a string nor a content-parts object; "
             "the emulator models those two shapes"
         )
-    from rcp_ndcg_core.content import TEXT_JOIN
+    from rcp_core.content import TEXT_JOIN
 
     parts = value["content"]
     texts = [
@@ -999,7 +999,7 @@ def _document_text(value: Any) -> str:
     as its text parts joined (the media contributes nothing here, as the product's ``Content.text`` reads
     it) -- the reply's ``document.text`` field, never a media part stringified."""
     if isinstance(value, dict) and isinstance(value.get("content"), list):
-        from rcp_ndcg_core.content import TEXT_JOIN
+        from rcp_core.content import TEXT_JOIN
 
         return TEXT_JOIN.join(
             _text(part)

@@ -25,7 +25,7 @@ dependencies = [
   # so a client-only install stays small.  ``rcp-ndcg run`` names the extra in its
   # error when the fit is reached without it.
   # The core is released in lockstep with this package: the same version, pinned.
-  "rcp-ndcg-core==0.0.1",
+  "rcp-core==0.0.1",
   "numpy>=1.26",
   "pandas>=2.2",
   # Parquet artifacts (calibration queries/thetas tables).
@@ -79,7 +79,7 @@ mteb = [
 ]
 
 # 2PL / Bradley-Terry / Rasch IRT calibration and the judging client's
-# estimators.  Pure-PyTorch optimisers in ``rcp_ndcg_core.irt.*``; CPU-only is
+# estimators.  Pure-PyTorch optimisers in ``rcp_core.irt.*``; CPU-only is
 # fine (the rendered jobs install torch from PyTorch's CPU index).  The one
 # torch requirement in this manifest: models are served, not loaded.
 calibrate = [
@@ -178,7 +178,7 @@ where = ["src"]
 
 # The repository is a uv workspace with four members: this manifest (the
 # pipeline: storage, data, retrieval, judging, calibration, evaluation, runs and
-# the CLI), ``rcp-ndcg-core`` (the metric, the gains, the protocols,
+# the CLI), ``rcp-core`` (the metric, the gains, the protocols,
 # the schemas and the IRT estimators; numpy + pydantic, its [irt] extra: torch,
 # scipy; released in lockstep with this package) and the unpublished
 # ``rcp-ndcg-test``, plus ``rcp-ndcg-vllm`` (the serving half).
