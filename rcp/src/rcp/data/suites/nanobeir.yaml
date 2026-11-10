@@ -1,0 +1,20 @@
+kind: suite
+name: nanobeir
+repo: fabianschmidt-cohere/rcp-ndcg-nanobeir
+protocol: nanobeir
+revision: null
+gains: true
+subsets:
+  - NanoArguAnaRetrieval
+  - NanoClimateFeverRetrieval
+  - NanoDBPediaRetrieval
+  - NanoFEVERRetrieval
+  - NanoFiQA2018Retrieval
+  - NanoHotpotQARetrieval
+  - NanoMSMARCORetrieval
+  - NanoNFCorpusRetrieval
+  - NanoNQRetrieval
+  - NanoQuoraRetrieval
+  - NanoSCIDOCSRetrieval
+  - NanoSciFactRetrieval
+  - NanoTouche2020Retrieval

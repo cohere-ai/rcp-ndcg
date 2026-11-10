@@ -1,0 +1,9 @@
+kind: suite
+name: trecdl
+repo: fabianschmidt-cohere/rcp-ndcg-trecdl
+protocol: trecdl
+revision: null
+gains: true
+subsets:
+  - trec_dl_2019
+  - trec_dl_2020

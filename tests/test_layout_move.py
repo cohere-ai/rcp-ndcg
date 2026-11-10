@@ -247,7 +247,7 @@ def test_the_harness_follows_the_distribution_rename(tmp_path: Path) -> None:
     # the entry point follows: its name is the distribution's, its target the package's
     assert 'rcp-test = "rcp_test.engines:transport_for"' in manifest
     workspace = (worktree / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'members = ["rcp", "rcp-core", "rcp-ndcg-vllm", "rcp-test"]' in workspace
+    assert 'members = ["rcp", "rcp-core", "rcp-test", "rcp-vllm"]' in workspace
     assert "rcp-test = { workspace = true }" in workspace
     # and the history followed the moves (commit the staged result first, like the performs test)
     git(
