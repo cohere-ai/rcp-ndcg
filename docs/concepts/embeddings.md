@@ -38,27 +38,27 @@ a gateway are such hosts. A variable set for one vendor must never authenticate 
 An adapter turns one role's request into HTTP calls, and it turns the replies back into vectors. The embedding
 adapters are registered under their names, and they are stateless:
 
-* `openai_embeddings` sends `{"model", "input": [texts], "encoding_format": "float"}`, plus `dimensions` when the
-  config sets one. It reads `data[].embedding` in `data[].index` order (float lists or base64 float32).
-  `request_shape: messages` sends the chat-style embeddings input instead. Each item is its own conversation of one
-  user message. A single item is one conversation alone, and a batch is a list of conversations, because vLLM reads
-  one conversation as one embedding. For the vision-language embedders, the item is lowered with image parts and
-  video parts. Sampled frames become image parts, and a `video_url` container follows the role's `video_policy`. The
-  engine renders every chat-shaped request through its chat template, which places each media part inside the user
-  turn. The item therefore carries its content (the prompt and the cut content span), never the framed render. The
-  served chat template must render the declared template's frame around it, once. The request carries the declared
+* `openai_embeddings` sends `{"model", "input": [texts], "encoding_format": "float"}`, plus `dimensions` when the config
+  sets one. It reads `data[].embedding` in `data[].index` order (float lists or base64 float32).
+  `request_shape: messages` sends the chat-style embeddings input instead. Each item is its own conversation of one user
+  message. A single item is one conversation alone. A batch is a list of conversations. This is because vLLM reads one
+  conversation as one embedding. For the vision-language embedders, the item is lowered with image parts and video
+  parts. Sampled frames become image parts, and a `video_url` container follows the role's `video_policy`. The engine
+  renders every chat-shaped request through its chat template, which places each media part inside the user turn. The
+  item therefore carries its content (the prompt and the cut content span), never the framed render. The served chat
+  template must render the declared template's frame around it, once. The request carries the declared
   `add_special_tokens`; the chat route's own default is false. A frame can end with the chat template's generation
-  prompt, such as the assistant header of Qwen3-VL-Embedding. That frame declares `add_generation_prompt: true`,
-  which every `messages` request then carries. The chat route's default is false, and the header would be missing.
-  The flag is refused on any other route. `request_shape: token_ids` sends the ids that the client fitted. The
-  hosted profiles implement text only.
+  prompt, such as the assistant header of Qwen3-VL-Embedding. That frame declares `add_generation_prompt: true`, which
+  every `messages` request then carries. The chat route's default is false, and the header would be missing. The flag is
+  refused on any other route. `request_shape: token_ids` sends the ids that the client fitted. The hosted profiles
+  implement text only.
 * `cohere` sends `{"model", "texts", "input_type", "embedding_types": ["float"]}` to `POST {base_url}/embed`,
   with `input_type` `search_query` / `search_document`, and reads `embeddings.float`.
 * `voyage` sends the OpenAI body with an `input_type` of `query` / `document`, and reads the OpenAI
   `data[].embedding` shape.
 * `gemini` sends `POST {base_url}/models/{model}:batchEmbedContents` with one `requests` entry per text
-  (`models/<model>`, `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`), puts the key in `x-goog-api-key`,
-  and reads `embeddings[].values`.
+  (`models/<model>`, `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`). It puts the key in `x-goog-api-key`. It reads
+  `embeddings[].values`.
 
 Every adapter refuses media on the text and token-ids routes with a `CapabilityError` that names the media
 type. The `messages` route carries it. An over-length HTTP 400 ("maximum context length") maps onto a
@@ -125,8 +125,8 @@ return an `Embeddings` with one vector per content, in the input's order. The cl
   renormalises, or the learned projection applies its matrix. Every changed row carries an `mrl_cut`
   `ProcessingRecord` ([matryoshka heads](matryoshka.md));
 * L2-normalises when `normalize` and no head is selected;
-* it resolves nothing credential-wise. The key is the transport's, from `api_key_env`, or else from the profile's
-  own variables, which apply only to the profile's own default host. The key is sent in the profile's header.
+* it resolves nothing credential-wise. The key is the transport's, from `api_key_env`, or else from the profile's own
+  variables. Those variables apply only to the profile's own default host. The key is sent in the profile's header.
 
 The vectors are raw float32 from the adapter. The normalisation is the client's content decision, not the
 wire's. Each adapter's `usage()` reports the input tokens that its API names, for the transport's accounting.

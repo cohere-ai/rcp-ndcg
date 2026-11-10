@@ -184,36 +184,35 @@ from `rcp_ndcg.inference.clients.RoleClient`, which owns the shared ground once:
   `api` names another role's adapter is refused at construction;
 - **the hosted profile's default base URL**: the config's `base_url`, else the adapter's `DEFAULT_BASE_URL`
   (a hosted profile's public root); a config with neither is refused;
-- **the transport**: built from the resolved config unless the caller passes a `Sender`, such as the test fakes, a
-  recording one or a third party's. An injected `Transport` is pointed at the adapter profile's credential facts, so
-  the key resolution follows the adapter either way;
+- **the transport**: built from the resolved config unless the caller passes a `Sender`. Examples are the test fakes, a
+  recording one or a third party's. An injected `Transport` is pointed at the adapter profile's credential facts, so the
+  key resolution follows the adapter either way;
 - **the sync bridge, one rule**: the sender's `run`. A `Transport` always has it, and any other sender must
   provide `run`, or the constructor raises `ConfigError`. There is no `asyncio.run` fallback, because a fresh loop
   per call would give a non-transport sender no pool reuse and would fail inside a running loop;
 - **the lifecycle**: `close()` synchronous, `await aclose()` asynchronous, and both context managers
   (`with` and `async with`); safe to call twice;
 - **the fan-out, one rule**: every client's requests run in one `asyncio.TaskGroup`. A failing request cancels its
-  siblings, no callback (a rerank `checkpoint`) lands after the failure, and no task is left pending. A group
-  carrying exactly one failure is raised as that failure, so the typed errors surface;
-- **the text budget and the media**: the `TextBudget` is resolved once from the role config's fields, and the
-  tokenizer it names is loaded once. The shared fit is called from the one declared preparation pipeline (`STAGES`:
-  normalise, empty, media, render, budget, lower; one order for every role, with the per-row record at
-  `client.processing`) (see [text budgets](text-budgets.md)). A census of every cut is at `client.census`. Media
+  siblings. No callback (a rerank `checkpoint`) lands after the failure, and no task is left pending. A group carrying
+  exactly one failure is raised as that failure, so the typed errors surface;
+- **the text budget and the media**: the `TextBudget` is resolved once from the role config's fields. The tokenizer it
+  names is loaded once. The shared fit is called from the one declared preparation pipeline. The pipeline is `STAGES`:
+  normalise, empty, media, render, budget, lower. One order serves every role, with the per-row record at
+  `client.processing` (see [text budgets](text-budgets.md)). A census of every cut is at `client.census`. Media
   preparation runs through the judge's own path (`prepare_request`), sized exactly as the role's
   `image_policy`/`image_processor` would. The tokens are counted and reserved whole, never cut. The budget's fit is
-  applied per wire request, because a vision block is atomic: shrink to the policy minimum, drop whole items with
-  `dropped=True` in `client.media_census`, or refuse under `fail`/`chunk`. The `max_images`/`max_videos` gates apply
-  to what one wire request carries, and the client that packs a batch splits a media-bearing one at them. It sends
-  one image per request where the endpoint declares `max_images: 1`, and a text-only batch packs by `batch_size` as
-  before. Which SIDES may carry media is the config's `media_sides`, both by default. Media on a side that it does
-  not name is refused before preparation, with the error naming the field; the topk reference rejects image queries,
-  because media is documents-only there. The pool and rerank clients' startup `probe()` runs `check_engine_media()`
-  when the role declares an `image_processor`; the embed client's `probe()` is the transport's replica probe only.
-  The media check sends one prepared probe image and the same request without its media. The DELTA of the engine's
-  two prompt-token reports is compared with the counted media tokens, and the template and the text cancel in that
-  delta. A mismatch is refused. A passing check is recorded `engine_media_check:ok`, and a reply without usage is
-  recorded `not_checked`, never silent. A served chat template does not fail a correct engine, because it cancels in
-  the delta.
+  applied per wire request, because a vision block is atomic. It shrinks to the policy minimum, drops whole items with
+  `dropped=True` in `client.media_census`, or refuses under `fail`/`chunk`. The `max_images`/`max_videos` gates apply to
+  what one wire request carries. The client that packs a batch splits a media-bearing one at them. It sends one image
+  per request where the endpoint declares `max_images: 1`, and a text-only batch packs by `batch_size` as before. Which
+  SIDES may carry media is the config's `media_sides`, both by default. Media on a side that it does not name is refused
+  before preparation, with the error naming the field. The topk reference rejects image queries, because media is
+  documents-only there. The pool and rerank clients' startup `probe()` runs `check_engine_media()` when the role
+  declares an `image_processor`. The embed client's `probe()` is the transport's replica probe only. The media check
+  sends one prepared probe image and the same request without its media. The DELTA of the engine's two prompt-token
+  reports is compared with the counted media tokens. The template and the text cancel in that delta. A mismatch is
+  refused. A passing check is recorded `engine_media_check:ok`, and a reply without usage is recorded `not_checked`,
+  never silent. A served chat template does not fail a correct engine, because it cancels in the delta.
 
 The two role vocabularies meet in one written mapping, `ENGINE_ADAPTER_ROLES`
 (`rcp_ndcg.inference.adapters.base`). A `judge` engine speaks `judge` adapters. An `encoder` engine speaks

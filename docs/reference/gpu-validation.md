@@ -90,29 +90,29 @@ disposition list of the owner names them. The pin does not change that dispositi
 
 ## Dispositions
 
-- **`topk-embed-v1-small` and `topk-embed-v1-xsmall` are the gate failure that the owner dispositioned.** Their
+- **`topk-embed-v1-small` and `topk-embed-v1-xsmall` are the gate failure that the owner dispositioned**. Their
   end-to-end validation does not meet the stage-2 per-token cosine floor on the available engine configurations. Both
   bf16 and fp16 fail. The dtype does not change the failure at the first layer of the text model. The fp32 mode clears
-  the vision tower, but it cannot be served: the GatedDeltaNet kernels of the engine refuse fp32. The engine also ran
-  on its own vendored flash-linear-attention prefill path (`--gdn-prefill-backend triton`), and that path diverges in
-  the same way. The residual is therefore not a selectable kernel. The notes of the family hold the full measurements.
-  They give the per-row per-token minima, the per-layer cosines, the three backends and the text/image split. The
-  evidence has the key of the wave that measured it. The wave that first measured the failure (`rc0-202610130615`,
-  2026-10-13) ran at a superseded behaviour fingerprint (`1fdf2847…`). The plugin-module keying moved it later. The
-  gate was therefore re-run at the current key on 2026-10-14. The re-run was in the `plugin-carriers-vllm` sub-wave of
-  the `rc0-202610140620` wave. It failed again with the same signature: stage 1 passes, and the stage-2 per-token
-  cosine floor fails. The two rows above record that 2026-10-14 wave. Nothing is deferred past the tag. The disposition
-  of the gate stays the explicit decision of the owner, and the release notes record it. A recipe in this state ships
-  only under that decision, never silently. On the v0.33.0 pin the `gate-topk-embed-v1` wave re-ran the gate on the
-  pinned image (rc2) and failed it again. The two rows therefore read `failed` beside the date and the report of that
-  wave. That is the state that the schema has for a gate that failed, and never `verified` without a green re-run.
-- **The `embeddinggemma-2` row belongs to the rc2 equivalence wave.** That wave ran on the stock
-  `vllm/vllm-openai:v0.33.0` image with the plugin and patches of the recipe. It ran the gate at `66f50262a43b…`,
-  which is the key that the tree computes today. The 0.0.1 record was different: the waves ran the stock 0.31 image
-  with the backport of the fold. The cell of the old page held the key that the tree computed at `fcb87a51`. It did
-  not hold the key that the wave recorded. The image is a key, so the pin superseded that record, and the re-record
-  replaces it. The fold is gone (the parity decision), and the recipe is a patch-only carrier. See
-  [recipes and serving models](recipes.md#engine-side-patches).
+  the vision tower, but it cannot be served: the GatedDeltaNet kernels of the engine refuse fp32. The engine also ran on
+  its own vendored flash-linear-attention prefill path (`--gdn-prefill-backend triton`), and that path diverges in the
+  same way. The residual is therefore not a selectable kernel. The notes of the family hold the full measurements. They
+  give the per-row per-token minima, the per-layer cosines, the three backends and the text/image split. The evidence
+  has the key of the wave that measured it. The wave that first measured the failure (`rc0-202610130615`, 2026-10-13)
+  ran at a superseded behaviour fingerprint (`1fdf2847…`). The plugin-module keying moved it later. The gate was
+  therefore re-run at the current key on 2026-10-14. The re-run was in the `plugin-carriers-vllm` sub-wave of the
+  `rc0-202610140620` wave. It failed again with the same signature: stage 1 passes, and the stage-2 per-token cosine
+  floor fails. The two rows above record that 2026-10-14 wave. Nothing is deferred past the tag. The disposition of the
+  gate stays the explicit decision of the owner, and the release notes record it. A recipe in this state ships only
+  under that decision, never silently. On the v0.33.0 pin the `gate-topk-embed-v1` wave re-ran the gate on the pinned
+  image (rc2) and failed it again. The two rows therefore read `failed` beside the date and the report of that wave.
+  That is the state that the schema has for a gate that failed, and never `verified` without a green re-run.
+- **The `embeddinggemma-2` row belongs to the rc2 equivalence wave**. That wave ran on the stock
+  `vllm/vllm-openai:v0.33.0` image with the plugin and patches of the recipe. It ran the gate at `66f50262a43b…`, which
+  is the key that the tree computes today. The 0.0.1 record was different: the waves ran the stock 0.31 image with the
+  backport of the fold. The cell of the old page held the key that the tree computed at `fcb87a51`. It did not hold the
+  key that the wave recorded. The image is a key, so the pin superseded that record, and the re-record replaces it. The
+  fold is gone (the parity decision), and the recipe is a patch-only carrier. See [recipes and serving
+  models](recipes.md#engine-side-patches).
 - **One reference case remains `pending_gpu`**: `rcp-ndcg-test/cases/topk-embed-v1-small/query-cap-1024.yaml`, in the
   family whose gate the owner dispositioned. Its query renders past the declared `client.query_max_tokens: 1024` of
   the recipe, so the fit of the client cuts it. The `expected.kind` of the case is `none`, which carries no values by

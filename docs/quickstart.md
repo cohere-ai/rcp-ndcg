@@ -10,15 +10,13 @@ pip install "rcp-ndcg[hf,calibrate]" --extra-index-url https://download.pytorch.
 
 `uvx rcp-ndcg` runs the command line without installing it (`uvx --from "rcp-ndcg[hf]" rcp-ndcg ...` with extras).
 
-`rcp-ndcg-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and
-protocols need numpy and pydantic only; the IRT estimators need its `irt` extra (torch and scipy), which the
-`calibrate` extra below brings.
-`rcp-ndcg` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The third
-distribution, `rcp-ndcg-vllm`, is the lean serving package: the GPU-validated serving recipes and
-`rcp-ndcg-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving
-models](reference/recipes.md)). `rcp-ndcg-test`, an unpublished contributor package (reference cases,
-conformance, the GPU job tooling), is never installed by users ([its page](reference/rcp-ndcg-test.md)). The
-extras:
+`rcp-ndcg-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and protocols
+need numpy and pydantic only. The IRT estimators need its `irt` extra (torch and scipy), which the `calibrate` extra
+below brings. `rcp-ndcg` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The
+third distribution, `rcp-ndcg-vllm`, is the lean serving package. It holds the GPU-validated serving recipes and
+`rcp-ndcg-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving models](reference/recipes.md)).
+`rcp-ndcg-test`, an unpublished contributor package (reference cases, conformance, the GPU job tooling), is never
+installed by users ([its page](reference/rcp-ndcg-test.md)). The extras:
 
 | Extra | Adds |
 |---|---|
@@ -32,12 +30,11 @@ extras:
 | `dev` | the test and lint tools |
 | `docs` | the local documentation preview (mkdocs-material) |
 
-Every retrieval model is served now: the client talks HTTP to the engines (role clients over one transport) and
-installs beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-ndcg-vllm` adds exactly
-one pure-Python wheel to the engine's environment (`pip install --no-deps`), and nothing else changes. The old
-`[local]` and `[vllm]` extras are gone; the paper's in-process reference implementations live in
-`experiments/paper/rerankers/reference/` with their own pinned requirements, outside the package's lock. BM25
-and the hosted APIs need no extra.
+Every retrieval model is served now. The client talks HTTP to the engines (role clients over one transport). It installs
+beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-ndcg-vllm` adds exactly one pure-Python
+wheel to the engine's environment (`pip install --no-deps`), and nothing else changes. The old `[local]` and `[vllm]`
+extras are gone. The paper's in-process reference implementations live in `experiments/paper/rerankers/reference/` with
+their own pinned requirements, outside the package's lock. BM25 and the hosted APIs need no extra.
 
 From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets up the same environment with
 [uv](https://github.com/astral-sh/uv). From git, the release tag installs both packages (pip needs the core in the
@@ -55,16 +52,15 @@ A command that needs a missing extra exits with code 10 and prints the install l
 
 ### Score a system on the released data, without an LLM
 
-The released datasets carry calibrated gains for every judged pool document. Scoring a system thus needs no judge.
-Put your system's scores in a table with `query_id`, `doc_id` and `score` columns and optional `system` and
-`dataset` (Parquet, CSV, a TREC run or JSONL work: the table formats' columns take the common aliases
+The released datasets carry calibrated gains for every judged pool document. Scoring a system thus needs no judge. Put
+your system's scores in a table with `query_id`, `doc_id` and `score` columns and optional `system` and `dataset`.
+Parquet, CSV, a TREC run or JSONL work. The table formats' columns take the common aliases
 `query_id`/`query-id`/`qid`/`query`, `doc_id`/`corpus-id`/`corpus_id`/`docid`/`docno`, `score`/`rerank_score`/`sim`,
-`system`/`model`/`run`/`tag`/`run_id`, `dataset`/`subset`, and a JSONL row uses the canonical keys `query_id`,
-`doc_id`, `score` -- or a `scores` / `doc_ids` row), and score it against a suite. The subsets of a suite
-share query ids, so a file that ranks several subsets names each row's subset in a `dataset` column; without it,
-`eval score` refuses the file. A TREC run has no such column and holds one subset: score it with
-`--subset <name>` (in Python, `load_rankings(path, dataset="<name>")`). No rankings file yet? The next path
-produces one from a model.
+`system`/`model`/`run`/`tag`/`run_id`, `dataset`/`subset`. A JSONL row uses the canonical keys `query_id`, `doc_id`,
+`score` -- or a `scores` / `doc_ids` row. Then score it against a suite. The subsets of a suite share query ids. A file
+that ranks several subsets therefore names each row's subset in a `dataset` column. Without it, `eval score` refuses the
+file. A TREC run has no such column and holds one subset: score it with `--subset <name>` (in Python,
+`load_rankings(path, dataset="<name>")`). No rankings file yet? The next path produces one from a model.
 
 ```bash
 rcp-ndcg eval score --rankings my_system.parquet --suite nanobeir --json
@@ -114,10 +110,10 @@ rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir --subs
 ```
 
 (one suite subset, as here; `--retriever recipe:<id>` / `--reranker recipe:<id>` are shorthands whose URL comes from
-`--set retriever.encoder.base_url=...` or a `serve:` engine). Budgets are explicit in every recipe: over-budget
-content is cut client-side at token boundaries with the template's anchors preserved, and every cut is
-recorded -- never engine-side ([text budgets](concepts/text-budgets.md)). The
-[recipe catalog](reference/recipes.md) names the 44 recipes (24 families) and their roles.
+`--set retriever.encoder.base_url=...` or a `serve:` engine). Budgets are explicit in every recipe. Over-budget content
+is cut client-side at token boundaries with the template's anchors preserved. Every cut is recorded -- never engine-side
+([text budgets](concepts/text-budgets.md)). The [recipe catalog](reference/recipes.md) names the 44 recipes (24
+families) and their roles.
 
 ### Re-judge a pool with your own endpoint
 
@@ -128,13 +124,13 @@ rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge
 rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model
 ```
 
-Documents run whole -- the judge's default text policy is `keep`, so nothing is cut; a declared
-`truncate`/`fail` policy caps at 32 768 tokens by default, and every such cut is recorded in the
-census. `--set judge.tokenizer=...` makes the counts exact.
+Documents run whole. The judge's default text policy is `keep`, so nothing is cut. A declared `truncate`/`fail` policy
+caps at 32 768 tokens by default. Every such cut is recorded in the census. `--set judge.tokenizer=...` makes the counts
+exact.
 
-[Calibrate your benchmark](how-to/calibrate-your-benchmark.md) walks through a run, and
-[primitives](concepts/primitives.md) shows how to re-judge only some documents, insert new ones, or add a second
-judge without refitting a published calibration.
+[Calibrate your benchmark](how-to/calibrate-your-benchmark.md) walks through a run. [primitives](concepts/primitives.md)
+shows how to re-judge only some documents or insert new ones. It also shows how to add a second judge without refitting
+a published calibration.
 
 ### Reproduce a table of the paper
 
@@ -148,8 +144,8 @@ python experiments/run_all.py
 
 ## Run the whole pipeline as a job
 
-One complete run config: candidates from a served encoder and reranker (their recipes supply the client blocks),
-a judge config, and one engine per role, started inside the job. The engine image prepares
+One complete run config holds candidates from a served encoder and reranker (their recipes supply the client blocks). It
+also holds a judge config and one engine per role, started inside the job. The engine image prepares
 `python3 -m pip install --no-deps rcp-ndcg-vllm`; with the recipes the engine command is `rcp-ndcg-vllm serve
 <id>`.
 
@@ -189,15 +185,14 @@ runner:
 mirror: s3://YOUR-BUCKET/runs/my-run
 ```
 
-Walk it on the cluster: `rcp-ndcg run start my_run.yaml --runner kubernetes --dry-run` prints the step plan and
-the manifests it would submit and writes nothing; the same command without `--dry-run` submits (add `--detach`
-to return at once); `rcp-ndcg run status --run runs/<run_id>` and `rcp-ndcg run logs --run runs/<run_id>` follow
-it; `rcp-ndcg run resume --run runs/<run_id> --runner kubernetes` submits a failed job again, engines included,
-asking only for the windows its stores lack. The job runs its steps in **job phases**, each starting only the
-engines its steps use and handing their URLs to the step (`RCP_NDCG_ENGINES`) -- the job's GPUs are the maximum
-over phases, not the sum over engines; a job whose engine stops answering for `outage_timeout_s` fails instead
-of holding the allocation. [Runs, engines and runners](concepts/runs.md) and [judges](concepts/judges.md) have
-the depth.
+Walk it on the cluster. `rcp-ndcg run start my_run.yaml --runner kubernetes --dry-run` prints the step plan and the
+manifests it would submit and writes nothing. The same command without `--dry-run` submits (add `--detach` to return at
+once). `rcp-ndcg run status --run runs/<run_id>` and `rcp-ndcg run logs --run runs/<run_id>` follow it.
+`rcp-ndcg run resume --run runs/<run_id> --runner kubernetes` submits a failed job again, engines included, asking only
+for the windows its stores lack. The job runs its steps in **job phases**. Each phase starts only the engines its steps
+use and hands their URLs to the step (`RCP_NDCG_ENGINES`). The job's GPUs are the maximum over phases, not the sum over
+engines. A job whose engine stops answering for `outage_timeout_s` fails instead of holding the allocation. [Runs,
+engines and runners](concepts/runs.md) and [judges](concepts/judges.md) have the depth.
 
 ## The metric alone
 

@@ -47,14 +47,14 @@ therefore needs one of the three moved. The placements per document hold for any
 windows of all 4 documents, each in its own order. At the paper's pool of 150, this is exactly its 100 windows
 of 10.
 
-1. **Balanced random windows.** The first $\operatorname{round}(s \cdot \text{windows})$ windows (`random_share`
-   $s = 0.5$; at least one) each take the documents shown least often so far. Random tie-breaks decide between
-   equal counts. All documents thus appear about equally often, and they meet many different partners. At a pool of
-   150: 50.
-2. **Stratified windows.** A Rasch model, $P(Y_{ic} = 1) = \sigma(\theta_i - \beta_c)$, gives each document a
-   preliminary ability from the answers so far. The remaining windows (50 at a pool of 150) group documents with
-   similar estimates. The random phase can produce no valid answer. Then there is nothing to stratify. The phase is
-   dropped, and the pass warns about it. It is recorded as a `phase_dropped` row in the store's
+1. **Balanced random windows**. The first $\operatorname{round}(s \cdot \text{windows})$ windows use `random_share` $s =
+   0.5$. Each takes the documents shown least often so far. At least one window is used. Random tie-breaks decide
+   between equal counts. All documents thus appear about equally often, and they meet many different partners. At a pool
+   of 150: 50.
+2. **Stratified windows**. A Rasch model, $P(Y_{ic} = 1) = \sigma(\theta_i - \beta_c)$, gives each document a
+   preliminary ability. That ability comes from the answers so far. The remaining windows (50 at a pool of 150) group
+   documents with similar estimates. The random phase can produce no valid answer. Then there is nothing to stratify.
+   The phase is dropped, and the pass warns about it. It is recorded as a `phase_dropped` row in the store's
    `preprocessing.jsonl`, so the shortfall is never silent.
 
 Rounding is to the nearest integer, and ties round to even. Each query draws from its own random stream,

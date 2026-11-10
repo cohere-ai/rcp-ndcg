@@ -78,11 +78,11 @@ Three more things name an index. Each of them exists because the thing it names 
 field moving:
 
 - **A behaviour version per output-producing step**: `INDEX_BEHAVIOUR_VERSION`, `RETRIEVE_BEHAVIOUR_VERSION` and
-  `RERANK_BEHAVIOUR_VERSION` in `rcp_ndcg.retrieval`. A code change can move an index's numbers, a retrieve
-  output's numbers or a rerank output's numbers, without changing a config field. The version still re-keys it, so
-  a resume never reuses numbers that another build computed. The package version is deliberately not used. Every
-  release would invalidate every resume and judgement pool. A judgement's identity is not versioned, because it is
-  prompt- and model-defined.
+  `RERANK_BEHAVIOUR_VERSION` in `rcp_ndcg.retrieval`. A code change can move an index's numbers, a retrieve output's
+  numbers or a rerank output's numbers. It can do so without changing a config field. The version still re-keys it, so a
+  resume never reuses numbers that another build computed. The package version is deliberately not used. Every release
+  would invalidate every resume and judgement pool. A judgement's identity is not versioned, because it is prompt- and
+  model-defined.
 - **The payload, by content.** `index()` writes each payload file atomically under an exclusive lock. It writes
   `index.json` last, carrying the sha256 of every payload file: `vectors.npy`, `offsets.npy` and the `bm25s/` model
   files. `search` recomputes that digest and refuses a payload that the record does not describe. A killed or
@@ -91,23 +91,22 @@ field moving:
   late-interaction build's `offsets.npy` beside its vectors. A `search` refuses a query that it cannot score,
   rather than score it 0. There are three cases. The dataset has no queries. The encoder answered zero-width query
   vectors. Over a `bm25` index, the query has no indexable term or no matching document.
-- **A local dataset's content, and an unhashed media item's bytes.** A local dataset source has no commit, so its
-  files' content names it. A file hashes as its bytes, streamed, and cached for the process by size and
-  ``mtime_ns``. A directory hashes as its sorted listing of names, sizes and mtimes. An edited `rows.jsonl`
-  therefore makes every step that read it stale on resume. One case escapes that check. An edit that keeps a file's
-  size *and* its ``mtime_ns`` is invisible while the cached digest lives. A same-size rewrite by a tool that
-  restores the timestamp does this. A directory listing also sees a file's size and mtime, never its bytes. A media
-  reference with `sha256` is content by definition. A reference without it (`hash_media: false`, the reader
-  default) records the object's size and change stamp beside its URI. The stamp is `mtime_ns` for a local file, and
-  the backend's etag/generation for a remote object. It enters the index identity, the rerank checkpoint key and
-  the media cache key. That detects a replaced, resized or re-encoded object at the same URI. It does not detect a
-  same-size edit that also preserves the change stamp, such as an object restored with its mtime. It does not
-  detect a `data:` URI either, because its bytes are the URI. The lookup itself is memoized per URI for the
-  process: one stat or metadata call per reference, however many identities and cache lookups ask. A replacement
-  is therefore seen by the *next* process, which is the granularity that a run's steps already have. A long-lived
-  process (a server, a notebook) holds the stamp for its whole life. Restart it after replacing media at an
-  unchanged URI, or use `hash_media: true`. `hash_media: true` hashes the bytes at ingest, and it detects
-  everything.
+- **A local dataset's content, and an unhashed media item's bytes**. A local dataset source has no commit. Its files'
+  content names it. A file hashes as its bytes, streamed, and cached for the process by size and ``mtime_ns``. A
+  directory hashes as its sorted listing of names, sizes and mtimes. An edited `rows.jsonl` therefore makes every step
+  that read it stale on resume. One case escapes that check. An edit that keeps a file's size *and* its ``mtime_ns`` is
+  invisible while the cached digest lives. A same-size rewrite by a tool that restores the timestamp does this. A
+  directory listing also sees a file's size and mtime, never its bytes. A media reference with `sha256` is content by
+  definition. A reference without it (`hash_media: false`, the reader default) records the object's size and change
+  stamp beside its URI. The stamp is `mtime_ns` for a local file, and the backend's etag/generation for a remote object.
+  It enters the index identity, the rerank checkpoint key and the media cache key. That detects a replaced, resized or
+  re-encoded object at the same URI. It does not detect a same-size edit that also preserves the change stamp. One
+  example is an object restored with its mtime. It does not detect a `data:` URI either, because its bytes are the URI.
+  The lookup itself is memoized per URI for the process. It makes one stat or metadata call per reference, however many
+  identities and cache lookups ask. A replacement is therefore seen by the *next* process, which is the granularity that
+  a run's steps already have. A long-lived process (a server, a notebook) holds the stamp for its whole life. Restart it
+  after replacing media at an unchanged URI, or use `hash_media: true`. `hash_media: true` hashes the bytes at ingest,
+  and it detects everything.
 
 `load_index(path)` reads the payload from the directory that it is given. The record's own `path` field is
 where the index was *built*, for provenance. A copied, moved or restored index directory is therefore searched

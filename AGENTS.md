@@ -98,6 +98,10 @@ returns typed results and raises typed errors from `rcp_ndcg.errors`.
   [compatibility and versioning](docs/reference/versioning.md#the-001-freeze).
 - **Docs describe current behaviour.** When behaviour changes, update the page in `docs/` that describes it, and
   keep every snippet runnable: `tests/docs` runs them. No numbers without a reproducible source.
+- **The docs are in Simplified Technical English.** The prose uses ASD-STE100: 20 words per sentence at most,
+  the active voice, one idea per sentence, and each technical term defined at first use. `docs/reference/
+  writing-style.md` is the rule and `tests/docs/test_style.py` enforces the sentence limit. The code, the
+  tables, the links and the numbers do not change for the style.
 - **Public names only.** No private infrastructure, hosts, buckets, people or unreleased models in code, configs,
   docs, tests or commit messages. Use placeholders such as `gs://YOUR-BUCKET/...` and `registry.example.com`.
 - **Explicit budgets.** A self-hosted role config declares `tokenizer` + `max_tokens`; a hosted vendor profile

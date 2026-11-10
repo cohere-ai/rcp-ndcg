@@ -32,9 +32,9 @@ the snapshot, and it gets a CHANGELOG entry. A pull request that changes either 
 
 0.0.1 freezes the Python surface on purpose and one time:
 
-- **The snapshot is the definition of public.** A name is public exactly when it is in the `__all__` of a listed
-  module. The list is in :data:`rcp_ndcg.support.api_docs.PUBLIC_MODULES`, and the snapshot pins the name. A page that
-  misses a name does not make it private. The `__all__` of an internal module makes nothing public.
+- **The snapshot is the definition of public**. A name is public exactly when it is in the `__all__` of a listed module.
+  The list is in :data:`rcp_ndcg.support.api_docs.PUBLIC_MODULES`, and the snapshot pins the name. A page that misses a
+  name does not make it private. The `__all__` of an internal module makes nothing public.
 - **Public means documented and pinned.** Every pinned name is documented. The curated concept and how-to pages give
   the explanation. `rcp-ndcg docs api --out docs/reference/api` generates one page per public module from the snapshot
   and the docstrings of the modules. Each name on that page has its kind, its signature and a one-line role.

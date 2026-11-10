@@ -92,22 +92,23 @@ value must be below `max_tokens`, and it is refused beside `on_overflow: chunk`.
 
 1. measures the fixed overhead once per (template, shape). The template is rendered with every content span empty,
    and it is counted as the engine reads it, with the shape's `add_special_tokens` flag included;
-2. cuts only the content spans, at token boundaries. The cut is verified against the *assembled* render, so a
-   byte-level merge across a span join cannot push the request over the budget. It re-attaches the template. A
-   content with several text parts keeps every part in its own place around its media. An interleaved
-   `[text, image, text]` sends its second text after the image, never hoisted into the first slot. The cut of the joined text is distributed over the parts where they stand. A part that the cut shortened gets its own census row (below);
+2. cuts only the content spans, at token boundaries. The cut is verified against the *assembled* render. A byte-level
+   merge across a span join therefore cannot push the request over the budget. It re-attaches the template. A content
+   with several text parts keeps every part in its own place around its media. An interleaved `[text, image, text]`
+   sends its second text after the image, never hoisted into the first slot. The cut of the joined text is distributed
+   over the parts where they stand. A part that the cut shortened gets its own census row (below);
 3. on `chunk`, splits the document into verbatim chunks and renders **every chunk with the full template**.
    Engine-side chunking of a framed render keeps the frame only on the first and last chunk, so chunking is always
    client-side here;
 4. records every cut in the census under the `text_budget` mechanism. Each row names the shape's own budget in
-   `budget_tokens`: the query rows a declared `query_max_tokens`, and the document rows `max_tokens`. The row also
-   names why the input changed, in `cause`: `budget_cut`, `query_share` or `document_share`. It names the uncut
-   request's whole size as the engine would read it, in `original_request_tokens`: the frame, its specials, the
-   content and the reserved media. A content with several text parts records one row per part that the cut
-   shortened. Each row's original and kept counts are the part's own, and the request's totals repeat on every row. A
-   part that the cut kept whole records nothing. A single-part content, and an input whose no part changed, keep
-   their one row. `original_tokens` counts the content alone, so a request that the frame pushed over the budget has
-   a content count under it. Whether an input was changed is read from the row, never from that count.
+   `budget_tokens`: the query rows a declared `query_max_tokens`, and the document rows `max_tokens`. The row also names
+   why the input changed, in `cause`: `budget_cut`, `query_share` or `document_share`. It names the uncut request's
+   whole size as the engine would read it, in `original_request_tokens`. That size is the frame, its specials, the
+   content and the reserved media. A content with several text parts records one row per part that the cut shortened.
+   Each row's original and kept counts are the part's own, and the request's totals repeat on every row. A part that the
+   cut kept whole records nothing. A single-part content, and an input whose no part changed, keep their one row.
+   `original_tokens` counts the content alone. A request that the frame pushed over the budget therefore has a content
+   count under it. Whether an input was changed is read from the row, never from that count.
 
 Every role client also keeps one `ProcessingRecord` per input row that it changed (`client.processing`). That
 record is the output of the one declared preparation pipeline. Its `STAGES` are normalise, empty, media,
@@ -123,14 +124,13 @@ the engine keep only its positions. The engine did apply the rule in that case. 
 kept request totals. A row without a record was sent as given, and the equivalence harness gates exactly
 those.
 
-An input under budget comes back byte-identical to the uncut render, within `fit`. `fit` settles a pair's
-query span per pair. The rerank wire carries one query per request. The rerank client therefore settles the
-shared query span once per call, with `fit` 's own rules on a probe pair. Whenever the query exceeds its
-declared share, it ships at it. That is recorded once in the census under the doc id `<query>`, with
-`cause: query_share`. It is recorded even when every pair would fit whole. Every document span is verified
-against the span that ships. The function returns the rendered strings. The wire routes take text, and
-tokenising once here to measure and cut is the same work either way. It returns the cut content per span, for
-routes where the engine renders the template on. It returns the output ids and the chunk mapping.
+An input under budget comes back byte-identical to the uncut render, within `fit`. `fit` settles a pair's query span per
+pair. The rerank wire carries one query per request. The rerank client therefore settles the shared query span once per
+call. It uses `fit` 's own rules on a probe pair. Whenever the query exceeds its declared share, it ships at it. That is
+recorded once in the census under the doc id `<query>`, with `cause: query_share`. It is recorded even when every pair
+would fit whole. Every document span is verified against the span that ships. The function returns the rendered strings.
+The wire routes take text, and tokenising once here to measure and cut is the same work either way. It returns the cut
+content per span, for routes where the engine renders the template on. It returns the output ids and the chunk mapping.
 
 ```python
 from tokenizers import Tokenizer, models, pre_tokenizers, processors

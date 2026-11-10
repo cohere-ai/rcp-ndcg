@@ -43,23 +43,24 @@ first is `model`, the served model name that the engine answers under. The secon
 `chat_template_kwargs.enable_thinking` switch in `extra_body`. The recipe's own `extra_body` must travel with
 the switch.
 
-1. **A shipped judge recipe**: `--judge gpt-oss-120b`, `--judge recipe:gpt-oss-120b`, or `judge: recipe:gpt-oss-120b` in a run config. The recipes are `rcp-ndcg-vllm`'s package data: the ten judges of the
-   catalog, which are the six paper/owner judges plus the four Gemma 4 judges. There is one family per model family,
-   and every variant has its own id. The recipe's `client` block is the judge config, validated here and never a
-   second model. Its `serve` block is the engine argv (`rcp-ndcg-vllm serve <id>`). Its `base_url` stays unset
-   until the run supplies it: `--set judge.base_url=...`, a run's `serve:` block, or `RCP_NDCG_ENGINES`. The
-   `recipe` pointer in the judgement identity is the recipe's id, so judgements record the server-side settings that
-   they came from. `rcp-ndcg-vllm serve <id> --dry-run` prints the exact argv. The recipe's notes carry the memory
-   arithmetic for one B200 and one H100, the default serving environments.
-2. **Your own recipe directory**: `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or
-   `recipe:/abs/path`. A family directory of your own loads through the same schema, families included. It is marked
-   unshipped with `status: unverified`, and it is identified by the content hash of its resolved form. Two runs whose
-   files differ therefore never share a run identity. The judge route reads a directory with exactly one variant. A
-   multi-variant family is refused by name, because `--variant <id>` selects a size for `rcp-ndcg-vllm serve`, and
-   the judging commands do not take it. Name the shipped variant id for a multi-variant family of the catalog.
+1. **A shipped judge recipe**: `--judge gpt-oss-120b`, `--judge recipe:gpt-oss-120b`, or `judge: recipe:gpt-oss-120b` in
+   a run config. The recipes are `rcp-ndcg-vllm`'s package data. They are the ten judges of the catalog: the six
+   paper/owner judges plus the four Gemma 4 judges. There is one family per model family, and every variant has its own
+   id. The recipe's `client` block is the judge config, validated here and never a second model. Its `serve` block is
+   the engine argv (`rcp-ndcg-vllm serve <id>`). Its `base_url` stays unset until the run supplies it:
+   `--set judge.base_url=...`, a run's `serve:` block, or `RCP_NDCG_ENGINES`. The `recipe` pointer in the judgement
+   identity is the recipe's id. Judgements therefore record the server-side settings that they came from.
+   `rcp-ndcg-vllm serve <id> --dry-run` prints the exact argv. The recipe's notes carry the memory arithmetic for one
+   B200 and one H100, the default serving environments.
+2. **Your own recipe directory**: `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or `recipe:/abs/path`.
+   A family directory of your own loads through the same schema, families included. It is marked unshipped with
+   `status: unverified`, and it is identified by the content hash of its resolved form. Two runs whose files differ
+   therefore never share a run identity. The judge route reads a directory with exactly one variant. A multi-variant
+   family is refused by name. `--variant <id>` selects a size for `rcp-ndcg-vllm serve`, and the judging commands do not
+   take it. Name the shipped variant id for a multi-variant family of the catalog.
 3. **A plain judge config file, or a hosted vendor profile**: `--judge ./my-judge.yaml` for any OpenAI-compatible
-   endpoint, and `--judge gpt5_hosted` for the shipped OpenAI profile. The self-hosted presets are gone, because they
-   became recipes. `gpt5_hosted` stays a vendor profile.
+   endpoint. The `--judge gpt5_hosted` option names the shipped OpenAI profile. The self-hosted presets are gone,
+   because they became recipes. `gpt5_hosted` stays a vendor profile.
 
 The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-ndcg-vllm serve` take):
 
@@ -174,8 +175,8 @@ that the probe passed. A `--set` of anything but `judge.<field>` is refused.
 
 - **A refused media count.** An HTTP 400 or 422 says that a request carries too many images or videos. It stops the pass.
   It raises a `CapabilityError` (exit code 8) whose hint names the server's per-request media limit.
-- **A missing reasoning parser.** With `decoding: json_schema`, when the first 8 answers carry no reasoning, the
-  client logs one warning that the server probably runs without the model's reasoning parser. A model that does not
+- **A missing reasoning parser**. With `decoding: json_schema`, the first 8 answers may carry no reasoning. The client
+  then logs one warning that the server probably runs without the model's reasoning parser. A model that does not
   reason, or an API that does not return its reasoning, can ignore it.
 - **What the endpoint serves.** At the start of every judging pass the client asks each replica `GET /models`. It
   records the served model id and `max_model_len` when reported. It records the `server` and any version header, and
@@ -195,27 +196,27 @@ the shared transport's, described in [the inference layer](inference.md). The ju
   another live replica. A replica that answers again is used again.
 - **When every replica is down,** requests wait and are re-sent with backoff until one answers, or until
   `wait_on_outage_s` passes. That raises `BackendUnavailableError`. The default is 1800 s, and `null` waits
-  indefinitely. A run against dead servers therefore parks, instead of turning the outage into missing judgements. A
-  run step's `step_budget_s` bounds the whole step on top (`StepBudgetExceededError`), and the store stays resumable.
-  A job that starts the judge's engine (`serve:`) bounds the wait to that engine's `outage_timeout_s`, 900 s by
+  indefinitely. A run against dead servers therefore parks, instead of turning the outage into missing judgements. A run
+  step's `step_budget_s` bounds the whole step on top (`StepBudgetExceededError`), and the store stays resumable. A job
+  that starts the judge's engine (`serve:`) bounds the wait to that engine's `outage_timeout_s`. That value is 900 s by
   default, carried to the step in `RCP_NDCG_ENGINES`. The job then fails, since its engine will not come back on its
   own.
-- **A request that keeps failing on a replica that answers other requests** is that request's failure. It is refused
-  and recorded like any refused window. A 408 or 429 never is. It is the endpoint's load, so it stays on the outage
-  path. The replica is set aside for the server's `Retry-After` when it gives a usable one, which is a finite,
+- **A request that keeps failing on a replica that answers other requests** is that request's failure. It is refused and
+  recorded like any refused window. A 408 or 429 never is. It is the endpoint's load, so it stays on the outage path.
+  The replica is set aside for the server's `Retry-After` when it gives a usable one. A usable value is a finite,
   positive number of seconds. A zero or unparseable header is no wait, so the backoff applies. The request parks and
   retries.
 
 ## How the client behaves
 
-- **Refusals.** HTTP 401 or 403 stops the pass with `CredentialsError` (exit code 5). HTTP 404 (no such route or
-  model) stops it with `ProviderError`, because both concern every request, not one window. Any other refusal of one
-  request is that window's failure: it is asked again up to three attempts, then recorded as an invalid judgement,
-  and a resumed pass asks it again. One example is HTTP 400 for an over-long prompt. When an earlier attempt carried
-  an answer and a later one was refused, the record keeps the answer's text. It also keeps its parse failure, so the
-  store never loses what the judge said, and `reparse` can read it again. Every request goes over `httpx` through the
-  shared transport; the package ships no second HTTP stack. The refusals, the retries and their delays are therefore
-  the transport's, described in [the inference layer](inference.md).
+- **Refusals.** HTTP 401 or 403 stops the pass with `CredentialsError` (exit code 5). HTTP 404 (no such route or model)
+  stops it with `ProviderError`, because both concern every request, not one window. Any other refusal of one request is
+  that window's failure. It is asked again up to three attempts, then recorded as an invalid judgement. A resumed pass
+  asks it again. One example is HTTP 400 for an over-long prompt. When an earlier attempt carried an answer and a later
+  one was refused, the record keeps the answer's text. It also keeps its parse failure, so the store never loses what
+  the judge said. `reparse` can read it again. Every request goes over `httpx` through the shared transport; the package
+  ships no second HTTP stack. The refusals, the retries and their delays are therefore the transport's, described in
+  [the inference layer](inference.md).
 - **Answers.** The client records the endpoint's `finish_reason` as it comes: any string or none. Only the answer's
   text is parsed.
 - **Usage.** The client counts its requests, their failures and the tokens each answer reports. Those counts go to
@@ -234,51 +235,53 @@ and `prompts/<sha256>.txt`. The last holds the text of every prompt that the sto
 sits under the hash that its judgement family records. A custom prompt thus stays reproducible from the store
 after its file moves or changes.
 
-- **Record ids.** Every window has a stable `record_id`. That id is a hash of the judgement family, the query, the
-  stage and the dataset's identity key, which is the digest of the store identity's dataset entry below. Two corpora
-  that share query and document ids therefore never share a record id. The hash also covers the window's sequence
-  number and its placements. A planned window of an insertion plan carries no sequence number: it is keyed by its
-  placements and the digest of the schedule it was asked under. Calling `judge` again over the same store asks only
-  for the missing windows. Resuming and re-judging a subset of documents (`docs=`) are therefore the same call. A planned window is rendered at its own size's text budget. The same window in any plan therefore shows the same text, and it reuses its record. A pass with no candidates for a query is refused. `docs` naming no documents, a Stage A pool of
-  fewer than two documents, and a duplicated query id are all errors, never a silently unjudged query.
-- **Identity.** `identity.json` records what produced the store. It records the judgement family: judge model and
-  revision, prompt hash, criteria, parse version, decoding, preprocessing, tokenizer hash, the title rule and the
-  text-formatting version, and the offline judge's seed. It records the judge's declared temperature, output and
-  context budgets, extra body and wire adapter, when it declared any. It records the judge's content fields, the
-  schedule and the dataset. A row-sequence input has no dataset object, so it names its rows by their digest. The
-  identity holds content only. The prompt and the tokenizer enter by their SHA-256. A local dataset enters by its
-  path, absolute and normalised. The same file named from another directory (`./rows.jsonl`) is therefore one
-  identity, and the same bytes copied under another directory are not. The names that the pass was given are kept
-  beside it (`sources`). Judging into a store of another identity raises `IdentityError`, and it names the differing
-  fields. `force=True` moves the old records aside instead. Beside the identity, each stage's entry lists what the
-  judge's endpoints said they serve (`engines`). That covers the served model id, `max_model_len`, `owned_by`, the
-  `server` and any version header, and the first answer's `system_fingerprint`. This is runtime information, and it
-  never enters the identity. A store resumed against another engine version therefore adds a report instead of being
-  refused. The dataset enters the identity by its name and URI. For a Hub dataset it also enters by the commit that
-  its revision resolved to, so a moved upstream is refused. A local source has no commit, so it enters by the digest
-  of the files that its reader reads: a file's bytes, or a directory's sorted listing of names, sizes and mtimes.
-  That is `rcp_ndcg.data.revisions.dataset_content_digest`, the same digest that the run steps' identity carries.
-  Editing the documents of a local dataset after judging it is therefore refused as another dataset. It never pairs
-  the stored answers with texts that the judge never saw. Adding documents to a local source is therefore a new
-  dataset too, because its bytes changed. Growing a pool through `candidates=` instead redraws the whole schedule.
-  `windows_for` and the balanced draws depend on the pool size, so every random, stratified and adaptive window gets
-  a new record id, not only the windows that show the new documents. The fit reads the old pool's windows beside the
-  new one's. The supported route for a new document is an insertion plan: `select_opponents` with
-  `judge(windows=...)`, then `insert_documents`. A fresh store is the other route.
+- **Record ids.** Every window has a stable `record_id`. That id is a hash of the judgement family, the query, the stage
+  and the dataset's identity key. That key is the digest of the store identity's dataset entry below. Two corpora that
+  share query and document ids therefore never share a record id. The hash also covers the window's sequence number and
+  its placements. A planned window of an insertion plan carries no sequence number. It is keyed by its placements and
+  the digest of the schedule it was asked under. Calling `judge` again over the same store asks only for the missing
+  windows. Resuming and re-judging a subset of documents (`docs=`) are therefore the same call. A planned window is
+  rendered at its own size's text budget. The same window in any plan therefore shows the same text, and it reuses its
+  record. A pass with no candidates for a query is refused. `docs` naming no documents is an error. A Stage A pool of
+  fewer than two documents is an error. A duplicated query id is an error. None is a silently unjudged query.
+- **Identity.** `identity.json` records what produced the store. It records the judgement family. That family holds the
+  judge model and revision, prompt hash, criteria, parse version, decoding, preprocessing and tokenizer hash. It also
+  holds the title rule, the text-formatting version and the offline judge's seed. It records the judge's declared
+  temperature, output and context budgets, extra body and wire adapter, when it declared any. It records the judge's
+  content fields, the schedule and the dataset. A row-sequence input has no dataset object, so it names its rows by
+  their digest. The identity holds content only. The prompt and the tokenizer enter by their SHA-256. A local dataset
+  enters by its path, absolute and normalised. The same file named from another directory (`./rows.jsonl`) is therefore
+  one identity. The same bytes copied under another directory are not. The names that the pass was given are kept beside
+  it (`sources`). Judging into a store of another identity raises `IdentityError`, and it names the differing fields.
+  `force=True` moves the old records aside instead. Beside the identity, each stage's entry lists what the judge's
+  endpoints said they serve (`engines`). That covers the served model id, `max_model_len`, `owned_by`, the `server` and
+  any version header, and the first answer's `system_fingerprint`. This is runtime information, and it never enters the
+  identity. A store resumed against another engine version therefore adds a report instead of being refused. The dataset
+  enters the identity by its name and URI. For a Hub dataset it also enters by the commit that its revision resolved to.
+  A moved upstream is therefore refused. A local source has no commit, so it enters by the digest of the files that its
+  reader reads. That digest is a file's bytes, or a directory's sorted listing of names, sizes and mtimes. That is
+  `rcp_ndcg.data.revisions.dataset_content_digest`, the same digest that the run steps' identity carries. Editing the
+  documents of a local dataset after judging it is therefore refused as another dataset. It never pairs the stored
+  answers with texts that the judge never saw. Adding documents to a local source is therefore a new dataset too,
+  because its bytes changed. Growing a pool through `candidates=` instead redraws the whole schedule. `windows_for` and
+  the balanced draws depend on the pool size. Every random, stratified and adaptive window therefore gets a new record
+  id. It is not only the windows that show the new documents. The fit reads the old pool's windows beside the new one's.
+  The supported route for a new document is an insertion plan: `select_opponents` with `judge(windows=...)`, then
+  `insert_documents`. A fresh store is the other route.
 - **Concurrent writers.** The store is reader-safe by design, and it is safe to overlap. Two passes can claim two
-  stages, or append records of the same stage. They serialize on an advisory lock on the store directory. The
-  identity file and each prompt's text are published through the one atomic temp-file-and-rename helper
-  (`rcp_ndcg.storage.publish`). A killed writer therefore leaves no torn file that a later pass cannot read. A torn
-  last record or census row is skipped with a warning, and it is asked or recorded again. A resumed pass that
-  re-asks a refused window refits under the new answer. When the answer arrives, the later-phase windows that its
-  first fit selected are retired with an appended ``superseded`` tombstone, and they are asked again. The fit
-  therefore never reads two generations of one query's schedule, and the stage file stays append-only, as the
-  mirror's immutable parts require. A window that the endpoint keeps refusing leaves the later phases alone, so a
-  resume that changes nothing is idempotent. The retirement is scoped to the pass's own generation. That is its
-  pool's generation key, a digest of the units that the pass judges, and its schedule's window sequences and window
-  sizes; the tournament's mirrors are in the sequences, per call. A full pass therefore never retires a subset
-  pass's windows, and a subset pass never retires the full pass's. A planned pass with `windows=` runs no schedule,
-  and it retires nothing. The calibration's coverage does not count a tombstone as an invalid window, and `run status` counts the live records.
+  stages, or append records of the same stage. They serialize on an advisory lock on the store directory. The identity
+  file and each prompt's text are published through the one atomic temp-file-and-rename helper
+  (`rcp_ndcg.storage.publish`). A killed writer therefore leaves no torn file that a later pass cannot read. A torn last
+  record or census row is skipped with a warning, and it is asked or recorded again. A resumed pass that re-asks a
+  refused window refits under the new answer. When the answer arrives, the later-phase windows that its first fit
+  selected are retired with an appended ``superseded`` tombstone. They are asked again. The fit therefore never reads
+  two generations of one query's schedule. The stage file stays append-only, as the mirror's immutable parts require. A
+  window that the endpoint keeps refusing leaves the later phases alone, so a resume that changes nothing is idempotent.
+  The retirement is scoped to the pass's own generation. That is its pool's generation key, a digest of the units that
+  the pass judges. It also holds its schedule's window sequences and window sizes. The tournament's mirrors are in the
+  sequences, per call. A full pass therefore never retires a subset pass's windows, and a subset pass never retires the
+  full pass's. A planned pass with `windows=` runs no schedule, and it retires nothing. The calibration's coverage does
+  not count a tombstone as an invalid window, and `run status` counts the live records.
 - **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.judging.reparse(store, out)`, or `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser. It writes a new store
   under the current parse version, with its own family key and record ids. It never calls the judge, and it never
   writes into the source store. A source already at the current parse version has nothing to re-parse. A source

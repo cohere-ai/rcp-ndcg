@@ -110,78 +110,74 @@ client base, `rcp_ndcg.inference.clients.RoleClient`. That base holds the adapte
 injected `Sender` with the sync bridge. It also holds `close()` /`await aclose()`, and the fan-out under one
 `asyncio.TaskGroup`:
 
-* `_prepare` prepends the role's prompt (`query_prompt`/`doc_prompt`). The config can declare a budget (`tokenizer`
-  + `max_tokens`, explicit for a self-hosted role). Every item's text is then fitted through the one text-budget
-  mechanism. Only the content span is cut, the template is re-attached with its anchor, and every cut is recorded in
-  the census. A hosted profile that declares no limit sends every item whole. A self-hosted config must declare its
-  budget (`tokenizer` + `max_tokens`). The budgets are per shape. `query_max_tokens` caps the query shape whole,
-  because a late-interaction embedder caps its two sides differently. `max_tokens` caps the document shape, and a
-  query budget above `max_tokens` is refused. Media items keep their parts beside the fitted text. A config with
-  `dim` unset is refused at construction, because the base64 frame needs the width; a refusal at construction keeps
-  the GPU idle-time free. `on_overflow: chunk` is refused too: chunks pool scores by max, and token vectors have
-  none to pool. A late-interaction document is chunked at the corpus layer instead, one slice per chunk in the
-  index;
+* `_prepare` prepends the role's prompt (`query_prompt`/`doc_prompt`). The config can declare a budget (`tokenizer` +
+  `max_tokens`, explicit for a self-hosted role). Every item's text is then fitted through the one text-budget
+  mechanism. Only the content span is cut. The template is re-attached with its anchor, and every cut is recorded in the
+  census. A hosted profile that declares no limit sends every item whole. A self-hosted config must declare its budget
+  (`tokenizer` + `max_tokens`). The budgets are per shape. `query_max_tokens` caps the query shape whole, because a
+  late-interaction embedder caps its two sides differently. `max_tokens` caps the document shape, and a query budget
+  above `max_tokens` is refused. Media items keep their parts beside the fitted text. A config with `dim` unset is
+  refused at construction, because the base64 frame needs the width. A refusal at construction keeps the GPU idle-time
+  free. `on_overflow: chunk` is refused too: chunks pool scores by max, and token vectors have none to pool. A
+  late-interaction document is chunked at the corpus layer instead, one slice per chunk in the index;
 * `normalize` (the default) L2-normalises every token vector. The normalisation computes in float32, and the result
   is stored back in the transfer dtype;
 * `document_split_special_tokens` tokenises the DOCUMENT side with the reference's split parse. The split parse is
-  transformers' `split_special_tokens`, the raw tokenizers' `encode_special_tokens` toggle. The field is only
-  meaningful on `request_shape: token_ids`, and it is refused beside `text`/`messages`. An added SPECIAL token is
-  textified instead of matched as one id. A `[D] ` render therefore opens with the reference's own two literal
-  prefix ids, which is what the pplx-embed-v2-context plugin's role check reads. Unset is the default, and it is
-  the file's own parse, so a recipe that does not declare the field is unchanged. The fit's budget counts the file's
-  own parse. A recipe that declares the split parse therefore reserves its measured prefix delta in `max_tokens`,
-  and pplx-embed-v2-context reserves the measured two tokens. The sent ids are what the engine reads, and the
-  render-text comparison tokenises with the same declared parse.
-* `query_split_special_tokens` sends the QUERY side as the reference's own construction. The fixed head tokenises
-  with the file's own parse, so its `[Q] ` crosses as the reference's one prefix id. The content span tokenises with
-  the split parse. A query carrying a literal added-token spelling therefore reads the same ids on the engine as in
-  the reference. pplx-embed-v2-context's remote `prepare_inputs` split-tokenises the query body too. The field is
-  only meaningful on `request_shape: token_ids`. It is refused beside `text`/`messages`, and it is refused without a
-  template whose query shape is a fixed head followed by one content span. Unset is the default, and it is one parse
-  of the whole render, so a recipe that does not declare the field is unchanged.
-* `document_skip_token_ids` drops document vectors at the positions whose token id is listed. The topk reference
-  scores nothing by 41 punctuation/special ids, and queries keep all their vectors. The positions are the ids that
-  the client sent, and a count mismatch is a typed error. The rule does not apply at image positions. A media
-  document's positions are the server's chat-template render, which the client cannot tokenise, so the media
-  vectors are never skipped. The client keeps them all, and it records the deviation on the row's processing record
-  (`skip_unapplied`). The engine's `/pooling` route returns no per-position token ids.
-  `PoolingParams.returned_token_ids` is a step pooler's output slice, and `requires_token_ids` is the worker's
-  internal CPU copy, while the response carries vectors only. The client therefore cannot compute a checkpoint's
-  own image-position mask from the reply, and it keeps the media document whole, on record.
+  transformers' `split_special_tokens`, the raw tokenizers' `encode_special_tokens` toggle. The field is only meaningful
+  on `request_shape: token_ids`, and it is refused beside `text`/`messages`. An added SPECIAL token is textified instead
+  of matched as one id. A `[D] ` render therefore opens with the reference's own two literal prefix ids. The
+  pplx-embed-v2-context plugin's role check reads them. Unset is the default, and it is the file's own parse. A recipe
+  that does not declare the field is unchanged. The fit's budget counts the file's own parse. A recipe that declares the
+  split parse therefore reserves its measured prefix delta in `max_tokens`. The pplx-embed-v2-context recipe reserves
+  the measured two tokens. The sent ids are what the engine reads, and the render-text comparison tokenises with the
+  same declared parse.
+* `query_split_special_tokens` sends the QUERY side as the reference's own construction. The fixed head tokenises with
+  the file's own parse, so its `[Q] ` crosses as the reference's one prefix id. The content span tokenises with the
+  split parse. A query carrying a literal added-token spelling therefore reads the same ids on the engine as in the
+  reference. pplx-embed-v2-context's remote `prepare_inputs` split-tokenises the query body too. The field is only
+  meaningful on `request_shape: token_ids`. It is refused beside `text`/`messages`. It is also refused without a
+  template whose query shape is a fixed head followed by one content span. Unset is the default, and it is one parse of
+  the whole render. A recipe that does not declare the field is unchanged.
+* `document_skip_token_ids` drops document vectors at the positions whose token id is listed. The topk reference scores
+  nothing by 41 punctuation/special ids, and queries keep all their vectors. The positions are the ids that the client
+  sent, and a count mismatch is a typed error. The rule does not apply at image positions. A media document's positions
+  are the server's chat-template render, which the client cannot tokenise. The media vectors are therefore never
+  skipped. The client keeps them all, and it records the deviation on the row's processing record (`skip_unapplied`).
+  The engine's `/pooling` route returns no per-position token ids. `PoolingParams.returned_token_ids` is a step pooler's
+  output slice. `requires_token_ids` is the worker's internal CPU copy, while the response carries vectors only. The
+  client therefore cannot compute a checkpoint's own image-position mask from the reply. It keeps the media document
+  whole, on record.
 * `document_skip_engine_side` moves the rule above into the served plugin. The recipe declares the same ids for the
-  engine in `serve.hf_overrides.document_skip_token_ids`, and the recipe loader cross-checks them against the
-  client's list. The recipe also declares the document ROLE GATE in
-  `serve.hf_overrides.document_skip_prefix_token_id`. That is the leading token id that a document prompt opens
-  with, because the checkpoint's mask is document-side and a query prompt keeps every position. The plugin's pooler
-  drops the rule's positions from the token ids that it sees. Those ids are the render's own ids, a media
-  document's head and vision markers included. The head is in the render when the recipe sends it,
-  `media_head_as_system`, and the shipped pplx-late family does. The wire then carries only kept vectors. The
-  client cannot recompute the kept set from the reply, so it counts the declared kept vectors instead. That count
-  is `kept_vector_count`: the sent render's ids outside the rule, or a media document's sent head plus its prepared
-  media block. The client refuses a reply whose per-item count disagrees, as a typed `ProviderError`, never a
-  silent misalignment. No `skip_unapplied` record is written then, because the engine applied the rule. The
-  engine's `usage.prompt_tokens` counts the *prompt*, so under this rule it no longer describes the vectors. The
-  declared counts are what the reply is checked against. vLLM v0.33.0's pooling route still returns no
-  per-position token ids, which is why the rule's home is the engine-side plugin. A recipe without this flag keeps
-  the client-side rule above.
-* `media_keep_token_ids` is the MEDIA allowlist. It serves a checkpoint whose image documents keep only a subset of
-  the render's positions, such as topk-embed-v1's image-patch token: its reference keeps `ids == image_token_id` for
-  an image document. The served plugin applies the allowlist engine-side through the same path. The recipe declares
-  the same ids for the engine in `serve.hf_overrides.document_keep_token_ids`, and the loader cross-checks them. The
-  allowlist is its own gate. A row carrying one of its ids is a media document, and it keeps only those positions:
-  the chat template's wrapper, the trained head and a caption drop. That is exactly what the reference keeps. The
-  client counts the media block's patch run, which is the block's counted tokens minus the vision wrapper. It
-  refuses a reply whose per-item count disagrees. No `skip_unapplied` record is written for a media item, because
-  the engine applied the allowlist. A recipe without the allowlist keeps the media-render rule above, and a media
-  document's vectors are kept whole, on record. A TEXT render whose own ids carry an allowlist id would be misread
-  as a media document, because the allowlist is its own gate. The client refuses that collision by name before
-  sending.
+  engine in `serve.hf_overrides.document_skip_token_ids`. The recipe loader cross-checks them against the client's list.
+  The recipe also declares the document ROLE GATE in `serve.hf_overrides.document_skip_prefix_token_id`. That is the
+  leading token id that a document prompt opens with. The checkpoint's mask is document-side, and a query prompt keeps
+  every position. The plugin's pooler drops the rule's positions from the token ids that it sees. Those ids are the
+  render's own ids, a media document's head and vision markers included. The head is in the render when the recipe sends
+  it, `media_head_as_system`, and the shipped pplx-late family does. The wire then carries only kept vectors. The client
+  cannot recompute the kept set from the reply, so it counts the declared kept vectors instead. That count is
+  `kept_vector_count`. It is the sent render's ids outside the rule, or a media document's sent head plus its prepared
+  media block. The client refuses a reply whose per-item count disagrees, as a typed `ProviderError`, never a silent
+  misalignment. No `skip_unapplied` record is written then, because the engine applied the rule. The engine's
+  `usage.prompt_tokens` counts the *prompt*, so under this rule it no longer describes the vectors. The declared counts
+  are what the reply is checked against. vLLM v0.33.0's pooling route still returns no per-position token ids, which is
+  why the rule's home is the engine-side plugin. A recipe without this flag keeps the client-side rule above.
+* `media_keep_token_ids` is the MEDIA allowlist. It serves a checkpoint whose image documents keep only a subset of the
+  render's positions, such as topk-embed-v1's image-patch token. Its reference keeps `ids == image_token_id` for an
+  image document. The served plugin applies the allowlist engine-side through the same path. The recipe declares the
+  same ids for the engine in `serve.hf_overrides.document_keep_token_ids`, and the loader cross-checks them. The
+  allowlist is its own gate. A row carrying one of its ids is a media document. It keeps only those positions: the chat
+  template's wrapper, the trained head and a caption drop. That is exactly what the reference keeps. The client counts
+  the media block's patch run, which is the block's counted tokens minus the vision wrapper. It refuses a reply whose
+  per-item count disagrees. No `skip_unapplied` record is written for a media item, because the engine applied the
+  allowlist. A recipe without the allowlist keeps the media-render rule above, and a media document's vectors are kept
+  whole, on record. A TEXT render whose own ids carry an allowlist id would be misread as a media document. The
+  allowlist is its own gate. The client refuses that collision by name before sending.
 * `media_head_as_system` applies to a pooling config with a template and media. It sends the side's leading fixed
-  template segments as a leading `system` message for a media item, instead of inside the user turn. Those segments
-  are the trained role prefix, e.g. `[D] `. Some checkpoints have an engine chat template that injects no frame of
-  its own, such as a pass-through template like pplx-embed-v2-late. Such a checkpoint would otherwise render an
-  image-only document without the prefix that the card's sentence-transformers path sends as a system message. The
-  user turn then carries only the content span, which is the image. The fixed overhead that the budget reserves
+  template segments as a leading `system` message for a media item. They are not inside the user turn. Those segments
+  are the trained role prefix, e.g. `[D] `. Some checkpoints have an engine chat template that injects no frame of its
+  own. One example is a pass-through template like pplx-embed-v2-late. Such a checkpoint would otherwise render an
+  image-only document without the prefix. The card's sentence-transformers path sends that prefix as a system message.
+  The user turn then carries only the content span, which is the image. The fixed overhead that the budget reserves
   already includes the head. The startup media probe's baseline carries the same head, so the engine's media delta
   cancels it;
 * `mrl_dim` applies the declared Matryoshka head client-side ([matryoshka heads](matryoshka.md)). The full-width

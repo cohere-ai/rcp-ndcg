@@ -54,6 +54,7 @@ nav:
       - "Compatibility and versioning": reference/versioning.md
       - "The rcp-ndcg-test package": reference/rcp-ndcg-test.md
       - "The public surface, frozen": reference/public-surface.md
+      - "Writing style": reference/writing-style.md
       - "API reference (generated)":
           - "rcp_ndcg_core": reference/api/rcp_ndcg_core.md
           - "rcp_ndcg_core.gain": reference/api/rcp_ndcg_core.gain.md

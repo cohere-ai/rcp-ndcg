@@ -99,9 +99,9 @@ tokenizer. It starts from the judge's `context_tokens` and subtracts four things
 1. the prompt's own tokens: the stage's template rendered with the query and empty documents;
 2. a fixed reserve of 256 tokens. It covers what the tokenizer file does not describe and no media occupies: the
    chat-template role markers, its generation prompt, and a system message that some templates insert;
-3. the documents' media charge, counted with the judge's tokenizer. Each image and each sampled video frame carries
-   its vision block: the processor's vision start and end markers plus its patch tokens. A video container carries
-   its temporal grid, and the template's media marker counts per media part;
+3. the documents' media charge, counted with the judge's tokenizer. Each image and each sampled video frame carries its
+   vision block. That block holds the processor's vision start and end markers plus its patch tokens. A video container
+   carries its temporal grid, and the template's media marker counts per media part;
 4. the completion reserve, `max_output_tokens`, at most half of what is left.
 
 The rest is shared equally by the documents of the window. Each document's text is cut to its share at a token
@@ -135,13 +135,11 @@ preprocessing:
 A document of at most `max_tokens` tokens is judged whole. A longer document is split before judging, where it
 meets its query:
 
-1. **Chunks.** The chunks are windows over the document's own tokens. Chunk `k + 1`
-   starts `overlap_tokens` tokens before chunk `k` ends, and each chunk holds at most
-   `max_tokens` tokens. The first chunk starts at the start of the document, and the last
-   ends at its end. Each chunk is the verbatim slice of the document between its first
-   and its last token. A slice that takes more tokens on its own than it did in place
-   ends one token earlier until it fits. The split is deterministic for a given tokenizer,
-   and the tokenizer's hash is in the family key.
+1. **Chunks.** The chunks are windows over the document's own tokens. Chunk `k + 1` starts `overlap_tokens` tokens
+   before chunk `k` ends, and each chunk holds at most `max_tokens` tokens. The first chunk starts at the start of the
+   document, and the last ends at its end. Each chunk is the verbatim slice of the document between its first and its
+   last token. A slice that takes more tokens on its own than it did in place is too long. It ends one token earlier
+   until it fits. The split is deterministic for a given tokenizer, and the tokenizer's hash is in the family key.
 2. **Identity.** Chunk `k` of document `d` has the id `d#k`, with `k` from 0. The
    row's `chunk_mapping` maps every candidate to its document, and an unsplit
    document maps to itself. The mapping, never the id, is what later stages
@@ -280,47 +278,47 @@ one sampling rule is declared: a uniform `num_frames` or the engine's own `fps`:
   integers. vLLM's default video loader applies the same rule to a decoded container. Each frame is prepared as an
   image under the image policy, and it is sent as a standard `image_url` part. The frames counted are therefore the
   frames sent.
-- **`wire: video_url` (opt-in, for models with a native video encoder).** The container is sent unchanged, and the
-  engine decodes and samples it with its own video loader. A stock engine samples its own default. On the Qwen-VL
-  backends that default is the checkpoint's own processor rate, because their loaders are fps-driven and ignore
-  `num_frames`; elsewhere it is the default vLLM loader's own count. The counted tokens and the recorded instrument
-  would then describe frames that nobody chose. The policy therefore refuses `video_url` unless
-  `engine_video_pinning: true` declares the engine pinned: to a uniform `num_frames`
-  (`--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM) or to the engine's own rate, `fps`
-  (`--media-io-kwargs '{"video": {"fps": N}}'`; see [judges](judges.md)). The two are different measurements, so
-  exactly one is declared. The engine's Qwen3-VL video backend samples by fps and ignores `num_frames`.
-  `qwen3_vl_video_frame_indices` ports its rule (`int(total_frames / original_fps * fps)`, clamped to its 30 fps
-  ceiling and its 4..768 frame bounds), and the client counts each clip's frames from its recorded frame count and
-  rate. On that family a pinned `num_frames` policy is refused at count time. The backend would ignore the pin, so
-  the declared policy would name a layout that the engine never renders; declare `fps` instead. The Qwen2-VL
-  families (`qwen2_vl`, `qwen2_5_vl`) are refused for a container under either rule. Their engine backend (vLLM
-  v0.33.0's `Qwen2VLVideoBackend`) is fps-driven too, and its fps rule is not ported here, so no declaration can be
-  counted honestly. Send `wire: frames` instead, or serve a `qwen3_vl` checkpoint. The policy refuses a
-  single-frame container, including a clip whose fps sampling realises one frame. The declared instrument merges
-  frames in time, which needs a temporal pair, and a single frame is an image. A container with no `video` policy at
-  all is refused before anything is spent: by a judging pass, whatever the judge's `context_tokens` or tokenizer
-  settings, by the role clients' request preparation and by `--estimate` alike. The engine's own default sampling is
-  nobody's instrument. Run `engine_media_check` once against a prepared probe when a serving setup changes (below).
-  A mismatch says that the engine's media handling is not the one that the counted tokens describe. An `fps` pin has
-  two halves on an engine whose video loader samples the whole clip and reports the frames as already sampled
-  (`do_sample_frames=True`). One example is a vLLM without the checkpoint's own video backend, such as the stock
-  `vllm/vllm-openai:v0.33.0` for a checkpoint whose backend landed later. There the `--media-io-kwargs` pin reaches
-  only the decoder. The checkpoint's processor resamples those decoded frames with its own defaults, its
-  `processor_config.json` fps, usually 1, so the model sees a handful of frames while the client counted the declared
-  number. The recipe declares the same numbers a second time in `serve.mm_processor_kwargs` (`{fps: N, max_frames: M}`). The engine's model hands them to the processor's call. On an engine whose own backend samples the pin and
-  reports `do_sample_frames=False`, the processor keeps the backend's frames and the numbers are inert.
-  embeddinggemma-2 declares both halves (E2 round 13: without the processor half the 4.0 s / 8 fps / 32-frame clip
-  became 4 frames, 492 media tokens against the client's 3936). The engine's video-token pruning
-  (`--video-pruning-rate`, with `--video-pruning-method` `evs` or `vidcom2`) changes that layout: the retained tokens
-  render in the first temporal group and the others carry none. Declare the same rate and method on the policy
+- **`wire: video_url` (opt-in, for models with a native video encoder).** The container is sent unchanged. The engine
+  decodes and samples it with its own video loader. A stock engine samples its own default. On the Qwen-VL backends that
+  default is the checkpoint's own processor rate. Their loaders are fps-driven and ignore `num_frames`. Elsewhere it is
+  the default vLLM loader's own count. The counted tokens and the recorded instrument would then describe frames that
+  nobody chose. The policy therefore refuses `video_url` unless `engine_video_pinning: true` declares the engine pinned.
+  The pin is to a uniform `num_frames` (`--media-io-kwargs '{"video": {"num_frames": N}}'` on vLLM). It can also be the
+  engine's own rate, `fps` (`--media-io-kwargs '{"video": {"fps": N}}'`; see [judges](judges.md)). The two are different
+  measurements, so exactly one is declared. The engine's Qwen3-VL video backend samples by fps and ignores `num_frames`.
+  `qwen3_vl_video_frame_indices` ports its rule (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling
+  and its 4..768 frame bounds). The client counts each clip's frames from its recorded frame count and rate. On that
+  family a pinned `num_frames` policy is refused at count time. The backend would ignore the pin, so the declared policy
+  would name a layout that the engine never renders. Declare `fps` instead. The Qwen2-VL families (`qwen2_vl`,
+  `qwen2_5_vl`) are refused for a container under either rule. Their engine backend (vLLM v0.33.0's
+  `Qwen2VLVideoBackend`) is fps-driven too. Its fps rule is not ported here, so no declaration can be counted honestly.
+  Send `wire: frames` instead, or serve a `qwen3_vl` checkpoint. The policy refuses a single-frame container, including
+  a clip whose fps sampling realises one frame. The declared instrument merges frames in time, which needs a temporal
+  pair, and a single frame is an image. A container with no `video` policy at all is refused before anything is spent.
+  The judging pass refuses it, whatever the judge's `context_tokens` or tokenizer settings. The role clients' request
+  preparation and `--estimate` refuse it alike. The engine's own default sampling is nobody's instrument. Run
+  `engine_media_check` once against a prepared probe when a serving setup changes (below). A mismatch says that the
+  engine's media handling is not the one that the counted tokens describe. An `fps` pin has two halves on an engine
+  whose video loader samples the whole clip. That loader reports the frames as already sampled
+  (`do_sample_frames=True`). One example is a vLLM without the checkpoint's own video backend. The stock
+  `vllm/vllm-openai:v0.33.0` is one, for a checkpoint whose backend landed later. There the `--media-io-kwargs` pin
+  reaches only the decoder. The checkpoint's processor resamples those decoded frames with its own defaults. Those
+  defaults are its `processor_config.json` fps, usually 1. The model then sees a handful of frames while the client
+  counted the declared number. The recipe declares the same numbers a second time in `serve.mm_processor_kwargs`
+  (`{fps: N, max_frames: M}`). The engine's model hands them to the processor's call. On an engine whose own backend
+  samples the pin and reports `do_sample_frames=False`, the processor keeps the backend's frames. The numbers are then
+  inert. embeddinggemma-2 declares both halves (E2 round 13). Without the processor half the 4.0 s / 8 fps / 32-frame
+  clip became 4 frames. It held 492 media tokens against the client's 3936. The engine's video-token pruning
+  (`--video-pruning-rate`, with `--video-pruning-method` `evs` or `vidcom2`) changes that layout. The retained tokens
+  render in the first temporal group, and the others carry none. Declare the same rate and method on the policy
   (`engine_video_pruning`, `engine_video_pruning_method`). The recipe loader refuses a serve flag that the client has
-  not declared, and it refuses a declaration that the serve args do not carry. The client counts the engine's own
+  not declared. It also refuses a declaration that the serve args do not carry. The client counts the engine's own
   retention formula for the `qwen3_vl` family. A per-frame family's flat pruned run is not ported, so the pair is
-  refused. A `qwen3_vl` clip's pixel budget is the engine's too. `engine_video_min_pixels` and
-  `engine_video_max_pixels` declare the per-clip budget that the engine is pinned to through
-  `serve.mm_processor_kwargs.videos_kwargs`, or the card's `total_pixels` where it gives one. The client counts the
-  clip under those numbers instead of the processor family's stock ceiling. The recipe loader refuses a pin in one
-  half only, or a mismatch between the halves.
+  refused. A `qwen3_vl` clip's pixel budget is the engine's too. `engine_video_min_pixels` and `engine_video_max_pixels`
+  declare the per-clip budget that the engine is pinned to through `serve.mm_processor_kwargs.videos_kwargs`. They can
+  also declare the card's `total_pixels` where it gives one. The client counts the clip under those numbers instead of
+  the processor family's stock ceiling. The recipe loader refuses a pin in one half only, or a mismatch between the
+  halves.
 
 ### What a container costs
 
@@ -336,11 +334,11 @@ the family's own video budget (`PROCESSORS`):
   when the delta matched the counted tokens. It is `engine_media_check:not_checked` when the reply reported no
   usage, or when the wire offers no no-media baseline.
 - `qwen3_vl` budgets the whole clip together (4,096 to 25,165,824 px). That shrinks the per-frame resolution as the
-  frame count grows: 8 frames of 720x1280 cost 3,520 patch tokens, and 128 frames cost 11,520. It renders one
-  timestamp line (`<0.0 seconds>`) and one vision block per temporal group, inside the chat template's own vision
-  pair. The timestamp line's token count is tokenizer-dependent. The client counts it exactly with its loaded
-  tokenizer when the policy samples at `fps`. It falls back to the family's declared 10-token bound when it has
-  none; that bound covers every timestamp that a clip of up to 27.8 hours can carry.
+  frame count grows. For example, 8 frames of 720x1280 cost 3,520 patch tokens, and 128 frames cost 11,520. It renders
+  one timestamp line (`<0.0 seconds>`) and one vision block per temporal group, inside the chat template's own vision
+  pair. The timestamp line's token count is tokenizer-dependent. The client counts it exactly with its loaded tokenizer
+  when the policy samples at `fps`. It falls back to the family's declared 10-token bound when it has none. That bound
+  covers every timestamp that a clip of up to 27.8 hours can carry.
 
 An odd frame count is padded by repeating its last frame, as the processors do.
 

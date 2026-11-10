@@ -82,13 +82,14 @@ Three research findings shape the `serve` and `client` blocks. The schema enforc
   `chunk` and `fail` are the alternatives. `aggregation: max` is the only chunk aggregation. The engine's
   `max_model_len` must fit the client's budget. `serve.pooler_config` keys are validated against the pinned
   engine's `PoolerConfig` fields, because the engine rejects unknown keys.
-- **The engine is the tokenization truth (R29).** With an engine URL, stage 1 takes `fit`'s rendered prompts and sends them to the engine's `/tokenize`. It uses the same `add_special_tokens` as the route. It requires the ids and counts to
-  equal `fit`'s. Mismatches are reported per shape in `equivalence.json` (`engine_tokenize_check`) and fail
-  the stage. With an engine URL it also reads the engine's own `usage.prompt_tokens` of one captured request
-  per shape. It requires that count to equal the token count of the render that the client budgeted against
-  (`engine_prompt_tokens_check`). This check proves that the declared frame the `messages` budget rests on is
-  the frame the engine renders. A listwise reranker's prompt is its reference's builder, so that recipe reports
-  `not_run` with the reason. Without an engine (CPU), both checks are reported as `not_run`, never as passed.
+- **The engine is the tokenization truth (R29)**. With an engine URL, stage 1 takes `fit`'s rendered prompts and sends
+  them to the engine's `/tokenize`. It uses the same `add_special_tokens` as the route. It requires the ids and counts
+  to equal `fit`'s. Mismatches are reported per shape in `equivalence.json` (`engine_tokenize_check`) and fail the
+  stage. With an engine URL it also reads the engine's own `usage.prompt_tokens` of one captured request per shape. It
+  requires that count to equal the token count of the render that the client budgeted against
+  (`engine_prompt_tokens_check`). This check proves that the declared frame the `messages` budget rests on is the frame
+  the engine renders. A listwise reranker's prompt is its reference's builder, so that recipe reports `not_run` with the
+  reason. Without an engine (CPU), both checks are reported as `not_run`, never as passed.
 - **The reference runs as a subprocess.** Stage 2 runs the recipe's `reference.py` as a subprocess. `--reference-python <path>` is required when stage 2 runs, with no default. The subprocess reads the pairs file
   and writes scores or vectors to a file that the harness compares. The harness process imports no torch or
   transformers. The reference environment is the family's `reference.in`/`reference.lock` (below). The engine

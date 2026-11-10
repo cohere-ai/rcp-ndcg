@@ -92,58 +92,56 @@ that handover is refused with a message naming them, never silently dropped. `en
 overridden. A run without `serve:` hands its engines over with `RCP_NDCG_ENGINES` in the process environment,
 or with `run resume --engine <role>=<url>`.
 
-- **SLURM.** Resources become `--gres=gpu:N`, `--cpus-per-task`, `--mem` and `--time`, and `sbatch_args` passes
-  anything else through. With `serve:`, a phase holds its engine replicas and, on the phase's first node, the
-  coordinator. A node's GPUs are the sum of what runs on it: the coordinator's own request, plus each engine's. The
-  largest engine shares the coordinator's node. CPUs and memory add up. An engine whose `memory_gb` is unstated gets
-  the node's whole memory (`--mem=0`), whatever the coordinator asks
-  ([partitioning](#gpus-are-partitioned-per-node-not-shared)). The job runs in the node's environment (`setup`) or
-  in a container (`container_runtime: apptainer` or `pyxis`, with `container_mounts`). A container runs the stock
-  coordinator image below unless `image` names another. With `container_runtime: none`, an `image` or
-  `container_mounts` is refused, because the node's environment and filesystem are already there. A phased job's
-  coordinator then runs as a step of its own (`srun --overlap`), so its own `--gres` reservation and node pin hold
-  there too. A coordinator that asks for no GPU sees no device. A job with no phases has no engines, so its
-  coordinator runs in the batch shell and needs no reservation. Runs, stores and caches live on the cluster's shared
-  filesystem. A node without internet access needs the weights and data staged beforehand: set `HF_HOME` to a shared
-  cache and `HF_HUB_OFFLINE=1`. The online runs themselves fill the shared cache. A dataset run resolves its revision
-  online once, and it records the commit behind the branch (`refs/<ref>` in the cache), so an offline run without
-  `--revision` reads from the same cache. A cache with no recorded ref needs `--revision <full sha>`. A download
-  pinned to a commit stages such a cache. Until the revision is given, the run warns (`UNPINNED_REVISION`, on stderr
-  and in the `--json` envelope's `warnings`). A file that the online run never fetched is an error naming the fix,
-  not an empty table.
+- **SLURM.** Resources become `--gres=gpu:N`, `--cpus-per-task`, `--mem` and `--time`, and `sbatch_args` passes anything
+  else through. With `serve:`, a phase holds its engine replicas and, on the phase's first node, the coordinator. A
+  node's GPUs are the sum of what runs on it: the coordinator's own request, plus each engine's. The largest engine
+  shares the coordinator's node. CPUs and memory add up. An engine whose `memory_gb` is unstated gets the node's whole
+  memory (`--mem=0`), whatever the coordinator asks ([partitioning](#gpus-are-partitioned-per-node-not-shared)). The job
+  runs in the node's environment (`setup`) or in a container (`container_runtime: apptainer` or `pyxis`, with
+  `container_mounts`). A container runs the stock coordinator image below unless `image` names another. With
+  `container_runtime: none`, an `image` or `container_mounts` is refused, because the node's environment and filesystem
+  are already there. A phased job's coordinator then runs as a step of its own (`srun --overlap`). Its own `--gres`
+  reservation and node pin hold there too. A coordinator that asks for no GPU sees no device. A job with no phases has
+  no engines, so its coordinator runs in the batch shell and needs no reservation. Runs, stores and caches live on the
+  cluster's shared filesystem. A node without internet access needs the weights and data staged beforehand: set
+  `HF_HOME` to a shared cache and `HF_HUB_OFFLINE=1`. The online runs themselves fill the shared cache. A dataset run
+  resolves its revision online once. It records the commit behind the branch (`refs/<ref>` in the cache). An offline run
+  without `--revision` therefore reads from the same cache. A cache with no recorded ref needs `--revision <full sha>`.
+  A download pinned to a commit stages such a cache. Until the revision is given, the run warns (`UNPINNED_REVISION`, on
+  stderr and in the `--json` envelope's `warnings`). A file that the online run never fetched is an error naming the
+  fix, not an empty table.
 - **Kubernetes.** Each run is a `batch/v1` Job, applied with the `kubectl` on your `PATH`, and `context` if set.
   Resources become the containers' requests and limits (`nvidia.com/gpu`, `cpu`, `memory`) and the Job's
   `activeDeadlineSeconds`. A phase container asks for the sum of its engines' GPU requests plus the coordinator's. It
   also asks for the engines' CPUs and memory plus the coordinator's. A CPU or memory amount that the engine leaves
-  unstated is left unlimited, whatever the coordinator asks, so the coordinator's share never caps the engine.
-  `secrets` are exposed to every container as environment: an HF token, or the mirror's credentials. Every pod
-  carries a `RuntimeDefault` seccomp profile, no privilege escalation, and no service-account token unless
-  `automount_service_account_token: true`. A job that reaches the cluster API, or a store through the cluster's
-  workload identity, sets it. An image with a non-root `USER` declares `run_as_non_root: true`, which the kubelet
-  enforces. The stock coordinator and `vllm/vllm-openai` images run as root, so it is off by default. `tolerations`,
-  `affinity` and `priority_class` are rendered on the Job's pod and every engine pod. `engine_node_selector` places
-  the engine pods. A single-replica engine runs in the Job's pod, so its selector is merged into that pod's
-  `nodeSelector`, and a key that the two disagree on is refused. A credential never goes in `env`. A name that looks
-  like one (`*_TOKEN`, `*_KEY`, `*SECRET*`, `*PASSWORD*`) is refused when the config is read. Export it in the
-  submitting environment (local, SLURM) or name a `secrets` entry (Kubernetes). An environment value is never
-  recorded in clear in `run.yaml`, the manifest or a mirror copy. The pod's disk is scratch, an `emptyDir` at
-  `/scratch`. The model weights and the Hugging Face cache live on a declared `cache_volume`: a
-  `PersistentVolumeClaim` mounted at `/cache`, shared by every replica and kept across restarts. Otherwise they live
-  on that scratch volume, never the container's writable layer. Every engine process gets its own `TMPDIR` under
-  `/scratch/tmp`. `/dev/shm` is a Memory `emptyDir` bounded by `dshm_size` (`runner.options.dshm_size`, `16Gi` by
-  default). The engines' shared-memory working set fits, and a runaway engine fails its own pod instead of exhausting
-  the node. Raise it for a phase that runs several engines in one container, whose requirements add up. A run-scoped
-  engine (several replicas) lives in its own StatefulSet for the whole run. A finished Job that owns one is deleted,
-  with its engines, an hour after it finishes, unless `ttl_seconds_after_finished` says otherwise. `run status`
-  reports a pod that the scheduler cannot place as `pending`, with the scheduler's own reason in the note; the Job's
-  pods and the engine pods alike are covered. A pod list that cannot be read reports `unknown` with a note, never
-  `running`. A multi-phase job whose init container is still initializing reads `pending`, with the container's own
-  `PodInitializing` reason in the note. The phase's engine is still starting, not stalled. The pod needs a `mirror:`
-  ([durability](#durability-local-runs-and-a-mirror)), since it does not see the submitting host's files either.
-  Every input must be a URI that it can read: `hf://`, `s3://`, `gs://` or `https://`. A run that names a local
-  dataset, rankings file, evaluation system, judge config file or prompt file is refused before anything is written,
-  naming them. A judge or prompt goes by its shipped name, or inline in the run config. The packaged `tiny` example
-  reads local files, so it is not submittable to Kubernetes as it is.
+  unstated is left unlimited, whatever the coordinator asks. The coordinator's share therefore never caps the engine.
+  `secrets` are exposed to every container as environment: an HF token, or the mirror's credentials. Every pod carries a
+  `RuntimeDefault` seccomp profile, no privilege escalation, and no service-account token unless
+  `automount_service_account_token: true`. A job that reaches the cluster API, or a store through the cluster's workload
+  identity, sets it. An image with a non-root `USER` declares `run_as_non_root: true`, which the kubelet enforces. The
+  stock coordinator and `vllm/vllm-openai` images run as root, so it is off by default. `tolerations`, `affinity` and
+  `priority_class` are rendered on the Job's pod and every engine pod. `engine_node_selector` places the engine pods. A
+  single-replica engine runs in the Job's pod, so its selector is merged into that pod's `nodeSelector`. A key that the
+  two disagree on is refused. A credential never goes in `env`. A name that looks like one (`*_TOKEN`, `*_KEY`,
+  `*SECRET*`, `*PASSWORD*`) is refused when the config is read. Export it in the submitting environment (local, SLURM)
+  or name a `secrets` entry (Kubernetes). An environment value is never recorded in clear in `run.yaml`, the manifest or
+  a mirror copy. The pod's disk is scratch, an `emptyDir` at `/scratch`. The model weights and the Hugging Face cache
+  live on a declared `cache_volume`. That volume is a `PersistentVolumeClaim` mounted at `/cache`, shared by every
+  replica and kept across restarts. Otherwise they live on that scratch volume, never the container's writable layer.
+  Every engine process gets its own `TMPDIR` under `/scratch/tmp`. `/dev/shm` is a Memory `emptyDir` bounded by
+  `dshm_size` (`runner.options.dshm_size`, `16Gi` by default). The engines' shared-memory working set fits, and a
+  runaway engine fails its own pod instead of exhausting the node. Raise it for a phase that runs several engines in one
+  container, whose requirements add up. A run-scoped engine (several replicas) lives in its own StatefulSet for the
+  whole run. A finished Job that owns one is deleted, with its engines, an hour after it finishes, unless
+  `ttl_seconds_after_finished` says otherwise. `run status` reports a pod that the scheduler cannot place as `pending`,
+  with the scheduler's own reason in the note. The Job's pods and the engine pods alike are covered. A pod list that
+  cannot be read reports `unknown` with a note, never `running`. A multi-phase job whose init container is still
+  initializing reads `pending`, with the container's own `PodInitializing` reason in the note. The phase's engine is
+  still starting, not stalled. The pod needs a `mirror:` ([durability](#durability-local-runs-and-a-mirror)), since it
+  does not see the submitting host's files either. Every input must be a URI that it can read: `hf://`, `s3://`, `gs://`
+  or `https://`. A run that names a local dataset, rankings file, evaluation system, judge config file or prompt file is
+  refused. The error names them before anything is written. A judge or prompt goes by its shipped name, or inline in the
+  run config. The packaged `tiny` example reads local files, so it is not submittable to Kubernetes as it is.
 
 ### The coordinator installs itself
 
@@ -334,32 +332,31 @@ A vLLM-class engine pre-allocates most of each GPU that it sees (`--gpu-memory-u
 engines that both see every GPU therefore fail with out-of-memory. The runner therefore treats a phase's GPUs
 as a fixed pool that the engines **partition**, per node:
 
-- **The request.** A node's GPU request is the **sum** of what runs on it: the coordinator's own
+- **The request**. A node's GPU request is the **sum** of what runs on it. That sum is the coordinator's own
   `resources.gpus` plus the engine placed there. The coordinator runs on the phase's first node, or in the phase's
   container. One replica per node is placed on SLURM, and each of the container's engines on Kubernetes. The job asks
   for the maximum of that over the phases. SLURM's `--gres` is per node, so one value is asked on every node;
   Kubernetes' limit is the container's.
-- **The devices.** Every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES` slice. Take a 4-GPU judge
-  and a 1-GPU encoder in one phase container: a hand-built `JobPhase`, because the `serve:` planner names one engine
-  per phase. The container asks for 5, and the judge runs with `0,1,2,3`, the encoder with `4`. The slices continue
-  across a role's replicas when they share a GPU set. Two replicas of a 2-GPU engine get `0,1` and `2,3`, with
+- **The devices.** Every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES` slice. Take a 4-GPU judge and
+  a 1-GPU encoder in one phase container. That needs a hand-built `JobPhase`, because the `serve:` planner names one
+  engine per phase. The container asks for 5, and the judge runs with `0,1,2,3`, the encoder with `4`. The slices
+  continue across a role's replicas when they share a GPU set. Two replicas of a 2-GPU engine get `0,1` and `2,3`, with
   distinct ports. An engine that declares no GPUs gets the empty slice. It sees no device, never all of it. The
-  coordinator is confined the same way. On Kubernetes it exports its own reserved slice (`0..resources.gpus-1`,
-  empty for none), and on SLURM its step carries the empty `CUDA_VISIBLE_DEVICES` when it asks for no GPU. A job env
-  entry named `CUDA_VISIBLE_DEVICES` is refused. The runners that partition GPUs assign it from `resources.gpus`, and
-  an operator's value would widen the coordinator's view past the devices that it reserved. An engine's own
-  `serve.env` may still declare a slice; the e2e driver's node-runtime slots do. The runner's slice wins where it
-  assigns one: co-located engines, and a GPU-less engine. A GPU engine's `serve.env` value stands over SLURM's
-  per-step grant, and over a several-replica Kubernetes engine pod's allocation.
-- **SLURM.** Each role's replicas are pinned to a disjoint slice of the allocation's nodes, one replica per node, so
-  no two engine processes share a node. A step's `--gres` is its own engine's count. SLURM's per-step
-  `CUDA_VISIBLE_DEVICES` is set per step with unique devices (gres.html, "GPU Management"). It could still overlap
-  across steps, because the engine steps run under `srun --overlap`. srun(1) documents that as allowing steps to
-  "share all resources (CPUs, memory, and GRES) with all other steps" (SLURM 26.05). The coordinator's task
-  therefore claims its own `--gres` under every container runtime, the default included. That is its reservation, on
-  the phase's first node. The node pinning keeps the engine steps apart, and a node's `--gres` carries the sum of
-  what runs on it. A cluster that constrains devices per step (`ConstrainDevices=yes`) should be checked against
-  these slices.
+  coordinator is confined the same way. On Kubernetes it exports its own reserved slice (`0..resources.gpus-1`, empty
+  for none). On SLURM its step carries the empty `CUDA_VISIBLE_DEVICES` when it asks for no GPU. A job env entry named
+  `CUDA_VISIBLE_DEVICES` is refused. The runners that partition GPUs assign it from `resources.gpus`. An operator's
+  value would widen the coordinator's view past the devices that it reserved. An engine's own `serve.env` may still
+  declare a slice; the e2e driver's node-runtime slots do. The runner's slice wins where it assigns one: co-located
+  engines, and a GPU-less engine. A GPU engine's `serve.env` value stands over SLURM's per-step grant, and over a
+  several-replica Kubernetes engine pod's allocation.
+- **SLURM**. Each role's replicas are pinned to a disjoint slice of the allocation's nodes, one replica per node. No two
+  engine processes share a node. A step's `--gres` is its own engine's count. SLURM's per-step `CUDA_VISIBLE_DEVICES` is
+  set per step with unique devices (gres.html, "GPU Management"). It could still overlap across steps, because the
+  engine steps run under `srun --overlap`. srun(1) documents that as allowing steps to "share all resources (CPUs,
+  memory, and GRES) with all other steps" (SLURM 26.05). The coordinator's task therefore claims its own `--gres` under
+  every container runtime, the default included. That is its reservation, on the phase's first node. The node pinning
+  keeps the engine steps apart, and a node's `--gres` carries the sum of what runs on it. A cluster that constrains
+  devices per step (`ConstrainDevices=yes`) should be checked against these slices.
 
 What the runners submit:
 
@@ -380,11 +377,11 @@ container. It does four things:
   default). An engine that exits before it answers fails the job at once. Its status and its own output are in the job's
   log;
 - then runs the phase's coordinator in the background, and ends the phase with whichever ends first. When an engine
-  exits, the coordinator is stopped (`SIGTERM`, then `SIGKILL` 20 s later), and the job exits 1 with a message naming
-  the engine. When the coordinator exits, the phase's engines are stopped and reaped. The next phase starts only if
-  the coordinator exited 0. A failing phase ends the job with the coordinator's status;
-- stops the phase's engines and the coordinator when the scheduler cancels or preempts the job (`SIGTERM` or
-  `SIGINT`), so no engine keeps running.
+  exits, the coordinator is stopped (`SIGTERM`, then `SIGKILL` 20 s later). The job exits 1 with a message naming the
+  engine. When the coordinator exits, the phase's engines are stopped and reaped. The next phase starts only if the
+  coordinator exited 0. A failing phase ends the job with the coordinator's status;
+- stops the phase's engines and the coordinator when the scheduler cancels or preempts the job (`SIGTERM` or `SIGINT`).
+  No engine keeps running.
 
 On SLURM, an engine step runs with `srun --kill-on-bad-exit=1 --wait=10`. One replica that fails ends the
 whole step at once, and with it the job. A replica that exits with status 0 ends it 10 s later. On Kubernetes
@@ -493,39 +490,39 @@ is scratch, so the prepared run directory is uploaded to the mirror before the J
 restores it into `/scratch/runs/<run_id>`. A Kubernetes run without a mirror is refused before anything is
 written.
 
-- Every `mirror_interval_s`, and once more when the run ends, also on `SIGTERM` or `SIGINT`, the judgement stores and
-  the text census go up as immutable parts. `<file>.parts/<start>-<end>` holds the bytes appended since the last
-  upload, up to the last complete line. Every other file goes up whole when it changed: the manifest, `run.yaml`,
-  `identity.json`, the calibration, the reports and the log. `work/` is scratch space and is not mirrored.
-- `run resume --run <dir> --mirror <uri>` first rebuilds the directory from the mirror on a node that lacks it, or
-  that holds a shorter store. The parts go in offset order, and a gap or an overlap is refused with exit 12. The
-  command then resumes as usual, so only the windows that the store lacks are asked. A directory whose manifest is
-  older than the mirror's also takes the mirror's newer whole files; the run went on in a job elsewhere. The restore
-  writes into the run directory before anything else, also with `--dry-run` or `--estimate`.
+- The judgement stores and the text census go up every `mirror_interval_s`. They go up once more when the run ends, also
+  on `SIGTERM` or `SIGINT`. They go up as immutable parts. `<file>.parts/<start>-<end>` holds the bytes appended since
+  the last upload, up to the last complete line. Every other file goes up whole when it changed: the manifest,
+  `run.yaml`, `identity.json`, the calibration, the reports and the log. `work/` is scratch space and is not mirrored.
+- `run resume --run <dir> --mirror <uri>` first rebuilds the directory from the mirror on a node that lacks it, or that
+  holds a shorter store. The parts go in offset order, and a gap or an overlap is refused with exit 12. The command then
+  resumes as usual, so only the windows that the store lacks are asked. A directory whose manifest is older than the
+  mirror's also takes the mirror's newer whole files. The run went on in a job elsewhere. The restore writes into the
+  run directory before anything else, also with `--dry-run` or `--estimate`.
 - A local or shared path (`/shared/mirrors/nano` or `file:///shared/mirrors/nano`) is a mirror too. Its directories
   are created as the mirror writes. A whole file there is published atomically: a temp file beside it, then one
   rename. A concurrent `restore()` on another host therefore never reads a partial `manifest.json` or
   `identity.json`. An object store writes each object whole anyway.
 - The mirror is **run-scoped**. `restore` refuses a mirror whose `manifest.json` names another run. The run id is the
-  local manifest's, salvaged from the damaged bytes when it does not parse, or the directory's name when a job
-  restores into a fresh directory. `run status` ignores such a manifest with a note, instead of adopting the other
-  run's id and metrics. A damaged local `manifest.json` is replaced by the mirror's instead of making the restore
-  crash; the recovery `RunManifest.load` names works.
-- `logs/jobs.json` is host-local state: the runner and the job handles of the submitting host. The mirror never
-  uploads or restores it, so a restore can never replace the handle of a job that this host can cancel.
-- `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`). The
-  text output shows the note and the mirror's state, its last error included. The state file itself is published
-  atomically too. An unparseable one reads as "never ran" with a warning instead of failing `run status`; a reader
-  racing a flush, or a writer the kernel killed, produces one. A mirror that the client cannot read falls back to
-  the local state with a note rather than aborting: a 403, an expired credential or a transport failure.
-- A mirror URI that carries credentials (userinfo, a query, a fragment) is accepted, because the job must reach the
-  store with it. It is redacted wherever it is written down: `run.yaml`, the manifest, the state file, `run status`
-  and every log line show `safe_url`'s form. The live config and the job's command line keep the full URI. A resume
-  that reads the redacted `run.yaml` takes the credentials from the environment (the store SDK's own variables) or
-  from a `--mirror` override. A secret-looking `env` value is refused when the config is read, and redacted if it
+  local manifest's, salvaged from the damaged bytes when it does not parse. Otherwise it is the directory's name, when a
+  job restores into a fresh directory. `run status` ignores such a manifest with a note, instead of adopting the other
+  run's id and metrics. A damaged local `manifest.json` is replaced by the mirror's instead of making the restore crash;
+  the recovery `RunManifest.load` names works.
+- `logs/jobs.json` is host-local state: the runner and the job handles of the submitting host. The mirror never uploads
+  or restores it. A restore therefore can never replace the handle of a job that this host can cancel.
+- `run status` shows the mirror's last upload and its lag (`data.mirror.last_upload_at`, `data.mirror.lag_s`). The text
+  output shows the note and the mirror's state, its last error included. The state file itself is published atomically
+  too. An unparseable one reads as "never ran" with a warning instead of failing `run status`. A reader racing a flush,
+  or a writer the kernel killed, produces one. A mirror that the client cannot read falls back to the local state with a
+  note rather than aborting. Examples are a 403, an expired credential or a transport failure.
+- A mirror URI that carries credentials (userinfo, a query, a fragment) is accepted. The job must reach the store with
+  it. It is redacted wherever it is written down. `run.yaml`, the manifest, the state file, `run status` and every log
+  line show `safe_url`'s form. The live config and the job's command line keep the full URI. A resume that reads the
+  redacted `run.yaml` takes the credentials from the environment (the store SDK's own variables). It can also take them
+  from a `--mirror` override. A secret-looking `env` value is refused when the config is read. It is redacted if it
   reaches a recorded file by another route. The run directory and the records that the mirror uploads (`run.yaml`,
-  `manifest.json`, `logs/mirror.json`) are owner-only (`0700`/`0600`), and so is the host-local `logs/jobs.json`. A
-  shared cluster filesystem therefore does not expose them.
+  `manifest.json`, `logs/mirror.json`) are owner-only (`0700`/`0600`). The host-local `logs/jobs.json` is owner-only
+  too. A shared cluster filesystem therefore does not expose them.
 
 **The guarantee.** Durable is the last uploaded part. The mirror never rewrites an uploaded part, so a
 graceful stop (`SIGTERM`/`SIGINT`, the block's end) uploads everything written. A hard kill (`SIGKILL`, a
