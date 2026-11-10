@@ -47,6 +47,7 @@ from rcp.runs.layout import RunLayout, new_run_id
 from rcp.runs.manifest import DatasetRef, RunManifest, RunStatus, StepStatus
 from rcp.storage import exists, local_dir, publish_bytes
 from rcp.storage.artifacts import ArtifactRef, artifact_ref
+from rcp.support.events import Emitter, RunEvent, RunPhase
 from rcp.support.identity import hash_payload, identity_payload
 from rcp.support.logging import get_logger
 from rcp.support.paths import runs_dir as default_runs_dir
@@ -114,6 +115,9 @@ class Pipeline:
         # judge config file gone) reaches the failure handler, which records a judging step's usage -- without
         # this, the handler itself crashes with an AttributeError that masks the typed error.
         self._judge_usage: Usage | None = None
+        # The run's event emitter, created by run() (a run's events belong to the run that publishes them: a
+        # --dry-run, an estimate or a preflight never reads the rcp.events group).
+        self._events: Emitter | None = None
         self._engines = dict(engines) if engines is not None else _engines_overlay()
         # The ``runner.options`` keys this invocation's overrides named (``run resume --set``): a resubmission
         # keeps them even when the value equals the runner's default (see :func:`~rcp.runs.execution.job_for`).
@@ -349,6 +353,7 @@ class Pipeline:
         """
         recorded = self.manifest.model_copy(deep=True)
         claims = self._store_claims()
+        self._events = Emitter.installed()
         self.layout.ensure()
         # The dataset is loaded (and a from:dataset run's first-stage pools computed) before anything is written:
         # a failure here -- a typo in --set dataset=..., a Hub error -- leaves run.yaml, the recorded config and
@@ -371,12 +376,19 @@ class Pipeline:
                     ran.add(step)
             except IdentityError as exc:
                 self._refused(ran, recorded)
+                self._closed(
+                    "step_failed",
+                    step,
+                    usage=self._judge_usage if step in JUDGE_STEPS else None,
+                    detail={"error": _describe(exc)},
+                )
                 _identity_hint(exc, self.layout, step, mirrored=self.config.mirror is not None)
                 raise
             except (Exception, KeyboardInterrupt) as exc:
                 # An interruption (SIGINT, or SIGTERM from a scheduler) is recorded like a failure.
                 usage = self._judge_usage if step in JUDGE_STEPS else None
                 self.manifest.finish_step(step, status=StepStatus.FAILED, usage=usage, error=_describe(exc))
+                self._closed("step_failed", step, usage=usage, detail={"error": _describe(exc)})
                 if _substance(self.config) != _substance(RunConfig.from_data(recorded.config)) and (
                     self._store_claims() == claims
                 ):
@@ -439,10 +451,28 @@ class Pipeline:
             self.manifest.metrics = {}  # a failed re-run keeps no metrics of the attempt it did not finish
         self.manifest.start_step(step, identity=self._identity(step))
         self.manifest.save(self.layout)
+        self._emit("step_started", step)
         inputs = self._inputs(step)
         outputs, usage = self._budgeted_step(step)
-        self.manifest.finish_step(step, inputs=inputs, outputs=outputs, usage=usage)
+        record = self.manifest.finish_step(step, inputs=inputs, outputs=outputs, usage=usage)
+        self._closed(
+            "step_finished", step, usage=usage, detail={"status": record.status.value, "duration_s": record.duration_s}
+        )
         return True
+
+    def _closed(self, phase: RunPhase, step: str, *, usage: Usage | None, detail: dict[str, Any]) -> None:
+        """Publish the event that closes *step*, then its ``usage`` event when the step reported usage."""
+        self._emit(phase, step, detail=detail)
+        if usage is not None:
+            self._emit("usage", step, usage=usage.model_dump())
+
+    def _emit(
+        self, phase: RunPhase, step: str, *, usage: dict[str, int] | None = None, detail: dict[str, Any] | None = None
+    ) -> None:
+        """Publish one event of this run to its subscribers (nothing at all, when the run has none)."""
+        if self._events is None or not self._events.subscribers:
+            return
+        self._events.emit(RunEvent(run_id=self.layout.run_id, step=step, phase=phase, usage=usage, detail=detail or {}))
 
     def _budgeted_step(self, step: str) -> tuple[list[ArtifactRef], Usage | None]:
         """One step's work, under the run's wall-clock budget when it sets one (checked at the request seams)."""
