@@ -124,18 +124,27 @@ FIXTURE: dict[str, str] = {
     "CHANGELOG.md": "## Unreleased\n- The code under src/rcp_ndcg moved.\n",
 }
 
+HARNESS: dict[str, str] = {
+    "packages/rcp-ndcg-test/pyproject.toml": (
+        '[project]\nname = "rcp-ndcg-test"\nversion = "0.0.1"\n\n'
+        '[project.entry-points."rcp.fake_transports"]\n'
+        'rcp-ndcg-test = "rcp_ndcg_test.engines:transport_for"\n'
+    ),
+    "packages/rcp-ndcg-test/src/rcp_ndcg_test/__init__.py": '"""The harness."""\n',
+}
+
 
 def git(root: Path, *args: str) -> str:
     proc = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=True)
     return proc.stdout
 
 
-def make_fixture(tmp_path: Path) -> Path:
+def make_fixture(tmp_path: Path, *, harness: bool = False) -> Path:
     """A committed fixture repository and, beside it, a scratch worktree of its tip."""
     repo = tmp_path / "fixture"
     repo.mkdir(parents=True)
     git(repo, "init", "-q")
-    for name, text in FIXTURE.items():
+    for name, text in {**FIXTURE, **(HARNESS if harness else {})}.items():
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -222,6 +231,41 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     assert "fixture" in history
 
 
+def test_the_harness_follows_the_distribution_rename(tmp_path: Path) -> None:
+    """The harness leg of the rename: the unpublished distribution and its import package follow
+    the others' (`packages/rcp-ndcg-test` -> `rcp-test`, `rcp_ndcg_test` -> `rcp_test`), the entry
+    point name and target included, and the workspace the split regenerates lists the new member.
+    """
+    worktree = make_fixture(tmp_path, harness=True)
+    run_layout(worktree)
+
+    assert (worktree / "rcp-test" / "src" / "rcp_test" / "__init__.py").is_file()
+    assert not (worktree / "rcp-ndcg-test").exists()
+    manifest = (worktree / "rcp-test" / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'name = "rcp-test"' in manifest
+    assert "rcp-ndcg-test" not in manifest and "rcp_ndcg_test" not in manifest
+    # the entry point follows: its name is the distribution's, its target the package's
+    assert 'rcp-test = "rcp_test.engines:transport_for"' in manifest
+    workspace = (worktree / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'members = ["rcp", "rcp-core", "rcp-ndcg-vllm", "rcp-test"]' in workspace
+    assert "rcp-test = { workspace = true }" in workspace
+    # and the history followed the moves (commit the staged result first, like the performs test)
+    git(
+        worktree,
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=f@example.invalid",
+        "commit",
+        "-qam",
+        "the harness rename",
+    )
+    history = git(worktree, "log", "--follow", "--oneline", "--", "rcp-test/src/rcp_test/__init__.py")
+    assert "fixture" in history
+    # idempotent: the moved tree is already in the target layout
+    assert "layout_move --check: the tree is in the target layout" in run_layout(worktree, "--check")
+
+
 def test_the_move_is_idempotent(tmp_path: Path) -> None:
     worktree = make_fixture(tmp_path)
     run_layout(worktree)
@@ -283,7 +327,9 @@ def test_the_move_table_names_the_root_package(source: str, destination: str) ->
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     assert (source, destination) in module.MOVES
-    assert module.OPTIONAL_SOURCES == frozenset({"packages/rcp-ndcg-test"})
+    assert module.OPTIONAL_SOURCES == frozenset(
+        {"packages/rcp-ndcg-test", "rcp-ndcg-test", "rcp-test/src/rcp_ndcg_test"}
+    )
     assert module.EXEMPT == frozenset({"tools/layout_move.py", "tests/test_layout_move.py"})
 
 

@@ -265,4 +265,4 @@ uv sync --extra dev
 uv run pytest tests/ -n 4
 ```
 
-Conformance and the fake-engine replays live in `rcp-ndcg-test` (unpublished) and run per its README.
+Conformance and the fake-engine replays live in `rcp-test` (unpublished) and run per its README.

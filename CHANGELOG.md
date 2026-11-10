@@ -21,7 +21,7 @@ pull request that changes `tests/contract/snapshots/` or `schemas/` must add an 
 
 Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
 incompatibly, independently of the package version. All four distributions carry the tag version; `rcp` pins
-`rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-ndcg-test` is never published.
+`rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-test` is never published.
 
 ## Unreleased
 
@@ -43,6 +43,14 @@ incompatibly, independently of the package version. All four distributions carry
   declares a plugin** (`serve.plugin` and the plugin's module names are inputs, `rcp-fp/4`), so the committed
   observation corpora are stale and the record and equivalence waves re-run before the ledger is regenerated;
   the goldens are regenerated here. The CHANGELOG's historical entries and the wave records keep the old names.
+- **The harness is `rcp-test` and its package is `rcp_test`**: the `rcp-ndcg-test` distribution, the
+  `rcp_ndcg_test` package and the `rcp-ndcg-test` checkout directory are renamed; the fake-transport entry
+  point is `rcp-test` under the `rcp.fake_transports` group, `python -m rcp_ndcg_test.<tool>` is
+  `python -m rcp_test.<tool>`, and the harness wheel the build stages follows the new name. There is no
+  compatibility shim.
+  The behaviour fingerprints do not move (the harness is not a fingerprint input), the committed corpora and
+  the pairs corpus keep the spellings they were recorded with, the ledger's historical wave paths keep their
+  placeholders, and so do the historical entries below.
 
 ### Fixed
 

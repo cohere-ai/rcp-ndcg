@@ -1,0 +1,17 @@
+# The 8 judge families' probe (10 variants): every judge's documented thinking modes + the engine media
+# probe, one judge at a time, continuing past a failure (rcp_test/jobs/judgecheck.sh).
+# submit.sh --script judgecheck does NOT read this file: judgecheck.sh owns the list (RECIPES, pinned to the
+# catalog by tests/test_jobs_scripts.py) and writes its own judgecheck-wave.txt for `bootstrap.sh envs`.
+#   submit.sh --script judgecheck <RC_B> <OUT> judgecheck
+# This file is the staged coverage record and must equal judgecheck.sh's RECIPES; the estimator refuses a
+# variant that is in the catalog and in no evidence list, so the two cannot drift silently.
+qwen3.5-397b-a17b-nvfp4
+gpt-oss-120b
+qwen3.6-27b-fp8
+qwen3.8-27b-fp8
+qwen3.8-flash-next-fp8
+qwen3.8-flash-next-nvfp4
+gemma-4-12b-it
+gemma-4-26b-a4b-it
+gemma-4-26b-a4b-nvfp4
+gemma-4-31b-it-nvfp4

@@ -178,22 +178,22 @@ which is why the rules' home is the engine).
 ## Validation
 
 The equivalence harness, the recorder, the reference cases and the GPU job tooling live in the unpublished
-`rcp-ndcg-test` package ([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-ndcg-test.md));
+`rcp-test` package ([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-test.md));
 authors of new recipes start at [add a serving
 recipe](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
 the metric are `rcp` and `rcp-core`.
 
 The T4 end-to-end run scenarios (`scenarios/<id>.yaml`, schema `schema/scenario.schema.json`) and their in-pod
-driver (`python -m rcp_ndcg_test.e2e`) are described in [release candidates and the GPU
+driver (`python -m rcp_test.e2e`) are described in [release candidates and the GPU
 waves](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/release-candidates.md).
 
 The stage-2 pairs files (`pairs/<id>.jsonl` and their `manifest.json`) come from the deterministic request
-generator `python -m rcp_ndcg_test.observe.requests`; the wave's observation-corpus step, the T3 quality stage
+generator `python -m rcp_test.observe.requests`; the wave's observation-corpus step, the T3 quality stage
 and the negative controls are `run_wave.py`'s `--record-corpus`, `--quality` and `--controls`. The corpus
-format is documented in `schema/observation-corpus.md`; its one reader is `rcp_ndcg_test.corpus`. Every
-corpus is keyed by the recipe behaviour fingerprint (`rcp_ndcg_test.fingerprint`); `python -m rcp_ndcg_test.changes`
+format is documented in `schema/observation-corpus.md`; its one reader is `rcp_test.corpus`. Every
+corpus is keyed by the recipe behaviour fingerprint (`rcp_test.fingerprint`); `python -m rcp_test.changes`
 selects the recipes to re-record and diffs two corpora of one recipe. The verified fake engines that replay the
-corpora are `rcp_ndcg_test.engines` ([use the verified fake
+corpora are `rcp_test.engines` ([use the verified fake
 engines](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/use-verified-fake-engines.md)).
 
 ## License

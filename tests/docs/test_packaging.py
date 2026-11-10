@@ -233,7 +233,7 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     assert set(jobs) == {"build", *RELEASE_PUBLISH_JOBS, "github-release"}
     build = str(jobs["build"])
     # The published packages are built by name (rcp-vllm from its own directory, outside the uv
-    # workspace); --all-packages is refused so a future workspace member (rcp-ndcg-test) is never swept
+    # workspace); --all-packages is refused so a future workspace member (rcp-test) is never swept
     # into the release build.
     assert "--all-packages" not in build, "the release builds the three published packages by name"
     # One --package per invocation (uv refuses a repeated --package): the build names the two workspace
@@ -274,7 +274,7 @@ def test_the_release_workflow_publishes_three_packages_one_environment_each() ->
     assert "secrets." not in text  # trusted publishing: no token anywhere
     # The unpublished test package is never built or published: no build line, no publish job (the build
     # comment may name it as the member --all-packages would sweep in).
-    assert "uv build --package rcp-ndcg-test" not in text
+    assert "uv build --package rcp-test" not in text
     _assert_one_environment_per_package(workflow)
 
 
@@ -332,7 +332,7 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
     ) -> subprocess.CompletedProcess[str]:
         tree = _release_tree(
             tmp_path,
-            dict.fromkeys(("rcp", "rcp-core", "rcp-vllm", "rcp-ndcg-test"), version),
+            dict.fromkeys(("rcp", "rcp-core", "rcp-vllm", "rcp-test"), version),
             core=core,
             vllm=manifest,
             core_in_extras=core_in_extras,
@@ -352,7 +352,7 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
         "rcp>=0.0.1",
         "rcp",
         "rcp-core==0.0.1",
-        "rcp-ndcg-test==0.0.1",
+        "rcp-test==0.0.1",
     )
     for sibling in siblings:
         result = check(f'[project]\nversion = "0.0.1"\ndependencies = ["{sibling}"]\n')
@@ -395,23 +395,23 @@ def test_the_release_workflow_checks_every_workspace_manifests_version(tmp_path)
     """The tag's version is that of all four workspace manifests, not only the three the release builds.
 
     The build job runs ``.github/scripts/check_release.py``; the test drives it against a tree of four
-    manifests in ``tmp_path``: the unpublished ``rcp-ndcg-test`` included, because a stale version there
+    manifests in ``tmp_path``: the unpublished ``rcp-test`` included, because a stale version there
     leaves the lock and the stated release rule disagreeing.
     """
     workflow, _ = _release_workflow()
     steps = workflow["jobs"]["build"]["steps"]
     step = next(step for step in steps if "manifests, the citation and the pins" in str(step.get("name", "")))
     assert "check_release.py" in str(step["run"])
-    packages = ("rcp", "rcp-core", "rcp-vllm", "rcp-ndcg-test")
+    packages = ("rcp", "rcp-core", "rcp-vllm", "rcp-test")
 
     def check(versions: dict[str, str]) -> subprocess.CompletedProcess[str]:
         return _run_release_check(_release_tree(tmp_path, versions))
 
     at_tag = dict.fromkeys(packages, "0.0.1")
     assert check(at_tag).returncode == 0, "four manifests at the tag's version must pass"
-    stale = dict(at_tag, **{"rcp-ndcg-test": "0.0.2"})
+    stale = dict(at_tag, **{"rcp-test": "0.0.2"})
     result = check(stale)
-    assert result.returncode == 1 and "rcp-ndcg-test" in result.stderr, "a stale fourth manifest must fail"
+    assert result.returncode == 1 and "rcp-test" in result.stderr, "a stale fourth manifest must fail"
     missing = {package: "0.0.1" for package in packages[:-1]}
     assert check(missing).returncode == 1, "a missing workspace manifest must fail"
 
@@ -421,7 +421,7 @@ def test_the_release_check_refuses_a_tag_that_is_not_the_tested_rc_commit(tmp_pa
     takes the wave document(s) whose evidence flipped the statuses and compares their recorded
     ``rc.commit`` with the tag commit; a mismatch is refused naming both, and a wave document without the
     RC record (or of another version) is refused too."""
-    packages = ("rcp", "rcp-core", "rcp-vllm", "rcp-ndcg-test")
+    packages = ("rcp", "rcp-core", "rcp-vllm", "rcp-test")
     tree = _release_tree(tmp_path, dict.fromkeys(packages, "0.0.1"))
     wave = tmp_path / "wave.json"
     wave.write_text(
@@ -481,14 +481,14 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
     """NOTICE attributes the third-party code (Apache-2.0 section 4(d)); each distribution carries the same copy.
 
     Four distributions (``rcp``, ``rcp-core``, ``rcp-vllm`` and the unpublished
-    ``rcp-ndcg-test``), one merged NOTICE byte-identical in all of them (docs-release Q4); the folded model
+    ``rcp-test``), one merged NOTICE byte-identical in all of them (docs-release Q4); the folded model
     plugins' attributions are part of it (their distributions are gone, layout-move item 3).
 
     ``rcp-vllm`` additionally ships the full texts of the licences its wheel bundles beyond Apache-2.0
     (ContextualAI's CC-BY-NC-SA-4.0 and Jina AI's CC-BY-NC-4.0 files, Perplexity AI's MIT file), so its
     ``license-files`` carries ``LICENSES/*.txt``; the other three stay Apache-2.0 only.
     """
-    folders = [ROOT / "rcp", ROOT / "rcp-core", ROOT / "rcp-vllm", ROOT / "rcp-ndcg-test"]
+    folders = [ROOT / "rcp", ROOT / "rcp-core", ROOT / "rcp-vllm", ROOT / "rcp-test"]
     for folder in folders:
         project = tomllib.loads((folder / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         expected = ["LICENSE", "NOTICE"]
@@ -504,7 +504,7 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
 
 #: Repository paths NOTICE names (its upstream paths, such as ``src/transformers/...``, are not checked).
 _NOTICE_PATH = re.compile(
-    r"(?<![\w./-])((?:rcp/src/rcp|src/rcp|rcp-vllm/src|rcp-ndcg-test/tests|tests"
+    r"(?<![\w./-])((?:rcp/src/rcp|src/rcp|rcp-vllm/src|rcp-test/tests|tests"
     r"|experiments|packages)/[A-Za-z0-9_./-]+\.(?:py|jinja))\b"
 )
 
@@ -517,7 +517,7 @@ _THIRD_PARTY_HEADER = re.compile(r"Folded from|SPDX-FileCopyrightText|Copyright 
 #: (a model card's usage code, a checkpoint's remote code, vLLM internals), so NOTICE must name it. Every
 #: template and every vendored module of a recipe directory is added automatically below.
 _DERIVED_RECIPE_AND_PLUGIN_FILES = (
-    "rcp-ndcg-test/tests/fixtures/recipes/fixture-vl-embed/reference.py",
+    "rcp-test/tests/fixtures/recipes/fixture-vl-embed/reference.py",
     # the family references (decision 34: one reference file per family, parameterised by variant)
     "rcp-vllm/src/rcp_vllm/recipes/ctxl-rerank-v2-instruct-multilingual/reference.py",
     "rcp-vllm/src/rcp_vllm/recipes/harrier-oss-v1/reference.py",
@@ -737,7 +737,7 @@ def test_the_pydantic_floor_covers_the_config_keys_the_code_uses() -> None:
     )
     used = [key for key in PYDANTIC_211_KEYS if key in sources]
     assert used, "the scan found no pydantic 2.11 config keys; update this test if the models changed"
-    for member in ("rcp-core", "rcp", "rcp-vllm", "rcp-ndcg-test"):
+    for member in ("rcp-core", "rcp", "rcp-vllm", "rcp-test"):
         manifest = tomllib.loads((ROOT / member / "pyproject.toml").read_text(encoding="utf-8"))
         requirements = [Requirement(spec) for spec in manifest["project"]["dependencies"]]
         pydantic = [req for req in requirements if req.name.lower() == "pydantic"]
@@ -752,7 +752,7 @@ def test_every_member_build_directory_is_ignored() -> None:
     ``/rcp*/build/`` covers all four members -- the main distribution's directory carries no hyphen to
     match, so a narrower pattern would leave its build output in ``git status`` and in ``git add -A``.
     """
-    for member in ("rcp", "rcp-core", "rcp-vllm", "rcp-ndcg-test"):
+    for member in ("rcp", "rcp-core", "rcp-vllm", "rcp-test"):
         result = subprocess.run(
             ["git", "check-ignore", "-q", f"{member}/build/lib/x.py"], cwd=ROOT, capture_output=True
         )

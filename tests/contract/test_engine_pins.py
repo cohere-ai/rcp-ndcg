@@ -61,12 +61,12 @@ DEFAULT_CLONE = REPO / ".deps" / "vllm"
 #: The swept surface: the three ``src`` trees (the recipes live under the serving package's), the docs, the
 #: exported schemas, and the loose files -- the root NOTICE and the four distributions' NOTICEs, plus the
 #: reproducibility record.
-SWEPT_ROOTS = ("docs", "rcp/src", "rcp-ndcg-test/src", "rcp-vllm/src", "schemas")
+SWEPT_ROOTS = ("docs", "rcp/src", "rcp-test/src", "rcp-vllm/src", "schemas")
 SWEPT_FILES = (
     "NOTICE",
     "rcp/NOTICE",
     "rcp-core/NOTICE",
-    "rcp-ndcg-test/NOTICE",
+    "rcp-test/NOTICE",
     "rcp-vllm/NOTICE",
     "REPRODUCIBILITY.md",
 )
@@ -221,10 +221,10 @@ RECORDED_0_31 = {
     "docs/how-to/use-verified-fake-engines.md": "the committed corpora are still the vllm-0.31.0 recording",
     "docs/reference/gpu-validation.md": "the GPU ledger: every row was recorded on the 0.31 image",
     "docs/reference/recipes.md": "the embeddinggemma-2 backport, in prose",
-    "rcp-ndcg-test/src/rcp_ndcg_test/changes.py": "the corpora state: still the vllm-0.31.0 recording",
-    "rcp-ndcg-test/src/rcp_ndcg_test/corpus.py": "the 0.31 recordings predate the record schema's version stamp",
-    "rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave-cosines-topk-small.json": "the wave's own image record",
-    "rcp-ndcg-test/src/rcp_ndcg_test/observe/corpus.py": "the v0.31.0 status table the shakedown measured",
+    "rcp-test/src/rcp_test/changes.py": "the corpora state: still the vllm-0.31.0 recording",
+    "rcp-test/src/rcp_test/corpus.py": "the 0.31 recordings predate the record schema's version stamp",
+    "rcp-test/src/rcp_test/jobs/wave-cosines-topk-small.json": "the wave's own image record",
+    "rcp-test/src/rcp_test/observe/corpus.py": "the v0.31.0 status table the shakedown measured",
     "rcp-vllm/src/rcp_vllm/models/embedding_gemma2/__init__.py": "the fold's history comment",
 }
 

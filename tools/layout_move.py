@@ -6,7 +6,7 @@ Moves this repository to the four-distribution tree:
     rcp-core/   (was packages/rcp-ndcg-core)
     rcp/             (was the root package: pyproject.toml, MANIFEST.in, README.md, src/)
     rcp-vllm/        (was packages/rcp-ndcg-vllm)
-    rcp-ndcg-test/   (was packages/rcp-ndcg-test, when that exists on the tip)
+    rcp-test/        (was packages/rcp-ndcg-test, when that exists on the tip)
     pyproject.toml   the uv workspace only (members, tooling config)
 
 Everything is rule-based -- a declared table of moves, of old-path -> new-path rewrites and of the
@@ -54,10 +54,16 @@ MOVES: tuple[tuple[str, str], ...] = (
     # So does the serving package's (`rcp_ndcg_vllm` -> `rcp_vllm`).
     ("rcp-vllm/src/rcp_ndcg_vllm", "rcp-vllm/src/rcp_vllm"),
     ("packages/rcp-ndcg-test", "rcp-ndcg-test"),
+    # So does the harness (`rcp_ndcg_test` -> `rcp_test`): the unpublished test distribution moves
+    # once more (the rows above land it at the -ndcg spelling first), then its import package
+    # follows its distribution's name like the others'.
+    ("rcp-ndcg-test", "rcp-test"),
+    ("rcp-test/src/rcp_ndcg_test", "rcp-test/src/rcp_test"),
 )
 
-OPTIONAL_SOURCES: frozenset[str] = frozenset({"packages/rcp-ndcg-test"})
-"""A move source this tree is allowed not to carry (the tip predates the package)."""
+OPTIONAL_SOURCES: frozenset[str] = frozenset({"packages/rcp-ndcg-test", "rcp-ndcg-test", "rcp-test/src/rcp_ndcg_test"})
+"""A move source this tree is allowed not to carry (the tip predates the package, or a rename leg of
+the harness above already happened)."""
 
 LANDED_CARD_SOURCES: frozenset[str] = frozenset({"README.md"})
 """A move source the landing-card design replaced (docs-release Q1): the full README moved into
@@ -74,16 +80,17 @@ paths in their tables and fixtures."""
 
 EXEMPT_PREFIXES: tuple[str, ...] = (
     "handover/",
-    "rcp-ndcg-test/corpora/",
-    "rcp-ndcg-test/src/rcp_ndcg_test/fixtures/cases/",
+    "rcp-test/corpora/",
+    "rcp-test/pairs/",
+    "rcp-test/src/rcp_test/fixtures/cases/",
 )
 """Path prefixes the sweep and the stale scan skip: handover/ is temporary scaffolding (deleted in one
 commit before the release), and its workstream reports describe the tree as it was when written; the
-observation corpora are the GPU waves' records, keyed by the tree that recorded them (PLAN section 8);
-and a case's expected values are derived from its input texts, so a renamed text there re-records
-evidence. The engine-side plugin modules under models/ and patches/ were exempt while their bytes were a
-fingerprint input a layout move had no reason to touch; the rename moves the module names themselves, so
-their re-record is declared with the rest of it."""
+observation corpora -- the recipe keyings and the pairs corpus -- are the GPU waves' records, keyed by
+the tree that recorded them (PLAN section 8); and a case's expected values are derived from its input
+texts, so a renamed text there re-records evidence. The engine-side plugin modules under models/ and
+patches/ were exempt while their bytes were a fingerprint input a layout move had no reason to touch;
+the rename moves the module names themselves, so their re-record is declared with the rest of it."""
 
 EXEMPT_SUFFIXES: tuple[str, ...] = (".jinja",)
 """File suffixes the sweep and the stale scan skip: a recipe template's bytes are a behaviour-fingerprint
@@ -97,9 +104,10 @@ input (`template_file`), so renaming inside one would cost a GPU re-record."""
 REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # The rename on top of the move: the distributions' and import names drop `ndcg`
     # (`rcp-ndcg-core` -> `rcp-core`, `rcp_ndcg_core` -> `rcp_core`, `rcp-ndcg` -> `rcp`,
-    # `rcp_ndcg` -> `rcp`). The bare names are names, not paths, so they rewrite wherever they are
-    # live -- the CHANGELOG's entries below Unreleased and the ledger's historical source list keep
-    # the spellings they shipped with (skipped below).
+    # `rcp_ndcg` -> `rcp`, `rcp-ndcg-vllm` -> `rcp-vllm`, `rcp_ndcg_vllm` -> `rcp_vllm`,
+    # `rcp-ndcg-test` -> `rcp-test`, `rcp_ndcg_test` -> `rcp_test`). The bare names are names, not
+    # paths, so they rewrite wherever they are live -- the CHANGELOG's entries below Unreleased and
+    # the ledger's historical source list keep the spellings they shipped with (skipped below).
     ("core-name", r"(?<![\w-])rcp-ndcg-core\b", "rcp-core", None),
     ("core-module", r"(?<![\w])rcp_ndcg_core\b", "rcp_core", None),
     # The main distribution's own scratch names carry a suffix the generic rule must not touch.
@@ -119,6 +127,12 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # plugin's module names are inputs, so every corpus a plugin recipe recorded is stale.
     ("vllm-name", r"(?<![\w-])rcp-ndcg-vllm\b", "rcp-vllm", None),
     ("vllm-module", r"(?<!\w)rcp_ndcg_vllm\b", "rcp_vllm", None),
+    # The unpublished harness's distribution and import names drop `ndcg`. `test-name`'s lookbehind
+    # keeps `x-`-style prefixes and sibling distributions out, like `main-name`'s; `test-module`
+    # matches the same escape boundary as `main-module` (`\nrcp_ndcg_test` in a record is the
+    # module, never a fragment of another identifier).
+    ("test-name", r"(?<![\w-])rcp-ndcg-test\b", "rcp-test", None),
+    ("test-module", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg_test(?!\w)", "rcp_test", None),
     # The package directories, in one string or split the way a test spells a Path. The core-name
     # rule above has already mapped the core's directory to `rcp-core`; `\1` keeps the others.
     ("packages", r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))\b", r"\1", None),
@@ -171,6 +185,21 @@ STALE: tuple[tuple[str, ...], ...] = (
     # The root package's source outside its one new home (its MANIFEST.in spells it relative).
     (r"(?<![\w./-])src/rcp(?![\w-])", "rcp/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),
     (r"""(["'])src\1\s*/\s*['"]rcp["']""",),
+    # The harness's distribution and import names, where they were live. The ledger's historical
+    # source list, the shipped-entry homes the changelog test pins and the CHANGELOG's past entries
+    # keep theirs; the corpora, the pairs corpus and the case fixtures keep theirs under EXEMPT_PREFIXES.
+    (
+        r"(?<![\w-])rcp-ndcg-test\b",
+        "CHANGELOG.md",
+        "tests/docs/test_changelog.py",
+        "rcp-test/src/rcp_test/jobs/ledger.py",
+    ),
+    (
+        r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg_test(?!\w)",
+        "CHANGELOG.md",
+        "tests/docs/test_changelog.py",
+        "rcp-test/src/rcp_test/jobs/ledger.py",
+    ),
 )
 """What must be gone after the sweep: patterns that can only mean a path the move took away. Each
 entry is (pattern, exempt paths...).  A bare ``pyproject.toml`` in prose (CHANGELOG history, a
@@ -225,12 +254,17 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
     for rule, pattern, replacement, files in REWRITES:
         if not _matches_files(name, files):
             continue
-        if rule.startswith(("core-", "main-", "vllm-")) and name.as_posix() == "CHANGELOG.md":
+        if rule.startswith(("core-", "main-", "vllm-", "test-")) and name.as_posix() == "CHANGELOG.md":
             continue  # the entries below Unreleased are history: they keep the names they shipped with
-        if rule in ("core-name", "main-name", "vllm-name", "vllm-module") and name.as_posix() == (
-            "rcp-ndcg-test/src/rcp_ndcg_test/jobs/ledger.py"
-        ):
+        if rule in (
+            "core-name",
+            "main-name",
+            "vllm-name",
+            "vllm-module",
+        ) and name.as_posix() == ("rcp-test/src/rcp_test/jobs/ledger.py"):
             continue  # its source list names pre-rename trees' layouts as data, never a live path
+        if rule.startswith("test-") and name.as_posix() == "tests/docs/test_changelog.py":
+            continue  # it pins the shipped 0.0.1 entry's harness homes as names, never live paths
         if rule == "root-src" and name.name == "MANIFEST.in":
             continue  # `recursive-include src/rcp ...` is relative to its own directory
         if rule == "root-src" and name.as_posix() == "tests/docs/test_packaging.py":

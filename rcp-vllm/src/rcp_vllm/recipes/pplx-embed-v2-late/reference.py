@@ -31,7 +31,7 @@ cuda). ``--mode render`` needs only ``huggingface_hub`` and ``tokenizers``: it r
 pinned ``config_sentence_transformers.json``, ``sentence_bert_config.json`` and
 ``tokenizer.json`` and never imports torch.
 
-Subprocess contract (``rcp_ndcg_test.equivalence.reference.run_reference``):
+Subprocess contract (``rcp_test.equivalence.reference.run_reference``):
 
     reference.py --mode <render|embed|media> --pairs <file> --out <file> --tokenizer <repo>@<rev> \
                  --recipe <resolved-recipe.json> [--device <d>]

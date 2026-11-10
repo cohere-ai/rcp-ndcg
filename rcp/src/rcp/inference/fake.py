@@ -39,14 +39,14 @@ FAKE_SCHEME = "fake://"
 RE_ENGINE_URL = re.compile(r"^fake://[a-z]+-\d+(?:\.\d+)+(?:rc\d+)?/")
 """The ``fake://`` URLs that name a **verified fake engine**: an engine-version host and a recipe path
 (``fake://vllm-0.33.0/qwen3-embedding-0.6b``). Those are routed through the ``rcp.fake_transports``
-entry-point group (rcp-ndcg-test registers its emulators there -- the verified fake engines built from the
+entry-point group (rcp-test registers its emulators there -- the verified fake engines built from the
 observation corpora); every other ``fake://`` URL is the hash-seeded offline fake (``fake://seed/<n>`` and
 friends)."""
 
 FAKE_TRANSPORTS_GROUP = "rcp.fake_transports"
 """The entry-point group a verified-fake-engine provider registers in: each entry resolves to a callable
 ``(url: str) -> httpx.BaseTransport | None``; the first non-None transport answers the URL. The emulators
-live in the unpublished rcp-ndcg-test (installed by the repository's dev environments and the GPU node's
+live in the unpublished rcp-test (installed by the repository's dev environments and the GPU node's
 client environment); the product itself ships none."""
 
 #: The dimension of the fake vectors when the URL's query gives none.
@@ -192,7 +192,7 @@ def fake_transport(
             return transport
         raise ConfigError(
             f"{url} names a verified fake engine, and no emulator provider is installed: the verified fake "
-            "engines (the observation corpora's emulators) live in rcp-ndcg-test, which registers one under "
+            "engines (the observation corpora's emulators) live in rcp-test, which registers one under "
             "the rcp.fake_transports entry-point group; install it beside rcp (see its README)"
         )
     endpoint = _fake_endpoint(

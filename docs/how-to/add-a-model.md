@@ -56,7 +56,7 @@ change what is served.
 2. Pin the variant's fields in the family's test module (one module per family, parametrized over its
    variants; every field pinned per variant, two mutants red per family) and run the family's stage-1 network
    tests for the new variant.
-3. Add the variant's golden: `uv run --no-sync pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py
+3. Add the variant's golden: `uv run --no-sync pytest rcp-test/tests/recipes/test_family_goldens.py
    --update-goldens` rewrites `tests/recipes/golden/` from the current tree (review the diff, then commit; the
    guard compares every variant's resolved contract and fingerprint against its golden in every CI job).
 4. A new family needs its `family.yaml` (below), its reference, its template when it needs one, its family
@@ -65,7 +65,7 @@ change what is served.
 Validate a family/variant without an engine:
 
 ```bash
-python -m rcp_ndcg_test.equivalence --recipe <variant-id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
+python -m rcp_test.equivalence --recipe <variant-id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
 ## The template block, the anchors and the explicit budget
@@ -251,7 +251,7 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
   Generate or regenerate the lock (from the checkout; the tool needs the index only here, never on the node):
 
   ```bash
-  uv run --no-sync python -m rcp_ndcg_test.jobs.reference_lock build --family <family> \
+  uv run --no-sync python -m rcp_test.jobs.reference_lock build --family <family> \
       --in rcp-vllm/src/rcp_vllm/recipes/<family>/reference.in \
       --out rcp-vllm/src/rcp_vllm/recipes/<family>/reference.lock \
       --image-freeze rcp-vllm/reference-image-v0.33.0.txt \
@@ -265,7 +265,7 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
 
   `... check --family <family> --in ... --lock ... --image-freeze ...` validates a committed lock offline
   (the header hashes, every pin, the own-torch declaration);
-  `rcp-ndcg-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
+  `rcp-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
   wheel (e.g. `flash-attn`, a GitHub-release wheel) must be staged in an `EXTRA_DIRS` wheelhouse, which the
   node's install searches. The harness documents the files and installs neither.
 
@@ -383,7 +383,7 @@ Stage 3 (optional) scores rankings per subset with `rcp eval score` as a subproc
 on `rcp`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
 
 ```bash
-python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.0.0.1:8100 \
+python -m rcp_test.equivalence --recipe <variant-id> --base-url http://127.0.0.1:8100 \
     --pairs pairs.jsonl --out /tmp/equiv --reference-python <reference-venv-python>   # stages 1 and 2
 ```
 
@@ -414,7 +414,7 @@ decodes other frames and fails it the same way). The render merge is the boundar
 moves when it stands between a message's text parts: the engine's prompt is its render (the served template
 with the placeholder) minus the placeholder plus the expansion, and a tokenizer is not additive, so the word
 after the placeholder can lose the token that carried the space. It is read from the served template's own
-render (`rcp_ndcg_test.equivalence.stages.engine_render_merge`), never guessed, so a genuine engine
+render (`rcp_test.equivalence.stages.engine_render_merge`), never guessed, so a genuine engine
 difference still fails. On CPU the test stub engine resizes with the product's own
 `smart_resize` and counts a container through the product's own `content_media_tokens`, so there the engine
 count catches a pin that is missing or different, never a bug in the product's resize or video accounting
@@ -426,7 +426,7 @@ media recipe whose
 pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket, a
 captioned page, a batch mixing a text-only and an image document, a query image where the recipe allows query
 media, interleaved and several-image documents where its `max_images` admits them, and an MJPEG AVI clip per
-size, alone and with text, at the recipe's declared video sampling — `rcp_ndcg_test.observe.media_set`).
+size, alone and with text, at the recipe's declared video sampling — `rcp_test.observe.media_set`).
 
 The exit code is 0 only when every gate passes; `equivalence.json` carries every number with its referent
 (per document, per query, per subset) and `EQUIVALENCE.md` is the short section for the recipe's report.
@@ -441,7 +441,7 @@ that stage, and the node's `bootstrap.sh` builds the three environments and runs
 export RCP_JOBS_CONFIG=/path/to/jobs-config.yaml     # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # mounted into the job and read there, never passed in an argv
-rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
+rcp-test/src/rcp_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 
 The three variables are required — the script refuses to run without them, because no tracked file may name a
@@ -456,13 +456,13 @@ evicts each model's weights after its last use, runs smoke, equivalence and the 
 
 ## Reference cases and the conformance suite
 
-A recipe's behaviour is pinned by reference cases in the unpublished `rcp-ndcg-test` package
-(`rcp-ndcg-test/`, a workspace member; never on PyPI): one case per file under
-`rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
+A recipe's behaviour is pinned by reference cases in the unpublished `rcp-test` package
+(`rcp-test/`, a workspace member; never on PyPI): one case per file under
+`rcp-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
 stratum, an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on
 every push (a malformed case or an incomplete strata grid fails CI), and the conformance runner sends each
 case through the product's role clients — against a live engine (`target="engine"`, the engine's
 `base_url` passed to `run_suite`) or a recipe-level fake engine (`target="fake"`, resolved through the
 registry by recipe id) — comparing with `expected` under its tolerance. `expected.values: null` (a
-generated case before its GPU wave) is a skip, never a pass. See `rcp-ndcg-test/README.md` for
+generated case before its GPU wave) is a skip, never a pass. See `rcp-test/README.md` for
 the case format, how to add a case, and the fake-engine seam the verified emulators are later built from.

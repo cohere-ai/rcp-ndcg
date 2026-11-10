@@ -1,0 +1,7 @@
+# The cross-image parity, arm 2 of 2: W7's fold decision (PLAN v7 §3 W7, D2).
+# Container vllm/vllm-openai:v0.33.0 -- its transformers (5.20.2 >= 5.19.0) ships the embedding_gemma2
+# classes, so install_fold returns early (models/embeddinggemma_2/__init__.py:122-123) and the engine runs
+# the NATIVE model. Same checkpoint, same revision, same prompts (rcp-test/pairs/embeddinggemma-2.jsonl).
+#   submit.sh <RC_A> <OUT> parity-embeddinggemma-2-033
+# Gate: the same 1e-5 / 0.99999 pair, read off the two arms' recorded replies (PLAN.md §6 finding F1).
+embeddinggemma-2

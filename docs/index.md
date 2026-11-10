@@ -50,7 +50,7 @@ Start with the [quickstart](quickstart.md).
 - [The results record](reference/results-record.md): the versioned evaluation record and its sink contract.
 - [Compatibility and versioning](reference/versioning.md): what is public, the `0.0.x` rules, the recipe
   `schema_version`, the behaviour fingerprint and the artifact tags.
-- [The `rcp-ndcg-test` package](reference/rcp-ndcg-test.md): reference cases, conformance and the GPU job
+- [The `rcp-test` package](reference/rcp-test.md): reference cases, conformance and the GPU job
   tooling for contributors.
 - [`rcp_core`: metric, gains and protocols](reference/api/rcp_core.md).
 - [`rcp.eval`: evaluation](reference/api/rcp.eval.md).

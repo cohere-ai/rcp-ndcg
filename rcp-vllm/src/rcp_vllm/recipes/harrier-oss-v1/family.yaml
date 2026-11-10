@@ -247,7 +247,7 @@ variants:
       declares vocab_size 262208 for the same token and serves it. The harness's
       `content:special_token_spellings` row is built from the tokenizer's added tokens, so the
       generator now bounds that set by the checkpoint's declared vocabulary size (read from
-      config.json at the pinned revision at generation time; `rcp_ndcg_test.observe.adversarial`),
+      config.json at the pinned revision at generation time; `rcp_test.observe.adversarial`),
       and the manifest's `content:special_token_spellings` stratum records the omitted token with its
       id and the reason. Any user text carrying the spelling still kills this engine: that is the
       checkpoint's defect, declared here, never silently worked around.

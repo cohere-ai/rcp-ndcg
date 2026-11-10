@@ -29,7 +29,7 @@ name does not make it private.
   kind, signature and one-line role -- from the snapshot and the modules' own docstrings. `tests/contract`
   fails when a pinned name is on no page under `docs/`, when a pinned module has no page, or when the
   committed pages differ from a fresh generation, so the docs cannot drift from the surface.
-- `rcp_ndcg_test` is never public: it is unpublished, its API moves with the harness, and the product never
+- `rcp_test` is never public: it is unpublished, its API moves with the harness, and the product never
   imports it.
 
 ## Changing it

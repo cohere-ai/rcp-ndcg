@@ -254,7 +254,7 @@ jobs:
       - run: '"$RUNNER_TEMP/models/bin/python" -m pytest rcp-vllm/tests/models rcp-vllm/tests/test_no_torch.py -q'
 
   test-pkg:
-    name: rcp-ndcg-test cases and conformance (CPU)
+    name: rcp-test cases and conformance (CPU)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -267,11 +267,11 @@ jobs:
       # The recipe suite's offline half -- the contract pins, the mutants, the template and serve-argv pins,
       # the goldens -- runs here with the rest; its Hub-backed half runs in the recipe-tests job below.
       - run: .github/scripts/cpu-env.sh dev
-      # The per-test SIGALRM guard of rcp-ndcg-test/tests/conftest.py: a hang fails its own test here rather
+      # The per-test SIGALRM guard of rcp-test/tests/conftest.py: a hang fails its own test here rather
       # than holding the job (faulthandler_timeout only dumps a traceback; it never aborts).
       # -n 4: the tree is CPU-bound and the SIGALRM guard is per worker (conftest.py: "pytest's, and each
       # xdist worker's"), so the parallel run keeps the hang-fails-fast property the serial one had.
-      - run: uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4
+      - run: uv run --no-sync pytest rcp-test/tests -q -n 4
         env:
           RCP_NDCG_TEST_TIMEOUT: "300"
       - name: the tests left the checkout clean
@@ -309,7 +309,7 @@ jobs:
           export RCP_NDCG_VLLM_TOKENIZER_CACHE="$HOME/.cache/rcp-vllm-tokenizers"
           export HF_HUB_CACHE="$RCP_NDCG_VLLM_TOKENIZER_CACHE/hub"
           export RCP_NDCG_TEST_TIMEOUT=300
-          uv run --no-sync pytest rcp-ndcg-test/tests/recipes -q -n 4 -p no:cacheprovider
+          uv run --no-sync pytest rcp-test/tests/recipes -q -n 4 -p no:cacheprovider
       - name: the tests left the checkout clean
         run: |
           git status --porcelain --untracked-files=all

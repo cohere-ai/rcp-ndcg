@@ -14,12 +14,12 @@ resolution-markers = [
 members = [
     "rcp",
     "rcp-core",
-    "rcp-ndcg-test",
+    "rcp-test",
     "rcp-vllm",
 ]
 
 [manifest.dependency-groups]
-dev = [{ name = "rcp-ndcg-test", editable = "rcp-ndcg-test" }]
+dev = [{ name = "rcp-test", editable = "rcp-test" }]
 
 [[package]]
 name = "adlfs"
@@ -2833,9 +2833,9 @@ requires-dist = [
 provides-extras = ["irt"]
 
 [[package]]
-name = "rcp-ndcg-test"
+name = "rcp-test"
 version = "0.0.1"
-source = { editable = "rcp-ndcg-test" }
+source = { editable = "rcp-test" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },

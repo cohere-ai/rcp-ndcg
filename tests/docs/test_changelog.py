@@ -3,8 +3,9 @@
 The 0.0.1 entry is the release record. A reader deciding how over-cap rows were gated, or how empty
 documents score, takes the recipe facts from its bullets, so every ``status``/``known_deviations``/
 ``empty_doc`` claim a bullet makes about a shipped recipe is resolved against the recipe here. The same
-entry names the harness modules; they moved to the unpublished ``rcp-ndcg-test`` at the layout move, so the
-entry must name their shipped homes (``rcp_ndcg_test.*``, ``rcp-ndcg-test/schema/``).
+entry names the harness modules; they moved to the unpublished ``rcp-ndcg-test`` at the layout move (the
+package is ``rcp_test`` since), so the entry must name their shipped homes (``rcp_ndcg_test.*``,
+``rcp-ndcg-test/schema/``) while the modules themselves live on.
 """
 
 from __future__ import annotations
@@ -128,7 +129,8 @@ def test_the_harness_modules_are_named_at_their_shipped_home() -> None:
     for name in MOVED_HARNESS:
         module = f"rcp_ndcg_test.{name}"
         assert module in flat, f"CHANGELOG.md never names the shipped home {module}"
-        importlib.import_module(module)  # the shipped home exists
+        # the spelling in the entry is historical; the module itself lives on under the current name
+        importlib.import_module(f"rcp_test.{name}")
 
 
 CHANGELOG = ROOT / "CHANGELOG.md"
